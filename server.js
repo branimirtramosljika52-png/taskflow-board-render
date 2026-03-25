@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 
-import { createTaskRepository } from "./src/taskRepository.js";
+import { createSafetyRepository } from "./src/safetyRepository.js";
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = resolve(process.cwd());
@@ -22,7 +22,7 @@ async function createRepositoryWithRetry() {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await createTaskRepository();
+      return await createSafetyRepository();
     } catch (error) {
       lastError = error;
 
@@ -76,11 +76,17 @@ async function readJsonBody(request) {
   }
 }
 
-async function writeTasks(response, statusCode = 200) {
+async function writeSnapshot(response, statusCode = 200) {
+  const snapshot = await repository.getSnapshot();
   sendJson(response, statusCode, {
     storage: repository.kind,
-    tasks: await repository.listTasks(),
+    ...snapshot,
   });
+}
+
+async function handleEntityMutation(response, handler, statusCode = 200) {
+  await handler();
+  await writeSnapshot(response, statusCode);
 }
 
 async function handleApiRequest(request, response, url) {
@@ -90,68 +96,105 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/tasks") {
-      await writeTasks(response);
+    if (request.method === "GET" && url.pathname === "/api/bootstrap") {
+      await writeSnapshot(response);
       return true;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/tasks") {
+    if (request.method === "POST" && url.pathname === "/api/companies") {
       const body = await readJsonBody(request);
-      await repository.createTask(body);
-      await writeTasks(response, 201);
+      await handleEntityMutation(response, () => repository.createCompany(body), 201);
       return true;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/tasks/demo") {
-      await repository.seedDemo();
-      await writeTasks(response, 201);
-      return true;
-    }
-
-    if (request.method === "DELETE" && url.pathname === "/api/tasks" && url.searchParams.get("status") === "done") {
-      await repository.clearDone();
-      await writeTasks(response);
-      return true;
-    }
-
-    const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
-    const moveMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/move$/);
-
-    if (moveMatch && request.method === "POST") {
+    if (request.method === "POST" && url.pathname === "/api/locations") {
       const body = await readJsonBody(request);
-      const updated = await repository.moveTask(moveMatch[1], body.direction);
+      await handleEntityMutation(response, () => repository.createLocation(body), 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/work-orders") {
+      const body = await readJsonBody(request);
+      await handleEntityMutation(response, () => repository.createWorkOrder(body), 201);
+      return true;
+    }
+
+    const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
+    const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
+    const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
+
+    if (companyMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await repository.updateCompany(companyMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Task not found.");
+        sendError(response, 404, "Tvrtka nije pronadena.");
         return true;
       }
 
-      await writeTasks(response);
+      await writeSnapshot(response);
       return true;
     }
 
-    if (taskMatch && request.method === "PATCH") {
-      const body = await readJsonBody(request);
-      const updated = await repository.updateTask(taskMatch[1], body);
-
-      if (!updated) {
-        sendError(response, 404, "Task not found.");
-        return true;
-      }
-
-      await writeTasks(response);
-      return true;
-    }
-
-    if (taskMatch && request.method === "DELETE") {
-      const deleted = await repository.deleteTask(taskMatch[1]);
+    if (companyMatch && request.method === "DELETE") {
+      const deleted = await repository.deleteCompany(companyMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Task not found.");
+        sendError(response, 404, "Tvrtka nije pronadena.");
         return true;
       }
 
-      await writeTasks(response);
+      await writeSnapshot(response);
+      return true;
+    }
+
+    if (locationMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await repository.updateLocation(locationMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Lokacija nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response);
+      return true;
+    }
+
+    if (locationMatch && request.method === "DELETE") {
+      const deleted = await repository.deleteLocation(locationMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Lokacija nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response);
+      return true;
+    }
+
+    if (workOrderMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await repository.updateWorkOrder(workOrderMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Radni nalog nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response);
+      return true;
+    }
+
+    if (workOrderMatch && request.method === "DELETE") {
+      const deleted = await repository.deleteWorkOrder(workOrderMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Radni nalog nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response);
       return true;
     }
   } catch (error) {
@@ -244,5 +287,5 @@ process.on("SIGTERM", () => {
 });
 
 server.listen(port, () => {
-  console.log(`TaskFlow full-stack live at http://localhost:${port} (${repository.kind})`);
+  console.log(`SelfDash workspace live at http://localhost:${port} (${repository.kind})`);
 });

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="hr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TaskFlow Board</title>
+    <title>SelfDash Workspace</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,209 +11,502 @@
       <section class="app-frame">
         <header class="hero">
           <div class="hero-copy">
-            <p class="eyebrow">Team Workflow</p>
-            <h1>TaskFlow Board</h1>
+            <p class="eyebrow">Safety360 Logic</p>
+            <h1>SelfDash Workspace</h1>
             <p class="intro">
-              Jaci task manager s board prikazom, prioritetima, rokovima, search/filter alatima i editiranjem taskova.
+              Web verzija logike iz workbooka: glavni SelfDash za radne naloge, uz pomocne liste za tvrtke i lokacije.
             </p>
-            <p id="connection-status" class="connection-status">Connecting to backend...</p>
+            <p id="connection-status" class="connection-status">Spajanje na backend...</p>
           </div>
 
           <div class="summary-grid">
             <article class="summary-card">
-              <span>Total</span>
-              <strong id="total-count">0</strong>
+              <span>Tvrtke</span>
+              <strong id="companies-count">0</strong>
             </article>
             <article class="summary-card">
-              <span>In Progress</span>
-              <strong id="doing-count">0</strong>
+              <span>Lokacije</span>
+              <strong id="locations-count">0</strong>
             </article>
             <article class="summary-card">
-              <span>Overdue</span>
-              <strong id="overdue-count">0</strong>
+              <span>Aktivni RN</span>
+              <strong id="active-work-orders-count">0</strong>
             </article>
             <article class="summary-card">
-              <span>Done</span>
-              <strong id="done-count">0</strong>
+              <span>Zatvoreni RN</span>
+              <strong id="completed-work-orders-count">0</strong>
+            </article>
+            <article class="summary-card">
+              <span>Kasne</span>
+              <strong id="overdue-work-orders-count">0</strong>
             </article>
           </div>
         </header>
 
-        <section class="composer">
-          <div class="section-heading">
-            <div>
-              <p class="section-kicker">Create</p>
-              <h2>Add Task</h2>
-            </div>
-          </div>
-
-          <form id="task-form" class="task-form">
-            <label class="field field-title">
-              <span>Title</span>
-              <input id="task-title" name="title" type="text" maxlength="120" placeholder="Prepare sprint review deck" required />
-            </label>
-            <label class="field">
-              <span>Note</span>
-              <input id="task-note" name="note" type="text" maxlength="220" placeholder="Optional context or next step" />
-            </label>
-            <label class="field">
-              <span>Due date</span>
-              <input id="task-due-date" name="dueDate" type="date" />
-            </label>
-            <label class="field">
-              <span>Priority</span>
-              <select id="task-priority" name="priority">
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="low">Low</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Status</span>
-              <select id="task-status" name="status">
-                <option value="todo">To do</option>
-                <option value="doing">In progress</option>
-                <option value="done">Done</option>
-              </select>
-            </label>
-            <button type="submit" class="primary-button">Add task</button>
-          </form>
-          <p id="form-error" class="form-error" aria-live="polite"></p>
-        </section>
-
-        <section class="toolbar">
-          <div class="toolbar-group toolbar-search">
-            <label class="field search-field">
-              <span>Search</span>
-              <input id="search-input" type="search" placeholder="Search title or note..." />
-            </label>
-          </div>
-
-          <div class="toolbar-group">
-            <label class="field inline-field">
-              <span>Status</span>
-              <select id="filter-status">
-                <option value="all">All</option>
-                <option value="todo">To do</option>
-                <option value="doing">In progress</option>
-                <option value="done">Done</option>
-              </select>
-            </label>
-
-            <label class="field inline-field">
-              <span>Priority</span>
-              <select id="filter-priority">
-                <option value="all">All</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </label>
-
-            <button id="seed-demo" type="button" class="ghost-button">Demo data</button>
-            <button id="clear-done" type="button" class="ghost-button">Clear done</button>
-          </div>
-        </section>
+        <nav class="tab-strip" aria-label="Pogledi aplikacije">
+          <button type="button" class="tab-button is-active" data-view="selfdash">SelfDash</button>
+          <button type="button" class="tab-button" data-view="companies">ListTvrtke</button>
+          <button type="button" class="tab-button" data-view="locations">ListLokacije</button>
+        </nav>
 
         <p id="sync-error" class="sync-error" hidden></p>
 
-        <section class="board" aria-label="Task board">
-          <article class="column">
-            <header class="column-header">
+        <section id="selfdash-view" class="workspace-view">
+          <section class="panel">
+            <div class="section-heading">
               <div>
-                <p class="column-kicker">Plan</p>
-                <h2>To do</h2>
+                <p class="section-kicker">Glavni sheet</p>
+                <h2>SelfDash</h2>
               </div>
-              <span id="todo-badge" class="column-badge">0</span>
-            </header>
-            <div id="todo-list" class="task-stack"></div>
-          </article>
+              <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
+            </div>
 
-          <article class="column">
-            <header class="column-header">
-              <div>
-                <p class="column-kicker">Execute</p>
-                <h2>In progress</h2>
-              </div>
-              <span id="doing-badge" class="column-badge">0</span>
-            </header>
-            <div id="doing-list" class="task-stack"></div>
-          </article>
+            <form id="work-order-form" class="entity-form">
+              <input id="work-order-id" type="hidden" />
 
-          <article class="column">
-            <header class="column-header">
-              <div>
-                <p class="column-kicker">Finish</p>
-                <h2>Done</h2>
+              <div class="form-grid form-grid-wide">
+                <label class="field">
+                  <span>Status RN</span>
+                  <select id="work-order-status"></select>
+                </label>
+
+                <label class="field">
+                  <span>Prioritet</span>
+                  <select id="work-order-priority"></select>
+                </label>
+
+                <label class="field">
+                  <span>Datum otvaranja</span>
+                  <input id="work-order-opened-date" type="date" />
+                </label>
+
+                <label class="field">
+                  <span>Rok zavrsetka</span>
+                  <input id="work-order-due-date" type="date" />
+                </label>
+
+                <label class="field">
+                  <span>Tvrtka</span>
+                  <select id="work-order-company-id"></select>
+                </label>
+
+                <label class="field">
+                  <span>Sjediste</span>
+                  <input id="work-order-headquarters" type="text" readonly />
+                </label>
+
+                <label class="field">
+                  <span>OIB</span>
+                  <input id="work-order-company-oib" type="text" readonly />
+                </label>
+
+                <label class="field">
+                  <span>Vrsta ugovora</span>
+                  <input id="work-order-contract-type" type="text" readonly />
+                </label>
+
+                <label class="field">
+                  <span>Lokacija</span>
+                  <select id="work-order-location-id"></select>
+                </label>
+
+                <label class="field">
+                  <span>Koordinate</span>
+                  <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
+                </label>
+
+                <label class="field">
+                  <span>Regija</span>
+                  <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
+                </label>
+
+                <label class="field">
+                  <span>Kontakt osoba</span>
+                  <select id="work-order-contact-slot"></select>
+                </label>
+
+                <label class="field">
+                  <span>Kontakt broj</span>
+                  <input id="work-order-contact-phone" type="text" placeholder="+385 ..." />
+                </label>
+
+                <label class="field">
+                  <span>Kontakt email</span>
+                  <input id="work-order-contact-email" type="email" placeholder="kontakt@tvrtka.hr" />
+                </label>
+
+                <label class="field">
+                  <span>Izvrsitelj 1</span>
+                  <input id="work-order-executor-1" type="text" placeholder="Ime i prezime" />
+                </label>
+
+                <label class="field">
+                  <span>Izvrsitelj 2</span>
+                  <input id="work-order-executor-2" type="text" placeholder="Ime i prezime" />
+                </label>
+
+                <label class="field">
+                  <span>Usluga</span>
+                  <input id="work-order-service-line" type="text" placeholder="Vrsta usluge" />
+                </label>
+
+                <label class="field">
+                  <span>Odjel</span>
+                  <input id="work-order-department" type="text" placeholder="Odjel" />
+                </label>
+
+                <label class="field">
+                  <span>Veza RN</span>
+                  <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
+                </label>
+
+                <label class="field">
+                  <span>Tezinski faktor / iznos</span>
+                  <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
+                </label>
+
+                <label class="field">
+                  <span>Nalog zavrsio</span>
+                  <input id="work-order-completed-by" type="text" placeholder="Zavrsio" />
+                </label>
+
+                <label class="field">
+                  <span>Datum fakture</span>
+                  <input id="work-order-invoice-date" type="date" />
+                </label>
+
+                <label class="field">
+                  <span>Tagovi</span>
+                  <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
+                </label>
               </div>
-              <span id="done-badge" class="column-badge">0</span>
-            </header>
-            <div id="done-list" class="task-stack"></div>
-          </article>
+
+              <div class="form-grid form-grid-text">
+                <label class="field field-span-full">
+                  <span>Opis radnog naloga</span>
+                  <textarea id="work-order-description" rows="4" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
+                </label>
+
+                <label class="field field-span-full">
+                  <span>Napomena / faktura</span>
+                  <textarea id="work-order-invoice-note" rows="4" placeholder="Napomena za RN ili fakturu."></textarea>
+                </label>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="primary-button">Spremi RN</button>
+                <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
+              </div>
+            </form>
+
+            <p id="work-order-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Pregled</p>
+                <h2>Radni nalozi</h2>
+              </div>
+            </div>
+
+            <div class="filter-row">
+              <label class="field">
+                <span>Pretraga</span>
+                <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija, odjel..." />
+              </label>
+
+              <label class="field">
+                <span>Status</span>
+                <select id="work-order-filter-status"></select>
+              </label>
+
+              <label class="field">
+                <span>Tvrtka</span>
+                <select id="work-order-filter-company"></select>
+              </label>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>RN</th>
+                    <th>Status</th>
+                    <th>Otvoren</th>
+                    <th>Rok</th>
+                    <th>Tvrtka</th>
+                    <th>Lokacija</th>
+                    <th>Regija</th>
+                    <th>Kontakt</th>
+                    <th>Prioritet</th>
+                    <th>Akcije</th>
+                  </tr>
+                </thead>
+                <tbody id="work-orders-body"></tbody>
+              </table>
+            </div>
+
+            <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
+          </section>
         </section>
 
-        <section id="empty-state" class="empty-state" hidden>
-          <h2>No tasks match the current view</h2>
-          <p>Add a task, load demo data, or relax the filters to see items again.</p>
+        <section id="companies-view" class="workspace-view" hidden>
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Pomocni sheet</p>
+                <h2>ListTvrtke</h2>
+              </div>
+            </div>
+
+            <form id="company-form" class="entity-form">
+              <input id="company-id" type="hidden" />
+
+              <div class="form-grid">
+                <label class="field">
+                  <span>Naziv tvrtke</span>
+                  <input id="company-name" type="text" maxlength="160" required />
+                </label>
+
+                <label class="field">
+                  <span>Sjediste</span>
+                  <input id="company-headquarters" type="text" maxlength="160" />
+                </label>
+
+                <label class="field">
+                  <span>OIB</span>
+                  <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
+                </label>
+
+                <label class="field">
+                  <span>Vrsta ugovora</span>
+                  <input id="company-contract-type" type="text" maxlength="120" />
+                </label>
+
+                <label class="field">
+                  <span>Broj ugovora</span>
+                  <input id="company-contract-number" type="text" maxlength="120" />
+                </label>
+
+                <label class="field">
+                  <span>Periodika</span>
+                  <input id="company-period" type="text" maxlength="80" />
+                </label>
+
+                <label class="field">
+                  <span>Aktivno</span>
+                  <select id="company-is-active">
+                    <option value="true">Aktivno</option>
+                    <option value="false">Neaktivno</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Predstavnik korisnika</span>
+                  <input id="company-representative" type="text" maxlength="160" />
+                </label>
+
+                <label class="field">
+                  <span>Kontakt broj</span>
+                  <input id="company-contact-phone" type="text" maxlength="80" />
+                </label>
+
+                <label class="field">
+                  <span>Kontakt email</span>
+                  <input id="company-contact-email" type="email" maxlength="160" />
+                </label>
+              </div>
+
+              <label class="field field-span-full">
+                <span>Napomena</span>
+                <textarea id="company-note" rows="4"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="primary-button">Spremi tvrtku</button>
+                <button id="company-reset" type="button" class="ghost-button">Ocisti formu</button>
+              </div>
+            </form>
+
+            <p id="company-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Master podaci</p>
+                <h2>Popis tvrtki</h2>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Naziv</th>
+                    <th>OIB</th>
+                    <th>Sjediste</th>
+                    <th>Ugovor</th>
+                    <th>Kontakt</th>
+                    <th>Status</th>
+                    <th>Akcije</th>
+                  </tr>
+                </thead>
+                <tbody id="companies-body"></tbody>
+              </table>
+            </div>
+
+            <p id="companies-empty" class="empty-inline" hidden>Nema unesenih tvrtki.</p>
+          </section>
+        </section>
+
+        <section id="locations-view" class="workspace-view" hidden>
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Pomocni sheet</p>
+                <h2>ListLokacije</h2>
+              </div>
+            </div>
+
+            <form id="location-form" class="entity-form">
+              <input id="location-id" type="hidden" />
+
+              <div class="form-grid">
+                <label class="field">
+                  <span>Tvrtka</span>
+                  <select id="location-company-id"></select>
+                </label>
+
+                <label class="field">
+                  <span>Lokacija</span>
+                  <input id="location-name" type="text" maxlength="160" required />
+                </label>
+
+                <label class="field">
+                  <span>Regija</span>
+                  <input id="location-region" type="text" maxlength="120" />
+                </label>
+
+                <label class="field">
+                  <span>Koordinate</span>
+                  <input id="location-coordinates" type="text" maxlength="160" />
+                </label>
+
+                <label class="field">
+                  <span>Periodika</span>
+                  <input id="location-period" type="text" maxlength="80" />
+                </label>
+
+                <label class="field">
+                  <span>Predstavnik korisnika</span>
+                  <input id="location-representative" type="text" maxlength="160" />
+                </label>
+
+                <label class="field">
+                  <span>Aktivno</span>
+                  <select id="location-is-active">
+                    <option value="true">Aktivno</option>
+                    <option value="false">Neaktivno</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="contact-grid">
+                <fieldset class="contact-card">
+                  <legend>Kontakt 1</legend>
+                  <label class="field">
+                    <span>Ime</span>
+                    <input id="location-contact-name-1" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span>Broj</span>
+                    <input id="location-contact-phone-1" type="text" maxlength="80" />
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="location-contact-email-1" type="email" maxlength="160" />
+                  </label>
+                </fieldset>
+
+                <fieldset class="contact-card">
+                  <legend>Kontakt 2</legend>
+                  <label class="field">
+                    <span>Ime</span>
+                    <input id="location-contact-name-2" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span>Broj</span>
+                    <input id="location-contact-phone-2" type="text" maxlength="80" />
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="location-contact-email-2" type="email" maxlength="160" />
+                  </label>
+                </fieldset>
+
+                <fieldset class="contact-card">
+                  <legend>Kontakt 3</legend>
+                  <label class="field">
+                    <span>Ime</span>
+                    <input id="location-contact-name-3" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span>Broj</span>
+                    <input id="location-contact-phone-3" type="text" maxlength="80" />
+                  </label>
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="location-contact-email-3" type="email" maxlength="160" />
+                  </label>
+                </fieldset>
+              </div>
+
+              <label class="field field-span-full">
+                <span>Napomena</span>
+                <textarea id="location-note" rows="4"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="primary-button">Spremi lokaciju</button>
+                <button id="location-reset" type="button" class="ghost-button">Ocisti formu</button>
+              </div>
+            </form>
+
+            <p id="location-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Master podaci</p>
+                <h2>Popis lokacija</h2>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tvrtka</th>
+                    <th>Lokacija</th>
+                    <th>Regija</th>
+                    <th>Koordinate</th>
+                    <th>Kontakti</th>
+                    <th>Status</th>
+                    <th>Akcije</th>
+                  </tr>
+                </thead>
+                <tbody id="locations-body"></tbody>
+              </table>
+            </div>
+
+            <p id="locations-empty" class="empty-inline" hidden>Nema unesenih lokacija.</p>
+          </section>
         </section>
       </section>
     </main>
-
-    <dialog id="edit-dialog" class="edit-dialog">
-      <form id="edit-form" class="edit-form" method="dialog">
-        <div class="dialog-header">
-          <div>
-            <p class="section-kicker">Edit</p>
-            <h2>Update task</h2>
-          </div>
-          <button id="close-dialog" type="button" class="icon-button" aria-label="Close editor">x</button>
-        </div>
-
-        <input id="edit-id" type="hidden" />
-
-        <label class="field">
-          <span>Title</span>
-          <input id="edit-title" type="text" maxlength="120" required />
-        </label>
-
-        <label class="field">
-          <span>Note</span>
-          <textarea id="edit-note" rows="4" maxlength="260"></textarea>
-        </label>
-
-        <div class="edit-grid">
-          <label class="field">
-            <span>Due date</span>
-            <input id="edit-due-date" type="date" />
-          </label>
-
-          <label class="field">
-            <span>Priority</span>
-            <select id="edit-priority">
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span>Status</span>
-            <select id="edit-status">
-              <option value="todo">To do</option>
-              <option value="doing">In progress</option>
-              <option value="done">Done</option>
-            </select>
-          </label>
-        </div>
-
-        <p id="edit-error" class="form-error" aria-live="polite"></p>
-
-        <div class="dialog-actions">
-          <button type="button" id="cancel-edit" class="ghost-button">Cancel</button>
-          <button type="submit" class="primary-button">Save changes</button>
-        </div>
-      </form>
-    </dialog>
 
     <script type="module" src="/src/main.js"></script>
   </body>
