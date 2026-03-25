@@ -89,6 +89,7 @@ const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
 const workOrdersLoadState = document.querySelector("#work-orders-load-state");
+const workOrdersHelper = document.querySelector("#work-orders-helper");
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
@@ -107,6 +108,7 @@ const companyContactEmailInput = document.querySelector("#company-contact-email"
 const companyNoteInput = document.querySelector("#company-note");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
+const companiesHelper = document.querySelector("#companies-helper");
 
 const locationForm = document.querySelector("#location-form");
 const locationError = document.querySelector("#location-error");
@@ -131,6 +133,7 @@ const locationContactEmail3Input = document.querySelector("#location-contact-ema
 const locationNoteInput = document.querySelector("#location-note");
 const locationsBody = document.querySelector("#locations-body");
 const locationsEmpty = document.querySelector("#locations-empty");
+const locationsHelper = document.querySelector("#locations-helper");
 
 function setConnectionStatus() {
   if (state.storage === "mysql") {
@@ -324,6 +327,120 @@ function createActionButton(label, className, onClick) {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function createListLine(text, className) {
+  const line = document.createElement("div");
+  line.className = className;
+  line.textContent = text;
+  return line;
+}
+
+function createMetaPill(text, className = "") {
+  const pill = document.createElement("span");
+  pill.className = ["list-meta-pill", className].filter(Boolean).join(" ");
+  pill.textContent = text;
+  return pill;
+}
+
+function createStatusPill(text, isActive = true) {
+  return createMetaPill(text, isActive ? "is-success" : "is-muted");
+}
+
+function createStackCell({
+  eyebrow = "",
+  title = "",
+  subtitle = "",
+  tertiary = "",
+  meta = [],
+  className = "",
+} = {}) {
+  const cell = document.createElement("td");
+  if (className) {
+    cell.className = className;
+  }
+
+  const stack = document.createElement("div");
+  stack.className = "list-cell";
+
+  if (eyebrow) {
+    stack.append(createListLine(eyebrow, "list-eyebrow"));
+  }
+
+  if (title) {
+    stack.append(createListLine(title, "list-primary"));
+  }
+
+  if (subtitle) {
+    stack.append(createListLine(subtitle, "list-secondary"));
+  }
+
+  if (tertiary) {
+    stack.append(createListLine(tertiary, "list-tertiary"));
+  }
+
+  const metaItems = meta.filter(Boolean);
+
+  if (metaItems.length > 0) {
+    const metaRow = document.createElement("div");
+    metaRow.className = "list-meta-row";
+
+    for (const item of metaItems) {
+      if (typeof Node !== "undefined" && item instanceof Node) {
+        metaRow.append(item);
+      } else if (typeof item === "string") {
+        metaRow.append(createMetaPill(item));
+      } else {
+        metaRow.append(createMetaPill(item.label, item.className));
+      }
+    }
+
+    stack.append(metaRow);
+  }
+
+  cell.append(stack);
+  return cell;
+}
+
+function createBadgeCell(badge, subtitle = "", tertiary = "") {
+  const cell = document.createElement("td");
+  const stack = document.createElement("div");
+  stack.className = "list-cell list-cell-tight";
+  stack.append(badge);
+
+  if (subtitle) {
+    stack.append(createListLine(subtitle, "list-secondary"));
+  }
+
+  if (tertiary) {
+    stack.append(createListLine(tertiary, "list-tertiary"));
+  }
+
+  cell.append(stack);
+  return cell;
+}
+
+function createBadge(text, className = "") {
+  const badge = document.createElement("span");
+  badge.className = ["badge", className].filter(Boolean).join(" ");
+  badge.textContent = text;
+  return badge;
+}
+
+function joinParts(values, separator = " • ") {
+  return values.filter(Boolean).join(separator);
+}
+
+function isClosedWorkOrder(status) {
+  return ["Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"].includes(String(status ?? ""));
+}
+
+function isOverdueWorkOrder(item) {
+  if (!item?.dueDate || isClosedWorkOrder(item.status)) {
+    return false;
+  }
+
+  return item.dueDate < new Date().toISOString().slice(0, 10);
 }
 
 function renderAuthState() {
@@ -746,20 +863,23 @@ function renderWorkOrders() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
 
+  if (workOrdersHelper) {
+    workOrdersHelper.textContent = `${filtered.length} RN u list view prikazu.`;
+  }
+
   workOrdersBody.replaceChildren(...visibleItems.map((item) => {
     const row = document.createElement("tr");
+    row.className = "list-row";
 
-    const statusCell = document.createElement("td");
-    const statusBadge = document.createElement("span");
-    statusBadge.className = `badge ${statusBadgeClass(item.status)}`;
-    statusBadge.textContent = WORK_ORDER_STATUS_OPTIONS.find((option) => option.value === item.status)?.label ?? item.status;
-    statusCell.append(statusBadge);
-
-    const priorityCell = document.createElement("td");
-    const priorityBadge = document.createElement("span");
-    priorityBadge.className = `badge ${priorityBadgeClass(item.priority)}`;
-    priorityBadge.textContent = PRIORITY_OPTIONS.find((option) => option.value === item.priority)?.label ?? item.priority;
-    priorityCell.append(priorityBadge);
+    const statusBadge = createBadge(
+      WORK_ORDER_STATUS_OPTIONS.find((option) => option.value === item.status)?.label ?? item.status,
+      statusBadgeClass(item.status),
+    );
+    const priorityBadge = createBadge(
+      PRIORITY_OPTIONS.find((option) => option.value === item.priority)?.label ?? item.priority,
+      priorityBadgeClass(item.priority),
+    );
+    const overdue = isOverdueWorkOrder(item);
 
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
@@ -774,16 +894,63 @@ function renderWorkOrders() {
       }),
     );
 
+    const taskTitle = item.description || item.locationName || item.companyName || "Radni nalog";
+    const taskSubtitle = joinParts([
+      item.department,
+      item.serviceLine,
+      item.linkReference ? `Veza ${item.linkReference}` : "",
+    ]);
+    const dueTitle = item.dueDate ? formatDate(item.dueDate) : "Bez roka";
+    const dueSubtitle = overdue
+      ? "Kasni"
+      : item.openedDate
+        ? `Otvoren ${formatDate(item.openedDate)}`
+        : "Bez datuma otvaranja";
+    const dueTertiary = item.invoiceDate ? `Faktura ${formatDate(item.invoiceDate)}` : "";
+    const contactSubtitle = joinParts([item.contactPhone, item.contactEmail]);
+
     row.append(
-      createCell(item.workOrderNumber),
-      statusCell,
-      createCell(formatDate(item.openedDate)),
-      createCell(formatDate(item.dueDate)),
-      createCell(item.companyName),
-      createCell(item.locationName || "Bez lokacije"),
-      createCell(item.region || "Bez regije"),
-      createCell(item.contactName || item.contactPhone || "Bez kontakta"),
-      priorityCell,
+      createStackCell({
+        eyebrow: item.workOrderNumber,
+        title: taskTitle,
+        subtitle: taskSubtitle || "Bez dodatnog opisa",
+        meta: [
+          item.executor1 ? `Izvrsitelj: ${item.executor1}` : "",
+          item.tagText ? `Tagovi: ${item.tagText}` : "",
+        ],
+      }),
+      createBadgeCell(
+        statusBadge,
+        item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "Bez datuma otvaranja",
+        item.completedBy ? `Zavrsio: ${item.completedBy}` : "",
+      ),
+      createStackCell({
+        title: dueTitle,
+        subtitle: dueSubtitle,
+        tertiary: dueTertiary,
+        meta: overdue ? [{ label: "Overdue", className: "is-danger" }] : [],
+      }),
+      createStackCell({
+        title: item.companyName,
+        subtitle: item.headquarters || "Bez sjedista",
+        tertiary: item.companyOib ? `OIB: ${item.companyOib}` : "",
+        meta: item.contractType ? [item.contractType] : [],
+      }),
+      createStackCell({
+        title: item.locationName || "Bez lokacije",
+        subtitle: item.region || "Bez regije",
+        tertiary: item.coordinates || "",
+      }),
+      createStackCell({
+        title: item.contactName || item.contactPhone || "Bez kontakta",
+        subtitle: contactSubtitle || "Nema broja ni emaila",
+        tertiary: item.executor2 ? `Izvrsitelj 2: ${item.executor2}` : "",
+      }),
+      createBadgeCell(
+        priorityBadge,
+        item.weight ? `Tezina: ${item.weight}` : "Bez tezine",
+        item.serviceLine || "",
+      ),
       actionsCell,
     );
 
@@ -809,8 +976,13 @@ function renderCompanies() {
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
 
+  if (companiesHelper) {
+    companiesHelper.textContent = `${sortedCompanies.length} tvrtki uredeno kao list view.`;
+  }
+
   companiesBody.replaceChildren(...sortedCompanies.map((company) => {
     const row = document.createElement("tr");
+    row.className = "list-row";
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
@@ -826,12 +998,31 @@ function renderCompanies() {
     );
 
     row.append(
-      createCell(company.name),
-      createCell(company.oib),
-      createCell(company.headquarters || "-"),
-      createCell(company.contractType || "-"),
-      createCell(contact),
-      createCell(company.isActive ? "Aktivno" : "Neaktivno"),
+      createStackCell({
+        eyebrow: company.id,
+        title: company.name,
+        subtitle: company.headquarters || "Bez sjedista",
+        meta: company.note ? ["Napomena"] : [],
+      }),
+      createStackCell({
+        title: company.oib || "Bez OIB-a",
+        subtitle: company.representative || "Bez predstavnika",
+        tertiary: company.period ? `Periodika: ${company.period}` : "",
+      }),
+      createStackCell({
+        title: company.contractType || "Bez ugovora",
+        subtitle: company.contractNumber || "Bez broja ugovora",
+        tertiary: company.period ? `Periodika: ${company.period}` : "",
+      }),
+      createStackCell({
+        title: contact,
+        subtitle: company.contactPhone || company.contactEmail ? "Kontakt podaci" : "Nema kontakta",
+      }),
+      createStackCell({
+        title: company.isActive ? "Aktivna tvrtka" : "Neaktivna tvrtka",
+        subtitle: company.representative || "Bez predstavnika",
+        meta: [createStatusPill(company.isActive ? "Aktivno" : "Neaktivno", company.isActive)],
+      }),
       actionsCell,
     );
 
@@ -856,8 +1047,13 @@ function renderLocations() {
       return left.name.localeCompare(right.name, "hr");
     });
 
+  if (locationsHelper) {
+    locationsHelper.textContent = `${sortedLocations.length} lokacija u urednom list prikazu.`;
+  }
+
   locationsBody.replaceChildren(...sortedLocations.map((location) => {
     const row = document.createElement("tr");
+    row.className = "list-row";
     const companyName = getCompany(location.companyId)?.name ?? "Nepoznata tvrtka";
     const contactSummary = buildLocationContacts(location)
       .map((item) => item.name || item.phone || item.email)
@@ -877,12 +1073,26 @@ function renderLocations() {
     );
 
     row.append(
-      createCell(companyName),
-      createCell(location.name),
-      createCell(location.region || "-"),
-      createCell(location.coordinates || "-"),
-      createCell(contactSummary),
-      createCell(location.isActive ? "Aktivno" : "Neaktivno"),
+      createStackCell({
+        eyebrow: companyName,
+        title: location.name,
+        subtitle: location.representative || "Bez predstavnika",
+        meta: location.period ? [`Periodika: ${location.period}`] : [],
+      }),
+      createStackCell({
+        title: location.region || "Bez regije",
+        subtitle: location.coordinates || "Bez koordinata",
+        tertiary: location.note ? "Ima internu napomenu" : "",
+      }),
+      createStackCell({
+        title: contactSummary,
+        subtitle: buildLocationContacts(location).length > 0 ? `${buildLocationContacts(location).length} kontakta` : "Nema kontakata",
+      }),
+      createStackCell({
+        title: location.isActive ? "Aktivna lokacija" : "Neaktivna lokacija",
+        subtitle: companyName,
+        meta: [createStatusPill(location.isActive ? "Aktivno" : "Neaktivno", location.isActive)],
+      }),
       actionsCell,
     );
 

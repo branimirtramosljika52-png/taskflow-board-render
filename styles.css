@@ -1368,3 +1368,161 @@ button:hover {
     min-height: 64px;
   }
 }
+
+.table-wrap {
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fbfcfa, #f5f8f4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 18px 40px rgba(28, 44, 26, 0.06);
+}
+
+.table-wrap-work-orders {
+  max-height: calc(100vh - 320px);
+}
+
+.data-table {
+  min-width: 980px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 14px 16px;
+  background: rgba(245, 248, 244, 0.96);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #dde5db;
+  color: #6e766a;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+}
+
+.data-table tbody td {
+  padding: 16px;
+  border-bottom: 1px solid #e7ece5;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.data-table tbody tr:hover td {
+  background: #fcfdfb;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table th:last-child,
+.data-table td:last-child {
+  text-align: right;
+}
+
+.list-row td {
+  vertical-align: top;
+}
+
+.list-row td:first-child {
+  min-width: 240px;
+}
+
+.list-row td:nth-child(4),
+.list-row td:nth-child(5) {
+  min-width: 190px;
+}
+
+.list-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.list-cell-tight {
+  gap: 8px;
+}
+
+.list-eyebrow {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.list-primary {
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.list-secondary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.list-tertiary {
+  color: #8a9387;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.list-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.list-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef2ed;
+  color: #5d655b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.list-meta-pill.is-success {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.list-meta-pill.is-muted {
+  background: #ecefeb;
+  color: #6c736c;
+}
+
+.list-meta-pill.is-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.table-actions {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-actions .card-button {
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+
+.helper-copy {
+  max-width: 28ch;
+  text-align: right;
+}
+
+@media (max-width: 980px) {
+  .helper-copy {
+    text-align: left;
+  }
+}
