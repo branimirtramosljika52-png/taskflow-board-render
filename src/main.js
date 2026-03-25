@@ -53,6 +53,12 @@ let tasks = [];
 let storageMode = "memory";
 
 function setConnectionStatus() {
+  if (storageMode === "mysql") {
+    connectionStatus.textContent = "Connected to MySQL-backed API";
+    connectionStatus.classList.remove("is-memory");
+    return;
+  }
+
   if (storageMode === "postgres") {
     connectionStatus.textContent = "Connected to Postgres-backed API";
     connectionStatus.classList.remove("is-memory");

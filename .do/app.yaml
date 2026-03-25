@@ -10,17 +10,28 @@ services:
       repo_clone_url: https://github.com/branimirtramosljika52-png/taskflow-board-render.git
     run_command: npm start
     http_port: 8080
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 6
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-0.5gb
     envs:
       - key: NODE_ENV
         scope: RUN_TIME
+        type: GENERAL
         value: production
       - key: DATABASE_URL
         scope: RUN_TIME
+        type: GENERAL
         value: ${taskflow-db.DATABASE_URL}
 databases:
   - name: taskflow-db
-    engine: PG
-    version: "16"
-    production: false
+    engine: MYSQL
+    version: "8"
+    production: true
+    cluster_name: db-mysql-fra1-59143
+    db_name: defaultdb
+    db_user: doadmin
