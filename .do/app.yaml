@@ -9,7 +9,6 @@ services:
       branch: main
       deploy_on_push: true
       repo: branimirtramosljika52-png/taskflow-board-render
-    source_dir: /
     run_command: npm start
     http_port: 8080
     instance_count: 1
@@ -24,4 +23,5 @@ services:
 databases:
   - name: taskflow-db
     engine: PG
-    production: true
+    version: "16"
+    production: false
