@@ -151,7 +151,7 @@ function setSyncError(message = "") {
 function setLoginBusy(isBusy) {
   if (loginSubmitButton) {
     loginSubmitButton.disabled = isBusy;
-    loginSubmitButton.textContent = isBusy ? "Provjera pristupa..." : "Otvori workspace";
+    loginSubmitButton.textContent = isBusy ? "Signing in..." : "Continue";
   }
 
   loginUsernameInput.disabled = isBusy;
@@ -167,7 +167,7 @@ function syncPasswordToggleLabel() {
     return;
   }
 
-  loginPasswordToggleButton.textContent = loginPasswordInput.type === "password" ? "Prikazi" : "Sakrij";
+  loginPasswordToggleButton.textContent = loginPasswordInput.type === "password" ? "Show" : "Hide";
 }
 
 async function requestTokenRefresh() {

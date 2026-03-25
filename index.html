@@ -8,112 +8,33 @@
   </head>
   <body>
     <section id="auth-screen" class="auth-screen">
-      <div class="auth-layout">
-        <section class="auth-showcase">
-          <div class="auth-showcase-shell">
-            <div class="auth-brand-row">
-              <div class="auth-brand-mark">S360</div>
-              <div class="auth-brand-copy">
-                <strong>Safety360</strong>
-                <span>SelfDash Workspace</span>
-              </div>
+      <div class="auth-shell">
+        <header class="auth-topbar">
+          <div class="auth-logo" aria-label="Safety360">
+            <div class="auth-logo-mark">
+              <span></span>
+              <span></span>
             </div>
-
-            <div class="auth-copy">
-              <p class="eyebrow">Workspace access</p>
-              <h1>Jedan login za cijeli Safety360 operativni tok.</h1>
-              <p class="intro auth-intro">
-                Otvori SelfDash, tvrtke, lokacije i radne naloge kroz moderni web pristup koji je spojen direktno
-                na tvoju DigitalOcean MySQL bazu.
-              </p>
-
-              <div class="auth-chip-row" aria-label="Kljucevi sustava">
-                <span class="auth-chip">JWT access</span>
-                <span class="auth-chip">Refresh rotacija</span>
-                <span class="auth-chip">MySQL live sync</span>
-              </div>
-            </div>
-
-            <div class="auth-visual-stack">
-              <div class="auth-window">
-                <div class="auth-window-header">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-
-                <div class="auth-window-body">
-                  <article class="auth-window-card auth-window-card-primary">
-                    <span>Operativni pregled</span>
-                    <strong>RN, tvrtke i lokacije u jednom fokusu</strong>
-                    <p>Brz ulaz u pregled rada, rokova i master podataka bez prebacivanja izmedu alata.</p>
-                  </article>
-
-                  <article class="auth-window-card">
-                    <span>Autentikacija</span>
-                    <strong>JWT access token</strong>
-                    <p>Kratko trajanje za aktivni rad i sigurniji pristup kroz HttpOnly cookieje.</p>
-                  </article>
-
-                  <article class="auth-window-card">
-                    <span>Postojanost</span>
-                    <strong>Refresh token rotacija</strong>
-                    <p>Rad ostaje fluidan dok je korisnik validan, bez grubog izbacivanja iz sustava.</p>
-                  </article>
-
-                  <article class="auth-window-card auth-window-card-line">
-                    <span>Storage</span>
-                    <strong>DigitalOcean MySQL</strong>
-                    <div class="auth-window-line-track">
-                      <div class="auth-window-line-fill"></div>
-                    </div>
-                    <p>Podaci se ne drze lokalno nego u pravoj bazi kojoj pristupa i aplikacija.</p>
-                  </article>
-                </div>
-              </div>
-
-              <div class="auth-quote-card">
-                <p>Elegantniji pristup, sigurniji login i isti Safety360 tok rada ispod haube.</p>
-                <span>SelfDash • JWT • MySQL • Workspace</span>
-              </div>
-            </div>
+            <span class="auth-logo-word">Safety360</span>
           </div>
-        </section>
 
-        <section class="auth-panel">
-          <div class="auth-card">
-            <div class="auth-card-topline">
-              <span class="auth-card-pill">Secure login</span>
-              <span class="auth-card-pill auth-card-pill-soft">Ready for SelfDash</span>
-            </div>
+          <nav class="auth-nav" aria-label="Informacije o prijavi">
+            <span>Workspace</span>
+            <span>Security</span>
+            <span>Support</span>
+          </nav>
+        </header>
 
-            <div class="auth-card-copy">
-              <p class="eyebrow">Prijava</p>
-              <h2>Welcome back.</h2>
-              <p class="intro">
-                Prijavi se svojim korisnickim imenom i lozinkom iz sustava i otvori puni workspace bez dodatnih koraka.
-              </p>
-            </div>
-
-            <div class="auth-trust-row" aria-label="Detalji prijave">
-              <article class="auth-trust-card">
-                <strong>Access token</strong>
-                <span>Aktivni rad ide kroz kratki JWT pristupni token.</span>
-              </article>
-              <article class="auth-trust-card">
-                <strong>Refresh token</strong>
-                <span>Pozadina obnavlja sesiju kroz sigurnu rotaciju tokena.</span>
-              </article>
-              <article class="auth-trust-card">
-                <strong>Live baza</strong>
-                <span>Podaci se otvaraju direktno iz DigitalOcean MySQL okruzenja.</span>
-              </article>
-            </div>
+        <div class="auth-center">
+          <section class="auth-form-shell" aria-label="Prijava u aplikaciju">
+            <p class="auth-kicker">Secure login</p>
+            <h1>Welcome</h1>
+            <p class="auth-subtitle">Log in to Safety360</p>
 
             <form id="login-form" class="auth-form">
               <label class="field">
                 <span>Korisnicko ime</span>
-                <input id="login-username" type="text" autocomplete="username" placeholder="Unesi korisnicko ime" required />
+                <input id="login-username" type="text" autocomplete="username" placeholder="Username" required />
               </label>
 
               <label class="field field-password">
@@ -123,22 +44,22 @@
                     id="login-password"
                     type="password"
                     autocomplete="current-password"
-                    placeholder="Unesi lozinku"
+                    placeholder="Password"
                     required
                   />
                   <button id="login-password-toggle" type="button" class="auth-inline-button" aria-label="Prikazi ili sakrij lozinku">
-                    Prikazi
+                    Show
                   </button>
                 </div>
               </label>
 
-              <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Otvori workspace</button>
+              <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Continue</button>
             </form>
 
-            <p class="auth-security-note">JWT access + refresh token flow, HttpOnly cookieji i sigurniji pristup aplikaciji.</p>
+            <p class="auth-meta">Need access? Contact your administrator.</p>
             <p id="login-error" class="form-error" aria-live="polite"></p>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </section>
 
