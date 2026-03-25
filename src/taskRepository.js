@@ -16,6 +16,20 @@ function normalizeTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function getPoolSslConfig(connectionString) {
+  if (!connectionString) {
+    return undefined;
+  }
+
+  const normalized = connectionString.toLowerCase();
+
+  if (normalized.includes("sslmode=disable")) {
+    return undefined;
+  }
+
+  return { rejectUnauthorized: false };
+}
+
 function mapRowToTask(row) {
   return {
     id: row.id,
@@ -98,9 +112,7 @@ export class PostgresTaskRepository {
     this.kind = "postgres";
     this.pool = new Pool({
       connectionString,
-      ssl: connectionString.includes("sslmode=require")
-        ? { rejectUnauthorized: false }
-        : undefined,
+      ssl: getPoolSslConfig(connectionString),
     });
   }
 

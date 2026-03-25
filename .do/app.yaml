@@ -5,10 +5,9 @@ features:
 services:
   - name: web
     environment_slug: node-js
-    github:
+    git:
       branch: main
-      deploy_on_push: true
-      repo: branimirtramosljika52-png/taskflow-board-render
+      repo_clone_url: https://github.com/branimirtramosljika52-png/taskflow-board-render.git
     run_command: npm start
     http_port: 8080
     instance_count: 1
