@@ -1,0 +1,11 @@
+{
+  "name": "taskflow-board",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,13 @@
+import { cp, mkdir, rm } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const rootDir = process.cwd();
+const distDir = resolve(rootDir, "dist");
+
+await rm(distDir, { recursive: true, force: true });
+await mkdir(resolve(distDir, "src"), { recursive: true });
+
+await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
+await cp(resolve(rootDir, "styles.css"), resolve(distDir, "styles.css"));
+await cp(resolve(rootDir, "src", "main.js"), resolve(distDir, "src", "main.js"));
+await cp(resolve(rootDir, "src", "taskModel.js"), resolve(distDir, "src", "taskModel.js"));

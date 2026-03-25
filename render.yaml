@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: taskflow-board-render
+    runtime: static
+    buildCommand: npm install && npm test && npm run build
+    staticPublishPath: ./dist
