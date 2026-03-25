@@ -8,26 +8,100 @@
   </head>
   <body>
     <section id="auth-screen" class="auth-screen">
-      <div class="auth-card">
-        <p class="eyebrow">Prijava</p>
-        <h1>Safety360 Web</h1>
-        <p class="intro">Prijavi se svojim korisnickim imenom i lozinkom iz sustava kako bi otvorio SelfDash.</p>
+      <div class="auth-layout">
+        <section class="auth-showcase">
+          <div class="auth-showcase-shell">
+            <div class="auth-copy">
+              <p class="eyebrow">Safety360 Workspace</p>
+              <h1>Operativni centar za SelfDash, tvrtke i lokacije.</h1>
+              <p class="intro auth-intro">
+                Jedno moderno mjesto za pregled radnih naloga, sinkronizaciju master podataka i siguran pristup
+                tvojoj DigitalOcean MySQL bazi.
+              </p>
 
-        <form id="login-form" class="auth-form">
-          <label class="field">
-            <span>Korisnicko ime</span>
-            <input id="login-username" type="text" autocomplete="username" required />
-          </label>
+              <div class="auth-chip-row" aria-label="Kljucevi sustava">
+                <span class="auth-chip">SelfDash fokus</span>
+                <span class="auth-chip">MySQL sink</span>
+                <span class="auth-chip">Sigurna prijava</span>
+              </div>
+            </div>
 
-          <label class="field">
-            <span>Lozinka</span>
-            <input id="login-password" type="password" autocomplete="current-password" required />
-          </label>
+            <div class="auth-metric-grid" aria-label="Istaknute mogucnosti">
+              <article class="auth-metric-card">
+                <strong>01</strong>
+                <span>Centralni pregled radnih naloga i statusa</span>
+              </article>
+              <article class="auth-metric-card">
+                <strong>02</strong>
+                <span>Master liste tvrtki i lokacija u istom toku rada</span>
+              </article>
+              <article class="auth-metric-card">
+                <strong>03</strong>
+                <span>Stabilan pristup s web session logikom i bazom u pozadini</span>
+              </article>
+            </div>
 
-          <button type="submit" class="primary-button">Prijavi se</button>
-        </form>
+            <div class="auth-feature-list">
+              <article class="auth-feature-card">
+                <span>Radni nalozi</span>
+                <p>Brz unos, pregled rokova i operativni fokus bez preopterecenog sucelja.</p>
+              </article>
+              <article class="auth-feature-card">
+                <span>Master podaci</span>
+                <p>Tvrtke, lokacije i kontakti ostaju povezani i dostupni kroz isti sustav.</p>
+              </article>
+              <article class="auth-feature-card">
+                <span>Pristup</span>
+                <p>Prijava otvara cijeli workspace tek kada je korisnik potvrden i autoriziran.</p>
+              </article>
+            </div>
+          </div>
+        </section>
 
-        <p id="login-error" class="form-error" aria-live="polite"></p>
+        <section class="auth-panel">
+          <div class="auth-card">
+            <div class="auth-card-copy">
+              <p class="eyebrow">Prijava</p>
+              <h2>Udji u Safety360 Web</h2>
+              <p class="intro">
+                Prijavi se svojim korisnickim imenom i lozinkom iz sustava kako bi otvorio SelfDash workspace.
+              </p>
+            </div>
+
+            <div class="auth-trust-row" aria-label="Detalji prijave">
+              <article class="auth-trust-card">
+                <strong>Session login</strong>
+                <span>Pristup ostaje pod kontrolom i zakljucan je iza prijave.</span>
+              </article>
+              <article class="auth-trust-card">
+                <strong>Live baza</strong>
+                <span>Podaci se otvaraju direktno iz DigitalOcean MySQL okruzenja.</span>
+              </article>
+            </div>
+
+            <form id="login-form" class="auth-form">
+              <label class="field">
+                <span>Korisnicko ime</span>
+                <input id="login-username" type="text" autocomplete="username" placeholder="Unesi korisnicko ime" required />
+              </label>
+
+              <label class="field">
+                <span>Lozinka</span>
+                <input
+                  id="login-password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="Unesi lozinku"
+                  required
+                />
+              </label>
+
+              <button type="submit" class="primary-button auth-submit-button">Otvori workspace</button>
+            </form>
+
+            <p id="login-error" class="form-error" aria-live="polite"></p>
+          </div>
+        </section>
       </div>
     </section>
 
