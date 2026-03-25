@@ -16,6 +16,27 @@ function normalizeTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function normalizeConnectionString(connectionString) {
+  if (!connectionString) {
+    return connectionString;
+  }
+
+  try {
+    const url = new URL(connectionString);
+
+    if (url.searchParams.get("sslmode") !== "disable") {
+      url.searchParams.delete("sslmode");
+      url.searchParams.delete("sslcert");
+      url.searchParams.delete("sslkey");
+      url.searchParams.delete("sslrootcert");
+    }
+
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 function getPoolSslConfig(connectionString) {
   if (!connectionString) {
     return undefined;
@@ -111,7 +132,7 @@ export class PostgresTaskRepository {
   constructor(connectionString) {
     this.kind = "postgres";
     this.pool = new Pool({
-      connectionString,
+      connectionString: normalizeConnectionString(connectionString),
       ssl: getPoolSslConfig(connectionString),
     });
   }
