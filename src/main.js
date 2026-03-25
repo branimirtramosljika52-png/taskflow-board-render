@@ -1,19 +1,11 @@
 import {
-  addTask,
-  clearDone,
-  createDemoTasks,
-  deleteTask,
   filterTasks,
   getStats,
   isTaskOverdue,
-  moveTask,
-  parseTasks,
-  serializeTasks,
   sortTasks,
-  updateTask,
 } from "./taskModel.js";
 
-const STORAGE_KEY = "taskflow-board/tasks";
+const API_BASE = "/api";
 
 const form = document.querySelector("#task-form");
 const formError = document.querySelector("#form-error");
@@ -54,11 +46,71 @@ const editPriorityInput = document.querySelector("#edit-priority");
 const editStatusInput = document.querySelector("#edit-status");
 const closeDialogButton = document.querySelector("#close-dialog");
 const cancelEditButton = document.querySelector("#cancel-edit");
+const connectionStatus = document.querySelector("#connection-status");
+const syncError = document.querySelector("#sync-error");
 
-let tasks = parseTasks(window.localStorage.getItem(STORAGE_KEY));
+let tasks = [];
+let storageMode = "memory";
 
-function saveTasks() {
-  window.localStorage.setItem(STORAGE_KEY, serializeTasks(tasks));
+function setConnectionStatus() {
+  if (storageMode === "postgres") {
+    connectionStatus.textContent = "Connected to Postgres-backed API";
+    connectionStatus.classList.remove("is-memory");
+    return;
+  }
+
+  connectionStatus.textContent = "Using temporary in-memory backend until DATABASE_URL is configured";
+  connectionStatus.classList.add("is-memory");
+}
+
+function setSyncError(message = "") {
+  syncError.hidden = !message;
+  syncError.textContent = message;
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+    ...options,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Request failed.");
+  }
+
+  return payload;
+}
+
+async function refreshTasks() {
+  const payload = await apiRequest("/tasks");
+  tasks = payload.tasks;
+  storageMode = payload.storage;
+  setConnectionStatus();
+  setSyncError("");
+  render();
+}
+
+async function runMutation(callback, onError) {
+  try {
+    const payload = await callback();
+    tasks = payload.tasks;
+    storageMode = payload.storage;
+    setConnectionStatus();
+    setSyncError("");
+    render();
+  } catch (error) {
+    if (onError) {
+      onError.textContent = error.message;
+    } else {
+      setSyncError(error.message);
+    }
+  }
 }
 
 function formatDueDate(value) {
@@ -151,9 +203,10 @@ function buildTaskCard(task) {
   if (task.status !== "todo") {
     shift.append(
       createButton("Back", "card-button", () => {
-        tasks = moveTask(tasks, task.id, "left");
-        saveTasks();
-        render();
+        void runMutation(() => apiRequest(`/tasks/${task.id}/move`, {
+          method: "POST",
+          body: { direction: "left" },
+        }));
       }),
     );
   }
@@ -161,9 +214,10 @@ function buildTaskCard(task) {
   if (task.status !== "done") {
     shift.append(
       createButton("Forward", "card-button", () => {
-        tasks = moveTask(tasks, task.id, "right");
-        saveTasks();
-        render();
+        void runMutation(() => apiRequest(`/tasks/${task.id}/move`, {
+          method: "POST",
+          body: { direction: "right" },
+        }));
       }),
     );
   }
@@ -172,14 +226,13 @@ function buildTaskCard(task) {
   manage.className = "task-shift";
   manage.append(
     createButton(task.status === "done" ? "Reopen" : "Done", "card-button", () => {
-      tasks = updateTask(tasks, task.id, { status: task.status === "done" ? "todo" : "done" });
-      saveTasks();
-      render();
+      void runMutation(() => apiRequest(`/tasks/${task.id}`, {
+        method: "PATCH",
+        body: { status: task.status === "done" ? "todo" : "done" },
+      }));
     }),
     createButton("Delete", "card-button card-danger", () => {
-      tasks = deleteTask(tasks, task.id);
-      saveTasks();
-      render();
+      void runMutation(() => apiRequest(`/tasks/${task.id}`, { method: "DELETE" }));
     }),
   );
 
@@ -220,25 +273,26 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   formError.textContent = "";
 
-  try {
-    tasks = addTask(tasks, {
-      title: titleInput.value,
-      note: noteInput.value,
-      dueDate: dueDateInput.value,
-      priority: priorityInput.value,
-      status: statusInput.value,
-    });
-  } catch (error) {
-    formError.textContent = error.message;
-    return;
-  }
-
-  saveTasks();
-  form.reset();
-  priorityInput.value = "medium";
-  statusInput.value = "todo";
-  titleInput.focus();
-  render();
+  void runMutation(
+    () => apiRequest("/tasks", {
+      method: "POST",
+      body: {
+        title: titleInput.value,
+        note: noteInput.value,
+        dueDate: dueDateInput.value,
+        priority: priorityInput.value,
+        status: statusInput.value,
+      },
+    }),
+    formError,
+  ).then(() => {
+    if (!formError.textContent) {
+      form.reset();
+      priorityInput.value = "medium";
+      statusInput.value = "todo";
+      titleInput.focus();
+    }
+  });
 });
 
 searchInput.addEventListener("input", render);
@@ -246,40 +300,44 @@ filterStatusInput.addEventListener("change", render);
 filterPriorityInput.addEventListener("change", render);
 
 clearDoneButton.addEventListener("click", () => {
-  tasks = clearDone(tasks);
-  saveTasks();
-  render();
+  void runMutation(() => apiRequest("/tasks?status=done", { method: "DELETE" }));
 });
 
 seedDemoButton.addEventListener("click", () => {
-  tasks = [...createDemoTasks(), ...tasks];
-  saveTasks();
-  render();
+  void runMutation(() => apiRequest("/tasks/demo", { method: "POST" }));
 });
 
 editForm.addEventListener("submit", (event) => {
   event.preventDefault();
   editError.textContent = "";
 
-  try {
-    tasks = updateTask(tasks, editIdInput.value, {
-      title: editTitleInput.value,
-      note: editNoteInput.value,
-      dueDate: editDueDateInput.value,
-      priority: editPriorityInput.value,
-      status: editStatusInput.value,
-    });
-  } catch (error) {
-    editError.textContent = error.message;
-    return;
-  }
-
-  saveTasks();
-  closeEditor();
-  render();
+  void runMutation(
+    () => apiRequest(`/tasks/${editIdInput.value}`, {
+      method: "PATCH",
+      body: {
+        title: editTitleInput.value,
+        note: editNoteInput.value,
+        dueDate: editDueDateInput.value,
+        priority: editPriorityInput.value,
+        status: editStatusInput.value,
+      },
+    }),
+    editError,
+  ).then(() => {
+    if (!editError.textContent) {
+      closeEditor();
+    }
+  });
 });
 
 closeDialogButton.addEventListener("click", closeEditor);
 cancelEditButton.addEventListener("click", closeEditor);
 
+setConnectionStatus();
 render();
+
+refreshTasks().catch((error) => {
+  setSyncError(error.message);
+  connectionStatus.textContent = "Backend unavailable";
+  connectionStatus.classList.add("is-memory");
+});

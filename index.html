@@ -16,6 +16,7 @@
             <p class="intro">
               Jaci task manager s board prikazom, prioritetima, rokovima, search/filter alatima i editiranjem taskova.
             </p>
+            <p id="connection-status" class="connection-status">Connecting to backend...</p>
           </div>
 
           <div class="summary-grid">
@@ -113,6 +114,8 @@
             <button id="clear-done" type="button" class="ghost-button">Clear done</button>
           </div>
         </section>
+
+        <p id="sync-error" class="sync-error" hidden></p>
 
         <section class="board" aria-label="Task board">
           <article class="column">

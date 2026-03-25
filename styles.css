@@ -96,6 +96,22 @@ textarea {
   font-size: 1rem;
 }
 
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  margin: 16px 0 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+}
+
+.connection-status.is-memory {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .summary-grid {
   width: min(520px, 100%);
   display: grid;
@@ -232,6 +248,15 @@ button:hover {
 .form-error {
   min-height: 1.2rem;
   margin: 12px 2px 0;
+  color: var(--danger);
+}
+
+.sync-error {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--danger-soft);
+  border: 1px solid rgba(180, 80, 80, 0.24);
   color: var(--danger);
 }
 
