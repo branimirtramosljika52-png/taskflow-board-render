@@ -35,3 +35,5 @@ databases:
     cluster_name: db-mysql-fra1-59143
     db_name: defaultdb
     db_user: doadmin
+vpc:
+  id: b9a6aee4-1c1b-4d7b-ab79-cb64ad349a57
