@@ -9,6 +9,13 @@ import {
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
+const AUTH_RETRY_EXCLUDED_PATHS = new Set([
+  "/auth/login",
+  "/auth/logout",
+  "/auth/refresh",
+  "/auth/session",
+  "/health",
+]);
 
 const state = {
   storage: "memory",
@@ -25,6 +32,8 @@ const appShell = document.querySelector("#app-shell");
 const loginForm = document.querySelector("#login-form");
 const loginUsernameInput = document.querySelector("#login-username");
 const loginPasswordInput = document.querySelector("#login-password");
+const loginPasswordToggleButton = document.querySelector("#login-password-toggle");
+const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
 const userBadge = document.querySelector("#user-badge");
 const logoutButton = document.querySelector("#logout-button");
@@ -139,15 +148,58 @@ function setSyncError(message = "") {
   syncError.textContent = message;
 }
 
-async function apiRequest(path, options = {}) {
+function setLoginBusy(isBusy) {
+  if (loginSubmitButton) {
+    loginSubmitButton.disabled = isBusy;
+    loginSubmitButton.textContent = isBusy ? "Provjera pristupa..." : "Otvori workspace";
+  }
+
+  loginUsernameInput.disabled = isBusy;
+  loginPasswordInput.disabled = isBusy;
+
+  if (loginPasswordToggleButton) {
+    loginPasswordToggleButton.disabled = isBusy;
+  }
+}
+
+function syncPasswordToggleLabel() {
+  if (!loginPasswordToggleButton) {
+    return;
+  }
+
+  loginPasswordToggleButton.textContent = loginPasswordInput.type === "password" ? "Prikazi" : "Sakrij";
+}
+
+async function requestTokenRefresh() {
+  const response = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  return response.ok;
+}
+
+async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
     },
+    credentials: "same-origin",
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+
+  if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
+    const refreshed = await requestTokenRefresh();
+
+    if (refreshed) {
+      return apiRequest(path, options, false);
+    }
+  }
 
   const payload = await response.json().catch(() => ({}));
 
@@ -283,6 +335,8 @@ function renderAuthState() {
     userBadge.textContent = `${state.user.fullName} (${state.user.role})`;
   } else {
     userBadge.textContent = "";
+    loginError.textContent = "";
+    setLoginBusy(false);
   }
 }
 
@@ -951,6 +1005,7 @@ locationResetButton.addEventListener("click", resetLocationForm);
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loginError.textContent = "";
+  setLoginBusy(true);
 
   void apiRequest("/auth/login", {
     method: "POST",
@@ -961,11 +1016,20 @@ loginForm.addEventListener("submit", (event) => {
   }).then((payload) => {
     state.user = payload.user;
     loginForm.reset();
+    loginPasswordInput.type = "password";
+    syncPasswordToggleLabel();
     renderAuthState();
     return refreshSnapshot();
   }).catch((error) => {
     loginError.textContent = error.message;
+  }).finally(() => {
+    setLoginBusy(false);
   });
+});
+
+loginPasswordToggleButton?.addEventListener("click", () => {
+  loginPasswordInput.type = loginPasswordInput.type === "password" ? "text" : "password";
+  syncPasswordToggleLabel();
 });
 
 logoutButton.addEventListener("click", () => {
@@ -976,6 +1040,9 @@ logoutButton.addEventListener("click", () => {
     state.workOrders = [];
     state.companies = [];
     state.locations = [];
+    loginForm.reset();
+    loginPasswordInput.type = "password";
+    syncPasswordToggleLabel();
     renderAuthState();
   });
 });
@@ -986,6 +1053,7 @@ resetCompanyForm();
 resetLocationForm();
 renderActiveView();
 renderAuthState();
+syncPasswordToggleLabel();
 
 refreshSession()
   .then((user) => {

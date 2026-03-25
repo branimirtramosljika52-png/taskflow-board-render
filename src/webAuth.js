@@ -1,10 +1,18 @@
-import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from "node:crypto";
 import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
 
-export const SESSION_COOKIE_NAME = "safety360_session";
-export const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+export const ACCESS_TOKEN_COOKIE_NAME = "safety360_access";
+export const REFRESH_TOKEN_COOKIE_NAME = "safety360_refresh";
+export const ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 15;
+export const REFRESH_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
 
 function toBuffer(value) {
   return Buffer.from(String(value ?? ""), "utf8");
@@ -19,6 +27,72 @@ function safeCompareText(left, right) {
   }
 
   return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function base64UrlDecodeJson(value) {
+  const normalized = String(value ?? "");
+
+  if (!normalized) {
+    throw new Error("Missing token segment.");
+  }
+
+  return JSON.parse(Buffer.from(normalized, "base64url").toString("utf8"));
+}
+
+function createTokenCookie(name, token, { secure = false, maxAgeMs } = {}) {
+  const maxAge = Math.max(0, Math.floor((maxAgeMs ?? 0) / 1000));
+  const parts = [
+    `${name}=${encodeURIComponent(String(token ?? ""))}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+  ];
+
+  if (secure) {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
+}
+
+function createJwt(payload, secret) {
+  const header = {
+    alg: "HS256",
+    typ: "JWT",
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signature = createHmac("sha256", secret).update(signingInput).digest("base64url");
+  return `${signingInput}.${signature}`;
+}
+
+function normalizeSecret(secret) {
+  return String(secret ?? "").trim();
+}
+
+function buildTokenPayload(user, type, expiresInMs) {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + Math.floor(expiresInMs / 1000);
+
+  return {
+    iss: "safety360-web",
+    aud: "selfdash-workspace",
+    sub: String(user.id),
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    type,
+    iat: issuedAt,
+    exp: expiresAt,
+    jti: randomBytes(24).toString("hex"),
+  };
 }
 
 export async function createPasswordHash(password, salt = randomBytes(16).toString("hex")) {
@@ -60,14 +134,6 @@ export async function verifyPassword(password, storedValue) {
   };
 }
 
-export function createSessionToken() {
-  return randomBytes(32).toString("hex");
-}
-
-export function hashSessionToken(token) {
-  return createHash("sha256").update(String(token ?? ""), "utf8").digest("hex");
-}
-
 export function parseCookies(headerValue = "") {
   return String(headerValue)
     .split(";")
@@ -87,23 +153,127 @@ export function parseCookies(headerValue = "") {
     }, {});
 }
 
-export function createSessionCookie(token, { secure = false, maxAgeMs = SESSION_MAX_AGE_MS } = {}) {
-  const maxAge = Math.max(0, Math.floor(maxAgeMs / 1000));
-  const parts = [
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${maxAge}`,
-  ];
-
-  if (secure) {
-    parts.push("Secure");
-  }
-
-  return parts.join("; ");
+export function hashStoredToken(token) {
+  return createHash("sha256").update(String(token ?? ""), "utf8").digest("hex");
 }
 
-export function clearSessionCookie({ secure = false } = {}) {
-  return createSessionCookie("", { secure, maxAgeMs: 0 });
+export function hashSessionToken(token) {
+  return hashStoredToken(token);
+}
+
+export function createAccessToken(user, secret, maxAgeMs = ACCESS_TOKEN_MAX_AGE_MS) {
+  return createJwt(buildTokenPayload(user, "access", maxAgeMs), normalizeSecret(secret));
+}
+
+export function createRefreshToken(user, secret, maxAgeMs = REFRESH_TOKEN_MAX_AGE_MS) {
+  return createJwt(buildTokenPayload(user, "refresh", maxAgeMs), normalizeSecret(secret));
+}
+
+export function verifyToken(token, secret, { expectedType } = {}) {
+  const normalizedToken = String(token ?? "").trim();
+  const normalizedSecret = normalizeSecret(secret);
+
+  if (!normalizedToken || !normalizedSecret) {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  const segments = normalizedToken.split(".");
+
+  if (segments.length !== 3) {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = segments;
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const expectedSignature = createHmac("sha256", normalizedSecret).update(signingInput).digest("base64url");
+  const actualBuffer = Buffer.from(encodedSignature, "utf8");
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  let header;
+  let payload;
+
+  try {
+    header = base64UrlDecodeJson(encodedHeader);
+    payload = base64UrlDecodeJson(encodedPayload);
+  } catch {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  if (header.alg !== "HS256" || header.typ !== "JWT") {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  if (expectedType && payload.type !== expectedType) {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  if (typeof payload.exp === "number" && nowSeconds >= payload.exp) {
+    return { ok: false, expired: true, payload: null };
+  }
+
+  if (typeof payload.nbf === "number" && nowSeconds < payload.nbf) {
+    return { ok: false, expired: false, payload: null };
+  }
+
+  return {
+    ok: true,
+    expired: false,
+    payload,
+  };
+}
+
+export function createAuthCookies({ accessToken, refreshToken, secure = false } = {}) {
+  return [
+    createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
+      secure,
+      maxAgeMs: ACCESS_TOKEN_MAX_AGE_MS,
+    }),
+    createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+      secure,
+      maxAgeMs: REFRESH_TOKEN_MAX_AGE_MS,
+    }),
+  ];
+}
+
+export function clearAuthCookies({ secure = false } = {}) {
+  return [
+    createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, "", {
+      secure,
+      maxAgeMs: 0,
+    }),
+    createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, "", {
+      secure,
+      maxAgeMs: 0,
+    }),
+  ];
+}
+
+export function getAccessTokenFromCookies(cookies) {
+  return cookies?.[ACCESS_TOKEN_COOKIE_NAME] ?? "";
+}
+
+export function getRefreshTokenFromCookies(cookies) {
+  return cookies?.[REFRESH_TOKEN_COOKIE_NAME] ?? "";
+}
+
+export function resolveJwtSecret() {
+  const explicitSecret = normalizeSecret(process.env.JWT_SECRET);
+
+  if (explicitSecret) {
+    return explicitSecret;
+  }
+
+  const databaseUrl = normalizeSecret(process.env.DATABASE_URL);
+
+  if (databaseUrl) {
+    return createHash("sha256").update(databaseUrl, "utf8").digest("hex");
+  }
+
+  return "local-safety360-dev-secret";
 }

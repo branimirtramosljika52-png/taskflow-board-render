@@ -10,10 +10,9 @@ import {
   updateWorkOrder,
 } from "./safetyModel.js";
 import {
-  SESSION_MAX_AGE_MS,
+  REFRESH_TOKEN_MAX_AGE_MS,
   createPasswordHash,
-  createSessionToken,
-  hashSessionToken,
+  hashStoredToken,
   verifyPassword,
 } from "./webAuth.js";
 
@@ -322,7 +321,7 @@ export class InMemorySafetyRepository {
       locations: [],
       workOrders: [],
     };
-    this.sessions = new Map();
+    this.refreshTokens = new Map();
     this.users = [
       {
         id: "1",
@@ -360,34 +359,48 @@ export class InMemorySafetyRepository {
     return sanitizeUser(userRow);
   }
 
-  async createSession(user, metadata = {}) {
-    const token = createSessionToken();
-    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? SESSION_MAX_AGE_MS)).toISOString();
-    this.sessions.set(hashSessionToken(token), {
+  async storeRefreshToken(user, token, metadata = {}) {
+    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    this.refreshTokens.set(hashStoredToken(token), {
       userId: user.id,
       expiresAt,
     });
 
     return {
-      token,
       user,
       expiresAt,
     };
   }
 
-  async getUserBySessionToken(token) {
-    const session = this.sessions.get(hashSessionToken(token));
+  async rotateRefreshToken(currentToken, nextToken, metadata = {}) {
+    const session = this.refreshTokens.get(hashStoredToken(currentToken));
 
     if (!session || Date.parse(session.expiresAt) <= Date.now()) {
       return null;
     }
 
     const userRow = this.users.find((item) => item.id === session.userId);
-    return sanitizeUser(userRow);
+
+    if (!userRow || (metadata.expectedUserId && String(userRow.id) !== String(metadata.expectedUserId))) {
+      return null;
+    }
+
+    this.refreshTokens.delete(hashStoredToken(currentToken));
+
+    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    this.refreshTokens.set(hashStoredToken(nextToken), {
+      userId: userRow.id,
+      expiresAt,
+    });
+
+    return {
+      user: sanitizeUser(userRow),
+      expiresAt,
+    };
   }
 
-  async deleteSession(token) {
-    return this.sessions.delete(hashSessionToken(token));
+  async deleteRefreshToken(token) {
+    return this.refreshTokens.delete(hashStoredToken(token));
   }
 
   async getSnapshot() {
@@ -505,7 +518,7 @@ export class MySqlSafetyRepository {
   async init() {
     await this.pool.query("SELECT 1");
     await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS web_sessions (
+      CREATE TABLE IF NOT EXISTS web_refresh_tokens (
         token_hash CHAR(64) PRIMARY KEY,
         user_id INT NOT NULL,
         expires_at DATETIME NOT NULL,
@@ -513,8 +526,8 @@ export class MySqlSafetyRepository {
         last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         user_agent VARCHAR(255) NOT NULL DEFAULT '',
         ip_address VARCHAR(64) NOT NULL DEFAULT '',
-        INDEX idx_web_sessions_user_id (user_id),
-        INDEX idx_web_sessions_expires_at (expires_at)
+        INDEX idx_web_refresh_tokens_user_id (user_id),
+        INDEX idx_web_refresh_tokens_expires_at (expires_at)
       )
     `);
   }
@@ -564,18 +577,17 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async createSession(user, metadata = {}) {
+  async storeRefreshToken(user, token, metadata = {}) {
     const connection = await this.pool.getConnection();
 
     try {
-      const token = createSessionToken();
-      const tokenHash = hashSessionToken(token);
-      const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? SESSION_MAX_AGE_MS));
+      const tokenHash = hashStoredToken(token);
+      const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
 
-      await connection.query("DELETE FROM web_sessions WHERE expires_at <= UTC_TIMESTAMP()");
+      await connection.query("DELETE FROM web_refresh_tokens WHERE expires_at <= UTC_TIMESTAMP()");
       await connection.query(
         `
-          INSERT INTO web_sessions (token_hash, user_id, expires_at, user_agent, ip_address)
+          INSERT INTO web_refresh_tokens (token_hash, user_id, expires_at, user_agent, ip_address)
           VALUES (?, ?, ?, ?, ?)
         `,
         [
@@ -588,7 +600,6 @@ export class MySqlSafetyRepository {
       );
 
       return {
-        token,
         user,
         expiresAt: expiresAt.toISOString(),
       };
@@ -597,45 +608,73 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async getUserBySessionToken(token) {
+  async rotateRefreshToken(currentToken, nextToken, metadata = {}) {
     const connection = await this.pool.getConnection();
 
     try {
-      const tokenHash = hashSessionToken(token);
+      await connection.beginTransaction();
+
+      const currentTokenHash = hashStoredToken(currentToken);
       const [rows] = await connection.query(
         `
           SELECT k.id, k.korisnicko_ime, k.ime_prezime, k.razina_prava
-          FROM web_sessions s
+          FROM web_refresh_tokens s
           INNER JOIN korisnici k ON k.id = s.user_id
           WHERE s.token_hash = ?
             AND s.expires_at > UTC_TIMESTAMP()
           LIMIT 1
         `,
-        [tokenHash],
+        [currentTokenHash],
       );
 
       if (!rows[0]) {
+        await connection.rollback();
         return null;
       }
 
+      if (metadata.expectedUserId && String(rows[0].id) !== String(metadata.expectedUserId)) {
+        await connection.rollback();
+        return null;
+      }
+
+      const nextExpiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
+
       await connection.query(
-        "UPDATE web_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = ?",
-        [tokenHash],
+        `
+          UPDATE web_refresh_tokens
+          SET token_hash = ?, expires_at = ?, last_seen_at = CURRENT_TIMESTAMP, user_agent = ?, ip_address = ?
+          WHERE token_hash = ?
+        `,
+        [
+          hashStoredToken(nextToken),
+          nextExpiresAt,
+          dbString(metadata.userAgent).slice(0, 255),
+          dbString(metadata.ipAddress).slice(0, 64),
+          currentTokenHash,
+        ],
       );
 
-      return sanitizeUser(rows[0]);
+      await connection.commit();
+
+      return {
+        user: sanitizeUser(rows[0]),
+        expiresAt: nextExpiresAt.toISOString(),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
   }
 
-  async deleteSession(token) {
+  async deleteRefreshToken(token) {
     const connection = await this.pool.getConnection();
 
     try {
       const [result] = await connection.query(
-        "DELETE FROM web_sessions WHERE token_hash = ?",
-        [hashSessionToken(token)],
+        "DELETE FROM web_refresh_tokens WHERE token_hash = ?",
+        [hashStoredToken(token)],
       );
       return result.affectedRows > 0;
     } finally {

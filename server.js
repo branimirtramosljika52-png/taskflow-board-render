@@ -5,10 +5,15 @@ import { extname, resolve, sep } from "node:path";
 
 import { createSafetyRepository } from "./src/safetyRepository.js";
 import {
-  SESSION_COOKIE_NAME,
-  clearSessionCookie,
-  createSessionCookie,
+  clearAuthCookies,
+  createAccessToken,
+  createAuthCookies,
+  createRefreshToken,
+  getAccessTokenFromCookies,
+  getRefreshTokenFromCookies,
   parseCookies,
+  resolveJwtSecret,
+  verifyToken,
 } from "./src/webAuth.js";
 
 const port = Number(process.env.PORT || 3000);
@@ -16,7 +21,7 @@ const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
 const requestUserSymbol = Symbol("requestUser");
-const requestSessionTokenSymbol = Symbol("requestSessionToken");
+const jwtSecret = resolveJwtSecret();
 
 function sleep(durationMs) {
   return new Promise((resolveSleep) => {
@@ -56,7 +61,8 @@ const contentTypes = {
 };
 
 function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(payload));
 }
 
@@ -80,23 +86,111 @@ function getClientIp(request) {
   return String(request.socket.remoteAddress ?? "");
 }
 
-async function getRequestUser(request) {
+function appendResponseCookies(response, cookies) {
+  const nextCookies = Array.isArray(cookies) ? cookies.filter(Boolean) : [cookies].filter(Boolean);
+
+  if (nextCookies.length === 0) {
+    return;
+  }
+
+  const currentHeader = response.getHeader("Set-Cookie");
+  const currentCookies = Array.isArray(currentHeader)
+    ? currentHeader
+    : currentHeader
+      ? [currentHeader]
+      : [];
+
+  response.setHeader("Set-Cookie", [...currentCookies, ...nextCookies]);
+}
+
+function buildUserFromTokenPayload(payload) {
+  if (!payload?.sub) {
+    return null;
+  }
+
+  return {
+    id: String(payload.sub),
+    username: String(payload.username ?? ""),
+    fullName: String(payload.fullName ?? payload.username ?? ""),
+    role: String(payload.role ?? "korisnik"),
+  };
+}
+
+async function clearRequestAuth(request, response) {
+  const cookies = parseCookies(request.headers.cookie ?? "");
+  const refreshToken = getRefreshTokenFromCookies(cookies);
+
+  if (refreshToken) {
+    await repository.deleteRefreshToken(refreshToken);
+  }
+
+  appendResponseCookies(response, clearAuthCookies({
+    secure: shouldUseSecureCookies(request),
+  }));
+  request[requestUserSymbol] = null;
+}
+
+async function tryRefreshAuth(request, response, cookies) {
+  const refreshToken = getRefreshTokenFromCookies(cookies);
+
+  if (!refreshToken) {
+    return null;
+  }
+
+  const refreshVerification = verifyToken(refreshToken, jwtSecret, { expectedType: "refresh" });
+
+  if (!refreshVerification.ok) {
+    await clearRequestAuth(request, response);
+    return null;
+  }
+
+  const provisionalUser = buildUserFromTokenPayload(refreshVerification.payload);
+
+  if (!provisionalUser) {
+    await clearRequestAuth(request, response);
+    return null;
+  }
+
+  const nextAccessToken = createAccessToken(provisionalUser, jwtSecret);
+  const nextRefreshToken = createRefreshToken(provisionalUser, jwtSecret);
+  const rotated = await repository.rotateRefreshToken(refreshToken, nextRefreshToken, {
+    expectedUserId: provisionalUser.id,
+    ipAddress: getClientIp(request),
+    userAgent: request.headers["user-agent"] ?? "",
+  });
+
+  if (!rotated?.user) {
+    await clearRequestAuth(request, response);
+    return null;
+  }
+
+  appendResponseCookies(response, createAuthCookies({
+    accessToken: nextAccessToken,
+    refreshToken: nextRefreshToken,
+    secure: shouldUseSecureCookies(request),
+  }));
+
+  return rotated.user;
+}
+
+async function getRequestUser(request, response) {
   if (Object.prototype.hasOwnProperty.call(request, requestUserSymbol)) {
     return request[requestUserSymbol];
   }
 
   const cookies = parseCookies(request.headers.cookie ?? "");
-  const token = cookies[SESSION_COOKIE_NAME] ?? "";
-  request[requestSessionTokenSymbol] = token;
+  const accessToken = getAccessTokenFromCookies(cookies);
+  const accessVerification = verifyToken(accessToken, jwtSecret, { expectedType: "access" });
 
-  if (!token) {
-    request[requestUserSymbol] = null;
-    return null;
+  if (accessVerification.ok) {
+    const user = buildUserFromTokenPayload(accessVerification.payload);
+    request[requestUserSymbol] = user;
+    return user;
   }
 
-  const user = await repository.getUserBySessionToken(token);
-  request[requestUserSymbol] = user;
-  return user;
+  const refreshedUser = await tryRefreshAuth(request, response, cookies);
+  request[requestUserSymbol] = refreshedUser;
+  return refreshedUser;
 }
 
 async function readJsonBody(request) {
@@ -141,7 +235,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/auth/session") {
-      const user = await getRequestUser(request);
+      const user = await getRequestUser(request, response);
       sendJson(response, 200, {
         authenticated: Boolean(user),
         user,
@@ -158,43 +252,59 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const session = await repository.createSession(user, {
+      const accessToken = createAccessToken(user, jwtSecret);
+      const refreshToken = createRefreshToken(user, jwtSecret);
+
+      await repository.storeRefreshToken(user, refreshToken, {
         ipAddress: getClientIp(request),
         userAgent: request.headers["user-agent"] ?? "",
       });
 
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Set-Cookie": createSessionCookie(session.token, {
-          secure: shouldUseSecureCookies(request),
-        }),
-      });
-      response.end(JSON.stringify({
-        authenticated: true,
-        user: session.user,
+      appendResponseCookies(response, createAuthCookies({
+        accessToken,
+        refreshToken,
+        secure: shouldUseSecureCookies(request),
       }));
+
+      sendJson(response, 200, {
+        authenticated: true,
+        user,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/refresh") {
+      const user = await getRequestUser(request, response);
+
+      if (!user) {
+        sendError(response, 401, "Prijava je istekla.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        authenticated: true,
+        user,
+      });
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/auth/logout") {
       const cookies = parseCookies(request.headers.cookie ?? "");
-      const token = cookies[SESSION_COOKIE_NAME];
+      const token = getRefreshTokenFromCookies(cookies);
 
       if (token) {
-        await repository.deleteSession(token);
+        await repository.deleteRefreshToken(token);
       }
 
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Set-Cookie": clearSessionCookie({
-          secure: shouldUseSecureCookies(request),
-        }),
-      });
-      response.end(JSON.stringify({ ok: true }));
+      appendResponseCookies(response, clearAuthCookies({
+        secure: shouldUseSecureCookies(request),
+      }));
+      request[requestUserSymbol] = null;
+      sendJson(response, 200, { ok: true });
       return true;
     }
 
-    const user = await getRequestUser(request);
+    const user = await getRequestUser(request, response);
 
     if (!user) {
       sendError(response, 401, "Prijava je potrebna.");
