@@ -4,11 +4,19 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 
 import { createSafetyRepository } from "./src/safetyRepository.js";
+import {
+  SESSION_COOKIE_NAME,
+  clearSessionCookie,
+  createSessionCookie,
+  parseCookies,
+} from "./src/webAuth.js";
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
+const requestUserSymbol = Symbol("requestUser");
+const requestSessionTokenSymbol = Symbol("requestSessionToken");
 
 function sleep(durationMs) {
   return new Promise((resolveSleep) => {
@@ -56,6 +64,41 @@ function sendError(response, statusCode, message) {
   sendJson(response, statusCode, { error: message });
 }
 
+function shouldUseSecureCookies(request) {
+  const forwardedProto = String(request.headers["x-forwarded-proto"] ?? "").toLowerCase();
+  const host = String(request.headers.host ?? "");
+  return forwardedProto === "https" || (!host.startsWith("localhost") && !host.startsWith("127.0.0.1"));
+}
+
+function getClientIp(request) {
+  const forwardedFor = String(request.headers["x-forwarded-for"] ?? "");
+
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  return String(request.socket.remoteAddress ?? "");
+}
+
+async function getRequestUser(request) {
+  if (Object.prototype.hasOwnProperty.call(request, requestUserSymbol)) {
+    return request[requestUserSymbol];
+  }
+
+  const cookies = parseCookies(request.headers.cookie ?? "");
+  const token = cookies[SESSION_COOKIE_NAME] ?? "";
+  request[requestSessionTokenSymbol] = token;
+
+  if (!token) {
+    request[requestUserSymbol] = null;
+    return null;
+  }
+
+  const user = await repository.getUserBySessionToken(token);
+  request[requestUserSymbol] = user;
+  return user;
+}
+
 async function readJsonBody(request) {
   const chunks = [];
 
@@ -76,17 +119,18 @@ async function readJsonBody(request) {
   }
 }
 
-async function writeSnapshot(response, statusCode = 200) {
+async function writeSnapshot(response, user, statusCode = 200) {
   const snapshot = await repository.getSnapshot();
   sendJson(response, statusCode, {
     storage: repository.kind,
+    user,
     ...snapshot,
   });
 }
 
-async function handleEntityMutation(response, handler, statusCode = 200) {
+async function handleEntityMutation(response, user, handler, statusCode = 200) {
   await handler();
-  await writeSnapshot(response, statusCode);
+  await writeSnapshot(response, user, statusCode);
 }
 
 async function handleApiRequest(request, response, url) {
@@ -96,26 +140,87 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/auth/session") {
+      const user = await getRequestUser(request);
+      sendJson(response, 200, {
+        authenticated: Boolean(user),
+        user,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/login") {
+      const body = await readJsonBody(request);
+      const user = await repository.authenticateUser(body.username, body.password);
+
+      if (!user) {
+        sendError(response, 401, "Neispravno korisnicko ime ili lozinka.");
+        return true;
+      }
+
+      const session = await repository.createSession(user, {
+        ipAddress: getClientIp(request),
+        userAgent: request.headers["user-agent"] ?? "",
+      });
+
+      response.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Set-Cookie": createSessionCookie(session.token, {
+          secure: shouldUseSecureCookies(request),
+        }),
+      });
+      response.end(JSON.stringify({
+        authenticated: true,
+        user: session.user,
+      }));
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      const cookies = parseCookies(request.headers.cookie ?? "");
+      const token = cookies[SESSION_COOKIE_NAME];
+
+      if (token) {
+        await repository.deleteSession(token);
+      }
+
+      response.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Set-Cookie": clearSessionCookie({
+          secure: shouldUseSecureCookies(request),
+        }),
+      });
+      response.end(JSON.stringify({ ok: true }));
+      return true;
+    }
+
+    const user = await getRequestUser(request);
+
+    if (!user) {
+      sendError(response, 401, "Prijava je potrebna.");
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/companies") {
       const body = await readJsonBody(request);
-      await handleEntityMutation(response, () => repository.createCompany(body), 201);
+      await handleEntityMutation(response, user, () => repository.createCompany(body), 201);
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/locations") {
       const body = await readJsonBody(request);
-      await handleEntityMutation(response, () => repository.createLocation(body), 201);
+      await handleEntityMutation(response, user, () => repository.createLocation(body), 201);
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/work-orders") {
       const body = await readJsonBody(request);
-      await handleEntityMutation(response, () => repository.createWorkOrder(body), 201);
+      await handleEntityMutation(response, user, () => repository.createWorkOrder(body), 201);
       return true;
     }
 
@@ -132,7 +237,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
@@ -144,7 +249,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
@@ -157,7 +262,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
@@ -169,7 +274,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
@@ -182,7 +287,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
 
@@ -194,7 +299,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response);
+      await writeSnapshot(response, user);
       return true;
     }
   } catch (error) {

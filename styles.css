@@ -63,18 +63,65 @@ fieldset {
 
 .app-shell {
   min-height: 100vh;
-  padding: 24px;
+  padding: 12px;
 }
 
 .app-frame {
-  width: min(1440px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  min-height: calc(100vh - 24px);
+  margin: 0;
   background: var(--panel);
   border: 1px solid rgba(213, 220, 207, 0.9);
   border-radius: 32px;
   box-shadow: 0 26px 80px var(--shadow);
   padding: 28px;
   backdrop-filter: blur(14px);
+}
+
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  background: var(--panel);
+  border: 1px solid rgba(213, 220, 207, 0.9);
+  border-radius: 28px;
+  box-shadow: 0 26px 80px var(--shadow);
+  padding: 28px;
+}
+
+.auth-card h1 {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 0.95;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.92rem;
 }
 
 .hero {
@@ -190,6 +237,11 @@ fieldset {
 .workspace-view {
   display: grid;
   gap: 18px;
+}
+
+.workspace-dashboard {
+  grid-template-columns: minmax(420px, 520px) minmax(0, 1fr);
+  align-items: start;
 }
 
 .panel {
@@ -331,6 +383,11 @@ button:hover {
   background: #fff;
 }
 
+.table-wrap-work-orders {
+  max-height: calc(100vh - 290px);
+  overflow: auto;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -434,9 +491,19 @@ button:hover {
   color: var(--muted);
 }
 
+.load-state {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 @media (max-width: 1220px) {
   .hero {
     flex-direction: column;
+  }
+
+  .workspace-dashboard {
+    grid-template-columns: 1fr;
   }
 
   .summary-grid {
@@ -467,6 +534,7 @@ button:hover {
   .app-frame {
     padding: 18px;
     border-radius: 22px;
+    min-height: calc(100vh - 24px);
   }
 
   .summary-grid,
@@ -481,6 +549,11 @@ button:hover {
   .section-heading,
   .form-actions,
   .table-actions {
+    align-items: stretch;
+  }
+
+  .topbar {
+    flex-direction: column;
     align-items: stretch;
   }
 

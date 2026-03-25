@@ -7,8 +7,37 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <section id="auth-screen" class="auth-screen">
+      <div class="auth-card">
+        <p class="eyebrow">Prijava</p>
+        <h1>Safety360 Web</h1>
+        <p class="intro">Prijavi se svojim korisnickim imenom i lozinkom iz sustava kako bi otvorio SelfDash.</p>
+
+        <form id="login-form" class="auth-form">
+          <label class="field">
+            <span>Korisnicko ime</span>
+            <input id="login-username" type="text" autocomplete="username" required />
+          </label>
+
+          <label class="field">
+            <span>Lozinka</span>
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </label>
+
+          <button type="submit" class="primary-button">Prijavi se</button>
+        </form>
+
+        <p id="login-error" class="form-error" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <main id="app-shell" class="app-shell" hidden>
       <section class="app-frame">
+        <div class="topbar">
+          <div id="user-badge" class="user-badge"></div>
+          <button id="logout-button" type="button" class="ghost-button">Odjava</button>
+        </div>
+
         <header class="hero">
           <div class="hero-copy">
             <p class="eyebrow">Safety360 Logic</p>
@@ -51,7 +80,7 @@
 
         <p id="sync-error" class="sync-error" hidden></p>
 
-        <section id="selfdash-view" class="workspace-view">
+        <section id="selfdash-view" class="workspace-view workspace-dashboard">
           <section class="panel">
             <div class="section-heading">
               <div>
@@ -227,7 +256,7 @@
               </label>
             </div>
 
-            <div class="table-wrap">
+            <div id="work-orders-table-wrap" class="table-wrap table-wrap-work-orders">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -248,6 +277,7 @@
             </div>
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
+            <p id="work-orders-load-state" class="load-state" hidden></p>
           </section>
         </section>
 

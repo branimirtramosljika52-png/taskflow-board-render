@@ -8,6 +8,7 @@ import {
 } from "./safetyModel.js";
 
 const API_BASE = "/api";
+const WORK_ORDER_BATCH_SIZE = 60;
 
 const state = {
   storage: "memory",
@@ -15,8 +16,18 @@ const state = {
   locations: [],
   workOrders: [],
   activeView: "selfdash",
+  user: null,
+  workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
 };
 
+const authScreen = document.querySelector("#auth-screen");
+const appShell = document.querySelector("#app-shell");
+const loginForm = document.querySelector("#login-form");
+const loginUsernameInput = document.querySelector("#login-username");
+const loginPasswordInput = document.querySelector("#login-password");
+const loginError = document.querySelector("#login-error");
+const userBadge = document.querySelector("#user-badge");
+const logoutButton = document.querySelector("#logout-button");
 const connectionStatus = document.querySelector("#connection-status");
 const syncError = document.querySelector("#sync-error");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
@@ -67,6 +78,8 @@ const workOrderFilterStatusInput = document.querySelector("#work-order-filter-st
 const workOrderFilterCompanyInput = document.querySelector("#work-order-filter-company");
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
+const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
+const workOrdersLoadState = document.querySelector("#work-orders-load-state");
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
@@ -139,7 +152,9 @@ async function apiRequest(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed.");
+    const error = new Error(payload.error || "Request failed.");
+    error.statusCode = response.status;
+    throw error;
   }
 
   return payload;
@@ -150,6 +165,8 @@ function applySnapshot(payload) {
   state.companies = payload.companies ?? [];
   state.locations = payload.locations ?? [];
   state.workOrders = payload.workOrders ?? [];
+  state.user = payload.user ?? state.user;
+  state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
   setConnectionStatus();
   setSyncError("");
   render();
@@ -158,6 +175,13 @@ function applySnapshot(payload) {
 async function refreshSnapshot() {
   const payload = await apiRequest("/bootstrap");
   applySnapshot(payload);
+}
+
+async function refreshSession() {
+  const payload = await apiRequest("/auth/session");
+  state.user = payload.user ?? null;
+  renderAuthState();
+  return payload.user;
 }
 
 async function runMutation(callback, errorTarget) {
@@ -170,6 +194,13 @@ async function runMutation(callback, errorTarget) {
     applySnapshot(payload);
     return true;
   } catch (error) {
+    if (error.statusCode === 401) {
+      state.user = null;
+      renderAuthState();
+      setSyncError("");
+      return false;
+    }
+
     if (errorTarget) {
       errorTarget.textContent = error.message;
     } else {
@@ -241,6 +272,18 @@ function createActionButton(label, className, onClick) {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function renderAuthState() {
+  const authenticated = Boolean(state.user);
+  authScreen.hidden = authenticated;
+  appShell.hidden = !authenticated;
+
+  if (authenticated) {
+    userBadge.textContent = `${state.user.fullName} (${state.user.role})`;
+  } else {
+    userBadge.textContent = "";
+  }
 }
 
 function slugifyValue(value) {
@@ -618,14 +661,38 @@ function renderSharedOptions() {
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
 }
 
-function renderWorkOrders() {
-  const filtered = sortWorkOrders(filterWorkOrders(state.workOrders, {
+function getFilteredWorkOrders() {
+  return sortWorkOrders(filterWorkOrders(state.workOrders, {
     query: workOrderSearchInput.value,
     status: workOrderFilterStatusInput.value,
     companyId: workOrderFilterCompanyInput.value,
   }));
+}
 
-  workOrdersBody.replaceChildren(...filtered.map((item) => {
+function resetWorkOrderListWindow() {
+  state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
+
+  if (workOrdersTableWrap) {
+    workOrdersTableWrap.scrollTop = 0;
+  }
+}
+
+function loadMoreWorkOrders() {
+  const total = getFilteredWorkOrders().length;
+
+  if (state.workOrderRenderLimit >= total) {
+    return;
+  }
+
+  state.workOrderRenderLimit = Math.min(state.workOrderRenderLimit + WORK_ORDER_BATCH_SIZE, total);
+  renderWorkOrders();
+}
+
+function renderWorkOrders() {
+  const filtered = getFilteredWorkOrders();
+  const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
+
+  workOrdersBody.replaceChildren(...visibleItems.map((item) => {
     const row = document.createElement("tr");
 
     const statusCell = document.createElement("td");
@@ -670,6 +737,17 @@ function renderWorkOrders() {
   }));
 
   workOrdersEmpty.hidden = filtered.length !== 0;
+
+  if (filtered.length === 0) {
+    workOrdersLoadState.hidden = true;
+    workOrdersLoadState.textContent = "";
+    return;
+  }
+
+  workOrdersLoadState.hidden = false;
+  workOrdersLoadState.textContent = visibleItems.length < filtered.length
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    : `Prikazano svih ${filtered.length} RN.`;
 }
 
 function renderCompanies() {
@@ -761,6 +839,7 @@ function renderLocations() {
 }
 
 function render() {
+  renderAuthState();
   renderSummary();
   renderSharedOptions();
   renderWorkOrders();
@@ -791,9 +870,26 @@ workOrderContactSlotInput.addEventListener("change", () => {
   applySelectedContactDefaults();
 });
 
-workOrderSearchInput.addEventListener("input", renderWorkOrders);
-workOrderFilterStatusInput.addEventListener("change", renderWorkOrders);
-workOrderFilterCompanyInput.addEventListener("change", renderWorkOrders);
+workOrdersTableWrap.addEventListener("scroll", () => {
+  const nearBottom = workOrdersTableWrap.scrollTop + workOrdersTableWrap.clientHeight >= workOrdersTableWrap.scrollHeight - 120;
+
+  if (nearBottom) {
+    loadMoreWorkOrders();
+  }
+});
+
+workOrderSearchInput.addEventListener("input", () => {
+  resetWorkOrderListWindow();
+  renderWorkOrders();
+});
+workOrderFilterStatusInput.addEventListener("change", () => {
+  resetWorkOrderListWindow();
+  renderWorkOrders();
+});
+workOrderFilterCompanyInput.addEventListener("change", () => {
+  resetWorkOrderListWindow();
+  renderWorkOrders();
+});
 
 workOrderForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -852,14 +948,55 @@ locationForm.addEventListener("submit", (event) => {
 
 locationResetButton.addEventListener("click", resetLocationForm);
 
+loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loginError.textContent = "";
+
+  void apiRequest("/auth/login", {
+    method: "POST",
+    body: {
+      username: loginUsernameInput.value,
+      password: loginPasswordInput.value,
+    },
+  }).then((payload) => {
+    state.user = payload.user;
+    loginForm.reset();
+    renderAuthState();
+    return refreshSnapshot();
+  }).catch((error) => {
+    loginError.textContent = error.message;
+  });
+});
+
+logoutButton.addEventListener("click", () => {
+  void apiRequest("/auth/logout", {
+    method: "POST",
+  }).finally(() => {
+    state.user = null;
+    state.workOrders = [];
+    state.companies = [];
+    state.locations = [];
+    renderAuthState();
+  });
+});
+
 setConnectionStatus();
 resetWorkOrderForm();
 resetCompanyForm();
 resetLocationForm();
 renderActiveView();
+renderAuthState();
 
-refreshSnapshot().catch((error) => {
-  setSyncError(error.message);
-  connectionStatus.textContent = "Backend nije dostupan";
-  connectionStatus.classList.add("is-memory");
-});
+refreshSession()
+  .then((user) => {
+    if (user) {
+      return refreshSnapshot();
+    }
+
+    return null;
+  })
+  .catch((error) => {
+    setSyncError(error.message);
+    connectionStatus.textContent = "Backend nije dostupan";
+    connectionStatus.classList.add("is-memory");
+  });

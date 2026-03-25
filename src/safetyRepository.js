@@ -9,6 +9,13 @@ import {
   updateLocation,
   updateWorkOrder,
 } from "./safetyModel.js";
+import {
+  SESSION_MAX_AGE_MS,
+  createPasswordHash,
+  createSessionToken,
+  hashSessionToken,
+  verifyPassword,
+} from "./webAuth.js";
 
 function normalizeTimestamp(value) {
   if (!value) {
@@ -98,6 +105,19 @@ function parseNullableDecimal(value) {
 
 function locationCompositeKey(oib, name) {
   return `${dbString(oib)}::${dbString(name).toLowerCase()}`;
+}
+
+function sanitizeUser(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    username: row.korisnicko_ime,
+    fullName: row.ime_prezime ?? row.korisnicko_ime,
+    role: row.razina_prava ?? "korisnik",
+  };
 }
 
 async function fetchSnapshotFromConnection(connection) {
@@ -302,11 +322,73 @@ export class InMemorySafetyRepository {
       locations: [],
       workOrders: [],
     };
+    this.sessions = new Map();
+    this.users = [
+      {
+        id: "1",
+        korisnicko_ime: "admin",
+        lozinka_hash: "",
+        ime_prezime: "Local Admin",
+        razina_prava: "admin",
+      },
+    ];
   }
 
-  async init() {}
+  async init() {
+    this.users[0].lozinka_hash = await createPasswordHash("admin");
+  }
 
   async close() {}
+
+  async authenticateUser(username, password) {
+    const userRow = this.users.find((item) => item.korisnicko_ime.toLowerCase() === dbString(username).toLowerCase());
+
+    if (!userRow) {
+      return null;
+    }
+
+    const verification = await verifyPassword(password, userRow.lozinka_hash);
+
+    if (!verification.ok) {
+      return null;
+    }
+
+    if (verification.needsUpgrade) {
+      userRow.lozinka_hash = await createPasswordHash(password);
+    }
+
+    return sanitizeUser(userRow);
+  }
+
+  async createSession(user, metadata = {}) {
+    const token = createSessionToken();
+    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? SESSION_MAX_AGE_MS)).toISOString();
+    this.sessions.set(hashSessionToken(token), {
+      userId: user.id,
+      expiresAt,
+    });
+
+    return {
+      token,
+      user,
+      expiresAt,
+    };
+  }
+
+  async getUserBySessionToken(token) {
+    const session = this.sessions.get(hashSessionToken(token));
+
+    if (!session || Date.parse(session.expiresAt) <= Date.now()) {
+      return null;
+    }
+
+    const userRow = this.users.find((item) => item.id === session.userId);
+    return sanitizeUser(userRow);
+  }
+
+  async deleteSession(token) {
+    return this.sessions.delete(hashSessionToken(token));
+  }
 
   async getSnapshot() {
     return {
@@ -422,10 +504,143 @@ export class MySqlSafetyRepository {
 
   async init() {
     await this.pool.query("SELECT 1");
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_sessions (
+        token_hash CHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        user_agent VARCHAR(255) NOT NULL DEFAULT '',
+        ip_address VARCHAR(64) NOT NULL DEFAULT '',
+        INDEX idx_web_sessions_user_id (user_id),
+        INDEX idx_web_sessions_expires_at (expires_at)
+      )
+    `);
   }
 
   async close() {
     await this.pool.end();
+  }
+
+  async authenticateUser(username, password) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, korisnicko_ime, lozinka_hash, ime_prezime, razina_prava
+          FROM korisnici
+          WHERE LOWER(korisnicko_ime) = LOWER(?)
+          LIMIT 1
+        `,
+        [dbString(username)],
+      );
+
+      const userRow = rows[0];
+
+      if (!userRow) {
+        return null;
+      }
+
+      const verification = await verifyPassword(password, userRow.lozinka_hash);
+
+      if (!verification.ok) {
+        return null;
+      }
+
+      if (verification.needsUpgrade) {
+        const nextHash = await createPasswordHash(password);
+
+        await connection.query(
+          "UPDATE korisnici SET lozinka_hash = ? WHERE id = ?",
+          [nextHash, Number(userRow.id)],
+        );
+      }
+
+      return sanitizeUser(userRow);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createSession(user, metadata = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const token = createSessionToken();
+      const tokenHash = hashSessionToken(token);
+      const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? SESSION_MAX_AGE_MS));
+
+      await connection.query("DELETE FROM web_sessions WHERE expires_at <= UTC_TIMESTAMP()");
+      await connection.query(
+        `
+          INSERT INTO web_sessions (token_hash, user_id, expires_at, user_agent, ip_address)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+          tokenHash,
+          Number(user.id),
+          expiresAt,
+          dbString(metadata.userAgent).slice(0, 255),
+          dbString(metadata.ipAddress).slice(0, 64),
+        ],
+      );
+
+      return {
+        token,
+        user,
+        expiresAt: expiresAt.toISOString(),
+      };
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getUserBySessionToken(token) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const tokenHash = hashSessionToken(token);
+      const [rows] = await connection.query(
+        `
+          SELECT k.id, k.korisnicko_ime, k.ime_prezime, k.razina_prava
+          FROM web_sessions s
+          INNER JOIN korisnici k ON k.id = s.user_id
+          WHERE s.token_hash = ?
+            AND s.expires_at > UTC_TIMESTAMP()
+          LIMIT 1
+        `,
+        [tokenHash],
+      );
+
+      if (!rows[0]) {
+        return null;
+      }
+
+      await connection.query(
+        "UPDATE web_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = ?",
+        [tokenHash],
+      );
+
+      return sanitizeUser(rows[0]);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteSession(token) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        "DELETE FROM web_sessions WHERE token_hash = ?",
+        [hashSessionToken(token)],
+      );
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
   }
 
   async getSnapshot() {
