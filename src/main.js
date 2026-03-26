@@ -1881,8 +1881,13 @@ function formatMeasurementSeriesValue(value) {
   return String(Number(value.toFixed(2))).replace(".", ",");
 }
 
-function applyMeasurementFill(mode) {
-  const pendingFill = state.measurementSheet.fillMenu?.pendingFill;
+function applyMeasurementFill(mode, options = {}) {
+  const {
+    pendingFill = state.measurementSheet.fillMenu?.pendingFill,
+    showMenuAfter = false,
+    menuX = 0,
+    menuY = 0,
+  } = options;
 
   if (!pendingFill) {
     return;
@@ -1941,6 +1946,10 @@ function applyMeasurementFill(mode) {
   };
   state.measurementSheet.fillMenu = null;
   renderMeasurementSheet();
+
+  if (showMenuAfter) {
+    openMeasurementFillMenu(pendingFill, menuX, menuY);
+  }
 }
 
 function updateMeasurementColumnWidth(pointerX) {
@@ -2007,14 +2016,20 @@ function stopMeasurementFillDrag(applyFill = true, pointerX = 0, pointerY = 0) {
     return;
   }
 
-  if (applyFill && fillDrag.endRowIndex > fillDrag.selectionRange.endRowIndex) {
-    openMeasurementFillMenu(fillDrag, pointerX, pointerY);
-  } else {
-    closeMeasurementFillMenu();
-  }
-
   state.measurementSheet.fillDrag = null;
   document.body.classList.remove("is-filling-measurement-cells");
+
+  if (applyFill && fillDrag.endRowIndex > fillDrag.selectionRange.endRowIndex) {
+    applyMeasurementFill("copy", {
+      pendingFill: fillDrag,
+      showMenuAfter: true,
+      menuX: pointerX,
+      menuY: pointerY,
+    });
+    return;
+  }
+
+  closeMeasurementFillMenu();
   renderMeasurementFillPreview();
 }
 
