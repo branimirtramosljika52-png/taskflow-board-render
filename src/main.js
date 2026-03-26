@@ -358,8 +358,6 @@ async function refreshSession() {
 }
 
 async function refreshLoginContent() {
-  const payload = await apiRequest("/auth/login-content", {}, false);
-  state.loginContent = payload;
   renderLoginContent();
 }
 
@@ -568,17 +566,16 @@ function isOverdueWorkOrder(item) {
 }
 
 function renderLoginContent() {
-  const content = state.loginContent ?? {};
   if (loginContentAccent) {
-    loginContentAccent.textContent = content.accentLabel || "Secure access";
+    loginContentAccent.textContent = "Secure access";
   }
 
   if (loginContentHeading) {
-    loginContentHeading.textContent = content.heading || "Welcome back";
+    loginContentHeading.textContent = "Welcome back";
   }
 
   if (loginContentQuote) {
-    loginContentQuote.textContent = content.quoteText || "Sign in with your email to continue into your organization workspace.";
+    loginContentQuote.textContent = "Sign in with your email to continue into your organization workspace.";
   }
 }
 
@@ -1719,6 +1716,8 @@ backToLoginButton?.addEventListener("click", () => {
 });
 
 openSignupButton?.addEventListener("click", () => {
+  signupFeedback.textContent = "";
+  signupFeedback.classList.remove("is-error");
   setAuthMode("signup");
 });
 
@@ -1736,7 +1735,6 @@ signupForm?.addEventListener("submit", (event) => {
     signupFeedback.classList.remove("is-error");
     signupFeedback.textContent = payload.message || "Zahtjev je zaprimljen.";
     signupForm.reset();
-    setAuthMode("login");
   }).catch((error) => {
     signupFeedback.classList.add("is-error");
     signupFeedback.textContent = error.message;
