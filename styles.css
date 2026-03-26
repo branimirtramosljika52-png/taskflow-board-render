@@ -1804,18 +1804,21 @@ button:hover {
   margin: 0;
   width: 12px;
   height: 12px;
-  color: #b1b0be;
   line-height: 0;
   font-size: 0;
   transform: translateY(-50%);
   pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
 }
 
-.auth-input-icon svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-  flex: 0 0 12px;
+.auth-input-icon-email {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Crect x='4' y='6.5' width='16' height='11' rx='2' stroke='%23b1b0be' stroke-width='1.8'/%3E%3Cpath d='M5.5 8 12 12.5 18.5 8' stroke='%23b1b0be' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.auth-input-icon-password {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Crect x='5' y='10' width='14' height='10' rx='2' stroke='%23b1b0be' stroke-width='1.8'/%3E%3Cpath d='M8 10V7.5A4 4 0 0 1 12 4a4 4 0 0 1 4 3.5V10' stroke='%23b1b0be' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 .auth-input-shell input {
