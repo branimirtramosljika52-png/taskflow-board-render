@@ -874,6 +874,10 @@ function getMeasurementInputElement(rowId, columnId) {
   return getMeasurementCellElement(rowId, columnId)?.querySelector(".measurement-cell-input") ?? null;
 }
 
+function isMeasurementInputElement(element) {
+  return element instanceof HTMLInputElement && element.classList.contains("measurement-cell-input");
+}
+
 function getEditableMeasurementColumnIndexes() {
   return state.measurementSheet.columns.reduce((indexes, column, index) => {
     if (!column.computed) {
@@ -1254,7 +1258,7 @@ function stopMeasurementSelectionDrag() {
   state.measurementSheet.selectionDrag = null;
   document.body.classList.remove("is-selecting-measurement-cells");
 
-  if (!selectionDrag.hasMoved && state.measurementSheet.activeCell) {
+  if (state.measurementSheet.activeCell) {
     focusMeasurementCell(
       state.measurementSheet.activeCell.rowId,
       state.measurementSheet.activeCell.columnId,
@@ -1289,6 +1293,10 @@ function selectMeasurementRow(rowIndex) {
   state.measurementSheet.fillMenu = null;
   renderMeasurementSelection();
   renderMeasurementActiveCell();
+  focusMeasurementCell(
+    state.measurementSheet.activeCell.rowId,
+    state.measurementSheet.activeCell.columnId,
+  );
 }
 
 function selectMeasurementColumn(columnIndex) {
@@ -1316,6 +1324,10 @@ function selectMeasurementColumn(columnIndex) {
   state.measurementSheet.fillMenu = null;
   renderMeasurementSelection();
   renderMeasurementActiveCell();
+  focusMeasurementCell(
+    state.measurementSheet.activeCell.rowId,
+    state.measurementSheet.activeCell.columnId,
+  );
 }
 
 function selectAllMeasurementCells() {
@@ -1344,6 +1356,10 @@ function selectAllMeasurementCells() {
   state.measurementSheet.fillMenu = null;
   renderMeasurementSelection();
   renderMeasurementActiveCell();
+  focusMeasurementCell(
+    state.measurementSheet.activeCell.rowId,
+    state.measurementSheet.activeCell.columnId,
+  );
 }
 
 function moveMeasurementSelection(direction, options = {}) {
@@ -1701,6 +1717,7 @@ function renderMeasurementSheet() {
           return;
         }
 
+        event.preventDefault();
         setMeasurementSelection(row.id, column.id, {
           extend: event.shiftKey,
         });
@@ -3591,18 +3608,27 @@ document.addEventListener("keydown", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-grid"));
   const isMeasurementMetaActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-sheet-meta"));
+  const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
 
-  if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive) {
+  if (!isMeasurementGridActive || isMeasurementMetaActive) {
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+    if (isMeasurementInputFocused) {
+      return;
+    }
+
     event.preventDefault();
     selectAllMeasurementCells();
     return;
   }
 
   if (event.key === "Delete") {
+    if (isMeasurementInputFocused && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      return;
+    }
+
     const range = getMeasurementSelectedRange();
 
     if (!range) {
@@ -3613,6 +3639,12 @@ document.addEventListener("keydown", (event) => {
     clearMeasurementRange(range);
     renderMeasurementSheet();
     return;
+  }
+
+  if (isMeasurementInputFocused && !event.ctrlKey && !event.metaKey) {
+    if (["ArrowLeft", "ArrowRight", "Home", "End", "Backspace"].includes(event.key)) {
+      return;
+    }
   }
 
   if (event.key === "ArrowLeft") {
@@ -3682,9 +3714,17 @@ document.addEventListener("copy", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-grid"));
   const isMeasurementMetaActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-sheet-meta"));
+  const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
   const range = getMeasurementSelectedRange();
 
-  if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive || !range) {
+  if (!isMeasurementGridActive || isMeasurementMetaActive || !range) {
+    return;
+  }
+
+  if (isMeasurementInputFocused
+    && typeof activeElement.selectionStart === "number"
+    && typeof activeElement.selectionEnd === "number"
+    && activeElement.selectionStart !== activeElement.selectionEnd) {
     return;
   }
 
@@ -3702,14 +3742,19 @@ document.addEventListener("paste", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-grid"));
   const isMeasurementMetaActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-sheet-meta"));
+  const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
 
-  if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive) {
+  if (!isMeasurementGridActive || isMeasurementMetaActive) {
     return;
   }
 
   const text = event.clipboardData.getData("text/plain");
 
   if (!text) {
+    return;
+  }
+
+  if (isMeasurementInputFocused && !/[\t\n\r]/.test(text)) {
     return;
   }
 
