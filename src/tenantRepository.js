@@ -1,0 +1,1457 @@
+import mysql from "mysql2/promise";
+
+import {
+  ROLE_ADMIN,
+  ROLE_SUPER_ADMIN,
+  ROLE_USER,
+  buildLegacyEmail,
+  canEditOrganization,
+  canManageLoginContent,
+  canManageOrganizations,
+  canManageOrganizationUsers,
+  normalizeRole,
+  pickLoginContent,
+  resolveEffectiveOrganizationId,
+  splitFullName,
+  toBooleanFlag,
+} from "./accessControl.js";
+import {
+  REFRESH_TOKEN_MAX_AGE_MS,
+  createPasswordHash,
+  hashStoredToken,
+  verifyPassword,
+} from "./webAuth.js";
+
+const DEFAULT_ORGANIZATION_NAME = "Default Organization";
+
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function dbString(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function parseMySqlConnectionString(connectionString) {
+  const url = new URL(connectionString);
+  const rawSslMode = url.searchParams.get("ssl-mode") ?? url.searchParams.get("sslmode") ?? "";
+  const sslMode = rawSslMode.toLowerCase();
+  const shouldUseSsl = sslMode !== "disable";
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 3306),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
+    waitForConnections: true,
+    connectionLimit: 6,
+    charset: "utf8mb4",
+    timezone: "Z",
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
+  };
+}
+
+function getDatabaseKind() {
+  const connectionString = process.env.DATABASE_URL?.trim();
+
+  if (!connectionString) {
+    return "memory";
+  }
+
+  if (connectionString.startsWith("mysql://")) {
+    return "mysql";
+  }
+
+  return "memory";
+}
+
+function sanitizeOrganization(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    name: row.name,
+    oib: row.oib ?? "",
+    address: row.address ?? "",
+    city: row.city ?? "",
+    postalCode: row.postal_code ?? "",
+    country: row.country ?? "",
+    contactEmail: row.contact_email ?? "",
+    contactPhone: row.contact_phone ?? "",
+    status: row.status ?? "active",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function sanitizeUser(row) {
+  if (!row) {
+    return null;
+  }
+
+  const firstName = row.first_name ?? "";
+  const lastName = row.last_name ?? "";
+
+  return {
+    id: String(row.id),
+    username: row.legacy_username ?? row.korisnicko_ime ?? row.email ?? "",
+    email: row.email ?? buildLegacyEmail(row.korisnicko_ime ?? row.legacy_username ?? "", row.id),
+    firstName,
+    lastName,
+    fullName: [firstName, lastName].filter(Boolean).join(" ") || row.ime_prezime || row.korisnicko_ime || row.email || "User",
+    organizationId: row.organization_id ? String(row.organization_id) : "",
+    organizationName: row.organization_name ?? "",
+    role: normalizeRole(row.role ?? row.razina_prava ?? ROLE_USER),
+    isActive: row.is_active === undefined ? true : Boolean(Number(row.is_active)),
+    legacyUsername: row.legacy_username ?? row.korisnicko_ime ?? "",
+    lastLoginAt: normalizeTimestamp(row.last_login_at),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function sanitizeLoginContent(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    heading: row.heading ?? "",
+    quoteText: row.quote_text ?? "",
+    authorName: row.author_name ?? "",
+    authorTitle: row.author_title ?? "",
+    featureTitle: row.feature_title ?? "",
+    featureBody: row.feature_body ?? "",
+    accentLabel: row.accent_label ?? "",
+    isActive: row.is_active === undefined ? true : Boolean(Number(row.is_active)),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function normalizeOrganizationInput(input = {}) {
+  return {
+    name: dbString(input.name),
+    oib: dbString(input.oib),
+    address: dbString(input.address),
+    city: dbString(input.city),
+    postalCode: dbString(input.postalCode),
+    country: dbString(input.country) || "Hrvatska",
+    contactEmail: dbString(input.contactEmail),
+    contactPhone: dbString(input.contactPhone),
+    status: dbString(input.status).toLowerCase() === "inactive" ? "inactive" : "active",
+  };
+}
+
+function normalizeUserInput(input = {}) {
+  return {
+    firstName: dbString(input.firstName),
+    lastName: dbString(input.lastName),
+    email: dbString(input.email).toLowerCase(),
+    password: dbString(input.password),
+    role: normalizeRole(input.role),
+    isActive: toBooleanFlag(input.isActive, true),
+    organizationId: dbString(input.organizationId),
+    legacyUsername: dbString(input.legacyUsername),
+  };
+}
+
+function normalizeLoginContentInput(input = {}) {
+  return {
+    heading: dbString(input.heading),
+    quoteText: dbString(input.quoteText),
+    authorName: dbString(input.authorName),
+    authorTitle: dbString(input.authorTitle),
+    featureTitle: dbString(input.featureTitle),
+    featureBody: dbString(input.featureBody),
+    accentLabel: dbString(input.accentLabel),
+    isActive: toBooleanFlag(input.isActive, true),
+  };
+}
+
+function assertText(value, message) {
+  if (!dbString(value)) {
+    throw createHttpError(400, message);
+  }
+}
+
+function rethrowDatabaseError(error, fallbackMessage) {
+  if (error?.statusCode) {
+    throw error;
+  }
+
+  if (error?.code === "ER_DUP_ENTRY") {
+    throw createHttpError(400, fallbackMessage);
+  }
+
+  throw error;
+}
+
+async function ensureSchema(connection) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      oib VARCHAR(32) NOT NULL DEFAULT '',
+      address VARCHAR(255) NOT NULL DEFAULT '',
+      city VARCHAR(120) NOT NULL DEFAULT '',
+      postal_code VARCHAR(32) NOT NULL DEFAULT '',
+      country VARCHAR(120) NOT NULL DEFAULT 'Hrvatska',
+      contact_email VARCHAR(255) NOT NULL DEFAULT '',
+      contact_phone VARCHAR(64) NOT NULL DEFAULT '',
+      status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_organizations_name (name)
+    )
+  `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS app_users (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      organization_id INT NULL,
+      first_name VARCHAR(120) NOT NULL DEFAULT '',
+      last_name VARCHAR(160) NOT NULL DEFAULT '',
+      email VARCHAR(255) NOT NULL,
+      legacy_username VARCHAR(100) NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      role ENUM('super_admin', 'admin', 'user') NOT NULL DEFAULT 'user',
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      last_login_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_app_users_email (email),
+      UNIQUE KEY uniq_app_users_legacy_username (legacy_username),
+      KEY idx_app_users_org (organization_id),
+      KEY idx_app_users_role (role)
+    )
+  `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS organization_companies (
+      organization_id INT NOT NULL,
+      company_id INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (organization_id, company_id),
+      UNIQUE KEY uniq_organization_companies_company (company_id),
+      KEY idx_organization_companies_org (organization_id)
+    )
+  `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS login_content_items (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      heading VARCHAR(255) NOT NULL,
+      quote_text TEXT NOT NULL,
+      author_name VARCHAR(255) NOT NULL DEFAULT '',
+      author_title VARCHAR(255) NOT NULL DEFAULT '',
+      feature_title VARCHAR(255) NOT NULL DEFAULT '',
+      feature_body TEXT NULL,
+      accent_label VARCHAR(100) NOT NULL DEFAULT '',
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_by_user_id INT NULL,
+      updated_by_user_id INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_login_content_items_active (is_active)
+    )
+  `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS app_refresh_tokens (
+      token_hash CHAR(64) PRIMARY KEY,
+      user_id INT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      user_agent VARCHAR(255) NOT NULL DEFAULT '',
+      ip_address VARCHAR(64) NOT NULL DEFAULT '',
+      KEY idx_app_refresh_tokens_user_id (user_id),
+      KEY idx_app_refresh_tokens_expires_at (expires_at)
+    )
+  `);
+}
+
+async function fetchOrganizations(connection, accessibleIds = null) {
+  const ids = (accessibleIds ?? []).map((value) => Number(value)).filter(Number.isFinite);
+  const hasFilter = Array.isArray(accessibleIds) && ids.length > 0;
+  const [rows] = hasFilter
+    ? await connection.query(
+      `
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, status, created_at, updated_at
+        FROM organizations
+        WHERE id IN (?)
+        ORDER BY name ASC
+      `,
+      [ids],
+    )
+    : await connection.query(`
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, status, created_at, updated_at
+        FROM organizations
+        ORDER BY name ASC
+      `);
+
+  return rows.map(sanitizeOrganization);
+}
+
+async function fetchUsers(connection, actor, effectiveOrganizationId) {
+  const actorRole = normalizeRole(actor?.role);
+  let query = `
+    SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
+           u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+           o.name AS organization_name
+    FROM app_users u
+    LEFT JOIN organizations o ON o.id = u.organization_id
+  `;
+  const params = [];
+
+  if (actorRole === ROLE_ADMIN) {
+    query += " WHERE u.organization_id = ? ";
+    params.push(Number(actor.organizationId));
+  } else if (actorRole === ROLE_USER) {
+    query += " WHERE u.id = ? ";
+    params.push(Number(actor.id));
+  } else if (effectiveOrganizationId) {
+    query += " WHERE u.organization_id = ? OR u.role = 'super_admin' ";
+    params.push(Number(effectiveOrganizationId));
+  }
+
+  query += " ORDER BY o.name ASC, u.first_name ASC, u.last_name ASC, u.email ASC";
+  const [rows] = await connection.query(query, params);
+  return rows.map(sanitizeUser);
+}
+
+async function fetchLoginContentItems(connection) {
+  const [rows] = await connection.query(`
+    SELECT id, heading, quote_text, author_name, author_title, feature_title, feature_body, accent_label, is_active, created_at, updated_at
+    FROM login_content_items
+    ORDER BY updated_at DESC, id DESC
+  `);
+
+  return rows.map(sanitizeLoginContent);
+}
+
+async function fetchCompanyAssignments(connection) {
+  const [rows] = await connection.query(`
+    SELECT organization_id, company_id
+    FROM organization_companies
+  `);
+
+  return rows.map((row) => ({
+    organizationId: String(row.organization_id),
+    companyId: String(row.company_id),
+  }));
+}
+
+function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
+  const allowedCompanyIds = new Set(
+    assignments
+      .filter((assignment) => String(assignment.organizationId) === String(organizationId))
+      .map((assignment) => String(assignment.companyId)),
+  );
+
+  return {
+    companies: (rawSnapshot.companies ?? []).filter((item) => allowedCompanyIds.has(String(item.id))),
+    locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
+    workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
+  };
+}
+
+async function seedDefaultData(connection) {
+  const [[organizationCount]] = await connection.query("SELECT COUNT(*) AS total FROM organizations");
+
+  if (Number(organizationCount.total) === 0) {
+    await connection.query(
+      `
+        INSERT INTO organizations
+          (name, oib, address, city, postal_code, country, contact_email, contact_phone, status)
+        VALUES (?, '', '', '', '', 'Hrvatska', '', '', 'active')
+      `,
+      [DEFAULT_ORGANIZATION_NAME],
+    );
+  }
+
+  const [[defaultOrganization]] = await connection.query(
+    "SELECT id FROM organizations ORDER BY id ASC LIMIT 1",
+  );
+  const defaultOrganizationId = String(defaultOrganization?.id ?? "");
+  const [[userCount]] = await connection.query("SELECT COUNT(*) AS total FROM app_users");
+
+  if (Number(userCount.total) === 0) {
+    const [legacyUsers] = await connection.query(`
+      SELECT id, korisnicko_ime, lozinka_hash, ime_prezime, razina_prava
+      FROM korisnici
+      ORDER BY
+        CASE WHEN razina_prava = 'admin' THEN 0 ELSE 1 END ASC,
+        id ASC
+    `);
+
+    for (const [index, row] of legacyUsers.entries()) {
+      const fullName = dbString(row.ime_prezime) || row.korisnicko_ime;
+      const parts = splitFullName(fullName);
+      const role = dbString(row.razina_prava).toLowerCase() === "admin"
+        ? (index === 0 ? ROLE_SUPER_ADMIN : ROLE_ADMIN)
+        : ROLE_USER;
+
+      await connection.query(
+        `
+          INSERT INTO app_users
+            (organization_id, first_name, last_name, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        `,
+        [
+          Number(defaultOrganizationId),
+          parts.firstName,
+          parts.lastName,
+          buildLegacyEmail(row.korisnicko_ime, row.id),
+          row.korisnicko_ime,
+          row.lozinka_hash,
+          role,
+        ],
+      );
+    }
+  }
+
+  const [[superAdminCount]] = await connection.query(
+    "SELECT COUNT(*) AS total FROM app_users WHERE role = 'super_admin'",
+  );
+
+  if (Number(superAdminCount.total) === 0) {
+    const [[firstUser]] = await connection.query(
+      "SELECT id FROM app_users ORDER BY id ASC LIMIT 1",
+    );
+
+    if (firstUser?.id) {
+      await connection.query(
+        "UPDATE app_users SET role = 'super_admin' WHERE id = ?",
+        [Number(firstUser.id)],
+      );
+    }
+  }
+
+  const [[mappingCount]] = await connection.query("SELECT COUNT(*) AS total FROM organization_companies");
+
+  if (Number(mappingCount.total) === 0 && defaultOrganizationId) {
+    await connection.query(
+      `
+        INSERT INTO organization_companies (organization_id, company_id)
+        SELECT ?, f.id
+        FROM firme f
+      `,
+      [Number(defaultOrganizationId)],
+    );
+  }
+
+  const [[loginContentCount]] = await connection.query("SELECT COUNT(*) AS total FROM login_content_items");
+
+  if (Number(loginContentCount.total) === 0) {
+    const seedItems = [
+      {
+        heading: "What's your clients' status today?",
+        quoteText: "The whole team now sees the same client, the same location history and the same work order status without copy-paste chaos.",
+        authorName: "Operations Lead",
+        authorTitle: "Tenant workspace",
+        featureTitle: "One source of truth for every organization",
+        featureBody: "Super admins separate tenants cleanly while each admin keeps full control over their own client base.",
+        accentLabel: "Live operations",
+      },
+      {
+        heading: "A workspace built for service teams.",
+        quoteText: "Admins manage their organization, users stay focused on execution, and every client portfolio stays neatly separated.",
+        authorName: "Safety360",
+        authorTitle: "Platform flow",
+        featureTitle: "Multi-tenant by design",
+        featureBody: "Organizations, companies, locations and work orders stay scoped correctly on every request.",
+        accentLabel: "Secure tenancy",
+      },
+      {
+        heading: "Keep every location and work order connected.",
+        quoteText: "From the first request to the final invoice note, the workflow finally feels organized and predictable.",
+        authorName: "Field Team",
+        authorTitle: "Daily operations",
+        featureTitle: "Clear structure across teams",
+        featureBody: "Company masters, locations and RN lists stay aligned for every organization inside one platform.",
+        accentLabel: "Structured flow",
+      },
+    ];
+
+    for (const item of seedItems) {
+      await connection.query(
+        `
+          INSERT INTO login_content_items
+            (heading, quote_text, author_name, author_title, feature_title, feature_body, accent_label, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        `,
+        [
+          item.heading,
+          item.quoteText,
+          item.authorName,
+          item.authorTitle,
+          item.featureTitle,
+          item.featureBody,
+          item.accentLabel,
+        ],
+      );
+    }
+  }
+}
+
+export class MemoryTenantRepository {
+  constructor() {
+    this.kind = "memory";
+    this.organizations = [
+      sanitizeOrganization({
+        id: 1,
+        name: DEFAULT_ORGANIZATION_NAME,
+        country: "Hrvatska",
+        status: "active",
+      }),
+    ];
+    this.users = [];
+    this.loginContentItems = [
+      sanitizeLoginContent({
+        id: 1,
+        heading: "What's your clients' status today?",
+        quote_text: "Organize companies, locations and work orders in one clean workspace.",
+        author_name: "Safety360",
+        author_title: "Local demo",
+        feature_title: "Tenant-ready structure",
+        feature_body: "Super admins manage organizations, admins manage their own team.",
+        accent_label: "Demo mode",
+        is_active: 1,
+      }),
+    ];
+    this.companyAssignments = new Map();
+    this.refreshTokens = new Map();
+  }
+
+  async init() {
+    this.users = [
+      {
+        id: "1",
+        organizationId: "1",
+        organizationName: DEFAULT_ORGANIZATION_NAME,
+        firstName: "Local",
+        lastName: "Super Admin",
+        fullName: "Local Super Admin",
+        email: "admin@local.test",
+        username: "admin",
+        legacyUsername: "admin",
+        role: ROLE_SUPER_ADMIN,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginAt: null,
+        passwordHash: await createPasswordHash("admin"),
+      },
+    ];
+  }
+
+  async close() {}
+
+  async getPublicLoginScreen() {
+    return pickLoginContent(this.loginContentItems);
+  }
+
+  async authenticateUser(identifier, password) {
+    const needle = dbString(identifier).toLowerCase();
+    const user = this.users.find((item) => (
+      item.email.toLowerCase() === needle
+      || item.legacyUsername.toLowerCase() === needle
+      || item.username.toLowerCase() === needle
+    ));
+
+    if (!user || !user.isActive) {
+      return null;
+    }
+
+    const verification = await verifyPassword(password, user.passwordHash);
+
+    if (!verification.ok) {
+      return null;
+    }
+
+    if (verification.needsUpgrade) {
+      user.passwordHash = await createPasswordHash(password);
+    }
+
+    user.lastLoginAt = new Date().toISOString();
+    return { ...user };
+  }
+
+  async storeRefreshToken(user, token, metadata = {}) {
+    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    this.refreshTokens.set(hashStoredToken(token), {
+      userId: String(user.id),
+      expiresAt,
+    });
+
+    return { user, expiresAt };
+  }
+
+  async rotateRefreshToken(currentToken, nextToken, metadata = {}) {
+    const record = this.refreshTokens.get(hashStoredToken(currentToken));
+
+    if (!record || Date.parse(record.expiresAt) <= Date.now()) {
+      return null;
+    }
+
+    if (metadata.expectedUserId && String(metadata.expectedUserId) !== String(record.userId)) {
+      return null;
+    }
+
+    const user = this.users.find((item) => item.id === record.userId);
+
+    if (!user || !user.isActive) {
+      return null;
+    }
+
+    this.refreshTokens.delete(hashStoredToken(currentToken));
+    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    this.refreshTokens.set(hashStoredToken(nextToken), {
+      userId: String(user.id),
+      expiresAt,
+    });
+
+    return {
+      user: { ...user },
+      expiresAt,
+    };
+  }
+
+  async deleteRefreshToken(token) {
+    return this.refreshTokens.delete(hashStoredToken(token));
+  }
+
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [] }) {
+    const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
+    const scopedSnapshot = buildScopedSnapshot(
+      rawSnapshot,
+      activeOrganizationId,
+      Array.from(this.companyAssignments.entries()).map(([companyId, organizationId]) => ({
+        companyId,
+        organizationId,
+      })),
+    );
+
+    return {
+      organizations: this.organizations.map((item) => ({ ...item })),
+      activeOrganizationId,
+      currentOrganization: this.organizations.find((item) => item.id === activeOrganizationId) ?? null,
+      users: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+        ? this.users.map((item) => ({ ...item }))
+        : this.users.filter((item) => String(item.organizationId) === String(activeOrganizationId)).map((item) => ({ ...item })),
+      loginContentItems: canManageLoginContent(actor) ? this.loginContentItems.map((item) => ({ ...item })) : [],
+      ...scopedSnapshot,
+    };
+  }
+
+  async createOrganization(actor, input) {
+    if (!canManageOrganizations(actor)) {
+      throw createHttpError(403, "Nemate pravo kreirati organizacije.");
+    }
+
+    const normalized = normalizeOrganizationInput(input);
+    assertText(normalized.name, "Naziv organizacije je obavezan.");
+    const next = {
+      id: String(this.organizations.length + 1),
+      ...normalized,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.organizations.push(next);
+    return next;
+  }
+
+  async updateOrganization(actor, organizationId, patch) {
+    if (!canEditOrganization(actor, organizationId)) {
+      throw createHttpError(403, "Nemate pravo mijenjati ovu organizaciju.");
+    }
+
+    const current = this.organizations.find((item) => item.id === String(organizationId));
+
+    if (!current) {
+      return null;
+    }
+
+    Object.assign(current, normalizeOrganizationInput({ ...current, ...patch }), {
+      updatedAt: new Date().toISOString(),
+    });
+    return { ...current };
+  }
+
+  async createUser(actor, input) {
+    const normalized = normalizeUserInput(input);
+    const targetOrganizationId = normalized.organizationId || actor?.organizationId;
+
+    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+      throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
+    }
+
+    assertText(normalized.email, "Email je obavezan.");
+    assertText(normalized.password, "Lozinka je obavezna.");
+
+    const organization = this.organizations.find((item) => item.id === String(targetOrganizationId));
+
+    if (!organization) {
+      throw createHttpError(400, "Odabrana organizacija ne postoji.");
+    }
+
+    const nextId = String(this.users.length + 1);
+    const next = {
+      id: nextId,
+      organizationId: String(targetOrganizationId),
+      organizationName: organization.name,
+      firstName: normalized.firstName,
+      lastName: normalized.lastName,
+      fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+      email: normalized.email,
+      username: normalized.legacyUsername || normalized.email,
+      legacyUsername: normalized.legacyUsername || normalized.email,
+      role: normalized.role,
+      isActive: normalized.isActive,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: null,
+      passwordHash: await createPasswordHash(normalized.password),
+    };
+    this.users.push(next);
+    return { ...next };
+  }
+
+  async updateUser(actor, userId, patch) {
+    const current = this.users.find((item) => item.id === String(userId));
+
+    if (!current) {
+      return null;
+    }
+
+    const normalized = normalizeUserInput({ ...current, ...patch });
+    const targetOrganizationId = normalized.organizationId || current.organizationId;
+
+    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+      throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
+    }
+
+    const organization = this.organizations.find((item) => item.id === String(targetOrganizationId));
+    current.organizationId = String(targetOrganizationId);
+    current.organizationName = organization?.name ?? "";
+    current.firstName = normalized.firstName;
+    current.lastName = normalized.lastName;
+    current.fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
+    current.email = normalized.email;
+    current.legacyUsername = normalized.legacyUsername || current.legacyUsername;
+    current.username = current.legacyUsername || current.email;
+    current.role = normalized.role;
+    current.isActive = normalized.isActive;
+    current.updatedAt = new Date().toISOString();
+
+    if (normalized.password) {
+      current.passwordHash = await createPasswordHash(normalized.password);
+    }
+
+    return { ...current };
+  }
+
+  async createLoginContent(actor, input) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const normalized = normalizeLoginContentInput(input);
+    assertText(normalized.heading, "Naslov je obavezan.");
+    assertText(normalized.quoteText, "Quote tekst je obavezan.");
+    const next = {
+      id: String(this.loginContentItems.length + 1),
+      ...normalized,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.loginContentItems.unshift(next);
+    return { ...next };
+  }
+
+  async updateLoginContent(actor, id, patch) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const current = this.loginContentItems.find((item) => item.id === String(id));
+
+    if (!current) {
+      return null;
+    }
+
+    Object.assign(current, normalizeLoginContentInput({ ...current, ...patch }), {
+      updatedAt: new Date().toISOString(),
+    });
+    return { ...current };
+  }
+
+  async deleteLoginContent(actor, id) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const before = this.loginContentItems.length;
+    this.loginContentItems = this.loginContentItems.filter((item) => item.id !== String(id));
+    return this.loginContentItems.length !== before;
+  }
+
+  async assignCompanyToOrganization(organizationId, companyId) {
+    this.companyAssignments.set(String(companyId), String(organizationId));
+  }
+
+  async removeCompanyAssignment(companyId) {
+    this.companyAssignments.delete(String(companyId));
+  }
+}
+
+export class MySqlTenantRepository {
+  constructor(connectionString) {
+    this.kind = "mysql";
+    this.pool = mysql.createPool(parseMySqlConnectionString(connectionString));
+  }
+
+  async init() {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.query("SELECT 1");
+      await ensureSchema(connection);
+      await seedDefaultData(connection);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async close() {
+    await this.pool.end();
+  }
+
+  async getAccessibleOrganizations(connection, actor) {
+    if (normalizeRole(actor?.role) === ROLE_SUPER_ADMIN) {
+      return fetchOrganizations(connection);
+    }
+
+    if (!actor?.organizationId) {
+      return [];
+    }
+
+    return fetchOrganizations(connection, [actor.organizationId]);
+  }
+
+  async getContext(connection, actor, requestedOrganizationId) {
+    const organizations = await this.getAccessibleOrganizations(connection, actor);
+    const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, organizations);
+    const currentOrganization = organizations.find((item) => item.id === activeOrganizationId) ?? null;
+
+    if (!currentOrganization && normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pristup odabranoj organizaciji.");
+    }
+
+    return {
+      organizations,
+      activeOrganizationId,
+      currentOrganization,
+    };
+  }
+
+  async getPublicLoginScreen() {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const items = await fetchLoginContentItems(connection);
+      return pickLoginContent(items);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async authenticateUser(identifier, password) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const needle = dbString(identifier).toLowerCase();
+      const [rows] = await connection.query(
+        `
+          SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
+                 u.password_hash, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 o.name AS organization_name, o.status AS organization_status
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE LOWER(u.email) = ? OR LOWER(COALESCE(u.legacy_username, '')) = ?
+          LIMIT 1
+        `,
+        [needle, needle],
+      );
+
+      const userRow = rows[0];
+
+      if (!userRow || !Boolean(Number(userRow.is_active))) {
+        return null;
+      }
+
+      if (userRow.organization_status && userRow.organization_status !== "active" && normalizeRole(userRow.role) !== ROLE_SUPER_ADMIN) {
+        return null;
+      }
+
+      const verification = await verifyPassword(password, userRow.password_hash);
+
+      if (!verification.ok) {
+        return null;
+      }
+
+      if (verification.needsUpgrade) {
+        const nextHash = await createPasswordHash(password);
+        await connection.query(
+          "UPDATE app_users SET password_hash = ? WHERE id = ?",
+          [nextHash, Number(userRow.id)],
+        );
+      }
+
+      await connection.query(
+        "UPDATE app_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [Number(userRow.id)],
+      );
+
+      return sanitizeUser({
+        ...userRow,
+        last_login_at: new Date(),
+      });
+    } finally {
+      connection.release();
+    }
+  }
+
+  async storeRefreshToken(user, token, metadata = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const tokenHash = hashStoredToken(token);
+      const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
+
+      await connection.query("DELETE FROM app_refresh_tokens WHERE expires_at <= UTC_TIMESTAMP()");
+      await connection.query(
+        `
+          INSERT INTO app_refresh_tokens (token_hash, user_id, expires_at, user_agent, ip_address)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+          tokenHash,
+          Number(user.id),
+          expiresAt,
+          dbString(metadata.userAgent).slice(0, 255),
+          dbString(metadata.ipAddress).slice(0, 64),
+        ],
+      );
+
+      return {
+        user,
+        expiresAt: expiresAt.toISOString(),
+      };
+    } finally {
+      connection.release();
+    }
+  }
+
+  async rotateRefreshToken(currentToken, nextToken, metadata = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query(
+        `
+          SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
+                 u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 o.name AS organization_name
+          FROM app_refresh_tokens rt
+          INNER JOIN app_users u ON u.id = rt.user_id
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE rt.token_hash = ?
+            AND rt.expires_at > UTC_TIMESTAMP()
+          LIMIT 1
+        `,
+        [hashStoredToken(currentToken)],
+      );
+
+      const userRow = rows[0];
+
+      if (!userRow || !Boolean(Number(userRow.is_active))) {
+        await connection.rollback();
+        return null;
+      }
+
+      if (metadata.expectedUserId && String(userRow.id) !== String(metadata.expectedUserId)) {
+        await connection.rollback();
+        return null;
+      }
+
+      const nextExpiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
+      await connection.query(
+        `
+          UPDATE app_refresh_tokens
+          SET token_hash = ?, expires_at = ?, last_seen_at = CURRENT_TIMESTAMP, user_agent = ?, ip_address = ?
+          WHERE token_hash = ?
+        `,
+        [
+          hashStoredToken(nextToken),
+          nextExpiresAt,
+          dbString(metadata.userAgent).slice(0, 255),
+          dbString(metadata.ipAddress).slice(0, 64),
+          hashStoredToken(currentToken),
+        ],
+      );
+
+      await connection.commit();
+
+      return {
+        user: sanitizeUser(userRow),
+        expiresAt: nextExpiresAt.toISOString(),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteRefreshToken(token) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        "DELETE FROM app_refresh_tokens WHERE token_hash = ?",
+        [hashStoredToken(token)],
+      );
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [] }) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const context = await this.getContext(connection, actor, requestedOrganizationId);
+      const assignments = await fetchCompanyAssignments(connection);
+      const scopedSnapshot = context.activeOrganizationId
+        ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments)
+        : { companies: [], locations: [], workOrders: [] };
+
+      return {
+        ...context,
+        users: await fetchUsers(connection, actor, context.activeOrganizationId),
+        loginContentItems: canManageLoginContent(actor) ? await fetchLoginContentItems(connection) : [],
+        ...scopedSnapshot,
+      };
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createOrganization(actor, input) {
+    if (!canManageOrganizations(actor)) {
+      throw createHttpError(403, "Nemate pravo kreirati organizacije.");
+    }
+
+    const normalized = normalizeOrganizationInput(input);
+    assertText(normalized.name, "Naziv organizacije je obavezan.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        `
+          INSERT INTO organizations
+            (name, oib, address, city, postal_code, country, contact_email, contact_phone, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          normalized.name,
+          normalized.oib,
+          normalized.address,
+          normalized.city,
+          normalized.postalCode,
+          normalized.country,
+          normalized.contactEmail,
+          normalized.contactPhone,
+          normalized.status,
+        ],
+      );
+      const [rows] = await connection.query(
+        "SELECT * FROM organizations WHERE id = ? LIMIT 1",
+        [Number(result.insertId)],
+      );
+      return sanitizeOrganization(rows[0]);
+    } catch (error) {
+      rethrowDatabaseError(error, "Organizacija s tim nazivom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOrganization(actor, organizationId, patch) {
+    if (!canEditOrganization(actor, organizationId)) {
+      throw createHttpError(403, "Nemate pravo mijenjati ovu organizaciju.");
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        "SELECT * FROM organizations WHERE id = ? LIMIT 1",
+        [Number(organizationId)],
+      );
+
+      if (!rows[0]) {
+        return null;
+      }
+
+      const normalized = normalizeOrganizationInput({
+        ...sanitizeOrganization(rows[0]),
+        ...patch,
+      });
+      assertText(normalized.name, "Naziv organizacije je obavezan.");
+
+      await connection.query(
+        `
+          UPDATE organizations
+          SET name = ?, oib = ?, address = ?, city = ?, postal_code = ?, country = ?,
+              contact_email = ?, contact_phone = ?, status = ?
+          WHERE id = ?
+        `,
+        [
+          normalized.name,
+          normalized.oib,
+          normalized.address,
+          normalized.city,
+          normalized.postalCode,
+          normalized.country,
+          normalized.contactEmail,
+          normalized.contactPhone,
+          normalized.status,
+          Number(organizationId),
+        ],
+      );
+
+      const [nextRows] = await connection.query(
+        "SELECT * FROM organizations WHERE id = ? LIMIT 1",
+        [Number(organizationId)],
+      );
+      return sanitizeOrganization(nextRows[0]);
+    } catch (error) {
+      rethrowDatabaseError(error, "Organizacija s tim nazivom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createUser(actor, input) {
+    const normalized = normalizeUserInput(input);
+    const targetOrganizationId = normalized.organizationId || actor?.organizationId;
+
+    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+      throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
+    }
+
+    assertText(normalized.email, "Email je obavezan.");
+    assertText(normalized.password, "Lozinka je obavezna.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [organizationRows] = await connection.query(
+        "SELECT id FROM organizations WHERE id = ? LIMIT 1",
+        [Number(targetOrganizationId)],
+      );
+
+      if (!organizationRows[0]) {
+        throw createHttpError(400, "Odabrana organizacija ne postoji.");
+      }
+
+      const passwordHash = await createPasswordHash(normalized.password);
+      const [result] = await connection.query(
+        `
+          INSERT INTO app_users
+            (organization_id, first_name, last_name, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(targetOrganizationId),
+          normalized.firstName,
+          normalized.lastName,
+          normalized.email,
+          normalized.legacyUsername || null,
+          passwordHash,
+          normalized.role,
+          normalized.isActive ? 1 : 0,
+        ],
+      );
+
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(result.insertId)],
+      );
+      return sanitizeUser(rows[0]);
+    } catch (error) {
+      rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateUser(actor, userId, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(userId)],
+      );
+
+      const current = rows[0];
+
+      if (!current) {
+        return null;
+      }
+
+      const normalized = normalizeUserInput({
+        ...sanitizeUser(current),
+        ...patch,
+      });
+      const targetOrganizationId = normalized.organizationId || current.organization_id;
+
+      if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+        throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
+      }
+
+      const updateFields = [
+        "organization_id = ?",
+        "first_name = ?",
+        "last_name = ?",
+        "email = ?",
+        "legacy_username = ?",
+        "role = ?",
+        "is_active = ?",
+      ];
+      const params = [
+        Number(targetOrganizationId),
+        normalized.firstName,
+        normalized.lastName,
+        normalized.email,
+        normalized.legacyUsername || null,
+        normalized.role,
+        normalized.isActive ? 1 : 0,
+      ];
+
+      if (normalized.password) {
+        updateFields.push("password_hash = ?");
+        params.push(await createPasswordHash(normalized.password));
+      }
+
+      params.push(Number(userId));
+      await connection.query(`UPDATE app_users SET ${updateFields.join(", ")} WHERE id = ?`, params);
+
+      const [nextRows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(userId)],
+      );
+      return sanitizeUser(nextRows[0]);
+    } catch (error) {
+      rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createLoginContent(actor, input) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const normalized = normalizeLoginContentInput(input);
+    assertText(normalized.heading, "Naslov je obavezan.");
+    assertText(normalized.quoteText, "Quote tekst je obavezan.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        `
+          INSERT INTO login_content_items
+            (heading, quote_text, author_name, author_title, feature_title, feature_body, accent_label, is_active, created_by_user_id, updated_by_user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          normalized.heading,
+          normalized.quoteText,
+          normalized.authorName,
+          normalized.authorTitle,
+          normalized.featureTitle,
+          normalized.featureBody,
+          normalized.accentLabel,
+          normalized.isActive ? 1 : 0,
+          Number(actor.id),
+          Number(actor.id),
+        ],
+      );
+
+      const [rows] = await connection.query(
+        "SELECT * FROM login_content_items WHERE id = ? LIMIT 1",
+        [Number(result.insertId)],
+      );
+      return sanitizeLoginContent(rows[0]);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateLoginContent(actor, id, patch) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        "SELECT * FROM login_content_items WHERE id = ? LIMIT 1",
+        [Number(id)],
+      );
+
+      if (!rows[0]) {
+        return null;
+      }
+
+      const normalized = normalizeLoginContentInput({
+        ...sanitizeLoginContent(rows[0]),
+        ...patch,
+      });
+
+      await connection.query(
+        `
+          UPDATE login_content_items
+          SET heading = ?, quote_text = ?, author_name = ?, author_title = ?, feature_title = ?,
+              feature_body = ?, accent_label = ?, is_active = ?, updated_by_user_id = ?
+          WHERE id = ?
+        `,
+        [
+          normalized.heading,
+          normalized.quoteText,
+          normalized.authorName,
+          normalized.authorTitle,
+          normalized.featureTitle,
+          normalized.featureBody,
+          normalized.accentLabel,
+          normalized.isActive ? 1 : 0,
+          Number(actor.id),
+          Number(id),
+        ],
+      );
+
+      const [nextRows] = await connection.query(
+        "SELECT * FROM login_content_items WHERE id = ? LIMIT 1",
+        [Number(id)],
+      );
+      return sanitizeLoginContent(nextRows[0]);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteLoginContent(actor, id) {
+    if (!canManageLoginContent(actor)) {
+      throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        "DELETE FROM login_content_items WHERE id = ?",
+        [Number(id)],
+      );
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async assignCompanyToOrganization(organizationId, companyId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.query(
+        `
+          INSERT INTO organization_companies (organization_id, company_id)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE organization_id = VALUES(organization_id)
+        `,
+        [Number(organizationId), Number(companyId)],
+      );
+    } finally {
+      connection.release();
+    }
+  }
+
+  async removeCompanyAssignment(companyId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.query(
+        "DELETE FROM organization_companies WHERE company_id = ?",
+        [Number(companyId)],
+      );
+    } finally {
+      connection.release();
+    }
+  }
+}
+
+export async function createTenantRepository() {
+  const kind = getDatabaseKind();
+
+  if (kind === "mysql") {
+    const repository = new MySqlTenantRepository(process.env.DATABASE_URL);
+    await repository.init();
+    return repository;
+  }
+
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+  return repository;
+}

@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 
+import {
+  canDeleteWorkOrders,
+  canManageMasterData,
+  canManageWorkOrders,
+} from "./src/accessControl.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
+import { createTenantRepository } from "./src/tenantRepository.js";
 import {
   clearAuthCookies,
   createAccessToken,
@@ -35,7 +41,15 @@ async function createRepositoryWithRetry() {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await createSafetyRepository();
+      const [domainRepository, tenantRepository] = await Promise.all([
+        createSafetyRepository(),
+        createTenantRepository(),
+      ]);
+
+      return {
+        domainRepository,
+        tenantRepository,
+      };
     } catch (error) {
       lastError = error;
 
@@ -51,7 +65,7 @@ async function createRepositoryWithRetry() {
   throw lastError;
 }
 
-const repository = await createRepositoryWithRetry();
+const { domainRepository, tenantRepository } = await createRepositoryWithRetry();
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -111,8 +125,11 @@ function buildUserFromTokenPayload(payload) {
   return {
     id: String(payload.sub),
     username: String(payload.username ?? ""),
+    email: String(payload.email ?? ""),
     fullName: String(payload.fullName ?? payload.username ?? ""),
-    role: String(payload.role ?? "korisnik"),
+    role: String(payload.role ?? "user"),
+    organizationId: payload.organizationId ? String(payload.organizationId) : "",
+    organizationName: String(payload.organizationName ?? ""),
   };
 }
 
@@ -121,7 +138,7 @@ async function clearRequestAuth(request, response) {
   const refreshToken = getRefreshTokenFromCookies(cookies);
 
   if (refreshToken) {
-    await repository.deleteRefreshToken(refreshToken);
+    await tenantRepository.deleteRefreshToken(refreshToken);
   }
 
   appendResponseCookies(response, clearAuthCookies({
@@ -153,7 +170,7 @@ async function tryRefreshAuth(request, response, cookies) {
 
   const nextAccessToken = createAccessToken(provisionalUser, jwtSecret);
   const nextRefreshToken = createRefreshToken(provisionalUser, jwtSecret);
-  const rotated = await repository.rotateRefreshToken(refreshToken, nextRefreshToken, {
+  const rotated = await tenantRepository.rotateRefreshToken(refreshToken, nextRefreshToken, {
     expectedUserId: provisionalUser.id,
     ipAddress: getClientIp(request),
     userAgent: request.headers["user-agent"] ?? "",
@@ -213,24 +230,74 @@ async function readJsonBody(request) {
   }
 }
 
-async function writeSnapshot(response, user, statusCode = 200) {
-  const snapshot = await repository.getSnapshot();
+function getRequestedOrganizationId(request) {
+  return String(request.headers["x-organization-id"] ?? "").trim();
+}
+
+async function getScopedState(user, request) {
+  const requestedOrganizationId = getRequestedOrganizationId(request);
+  const rawSnapshot = await domainRepository.getSnapshot();
+  const scopedSnapshot = await tenantRepository.getSnapshot(user, requestedOrganizationId, rawSnapshot);
+
+  return {
+    requestedOrganizationId,
+    rawSnapshot,
+    scopedSnapshot,
+  };
+}
+
+function assertInScope(collection, id, message) {
+  const item = collection.find((entry) => String(entry.id) === String(id));
+
+  if (!item) {
+    const error = new Error(message);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return item;
+}
+
+function assertCompanyPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.companyId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.companies, body.companyId, "Tvrtka nije dostupna za odabranu organizaciju.");
+}
+
+function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.locationId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.locations, body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+}
+
+async function writeSnapshot(response, user, request, statusCode = 200) {
+  const { scopedSnapshot } = await getScopedState(user, request);
   sendJson(response, statusCode, {
-    storage: repository.kind,
+    storage: domainRepository.kind,
     user,
-    ...snapshot,
+    ...scopedSnapshot,
   });
 }
 
-async function handleEntityMutation(response, user, handler, statusCode = 200) {
+async function handleEntityMutation(response, user, request, handler, statusCode = 200) {
   await handler();
-  await writeSnapshot(response, user, statusCode);
+  await writeSnapshot(response, user, request, statusCode);
 }
 
 async function handleApiRequest(request, response, url) {
   try {
     if (request.method === "GET" && url.pathname === "/api/health") {
-      sendJson(response, 200, { ok: true, storage: repository.kind });
+      sendJson(response, 200, { ok: true, storage: domainRepository.kind });
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/auth/login-content") {
+      const content = await tenantRepository.getPublicLoginScreen();
+      sendJson(response, 200, content);
       return true;
     }
 
@@ -245,17 +312,17 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       const body = await readJsonBody(request);
-      const user = await repository.authenticateUser(body.username, body.password);
+      const user = await tenantRepository.authenticateUser(body.email ?? body.username, body.password);
 
       if (!user) {
-        sendError(response, 401, "Neispravno korisnicko ime ili lozinka.");
+        sendError(response, 401, "Neispravan email ili lozinka.");
         return true;
       }
 
       const accessToken = createAccessToken(user, jwtSecret);
       const refreshToken = createRefreshToken(user, jwtSecret);
 
-      await repository.storeRefreshToken(user, refreshToken, {
+      await tenantRepository.storeRefreshToken(user, refreshToken, {
         ipAddress: getClientIp(request),
         userAgent: request.headers["user-agent"] ?? "",
       });
@@ -293,7 +360,7 @@ async function handleApiRequest(request, response, url) {
       const token = getRefreshTokenFromCookies(cookies);
 
       if (token) {
-        await repository.deleteRefreshToken(token);
+        await tenantRepository.deleteRefreshToken(token);
       }
 
       appendResponseCookies(response, clearAuthCookies({
@@ -312,108 +379,251 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/companies") {
-      const body = await readJsonBody(request);
-      await handleEntityMutation(response, user, () => repository.createCompany(body), 201);
-      return true;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/locations") {
-      const body = await readJsonBody(request);
-      await handleEntityMutation(response, user, () => repository.createLocation(body), 201);
-      return true;
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/work-orders") {
-      const body = await readJsonBody(request);
-      await handleEntityMutation(response, user, () => repository.createWorkOrder(body), 201);
-      return true;
-    }
-
+    const organizationMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)$/);
+    const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
+    const loginContentMatch = url.pathname.match(/^\/api\/login-content\/([^/]+)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
-    if (companyMatch && request.method === "PATCH") {
+    if (request.method === "POST" && url.pathname === "/api/organizations") {
       const body = await readJsonBody(request);
-      const updated = await repository.updateCompany(companyMatch[1], body);
+      await handleEntityMutation(response, user, request, () => tenantRepository.createOrganization(user, body), 201);
+      return true;
+    }
+
+    if (organizationMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await tenantRepository.updateOrganization(user, organizationMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Organizacija nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/users") {
+      const body = await readJsonBody(request);
+      await handleEntityMutation(response, user, request, () => tenantRepository.createUser(user, body), 201);
+      return true;
+    }
+
+    if (userMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await tenantRepository.updateUser(user, userMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Korisnik nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/login-content") {
+      const body = await readJsonBody(request);
+      await handleEntityMutation(response, user, request, () => tenantRepository.createLoginContent(user, body), 201);
+      return true;
+    }
+
+    if (loginContentMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const updated = await tenantRepository.updateLoginContent(user, loginContentMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Login sadrzaj nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (loginContentMatch && request.method === "DELETE") {
+      const deleted = await tenantRepository.deleteLoginContent(user, loginContentMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Login sadrzaj nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/companies") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const company = await domainRepository.createCompany(body);
+      await tenantRepository.assignCompanyToOrganization(scopedSnapshot.activeOrganizationId, company.id);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/locations") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati lokacijama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createLocation(body);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/work-orders") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createWorkOrder(body);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (companyMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronadena.");
+      const updated = await domainRepository.updateCompany(companyMatch[1], body);
 
       if (!updated) {
         sendError(response, 404, "Tvrtka nije pronadena.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
     if (companyMatch && request.method === "DELETE") {
-      const deleted = await repository.deleteCompany(companyMatch[1]);
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronadena.");
+      const deleted = await domainRepository.deleteCompany(companyMatch[1]);
 
       if (!deleted) {
         sendError(response, 404, "Tvrtka nije pronadena.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await tenantRepository.removeCompanyAssignment(companyMatch[1]);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
     if (locationMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati lokacijama.");
+        return true;
+      }
+
       const body = await readJsonBody(request);
-      const updated = await repository.updateLocation(locationMatch[1], body);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronadena.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateLocation(locationMatch[1], body);
 
       if (!updated) {
         sendError(response, 404, "Lokacija nije pronadena.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
     if (locationMatch && request.method === "DELETE") {
-      const deleted = await repository.deleteLocation(locationMatch[1]);
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati lokacijama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronadena.");
+      const deleted = await domainRepository.deleteLocation(locationMatch[1]);
 
       if (!deleted) {
         sendError(response, 404, "Lokacija nije pronadena.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
     if (workOrderMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
+        return true;
+      }
+
       const body = await readJsonBody(request);
-      const updated = await repository.updateWorkOrder(workOrderMatch[1], body);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], body);
 
       if (!updated) {
         sendError(response, 404, "Radni nalog nije pronaden.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
 
     if (workOrderMatch && request.method === "DELETE") {
-      const deleted = await repository.deleteWorkOrder(workOrderMatch[1]);
+      if (!canDeleteWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati radne naloge.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
+      const deleted = await domainRepository.deleteWorkOrder(workOrderMatch[1]);
 
       if (!deleted) {
         sendError(response, 404, "Radni nalog nije pronaden.");
         return true;
       }
 
-      await writeSnapshot(response, user);
+      await writeSnapshot(response, user, request);
       return true;
     }
   } catch (error) {
-    sendError(response, 400, error.message || "Request failed.");
+    sendError(response, error.statusCode ?? 400, error.message || "Request failed.");
     return true;
   }
 
@@ -484,7 +694,10 @@ async function shutdown(signal) {
 
   server.close(async () => {
     try {
-      await repository.close?.();
+      await Promise.all([
+        domainRepository.close?.(),
+        tenantRepository.close?.(),
+      ]);
       process.exit(0);
     } catch (error) {
       console.error("Failed to close repository cleanly.", error);
@@ -502,5 +715,5 @@ process.on("SIGTERM", () => {
 });
 
 server.listen(port, () => {
-  console.log(`SelfDash workspace live at http://localhost:${port} (${repository.kind})`);
+  console.log(`SelfDash workspace live at http://localhost:${port} (${domainRepository.kind})`);
 });

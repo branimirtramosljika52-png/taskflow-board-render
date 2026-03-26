@@ -19,31 +19,47 @@ const AUTH_RETRY_EXCLUDED_PATHS = new Set([
 
 const state = {
   storage: "memory",
+  organizations: [],
   companies: [],
   locations: [],
+  users: [],
+  loginContentItems: [],
+  loginContent: null,
   workOrders: [],
   activeView: "selfdash",
   user: null,
+  activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
 };
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
 const loginForm = document.querySelector("#login-form");
-const loginUsernameInput = document.querySelector("#login-username");
+const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
-const loginPasswordToggleButton = document.querySelector("#login-password-toggle");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const loginContentAccent = document.querySelector("#login-content-accent");
+const loginContentHeading = document.querySelector("#login-content-heading");
+const loginContentQuote = document.querySelector("#login-content-quote");
+const loginContentAuthorName = document.querySelector("#login-content-author-name");
+const loginContentAuthorTitle = document.querySelector("#login-content-author-title");
+const loginContentFeatureTitle = document.querySelector("#login-content-feature-title");
+const loginContentFeatureBody = document.querySelector("#login-content-feature-body");
 const userBadge = document.querySelector("#user-badge");
 const logoutButton = document.querySelector("#logout-button");
+const organizationContext = document.querySelector("#organization-context");
+const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
+const organizationSwitcher = document.querySelector("#organization-switcher");
 const connectionStatus = document.querySelector("#connection-status");
 const syncError = document.querySelector("#sync-error");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+const managementTab = document.querySelector("#management-tab");
 const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
   companies: document.querySelector("#companies-view"),
   locations: document.querySelector("#locations-view"),
+  management: document.querySelector("#management-view"),
 };
 
 const companiesCount = document.querySelector("#companies-count");
@@ -135,6 +151,50 @@ const locationsBody = document.querySelector("#locations-body");
 const locationsEmpty = document.querySelector("#locations-empty");
 const locationsHelper = document.querySelector("#locations-helper");
 
+const organizationForm = document.querySelector("#organization-form");
+const organizationError = document.querySelector("#organization-error");
+const organizationIdInput = document.querySelector("#organization-id");
+const organizationNameInput = document.querySelector("#organization-name");
+const organizationOibInput = document.querySelector("#organization-oib");
+const organizationAddressInput = document.querySelector("#organization-address");
+const organizationCityInput = document.querySelector("#organization-city");
+const organizationPostalCodeInput = document.querySelector("#organization-postal-code");
+const organizationCountryInput = document.querySelector("#organization-country");
+const organizationContactEmailInput = document.querySelector("#organization-contact-email");
+const organizationContactPhoneInput = document.querySelector("#organization-contact-phone");
+const organizationStatusInput = document.querySelector("#organization-status");
+const organizationResetButton = document.querySelector("#organization-reset");
+
+const userForm = document.querySelector("#user-form");
+const userError = document.querySelector("#user-error");
+const userIdInput = document.querySelector("#user-id");
+const userFirstNameInput = document.querySelector("#user-first-name");
+const userLastNameInput = document.querySelector("#user-last-name");
+const userEmailInput = document.querySelector("#user-email");
+const userPasswordInput = document.querySelector("#user-password");
+const userOrganizationField = document.querySelector("#user-organization-field");
+const userOrganizationIdInput = document.querySelector("#user-organization-id");
+const userRoleInput = document.querySelector("#user-role");
+const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
+const userIsActiveInput = document.querySelector("#user-is-active");
+const userResetButton = document.querySelector("#user-reset");
+const usersBody = document.querySelector("#users-body");
+
+const loginContentPanel = document.querySelector("#login-content-panel");
+const loginContentForm = document.querySelector("#login-content-form");
+const loginContentError = document.querySelector("#login-content-error");
+const loginContentIdInput = document.querySelector("#login-content-id");
+const loginContentAccentInput = document.querySelector("#login-content-accent-input");
+const loginContentHeadingInput = document.querySelector("#login-content-heading-input");
+const loginContentQuoteInput = document.querySelector("#login-content-quote-input");
+const loginContentAuthorNameInput = document.querySelector("#login-content-author-name-input");
+const loginContentAuthorTitleInput = document.querySelector("#login-content-author-title-input");
+const loginContentFeatureTitleInput = document.querySelector("#login-content-feature-title-input");
+const loginContentFeatureBodyInput = document.querySelector("#login-content-feature-body-input");
+const loginContentIsActiveInput = document.querySelector("#login-content-is-active");
+const loginContentResetButton = document.querySelector("#login-content-reset");
+const loginContentBody = document.querySelector("#login-content-body");
+
 function setConnectionStatus() {
   if (state.storage === "mysql") {
     connectionStatus.textContent = "Spojeno na MySQL backend";
@@ -154,23 +214,23 @@ function setSyncError(message = "") {
 function setLoginBusy(isBusy) {
   if (loginSubmitButton) {
     loginSubmitButton.disabled = isBusy;
-    loginSubmitButton.textContent = isBusy ? "Signing in..." : "Continue";
+    loginSubmitButton.textContent = isBusy ? "Signing in..." : "Sign in";
   }
 
-  loginUsernameInput.disabled = isBusy;
+  loginEmailInput.disabled = isBusy;
   loginPasswordInput.disabled = isBusy;
-
-  if (loginPasswordToggleButton) {
-    loginPasswordToggleButton.disabled = isBusy;
-  }
 }
 
 function syncPasswordToggleLabel() {
-  if (!loginPasswordToggleButton) {
-    return;
-  }
+  return;
+}
 
-  loginPasswordToggleButton.textContent = loginPasswordInput.type === "password" ? "Show" : "Hide";
+function getIsSuperAdmin() {
+  return state.user?.role === "super_admin";
+}
+
+function getCanManageMasterData() {
+  return ["super_admin", "admin"].includes(state.user?.role);
 }
 
 async function requestTokenRefresh() {
@@ -186,9 +246,13 @@ async function requestTokenRefresh() {
 }
 
 async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
+  const organizationHeader = state.activeOrganizationId && state.user?.role === "super_admin"
+    ? { "X-Organization-Id": state.activeOrganizationId }
+    : {};
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...organizationHeader,
       ...(options.headers ?? {}),
     },
     credentials: "same-origin",
@@ -217,10 +281,14 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
 
 function applySnapshot(payload) {
   state.storage = payload.storage;
+  state.organizations = payload.organizations ?? [];
   state.companies = payload.companies ?? [];
   state.locations = payload.locations ?? [];
+  state.users = payload.users ?? [];
+  state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
   state.user = payload.user ?? state.user;
+  state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
   setConnectionStatus();
   setSyncError("");
@@ -237,6 +305,12 @@ async function refreshSession() {
   state.user = payload.user ?? null;
   renderAuthState();
   return payload.user;
+}
+
+async function refreshLoginContent() {
+  const payload = await apiRequest("/auth/login-content", {}, false);
+  state.loginContent = payload;
+  renderLoginContent();
 }
 
 async function runMutation(callback, errorTarget) {
@@ -443,15 +517,41 @@ function isOverdueWorkOrder(item) {
   return item.dueDate < new Date().toISOString().slice(0, 10);
 }
 
+function renderLoginContent() {
+  const content = state.loginContent ?? {};
+  loginContentAccent.textContent = content.accentLabel || "Trusted workflow";
+  loginContentHeading.textContent = content.heading || "What's your team saying?";
+  loginContentQuote.textContent = content.quoteText || "Bring clients, locations and work orders into one secure workspace your whole organization can trust.";
+  loginContentAuthorName.textContent = content.authorName || "Safety360";
+  loginContentAuthorTitle.textContent = content.authorTitle || "Multi-tenant operations workspace";
+  loginContentFeatureTitle.textContent = content.featureTitle || "One platform for every client portfolio";
+  loginContentFeatureBody.textContent = content.featureBody || "Super admins manage tenants, organization admins manage their teams, and users stay focused on daily execution.";
+}
+
 function renderAuthState() {
   const authenticated = Boolean(state.user);
   authScreen.hidden = authenticated;
   appShell.hidden = !authenticated;
 
   if (authenticated) {
-    userBadge.textContent = `${state.user.fullName} (${state.user.role})`;
+    const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
+      ?? state.organizations[0]
+      ?? null;
+    const roleLabel = state.user.role === "super_admin"
+      ? "Super Admin"
+      : state.user.role === "admin"
+        ? "Admin"
+        : "User";
+
+    userBadge.textContent = `${state.user.fullName} (${roleLabel})`;
+    organizationContext.textContent = organization ? organization.name : "";
+    organizationSwitcherWrap.hidden = !getIsSuperAdmin();
+    managementTab.hidden = !(state.user.role === "super_admin" || state.user.role === "admin");
   } else {
     userBadge.textContent = "";
+    organizationContext.textContent = "";
+    organizationSwitcherWrap.hidden = true;
+    managementTab.hidden = true;
     loginError.textContent = "";
     setLoginBusy(false);
   }
@@ -677,6 +777,46 @@ function buildLocationPayload() {
   };
 }
 
+function buildOrganizationPayload() {
+  return {
+    name: organizationNameInput.value,
+    oib: organizationOibInput.value,
+    address: organizationAddressInput.value,
+    city: organizationCityInput.value,
+    postalCode: organizationPostalCodeInput.value,
+    country: organizationCountryInput.value,
+    contactEmail: organizationContactEmailInput.value,
+    contactPhone: organizationContactPhoneInput.value,
+    status: organizationStatusInput.value,
+  };
+}
+
+function buildUserPayload() {
+  return {
+    firstName: userFirstNameInput.value,
+    lastName: userLastNameInput.value,
+    email: userEmailInput.value,
+    password: userPasswordInput.value,
+    organizationId: userOrganizationIdInput.value || state.activeOrganizationId,
+    role: userRoleInput.value,
+    legacyUsername: userLegacyUsernameInput.value,
+    isActive: userIsActiveInput.value,
+  };
+}
+
+function buildLoginContentPayload() {
+  return {
+    accentLabel: loginContentAccentInput.value,
+    heading: loginContentHeadingInput.value,
+    quoteText: loginContentQuoteInput.value,
+    authorName: loginContentAuthorNameInput.value,
+    authorTitle: loginContentAuthorTitleInput.value,
+    featureTitle: loginContentFeatureTitleInput.value,
+    featureBody: loginContentFeatureBodyInput.value,
+    isActive: loginContentIsActiveInput.value,
+  };
+}
+
 function resetWorkOrderForm() {
   workOrderForm.reset();
   workOrderIdInput.value = "";
@@ -708,6 +848,29 @@ function resetLocationForm() {
   locationError.textContent = "";
   locationIsActiveInput.value = "true";
   rebuildLocationCompanyOptions("");
+}
+
+function resetOrganizationForm() {
+  organizationForm.reset();
+  organizationIdInput.value = "";
+  organizationError.textContent = "";
+  organizationStatusInput.value = "active";
+  organizationCountryInput.value = "Hrvatska";
+}
+
+function resetUserForm() {
+  userForm.reset();
+  userIdInput.value = "";
+  userError.textContent = "";
+  userIsActiveInput.value = "true";
+  userRoleInput.value = state.user?.role === "super_admin" ? "user" : "user";
+}
+
+function resetLoginContentForm() {
+  loginContentForm.reset();
+  loginContentIdInput.value = "";
+  loginContentError.textContent = "";
+  loginContentIsActiveInput.value = "true";
 }
 
 function hydrateCompanyForm(company) {
@@ -783,6 +946,52 @@ function hydrateWorkOrderForm(workOrder) {
   workOrderError.textContent = "";
 }
 
+function hydrateOrganizationForm(organization) {
+  state.activeView = "management";
+  renderActiveView();
+  organizationIdInput.value = organization.id;
+  organizationNameInput.value = organization.name;
+  organizationOibInput.value = organization.oib;
+  organizationAddressInput.value = organization.address;
+  organizationCityInput.value = organization.city;
+  organizationPostalCodeInput.value = organization.postalCode;
+  organizationCountryInput.value = organization.country || "Hrvatska";
+  organizationContactEmailInput.value = organization.contactEmail;
+  organizationContactPhoneInput.value = organization.contactPhone;
+  organizationStatusInput.value = organization.status || "active";
+  organizationError.textContent = "";
+}
+
+function hydrateUserForm(user) {
+  state.activeView = "management";
+  renderActiveView();
+  userIdInput.value = user.id;
+  userFirstNameInput.value = user.firstName;
+  userLastNameInput.value = user.lastName;
+  userEmailInput.value = user.email;
+  userPasswordInput.value = "";
+  userOrganizationIdInput.value = user.organizationId || state.activeOrganizationId;
+  userRoleInput.value = user.role;
+  userLegacyUsernameInput.value = user.legacyUsername || "";
+  userIsActiveInput.value = String(user.isActive);
+  userError.textContent = "";
+}
+
+function hydrateLoginContentForm(item) {
+  state.activeView = "management";
+  renderActiveView();
+  loginContentIdInput.value = item.id;
+  loginContentAccentInput.value = item.accentLabel || "";
+  loginContentHeadingInput.value = item.heading || "";
+  loginContentQuoteInput.value = item.quoteText || "";
+  loginContentAuthorNameInput.value = item.authorName || "";
+  loginContentAuthorTitleInput.value = item.authorTitle || "";
+  loginContentFeatureTitleInput.value = item.featureTitle || "";
+  loginContentFeatureBodyInput.value = item.featureBody || "";
+  loginContentIsActiveInput.value = String(item.isActive);
+  loginContentError.textContent = "";
+}
+
 function statusBadgeClass(status) {
   return `status-${slugifyValue(status)}`;
 }
@@ -817,6 +1026,15 @@ function renderSharedOptions() {
   const currentLocationId = workOrderLocationIdInput.value;
   const currentContactSlot = workOrderContactSlotInput.value;
   const currentSnapshotName = getSelectedContactName();
+  const organizationOptions = state.organizations.map((organization) => ({
+    value: organization.id,
+    label: organization.name,
+  }));
+  const roleOptions = [
+    { value: "user", label: "User" },
+    { value: "admin", label: "Admin" },
+    ...(getIsSuperAdmin() ? [{ value: "super_admin", label: "Super Admin" }] : []),
+  ];
 
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
   replaceSelectOptions(workOrderPriorityInput, PRIORITY_OPTIONS, workOrderPriorityInput.value || "Normal");
@@ -830,6 +1048,28 @@ function renderSharedOptions() {
   rebuildWorkOrderFilterCompanyOptions(currentFilterCompanyId);
   rebuildWorkOrderLocationOptions(currentLocationId);
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
+
+  if (organizationSwitcher) {
+    replaceSelectOptions(organizationSwitcher, organizationOptions, state.activeOrganizationId || state.organizations[0]?.id || "");
+  }
+
+  if (userOrganizationIdInput) {
+    replaceSelectOptions(
+      userOrganizationIdInput,
+      organizationOptions,
+      userOrganizationIdInput.value || state.activeOrganizationId || state.organizations[0]?.id || "",
+    );
+  }
+
+  replaceSelectOptions(userRoleInput, roleOptions, userRoleInput.value || "user");
+
+  if (userOrganizationField) {
+    userOrganizationField.hidden = !getIsSuperAdmin();
+  }
+
+  if (loginContentPanel) {
+    loginContentPanel.hidden = !getIsSuperAdmin();
+  }
 }
 
 function getFilteredWorkOrders() {
@@ -883,16 +1123,17 @@ function renderWorkOrders() {
 
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    actionsCell.append(
-      createActionButton("Uredi", "card-button", () => hydrateWorkOrderForm(item)),
-      createActionButton("Obrisi", "card-button card-danger", () => {
+    actionsCell.append(createActionButton("Uredi", "card-button", () => hydrateWorkOrderForm(item)));
+
+    if (state.user?.role !== "user") {
+      actionsCell.append(createActionButton("Obrisi", "card-button card-danger", () => {
         if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
           return;
         }
 
         void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
-      }),
-    );
+      }));
+    }
 
     const taskTitle = item.description || item.locationName || item.companyName || "Radni nalog";
     const taskSubtitle = joinParts([
@@ -986,16 +1227,18 @@ function renderCompanies() {
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    actionsCell.append(
-      createActionButton("Uredi", "card-button", () => hydrateCompanyForm(company)),
-      createActionButton("Obrisi", "card-button card-danger", () => {
-        if (!window.confirm(`Obrisati tvrtku ${company.name}?`)) {
-          return;
-        }
+    if (getCanManageMasterData()) {
+      actionsCell.append(
+        createActionButton("Uredi", "card-button", () => hydrateCompanyForm(company)),
+        createActionButton("Obrisi", "card-button card-danger", () => {
+          if (!window.confirm(`Obrisati tvrtku ${company.name}?`)) {
+            return;
+          }
 
-        void runMutation(() => apiRequest(`/companies/${company.id}`, { method: "DELETE" }));
-      }),
-    );
+          void runMutation(() => apiRequest(`/companies/${company.id}`, { method: "DELETE" }));
+        }),
+      );
+    }
 
     row.append(
       createStackCell({
@@ -1061,16 +1304,18 @@ function renderLocations() {
       .join(", ") || "Bez kontakata";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    actionsCell.append(
-      createActionButton("Uredi", "card-button", () => hydrateLocationForm(location)),
-      createActionButton("Obrisi", "card-button card-danger", () => {
-        if (!window.confirm(`Obrisati lokaciju ${location.name}?`)) {
-          return;
-        }
+    if (getCanManageMasterData()) {
+      actionsCell.append(
+        createActionButton("Uredi", "card-button", () => hydrateLocationForm(location)),
+        createActionButton("Obrisi", "card-button card-danger", () => {
+          if (!window.confirm(`Obrisati lokaciju ${location.name}?`)) {
+            return;
+          }
 
-        void runMutation(() => apiRequest(`/locations/${location.id}`, { method: "DELETE" }));
-      }),
-    );
+          void runMutation(() => apiRequest(`/locations/${location.id}`, { method: "DELETE" }));
+        }),
+      );
+    }
 
     row.append(
       createStackCell({
@@ -1102,13 +1347,101 @@ function renderLocations() {
   locationsEmpty.hidden = sortedLocations.length !== 0;
 }
 
+function renderUsers() {
+  usersBody.replaceChildren(...state.users.map((user) => {
+    const row = document.createElement("tr");
+    row.className = "list-row";
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "table-actions";
+    actionsCell.append(
+      createActionButton("Uredi", "card-button", () => hydrateUserForm(user)),
+    );
+
+    row.append(
+      createStackCell({
+        title: user.fullName || user.email,
+        subtitle: user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
+      }),
+      createStackCell({
+        title: user.email,
+        subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Jos bez prijave",
+      }),
+      createStackCell({
+        title: user.role,
+        subtitle: user.isActive ? "Active" : "Inactive",
+      }),
+      createStackCell({
+        title: user.organizationName || "Bez organizacije",
+      }),
+      createStackCell({
+        title: user.isActive ? "Active" : "Inactive",
+      }),
+      actionsCell,
+    );
+
+    return row;
+  }));
+}
+
+function renderLoginContentItems() {
+  loginContentBody.replaceChildren(...state.loginContentItems.map((item) => {
+    const row = document.createElement("tr");
+    row.className = "list-row";
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "table-actions";
+    actionsCell.append(
+      createActionButton("Uredi", "card-button", () => hydrateLoginContentForm(item)),
+      createActionButton("Obrisi", "card-button card-danger", () => {
+        if (!window.confirm("Obrisati ovu login pricu?")) {
+          return;
+        }
+
+        void runMutation(() => apiRequest(`/login-content/${item.id}`, { method: "DELETE" }), loginContentError);
+      }),
+    );
+
+    row.append(
+      createStackCell({
+        title: item.heading,
+        subtitle: item.quoteText,
+        meta: item.accentLabel ? [item.accentLabel] : [],
+      }),
+      createStackCell({
+        title: item.authorName || "Bez autora",
+        subtitle: item.authorTitle || "",
+      }),
+      createStackCell({
+        title: item.isActive ? "Active" : "Inactive",
+      }),
+      actionsCell,
+    );
+
+    return row;
+  }));
+}
+
+function renderManagement() {
+  const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
+    ?? state.organizations[0]
+    ?? null;
+
+  if (!organizationIdInput.value && currentOrganization && state.user?.role === "admin") {
+    hydrateOrganizationForm(currentOrganization);
+  }
+
+  renderUsers();
+  renderLoginContentItems();
+}
+
 function render() {
   renderAuthState();
+  renderLoginContent();
   renderSummary();
   renderSharedOptions();
   renderWorkOrders();
   renderCompanies();
   renderLocations();
+  renderManagement();
   renderActiveView();
 }
 
@@ -1220,14 +1553,12 @@ loginForm.addEventListener("submit", (event) => {
   void apiRequest("/auth/login", {
     method: "POST",
     body: {
-      username: loginUsernameInput.value,
+      email: loginEmailInput.value,
       password: loginPasswordInput.value,
     },
   }).then((payload) => {
     state.user = payload.user;
     loginForm.reset();
-    loginPasswordInput.type = "password";
-    syncPasswordToggleLabel();
     renderAuthState();
     return refreshSnapshot();
   }).catch((error) => {
@@ -1237,33 +1568,109 @@ loginForm.addEventListener("submit", (event) => {
   });
 });
 
-loginPasswordToggleButton?.addEventListener("click", () => {
-  loginPasswordInput.type = loginPasswordInput.type === "password" ? "text" : "password";
-  syncPasswordToggleLabel();
-});
-
 logoutButton.addEventListener("click", () => {
   void apiRequest("/auth/logout", {
     method: "POST",
   }).finally(() => {
     state.user = null;
+    state.organizations = [];
     state.workOrders = [];
     state.companies = [];
     state.locations = [];
+    state.users = [];
+    state.loginContentItems = [];
     loginForm.reset();
-    loginPasswordInput.type = "password";
-    syncPasswordToggleLabel();
     renderAuthState();
+    void refreshLoginContent();
   });
 });
+
+organizationSwitcher?.addEventListener("change", () => {
+  state.activeOrganizationId = organizationSwitcher.value;
+  const selectedOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId);
+
+  if (selectedOrganization && getIsSuperAdmin()) {
+    hydrateOrganizationForm(selectedOrganization);
+  }
+
+  void refreshSnapshot();
+});
+
+organizationForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(organizationIdInput.value);
+  const path = isEditing ? `/organizations/${organizationIdInput.value}` : "/organizations";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildOrganizationPayload(),
+  }), organizationError).then((success) => {
+    if (success && !isEditing) {
+      resetOrganizationForm();
+    }
+  });
+});
+
+organizationResetButton?.addEventListener("click", () => {
+  resetOrganizationForm();
+  const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId);
+
+  if (currentOrganization && state.user?.role === "admin") {
+    hydrateOrganizationForm(currentOrganization);
+  }
+});
+
+userForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(userIdInput.value);
+  const path = isEditing ? `/users/${userIdInput.value}` : "/users";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildUserPayload(),
+  }), userError).then((success) => {
+    if (success) {
+      resetUserForm();
+    }
+  });
+});
+
+userResetButton?.addEventListener("click", resetUserForm);
+
+loginContentForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(loginContentIdInput.value);
+  const path = isEditing ? `/login-content/${loginContentIdInput.value}` : "/login-content";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildLoginContentPayload(),
+  }), loginContentError).then((success) => {
+    if (success) {
+      resetLoginContentForm();
+    }
+  });
+});
+
+loginContentResetButton?.addEventListener("click", resetLoginContentForm);
 
 setConnectionStatus();
 resetWorkOrderForm();
 resetCompanyForm();
 resetLocationForm();
+resetOrganizationForm();
+resetUserForm();
+resetLoginContentForm();
 renderActiveView();
 renderAuthState();
 syncPasswordToggleLabel();
+
+refreshLoginContent().catch(() => {
+  renderLoginContent();
+});
 
 refreshSession()
   .then((user) => {
