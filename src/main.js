@@ -48,6 +48,8 @@ const userMenuName = document.querySelector("#user-menu-name");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const logoutButton = document.querySelector("#logout-button");
+const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
+const sidebarRoleCopy = document.querySelector("#sidebar-role-copy");
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -55,6 +57,8 @@ const connectionStatus = document.querySelector("#connection-status");
 const syncError = document.querySelector("#sync-error");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const managementTab = document.querySelector("#management-tab");
+const managementNavLabel = document.querySelector("#management-nav-label");
+const managementNavHint = document.querySelector("#management-nav-hint");
 const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
   companies: document.querySelector("#companies-view"),
@@ -153,6 +157,7 @@ const locationsHelper = document.querySelector("#locations-helper");
 
 const organizationForm = document.querySelector("#organization-form");
 const organizationError = document.querySelector("#organization-error");
+const organizationPanel = document.querySelector("#organization-panel");
 const organizationIdInput = document.querySelector("#organization-id");
 const organizationNameInput = document.querySelector("#organization-name");
 const organizationOibInput = document.querySelector("#organization-oib");
@@ -174,6 +179,8 @@ const userLastNameInput = document.querySelector("#user-last-name");
 const userEmailInput = document.querySelector("#user-email");
 const userPasswordInput = document.querySelector("#user-password");
 const userOrganizationField = document.querySelector("#user-organization-field");
+const userRoleField = document.querySelector("#user-role-field");
+const userOrganizationMembershipsField = document.querySelector("#user-organization-memberships-field");
 const userOrganizationIdInput = document.querySelector("#user-organization-id");
 const userOrganizationMemberships = document.querySelector("#user-organization-memberships");
 const userAvatarFileInput = document.querySelector("#user-avatar-file");
@@ -183,6 +190,12 @@ const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
 const userIsActiveInput = document.querySelector("#user-is-active");
 const userResetButton = document.querySelector("#user-reset");
 const usersBody = document.querySelector("#users-body");
+const managementViewKicker = document.querySelector("#management-view-kicker");
+const managementViewTitle = document.querySelector("#management-view-title");
+const managementViewDescription = document.querySelector("#management-view-description");
+const userPanelKicker = document.querySelector("#user-panel-kicker");
+const userPanelTitle = document.querySelector("#user-panel-title");
+const userManagementNote = document.querySelector("#user-management-note");
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -236,8 +249,24 @@ function getIsSuperAdmin() {
   return state.user?.role === "super_admin";
 }
 
+function getIsAdmin() {
+  return state.user?.role === "admin";
+}
+
 function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
+}
+
+function canManageRenderedUser(user) {
+  if (getIsSuperAdmin()) {
+    return true;
+  }
+
+  if (getIsAdmin()) {
+    return user?.role === "user";
+  }
+
+  return false;
 }
 
 async function requestTokenRefresh() {
@@ -431,7 +460,7 @@ function renderUserOrganizationMemberships(selectedIds = []) {
     return;
   }
 
-  const allowedRole = state.user?.role;
+  const allowMembershipEditing = getIsSuperAdmin();
   const normalizedSelectedIds = Array.from(new Set(
     (selectedIds.length > 0 ? selectedIds : [userOrganizationIdInput.value || state.activeOrganizationId])
       .filter(Boolean),
@@ -445,7 +474,7 @@ function renderUserOrganizationMemberships(selectedIds = []) {
     checkbox.type = "checkbox";
     checkbox.value = organization.id;
     checkbox.checked = normalizedSelectedIds.includes(organization.id);
-    checkbox.disabled = allowedRole !== "super_admin" && state.organizations.length === 1;
+    checkbox.disabled = !allowMembershipEditing;
     checkbox.addEventListener("change", () => {
       if (getSelectedUserOrganizationIds().length === 0) {
         checkbox.checked = true;
@@ -621,7 +650,7 @@ function createBadge(text, className = "") {
   return badge;
 }
 
-function joinParts(values, separator = " • ") {
+function joinParts(values, separator = " | ") {
   return values.filter(Boolean).join(separator);
 }
 
@@ -648,6 +677,8 @@ function renderAuthState() {
   document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (authenticated) {
+    const isSuperAdmin = getIsSuperAdmin();
+    const isAdmin = getIsAdmin();
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -677,9 +708,33 @@ function renderAuthState() {
     userMenuEmail.textContent = state.user.email || "";
     userMenuOrganizations.textContent = organizationLabel || (organization ? organization.name : "");
     renderAvatar(userMenuAvatar, state.user);
-    organizationContext.textContent = organization ? organization.name : "";
+    organizationContext.textContent = isSuperAdmin
+      ? `Super admin | ${organization ? organization.name : "Bez aktivne organizacije"}`
+      : (organization ? organization.name : "");
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
-    managementTab.hidden = !(state.user.role === "super_admin" || state.user.role === "admin");
+    managementTab.hidden = !(isSuperAdmin || isAdmin);
+
+    if (sidebarActiveOrganization) {
+      sidebarActiveOrganization.textContent = organization ? organization.name : "Safety360";
+    }
+
+    if (sidebarRoleCopy) {
+      sidebarRoleCopy.textContent = isSuperAdmin
+        ? "Ti jedini kreiras organizacije i postavljas admine. Admin zatim vodi svakodnevni rad svoje organizacije."
+        : isAdmin
+          ? "Kao admin upravljas korisnicima, tvrtkama, lokacijama i radnim nalozima svoje organizacije."
+          : "Kao korisnik radis samo u podacima organizacije kojoj pripadas.";
+    }
+
+    if (managementNavLabel) {
+      managementNavLabel.textContent = isSuperAdmin ? "Administration" : "Team";
+    }
+
+    if (managementNavHint) {
+      managementNavHint.textContent = isSuperAdmin
+        ? "Organizations and admins"
+        : "Users in your organization";
+    }
   } else {
     userBadge.textContent = "";
     userMenuName.textContent = "";
@@ -689,6 +744,18 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
+    if (sidebarActiveOrganization) {
+      sidebarActiveOrganization.textContent = "Safety360";
+    }
+    if (sidebarRoleCopy) {
+      sidebarRoleCopy.textContent = "Super admin upravlja organizacijama i dodjeljuje admine.";
+    }
+    if (managementNavLabel) {
+      managementNavLabel.textContent = "Administration";
+    }
+    if (managementNavHint) {
+      managementNavHint.textContent = "Organizations and admins";
+    }
     loginError.textContent = "";
     setLoginBusy(false);
   }
@@ -931,8 +998,12 @@ function buildOrganizationPayload() {
 }
 
 function buildUserPayload() {
-  const selectedOrganizationIds = getSelectedUserOrganizationIds();
-  const primaryOrganizationId = userOrganizationIdInput.value || selectedOrganizationIds[0] || state.activeOrganizationId;
+  const selectedOrganizationIds = getIsSuperAdmin()
+    ? getSelectedUserOrganizationIds()
+    : [state.activeOrganizationId].filter(Boolean);
+  const primaryOrganizationId = getIsSuperAdmin()
+    ? (userOrganizationIdInput.value || selectedOrganizationIds[0] || state.activeOrganizationId)
+    : (state.activeOrganizationId || userOrganizationIdInput.value || selectedOrganizationIds[0]);
   const organizationIds = Array.from(new Set([primaryOrganizationId, ...selectedOrganizationIds].filter(Boolean)));
 
   return {
@@ -942,7 +1013,7 @@ function buildUserPayload() {
     password: userPasswordInput.value,
     organizationId: primaryOrganizationId,
     organizationIds,
-    role: userRoleInput.value,
+    role: getIsSuperAdmin() ? userRoleInput.value : "user",
     legacyUsername: userLegacyUsernameInput.value,
     isActive: userIsActiveInput.value,
     avatarDataUrl: userAvatarDataUrlInput.value,
@@ -1009,9 +1080,10 @@ function resetUserForm() {
   userAvatarDataUrlInput.value = "";
   userError.textContent = "";
   userIsActiveInput.value = "true";
-  userRoleInput.value = "user";
+  userRoleInput.value = getIsSuperAdmin() ? "admin" : "user";
   renderAvatar(userAvatarPreview, {});
-  renderUserOrganizationMemberships([state.activeOrganizationId || state.organizations[0]?.id].filter(Boolean));
+  userOrganizationIdInput.value = state.activeOrganizationId || state.organizations[0]?.id || "";
+  renderUserOrganizationMemberships([userOrganizationIdInput.value].filter(Boolean));
 }
 
 function resetLoginContentForm() {
@@ -1094,9 +1166,7 @@ function hydrateWorkOrderForm(workOrder) {
   workOrderError.textContent = "";
 }
 
-function hydrateOrganizationForm(organization) {
-  state.activeView = "management";
-  renderActiveView();
+function populateOrganizationForm(organization) {
   organizationIdInput.value = organization.id;
   organizationNameInput.value = organization.name;
   organizationOibInput.value = organization.oib;
@@ -1108,6 +1178,12 @@ function hydrateOrganizationForm(organization) {
   organizationContactPhoneInput.value = organization.contactPhone;
   organizationStatusInput.value = organization.status || "active";
   organizationError.textContent = "";
+}
+
+function hydrateOrganizationForm(organization) {
+  state.activeView = "management";
+  renderActiveView();
+  populateOrganizationForm(organization);
 }
 
 function hydrateUserForm(user) {
@@ -1181,10 +1257,14 @@ function renderSharedOptions() {
     value: organization.id,
     label: organization.name,
   }));
-  const roleOptions = [
-    { value: "user", label: "User" },
-    { value: "admin", label: "Admin" },
-  ];
+  const roleOptions = getIsSuperAdmin()
+    ? [
+      { value: "user", label: "User" },
+      { value: "admin", label: "Admin" },
+    ]
+    : [
+      { value: "user", label: "User" },
+    ];
 
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
   replaceSelectOptions(workOrderPriorityInput, PRIORITY_OPTIONS, workOrderPriorityInput.value || "Normal");
@@ -1206,16 +1286,28 @@ function renderSharedOptions() {
   if (userOrganizationIdInput) {
     replaceSelectOptions(
       userOrganizationIdInput,
-      organizationOptions,
+      getIsSuperAdmin()
+        ? organizationOptions
+        : organizationOptions.filter((organization) => organization.value === state.activeOrganizationId),
       userOrganizationIdInput.value || state.activeOrganizationId || state.organizations[0]?.id || "",
     );
   }
 
-  replaceSelectOptions(userRoleInput, roleOptions, userRoleInput.value || "user");
-  renderUserOrganizationMemberships(getSelectedUserOrganizationIds());
+  replaceSelectOptions(userRoleInput, roleOptions, getIsSuperAdmin() ? (userRoleInput.value || "admin") : "user");
+  renderUserOrganizationMemberships(getIsSuperAdmin()
+    ? getSelectedUserOrganizationIds()
+    : [state.activeOrganizationId || state.organizations[0]?.id].filter(Boolean));
 
   if (userOrganizationField) {
-    userOrganizationField.hidden = state.organizations.length === 0;
+    userOrganizationField.hidden = !getIsSuperAdmin() || state.organizations.length === 0;
+  }
+
+  if (userRoleField) {
+    userRoleField.hidden = !getIsSuperAdmin();
+  }
+
+  if (userOrganizationMembershipsField) {
+    userOrganizationMembershipsField.hidden = !getIsSuperAdmin();
   }
 
   if (loginContentPanel) {
@@ -1508,9 +1600,12 @@ function renderUsers() {
     row.className = "list-row";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    actionsCell.append(
-      createActionButton("Uredi", "card-button", () => hydrateUserForm(user)),
-    );
+
+    if (canManageRenderedUser(user)) {
+      actionsCell.append(
+        createActionButton("Uredi", "card-button", () => hydrateUserForm(user)),
+      );
+    }
 
     row.append(
       createStackCell({
@@ -1663,8 +1758,52 @@ function renderManagement() {
     ?? state.organizations[0]
     ?? null;
 
-  if (!organizationIdInput.value && currentOrganization && state.user?.role === "admin") {
-    hydrateOrganizationForm(currentOrganization);
+  if (organizationPanel) {
+    organizationPanel.hidden = !getIsSuperAdmin();
+  }
+
+  if (getIsSuperAdmin()) {
+    if (managementViewKicker) {
+      managementViewKicker.textContent = "Platform control";
+    }
+    if (managementViewTitle) {
+      managementViewTitle.textContent = "Organizations & admins";
+    }
+    if (managementViewDescription) {
+      managementViewDescription.textContent = "Ti jedini kreiras organizacije, dodjeljujes admina i po potrebi pregledavas signup zahtjeve prije odobravanja pristupa.";
+    }
+    if (userPanelKicker) {
+      userPanelKicker.textContent = "Admin assignment";
+    }
+    if (userPanelTitle) {
+      userPanelTitle.textContent = "Admins & users";
+    }
+    if (userManagementNote) {
+      userManagementNote.textContent = "Odaberi organizaciju i rolu. Admin ovdje dobiva pristup svojoj organizaciji, a user ostaje operativni korisnik.";
+    }
+  } else if (getIsAdmin()) {
+    if (managementViewKicker) {
+      managementViewKicker.textContent = "Organization admin";
+    }
+    if (managementViewTitle) {
+      managementViewTitle.textContent = "Team access";
+    }
+    if (managementViewDescription) {
+      managementViewDescription.textContent = currentOrganization
+        ? `Upravljaj korisnicima za organizaciju ${currentOrganization.name}. Organizacije i admine postavlja samo super admin.`
+        : "Upravljaj korisnicima svoje organizacije. Organizacije i admine postavlja samo super admin.";
+    }
+    if (userPanelKicker) {
+      userPanelKicker.textContent = "Organization team";
+    }
+    if (userPanelTitle) {
+      userPanelTitle.textContent = "Users";
+    }
+    if (userManagementNote) {
+      userManagementNote.textContent = currentOrganization
+        ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
+        : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
+    }
   }
 
   renderUsers();
@@ -1892,7 +2031,7 @@ organizationSwitcher?.addEventListener("change", () => {
   const selectedOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId);
 
   if (selectedOrganization && getIsSuperAdmin()) {
-    hydrateOrganizationForm(selectedOrganization);
+    populateOrganizationForm(selectedOrganization);
   }
 
   void refreshSnapshot();
@@ -1916,11 +2055,6 @@ organizationForm?.addEventListener("submit", (event) => {
 
 organizationResetButton?.addEventListener("click", () => {
   resetOrganizationForm();
-  const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId);
-
-  if (currentOrganization && state.user?.role === "admin") {
-    hydrateOrganizationForm(currentOrganization);
-  }
 });
 
 userForm?.addEventListener("submit", (event) => {

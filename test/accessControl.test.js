@@ -6,6 +6,7 @@ import {
   ROLE_SUPER_ADMIN,
   ROLE_USER,
   buildLegacyEmail,
+  canEditOrganization,
   canManageLoginContent,
   canManageOrganizationUsers,
   canManageOrganizations,
@@ -36,13 +37,15 @@ test("super admin and admin organization permissions are enforced", () => {
 
   assert.equal(canManageOrganizations(superAdmin), true);
   assert.equal(canManageOrganizations(admin), false);
+  assert.equal(canEditOrganization(superAdmin, "5"), true);
+  assert.equal(canEditOrganization(admin, "5"), false);
   assert.equal(canManageLoginContent(superAdmin), true);
   assert.equal(canManageLoginContent(user), false);
 
   assert.equal(canManageOrganizationUsers(superAdmin, "99", ROLE_SUPER_ADMIN), true);
   assert.equal(canManageOrganizationUsers(admin, "5", ROLE_USER), true);
   assert.equal(canManageOrganizationUsers(admin, ["5", "8"], ROLE_USER), true);
-  assert.equal(canManageOrganizationUsers(admin, "5", ROLE_ADMIN), true);
+  assert.equal(canManageOrganizationUsers(admin, "5", ROLE_ADMIN), false);
   assert.equal(canManageOrganizationUsers(admin, "5", ROLE_SUPER_ADMIN), false);
   assert.equal(canManageOrganizationUsers(admin, "8", ROLE_USER), true);
   assert.equal(canManageOrganizationUsers(admin, ["5", "9"], ROLE_USER), false);

@@ -89,6 +89,18 @@ test("memory tenant repository lets admins create users only inside their organi
     }),
     /Nemate pravo kreirati ovog korisnika/,
   );
+
+  await assert.rejects(
+    () => repository.createUser(admin, {
+      organizationId: organization.id,
+      firstName: "Another",
+      lastName: "Admin",
+      email: "another-admin@example.com",
+      password: "secret123",
+      role: "admin",
+    }),
+    /Nemate pravo kreirati ovog korisnika/,
+  );
 });
 
 test("memory tenant repository supports users with access to multiple organizations", async () => {

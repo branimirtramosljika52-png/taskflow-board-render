@@ -105,17 +105,7 @@ export function canManageOrganizations(actor) {
 }
 
 export function canEditOrganization(actor, organizationId) {
-  const actorRole = normalizeRole(actor?.role);
-
-  if (actorRole === ROLE_SUPER_ADMIN) {
-    return true;
-  }
-
-  if (actorRole !== ROLE_ADMIN) {
-    return false;
-  }
-
-  return hasOrganizationAccess(actor, organizationId);
+  return normalizeRole(actor?.role) === ROLE_SUPER_ADMIN;
 }
 
 export function canManageLoginContent(actor) {
@@ -135,6 +125,10 @@ export function canManageOrganizationUsers(actor, organizationId, targetRole = R
     return false;
   }
 
+  if (targetNormalizedRole !== ROLE_USER) {
+    return false;
+  }
+
   if (targetOrganizationIds.length === 0) {
     return false;
   }
@@ -142,8 +136,7 @@ export function canManageOrganizationUsers(actor, organizationId, targetRole = R
   if (!targetOrganizationIds.every((id) => hasOrganizationAccess(actor, id))) {
     return false;
   }
-
-  return ROLE_PRIORITY[targetNormalizedRole] < ROLE_PRIORITY[ROLE_SUPER_ADMIN];
+  return true;
 }
 
 export function resolveEffectiveOrganizationId(actor, requestedOrganizationId, organizations = []) {

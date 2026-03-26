@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326e" />
+    <link rel="stylesheet" href="/styles.css?v=20260326f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -63,6 +63,45 @@
 
     <main id="app-shell" class="app-shell" hidden>
       <section class="app-frame">
+        <aside class="app-sidebar">
+          <div class="sidebar-brand">
+            <div class="auth-logo" aria-label="Safety360">
+              <div class="auth-logo-mark">
+                <span></span>
+                <span></span>
+              </div>
+              <span class="auth-logo-word">Safety360</span>
+            </div>
+            <p class="sidebar-brand-copy">Multi-tenant workspace</p>
+          </div>
+
+          <div class="sidebar-context-card">
+            <p class="sidebar-kicker">Aktivni prostor</p>
+            <strong id="sidebar-active-organization">Safety360</strong>
+            <span id="sidebar-role-copy">Super admin upravlja organizacijama i dodjeljuje admine.</span>
+          </div>
+
+          <nav class="tab-strip sidebar-nav" aria-label="Pogledi aplikacije">
+            <button type="button" class="tab-button is-active" data-view="selfdash">
+              <strong>SelfDash</strong>
+              <span>Radni nalozi i operativa</span>
+            </button>
+            <button type="button" class="tab-button" data-view="companies">
+              <strong>ListTvrtke</strong>
+              <span>Klijenti i ugovori</span>
+            </button>
+            <button type="button" class="tab-button" data-view="locations">
+              <strong>ListLokacije</strong>
+              <span>Lokacije i kontakti</span>
+            </button>
+            <button type="button" class="tab-button" data-view="management" id="management-tab" hidden>
+              <strong id="management-nav-label">Administration</strong>
+              <span id="management-nav-hint">Organizations and admins</span>
+            </button>
+          </nav>
+        </aside>
+
+        <section class="app-main">
         <div class="topbar">
           <div class="topbar-context">
             <div id="organization-context" class="organization-context"></div>
@@ -120,13 +159,6 @@
             </article>
           </div>
         </header>
-
-        <nav class="tab-strip" aria-label="Pogledi aplikacije">
-          <button type="button" class="tab-button is-active" data-view="selfdash">SelfDash</button>
-          <button type="button" class="tab-button" data-view="companies">ListTvrtke</button>
-          <button type="button" class="tab-button" data-view="locations">ListLokacije</button>
-          <button type="button" class="tab-button" data-view="management" id="management-tab" hidden>Management</button>
-        </nav>
 
         <p id="sync-error" class="sync-error" hidden></p>
 
@@ -585,13 +617,30 @@
         </section>
 
         <section id="management-view" class="workspace-view" hidden>
-          <section class="panel">
+          <section class="panel management-intro-panel">
+            <div class="section-heading">
+              <div>
+                <p id="management-view-kicker" class="section-kicker">Tenant control</p>
+                <h2 id="management-view-title">Organizations & access</h2>
+              </div>
+            </div>
+
+            <p id="management-view-description" class="helper-copy">
+              Super admin kreira organizacije i dodjeljuje admine. Admin zatim vodi korisnike i svakodnevni rad svoje organizacije.
+            </p>
+          </section>
+
+          <section id="organization-panel" class="panel">
             <div class="section-heading">
               <div>
                 <p class="section-kicker">Tenant control</p>
                 <h2>Organization</h2>
               </div>
             </div>
+
+            <p class="helper-copy management-panel-copy">
+              Ovdje kreiras organizaciju i pripremas je za admina koji preuzima daljnji rad.
+            </p>
 
             <form id="organization-form" class="entity-form">
               <input id="organization-id" type="hidden" />
@@ -650,10 +699,14 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="section-kicker">Users</p>
-                <h2>Access</h2>
+                <p id="user-panel-kicker" class="section-kicker">Users</p>
+                <h2 id="user-panel-title">Access</h2>
               </div>
             </div>
+
+            <p id="user-management-note" class="helper-copy management-panel-copy">
+              Super admin bira organizaciju i dodjeljuje admina. Admin ovdje upravlja svojim korisnicima.
+            </p>
 
             <form id="user-form" class="entity-form">
               <input id="user-id" type="hidden" />
@@ -680,14 +733,14 @@
                   <span>Primary organization</span>
                   <select id="user-organization-id"></select>
                 </label>
-                <label class="field">
+                <label id="user-role-field" class="field">
                   <span>Role</span>
                   <select id="user-role">
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
                   </select>
                 </label>
-                <label class="field field-span-full">
+                <label id="user-organization-memberships-field" class="field field-span-full">
                   <span>Organization access</span>
                   <div id="user-organization-memberships" class="membership-grid"></div>
                 </label>
@@ -835,10 +888,11 @@
             </div>
           </section>
         </section>
+        </section>
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326e"></script>
-    <script type="module" src="/src/main.js?v=20260326e"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326f"></script>
+    <script type="module" src="/src/main.js?v=20260326f"></script>
   </body>
 </html>
