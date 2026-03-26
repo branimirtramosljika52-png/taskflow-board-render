@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326i" />
+    <link rel="stylesheet" href="/styles.css?v=20260326j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -62,56 +62,108 @@
     </section>
 
     <main id="app-shell" class="app-shell" hidden>
-      <section class="app-frame">
+      <section id="app-frame" class="app-frame">
         <aside class="app-rail" aria-label="Primarna navigacija">
           <div class="app-rail-logo">S</div>
           <nav class="app-rail-nav">
-            <button type="button" class="tab-button rail-button is-active" data-view="selfdash">
-              <span class="rail-icon" aria-hidden="true">⌂</span>
-              <span class="rail-label">Home</span>
+            <button
+              type="button"
+              class="rail-button is-active"
+              data-sidebar-group="operations"
+              title="Operativa"
+              aria-label="Operativa"
+            >
+              <span class="rail-icon" aria-hidden="true">&#8962;</span>
+              <span class="rail-label">Operativa</span>
             </button>
-            <button type="button" class="tab-button rail-button" data-view="companies">
-              <span class="rail-icon" aria-hidden="true">T</span>
+            <button
+              type="button"
+              class="rail-button"
+              data-sidebar-group="companies"
+              title="Tvrtke"
+              aria-label="Tvrtke"
+            >
+              <span class="rail-icon" aria-hidden="true">&#9638;</span>
               <span class="rail-label">Tvrtke</span>
             </button>
-            <button type="button" class="tab-button rail-button" data-view="locations">
-              <span class="rail-icon" aria-hidden="true">L</span>
-              <span class="rail-label">Lokacije</span>
+            <button
+              type="button"
+              class="rail-button"
+              data-sidebar-group="admin"
+              id="rail-admin-button"
+              hidden
+              title="Administracija"
+              aria-label="Administracija"
+            >
+              <span class="rail-icon" aria-hidden="true">&#9881;</span>
+              <span class="rail-label">Admin</span>
             </button>
           </nav>
         </aside>
 
-        <aside class="app-sidebar">
-          <div class="sidebar-brand-pill" aria-label="Safety360">
-            <div class="auth-logo-mark">
-              <span></span>
-              <span></span>
+        <aside id="app-sidebar" class="app-sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-brand-pill" aria-label="Safety360">
+              <div class="auth-logo-mark">
+                <span></span>
+                <span></span>
+              </div>
+              <div class="sidebar-brand-meta">
+                <strong>Safety360</strong>
+                <span id="sidebar-active-organization">Workspace</span>
+              </div>
             </div>
-            <div class="sidebar-brand-meta">
-              <strong>Safety360</strong>
-              <span id="sidebar-active-organization">Workspace</span>
-            </div>
+            <button id="sidebar-collapse-toggle" type="button" class="sidebar-collapse-button" aria-label="Minimize sidebar">
+              <span aria-hidden="true">←</span>
+            </button>
           </div>
 
-          <nav class="tab-strip sidebar-nav" aria-label="Pogledi aplikacije">
-            <p class="sidebar-section-label">Workspace</p>
-            <button type="button" class="tab-button is-active" data-view="selfdash">
-              <span class="tab-button-icon" aria-hidden="true">SD</span>
-              <strong>SelfDash</strong>
-            </button>
-            <button type="button" class="tab-button" data-view="companies">
-              <span class="tab-button-icon" aria-hidden="true">TV</span>
-              <strong>ListTvrtke</strong>
-            </button>
-            <button type="button" class="tab-button" data-view="locations">
-              <span class="tab-button-icon" aria-hidden="true">LO</span>
-              <strong>ListLokacije</strong>
-            </button>
-            <p id="sidebar-admin-label" class="sidebar-section-label" hidden>Administration</p>
-            <button type="button" class="tab-button" data-view="management" id="management-tab" hidden>
-              <span class="tab-button-icon" aria-hidden="true">AD</span>
-              <strong id="management-nav-label">Administration</strong>
-            </button>
+          <nav class="sidebar-groups" aria-label="Pogledi aplikacije">
+            <section class="sidebar-group" data-sidebar-group-panel="operations">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="operations">
+                <span class="sidebar-group-icon" aria-hidden="true">OP</span>
+                <span class="sidebar-group-label">Operativa</span>
+                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link is-active" data-view="selfdash">
+                  <span class="tab-button-icon" aria-hidden="true">RN</span>
+                  <strong>SelfDash</strong>
+                </button>
+              </div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="companies">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="companies">
+                <span class="sidebar-group-icon" aria-hidden="true">TV</span>
+                <span class="sidebar-group-label">Tvrtke</span>
+                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-view="companies">
+                  <span class="tab-button-icon" aria-hidden="true">TV</span>
+                  <strong>ListTvrtke</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-view="locations">
+                  <span class="tab-button-icon" aria-hidden="true">LO</span>
+                  <strong>ListLokacije</strong>
+                </button>
+              </div>
+            </section>
+
+            <section id="sidebar-admin-group-panel" class="sidebar-group" data-sidebar-group-panel="admin" hidden>
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="admin">
+                <span class="sidebar-group-icon" aria-hidden="true">AD</span>
+                <span class="sidebar-group-label">Administracija</span>
+                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-view="management" id="management-tab" hidden>
+                  <span class="tab-button-icon" aria-hidden="true">TM</span>
+                  <strong id="management-nav-label">Administration</strong>
+                </button>
+              </div>
+            </section>
           </nav>
         </aside>
 
@@ -904,7 +956,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326i"></script>
-    <script type="module" src="/src/main.js?v=20260326i"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326j"></script>
+    <script type="module" src="/src/main.js?v=20260326j"></script>
   </body>
 </html>

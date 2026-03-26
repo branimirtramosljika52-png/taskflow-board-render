@@ -9,6 +9,18 @@ import {
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
+const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
+const VIEW_TO_SIDEBAR_GROUP = {
+  selfdash: "operations",
+  companies: "companies",
+  locations: "companies",
+  management: "admin",
+};
+const SIDEBAR_GROUP_DEFAULT_VIEW = {
+  operations: "selfdash",
+  companies: "companies",
+  admin: "management",
+};
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
   "/auth/signup",
@@ -32,10 +44,24 @@ const state = {
   user: null,
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
+  activeSidebarGroup: "operations",
+  sidebarCollapsed: false,
 };
+
+function readSidebarCollapsedPreference() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+state.sidebarCollapsed = readSidebarCollapsedPreference();
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
+const appFrame = document.querySelector("#app-frame");
+const appSidebar = document.querySelector("#app-sidebar");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -49,13 +75,18 @@ const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const logoutButton = document.querySelector("#logout-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
-const sidebarAdminLabel = document.querySelector("#sidebar-admin-label");
+const sidebarCollapseToggle = document.querySelector("#sidebar-collapse-toggle");
+const railButtons = Array.from(document.querySelectorAll("[data-sidebar-group]"));
+const railAdminButton = document.querySelector("#rail-admin-button");
+const sidebarGroupButtons = Array.from(document.querySelectorAll("[data-group-toggle]"));
+const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-group-panel]"));
+const sidebarAdminGroupPanel = document.querySelector("#sidebar-admin-group-panel");
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
 const connectionStatus = document.querySelector("#connection-status");
 const syncError = document.querySelector("#sync-error");
-const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+const tabButtons = Array.from(document.querySelectorAll(".tab-button[data-view]"));
 const managementTab = document.querySelector("#management-tab");
 const managementNavLabel = document.querySelector("#management-nav-label");
 const workspaceViews = {
@@ -503,6 +534,73 @@ function setUserMenuOpen(isOpen) {
   userBadge?.setAttribute("aria-expanded", userMenuOpen ? "true" : "false");
 }
 
+function getSidebarGroupForView(view = state.activeView) {
+  return VIEW_TO_SIDEBAR_GROUP[view] ?? "operations";
+}
+
+function persistSidebarCollapsed() {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(state.sidebarCollapsed));
+  } catch {
+    return;
+  }
+}
+
+function renderSidebarState() {
+  const activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
+
+  appFrame?.classList.toggle("is-sidebar-collapsed", state.sidebarCollapsed);
+  appSidebar?.classList.toggle("is-collapsed", state.sidebarCollapsed);
+
+  if (sidebarCollapseToggle) {
+    sidebarCollapseToggle.setAttribute("aria-expanded", state.sidebarCollapsed ? "false" : "true");
+    sidebarCollapseToggle.setAttribute("aria-label", state.sidebarCollapsed ? "Open sidebar" : "Minimize sidebar");
+    sidebarCollapseToggle.innerHTML = `<span aria-hidden="true">${state.sidebarCollapsed ? "&rarr;" : "&larr;"}</span>`;
+  }
+
+  railButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.sidebarGroup === activeGroup);
+  });
+
+  sidebarGroupPanels.forEach((panel) => {
+    const groupName = panel.dataset.sidebarGroupPanel;
+    const isActive = groupName === activeGroup;
+    panel.classList.toggle("is-open", isActive);
+    panel.querySelector(".sidebar-group-items")?.toggleAttribute("hidden", state.sidebarCollapsed || !isActive);
+    panel.querySelector(".sidebar-group-toggle")?.setAttribute("aria-expanded", isActive && !state.sidebarCollapsed ? "true" : "false");
+  });
+}
+
+function setSidebarCollapsed(nextValue) {
+  state.sidebarCollapsed = Boolean(nextValue);
+  persistSidebarCollapsed();
+  renderSidebarState();
+}
+
+function activateSidebarGroup(groupName, options = {}) {
+  const {
+    navigate = false,
+    expandSidebar = false,
+  } = options;
+
+  state.activeSidebarGroup = groupName;
+
+  if (expandSidebar && state.sidebarCollapsed) {
+    state.sidebarCollapsed = false;
+    persistSidebarCollapsed();
+  }
+
+  if (navigate) {
+    const targetView = SIDEBAR_GROUP_DEFAULT_VIEW[groupName];
+
+    if (targetView) {
+      state.activeView = targetView;
+    }
+  }
+
+  renderActiveView();
+}
+
 function formatDate(value) {
   if (!value) {
     return "Bez datuma";
@@ -744,9 +842,11 @@ function renderAuthState() {
       : (organization ? organization.name : "");
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
-    if (sidebarAdminLabel) {
-      sidebarAdminLabel.textContent = isSuperAdmin ? "Administration" : "Team";
-      sidebarAdminLabel.hidden = managementTab.hidden;
+    if (sidebarAdminGroupPanel) {
+      sidebarAdminGroupPanel.hidden = managementTab.hidden;
+    }
+    if (railAdminButton) {
+      railAdminButton.hidden = managementTab.hidden;
     }
 
     if (sidebarActiveOrganization) {
@@ -765,9 +865,11 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
-    if (sidebarAdminLabel) {
-      sidebarAdminLabel.textContent = "Administration";
-      sidebarAdminLabel.hidden = true;
+    if (sidebarAdminGroupPanel) {
+      sidebarAdminGroupPanel.hidden = true;
+    }
+    if (railAdminButton) {
+      railAdminButton.hidden = true;
     }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
@@ -1256,6 +1358,8 @@ function renderSummary() {
 }
 
 function renderActiveView() {
+  state.activeSidebarGroup = getSidebarGroupForView(state.activeView);
+
   for (const [viewName, element] of Object.entries(workspaceViews)) {
     element.hidden = viewName !== state.activeView;
   }
@@ -1263,6 +1367,8 @@ function renderActiveView() {
   for (const button of tabButtons) {
     button.classList.toggle("is-active", button.dataset.view === state.activeView);
   }
+
+  renderSidebarState();
 }
 
 function renderSharedOptions() {
@@ -1903,6 +2009,43 @@ tabButtons.forEach((button) => {
     state.activeView = button.dataset.view;
     renderActiveView();
   });
+});
+
+railButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const groupName = button.dataset.sidebarGroup;
+
+    if (!groupName) {
+      return;
+    }
+
+    const currentGroup = getSidebarGroupForView(state.activeView);
+    const shouldNavigate = currentGroup !== groupName;
+    activateSidebarGroup(groupName, {
+      navigate: shouldNavigate,
+      expandSidebar: state.sidebarCollapsed,
+    });
+  });
+});
+
+sidebarGroupButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const groupName = button.dataset.groupToggle;
+
+    if (!groupName) {
+      return;
+    }
+
+    const currentGroup = getSidebarGroupForView(state.activeView);
+    activateSidebarGroup(groupName, {
+      navigate: currentGroup !== groupName,
+      expandSidebar: state.sidebarCollapsed,
+    });
+  });
+});
+
+sidebarCollapseToggle?.addEventListener("click", () => {
+  setSidebarCollapsed(!state.sidebarCollapsed);
 });
 
 workOrderCompanyIdInput.addEventListener("change", () => {
