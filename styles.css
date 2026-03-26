@@ -34,6 +34,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -1812,13 +1816,8 @@ button:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   min-height: 24px;
-}
-
-.auth-switch-label {
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 0.94rem;
 }
 
 .auth-switch-link {

@@ -29,7 +29,6 @@ const state = {
   loginContent: null,
   workOrders: [],
   activeView: "selfdash",
-  authMode: "login",
   user: null,
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
@@ -261,25 +260,27 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
-function setAuthMode(mode) {
-  state.authMode = mode === "signup" ? "signup" : "login";
-
-  if (authLoginView) {
-    authLoginView.hidden = false;
-  }
-
+function closeSignupModal({ clearFeedback = false } = {}) {
   if (signupModal) {
-    signupModal.hidden = state.authMode !== "signup";
+    signupModal.hidden = true;
   }
 
-  document.body.classList.toggle("is-signup-open", !state.user && state.authMode === "signup");
+  document.body.classList.remove("is-signup-open");
 
-  if (state.authMode === "login") {
-    signupFeedback.textContent = "";
-    signupFeedback.classList.remove("is-error");
-  } else {
-    loginError.textContent = "";
+  if (clearFeedback) {
+    resetSignupForm();
   }
+}
+
+function openSignupModal() {
+  if (signupModal) {
+    signupModal.hidden = false;
+  }
+
+  document.body.classList.add("is-signup-open");
+  loginError.textContent = "";
+  signupFeedback.textContent = "";
+  signupFeedback.classList.remove("is-error");
 }
 
 async function requestTokenRefresh() {
@@ -576,9 +577,7 @@ function renderAuthState() {
   document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (authenticated) {
-    if (state.authMode !== "login") {
-      setAuthMode("login");
-    }
+    closeSignupModal({ clearFeedback: true });
 
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
@@ -602,7 +601,7 @@ function renderAuthState() {
     signupFeedback.textContent = "";
     setLoginBusy(false);
     setSignupBusy(false);
-    setAuthMode(state.authMode);
+    closeSignupModal();
   }
 }
 
@@ -1706,17 +1705,15 @@ loginForm.addEventListener("submit", (event) => {
 });
 
 closeSignupButton?.addEventListener("click", () => {
-  setAuthMode("login");
+  closeSignupModal();
 });
 
 signupModalBackdrop?.addEventListener("click", () => {
-  setAuthMode("login");
+  closeSignupModal();
 });
 
 openSignupButton?.addEventListener("click", () => {
-  signupFeedback.textContent = "";
-  signupFeedback.classList.remove("is-error");
-  setAuthMode("signup");
+  openSignupModal();
   signupOrganizationNameInput?.focus();
 });
 
@@ -1743,8 +1740,8 @@ signupForm?.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && state.authMode === "signup" && !state.user) {
-    setAuthMode("login");
+  if (event.key === "Escape" && !signupModal?.hidden && !state.user) {
+    closeSignupModal();
   }
 });
 
@@ -1848,7 +1845,7 @@ resetUserForm();
 resetLoginContentForm();
 resetSignupForm();
 renderActiveView();
-setAuthMode(state.authMode);
+closeSignupModal({ clearFeedback: true });
 renderAuthState();
 syncPasswordToggleLabel();
 
