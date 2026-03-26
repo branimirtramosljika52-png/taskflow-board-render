@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326j" />
+    <link rel="stylesheet" href="/styles.css?v=20260326k" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -69,22 +69,12 @@
             <button
               type="button"
               class="rail-button is-active"
-              data-sidebar-group="operations"
-              title="Operativa"
-              aria-label="Operativa"
+              data-sidebar-group="home"
+              title="Home"
+              aria-label="Home"
             >
               <span class="rail-icon" aria-hidden="true">&#8962;</span>
-              <span class="rail-label">Operativa</span>
-            </button>
-            <button
-              type="button"
-              class="rail-button"
-              data-sidebar-group="companies"
-              title="Tvrtke"
-              aria-label="Tvrtke"
-            >
-              <span class="rail-icon" aria-hidden="true">&#9638;</span>
-              <span class="rail-label">Tvrtke</span>
+              <span class="rail-label">Home</span>
             </button>
             <button
               type="button"
@@ -92,11 +82,31 @@
               data-sidebar-group="admin"
               id="rail-admin-button"
               hidden
-              title="Administracija"
-              aria-label="Administracija"
+              title="Administration"
+              aria-label="Administration"
             >
               <span class="rail-icon" aria-hidden="true">&#9881;</span>
-              <span class="rail-label">Admin</span>
+              <span class="rail-label">Administration</span>
+            </button>
+            <button
+              type="button"
+              class="rail-button"
+              data-sidebar-group="tasks"
+              title="Tasks"
+              aria-label="Tasks"
+            >
+              <span class="rail-icon" aria-hidden="true">&#10003;</span>
+              <span class="rail-label">Tasks</span>
+            </button>
+            <button
+              type="button"
+              class="rail-button"
+              data-sidebar-group="companies"
+              title="Company"
+              aria-label="Company"
+            >
+              <span class="rail-icon" aria-hidden="true">&#9638;</span>
+              <span class="rail-label">Company</span>
             </button>
           </nav>
         </aside>
@@ -114,52 +124,70 @@
               </div>
             </div>
             <button id="sidebar-collapse-toggle" type="button" class="sidebar-collapse-button" aria-label="Minimize sidebar">
-              <span aria-hidden="true">←</span>
+              <span aria-hidden="true">&larr;</span>
             </button>
           </div>
 
           <nav class="sidebar-groups" aria-label="Pogledi aplikacije">
-            <section class="sidebar-group" data-sidebar-group-panel="operations">
-              <button type="button" class="sidebar-group-toggle" data-group-toggle="operations">
-                <span class="sidebar-group-icon" aria-hidden="true">OP</span>
-                <span class="sidebar-group-label">Operativa</span>
-                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+            <section class="sidebar-group" data-sidebar-group-panel="home">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="home">
+                <span class="sidebar-group-icon" aria-hidden="true">&#8962;</span>
+                <span class="sidebar-group-label">Home</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
-                <button type="button" class="tab-button sidebar-link is-active" data-view="selfdash">
-                  <span class="tab-button-icon" aria-hidden="true">RN</span>
-                  <strong>SelfDash</strong>
+                <button type="button" class="tab-button sidebar-link sidebar-action" data-selfdash-focus="top">
+                  <span class="tab-button-icon" aria-hidden="true">&#9679;</span>
+                  <strong>Overview</strong>
+                </button>
+              </div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="tasks">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="tasks">
+                <span class="sidebar-group-icon" aria-hidden="true">&#10003;</span>
+                <span class="sidebar-group-label">Tasks</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link sidebar-action" data-selfdash-focus="composer">
+                  <span class="tab-button-icon" aria-hidden="true">+</span>
+                  <strong>Otvaranje RN</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-view="selfdash">
+                  <span class="tab-button-icon" aria-hidden="true">&#9776;</span>
+                  <strong>Lista RN</strong>
                 </button>
               </div>
             </section>
 
             <section class="sidebar-group" data-sidebar-group-panel="companies">
               <button type="button" class="sidebar-group-toggle" data-group-toggle="companies">
-                <span class="sidebar-group-icon" aria-hidden="true">TV</span>
-                <span class="sidebar-group-label">Tvrtke</span>
-                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+                <span class="sidebar-group-icon" aria-hidden="true">&#9638;</span>
+                <span class="sidebar-group-label">Company</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
                 <button type="button" class="tab-button sidebar-link" data-view="companies">
-                  <span class="tab-button-icon" aria-hidden="true">TV</span>
-                  <strong>ListTvrtke</strong>
+                  <span class="tab-button-icon" aria-hidden="true">&#9635;</span>
+                  <strong>Tvrtke</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-view="locations">
-                  <span class="tab-button-icon" aria-hidden="true">LO</span>
-                  <strong>ListLokacije</strong>
+                  <span class="tab-button-icon" aria-hidden="true">&#9675;</span>
+                  <strong>Lokacije</strong>
                 </button>
               </div>
             </section>
 
             <section id="sidebar-admin-group-panel" class="sidebar-group" data-sidebar-group-panel="admin" hidden>
               <button type="button" class="sidebar-group-toggle" data-group-toggle="admin">
-                <span class="sidebar-group-icon" aria-hidden="true">AD</span>
-                <span class="sidebar-group-label">Administracija</span>
-                <span class="sidebar-group-caret" aria-hidden="true">▾</span>
+                <span class="sidebar-group-icon" aria-hidden="true">&#9881;</span>
+                <span class="sidebar-group-label">Administration</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
                 <button type="button" class="tab-button sidebar-link" data-view="management" id="management-tab" hidden>
-                  <span class="tab-button-icon" aria-hidden="true">TM</span>
+                  <span class="tab-button-icon" aria-hidden="true">&#9881;</span>
                   <strong id="management-nav-label">Administration</strong>
                 </button>
               </div>
@@ -956,7 +984,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326j"></script>
-    <script type="module" src="/src/main.js?v=20260326j"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326k"></script>
+    <script type="module" src="/src/main.js?v=20260326k"></script>
   </body>
 </html>

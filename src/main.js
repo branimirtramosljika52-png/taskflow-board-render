@@ -11,13 +11,20 @@ const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
 const VIEW_TO_SIDEBAR_GROUP = {
-  selfdash: "operations",
+  selfdash: "home",
   companies: "companies",
   locations: "companies",
   management: "admin",
 };
+const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
+  selfdash: ["home", "tasks"],
+  companies: ["companies"],
+  locations: ["companies"],
+  management: ["admin"],
+};
 const SIDEBAR_GROUP_DEFAULT_VIEW = {
-  operations: "selfdash",
+  home: "selfdash",
+  tasks: "selfdash",
   companies: "companies",
   admin: "management",
 };
@@ -44,7 +51,7 @@ const state = {
   user: null,
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
-  activeSidebarGroup: "operations",
+  activeSidebarGroup: "home",
   sidebarCollapsed: false,
 };
 
@@ -81,6 +88,7 @@ const railAdminButton = document.querySelector("#rail-admin-button");
 const sidebarGroupButtons = Array.from(document.querySelectorAll("[data-group-toggle]"));
 const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-group-panel]"));
 const sidebarAdminGroupPanel = document.querySelector("#sidebar-admin-group-panel");
+const sidebarSelfDashActions = Array.from(document.querySelectorAll("[data-selfdash-focus]"));
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -535,7 +543,11 @@ function setUserMenuOpen(isOpen) {
 }
 
 function getSidebarGroupForView(view = state.activeView) {
-  return VIEW_TO_SIDEBAR_GROUP[view] ?? "operations";
+  return VIEW_TO_SIDEBAR_GROUP[view] ?? "home";
+}
+
+function getAllowedSidebarGroupsForView(view = state.activeView) {
+  return VIEW_TO_ALLOWED_SIDEBAR_GROUPS[view] ?? [getSidebarGroupForView(view)];
 }
 
 function persistSidebarCollapsed() {
@@ -599,6 +611,34 @@ function activateSidebarGroup(groupName, options = {}) {
   }
 
   renderActiveView();
+}
+
+function focusSelfDashArea(target = "top") {
+  state.activeView = "selfdash";
+
+  if (!["home", "tasks"].includes(state.activeSidebarGroup)) {
+    state.activeSidebarGroup = target === "top" ? "home" : "tasks";
+  }
+
+  renderActiveView();
+
+  if (target === "composer") {
+    focusWorkOrderComposer();
+    return;
+  }
+
+  if (target === "list") {
+    workOrdersTableWrap?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
+  workspaceViews.selfdash?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
 }
 
 function formatDate(value) {
@@ -1358,7 +1398,11 @@ function renderSummary() {
 }
 
 function renderActiveView() {
-  state.activeSidebarGroup = getSidebarGroupForView(state.activeView);
+  const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
+
+  if (!allowedGroups.includes(state.activeSidebarGroup)) {
+    state.activeSidebarGroup = getSidebarGroupForView(state.activeView);
+  }
 
   for (const [viewName, element] of Object.entries(workspaceViews)) {
     element.hidden = viewName !== state.activeView;
@@ -2006,6 +2050,12 @@ function render() {
 
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    const parentGroup = button.closest("[data-sidebar-group-panel]")?.dataset.sidebarGroupPanel;
+
+    if (parentGroup) {
+      state.activeSidebarGroup = parentGroup;
+    }
+
     state.activeView = button.dataset.view;
     renderActiveView();
   });
@@ -2019,8 +2069,7 @@ railButtons.forEach((button) => {
       return;
     }
 
-    const currentGroup = getSidebarGroupForView(state.activeView);
-    const shouldNavigate = currentGroup !== groupName;
+    const shouldNavigate = state.activeSidebarGroup !== groupName;
     activateSidebarGroup(groupName, {
       navigate: shouldNavigate,
       expandSidebar: state.sidebarCollapsed,
@@ -2036,11 +2085,23 @@ sidebarGroupButtons.forEach((button) => {
       return;
     }
 
-    const currentGroup = getSidebarGroupForView(state.activeView);
     activateSidebarGroup(groupName, {
-      navigate: currentGroup !== groupName,
+      navigate: state.activeSidebarGroup !== groupName,
       expandSidebar: state.sidebarCollapsed,
     });
+  });
+});
+
+sidebarSelfDashActions.forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = button.dataset.selfdashFocus || "top";
+    const parentGroup = button.closest("[data-sidebar-group-panel]")?.dataset.sidebarGroupPanel;
+
+    if (parentGroup) {
+      state.activeSidebarGroup = parentGroup;
+    }
+
+    focusSelfDashArea(target);
   });
 });
 
