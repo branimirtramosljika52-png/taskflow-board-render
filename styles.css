@@ -1453,6 +1453,11 @@ body.measurement-sheet-open {
   overflow: hidden;
 }
 
+body.is-resizing-measurement-column {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .measurement-sheet-modal {
   position: fixed;
   inset: 0;
@@ -1529,50 +1534,95 @@ body.measurement-sheet-open {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 10px 12px;
+  padding: 0;
   border-right: 1px solid #d9deea;
   border-bottom: 1px solid #d9deea;
   background: linear-gradient(180deg, #f3f6fb, #e9eef8);
-  color: #4c556e;
-  font-size: 0.78rem;
+  vertical-align: top;
+}
+
+.measurement-sheet-corner {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 54px;
+  text-align: center;
+  color: #6b748f;
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  text-align: left;
+}
+
+.measurement-column-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 10px;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 8px 8px 10px;
+}
+
+.measurement-column-letter {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(207, 216, 236, 0.62);
+  color: #64708d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.measurement-column-title {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  color: #4c556e;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.measurement-column-title:focus {
+  outline: none;
+  background: rgba(83, 104, 255, 0.08);
+  border-radius: 8px;
+}
+
+.measurement-column-title.is-readonly {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
   white-space: nowrap;
 }
 
-.measurement-sheet-grid thead th:first-child {
-  width: 52px;
-  text-align: center;
+.measurement-column-resize {
+  align-self: stretch;
+  width: 10px;
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, transparent, rgba(119, 130, 162, 0.22), transparent);
+  cursor: col-resize;
 }
 
-.measurement-sheet-grid thead th:nth-child(2) {
-  width: 200px;
-}
-
-.measurement-sheet-grid thead th:nth-child(3) {
-  width: 110px;
-}
-
-.measurement-sheet-grid thead th:nth-child(4) {
-  width: 110px;
-}
-
-.measurement-sheet-grid thead th:nth-child(5),
-.measurement-sheet-grid thead th:nth-child(6),
-.measurement-sheet-grid thead th:nth-child(7),
-.measurement-sheet-grid thead th:nth-child(8),
-.measurement-sheet-grid thead th:nth-child(9),
-.measurement-sheet-grid thead th:nth-child(10) {
-  width: 110px;
-}
-
-.measurement-sheet-grid thead th:nth-child(11) {
-  width: 220px;
+.measurement-column-resize:hover {
+  background: linear-gradient(180deg, transparent, rgba(83, 104, 255, 0.36), transparent);
 }
 
 .measurement-sheet-grid tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   padding: 0 8px;
   border-right: 1px solid #dfe4ee;
   border-bottom: 1px solid #dfe4ee;
@@ -1587,6 +1637,11 @@ body.measurement-sheet-open {
   border-right: 1px solid #dfe4ee;
   border-bottom: 1px solid #dfe4ee;
   background: #ffffff;
+}
+
+.measurement-sheet-grid tbody tr:hover td,
+.measurement-sheet-grid tbody tr:hover th {
+  background-color: #fbfcff;
 }
 
 .measurement-sheet-grid tr:last-child td,

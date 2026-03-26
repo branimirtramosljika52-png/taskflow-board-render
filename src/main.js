@@ -10,6 +10,18 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const DEFAULT_MEASUREMENT_ROW_COUNT = 12;
+const DEFAULT_MEASUREMENT_COLUMNS = [
+  { id: "point", label: "Mjerno mjesto", placeholder: "Mjerno mjesto", width: 220 },
+  { id: "label", label: "Oznaka", placeholder: "Oznaka", width: 120 },
+  { id: "unit", label: "Jedinica", placeholder: "Jedinica", width: 120 },
+  { id: "min", label: "Min", placeholder: "Min", width: 110 },
+  { id: "max", label: "Max", placeholder: "Max", width: 110 },
+  { id: "reading1", label: "Mjerenje 1", placeholder: "0,00", width: 120 },
+  { id: "reading2", label: "Mjerenje 2", placeholder: "0,00", width: 120 },
+  { id: "reading3", label: "Mjerenje 3", placeholder: "0,00", width: 120 },
+  { id: "average", label: "Prosjek", placeholder: "", width: 120, computed: "average", readonly: true },
+  { id: "note", label: "Napomena", placeholder: "Napomena", width: 240 },
+];
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
@@ -56,7 +68,9 @@ const state = {
   sidebarCollapsed: false,
   measurementSheet: {
     isOpen: false,
+    columns: [],
     rows: [],
+    resizing: null,
   },
 };
 
@@ -71,6 +85,7 @@ function readSidebarCollapsedPreference() {
 state.sidebarCollapsed = readSidebarCollapsedPreference();
 
 let measurementRowCounter = 0;
+let measurementColumnCounter = 0;
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
@@ -158,11 +173,14 @@ const measurementSheetModal = document.querySelector("#measurement-sheet-modal")
 const measurementSheetBackdrop = document.querySelector("#measurement-sheet-backdrop");
 const measurementSheetCloseButton = document.querySelector("#measurement-sheet-close");
 const measurementSheetAddRowButton = document.querySelector("#measurement-sheet-add-row");
+const measurementSheetAddColumnButton = document.querySelector("#measurement-sheet-add-column");
 const measurementSheetResetButton = document.querySelector("#measurement-sheet-reset");
 const measurementCompanyInput = document.querySelector("#measurement-company");
 const measurementHeadquartersInput = document.querySelector("#measurement-headquarters");
 const measurementLocationInput = document.querySelector("#measurement-location");
 const measurementDateInput = document.querySelector("#measurement-date");
+const measurementSheetColgroup = document.querySelector("#measurement-sheet-colgroup");
+const measurementSheetHead = document.querySelector("#measurement-sheet-head");
 const measurementSheetBody = document.querySelector("#measurement-sheet-body");
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
@@ -696,21 +714,37 @@ function getLocationsForCompany(companyId) {
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
 }
 
-function createMeasurementRow(partial = {}) {
+function buildDefaultMeasurementColumns() {
+  return DEFAULT_MEASUREMENT_COLUMNS.map((column) => ({ ...column }));
+}
+
+function createMeasurementColumn(partial = {}) {
+  measurementColumnCounter += 1;
+
+  return {
+    id: partial.id || `measurement-custom-${measurementColumnCounter}`,
+    label: partial.label || `Kolona ${measurementColumnCounter}`,
+    placeholder: partial.placeholder || "Unos",
+    width: partial.width || 160,
+    computed: partial.computed || null,
+    readonly: Boolean(partial.readonly),
+  };
+}
+
+function createMeasurementRow(partialCells = {}) {
   measurementRowCounter += 1;
+
+  const cells = {};
+
+  state.measurementSheet.columns
+    .filter((column) => !column.computed)
+    .forEach((column) => {
+      cells[column.id] = partialCells[column.id] ?? "";
+    });
 
   return {
     id: `measurement-row-${measurementRowCounter}`,
-    point: "",
-    label: "",
-    unit: "",
-    min: "",
-    max: "",
-    reading1: "",
-    reading2: "",
-    reading3: "",
-    note: "",
-    ...partial,
+    cells,
   };
 }
 
@@ -730,8 +764,8 @@ function parseMeasurementNumber(value) {
 }
 
 function formatMeasurementAverage(row) {
-  const values = [row.reading1, row.reading2, row.reading3]
-    .map(parseMeasurementNumber)
+  const values = ["reading1", "reading2", "reading3"]
+    .map((key) => parseMeasurementNumber(row.cells?.[key]))
     .filter((value) => value !== null);
 
   if (values.length === 0) {
@@ -745,7 +779,38 @@ function formatMeasurementAverage(row) {
   }).format(average);
 }
 
-function ensureMeasurementSheetRows() {
+function getSpreadsheetColumnLabel(index) {
+  let value = index + 1;
+  let label = "";
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+
+  return label;
+}
+
+function ensureMeasurementSheetStructure() {
+  if (state.measurementSheet.columns.length === 0) {
+    state.measurementSheet.columns = buildDefaultMeasurementColumns();
+  }
+
+  state.measurementSheet.rows.forEach((row) => {
+    if (!row.cells || typeof row.cells !== "object") {
+      row.cells = {};
+    }
+
+    state.measurementSheet.columns
+      .filter((column) => !column.computed)
+      .forEach((column) => {
+        if (!(column.id in row.cells)) {
+          row.cells[column.id] = "";
+        }
+      });
+  });
+
   if (state.measurementSheet.rows.length === 0) {
     state.measurementSheet.rows = buildDefaultMeasurementRows();
   }
@@ -773,13 +838,80 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
 }
 
 function renderMeasurementSheet() {
-  ensureMeasurementSheetRows();
+  ensureMeasurementSheetStructure();
 
-  if (!measurementSheetBody) {
+  if (!measurementSheetBody || !measurementSheetHead || !measurementSheetColgroup) {
     return;
   }
 
-  const fragment = document.createDocumentFragment();
+  const colgroupFragment = document.createDocumentFragment();
+  const cornerCol = document.createElement("col");
+  cornerCol.style.width = "54px";
+  colgroupFragment.append(cornerCol);
+
+  state.measurementSheet.columns.forEach((column) => {
+    const col = document.createElement("col");
+    col.style.width = `${column.width || 140}px`;
+    colgroupFragment.append(col);
+  });
+
+  measurementSheetColgroup.replaceChildren(colgroupFragment);
+
+  const headRow = document.createElement("tr");
+  const cornerHeader = document.createElement("th");
+  cornerHeader.className = "measurement-sheet-corner";
+  cornerHeader.textContent = "#";
+  headRow.append(cornerHeader);
+
+  state.measurementSheet.columns.forEach((column, index) => {
+    const th = document.createElement("th");
+    th.dataset.columnId = column.id;
+
+    const head = document.createElement("div");
+    head.className = "measurement-column-head";
+
+    const letter = document.createElement("span");
+    letter.className = "measurement-column-letter";
+    letter.textContent = getSpreadsheetColumnLabel(index);
+
+    const title = document.createElement(column.readonly ? "span" : "input");
+    title.className = column.readonly
+      ? "measurement-column-title is-readonly"
+      : "measurement-column-title";
+
+    if (column.readonly) {
+      title.textContent = column.label;
+    } else {
+      title.type = "text";
+      title.value = column.label;
+      title.addEventListener("input", (event) => {
+        column.label = event.currentTarget.value || "Nova kolona";
+      });
+    }
+
+    const resizeHandle = document.createElement("button");
+    resizeHandle.type = "button";
+    resizeHandle.className = "measurement-column-resize";
+    resizeHandle.setAttribute("aria-label", `Promijeni sirinu kolone ${column.label}`);
+    resizeHandle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      state.measurementSheet.resizing = {
+        columnId: column.id,
+        startX: event.clientX,
+        startWidth: column.width || 140,
+      };
+      resizeHandle.setPointerCapture?.(event.pointerId);
+      document.body.classList.add("is-resizing-measurement-column");
+    });
+
+    head.append(letter, title, resizeHandle);
+    th.append(head);
+    headRow.append(th);
+  });
+
+  measurementSheetHead.replaceChildren(headRow);
+
+  const bodyFragment = document.createDocumentFragment();
 
   state.measurementSheet.rows.forEach((row, index) => {
     const tr = document.createElement("tr");
@@ -789,60 +921,42 @@ function renderMeasurementSheet() {
     indexCell.textContent = String(index + 1);
     tr.append(indexCell);
 
-    const fields = [
-      { key: "point", placeholder: "Mjerno mjesto" },
-      { key: "label", placeholder: "Oznaka" },
-      { key: "unit", placeholder: "Jedinica" },
-      { key: "min", placeholder: "Min" },
-      { key: "max", placeholder: "Max" },
-      { key: "reading1", placeholder: "0,00" },
-      { key: "reading2", placeholder: "0,00" },
-      { key: "reading3", placeholder: "0,00" },
-    ];
-
-    fields.forEach((field) => {
+    state.measurementSheet.columns.forEach((column) => {
       const td = document.createElement("td");
+
+      if (column.computed === "average") {
+        td.className = "measurement-cell-average";
+        td.textContent = formatMeasurementAverage(row);
+        tr.append(td);
+        return;
+      }
+
       const input = document.createElement("input");
       input.type = "text";
       input.className = "measurement-cell-input";
-      input.value = row[field.key] ?? "";
-      input.placeholder = field.placeholder;
+      input.value = row.cells?.[column.id] ?? "";
+      input.placeholder = column.placeholder || column.label;
       input.dataset.rowId = row.id;
-      input.dataset.field = field.key;
+      input.dataset.columnId = column.id;
       input.addEventListener("input", (event) => {
-        row[field.key] = event.currentTarget.value;
-        const averageOutput = tr.querySelector("[data-average-output]");
+        row.cells[column.id] = event.currentTarget.value;
 
-        if (averageOutput) {
-          averageOutput.textContent = formatMeasurementAverage(row);
+        if (["reading1", "reading2", "reading3"].includes(column.id)) {
+          const averageCell = tr.querySelector(".measurement-cell-average");
+
+          if (averageCell) {
+            averageCell.textContent = formatMeasurementAverage(row);
+          }
         }
       });
       td.append(input);
       tr.append(td);
     });
 
-    const averageCell = document.createElement("td");
-    averageCell.className = "measurement-cell-average";
-    averageCell.dataset.averageOutput = "true";
-    averageCell.textContent = formatMeasurementAverage(row);
-    tr.append(averageCell);
-
-    const noteCell = document.createElement("td");
-    const noteInput = document.createElement("input");
-    noteInput.type = "text";
-    noteInput.className = "measurement-cell-input";
-    noteInput.value = row.note ?? "";
-    noteInput.placeholder = "Napomena";
-    noteInput.addEventListener("input", (event) => {
-      row.note = event.currentTarget.value;
-    });
-    noteCell.append(noteInput);
-    tr.append(noteCell);
-
-    fragment.append(tr);
+    bodyFragment.append(tr);
   });
 
-  measurementSheetBody.replaceChildren(fragment);
+  measurementSheetBody.replaceChildren(bodyFragment);
 }
 
 function setMeasurementSheetOpen(isOpen) {
@@ -866,9 +980,59 @@ function closeMeasurementSheet() {
 }
 
 function resetMeasurementSheet() {
+  state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
+  state.measurementSheet.resizing = null;
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
+}
+
+function addMeasurementColumn() {
+  ensureMeasurementSheetStructure();
+
+  const column = createMeasurementColumn({
+    label: `Kolona ${state.measurementSheet.columns.filter((item) => !item.computed).length + 1}`,
+  });
+
+  const insertionIndex = state.measurementSheet.columns.findIndex((item) => item.computed || item.id === "note");
+
+  if (insertionIndex >= 0) {
+    state.measurementSheet.columns.splice(insertionIndex, 0, column);
+  } else {
+    state.measurementSheet.columns.push(column);
+  }
+
+  state.measurementSheet.rows.forEach((row) => {
+    row.cells[column.id] = "";
+  });
+
+  renderMeasurementSheet();
+}
+
+function updateMeasurementColumnWidth(pointerX) {
+  const resizeState = state.measurementSheet.resizing;
+
+  if (!resizeState) {
+    return;
+  }
+
+  const column = state.measurementSheet.columns.find((item) => item.id === resizeState.columnId);
+
+  if (!column) {
+    return;
+  }
+
+  column.width = Math.max(90, resizeState.startWidth + (pointerX - resizeState.startX));
+  renderMeasurementSheet();
+}
+
+function stopMeasurementColumnResize() {
+  if (!state.measurementSheet.resizing) {
+    return;
+  }
+
+  state.measurementSheet.resizing = null;
+  document.body.classList.remove("is-resizing-measurement-column");
 }
 
 function createCell(text) {
@@ -2380,6 +2544,7 @@ measurementSheetAddRowButton?.addEventListener("click", () => {
   state.measurementSheet.rows.push(createMeasurementRow());
   renderMeasurementSheet();
 });
+measurementSheetAddColumnButton?.addEventListener("click", addMeasurementColumn);
 measurementSheetResetButton?.addEventListener("click", resetMeasurementSheet);
 
 workspaceViewChips.forEach((chip) => {
@@ -2442,6 +2607,20 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.measurementSheet.isOpen) {
     closeMeasurementSheet();
   }
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (state.measurementSheet.resizing) {
+    updateMeasurementColumnWidth(event.clientX);
+  }
+});
+
+document.addEventListener("pointerup", () => {
+  stopMeasurementColumnResize();
+});
+
+document.addEventListener("pointercancel", () => {
+  stopMeasurementColumnResize();
 });
 
 document.addEventListener("click", (event) => {
@@ -2536,7 +2715,9 @@ logoutButton.addEventListener("click", () => {
     state.users = [];
     state.signupRequests = [];
     state.loginContentItems = [];
+    state.measurementSheet.columns = [];
     state.measurementSheet.rows = [];
+    state.measurementSheet.resizing = null;
     loginForm.reset();
     closeMeasurementSheet();
     renderAuthState();

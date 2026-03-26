@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326m" />
+    <link rel="stylesheet" href="/styles.css?v=20260326n" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -471,6 +471,7 @@
               </div>
               <div class="measurement-sheet-head-actions">
                 <button id="measurement-sheet-add-row" type="button" class="ghost-button">Dodaj red</button>
+                <button id="measurement-sheet-add-column" type="button" class="ghost-button">Dodaj kolonu</button>
                 <button id="measurement-sheet-reset" type="button" class="ghost-button">Reset tablice</button>
                 <button id="measurement-sheet-close" type="button" class="ghost-button">Zatvori</button>
               </div>
@@ -500,21 +501,8 @@
 
             <div class="measurement-sheet-grid-wrap">
               <table class="measurement-sheet-grid">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Mjerno mjesto</th>
-                    <th>Oznaka</th>
-                    <th>Jedinica</th>
-                    <th>Min</th>
-                    <th>Max</th>
-                    <th>Mjerenje 1</th>
-                    <th>Mjerenje 2</th>
-                    <th>Mjerenje 3</th>
-                    <th>Prosjek</th>
-                    <th>Napomena</th>
-                  </tr>
-                </thead>
+                <colgroup id="measurement-sheet-colgroup"></colgroup>
+                <thead id="measurement-sheet-head"></thead>
                 <tbody id="measurement-sheet-body"></tbody>
               </table>
             </div>
@@ -1051,7 +1039,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326m"></script>
-    <script type="module" src="/src/main.js?v=20260326m"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326n"></script>
+    <script type="module" src="/src/main.js?v=20260326n"></script>
   </body>
 </html>
