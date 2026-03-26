@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326u" />
+    <link rel="stylesheet" href="/styles.css?v=20260326v" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -497,6 +497,46 @@
                 <span>Datum</span>
                 <input id="measurement-date" type="date" />
               </label>
+            </div>
+
+            <div class="measurement-sheet-toolbar" aria-label="Spreadsheet toolbar">
+              <div class="measurement-toolbar-primary">
+                <label class="measurement-toolbar-namebox">
+                  <span class="measurement-toolbar-label">Ćelija</span>
+                  <input id="measurement-name-box" type="text" readonly />
+                </label>
+
+                <label class="measurement-toolbar-formula">
+                  <span class="measurement-toolbar-fx" aria-hidden="true">fx</span>
+                  <input
+                    id="measurement-formula-input"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Vrijednost ili formula"
+                  />
+                </label>
+              </div>
+
+              <div class="measurement-toolbar-secondary">
+                <label class="measurement-toolbar-format">
+                  <span class="measurement-toolbar-label">Tip</span>
+                  <select id="measurement-format-type">
+                    <option value="general">General</option>
+                    <option value="number">Number</option>
+                    <option value="integer">Integer</option>
+                    <option value="percent">Percent</option>
+                    <option value="text">Text</option>
+                  </select>
+                </label>
+
+                <label class="measurement-toolbar-format measurement-toolbar-decimals">
+                  <span class="measurement-toolbar-label">Decimale</span>
+                  <input id="measurement-format-decimals" type="number" min="0" max="6" step="1" value="2" />
+                </label>
+
+                <button id="measurement-format-apply" type="button" class="ghost-button">Apply format</button>
+              </div>
             </div>
 
             <div class="measurement-sheet-grid-wrap">
@@ -1044,7 +1084,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326u"></script>
-    <script type="module" src="/src/main.js?v=20260326u"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326v"></script>
+    <script type="module" src="/src/main.js?v=20260326v"></script>
   </body>
 </html>

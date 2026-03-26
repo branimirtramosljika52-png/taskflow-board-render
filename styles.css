@@ -1529,6 +1529,127 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   gap: 12px;
 }
 
+.measurement-sheet-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.85fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.measurement-toolbar-primary,
+.measurement-toolbar-secondary {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.measurement-toolbar-namebox,
+.measurement-toolbar-formula,
+.measurement-toolbar-format {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.measurement-toolbar-namebox {
+  width: 120px;
+  flex: 0 0 120px;
+}
+
+.measurement-toolbar-label {
+  color: #67718b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.measurement-toolbar-namebox input,
+.measurement-toolbar-format select,
+.measurement-toolbar-format input {
+  min-height: 44px;
+  border: 1px solid #d9deea;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.measurement-toolbar-namebox input {
+  padding: 0 14px;
+  font-weight: 700;
+  text-align: center;
+  color: #3b4764;
+}
+
+.measurement-toolbar-formula {
+  flex: 1 1 auto;
+}
+
+.measurement-toolbar-formula {
+  position: relative;
+}
+
+.measurement-toolbar-formula input {
+  min-height: 44px;
+  padding: 0 16px 0 54px;
+  border: 1px solid #d9deea;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1f2433;
+  box-shadow: none;
+}
+
+.measurement-toolbar-formula input:focus,
+.measurement-toolbar-namebox input:focus,
+.measurement-toolbar-format select:focus,
+.measurement-toolbar-format input:focus {
+  outline: none;
+  border-color: rgba(83, 104, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(83, 104, 255, 0.12);
+}
+
+.measurement-toolbar-fx {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  border-radius: 8px;
+  background: rgba(83, 104, 255, 0.1);
+  color: #5368ff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.measurement-toolbar-secondary {
+  justify-content: flex-end;
+}
+
+.measurement-toolbar-format {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.measurement-toolbar-format select,
+.measurement-toolbar-format input {
+  padding: 0 14px;
+}
+
+.measurement-toolbar-decimals {
+  flex: 0 0 110px;
+}
+
+.measurement-toolbar-secondary .ghost-button {
+  align-self: flex-end;
+  min-height: 44px;
+  padding-inline: 16px;
+  border-radius: 14px;
+}
+
 .measurement-sheet-grid-wrap {
   min-height: 0;
   overflow: auto;
@@ -3349,6 +3470,15 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   .measurement-sheet-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .measurement-sheet-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .measurement-toolbar-secondary {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 720px) {
@@ -3378,6 +3508,18 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 
   .measurement-sheet-meta {
     grid-template-columns: 1fr;
+  }
+
+  .measurement-toolbar-primary,
+  .measurement-toolbar-secondary {
+    flex-direction: column;
+  }
+
+  .measurement-toolbar-namebox,
+  .measurement-toolbar-decimals,
+  .measurement-toolbar-format {
+    width: 100%;
+    flex: 1 1 auto;
   }
 }
 
