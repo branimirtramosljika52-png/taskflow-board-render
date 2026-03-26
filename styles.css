@@ -1449,6 +1449,183 @@ button:hover {
   background: linear-gradient(180deg, #ffffff, #fbfbfd);
 }
 
+body.measurement-sheet-open {
+  overflow: hidden;
+}
+
+.measurement-sheet-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.measurement-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(20, 24, 34, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.measurement-sheet-panel {
+  position: relative;
+  z-index: 1;
+  width: min(1500px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(206, 212, 228, 0.92);
+  background: linear-gradient(180deg, #fcfcfe, #f6f8fc);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.22);
+}
+
+.measurement-sheet-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.measurement-sheet-head h2 {
+  margin: 0;
+}
+
+.measurement-sheet-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.measurement-sheet-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.measurement-sheet-grid-wrap {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #d9deea;
+  border-radius: 22px;
+  background: #ffffff;
+}
+
+.measurement-sheet-grid {
+  width: max(1320px, 100%);
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.88rem;
+}
+
+.measurement-sheet-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  border-right: 1px solid #d9deea;
+  border-bottom: 1px solid #d9deea;
+  background: linear-gradient(180deg, #f3f6fb, #e9eef8);
+  color: #4c556e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.measurement-sheet-grid thead th:first-child {
+  width: 52px;
+  text-align: center;
+}
+
+.measurement-sheet-grid thead th:nth-child(2) {
+  width: 200px;
+}
+
+.measurement-sheet-grid thead th:nth-child(3) {
+  width: 110px;
+}
+
+.measurement-sheet-grid thead th:nth-child(4) {
+  width: 110px;
+}
+
+.measurement-sheet-grid thead th:nth-child(5),
+.measurement-sheet-grid thead th:nth-child(6),
+.measurement-sheet-grid thead th:nth-child(7),
+.measurement-sheet-grid thead th:nth-child(8),
+.measurement-sheet-grid thead th:nth-child(9),
+.measurement-sheet-grid thead th:nth-child(10) {
+  width: 110px;
+}
+
+.measurement-sheet-grid thead th:nth-child(11) {
+  width: 220px;
+}
+
+.measurement-sheet-grid tbody th {
+  padding: 0 8px;
+  border-right: 1px solid #dfe4ee;
+  border-bottom: 1px solid #dfe4ee;
+  background: #f8faff;
+  color: #67718b;
+  font-weight: 700;
+  text-align: center;
+}
+
+.measurement-sheet-grid tbody td {
+  padding: 0;
+  border-right: 1px solid #dfe4ee;
+  border-bottom: 1px solid #dfe4ee;
+  background: #ffffff;
+}
+
+.measurement-sheet-grid tr:last-child td,
+.measurement-sheet-grid tr:last-child th {
+  border-bottom: 0;
+}
+
+.measurement-sheet-grid th:last-child,
+.measurement-sheet-grid td:last-child {
+  border-right: 0;
+}
+
+.measurement-cell-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f2433;
+  font-size: 0.9rem;
+  box-shadow: none;
+}
+
+.measurement-cell-input:focus {
+  outline: none;
+  background: rgba(83, 104, 255, 0.06);
+  box-shadow: inset 0 0 0 2px rgba(83, 104, 255, 0.2);
+}
+
+.measurement-cell-average {
+  padding: 0 12px;
+  background: #f9fbff;
+  color: #2b3f7c;
+  font-weight: 700;
+  text-align: right;
+  vertical-align: middle;
+}
+
 .workspace-list-head {
   display: flex;
   justify-content: space-between;
@@ -2971,6 +3148,48 @@ button:hover {
   .auth-request-form {
     grid-template-columns: 1fr;
     column-gap: 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .measurement-sheet-panel {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+  }
+
+  .measurement-sheet-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .measurement-sheet-modal {
+    padding: 12px;
+  }
+
+  .measurement-sheet-panel {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+    border-radius: 22px;
+  }
+
+  .measurement-sheet-head {
+    flex-direction: column;
+  }
+
+  .measurement-sheet-head-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .measurement-sheet-head-actions > * {
+    flex: 1 1 140px;
+  }
+
+  .measurement-sheet-meta {
+    grid-template-columns: 1fr;
   }
 }
 

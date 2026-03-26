@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326l" />
+    <link rel="stylesheet" href="/styles.css?v=20260326m" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -405,6 +405,7 @@
 
               <div class="form-actions">
                 <button type="submit" class="primary-button">Spremi RN</button>
+                <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
                 <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
               </div>
             </form>
@@ -456,6 +457,67 @@
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
             <p id="work-orders-load-state" class="load-state" hidden></p>
+          </section>
+        </section>
+
+        <section id="measurement-sheet-modal" class="measurement-sheet-modal" hidden>
+          <button id="measurement-sheet-backdrop" type="button" class="measurement-sheet-backdrop" aria-label="Zatvori mjerenja"></button>
+          <section class="measurement-sheet-panel" aria-label="Radni list za mjerenja">
+            <div class="measurement-sheet-head">
+              <div>
+                <p class="section-kicker">Measurement sheet</p>
+                <h2>Unos mjerenja</h2>
+                <p class="helper-copy">Gore unesi osnovne podatke, dolje radi kao u spreadsheet tablici za mjerenja.</p>
+              </div>
+              <div class="measurement-sheet-head-actions">
+                <button id="measurement-sheet-add-row" type="button" class="ghost-button">Dodaj red</button>
+                <button id="measurement-sheet-reset" type="button" class="ghost-button">Reset tablice</button>
+                <button id="measurement-sheet-close" type="button" class="ghost-button">Zatvori</button>
+              </div>
+            </div>
+
+            <div class="measurement-sheet-meta">
+              <label class="field">
+                <span>Tvrtka</span>
+                <input id="measurement-company" type="text" placeholder="Naziv tvrtke" />
+              </label>
+
+              <label class="field">
+                <span>Sjediste</span>
+                <input id="measurement-headquarters" type="text" placeholder="Sjediste tvrtke" />
+              </label>
+
+              <label class="field">
+                <span>Lokacija</span>
+                <input id="measurement-location" type="text" placeholder="Naziv lokacije" />
+              </label>
+
+              <label class="field">
+                <span>Datum</span>
+                <input id="measurement-date" type="date" />
+              </label>
+            </div>
+
+            <div class="measurement-sheet-grid-wrap">
+              <table class="measurement-sheet-grid">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Mjerno mjesto</th>
+                    <th>Oznaka</th>
+                    <th>Jedinica</th>
+                    <th>Min</th>
+                    <th>Max</th>
+                    <th>Mjerenje 1</th>
+                    <th>Mjerenje 2</th>
+                    <th>Mjerenje 3</th>
+                    <th>Prosjek</th>
+                    <th>Napomena</th>
+                  </tr>
+                </thead>
+                <tbody id="measurement-sheet-body"></tbody>
+              </table>
+            </div>
           </section>
         </section>
 
@@ -989,7 +1051,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326l"></script>
-    <script type="module" src="/src/main.js?v=20260326l"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326m"></script>
+    <script type="module" src="/src/main.js?v=20260326m"></script>
   </body>
 </html>
