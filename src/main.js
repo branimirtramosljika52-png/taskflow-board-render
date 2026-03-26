@@ -49,7 +49,7 @@ const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const logoutButton = document.querySelector("#logout-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
-const sidebarRoleCopy = document.querySelector("#sidebar-role-copy");
+const sidebarAdminLabel = document.querySelector("#sidebar-admin-label");
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -58,7 +58,6 @@ const syncError = document.querySelector("#sync-error");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const managementTab = document.querySelector("#management-tab");
 const managementNavLabel = document.querySelector("#management-nav-label");
-const managementNavHint = document.querySelector("#management-nav-hint");
 const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
   companies: document.querySelector("#companies-view"),
@@ -713,27 +712,17 @@ function renderAuthState() {
       : (organization ? organization.name : "");
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
+    if (sidebarAdminLabel) {
+      sidebarAdminLabel.textContent = isSuperAdmin ? "Administration" : "Team";
+      sidebarAdminLabel.hidden = managementTab.hidden;
+    }
 
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = organization ? organization.name : "Safety360";
     }
 
-    if (sidebarRoleCopy) {
-      sidebarRoleCopy.textContent = isSuperAdmin
-        ? "Ti jedini kreiras organizacije i postavljas admine. Admin zatim vodi svakodnevni rad svoje organizacije."
-        : isAdmin
-          ? "Kao admin upravljas korisnicima, tvrtkama, lokacijama i radnim nalozima svoje organizacije."
-          : "Kao korisnik radis samo u podacima organizacije kojoj pripadas.";
-    }
-
     if (managementNavLabel) {
       managementNavLabel.textContent = isSuperAdmin ? "Administration" : "Team";
-    }
-
-    if (managementNavHint) {
-      managementNavHint.textContent = isSuperAdmin
-        ? "Organizations and admins"
-        : "Users in your organization";
     }
   } else {
     userBadge.textContent = "";
@@ -744,17 +733,15 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
-    if (sidebarActiveOrganization) {
-      sidebarActiveOrganization.textContent = "Safety360";
+    if (sidebarAdminLabel) {
+      sidebarAdminLabel.textContent = "Administration";
+      sidebarAdminLabel.hidden = true;
     }
-    if (sidebarRoleCopy) {
-      sidebarRoleCopy.textContent = "Super admin upravlja organizacijama i dodjeljuje admine.";
+    if (sidebarActiveOrganization) {
+      sidebarActiveOrganization.textContent = "Workspace";
     }
     if (managementNavLabel) {
       managementNavLabel.textContent = "Administration";
-    }
-    if (managementNavHint) {
-      managementNavHint.textContent = "Organizations and admins";
     }
     loginError.textContent = "";
     setLoginBusy(false);

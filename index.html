@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326f" />
+    <link rel="stylesheet" href="/styles.css?v=20260326g" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -64,39 +64,35 @@
     <main id="app-shell" class="app-shell" hidden>
       <section class="app-frame">
         <aside class="app-sidebar">
-          <div class="sidebar-brand">
-            <div class="auth-logo" aria-label="Safety360">
-              <div class="auth-logo-mark">
-                <span></span>
-                <span></span>
-              </div>
-              <span class="auth-logo-word">Safety360</span>
+          <div class="sidebar-brand-pill" aria-label="Safety360">
+            <div class="auth-logo-mark">
+              <span></span>
+              <span></span>
             </div>
-            <p class="sidebar-brand-copy">Multi-tenant workspace</p>
-          </div>
-
-          <div class="sidebar-context-card">
-            <p class="sidebar-kicker">Aktivni prostor</p>
-            <strong id="sidebar-active-organization">Safety360</strong>
-            <span id="sidebar-role-copy">Super admin upravlja organizacijama i dodjeljuje admine.</span>
+            <div class="sidebar-brand-meta">
+              <strong>Safety360</strong>
+              <span id="sidebar-active-organization">Workspace</span>
+            </div>
           </div>
 
           <nav class="tab-strip sidebar-nav" aria-label="Pogledi aplikacije">
+            <p class="sidebar-section-label">Workspace</p>
             <button type="button" class="tab-button is-active" data-view="selfdash">
+              <span class="tab-button-icon" aria-hidden="true">SD</span>
               <strong>SelfDash</strong>
-              <span>Radni nalozi i operativa</span>
             </button>
             <button type="button" class="tab-button" data-view="companies">
+              <span class="tab-button-icon" aria-hidden="true">TV</span>
               <strong>ListTvrtke</strong>
-              <span>Klijenti i ugovori</span>
             </button>
             <button type="button" class="tab-button" data-view="locations">
+              <span class="tab-button-icon" aria-hidden="true">LO</span>
               <strong>ListLokacije</strong>
-              <span>Lokacije i kontakti</span>
             </button>
+            <p id="sidebar-admin-label" class="sidebar-section-label" hidden>Administration</p>
             <button type="button" class="tab-button" data-view="management" id="management-tab" hidden>
+              <span class="tab-button-icon" aria-hidden="true">AD</span>
               <strong id="management-nav-label">Administration</strong>
-              <span id="management-nav-hint">Organizations and admins</span>
             </button>
           </nav>
         </aside>
@@ -892,7 +888,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326f"></script>
-    <script type="module" src="/src/main.js?v=20260326f"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326g"></script>
+    <script type="module" src="/src/main.js?v=20260326g"></script>
   </body>
 </html>
