@@ -1463,6 +1463,11 @@ body.is-filling-measurement-cells {
   user-select: none;
 }
 
+body.is-selecting-measurement-cells {
+  cursor: cell;
+  user-select: none;
+}
+
 .measurement-sheet-modal {
   position: fixed;
   inset: 0;
@@ -1557,6 +1562,7 @@ body.is-filling-measurement-cells {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  cursor: pointer;
 }
 
 .measurement-column-head {
@@ -1594,6 +1600,10 @@ body.is-filling-measurement-cells {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   box-shadow: none;
+}
+
+.measurement-sheet-grid thead th[data-column-id] {
+  cursor: pointer;
 }
 
 .measurement-column-title:focus {
@@ -1635,6 +1645,7 @@ body.is-filling-measurement-cells {
   color: #67718b;
   font-weight: 700;
   text-align: center;
+  cursor: pointer;
 }
 
 .measurement-sheet-grid tbody td {
@@ -1652,6 +1663,13 @@ body.is-filling-measurement-cells {
 
 .measurement-sheet-grid td.is-selected-cell {
   background: rgba(83, 104, 255, 0.08);
+}
+
+.measurement-sheet-grid tbody th.is-selected-row,
+.measurement-sheet-grid thead th.is-selected-column,
+.measurement-sheet-corner:hover {
+  background: linear-gradient(180deg, #eef2ff, #e4eaff);
+  color: #4051af;
 }
 
 .measurement-sheet-grid tr:last-child td,
