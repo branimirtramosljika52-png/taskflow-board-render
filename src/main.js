@@ -74,6 +74,7 @@ const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-coun
 const workOrderForm = document.querySelector("#work-order-form");
 const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
+const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
 const workOrderIdInput = document.querySelector("#work-order-id");
 const workOrderStatusInput = document.querySelector("#work-order-status");
@@ -109,6 +110,7 @@ const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
 const workOrdersLoadState = document.querySelector("#work-orders-load-state");
 const workOrdersHelper = document.querySelector("#work-orders-helper");
+const workspaceViewChips = Array.from(document.querySelectorAll("[data-jump-view]"));
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
@@ -663,6 +665,36 @@ function isOverdueWorkOrder(item) {
   }
 
   return item.dueDate < new Date().toISOString().slice(0, 10);
+}
+
+function getOptionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function focusWorkOrderComposer(prefill = {}) {
+  resetWorkOrderForm();
+
+  if (prefill.status) {
+    workOrderStatusInput.value = prefill.status;
+    workOrderNumberPreview.textContent = `Novi ${prefill.status}`;
+  }
+
+  if (prefill.priority) {
+    workOrderPriorityInput.value = prefill.priority;
+  }
+
+  workOrderForm.closest(".panel")?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function buildWorkOrderGroups(items) {
+  return WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+    status: option.value,
+    label: option.label,
+    items: items.filter((item) => item.status === option.value),
+  })).filter((group) => group.items.length > 0);
 }
 
 function renderLoginContent() {
@@ -1336,100 +1368,156 @@ function loadMoreWorkOrders() {
 function renderWorkOrders() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
+  const fullGroups = buildWorkOrderGroups(filtered);
+  const visibleGroups = buildWorkOrderGroups(visibleItems);
 
   if (workOrdersHelper) {
     workOrdersHelper.textContent = `${filtered.length} RN u list view prikazu.`;
   }
 
-  workOrdersBody.replaceChildren(...visibleItems.map((item) => {
-    const row = document.createElement("tr");
-    row.className = "list-row";
+  workOrdersBody.replaceChildren(...visibleGroups.map((group) => {
+    const section = document.createElement("section");
+    section.className = "work-group";
 
-    const statusBadge = createBadge(
-      WORK_ORDER_STATUS_OPTIONS.find((option) => option.value === item.status)?.label ?? item.status,
-      statusBadgeClass(item.status),
-    );
-    const priorityBadge = createBadge(
-      PRIORITY_OPTIONS.find((option) => option.value === item.priority)?.label ?? item.priority,
-      priorityBadgeClass(item.priority),
-    );
-    const overdue = isOverdueWorkOrder(item);
+    const groupHeader = document.createElement("div");
+    groupHeader.className = "work-group-header";
 
-    const actionsCell = document.createElement("td");
-    actionsCell.className = "table-actions";
-    actionsCell.append(createActionButton("Uredi", "card-button", () => hydrateWorkOrderForm(item)));
+    const headerLead = document.createElement("div");
+    headerLead.className = "work-group-lead";
 
-    if (state.user?.role !== "user") {
-      actionsCell.append(createActionButton("Obrisi", "card-button card-danger", () => {
-        if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
-          return;
-        }
+    const foldIcon = document.createElement("span");
+    foldIcon.className = "work-group-fold";
+    foldIcon.textContent = "▾";
 
-        void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
-      }));
-    }
+    const statusBadge = createBadge(group.label, statusBadgeClass(group.status));
+    statusBadge.classList.add("work-group-status-badge");
 
-    const taskTitle = item.description || item.locationName || item.companyName || "Radni nalog";
-    const taskSubtitle = joinParts([
-      item.department,
-      item.serviceLine,
-      item.linkReference ? `Veza ${item.linkReference}` : "",
-    ]);
-    const dueTitle = item.dueDate ? formatDate(item.dueDate) : "Bez roka";
-    const dueSubtitle = overdue
-      ? "Kasni"
-      : item.openedDate
-        ? `Otvoren ${formatDate(item.openedDate)}`
-        : "Bez datuma otvaranja";
-    const dueTertiary = item.invoiceDate ? `Faktura ${formatDate(item.invoiceDate)}` : "";
-    const contactSubtitle = joinParts([item.contactPhone, item.contactEmail]);
+    const totalCount = fullGroups.find((entry) => entry.status === group.status)?.items.length ?? group.items.length;
+    const count = document.createElement("span");
+    count.className = "work-group-count";
+    count.textContent = String(totalCount);
 
-    row.append(
-      createStackCell({
-        eyebrow: item.workOrderNumber,
-        title: taskTitle,
-        subtitle: taskSubtitle || "Bez dodatnog opisa",
-        meta: [
-          item.executor1 ? `Izvrsitelj: ${item.executor1}` : "",
-          item.tagText ? `Tagovi: ${item.tagText}` : "",
-        ],
-      }),
-      createBadgeCell(
-        statusBadge,
-        item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "Bez datuma otvaranja",
-        item.completedBy ? `Zavrsio: ${item.completedBy}` : "",
-      ),
-      createStackCell({
-        title: dueTitle,
-        subtitle: dueSubtitle,
-        tertiary: dueTertiary,
-        meta: overdue ? [{ label: "Overdue", className: "is-danger" }] : [],
-      }),
-      createStackCell({
-        title: item.companyName,
-        subtitle: item.headquarters || "Bez sjedista",
-        tertiary: item.companyOib ? `OIB: ${item.companyOib}` : "",
-        meta: item.contractType ? [item.contractType] : [],
-      }),
-      createStackCell({
-        title: item.locationName || "Bez lokacije",
-        subtitle: item.region || "Bez regije",
-        tertiary: item.coordinates || "",
-      }),
-      createStackCell({
-        title: item.contactName || item.contactPhone || "Bez kontakta",
-        subtitle: contactSubtitle || "Nema broja ni emaila",
-        tertiary: item.executor2 ? `Izvrsitelj 2: ${item.executor2}` : "",
-      }),
-      createBadgeCell(
-        priorityBadge,
-        item.weight ? `Tezina: ${item.weight}` : "Bez tezine",
-        item.serviceLine || "",
-      ),
-      actionsCell,
-    );
+    headerLead.append(foldIcon, statusBadge, count);
 
-    return row;
+    const groupActions = document.createElement("button");
+    groupActions.type = "button";
+    groupActions.className = "work-group-add-inline";
+    groupActions.textContent = "+ Add task";
+    groupActions.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    groupHeader.append(headerLead, groupActions);
+
+    const columns = document.createElement("div");
+    columns.className = "work-group-columns";
+    ["Name", "Regija", "Lokacija", "Due date", "Priority", "Kontakt", "Actions"].forEach((label) => {
+      const cell = document.createElement("div");
+      cell.className = "work-group-column";
+      cell.textContent = label;
+      columns.append(cell);
+    });
+
+    const body = document.createElement("div");
+    body.className = "work-group-body";
+
+    group.items.forEach((item) => {
+      const overdue = isOverdueWorkOrder(item);
+      const row = document.createElement("article");
+      row.className = "work-item-row";
+
+      const title = document.createElement("div");
+      title.className = "work-item-cell work-item-cell-name";
+      const titleCheck = document.createElement("span");
+      titleCheck.className = "work-item-check";
+      titleCheck.textContent = "✓";
+      const titleCopy = document.createElement("div");
+      titleCopy.className = "work-item-copy";
+      const titlePrimary = document.createElement("strong");
+      titlePrimary.textContent = `${item.workOrderNumber} ${item.description || item.locationName || item.companyName || "Radni nalog"}`;
+      const titleSecondary = document.createElement("span");
+      titleSecondary.textContent = joinParts([
+        item.department,
+        item.serviceLine,
+        item.tagText ? `#${item.tagText}` : "",
+      ]) || "Bez dodatnog opisa";
+      titleCopy.append(titlePrimary, titleSecondary);
+      title.append(titleCheck, titleCopy);
+
+      const region = document.createElement("div");
+      region.className = "work-item-cell";
+      const regionPill = document.createElement("span");
+      regionPill.className = "work-field-pill";
+      regionPill.textContent = item.region || "Bez regije";
+      region.append(regionPill);
+
+      const location = document.createElement("div");
+      location.className = "work-item-cell";
+      const locationPrimary = document.createElement("strong");
+      locationPrimary.textContent = item.locationName || "Bez lokacije";
+      const locationSecondary = document.createElement("span");
+      locationSecondary.textContent = item.companyName || "Bez tvrtke";
+      location.append(locationPrimary, locationSecondary);
+
+      const due = document.createElement("div");
+      due.className = "work-item-cell";
+      const duePrimary = document.createElement("strong");
+      duePrimary.textContent = item.dueDate ? formatDate(item.dueDate) : "Bez roka";
+      const dueSecondary = document.createElement("span");
+      dueSecondary.textContent = overdue
+        ? "Kasni"
+        : (item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "Bez datuma");
+      if (overdue) {
+        due.classList.add("is-overdue");
+      }
+      due.append(duePrimary, dueSecondary);
+
+      const priority = document.createElement("div");
+      priority.className = "work-item-cell";
+      const priorityBadge = createBadge(getOptionLabel(PRIORITY_OPTIONS, item.priority), priorityBadgeClass(item.priority));
+      priorityBadge.classList.add("work-priority-badge");
+      priority.append(priorityBadge);
+
+      const contact = document.createElement("div");
+      contact.className = "work-item-cell";
+      const contactPrimary = document.createElement("strong");
+      contactPrimary.textContent = item.contactName || item.contactPhone || "Bez kontakta";
+      const contactSecondary = document.createElement("span");
+      contactSecondary.textContent = joinParts([item.contactPhone, item.contactEmail]) || "Nema broja ni emaila";
+      contact.append(contactPrimary, contactSecondary);
+
+      const actions = document.createElement("div");
+      actions.className = "work-item-cell work-item-actions";
+      actions.append(
+        createActionButton("Uredi", "card-button card-button-light", () => hydrateWorkOrderForm(item)),
+      );
+
+      if (state.user?.role !== "user") {
+        actions.append(
+          createActionButton("Obrisi", "card-button card-button-light card-danger", () => {
+            if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
+              return;
+            }
+
+            void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
+          }),
+        );
+      }
+
+      row.append(title, region, location, due, priority, contact, actions);
+      body.append(row);
+    });
+
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "work-group-add-row";
+    addRow.textContent = "+ Add task";
+    addRow.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    section.append(groupHeader, columns, body, addRow);
+    return section;
   }));
 
   workOrdersEmpty.hidden = filtered.length !== 0;
@@ -1871,6 +1959,22 @@ workOrderForm.addEventListener("submit", (event) => {
 });
 
 workOrderResetButton.addEventListener("click", resetWorkOrderForm);
+workOrderOpenFormButton?.addEventListener("click", () => {
+  focusWorkOrderComposer();
+});
+
+workspaceViewChips.forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const targetView = chip.dataset.jumpView;
+
+    if (!targetView) {
+      return;
+    }
+
+    state.activeView = targetView;
+    renderActiveView();
+  });
+});
 
 companyForm.addEventListener("submit", (event) => {
   event.preventDefault();

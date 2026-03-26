@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326h" />
+    <link rel="stylesheet" href="/styles.css?v=20260326i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -63,6 +63,24 @@
 
     <main id="app-shell" class="app-shell" hidden>
       <section class="app-frame">
+        <aside class="app-rail" aria-label="Primarna navigacija">
+          <div class="app-rail-logo">S</div>
+          <nav class="app-rail-nav">
+            <button type="button" class="tab-button rail-button is-active" data-view="selfdash">
+              <span class="rail-icon" aria-hidden="true">⌂</span>
+              <span class="rail-label">Home</span>
+            </button>
+            <button type="button" class="tab-button rail-button" data-view="companies">
+              <span class="rail-icon" aria-hidden="true">T</span>
+              <span class="rail-label">Tvrtke</span>
+            </button>
+            <button type="button" class="tab-button rail-button" data-view="locations">
+              <span class="rail-icon" aria-hidden="true">L</span>
+              <span class="rail-label">Lokacije</span>
+            </button>
+          </nav>
+        </aside>
+
         <aside class="app-sidebar">
           <div class="sidebar-brand-pill" aria-label="Safety360">
             <div class="auth-logo-mark">
@@ -309,16 +327,28 @@
             <p id="work-order-error" class="form-error" aria-live="polite"></p>
           </section>
 
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="section-kicker">Pregled</p>
-                <h2>Radni nalozi</h2>
+          <section class="panel panel-work-orders">
+            <div class="workspace-list-head">
+              <div class="workspace-list-copy">
+                <p class="section-kicker">List view</p>
+                <h2>Lista RN</h2>
+                <p class="workspace-list-breadcrumb">Branimir - RN / Lista RN</p>
               </div>
-              <p id="work-orders-helper" class="helper-copy">List view pregled svih RN-ova.</p>
+              <div class="workspace-list-actions">
+                <p id="work-orders-helper" class="helper-copy">List view pregled svih RN-ova.</p>
+                <button id="work-order-open-form" type="button" class="primary-button workspace-add-button">+ RN</button>
+              </div>
             </div>
 
-            <div class="filter-row">
+            <div class="workspace-view-chips" aria-label="Pogledi radnog prostora">
+              <button type="button" class="workspace-view-chip is-active" data-jump-view="selfdash">Lista RN</button>
+              <button type="button" class="workspace-view-chip" data-jump-view="companies">Tvrtke</button>
+              <button type="button" class="workspace-view-chip" data-jump-view="locations">Lokacije</button>
+              <span class="workspace-view-chip is-passive">Calendar</span>
+              <span class="workspace-view-chip is-passive">Dashboard</span>
+            </div>
+
+            <div class="filter-row filter-row-clickup">
               <label class="field">
                 <span>Pretraga</span>
                 <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija, odjel..." />
@@ -335,22 +365,8 @@
               </label>
             </div>
 
-            <div id="work-orders-table-wrap" class="table-wrap table-wrap-work-orders">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Task</th>
-                    <th>Status</th>
-                    <th>Rok</th>
-                    <th>Tvrtka</th>
-                    <th>Lokacija</th>
-                    <th>Kontakt</th>
-                    <th>Prioritet</th>
-                    <th>Akcije</th>
-                  </tr>
-                </thead>
-                <tbody id="work-orders-body"></tbody>
-              </table>
+            <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
+              <div id="work-orders-body" class="work-orders-groups"></div>
             </div>
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
@@ -888,7 +904,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326h"></script>
-    <script type="module" src="/src/main.js?v=20260326h"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326i"></script>
+    <script type="module" src="/src/main.js?v=20260326i"></script>
   </body>
 </html>
