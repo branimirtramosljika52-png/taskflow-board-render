@@ -904,7 +904,7 @@ fieldset {
 }
 
 .workspace-dashboard {
-  grid-template-columns: minmax(420px, 520px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
