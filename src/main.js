@@ -478,7 +478,20 @@ function formatDate(value) {
     return "Bez datuma";
   }
 
-  return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(new Date(`${value}T12:00:00`));
+  const rawValue = String(value).trim();
+  const directDate = new Date(rawValue);
+
+  if (!Number.isNaN(directDate.getTime())) {
+    return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(directDate);
+  }
+
+  const normalizedDateOnly = new Date(`${rawValue.slice(0, 10)}T12:00:00`);
+
+  if (!Number.isNaN(normalizedDateOnly.getTime())) {
+    return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(normalizedDateOnly);
+  }
+
+  return "Bez datuma";
 }
 
 function getCompany(companyId) {
