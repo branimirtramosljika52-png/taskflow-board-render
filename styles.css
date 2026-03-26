@@ -1116,7 +1116,7 @@ button:hover {
   padding: 0;
   overflow: hidden;
   background:
-    linear-gradient(180deg, #040405 0%, #050507 42%, #07050d 100%);
+    linear-gradient(135deg, #5fc8f7 0%, #76a8ff 34%, #9c63ff 68%, #ef45d7 100%);
 }
 
 .auth-screen::before,
@@ -1128,24 +1128,26 @@ button:hover {
 }
 
 .auth-screen::before {
-  left: 50%;
-  bottom: -28vh;
-  width: min(78vw, 1200px);
-  height: min(72vw, 760px);
-  transform: translateX(-50%);
+  top: -12%;
+  left: -10%;
+  width: min(42vw, 520px);
+  height: min(58vw, 700px);
+  transform: rotate(18deg);
   background:
-    radial-gradient(circle at 50% 48%, rgba(97, 52, 255, 0.72), rgba(97, 52, 255, 0.28) 28%, rgba(97, 52, 255, 0) 70%);
-  filter: blur(32px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
+  border-radius: 38px;
+  opacity: 0.5;
+  filter: blur(2px);
 }
 
 .auth-screen::after {
-  left: -8%;
-  bottom: -14%;
-  width: min(46vw, 620px);
-  height: min(38vw, 440px);
+  right: -10%;
+  bottom: -8%;
+  width: min(34vw, 380px);
+  height: min(34vw, 380px);
   background:
-    radial-gradient(circle at 50% 50%, rgba(50, 92, 255, 0.34), rgba(50, 92, 255, 0) 72%);
-  filter: blur(24px);
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 72%);
+  filter: blur(10px);
 }
 
 .auth-shell {
@@ -1746,40 +1748,48 @@ button:hover {
 }
 
 .auth-minimal-card {
-  width: min(100%, 480px);
+  width: min(100%, 420px);
   display: grid;
   gap: 0;
-  padding: clamp(22px, 3vw, 30px);
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(17, 17, 23, 0.96), rgba(10, 10, 14, 0.96)),
-    rgba(0, 0, 0, 0.72);
-  box-shadow:
-    0 30px 90px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  max-height: calc(100vh - 36px);
+  padding: clamp(34px, 4vw, 42px);
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 28px 70px rgba(59, 55, 122, 0.22);
 }
 
 .auth-view {
   display: grid;
-  align-content: center;
-  gap: 20px;
-  min-height: min(620px, calc(100vh - 92px));
+  align-content: start;
+  gap: 24px;
+}
+
+.auth-logo-compact {
+  justify-content: center;
 }
 
 .auth-form-tenant {
-  gap: 12px;
+  gap: 18px;
 }
 
 .auth-form-tenant .field span {
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.88rem;
+  display: block;
+  margin-bottom: 6px;
+  color: #67637b;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .auth-form-tenant input {
-  min-height: 58px;
-  border-radius: 16px;
+  min-height: 46px;
+  border: 0;
+  border-bottom: 1px solid #d9dbe7;
+  border-radius: 0;
+  background: transparent;
+  color: #211f2e;
+  padding: 10px 4px 10px 30px;
+  box-shadow: none;
 }
 
 .auth-input-shell {
@@ -1789,10 +1799,10 @@ button:hover {
 .auth-input-icon {
   position: absolute;
   top: 50%;
-  left: 18px;
-  width: 18px;
-  height: 18px;
-  color: rgba(255, 255, 255, 0.48);
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  color: #b1b0be;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -1804,12 +1814,31 @@ button:hover {
 }
 
 .auth-input-shell input {
-  padding-left: 52px;
+  padding-left: 28px;
+}
+
+.auth-form-tenant input::placeholder {
+  color: #a9a7b7;
+}
+
+.auth-form-tenant input:focus {
+  outline: none;
+  border-bottom-color: #cc47e6;
+  box-shadow: 0 1px 0 0 #cc47e6;
 }
 
 .auth-submit-button {
-  min-height: 58px;
-  border-radius: 16px;
+  min-height: 48px;
+  margin-top: 4px;
+  border-radius: 999px;
+  border: 0;
+  background: linear-gradient(90deg, #59d5ec 0%, #8c7cff 48%, #ea42d7 100%);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 18px 36px rgba(189, 69, 232, 0.22);
 }
 
 .auth-switch-row {
@@ -1822,22 +1851,49 @@ button:hover {
 }
 
 .auth-switch-copy {
-  color: rgba(255, 255, 255, 0.56);
-  font-size: 0.92rem;
+  color: #8f8aa7;
+  font-size: 0.84rem;
 }
 
 .auth-switch-link {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #9e8cff;
+  color: #7d56ff;
   font-weight: 700;
   box-shadow: none;
+  text-decoration: none;
 }
 
 .auth-switch-link:hover {
   transform: none;
   filter: none;
+}
+
+.auth-login-copy {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+
+.auth-login-copy h1 {
+  margin: 0;
+  color: #201d2b;
+  font-size: clamp(2.2rem, 5vw, 2.8rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.auth-login-copy p {
+  margin: 0;
+  color: #8b879f;
+  font-size: 0.95rem;
+}
+
+.auth-logo-compact .auth-logo-word {
+  color: #201d2b;
+  font-size: clamp(1.35rem, 2.1vw, 1.7rem);
 }
 
 .auth-modal {
@@ -1906,33 +1962,18 @@ button:hover {
 }
 
 .auth-request-screen::before {
-  bottom: -24vh;
-  width: min(68vw, 980px);
-  height: min(64vw, 700px);
+  top: auto;
+  bottom: -10%;
+  left: auto;
+  right: -8%;
+  width: min(30vw, 320px);
+  height: min(46vw, 540px);
+  transform: rotate(-18deg);
 }
 
 .auth-request-card {
-  width: min(100%, 520px);
+  width: min(100%, 440px);
   gap: 18px;
-}
-
-.auth-request-copy {
-  display: grid;
-  gap: 10px;
-}
-
-.auth-request-copy h1 {
-  margin: 0;
-  color: #ffffff;
-  font-size: clamp(2.2rem, 4vw, 3rem);
-  line-height: 0.98;
-  letter-spacing: -0.04em;
-}
-
-.auth-request-copy p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.68);
-  line-height: 1.65;
 }
 
 .auth-request-actions {
@@ -1940,17 +1981,27 @@ button:hover {
   justify-content: center;
 }
 
+.auth-screen .form-error {
+  min-height: 1.25rem;
+  margin: 0;
+  color: #d54867;
+  text-align: center;
+}
+
+.auth-screen .form-success {
+  min-height: 1.25rem;
+  color: #2a9b74;
+  text-align: center;
+}
+
 @media (max-width: 720px) {
   .auth-minimal-card {
-    width: min(100%, 440px);
-    padding: 20px;
-    border-radius: 22px;
-    max-height: calc(100vh - 24px);
+    width: min(100%, 390px);
+    padding: 28px 22px;
   }
 
   .auth-view {
-    min-height: calc(100vh - 64px);
-    align-content: start;
+    gap: 20px;
   }
 
   .auth-modal-panel {
@@ -1958,6 +2009,6 @@ button:hover {
   }
 
   .auth-request-card {
-    width: min(100%, 460px);
+    width: min(100%, 390px);
   }
 }
