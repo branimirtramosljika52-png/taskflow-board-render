@@ -232,15 +232,7 @@ function getCanManageMasterData() {
 }
 
 function openSignupWindow() {
-  const nextWindow = window.open(
-    "/request-access.html",
-    "request-access",
-    "popup=yes,width=560,height=820,resizable=yes,scrollbars=yes",
-  );
-
-  if (!nextWindow) {
-    window.location.assign("/request-access.html");
-  }
+  window.location.assign("/request-access.html");
 }
 
 async function requestTokenRefresh() {
