@@ -1650,6 +1650,10 @@ body.is-filling-measurement-cells {
   background-color: #fbfcff;
 }
 
+.measurement-sheet-grid td.is-selected-cell {
+  background: rgba(83, 104, 255, 0.08);
+}
+
 .measurement-sheet-grid tr:last-child td,
 .measurement-sheet-grid tr:last-child th {
   border-bottom: 0;
@@ -1705,9 +1709,28 @@ body.is-filling-measurement-cells {
   pointer-events: none;
 }
 
-.measurement-sheet-grid td.is-active-cell .measurement-fill-handle {
+.measurement-sheet-grid td.is-fill-origin .measurement-fill-handle {
   opacity: 1;
   pointer-events: auto;
+}
+
+.measurement-fill-menu {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(207, 213, 229, 0.96);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 36px rgba(42, 51, 79, 0.16);
+}
+
+.measurement-fill-menu .ghost-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  white-space: nowrap;
 }
 
 .measurement-cell-average {
