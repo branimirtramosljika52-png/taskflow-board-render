@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Request Access</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen auth-request-screen">
+      <div class="auth-minimal-shell">
+        <section class="auth-minimal-card auth-request-card" aria-label="Request access">
+          <div class="auth-logo auth-logo-compact" aria-label="Safety360">
+            <div class="auth-logo-mark">
+              <span></span>
+              <span></span>
+            </div>
+            <span class="auth-logo-word">Safety360</span>
+          </div>
+
+          <div class="auth-request-copy">
+            <h1>Request access</h1>
+            <p>Enter your organization, full name, email and password. The administrator will receive your request by email.</p>
+          </div>
+
+          <form id="request-access-form" class="auth-form auth-form-tenant">
+            <label class="field">
+              <span>Organization</span>
+              <input id="request-organization-name" type="text" placeholder="Organization name" required />
+            </label>
+
+            <label class="field">
+              <span>Full name</span>
+              <input id="request-full-name" type="text" placeholder="Full name" required />
+            </label>
+
+            <label class="field">
+              <span>Email</span>
+              <div class="auth-input-shell">
+                <span class="auth-input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="4" y="6.5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                    <path d="M5.5 8 12 12.5 18.5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </span>
+                <input id="request-email" type="email" autocomplete="email" placeholder="Email address" required />
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Password</span>
+              <div class="auth-input-shell">
+                <span class="auth-input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                    <path d="M8 10V7.5A4 4 0 0 1 12 4a4 4 0 0 1 4 3.5V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                  </svg>
+                </span>
+                <input id="request-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+              </div>
+            </label>
+
+            <button id="request-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
+          </form>
+
+          <p id="request-feedback" class="form-success" aria-live="polite"></p>
+
+          <div class="auth-request-actions">
+            <a class="auth-switch-link" href="/">Back to sign in</a>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <script type="module" src="/src/request-access.js"></script>
+  </body>
+</html>

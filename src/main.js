@@ -36,23 +36,12 @@ const state = {
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
-const authLoginView = document.querySelector("#auth-login-view");
 const openSignupButton = document.querySelector("#open-signup-button");
-const signupModal = document.querySelector("#signup-modal");
-const signupModalBackdrop = document.querySelector("#signup-modal-backdrop");
-const closeSignupButton = document.querySelector("#close-signup-button");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
-const signupForm = document.querySelector("#signup-form");
-const signupOrganizationNameInput = document.querySelector("#signup-organization-name");
-const signupFullNameInput = document.querySelector("#signup-full-name");
-const signupEmailInput = document.querySelector("#signup-email");
-const signupPasswordInput = document.querySelector("#signup-password");
-const signupSubmitButton = document.querySelector("#signup-submit-button");
-const signupFeedback = document.querySelector("#signup-feedback");
 const userBadge = document.querySelector("#user-badge");
 const logoutButton = document.querySelector("#logout-button");
 const organizationContext = document.querySelector("#organization-context");
@@ -230,24 +219,6 @@ function setLoginBusy(isBusy) {
   loginPasswordInput.disabled = isBusy;
 }
 
-function setSignupBusy(isBusy) {
-  if (signupSubmitButton) {
-    signupSubmitButton.disabled = isBusy;
-    signupSubmitButton.textContent = isBusy ? "Sending..." : "Send request";
-  }
-
-  [
-    signupOrganizationNameInput,
-    signupFullNameInput,
-    signupEmailInput,
-    signupPasswordInput,
-  ].forEach((input) => {
-    if (input) {
-      input.disabled = isBusy;
-    }
-  });
-}
-
 function syncPasswordToggleLabel() {
   return;
 }
@@ -260,27 +231,16 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
-function closeSignupModal({ clearFeedback = false } = {}) {
-  if (signupModal) {
-    signupModal.hidden = true;
+function openSignupWindow() {
+  const nextWindow = window.open(
+    "/request-access.html",
+    "request-access",
+    "popup=yes,width=560,height=820,resizable=yes,scrollbars=yes",
+  );
+
+  if (!nextWindow) {
+    window.location.assign("/request-access.html");
   }
-
-  document.body.classList.remove("is-signup-open");
-
-  if (clearFeedback) {
-    resetSignupForm();
-  }
-}
-
-function openSignupModal() {
-  if (signupModal) {
-    signupModal.hidden = false;
-  }
-
-  document.body.classList.add("is-signup-open");
-  loginError.textContent = "";
-  signupFeedback.textContent = "";
-  signupFeedback.classList.remove("is-error");
 }
 
 async function requestTokenRefresh() {
@@ -577,8 +537,6 @@ function renderAuthState() {
   document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (authenticated) {
-    closeSignupModal({ clearFeedback: true });
-
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -598,10 +556,7 @@ function renderAuthState() {
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
     loginError.textContent = "";
-    signupFeedback.textContent = "";
     setLoginBusy(false);
-    setSignupBusy(false);
-    closeSignupModal();
   }
 }
 
@@ -865,23 +820,6 @@ function buildLoginContentPayload() {
   };
 }
 
-function buildSignupPayload() {
-  const fullName = String(signupFullNameInput?.value ?? "").trim();
-  const nameParts = fullName.split(/\s+/).filter(Boolean);
-  const firstName = nameParts.shift() ?? "";
-  const lastName = nameParts.join(" ");
-
-  return {
-    organizationName: signupOrganizationNameInput.value,
-    firstName,
-    lastName,
-    email: signupEmailInput.value,
-    password: signupPasswordInput.value,
-    phone: "",
-    note: "",
-  };
-}
-
 function resetWorkOrderForm() {
   workOrderForm.reset();
   workOrderIdInput.value = "";
@@ -936,13 +874,6 @@ function resetLoginContentForm() {
   loginContentIdInput.value = "";
   loginContentError.textContent = "";
   loginContentIsActiveInput.value = "true";
-}
-
-function resetSignupForm() {
-  signupForm?.reset();
-  signupFeedback.textContent = "";
-  signupFeedback.classList.remove("is-error");
-  setSignupBusy(false);
 }
 
 function hydrateCompanyForm(company) {
@@ -1683,7 +1614,6 @@ locationResetButton.addEventListener("click", resetLocationForm);
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loginError.textContent = "";
-  signupFeedback.textContent = "";
   setLoginBusy(true);
 
   void apiRequest("/auth/login", {
@@ -1704,45 +1634,8 @@ loginForm.addEventListener("submit", (event) => {
   });
 });
 
-closeSignupButton?.addEventListener("click", () => {
-  closeSignupModal();
-});
-
-signupModalBackdrop?.addEventListener("click", () => {
-  closeSignupModal();
-});
-
 openSignupButton?.addEventListener("click", () => {
-  openSignupModal();
-  signupOrganizationNameInput?.focus();
-});
-
-signupForm?.addEventListener("submit", (event) => {
-  event.preventDefault();
-  loginError.textContent = "";
-  signupFeedback.textContent = "";
-  signupFeedback.classList.remove("is-error");
-  setSignupBusy(true);
-
-  void apiRequest("/auth/signup", {
-    method: "POST",
-    body: buildSignupPayload(),
-  }, false).then((payload) => {
-    signupFeedback.classList.remove("is-error");
-    signupFeedback.textContent = payload.message || "Zahtjev je zaprimljen.";
-    signupForm.reset();
-  }).catch((error) => {
-    signupFeedback.classList.add("is-error");
-    signupFeedback.textContent = error.message;
-  }).finally(() => {
-    setSignupBusy(false);
-  });
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !signupModal?.hidden && !state.user) {
-    closeSignupModal();
-  }
+  openSignupWindow();
 });
 
 logoutButton.addEventListener("click", () => {
@@ -1758,7 +1651,6 @@ logoutButton.addEventListener("click", () => {
     state.signupRequests = [];
     state.loginContentItems = [];
     loginForm.reset();
-    resetSignupForm();
     renderAuthState();
     void refreshLoginContent();
   });
@@ -1843,9 +1735,7 @@ resetLocationForm();
 resetOrganizationForm();
 resetUserForm();
 resetLoginContentForm();
-resetSignupForm();
 renderActiveView();
-closeSignupModal({ clearFeedback: true });
 renderAuthState();
 syncPasswordToggleLabel();
 

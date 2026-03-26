@@ -1816,8 +1816,14 @@ button:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   min-height: 24px;
+  flex-wrap: wrap;
+}
+
+.auth-switch-copy {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.92rem;
 }
 
 .auth-switch-link {
@@ -1899,6 +1905,41 @@ button:hover {
   line-height: 1;
 }
 
+.auth-request-screen::before {
+  bottom: -24vh;
+  width: min(68vw, 980px);
+  height: min(64vw, 700px);
+}
+
+.auth-request-card {
+  width: min(100%, 520px);
+  gap: 18px;
+}
+
+.auth-request-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-request-copy h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(2.2rem, 4vw, 3rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.auth-request-copy p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.65;
+}
+
+.auth-request-actions {
+  display: flex;
+  justify-content: center;
+}
+
 @media (max-width: 720px) {
   .auth-minimal-card {
     width: min(100%, 440px);
@@ -1914,5 +1955,9 @@ button:hover {
 
   .auth-modal-panel {
     padding: 22px;
+  }
+
+  .auth-request-card {
+    width: min(100%, 460px);
   }
 }
