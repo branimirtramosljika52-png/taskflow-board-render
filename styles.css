@@ -524,7 +524,7 @@ fieldset {
   gap: 10px;
 }
 
-.auth-form .field span {
+.auth-form .field > span {
   font-size: 0.83rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -1258,7 +1258,7 @@ button:hover {
   gap: 0;
 }
 
-.auth-form .field span {
+.auth-form .field > span {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1591,7 +1591,7 @@ button:hover {
   gap: 18px;
 }
 
-.auth-form-tenant .field span {
+.auth-form-tenant .field > span {
   position: static;
   width: auto;
   height: auto;
@@ -1772,7 +1772,7 @@ button:hover {
   gap: 18px;
 }
 
-.auth-form-tenant .field span {
+.auth-form-tenant .field > span {
   display: block;
   margin-bottom: 6px;
   color: #67637b;
@@ -1800,17 +1800,22 @@ button:hover {
   position: absolute;
   top: 50%;
   left: 2px;
+  display: block;
+  margin: 0;
   width: 12px;
   height: 12px;
   color: #b1b0be;
+  line-height: 0;
+  font-size: 0;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .auth-input-icon svg {
-  width: 100%;
-  height: 100%;
+  width: 12px;
+  height: 12px;
   display: block;
+  flex: 0 0 12px;
 }
 
 .auth-input-shell input {
