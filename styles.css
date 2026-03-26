@@ -1572,16 +1572,21 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 .measurement-column-head {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 10px;
+  grid-template-columns: minmax(0, 1fr) 10px;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
+  gap: 4px 8px;
+  min-height: 58px;
   padding: 8px 8px 8px 10px;
 }
 
 .measurement-column-letter {
-  width: 24px;
-  height: 24px;
+  grid-column: 1;
+  grid-row: 1;
+  width: fit-content;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
@@ -1593,10 +1598,12 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 }
 
 .measurement-column-title {
+  grid-column: 1;
+  grid-row: 2;
   min-width: 0;
   width: 100%;
   border: 0;
-  padding: 4px 6px;
+  padding: 2px 6px 4px;
   background: transparent;
   color: #4c556e;
   font-size: 0.8rem;
@@ -1624,6 +1631,8 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 }
 
 .measurement-column-resize {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   align-self: stretch;
   width: 10px;
   min-height: 100%;
@@ -1723,6 +1732,23 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 
 .measurement-sheet-grid td.is-fill-target {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.08), rgba(83, 104, 255, 0.12));
+}
+
+.measurement-sheet-grid td.has-formula-cell:not(.is-selected-cell) {
+  background: linear-gradient(180deg, rgba(98, 125, 255, 0.06), rgba(98, 125, 255, 0.03));
+}
+
+.measurement-sheet-grid td.has-formula-cell .measurement-cell-input {
+  color: #32449c;
+  font-weight: 600;
+}
+
+.measurement-sheet-grid td.has-formula-error {
+  background: linear-gradient(180deg, rgba(255, 95, 95, 0.12), rgba(255, 95, 95, 0.06));
+}
+
+.measurement-sheet-grid td.has-formula-error .measurement-cell-input {
+  color: #b12828;
 }
 
 .measurement-fill-handle {

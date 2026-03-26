@@ -6,6 +6,12 @@ import {
   getDashboardStats,
   sortWorkOrders,
 } from "./safetyModel.js";
+import {
+  evaluateMeasurementFormula,
+  formatMeasurementFormulaResult,
+  isMeasurementFormula,
+  parseMeasurementCellReference,
+} from "./measurementFormula.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -72,6 +78,7 @@ const state = {
     rows: [],
     resizing: null,
     activeCell: null,
+    editingCell: null,
     selectionAnchor: null,
     selectedRange: null,
     selectionDrag: null,
@@ -773,16 +780,53 @@ function parseMeasurementNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatMeasurementAverage(row) {
+function normalizeMeasurementLiteralValue(rawValue) {
+  const stringValue = String(rawValue ?? "").trim();
+
+  if (!stringValue) {
+    return "";
+  }
+
+  if (stringValue.toUpperCase() === "TRUE") {
+    return true;
+  }
+
+  if (stringValue.toUpperCase() === "FALSE") {
+    return false;
+  }
+
+  const numericPattern = /^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
+
+  if (numericPattern.test(stringValue)) {
+    const numericValue = parseMeasurementNumber(stringValue);
+
+    if (numericValue !== null) {
+      return numericValue;
+    }
+  }
+
+  return rawValue ?? "";
+}
+
+function getMeasurementAverageValue(row) {
   const values = ["reading1", "reading2", "reading3"]
     .map((key) => parseMeasurementNumber(row.cells?.[key]))
     .filter((value) => value !== null);
 
   if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatMeasurementAverage(row) {
+  const average = getMeasurementAverageValue(row);
+
+  if (average === null) {
     return "";
   }
 
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   return new Intl.NumberFormat("hr-HR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -978,7 +1022,132 @@ function getMeasurementCellDisplayValue(rowIndex, columnIndex) {
     return formatMeasurementAverage(row);
   }
 
-  return row.cells?.[column.id] ?? "";
+  const rawValue = row.cells?.[column.id] ?? "";
+
+  if (!isMeasurementFormula(rawValue)) {
+    return rawValue;
+  }
+
+  return getMeasurementCellDisplayText(rowIndex, columnIndex);
+}
+
+function isMeasurementEditingCell(rowId, columnId) {
+  return state.measurementSheet.editingCell?.rowId === rowId
+    && state.measurementSheet.editingCell?.columnId === columnId;
+}
+
+function getMeasurementCellComputedValue(rowIndex, columnIndex, stack = new Set()) {
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!row || !column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return getMeasurementAverageValue(row) ?? "";
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+
+  if (!isMeasurementFormula(rawValue)) {
+    return normalizeMeasurementLiteralValue(rawValue);
+  }
+
+  const cellKey = `${rowIndex}:${columnIndex}`;
+
+  if (stack.has(cellKey)) {
+    throw new Error("Kruzna referenca u formuli.");
+  }
+
+  stack.add(cellKey);
+
+  try {
+    return evaluateMeasurementFormula(rawValue, {
+      resolveCellReference(reference) {
+        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
+          parseMeasurementCellReference(reference);
+
+        if (referenceRowIndex < 0
+          || referenceColumnIndex < 0
+          || referenceRowIndex >= state.measurementSheet.rows.length
+          || referenceColumnIndex >= state.measurementSheet.columns.length) {
+          throw new Error(`Referenca ${reference} nije valjana.`);
+        }
+
+        return getMeasurementCellComputedValue(referenceRowIndex, referenceColumnIndex, stack);
+      },
+    });
+  } finally {
+    stack.delete(cellKey);
+  }
+}
+
+function getMeasurementCellDisplayText(rowIndex, columnIndex) {
+  try {
+    return formatMeasurementFormulaResult(getMeasurementCellComputedValue(rowIndex, columnIndex));
+  } catch {
+    return "#ERROR";
+  }
+}
+
+function getMeasurementCellInputDisplayValue(rowIndex, columnIndex) {
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!row || !column) {
+    return "";
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+
+  if (isMeasurementEditingCell(row.id, column.id)) {
+    return rawValue;
+  }
+
+  if (isMeasurementFormula(rawValue)) {
+    return getMeasurementCellDisplayText(rowIndex, columnIndex);
+  }
+
+  return rawValue;
+}
+
+function refreshMeasurementSheetComputedValues() {
+  if (!measurementSheetBody) {
+    return;
+  }
+
+  state.measurementSheet.rows.forEach((row, rowIndex) => {
+    state.measurementSheet.columns.forEach((column, columnIndex) => {
+      const cell = getMeasurementCellElement(row.id, column.id);
+
+      if (!(cell instanceof HTMLTableCellElement)) {
+        return;
+      }
+
+      if (column.computed === "average") {
+        cell.textContent = formatMeasurementAverage(row);
+        return;
+      }
+
+      const input = cell.querySelector(".measurement-cell-input");
+      const rawValue = row.cells?.[column.id] ?? "";
+      const hasFormula = isMeasurementFormula(rawValue);
+      let hasError = false;
+
+      if (hasFormula) {
+        hasError = getMeasurementCellDisplayText(rowIndex, columnIndex) === "#ERROR";
+      }
+
+      cell.classList.toggle("has-formula-cell", hasFormula);
+      cell.classList.toggle("has-formula-error", hasError);
+
+      if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
+        input.value = getMeasurementCellInputDisplayValue(rowIndex, columnIndex);
+        input.title = hasFormula ? rawValue : "";
+      }
+    });
+  });
 }
 
 function clearMeasurementFillPreview() {
@@ -1627,10 +1796,10 @@ function renderMeasurementSheet() {
     letter.className = "measurement-column-letter";
     letter.textContent = getSpreadsheetColumnLabel(index);
 
-    const title = document.createElement(column.readonly ? "span" : "input");
-    title.className = column.readonly
-      ? "measurement-column-title is-readonly"
-      : "measurement-column-title";
+      const title = document.createElement(column.readonly ? "span" : "input");
+      title.className = column.readonly
+        ? "measurement-column-title is-readonly"
+        : "measurement-column-title";
 
     if (column.readonly) {
       title.textContent = column.label;
@@ -1731,11 +1900,21 @@ function renderMeasurementSheet() {
       const input = document.createElement("input");
       input.type = "text";
       input.className = "measurement-cell-input";
-      input.value = row.cells?.[column.id] ?? "";
+      input.value = getMeasurementCellInputDisplayValue(index, getMeasurementColumnIndex(column.id));
       input.placeholder = column.placeholder || column.label;
       input.dataset.rowId = row.id;
       input.dataset.columnId = column.id;
       input.addEventListener("focus", () => {
+        state.measurementSheet.editingCell = {
+          rowId: row.id,
+          columnId: column.id,
+        };
+
+        if (isMeasurementFormula(row.cells?.[column.id] ?? "")) {
+          input.value = row.cells?.[column.id] ?? "";
+          input.select();
+        }
+
         if (state.measurementSheet.activeCell?.rowId === row.id
           && state.measurementSheet.activeCell?.columnId === column.id) {
           return;
@@ -1743,16 +1922,16 @@ function renderMeasurementSheet() {
 
         setMeasurementSelection(row.id, column.id);
       });
+      input.addEventListener("blur", () => {
+        if (isMeasurementEditingCell(row.id, column.id)) {
+          state.measurementSheet.editingCell = null;
+        }
+
+        refreshMeasurementSheetComputedValues();
+      });
       input.addEventListener("input", (event) => {
         row.cells[column.id] = event.currentTarget.value;
-
-        if (["reading1", "reading2", "reading3"].includes(column.id)) {
-          const averageCell = tr.querySelector(".measurement-cell-average");
-
-          if (averageCell) {
-            averageCell.textContent = formatMeasurementAverage(row);
-          }
-        }
+        refreshMeasurementSheetComputedValues();
       });
 
       const fillHandle = document.createElement("button");
@@ -1792,6 +1971,7 @@ function renderMeasurementSheet() {
 
       shell.append(input, fillHandle);
       td.append(shell);
+      td.classList.toggle("has-formula-cell", isMeasurementFormula(row.cells?.[column.id] ?? ""));
       tr.append(td);
     });
 
@@ -1799,6 +1979,7 @@ function renderMeasurementSheet() {
   });
 
   measurementSheetBody.replaceChildren(bodyFragment);
+  refreshMeasurementSheetComputedValues();
   renderMeasurementSelection();
   renderMeasurementActiveCell();
   renderMeasurementFillPreview();
@@ -1838,6 +2019,7 @@ function closeMeasurementSheet() {
   state.measurementSheet.selectionDrag = null;
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.fillDrag = null;
+  state.measurementSheet.editingCell = null;
   document.body.classList.remove("is-selecting-measurement-cells");
   document.body.classList.remove("is-filling-measurement-cells");
   setMeasurementSheetOpen(false);
@@ -1848,6 +2030,7 @@ function resetMeasurementSheet() {
   state.measurementSheet.rows = buildDefaultMeasurementRows();
   state.measurementSheet.resizing = null;
   state.measurementSheet.activeCell = null;
+  state.measurementSheet.editingCell = null;
   state.measurementSheet.selectionAnchor = null;
   state.measurementSheet.selectedRange = null;
   state.measurementSheet.selectionDrag = null;
@@ -3886,6 +4069,7 @@ logoutButton.addEventListener("click", () => {
     state.measurementSheet.rows = [];
     state.measurementSheet.resizing = null;
     state.measurementSheet.activeCell = null;
+    state.measurementSheet.editingCell = null;
     state.measurementSheet.selectionAnchor = null;
     state.measurementSheet.selectedRange = null;
     state.measurementSheet.selectionDrag = null;
