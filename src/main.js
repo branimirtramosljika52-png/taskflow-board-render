@@ -36,7 +36,6 @@ const state = {
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
-const openSignupButton = document.querySelector("#open-signup-button");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -229,10 +228,6 @@ function getIsSuperAdmin() {
 
 function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
-}
-
-function openSignupWindow() {
-  window.location.assign("/request-access.html");
 }
 
 async function requestTokenRefresh() {
@@ -1624,10 +1619,6 @@ loginForm.addEventListener("submit", (event) => {
   }).finally(() => {
     setLoginBusy(false);
   });
-});
-
-openSignupButton?.addEventListener("click", () => {
-  openSignupWindow();
 });
 
 logoutButton.addEventListener("click", () => {

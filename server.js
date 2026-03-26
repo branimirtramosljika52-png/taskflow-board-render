@@ -676,9 +676,10 @@ async function handleStaticRequest(response, url) {
 
   try {
     const file = await readFile(filePath);
+    const extension = extname(filePath);
     response.writeHead(200, {
-      "Cache-Control": pathname === "/index.html" ? "no-store" : "public, max-age=300",
-      "Content-Type": contentTypes[extname(filePath)] ?? "application/octet-stream",
+      "Cache-Control": extension === ".html" ? "no-store" : "public, max-age=300",
+      "Content-Type": contentTypes[extension] ?? "application/octet-stream",
     });
     response.end(file);
   } catch (error) {
