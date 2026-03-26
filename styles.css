@@ -1458,6 +1458,11 @@ body.is-resizing-measurement-column {
   user-select: none;
 }
 
+body.is-filling-measurement-cells {
+  cursor: crosshair;
+  user-select: none;
+}
+
 .measurement-sheet-modal {
   position: fixed;
   inset: 0;
@@ -1637,6 +1642,7 @@ body.is-resizing-measurement-column {
   border-right: 1px solid #dfe4ee;
   border-bottom: 1px solid #dfe4ee;
   background: #ffffff;
+  position: relative;
 }
 
 .measurement-sheet-grid tbody tr:hover td,
@@ -1666,10 +1672,42 @@ body.is-resizing-measurement-column {
   box-shadow: none;
 }
 
+.measurement-cell-shell {
+  position: relative;
+}
+
 .measurement-cell-input:focus {
   outline: none;
   background: rgba(83, 104, 255, 0.06);
   box-shadow: inset 0 0 0 2px rgba(83, 104, 255, 0.2);
+}
+
+.measurement-sheet-grid td.is-active-cell {
+  box-shadow: inset 0 0 0 2px rgba(83, 104, 255, 0.28);
+}
+
+.measurement-sheet-grid td.is-fill-target {
+  background: linear-gradient(180deg, rgba(83, 104, 255, 0.08), rgba(83, 104, 255, 0.12));
+}
+
+.measurement-fill-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  background: #5368ff;
+  box-shadow: 0 0 0 1px rgba(83, 104, 255, 0.3);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.measurement-sheet-grid td.is-active-cell .measurement-fill-handle {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .measurement-cell-average {
