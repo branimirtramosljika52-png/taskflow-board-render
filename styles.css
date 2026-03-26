@@ -1675,6 +1675,15 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   background-color: #fbfcff;
 }
 
+.measurement-sheet-grid tbody tr.is-measurement-empty-row th {
+  color: #9ca5bb;
+  font-weight: 600;
+}
+
+.measurement-sheet-grid tbody tr.is-measurement-empty-row td:not(.is-selected-cell):not(.is-active-cell) {
+  background: #fcfdff;
+}
+
 .measurement-sheet-grid td.is-selected-cell {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.2), rgba(83, 104, 255, 0.14));
   box-shadow: inset 0 0 0 1px rgba(83, 104, 255, 0.34);
@@ -1732,6 +1741,11 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 
 .measurement-sheet-grid td.is-fill-target {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.08), rgba(83, 104, 255, 0.12));
+}
+
+.measurement-sheet-grid td.is-formula-reference-cell {
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.18), rgba(250, 204, 21, 0.1));
+  box-shadow: inset 0 0 0 2px rgba(234, 179, 8, 0.72);
 }
 
 .measurement-sheet-grid td.has-formula-cell:not(.is-selected-cell) {

@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   evaluateMeasurementFormula,
+  formatMeasurementCellReference,
   formatMeasurementFormulaResult,
   isMeasurementFormula,
+  listMeasurementFormulaReferences,
   parseMeasurementCellReference,
+  shiftMeasurementFormulaReferences,
 } from "../src/measurementFormula.js";
 
 test("formula helpers detect formulas and parse cell references", () => {
@@ -14,6 +17,8 @@ test("formula helpers detect formulas and parse cell references", () => {
   assert.equal(isMeasurementFormula("123"), false);
   assert.deepEqual(parseMeasurementCellReference("A1"), { rowIndex: 0, columnIndex: 0 });
   assert.deepEqual(parseMeasurementCellReference("AA12"), { rowIndex: 11, columnIndex: 26 });
+  assert.equal(formatMeasurementCellReference(0, 0), "A1");
+  assert.equal(formatMeasurementCellReference(11, 26), "AA12");
 });
 
 test("measurement formulas support arithmetic and cell references", () => {
@@ -68,4 +73,20 @@ test("measurement formulas support RANDBETWEEN and localized formatting", () => 
   assert.equal(randomValue, 5);
   assert.equal(formatMeasurementFormulaResult(12.5), "12,5");
   assert.equal(formatMeasurementFormulaResult(true), "TRUE");
+});
+
+test("formula helpers list and shift references for fill-down behavior", () => {
+  assert.deepEqual(
+    listMeasurementFormulaReferences('=IF(A1>10;"A1 je velik";B2+C3)'),
+    ["A1", "B2", "C3"],
+  );
+
+  assert.equal(
+    shiftMeasurementFormulaReferences("=A1+B2", 1, 0),
+    "=A2+B3",
+  );
+  assert.equal(
+    shiftMeasurementFormulaReferences("=IF(C3>0;D4;E5)", 2, 1),
+    "=IF(D5>0;E6;F7)",
+  );
 });

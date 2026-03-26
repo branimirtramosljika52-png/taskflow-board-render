@@ -439,6 +439,116 @@ export function parseMeasurementCellReference(reference) {
   };
 }
 
+export function formatMeasurementCellReference(rowIndex, columnIndex) {
+  if (rowIndex < 0 || columnIndex < 0) {
+    throw new MeasurementFormulaError("Neispravna pozicija za referencu.");
+  }
+
+  let columnNumber = columnIndex + 1;
+  let letters = "";
+
+  while (columnNumber > 0) {
+    const remainder = (columnNumber - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    columnNumber = Math.floor((columnNumber - 1) / 26);
+  }
+
+  return `${letters}${rowIndex + 1}`;
+}
+
+export function listMeasurementFormulaReferences(formulaText) {
+  const text = String(formulaText ?? "");
+  const references = [];
+  let index = 0;
+
+  while (index < text.length) {
+    const char = text[index];
+
+    if (char === "\"") {
+      index += 1;
+
+      while (index < text.length) {
+        if (text[index] === "\"") {
+          if (text[index + 1] === "\"") {
+            index += 2;
+            continue;
+          }
+
+          index += 1;
+          break;
+        }
+
+        index += 1;
+      }
+
+      continue;
+    }
+
+    const referenceMatch = text.slice(index).match(/^[A-Za-z]+[0-9]+/);
+
+    if (referenceMatch) {
+      references.push(referenceMatch[0].toUpperCase());
+      index += referenceMatch[0].length;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return references;
+}
+
+export function shiftMeasurementFormulaReferences(formulaText, rowOffset = 0, columnOffset = 0) {
+  const text = String(formulaText ?? "");
+  let result = "";
+  let index = 0;
+
+  while (index < text.length) {
+    const char = text[index];
+
+    if (char === "\"") {
+      result += char;
+      index += 1;
+
+      while (index < text.length) {
+        result += text[index];
+
+        if (text[index] === "\"") {
+          if (text[index + 1] === "\"") {
+            result += text[index + 1];
+            index += 2;
+            continue;
+          }
+
+          index += 1;
+          break;
+        }
+
+        index += 1;
+      }
+
+      continue;
+    }
+
+    const referenceMatch = text.slice(index).match(/^[A-Za-z]+[0-9]+/);
+
+    if (referenceMatch) {
+      const reference = referenceMatch[0].toUpperCase();
+      const { rowIndex, columnIndex } = parseMeasurementCellReference(reference);
+      const nextRowIndex = Math.max(0, rowIndex + rowOffset);
+      const nextColumnIndex = Math.max(0, columnIndex + columnOffset);
+      result += formatMeasurementCellReference(nextRowIndex, nextColumnIndex);
+      index += referenceMatch[0].length;
+      continue;
+    }
+
+    result += char;
+    index += 1;
+  }
+
+  return result;
+}
+
 export function evaluateMeasurementFormula(formulaText, context) {
   const expression = String(formulaText ?? "").trim().replace(/^=/, "");
 
