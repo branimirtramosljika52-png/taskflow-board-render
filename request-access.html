@@ -20,18 +20,36 @@
 
           <div class="auth-login-copy auth-request-copy">
             <h1>Request access</h1>
-            <p>Enter your organization, full name, email and password. The administrator will receive your request by email.</p>
+            <p>Enter your organization details, your contact details and a password. The administrator will receive your request by email.</p>
           </div>
 
-          <form id="request-access-form" class="auth-form auth-form-tenant">
-            <label class="field">
+          <form id="request-access-form" class="auth-form auth-form-tenant auth-request-form">
+            <label class="field field-span-full">
               <span>Organization</span>
               <input id="request-organization-name" type="text" placeholder="Organization name" required />
             </label>
 
             <label class="field">
-              <span>Full name</span>
-              <input id="request-full-name" type="text" placeholder="Full name" required />
+              <span>First name</span>
+              <input id="request-first-name" type="text" autocomplete="given-name" placeholder="First name" required />
+            </label>
+
+            <label class="field">
+              <span>Last name</span>
+              <input id="request-last-name" type="text" autocomplete="family-name" placeholder="Last name" required />
+            </label>
+
+            <label class="field">
+              <span>Organization OIB</span>
+              <input
+                id="request-organization-oib"
+                type="text"
+                inputmode="numeric"
+                maxlength="11"
+                autocomplete="off"
+                placeholder="11-digit OIB"
+                required
+              />
             </label>
 
             <label class="field">
@@ -50,7 +68,15 @@
               </div>
             </label>
 
-            <button id="request-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
+            <label class="field">
+              <span>Repeat password</span>
+              <div class="auth-input-shell">
+                <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
+                <input id="request-password-repeat" type="password" autocomplete="new-password" placeholder="Repeat password" required />
+              </div>
+            </label>
+
+            <button id="request-submit-button" type="submit" class="primary-button auth-submit-button field-span-full">Send request</button>
           </form>
 
           <p id="request-feedback" class="form-success" aria-live="polite"></p>

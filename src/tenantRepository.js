@@ -38,6 +38,10 @@ function dbString(value) {
   return String(value ?? "").trim();
 }
 
+function normalizeOib(value) {
+  return dbString(value).replace(/\s+/g, "");
+}
+
 function normalizeTimestamp(value) {
   if (!value) {
     return null;
@@ -156,6 +160,7 @@ function sanitizeSignupRequest(row) {
   return {
     id: String(row.id),
     organizationName: row.organization_name ?? "",
+    organizationOib: row.organization_oib ?? "",
     firstName: row.first_name ?? "",
     lastName: row.last_name ?? "",
     fullName: [row.first_name ?? "", row.last_name ?? ""].filter(Boolean).join(" ").trim(),
@@ -216,6 +221,7 @@ function normalizeLoginContentInput(input = {}) {
 function normalizeSignupRequestInput(input = {}) {
   return {
     organizationName: dbString(input.organizationName),
+    organizationOib: normalizeOib(input.organizationOib),
     firstName: dbString(input.firstName),
     lastName: dbString(input.lastName),
     email: dbString(input.email).toLowerCase(),
@@ -231,6 +237,12 @@ function assertText(value, message) {
   }
 }
 
+function assertOrganizationOib(value) {
+  if (!/^\d{11}$/.test(normalizeOib(value))) {
+    throw createHttpError(400, "OIB organizacije mora imati 11 znamenki.");
+  }
+}
+
 function rethrowDatabaseError(error, fallbackMessage) {
   if (error?.statusCode) {
     throw error;
@@ -241,6 +253,26 @@ function rethrowDatabaseError(error, fallbackMessage) {
   }
 
   throw error;
+}
+
+async function ensureColumn(connection, tableName, columnName, columnDefinition) {
+  const [rows] = await connection.query(
+    `
+      SELECT 1
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+
+  if (rows.length === 0) {
+    await connection.query(
+      `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`,
+    );
+  }
 }
 
 async function ensureSchema(connection) {
@@ -331,6 +363,7 @@ async function ensureSchema(connection) {
     CREATE TABLE IF NOT EXISTS signup_requests (
       id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       organization_name VARCHAR(255) NOT NULL,
+      organization_oib VARCHAR(32) NOT NULL DEFAULT '',
       first_name VARCHAR(120) NOT NULL,
       last_name VARCHAR(160) NOT NULL DEFAULT '',
       email VARCHAR(255) NOT NULL,
@@ -351,6 +384,13 @@ async function ensureSchema(connection) {
       KEY idx_signup_requests_requested_at (requested_at)
     )
   `);
+
+  await ensureColumn(
+    connection,
+    "signup_requests",
+    "organization_oib",
+    "VARCHAR(32) NOT NULL DEFAULT '' AFTER organization_name",
+  );
 }
 
 async function fetchOrganizations(connection, accessibleIds = null) {
@@ -414,7 +454,7 @@ async function fetchLoginContentItems(connection) {
 
 async function fetchSignupRequests(connection) {
   const [rows] = await connection.query(`
-    SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+    SELECT id, organization_name, organization_oib, first_name, last_name, email, phone, note, status,
            organization_id, user_id, processed_note, email_status, email_error,
            requested_at, processed_at
     FROM signup_requests
@@ -486,6 +526,7 @@ async function notifySignupSubmitted(connection, request) {
       text: [
         "New signup request received.",
         `Organization: ${request.organizationName}`,
+        request.organizationOib ? `Organization OIB: ${request.organizationOib}` : "",
         `Name: ${fullName}`,
         `Email: ${request.email}`,
         request.phone ? `Phone: ${request.phone}` : "",
@@ -504,7 +545,8 @@ async function notifySignupSubmitted(connection, request) {
       "An administrator will review it and contact you shortly.",
       "",
       `Organization: ${request.organizationName}`,
-    ].join("\n"),
+      request.organizationOib ? `Organization OIB: ${request.organizationOib}` : "",
+    ].filter(Boolean).join("\n"),
   }));
 
   const results = await Promise.all(outgoing);
@@ -1003,7 +1045,9 @@ export class MemoryTenantRepository {
   async submitSignupRequest(input) {
     const normalized = normalizeSignupRequestInput(input);
     assertText(normalized.organizationName, "Naziv organizacije je obavezan.");
+    assertOrganizationOib(normalized.organizationOib);
     assertText(normalized.firstName, "Ime je obavezno.");
+    assertText(normalized.lastName, "Prezime je obavezno.");
     assertText(normalized.email, "Email je obavezan.");
     assertText(normalized.password, "Lozinka je obavezna.");
 
@@ -1018,6 +1062,7 @@ export class MemoryTenantRepository {
     const next = {
       id: String(this.signupRequests.length + 1),
       organizationName: normalized.organizationName,
+      organizationOib: normalized.organizationOib,
       firstName: normalized.firstName,
       lastName: normalized.lastName,
       fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" ").trim(),
@@ -1062,6 +1107,7 @@ export class MemoryTenantRepository {
       id: String(this.organizations.length + 1),
       ...normalizeOrganizationInput({
         name: request.organizationName,
+        oib: request.organizationOib,
         contactEmail: request.email,
         contactPhone: request.phone,
       }),
@@ -1725,7 +1771,9 @@ export class MySqlTenantRepository {
   async submitSignupRequest(input) {
     const normalized = normalizeSignupRequestInput(input);
     assertText(normalized.organizationName, "Naziv organizacije je obavezan.");
+    assertOrganizationOib(normalized.organizationOib);
     assertText(normalized.firstName, "Ime je obavezno.");
+    assertText(normalized.lastName, "Prezime je obavezno.");
     assertText(normalized.email, "Email je obavezan.");
     assertText(normalized.password, "Lozinka je obavezna.");
     const connection = await this.pool.getConnection();
@@ -1753,11 +1801,12 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO signup_requests
-            (organization_name, first_name, last_name, email, phone, note, password_hash, status, email_status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '')
+            (organization_name, organization_oib, first_name, last_name, email, phone, note, password_hash, status, email_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '')
         `,
         [
           normalized.organizationName,
+          normalized.organizationOib,
           normalized.firstName,
           normalized.lastName,
           normalized.email,
@@ -1769,7 +1818,7 @@ export class MySqlTenantRepository {
 
       const [[requestRow]] = await connection.query(
         `
-          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+          SELECT id, organization_name, organization_oib, first_name, last_name, email, phone, note, status,
                  organization_id, user_id, processed_note, email_status, email_error,
                  requested_at, processed_at
           FROM signup_requests
@@ -1832,10 +1881,10 @@ export class MySqlTenantRepository {
       const [organizationResult] = await connection.query(
         `
           INSERT INTO organizations
-            (name, contact_email, contact_phone, status)
-          VALUES (?, ?, ?, 'active')
+            (name, oib, contact_email, contact_phone, status)
+          VALUES (?, ?, ?, ?, 'active')
         `,
-        [request.organizationName, request.email, request.phone],
+        [request.organizationName, request.organizationOib, request.email, request.phone],
       );
 
       const [userResult] = await connection.query(
@@ -1877,7 +1926,7 @@ export class MySqlTenantRepository {
 
       const [[nextRow]] = await connection.query(
         `
-          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+          SELECT id, organization_name, organization_oib, first_name, last_name, email, phone, note, status,
                  organization_id, user_id, processed_note, email_status, email_error,
                  requested_at, processed_at
           FROM signup_requests
@@ -1934,7 +1983,7 @@ export class MySqlTenantRepository {
 
       const [[nextRow]] = await connection.query(
         `
-          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+          SELECT id, organization_name, organization_oib, first_name, last_name, email, phone, note, status,
                  organization_id, user_id, processed_note, email_status, email_error,
                  requested_at, processed_at
           FROM signup_requests

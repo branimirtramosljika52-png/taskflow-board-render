@@ -1980,8 +1980,19 @@ button:hover {
 }
 
 .auth-request-card {
-  width: min(100%, 440px);
+  width: min(100%, 520px);
   gap: 18px;
+}
+
+.auth-request-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 16px;
+}
+
+.auth-request-form .auth-submit-button {
+  margin-top: 4px;
 }
 
 .auth-request-actions {
@@ -2054,6 +2065,18 @@ button:hover {
   animation: auth-fade-up 480ms 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.auth-page.is-auth-ready .auth-form-tenant .field:nth-of-type(5) {
+  animation: auth-fade-up 480ms 460ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page.is-auth-ready .auth-form-tenant .field:nth-of-type(6) {
+  animation: auth-fade-up 480ms 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page.is-auth-ready .auth-form-tenant .field:nth-of-type(7) {
+  animation: auth-fade-up 480ms 580ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 .auth-page.is-auth-ready .auth-submit-button {
   animation: auth-fade-up 520ms 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
@@ -2061,6 +2084,14 @@ button:hover {
 .auth-page.is-auth-ready .auth-switch-row,
 .auth-page.is-auth-ready .auth-request-actions {
   animation: auth-fade-up 520ms 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page.is-auth-ready .auth-request-screen .auth-submit-button {
+  animation: auth-fade-up 520ms 640ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page.is-auth-ready .auth-request-actions {
+  animation: auth-fade-up 520ms 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-screen::before {
@@ -2121,6 +2152,11 @@ button:hover {
 
   .auth-request-card {
     width: min(100%, 390px);
+  }
+
+  .auth-request-form {
+    grid-template-columns: 1fr;
+    column-gap: 0;
   }
 }
 

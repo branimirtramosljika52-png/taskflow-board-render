@@ -98,6 +98,7 @@ test("memory tenant repository stores and approves signup requests", async () =>
   const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
   const response = await repository.submitSignupRequest({
     organizationName: "Nova Organizacija",
+    organizationOib: "12345678901",
     firstName: "Luka",
     lastName: "Test",
     email: "luka@example.com",
@@ -107,6 +108,7 @@ test("memory tenant repository stores and approves signup requests", async () =>
 
   assert.equal(response.ok, true);
   assert.equal(response.request.status, "pending");
+  assert.equal(response.request.organizationOib, "12345678901");
 
   const snapshotBeforeApproval = await repository.getSnapshot(superAdmin, "1", {
     companies: [],
@@ -121,6 +123,8 @@ test("memory tenant repository stores and approves signup requests", async () =>
   assert.ok(approvedUser);
   assert.equal(approvedUser.role, "admin");
   assert.equal(approvedUser.organizationName, "Nova Organizacija");
+  const createdOrganization = repository.organizations.find((item) => item.id === approvedUser.organizationId);
+  assert.equal(createdOrganization?.oib, "12345678901");
 });
 
 test("memory tenant repository blocks duplicate pending signup requests by email", async () => {
@@ -129,7 +133,9 @@ test("memory tenant repository blocks duplicate pending signup requests by email
 
   await repository.submitSignupRequest({
     organizationName: "Org 1",
+    organizationOib: "12345678901",
     firstName: "Ana",
+    lastName: "Admin",
     email: "ana@example.com",
     password: "tajna123",
   });
@@ -137,10 +143,29 @@ test("memory tenant repository blocks duplicate pending signup requests by email
   await assert.rejects(
     () => repository.submitSignupRequest({
       organizationName: "Org 2",
+      organizationOib: "10987654321",
       firstName: "Ana",
+      lastName: "Admin",
       email: "ana@example.com",
       password: "tajna123",
     }),
     /vec poslan/,
+  );
+});
+
+test("memory tenant repository requires valid organization oib for signup requests", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  await assert.rejects(
+    () => repository.submitSignupRequest({
+      organizationName: "Org 1",
+      organizationOib: "123",
+      firstName: "Ana",
+      lastName: "Admin",
+      email: "ana-oib@example.com",
+      password: "tajna123",
+    }),
+    /OIB organizacije/,
   );
 });
