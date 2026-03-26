@@ -8,8 +8,8 @@
   </head>
   <body>
     <section id="auth-screen" class="auth-screen">
-      <div class="auth-layout auth-layout-signin">
-        <section class="auth-login-panel" aria-label="Prijava u aplikaciju">
+      <div class="auth-minimal-shell">
+        <section class="auth-minimal-card" aria-label="Prijava u aplikaciju">
           <div class="auth-logo auth-logo-compact" aria-label="Safety360">
             <div class="auth-logo-mark">
               <span></span>
@@ -18,15 +18,23 @@
             <span class="auth-logo-word">Safety360</span>
           </div>
 
-          <div class="auth-login-copy">
-            <p class="auth-kicker">Welcome back</p>
-            <h1>Please enter your account details</h1>
+          <div class="auth-mode-switch" role="tablist" aria-label="Odabir auth nacina">
+            <button id="auth-mode-login" type="button" class="auth-mode-button is-active" data-auth-mode="login">Sign in</button>
+            <button id="auth-mode-signup" type="button" class="auth-mode-button" data-auth-mode="signup">Request access</button>
+          </div>
+
+          <div class="auth-login-copy auth-login-copy-minimal">
+            <p id="login-content-accent" class="auth-kicker">Secure access</p>
+            <h1 id="login-content-heading">Welcome back</h1>
+            <p id="login-content-quote" class="auth-minimal-copy">
+              Sign in with your email to continue into your organization workspace.
+            </p>
           </div>
 
           <form id="login-form" class="auth-form auth-form-tenant">
             <label class="field">
               <span>Email</span>
-              <input id="login-email" type="text" autocomplete="username" placeholder="Email address" required />
+              <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
             </label>
 
             <label class="field">
@@ -43,31 +51,53 @@
             <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Sign in</button>
           </form>
 
-          <p class="auth-meta auth-signup-note">Contact administrator for SignUp.</p>
+          <form id="signup-form" class="auth-form auth-form-tenant" hidden>
+            <label class="field">
+              <span>Organization</span>
+              <input id="signup-organization-name" type="text" placeholder="Organization name" required />
+            </label>
+
+            <div class="auth-inline-grid">
+              <label class="field">
+                <span>First name</span>
+                <input id="signup-first-name" type="text" placeholder="First name" required />
+              </label>
+
+              <label class="field">
+                <span>Last name</span>
+                <input id="signup-last-name" type="text" placeholder="Last name" />
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Email</span>
+              <input id="signup-email" type="email" autocomplete="email" placeholder="Email address" required />
+            </label>
+
+            <label class="field">
+              <span>Password</span>
+              <input id="signup-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+            </label>
+
+            <div class="auth-inline-grid">
+              <label class="field">
+                <span>Phone</span>
+                <input id="signup-phone" type="text" placeholder="+385 ..." />
+              </label>
+
+              <label class="field">
+                <span>Note</span>
+                <input id="signup-note" type="text" placeholder="Optional note" />
+              </label>
+            </div>
+
+            <button id="signup-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
+          </form>
+
+          <p id="auth-helper-copy" class="auth-meta auth-signup-note">Need access? Send a signup request and the administrator will get it by email.</p>
           <p id="login-error" class="form-error" aria-live="polite"></p>
+          <p id="signup-feedback" class="form-success" aria-live="polite"></p>
         </section>
-
-        <aside class="auth-story-panel" aria-label="Istaknuta poruka prijave">
-          <div class="auth-story-shell">
-            <span id="login-content-accent" class="auth-story-accent">Trusted workflow</span>
-            <h2 id="login-content-heading">What's your team saying?</h2>
-            <p id="login-content-quote" class="auth-story-quote">
-              Bring clients, locations and work orders into one secure workspace your whole organization can trust.
-            </p>
-
-            <div class="auth-story-author">
-              <strong id="login-content-author-name">Safety360</strong>
-              <span id="login-content-author-title">Multi-tenant operations workspace</span>
-            </div>
-
-            <div class="auth-story-feature-card">
-              <strong id="login-content-feature-title">One platform for every client portfolio</strong>
-              <p id="login-content-feature-body">
-                Super admins manage tenants, organization admins manage their teams, and users stay focused on daily execution.
-              </p>
-            </div>
-          </div>
-        </aside>
       </div>
     </section>
 
@@ -719,6 +749,30 @@
                   </tr>
                 </thead>
                 <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="signup-requests-panel" class="panel" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Inbound access</p>
+                <h2>Signup requests</h2>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Requester</th>
+                    <th>Organization</th>
+                    <th>Status</th>
+                    <th>Requested</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="signup-requests-body"></tbody>
               </table>
             </div>
           </section>

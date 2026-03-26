@@ -21,8 +21,12 @@ import {
   hashStoredToken,
   verifyPassword,
 } from "./webAuth.js";
+import { resolveSignupNotifyRecipients, sendMail } from "./mailer.js";
 
 const DEFAULT_ORGANIZATION_NAME = "Default Organization";
+const SIGNUP_STATUS_PENDING = "pending";
+const SIGNUP_STATUS_APPROVED = "approved";
+const SIGNUP_STATUS_REJECTED = "rejected";
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -144,6 +148,31 @@ function sanitizeLoginContent(row) {
   };
 }
 
+function sanitizeSignupRequest(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    organizationName: row.organization_name ?? "",
+    firstName: row.first_name ?? "",
+    lastName: row.last_name ?? "",
+    fullName: [row.first_name ?? "", row.last_name ?? ""].filter(Boolean).join(" ").trim(),
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    note: row.note ?? "",
+    status: row.status ?? SIGNUP_STATUS_PENDING,
+    organizationId: row.organization_id ? String(row.organization_id) : "",
+    userId: row.user_id ? String(row.user_id) : "",
+    processedNote: row.processed_note ?? "",
+    emailStatus: row.email_status ?? "",
+    emailError: row.email_error ?? "",
+    requestedAt: normalizeTimestamp(row.requested_at ?? row.created_at),
+    processedAt: normalizeTimestamp(row.processed_at),
+  };
+}
+
 function normalizeOrganizationInput(input = {}) {
   return {
     name: dbString(input.name),
@@ -181,6 +210,18 @@ function normalizeLoginContentInput(input = {}) {
     featureBody: dbString(input.featureBody),
     accentLabel: dbString(input.accentLabel),
     isActive: toBooleanFlag(input.isActive, true),
+  };
+}
+
+function normalizeSignupRequestInput(input = {}) {
+  return {
+    organizationName: dbString(input.organizationName),
+    firstName: dbString(input.firstName),
+    lastName: dbString(input.lastName),
+    email: dbString(input.email).toLowerCase(),
+    password: dbString(input.password),
+    phone: dbString(input.phone),
+    note: dbString(input.note),
   };
 }
 
@@ -285,6 +326,31 @@ async function ensureSchema(connection) {
       KEY idx_app_refresh_tokens_expires_at (expires_at)
     )
   `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS signup_requests (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      organization_name VARCHAR(255) NOT NULL,
+      first_name VARCHAR(120) NOT NULL,
+      last_name VARCHAR(160) NOT NULL DEFAULT '',
+      email VARCHAR(255) NOT NULL,
+      phone VARCHAR(64) NOT NULL DEFAULT '',
+      note TEXT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+      organization_id INT NULL,
+      user_id INT NULL,
+      processed_note TEXT NULL,
+      email_status VARCHAR(40) NOT NULL DEFAULT '',
+      email_error TEXT NULL,
+      requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      processed_at DATETIME NULL,
+      processed_by_user_id INT NULL,
+      KEY idx_signup_requests_email (email),
+      KEY idx_signup_requests_status (status),
+      KEY idx_signup_requests_requested_at (requested_at)
+    )
+  `);
 }
 
 async function fetchOrganizations(connection, accessibleIds = null) {
@@ -346,6 +412,18 @@ async function fetchLoginContentItems(connection) {
   return rows.map(sanitizeLoginContent);
 }
 
+async function fetchSignupRequests(connection) {
+  const [rows] = await connection.query(`
+    SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+           organization_id, user_id, processed_note, email_status, email_error,
+           requested_at, processed_at
+    FROM signup_requests
+    ORDER BY requested_at DESC, id DESC
+  `);
+
+  return rows.map(sanitizeSignupRequest);
+}
+
 async function fetchCompanyAssignments(connection) {
   const [rows] = await connection.query(`
     SELECT organization_id, company_id
@@ -370,6 +448,111 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
     locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
     workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
   };
+}
+
+async function fetchSuperAdminEmails(connection) {
+  const [rows] = await connection.query(`
+    SELECT email
+    FROM app_users
+    WHERE role = 'super_admin'
+      AND is_active = 1
+      AND COALESCE(email, '') <> ''
+    ORDER BY id ASC
+  `);
+
+  return rows.map((row) => dbString(row.email).toLowerCase()).filter(Boolean);
+}
+
+async function updateSignupEmailStatus(connection, requestId, emailStatus, emailError = "") {
+  await connection.query(
+    `
+      UPDATE signup_requests
+      SET email_status = ?, email_error = ?
+      WHERE id = ?
+    `,
+    [dbString(emailStatus), dbString(emailError), Number(requestId)],
+  );
+}
+
+async function notifySignupSubmitted(connection, request) {
+  const recipients = resolveSignupNotifyRecipients(await fetchSuperAdminEmails(connection));
+  const fullName = [request.firstName, request.lastName].filter(Boolean).join(" ").trim() || request.email;
+  const outgoing = [];
+
+  if (recipients.length > 0) {
+    outgoing.push(sendMail({
+      to: recipients.join(", "),
+      subject: `New signup request: ${request.organizationName}`,
+      text: [
+        "New signup request received.",
+        `Organization: ${request.organizationName}`,
+        `Name: ${fullName}`,
+        `Email: ${request.email}`,
+        request.phone ? `Phone: ${request.phone}` : "",
+        request.note ? `Note: ${request.note}` : "",
+      ].filter(Boolean).join("\n"),
+    }));
+  }
+
+  outgoing.push(sendMail({
+    to: request.email,
+    subject: "Safety360 signup request received",
+    text: [
+      `Hello ${request.firstName || fullName},`,
+      "",
+      "We received your signup request for Safety360.",
+      "An administrator will review it and contact you shortly.",
+      "",
+      `Organization: ${request.organizationName}`,
+    ].join("\n"),
+  }));
+
+  const results = await Promise.all(outgoing);
+  const firstFailure = results.find((item) => !item.ok && !item.skipped);
+  const anySent = results.some((item) => item.ok);
+
+  await updateSignupEmailStatus(
+    connection,
+    request.id,
+    anySent ? "sent" : "skipped",
+    firstFailure?.error ?? "",
+  );
+}
+
+async function notifySignupDecision(connection, request, decision) {
+  const subject = decision === SIGNUP_STATUS_APPROVED
+    ? "Safety360 account approved"
+    : "Safety360 signup request update";
+  const text = decision === SIGNUP_STATUS_APPROVED
+    ? [
+      `Hello ${request.firstName || request.email},`,
+      "",
+      "Your Safety360 signup request has been approved.",
+      "You can now sign in with your email address and password.",
+      "",
+      `Organization: ${request.organizationName}`,
+    ].join("\n")
+    : [
+      `Hello ${request.firstName || request.email},`,
+      "",
+      "Your Safety360 signup request has been reviewed.",
+      "Please contact the administrator for more details.",
+      request.processedNote ? "" : null,
+      request.processedNote ? `Note: ${request.processedNote}` : null,
+    ].filter((value) => value !== null).join("\n");
+
+  const result = await sendMail({
+    to: request.email,
+    subject,
+    text,
+  });
+
+  await updateSignupEmailStatus(
+    connection,
+    request.id,
+    result.ok ? "sent" : (result.skipped ? "skipped" : "error"),
+    result.ok ? "" : result.error ?? "",
+  );
 }
 
 async function seedDefaultData(connection) {
@@ -538,6 +721,7 @@ export class MemoryTenantRepository {
     ];
     this.companyAssignments = new Map();
     this.refreshTokens = new Map();
+    this.signupRequests = [];
   }
 
   async init() {
@@ -657,6 +841,9 @@ export class MemoryTenantRepository {
         ? this.users.map((item) => ({ ...item }))
         : this.users.filter((item) => String(item.organizationId) === String(activeOrganizationId)).map((item) => ({ ...item })),
       loginContentItems: canManageLoginContent(actor) ? this.loginContentItems.map((item) => ({ ...item })) : [],
+      signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+        ? this.signupRequests.map((item) => ({ ...item }))
+        : [],
       ...scopedSnapshot,
     };
   }
@@ -811,6 +998,129 @@ export class MemoryTenantRepository {
     const before = this.loginContentItems.length;
     this.loginContentItems = this.loginContentItems.filter((item) => item.id !== String(id));
     return this.loginContentItems.length !== before;
+  }
+
+  async submitSignupRequest(input) {
+    const normalized = normalizeSignupRequestInput(input);
+    assertText(normalized.organizationName, "Naziv organizacije je obavezan.");
+    assertText(normalized.firstName, "Ime je obavezno.");
+    assertText(normalized.email, "Email je obavezan.");
+    assertText(normalized.password, "Lozinka je obavezna.");
+
+    if (this.users.some((item) => item.email.toLowerCase() === normalized.email)) {
+      throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
+    }
+
+    if (this.signupRequests.some((item) => item.email.toLowerCase() === normalized.email && item.status === SIGNUP_STATUS_PENDING)) {
+      throw createHttpError(400, "Zahtjev s tim emailom je vec poslan.");
+    }
+
+    const next = {
+      id: String(this.signupRequests.length + 1),
+      organizationName: normalized.organizationName,
+      firstName: normalized.firstName,
+      lastName: normalized.lastName,
+      fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" ").trim(),
+      email: normalized.email,
+      phone: normalized.phone,
+      note: normalized.note,
+      status: SIGNUP_STATUS_PENDING,
+      organizationId: "",
+      userId: "",
+      processedNote: "",
+      emailStatus: "skipped",
+      emailError: "",
+      requestedAt: new Date().toISOString(),
+      processedAt: null,
+      passwordHash: await createPasswordHash(normalized.password),
+    };
+
+    this.signupRequests.unshift(next);
+    return {
+      ok: true,
+      request: { ...next, passwordHash: undefined },
+      message: "Zahtjev za pristup je zaprimljen.",
+    };
+  }
+
+  async approveSignupRequest(actor, requestId, input = {}) {
+    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pravo odobravati signup zahtjeve.");
+    }
+
+    const request = this.signupRequests.find((item) => item.id === String(requestId));
+
+    if (!request) {
+      return null;
+    }
+
+    if (request.status !== SIGNUP_STATUS_PENDING) {
+      throw createHttpError(400, "Zahtjev vise nije pending.");
+    }
+
+    const organization = {
+      id: String(this.organizations.length + 1),
+      ...normalizeOrganizationInput({
+        name: request.organizationName,
+        contactEmail: request.email,
+        contactPhone: request.phone,
+      }),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.organizations.push(organization);
+
+    const user = {
+      id: String(this.users.length + 1),
+      organizationId: organization.id,
+      organizationName: organization.name,
+      firstName: request.firstName,
+      lastName: request.lastName,
+      fullName: request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim(),
+      email: request.email,
+      username: request.email,
+      legacyUsername: "",
+      role: ROLE_ADMIN,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: null,
+      passwordHash: request.passwordHash,
+    };
+    this.users.push(user);
+
+    request.status = SIGNUP_STATUS_APPROVED;
+    request.organizationId = organization.id;
+    request.userId = user.id;
+    request.processedAt = new Date().toISOString();
+    request.processedNote = dbString(input.processedNote);
+    request.emailStatus = "skipped";
+    request.emailError = "";
+
+    return { ...request, passwordHash: undefined };
+  }
+
+  async rejectSignupRequest(actor, requestId, input = {}) {
+    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pravo odbijati signup zahtjeve.");
+    }
+
+    const request = this.signupRequests.find((item) => item.id === String(requestId));
+
+    if (!request) {
+      return null;
+    }
+
+    if (request.status !== SIGNUP_STATUS_PENDING) {
+      throw createHttpError(400, "Zahtjev vise nije pending.");
+    }
+
+    request.status = SIGNUP_STATUS_REJECTED;
+    request.processedAt = new Date().toISOString();
+    request.processedNote = dbString(input.processedNote);
+    request.emailStatus = "skipped";
+    request.emailError = "";
+    return { ...request, passwordHash: undefined };
   }
 
   async assignCompanyToOrganization(organizationId, companyId) {
@@ -1061,6 +1371,7 @@ export class MySqlTenantRepository {
         ...context,
         users: await fetchUsers(connection, actor, context.activeOrganizationId),
         loginContentItems: canManageLoginContent(actor) ? await fetchLoginContentItems(connection) : [],
+        signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN ? await fetchSignupRequests(connection) : [],
         ...scopedSnapshot,
       };
     } finally {
@@ -1406,6 +1717,236 @@ export class MySqlTenantRepository {
         [Number(id)],
       );
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async submitSignupRequest(input) {
+    const normalized = normalizeSignupRequestInput(input);
+    assertText(normalized.organizationName, "Naziv organizacije je obavezan.");
+    assertText(normalized.firstName, "Ime je obavezno.");
+    assertText(normalized.email, "Email je obavezan.");
+    assertText(normalized.password, "Lozinka je obavezna.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [[existingUser]] = await connection.query(
+        "SELECT id FROM app_users WHERE LOWER(email) = ? LIMIT 1",
+        [normalized.email],
+      );
+
+      if (existingUser?.id) {
+        throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
+      }
+
+      const [[existingRequest]] = await connection.query(
+        "SELECT id FROM signup_requests WHERE LOWER(email) = ? AND status = 'pending' LIMIT 1",
+        [normalized.email],
+      );
+
+      if (existingRequest?.id) {
+        throw createHttpError(400, "Zahtjev s tim emailom je vec poslan.");
+      }
+
+      const passwordHash = await createPasswordHash(normalized.password);
+      const [result] = await connection.query(
+        `
+          INSERT INTO signup_requests
+            (organization_name, first_name, last_name, email, phone, note, password_hash, status, email_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '')
+        `,
+        [
+          normalized.organizationName,
+          normalized.firstName,
+          normalized.lastName,
+          normalized.email,
+          normalized.phone,
+          normalized.note,
+          passwordHash,
+        ],
+      );
+
+      const [[requestRow]] = await connection.query(
+        `
+          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+                 organization_id, user_id, processed_note, email_status, email_error,
+                 requested_at, processed_at
+          FROM signup_requests
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(result.insertId)],
+      );
+
+      const request = sanitizeSignupRequest(requestRow);
+      await notifySignupSubmitted(connection, request);
+
+      return {
+        ok: true,
+        request,
+        message: "Zahtjev za pristup je zaprimljen. Administrator ce dobiti obavijest emailom.",
+      };
+    } catch (error) {
+      rethrowDatabaseError(error, "Signup zahtjev s tim emailom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async approveSignupRequest(actor, requestId, input = {}) {
+    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pravo odobravati signup zahtjeve.");
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [[current]] = await connection.query(
+        "SELECT * FROM signup_requests WHERE id = ? LIMIT 1 FOR UPDATE",
+        [Number(requestId)],
+      );
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const request = sanitizeSignupRequest(current);
+
+      if (request.status !== SIGNUP_STATUS_PENDING) {
+        throw createHttpError(400, "Zahtjev vise nije pending.");
+      }
+
+      const [[existingUser]] = await connection.query(
+        "SELECT id FROM app_users WHERE LOWER(email) = ? LIMIT 1",
+        [request.email.toLowerCase()],
+      );
+
+      if (existingUser?.id) {
+        throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
+      }
+
+      const [organizationResult] = await connection.query(
+        `
+          INSERT INTO organizations
+            (name, contact_email, contact_phone, status)
+          VALUES (?, ?, ?, 'active')
+        `,
+        [request.organizationName, request.email, request.phone],
+      );
+
+      const [userResult] = await connection.query(
+        `
+          INSERT INTO app_users
+            (organization_id, first_name, last_name, email, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, 'admin', 1)
+        `,
+        [
+          Number(organizationResult.insertId),
+          request.firstName,
+          request.lastName,
+          request.email,
+          current.password_hash,
+        ],
+      );
+
+      await connection.query(
+        `
+          UPDATE signup_requests
+          SET status = 'approved',
+              organization_id = ?,
+              user_id = ?,
+              processed_note = ?,
+              processed_at = CURRENT_TIMESTAMP,
+              processed_by_user_id = ?
+          WHERE id = ?
+        `,
+        [
+          Number(organizationResult.insertId),
+          Number(userResult.insertId),
+          dbString(input.processedNote),
+          Number(actor.id),
+          Number(requestId),
+        ],
+      );
+
+      await connection.commit();
+
+      const [[nextRow]] = await connection.query(
+        `
+          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+                 organization_id, user_id, processed_note, email_status, email_error,
+                 requested_at, processed_at
+          FROM signup_requests
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(requestId)],
+      );
+
+      const nextRequest = sanitizeSignupRequest(nextRow);
+      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_APPROVED);
+      return nextRequest;
+    } catch (error) {
+      await connection.rollback();
+      rethrowDatabaseError(error, "Signup zahtjev nije moguce odobriti.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async rejectSignupRequest(actor, requestId, input = {}) {
+    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pravo odbijati signup zahtjeve.");
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        `
+          UPDATE signup_requests
+          SET status = 'rejected',
+              processed_note = ?,
+              processed_at = CURRENT_TIMESTAMP,
+              processed_by_user_id = ?
+          WHERE id = ?
+            AND status = 'pending'
+        `,
+        [dbString(input.processedNote), Number(actor.id), Number(requestId)],
+      );
+
+      if (result.affectedRows === 0) {
+        const [[existing]] = await connection.query(
+          "SELECT id FROM signup_requests WHERE id = ? LIMIT 1",
+          [Number(requestId)],
+        );
+
+        if (!existing?.id) {
+          return null;
+        }
+
+        throw createHttpError(400, "Zahtjev vise nije pending.");
+      }
+
+      const [[nextRow]] = await connection.query(
+        `
+          SELECT id, organization_name, first_name, last_name, email, phone, note, status,
+                 organization_id, user_id, processed_note, email_status, email_error,
+                 requested_at, processed_at
+          FROM signup_requests
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(requestId)],
+      );
+
+      const nextRequest = sanitizeSignupRequest(nextRow);
+      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_REJECTED);
+      return nextRequest;
     } finally {
       connection.release();
     }

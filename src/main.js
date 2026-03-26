@@ -11,6 +11,7 @@ const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
+  "/auth/signup",
   "/auth/logout",
   "/auth/refresh",
   "/auth/session",
@@ -23,10 +24,12 @@ const state = {
   companies: [],
   locations: [],
   users: [],
+  signupRequests: [],
   loginContentItems: [],
   loginContent: null,
   workOrders: [],
   activeView: "selfdash",
+  authMode: "login",
   user: null,
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
@@ -34,18 +37,27 @@ const state = {
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
+const authModeLoginButton = document.querySelector("#auth-mode-login");
+const authModeSignupButton = document.querySelector("#auth-mode-signup");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const signupForm = document.querySelector("#signup-form");
+const signupOrganizationNameInput = document.querySelector("#signup-organization-name");
+const signupFirstNameInput = document.querySelector("#signup-first-name");
+const signupLastNameInput = document.querySelector("#signup-last-name");
+const signupEmailInput = document.querySelector("#signup-email");
+const signupPasswordInput = document.querySelector("#signup-password");
+const signupPhoneInput = document.querySelector("#signup-phone");
+const signupNoteInput = document.querySelector("#signup-note");
+const signupSubmitButton = document.querySelector("#signup-submit-button");
+const signupFeedback = document.querySelector("#signup-feedback");
+const authHelperCopy = document.querySelector("#auth-helper-copy");
 const loginContentAccent = document.querySelector("#login-content-accent");
 const loginContentHeading = document.querySelector("#login-content-heading");
 const loginContentQuote = document.querySelector("#login-content-quote");
-const loginContentAuthorName = document.querySelector("#login-content-author-name");
-const loginContentAuthorTitle = document.querySelector("#login-content-author-title");
-const loginContentFeatureTitle = document.querySelector("#login-content-feature-title");
-const loginContentFeatureBody = document.querySelector("#login-content-feature-body");
 const userBadge = document.querySelector("#user-badge");
 const logoutButton = document.querySelector("#logout-button");
 const organizationContext = document.querySelector("#organization-context");
@@ -194,6 +206,8 @@ const loginContentFeatureBodyInput = document.querySelector("#login-content-feat
 const loginContentIsActiveInput = document.querySelector("#login-content-is-active");
 const loginContentResetButton = document.querySelector("#login-content-reset");
 const loginContentBody = document.querySelector("#login-content-body");
+const signupRequestsPanel = document.querySelector("#signup-requests-panel");
+const signupRequestsBody = document.querySelector("#signup-requests-body");
 
 function setConnectionStatus() {
   if (state.storage === "mysql") {
@@ -221,6 +235,27 @@ function setLoginBusy(isBusy) {
   loginPasswordInput.disabled = isBusy;
 }
 
+function setSignupBusy(isBusy) {
+  if (signupSubmitButton) {
+    signupSubmitButton.disabled = isBusy;
+    signupSubmitButton.textContent = isBusy ? "Sending..." : "Send request";
+  }
+
+  [
+    signupOrganizationNameInput,
+    signupFirstNameInput,
+    signupLastNameInput,
+    signupEmailInput,
+    signupPasswordInput,
+    signupPhoneInput,
+    signupNoteInput,
+  ].forEach((input) => {
+    if (input) {
+      input.disabled = isBusy;
+    }
+  });
+}
+
 function syncPasswordToggleLabel() {
   return;
 }
@@ -231,6 +266,34 @@ function getIsSuperAdmin() {
 
 function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode === "signup" ? "signup" : "login";
+
+  if (loginForm) {
+    loginForm.hidden = state.authMode !== "login";
+  }
+
+  if (signupForm) {
+    signupForm.hidden = state.authMode !== "signup";
+  }
+
+  authModeLoginButton?.classList.toggle("is-active", state.authMode === "login");
+  authModeSignupButton?.classList.toggle("is-active", state.authMode === "signup");
+
+  if (authHelperCopy) {
+    authHelperCopy.textContent = state.authMode === "signup"
+      ? "Send a request and the administrator will receive it by email."
+      : "Use your email and password to enter your organization workspace.";
+  }
+
+  if (state.authMode === "login") {
+    signupFeedback.textContent = "";
+    signupFeedback.classList.remove("is-error");
+  } else {
+    loginError.textContent = "";
+  }
 }
 
 async function requestTokenRefresh() {
@@ -285,6 +348,7 @@ function applySnapshot(payload) {
   state.companies = payload.companies ?? [];
   state.locations = payload.locations ?? [];
   state.users = payload.users ?? [];
+  state.signupRequests = payload.signupRequests ?? [];
   state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
   state.user = payload.user ?? state.user;
@@ -519,13 +583,17 @@ function isOverdueWorkOrder(item) {
 
 function renderLoginContent() {
   const content = state.loginContent ?? {};
-  loginContentAccent.textContent = content.accentLabel || "Trusted workflow";
-  loginContentHeading.textContent = content.heading || "What's your team saying?";
-  loginContentQuote.textContent = content.quoteText || "Bring clients, locations and work orders into one secure workspace your whole organization can trust.";
-  loginContentAuthorName.textContent = content.authorName || "Safety360";
-  loginContentAuthorTitle.textContent = content.authorTitle || "Multi-tenant operations workspace";
-  loginContentFeatureTitle.textContent = content.featureTitle || "One platform for every client portfolio";
-  loginContentFeatureBody.textContent = content.featureBody || "Super admins manage tenants, organization admins manage their teams, and users stay focused on daily execution.";
+  if (loginContentAccent) {
+    loginContentAccent.textContent = content.accentLabel || "Secure access";
+  }
+
+  if (loginContentHeading) {
+    loginContentHeading.textContent = content.heading || "Welcome back";
+  }
+
+  if (loginContentQuote) {
+    loginContentQuote.textContent = content.quoteText || "Sign in with your email to continue into your organization workspace.";
+  }
 }
 
 function renderAuthState() {
@@ -553,7 +621,10 @@ function renderAuthState() {
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
     loginError.textContent = "";
+    signupFeedback.textContent = "";
     setLoginBusy(false);
+    setSignupBusy(false);
+    setAuthMode(state.authMode);
   }
 }
 
@@ -817,6 +888,18 @@ function buildLoginContentPayload() {
   };
 }
 
+function buildSignupPayload() {
+  return {
+    organizationName: signupOrganizationNameInput.value,
+    firstName: signupFirstNameInput.value,
+    lastName: signupLastNameInput.value,
+    email: signupEmailInput.value,
+    password: signupPasswordInput.value,
+    phone: signupPhoneInput.value,
+    note: signupNoteInput.value,
+  };
+}
+
 function resetWorkOrderForm() {
   workOrderForm.reset();
   workOrderIdInput.value = "";
@@ -871,6 +954,13 @@ function resetLoginContentForm() {
   loginContentIdInput.value = "";
   loginContentError.textContent = "";
   loginContentIsActiveInput.value = "true";
+}
+
+function resetSignupForm() {
+  signupForm?.reset();
+  signupFeedback.textContent = "";
+  signupFeedback.classList.remove("is-error");
+  setSignupBusy(false);
 }
 
 function hydrateCompanyForm(company) {
@@ -1069,6 +1159,10 @@ function renderSharedOptions() {
 
   if (loginContentPanel) {
     loginContentPanel.hidden = !getIsSuperAdmin();
+  }
+
+  if (signupRequestsPanel) {
+    signupRequestsPanel.hidden = !getIsSuperAdmin();
   }
 }
 
@@ -1420,6 +1514,64 @@ function renderLoginContentItems() {
   }));
 }
 
+function renderSignupRequests() {
+  if (!signupRequestsBody) {
+    return;
+  }
+
+  signupRequestsBody.replaceChildren(...state.signupRequests.map((request) => {
+    const row = document.createElement("tr");
+    row.className = "list-row";
+
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "table-actions";
+
+    if (request.status === "pending") {
+      actionsCell.append(
+        createActionButton("Approve", "card-button", () => {
+          void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
+            method: "POST",
+            body: {},
+          }), syncError);
+        }),
+        createActionButton("Reject", "card-button card-danger", () => {
+          if (!window.confirm(`Reject signup request for ${request.email}?`)) {
+            return;
+          }
+
+          void runMutation(() => apiRequest(`/signup-requests/${request.id}/reject`, {
+            method: "POST",
+            body: {},
+          }), syncError);
+        }),
+      );
+    }
+
+    row.append(
+      createStackCell({
+        title: request.fullName || request.email,
+        subtitle: request.email,
+        tertiary: request.phone || "",
+      }),
+      createStackCell({
+        title: request.organizationName,
+        subtitle: request.note || "Bez napomene",
+      }),
+      createStackCell({
+        title: request.status,
+        subtitle: request.emailStatus ? `Email: ${request.emailStatus}` : "Bez email loga",
+      }),
+      createStackCell({
+        title: request.requestedAt ? formatDate(request.requestedAt.slice(0, 10)) : "Bez datuma",
+        subtitle: request.processedAt ? `Processed ${formatDate(request.processedAt.slice(0, 10))}` : "Pending review",
+      }),
+      actionsCell,
+    );
+
+    return row;
+  }));
+}
+
 function renderManagement() {
   const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
     ?? state.organizations[0]
@@ -1430,6 +1582,7 @@ function renderManagement() {
   }
 
   renderUsers();
+  renderSignupRequests();
   renderLoginContentItems();
 }
 
@@ -1548,6 +1701,7 @@ locationResetButton.addEventListener("click", resetLocationForm);
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loginError.textContent = "";
+  signupFeedback.textContent = "";
   setLoginBusy(true);
 
   void apiRequest("/auth/login", {
@@ -1568,6 +1722,37 @@ loginForm.addEventListener("submit", (event) => {
   });
 });
 
+authModeLoginButton?.addEventListener("click", () => {
+  setAuthMode("login");
+});
+
+authModeSignupButton?.addEventListener("click", () => {
+  setAuthMode("signup");
+});
+
+signupForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loginError.textContent = "";
+  signupFeedback.textContent = "";
+  signupFeedback.classList.remove("is-error");
+  setSignupBusy(true);
+
+  void apiRequest("/auth/signup", {
+    method: "POST",
+    body: buildSignupPayload(),
+  }, false).then((payload) => {
+    signupFeedback.classList.remove("is-error");
+    signupFeedback.textContent = payload.message || "Zahtjev je zaprimljen.";
+    signupForm.reset();
+    setAuthMode("login");
+  }).catch((error) => {
+    signupFeedback.classList.add("is-error");
+    signupFeedback.textContent = error.message;
+  }).finally(() => {
+    setSignupBusy(false);
+  });
+});
+
 logoutButton.addEventListener("click", () => {
   void apiRequest("/auth/logout", {
     method: "POST",
@@ -1578,8 +1763,10 @@ logoutButton.addEventListener("click", () => {
     state.companies = [];
     state.locations = [];
     state.users = [];
+    state.signupRequests = [];
     state.loginContentItems = [];
     loginForm.reset();
+    resetSignupForm();
     renderAuthState();
     void refreshLoginContent();
   });
@@ -1664,7 +1851,9 @@ resetLocationForm();
 resetOrganizationForm();
 resetUserForm();
 resetLoginContentForm();
+resetSignupForm();
 renderActiveView();
+setAuthMode(state.authMode);
 renderAuthState();
 syncPasswordToggleLabel();
 

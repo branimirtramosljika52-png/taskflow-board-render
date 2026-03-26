@@ -340,6 +340,13 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/auth/signup") {
+      const body = await readJsonBody(request);
+      const result = await tenantRepository.submitSignupRequest(body);
+      sendJson(response, 201, result);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/refresh") {
       const user = await getRequestUser(request, response);
 
@@ -386,6 +393,7 @@ async function handleApiRequest(request, response, url) {
     const organizationMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)$/);
     const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
     const loginContentMatch = url.pathname.match(/^\/api\/login-content\/([^/]+)$/);
+    const signupRequestActionMatch = url.pathname.match(/^\/api\/signup-requests\/([^/]+)\/(approve|reject)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
@@ -457,6 +465,31 @@ async function handleApiRequest(request, response, url) {
 
       await writeSnapshot(response, user, request);
       return true;
+    }
+
+    if (signupRequestActionMatch && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const [, signupRequestId, action] = signupRequestActionMatch;
+
+      if (action === "approve") {
+        await handleEntityMutation(
+          response,
+          user,
+          request,
+          () => tenantRepository.approveSignupRequest(user, signupRequestId, body),
+        );
+        return true;
+      }
+
+      if (action === "reject") {
+        await handleEntityMutation(
+          response,
+          user,
+          request,
+          () => tenantRepository.rejectSignupRequest(user, signupRequestId, body),
+        );
+        return true;
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/api/companies") {

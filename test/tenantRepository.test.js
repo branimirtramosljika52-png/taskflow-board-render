@@ -90,3 +90,57 @@ test("memory tenant repository lets admins create users only inside their organi
     /Nemate pravo kreirati ovog korisnika/,
   );
 });
+
+test("memory tenant repository stores and approves signup requests", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const response = await repository.submitSignupRequest({
+    organizationName: "Nova Organizacija",
+    firstName: "Luka",
+    lastName: "Test",
+    email: "luka@example.com",
+    password: "tajna123",
+    phone: "+385 91 000 0000",
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.request.status, "pending");
+
+  const snapshotBeforeApproval = await repository.getSnapshot(superAdmin, "1", {
+    companies: [],
+    locations: [],
+    workOrders: [],
+  });
+  assert.equal(snapshotBeforeApproval.signupRequests.length, 1);
+
+  await repository.approveSignupRequest(superAdmin, response.request.id);
+
+  const approvedUser = await repository.authenticateUser("luka@example.com", "tajna123");
+  assert.ok(approvedUser);
+  assert.equal(approvedUser.role, "admin");
+  assert.equal(approvedUser.organizationName, "Nova Organizacija");
+});
+
+test("memory tenant repository blocks duplicate pending signup requests by email", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  await repository.submitSignupRequest({
+    organizationName: "Org 1",
+    firstName: "Ana",
+    email: "ana@example.com",
+    password: "tajna123",
+  });
+
+  await assert.rejects(
+    () => repository.submitSignupRequest({
+      organizationName: "Org 2",
+      firstName: "Ana",
+      email: "ana@example.com",
+      password: "tajna123",
+    }),
+    /vec poslan/,
+  );
+});
