@@ -37,8 +37,10 @@ const state = {
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
-const authModeLoginButton = document.querySelector("#auth-mode-login");
-const authModeSignupButton = document.querySelector("#auth-mode-signup");
+const authLoginView = document.querySelector("#auth-login-view");
+const authSignupView = document.querySelector("#auth-signup-view");
+const openSignupButton = document.querySelector("#open-signup-button");
+const backToLoginButton = document.querySelector("#back-to-login-button");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -46,15 +48,11 @@ const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
 const signupForm = document.querySelector("#signup-form");
 const signupOrganizationNameInput = document.querySelector("#signup-organization-name");
-const signupFirstNameInput = document.querySelector("#signup-first-name");
-const signupLastNameInput = document.querySelector("#signup-last-name");
+const signupFullNameInput = document.querySelector("#signup-full-name");
 const signupEmailInput = document.querySelector("#signup-email");
 const signupPasswordInput = document.querySelector("#signup-password");
-const signupPhoneInput = document.querySelector("#signup-phone");
-const signupNoteInput = document.querySelector("#signup-note");
 const signupSubmitButton = document.querySelector("#signup-submit-button");
 const signupFeedback = document.querySelector("#signup-feedback");
-const authHelperCopy = document.querySelector("#auth-helper-copy");
 const loginContentAccent = document.querySelector("#login-content-accent");
 const loginContentHeading = document.querySelector("#login-content-heading");
 const loginContentQuote = document.querySelector("#login-content-quote");
@@ -243,12 +241,9 @@ function setSignupBusy(isBusy) {
 
   [
     signupOrganizationNameInput,
-    signupFirstNameInput,
-    signupLastNameInput,
+    signupFullNameInput,
     signupEmailInput,
     signupPasswordInput,
-    signupPhoneInput,
-    signupNoteInput,
   ].forEach((input) => {
     if (input) {
       input.disabled = isBusy;
@@ -271,21 +266,12 @@ function getCanManageMasterData() {
 function setAuthMode(mode) {
   state.authMode = mode === "signup" ? "signup" : "login";
 
-  if (loginForm) {
-    loginForm.hidden = state.authMode !== "login";
+  if (authLoginView) {
+    authLoginView.hidden = state.authMode !== "login";
   }
 
-  if (signupForm) {
-    signupForm.hidden = state.authMode !== "signup";
-  }
-
-  authModeLoginButton?.classList.toggle("is-active", state.authMode === "login");
-  authModeSignupButton?.classList.toggle("is-active", state.authMode === "signup");
-
-  if (authHelperCopy) {
-    authHelperCopy.textContent = state.authMode === "signup"
-      ? "Send a request and the administrator will receive it by email."
-      : "Use your email and password to enter your organization workspace.";
+  if (authSignupView) {
+    authSignupView.hidden = state.authMode !== "signup";
   }
 
   if (state.authMode === "login") {
@@ -600,6 +586,7 @@ function renderAuthState() {
   const authenticated = Boolean(state.user);
   authScreen.hidden = authenticated;
   appShell.hidden = !authenticated;
+  document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (authenticated) {
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
@@ -889,14 +876,19 @@ function buildLoginContentPayload() {
 }
 
 function buildSignupPayload() {
+  const fullName = String(signupFullNameInput?.value ?? "").trim();
+  const nameParts = fullName.split(/\s+/).filter(Boolean);
+  const firstName = nameParts.shift() ?? "";
+  const lastName = nameParts.join(" ");
+
   return {
     organizationName: signupOrganizationNameInput.value,
-    firstName: signupFirstNameInput.value,
-    lastName: signupLastNameInput.value,
+    firstName,
+    lastName,
     email: signupEmailInput.value,
     password: signupPasswordInput.value,
-    phone: signupPhoneInput.value,
-    note: signupNoteInput.value,
+    phone: "",
+    note: "",
   };
 }
 
@@ -1722,11 +1714,11 @@ loginForm.addEventListener("submit", (event) => {
   });
 });
 
-authModeLoginButton?.addEventListener("click", () => {
+backToLoginButton?.addEventListener("click", () => {
   setAuthMode("login");
 });
 
-authModeSignupButton?.addEventListener("click", () => {
+openSignupButton?.addEventListener("click", () => {
   setAuthMode("signup");
 });
 

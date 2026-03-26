@@ -10,93 +10,99 @@
     <section id="auth-screen" class="auth-screen">
       <div class="auth-minimal-shell">
         <section class="auth-minimal-card" aria-label="Prijava u aplikaciju">
-          <div class="auth-logo auth-logo-compact" aria-label="Safety360">
-            <div class="auth-logo-mark">
-              <span></span>
-              <span></span>
-            </div>
-            <span class="auth-logo-word">Safety360</span>
-          </div>
-
-          <div class="auth-mode-switch" role="tablist" aria-label="Odabir auth nacina">
-            <button id="auth-mode-login" type="button" class="auth-mode-button is-active" data-auth-mode="login">Sign in</button>
-            <button id="auth-mode-signup" type="button" class="auth-mode-button" data-auth-mode="signup">Request access</button>
-          </div>
-
-          <div class="auth-login-copy auth-login-copy-minimal">
-            <p id="login-content-accent" class="auth-kicker">Secure access</p>
-            <h1 id="login-content-heading">Welcome back</h1>
-            <p id="login-content-quote" class="auth-minimal-copy">
-              Sign in with your email to continue into your organization workspace.
-            </p>
-          </div>
-
-          <form id="login-form" class="auth-form auth-form-tenant">
-            <label class="field">
-              <span>Email</span>
-              <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
-            </label>
-
-            <label class="field">
-              <span>Password</span>
-              <input
-                id="login-password"
-                type="password"
-                autocomplete="current-password"
-                placeholder="Password"
-                required
-              />
-            </label>
-
-            <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Sign in</button>
-          </form>
-
-          <form id="signup-form" class="auth-form auth-form-tenant" hidden>
-            <label class="field">
-              <span>Organization</span>
-              <input id="signup-organization-name" type="text" placeholder="Organization name" required />
-            </label>
-
-            <div class="auth-inline-grid">
-              <label class="field">
-                <span>First name</span>
-                <input id="signup-first-name" type="text" placeholder="First name" required />
-              </label>
-
-              <label class="field">
-                <span>Last name</span>
-                <input id="signup-last-name" type="text" placeholder="Last name" />
-              </label>
+          <section id="auth-login-view" class="auth-view" aria-label="Sign in">
+            <div class="auth-logo auth-logo-compact" aria-label="Safety360">
+              <div class="auth-logo-mark">
+                <span></span>
+                <span></span>
+              </div>
+              <span class="auth-logo-word">Safety360</span>
             </div>
 
-            <label class="field">
-              <span>Email</span>
-              <input id="signup-email" type="email" autocomplete="email" placeholder="Email address" required />
-            </label>
-
-            <label class="field">
-              <span>Password</span>
-              <input id="signup-password" type="password" autocomplete="new-password" placeholder="Create password" required />
-            </label>
-
-            <div class="auth-inline-grid">
-              <label class="field">
-                <span>Phone</span>
-                <input id="signup-phone" type="text" placeholder="+385 ..." />
-              </label>
-
-              <label class="field">
-                <span>Note</span>
-                <input id="signup-note" type="text" placeholder="Optional note" />
-              </label>
+            <div class="auth-login-copy auth-login-copy-minimal">
+              <p id="login-content-accent" class="auth-kicker">Secure access</p>
+              <h1 id="login-content-heading">Welcome back</h1>
+              <p id="login-content-quote" class="auth-minimal-copy">
+                Sign in with your email to continue into your organization workspace.
+              </p>
             </div>
 
-            <button id="signup-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
-          </form>
+            <form id="login-form" class="auth-form auth-form-tenant">
+              <label class="field">
+                <span>Email</span>
+                <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
+              </label>
 
-          <p id="auth-helper-copy" class="auth-meta auth-signup-note">Need access? Send a signup request and the administrator will get it by email.</p>
-          <p id="login-error" class="form-error" aria-live="polite"></p>
-          <p id="signup-feedback" class="form-success" aria-live="polite"></p>
+              <label class="field">
+                <span>Password</span>
+                <input
+                  id="login-password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="Password"
+                  required
+                />
+              </label>
+
+              <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Sign in</button>
+            </form>
+
+            <div class="auth-switch-row">
+              <span class="auth-switch-label">Need access?</span>
+              <button id="open-signup-button" type="button" class="auth-switch-link">Request access</button>
+            </div>
+
+            <p id="login-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section id="auth-signup-view" class="auth-view" hidden aria-label="Request access">
+            <div class="auth-logo auth-logo-compact" aria-label="Safety360">
+              <div class="auth-logo-mark">
+                <span></span>
+                <span></span>
+              </div>
+              <span class="auth-logo-word">Safety360</span>
+            </div>
+
+            <div class="auth-login-copy auth-login-copy-minimal">
+              <p class="auth-kicker">Request access</p>
+              <h1>Create your access request</h1>
+              <p class="auth-minimal-copy">
+                Send your organization and contact details. The administrator gets the request by email and can approve your account.
+              </p>
+            </div>
+
+            <form id="signup-form" class="auth-form auth-form-tenant">
+              <label class="field">
+                <span>Organization</span>
+                <input id="signup-organization-name" type="text" placeholder="Organization name" required />
+              </label>
+
+              <label class="field">
+                <span>Full name</span>
+                <input id="signup-full-name" type="text" placeholder="Full name" required />
+              </label>
+
+              <label class="field">
+                <span>Email</span>
+                <input id="signup-email" type="email" autocomplete="email" placeholder="Email address" required />
+              </label>
+
+              <label class="field">
+                <span>Password</span>
+                <input id="signup-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+              </label>
+
+              <button id="signup-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
+            </form>
+
+            <div class="auth-switch-row">
+              <span class="auth-switch-label">Already have access?</span>
+              <button id="back-to-login-button" type="button" class="auth-switch-link">Back to sign in</button>
+            </div>
+
+            <p id="signup-feedback" class="form-success" aria-live="polite"></p>
+          </section>
         </section>
       </div>
     </section>
