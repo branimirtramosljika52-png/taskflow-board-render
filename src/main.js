@@ -1705,6 +1705,29 @@ function renderMeasurementSheet() {
       const shell = document.createElement("div");
       shell.className = "measurement-cell-shell";
 
+       td.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
+        if (event.target instanceof HTMLElement && event.target.closest(".measurement-fill-handle")) {
+          return;
+        }
+
+        event.preventDefault();
+        closeMeasurementFillMenu();
+        setMeasurementSelection(row.id, column.id, {
+          extend: event.shiftKey,
+        });
+
+        if (event.shiftKey) {
+          focusMeasurementCell(row.id, column.id);
+          return;
+        }
+
+        startMeasurementSelectionDrag(row.id, column.id, event.pointerId);
+      });
+
       const input = document.createElement("input");
       input.type = "text";
       input.className = "measurement-cell-input";
@@ -1712,25 +1735,6 @@ function renderMeasurementSheet() {
       input.placeholder = column.placeholder || column.label;
       input.dataset.rowId = row.id;
       input.dataset.columnId = column.id;
-      input.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) {
-          return;
-        }
-
-        event.preventDefault();
-        setMeasurementSelection(row.id, column.id, {
-          extend: event.shiftKey,
-        });
-
-        if (event.shiftKey) {
-          event.preventDefault();
-          input.focus();
-          return;
-        }
-
-        closeMeasurementFillMenu();
-        startMeasurementSelectionDrag(row.id, column.id, event.pointerId);
-      });
       input.addEventListener("focus", () => {
         if (state.measurementSheet.activeCell?.rowId === row.id
           && state.measurementSheet.activeCell?.columnId === column.id) {

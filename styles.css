@@ -1468,6 +1468,10 @@ body.is-selecting-measurement-cells {
   user-select: none;
 }
 
+body.is-selecting-measurement-cells .measurement-cell-input {
+  pointer-events: none;
+}
+
 .measurement-sheet-modal {
   position: fixed;
   inset: 0;
