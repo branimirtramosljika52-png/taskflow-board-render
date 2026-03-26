@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   formatMeasurementComputedDisplayValue,
   formatMeasurementLiteralDisplayValue,
+  getMeasurementBorderPreset,
+  normalizeMeasurementBorder,
   normalizeMeasurementCellFormat,
 } from "../src/measurementFormatting.js";
 
@@ -11,14 +13,27 @@ test("measurement formatting normalizes cell format settings", () => {
   assert.deepEqual(normalizeMeasurementCellFormat(), {
     type: "general",
     decimals: 2,
+    border: {
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    },
   });
 
   assert.deepEqual(normalizeMeasurementCellFormat({
     type: "number",
     decimals: 9,
+    border: "all",
   }), {
     type: "number",
     decimals: 6,
+    border: {
+      top: true,
+      right: true,
+      bottom: true,
+      left: true,
+    },
   });
 
   assert.deepEqual(normalizeMeasurementCellFormat({
@@ -27,7 +42,43 @@ test("measurement formatting normalizes cell format settings", () => {
   }), {
     type: "general",
     decimals: 0,
+    border: {
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    },
   });
+});
+
+test("measurement border helpers normalize presets and detect active preset", () => {
+  assert.deepEqual(normalizeMeasurementBorder("bottom"), {
+    top: false,
+    right: false,
+    bottom: true,
+    left: false,
+  });
+
+  assert.equal(getMeasurementBorderPreset({
+    top: true,
+    right: true,
+    bottom: true,
+    left: true,
+  }), "all");
+
+  assert.equal(getMeasurementBorderPreset({
+    top: true,
+    right: false,
+    bottom: false,
+    left: false,
+  }), "top");
+
+  assert.equal(getMeasurementBorderPreset({
+    top: true,
+    right: false,
+    bottom: true,
+    left: false,
+  }), "custom");
 });
 
 test("measurement literal formatting supports number, integer and percent", () => {

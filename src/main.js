@@ -17,7 +17,9 @@ import {
 import {
   formatMeasurementComputedDisplayValue,
   formatMeasurementLiteralDisplayValue,
+  getMeasurementBorderPreset,
   normalizeMeasurementCellFormat,
+  normalizeMeasurementBorder,
 } from "./measurementFormatting.js";
 
 const API_BASE = "/api";
@@ -206,7 +208,7 @@ const measurementNameBoxInput = document.querySelector("#measurement-name-box");
 const measurementFormulaInput = document.querySelector("#measurement-formula-input");
 const measurementFormatTypeInput = document.querySelector("#measurement-format-type");
 const measurementFormatDecimalsInput = document.querySelector("#measurement-format-decimals");
-const measurementFormatApplyButton = document.querySelector("#measurement-format-apply");
+const measurementFormatBorderInput = document.querySelector("#measurement-format-border");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
 const measurementSheetGridWrap = document.querySelector(".measurement-sheet-grid-wrap");
 const measurementSheetColgroup = document.querySelector("#measurement-sheet-colgroup");
@@ -1026,6 +1028,43 @@ function getMeasurementCellFormat(rowIndex, columnIndex) {
   return normalizeMeasurementCellFormat(row.formats?.[column.id]);
 }
 
+function buildMeasurementBorderFromPreset(preset, range, rowIndex, columnIndex) {
+  if (preset === "outline") {
+    return normalizeMeasurementBorder({
+      top: rowIndex === range.startRowIndex,
+      right: columnIndex === range.endColumnIndex,
+      bottom: rowIndex === range.endRowIndex,
+      left: columnIndex === range.startColumnIndex,
+    });
+  }
+
+  return normalizeMeasurementBorder(preset);
+}
+
+function getMeasurementBorderShadow(border) {
+  const normalized = normalizeMeasurementBorder(border);
+  const parts = [];
+  const borderColor = "rgba(83, 104, 255, 0.92)";
+
+  if (normalized.top) {
+    parts.push(`inset 0 2px 0 0 ${borderColor}`);
+  }
+
+  if (normalized.right) {
+    parts.push(`inset -2px 0 0 0 ${borderColor}`);
+  }
+
+  if (normalized.bottom) {
+    parts.push(`inset 0 -2px 0 0 ${borderColor}`);
+  }
+
+  if (normalized.left) {
+    parts.push(`inset 2px 0 0 0 ${borderColor}`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "none";
+}
+
 function getMeasurementActiveCellFormat() {
   const position = getMeasurementActiveCellPosition();
 
@@ -1082,12 +1121,42 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
         continue;
       }
 
-      row.formats[column.id] = normalizeMeasurementCellFormat({
+      const nextFormat = {
         ...row.formats[column.id],
-        ...formatOverrides,
-      });
+      };
+
+      if ("type" in formatOverrides) {
+        nextFormat.type = formatOverrides.type;
+      }
+
+      if ("decimals" in formatOverrides) {
+        nextFormat.decimals = formatOverrides.decimals;
+      }
+
+      if ("borderPreset" in formatOverrides) {
+        nextFormat.border = buildMeasurementBorderFromPreset(
+          formatOverrides.borderPreset,
+          range,
+          rowIndex,
+          columnIndex,
+        );
+      }
+
+      row.formats[column.id] = normalizeMeasurementCellFormat(nextFormat);
     }
   }
+}
+
+function applyMeasurementToolbarFormat(overrides = {}) {
+  if (!state.measurementSheet.activeCell) {
+    return;
+  }
+
+  applyMeasurementFormatToRange(overrides);
+  refreshMeasurementSheetComputedValues();
+  renderMeasurementSelection();
+  renderMeasurementActiveCell();
+  syncMeasurementToolbar();
 }
 
 function getEditableMeasurementColumnIndexes() {
@@ -1154,8 +1223,9 @@ function syncMeasurementToolbar() {
     measurementFormatDecimalsInput.disabled = !state.measurementSheet.activeCell || ["general", "text", "integer"].includes(activeFormat.type);
   }
 
-  if (measurementFormatApplyButton) {
-    measurementFormatApplyButton.disabled = !state.measurementSheet.activeCell;
+  if (measurementFormatBorderInput) {
+    measurementFormatBorderInput.value = getMeasurementBorderPreset(activeFormat.border);
+    measurementFormatBorderInput.disabled = !state.measurementSheet.activeCell;
   }
 }
 
@@ -1523,6 +1593,7 @@ function refreshMeasurementSheetComputedValues() {
       }
 
       if (column.computed === "average") {
+        cell.style.setProperty("--measurement-border-shadow", "none");
         cell.textContent = formatMeasurementAverage(row);
         return;
       }
@@ -1531,6 +1602,7 @@ function refreshMeasurementSheetComputedValues() {
       const rawValue = row.cells?.[column.id] ?? "";
       const hasFormula = isMeasurementFormula(rawValue);
       let hasError = false;
+      const format = getMeasurementCellFormat(rowIndex, columnIndex);
 
       if (hasFormula) {
         hasError = getMeasurementCellDisplayText(rowIndex, columnIndex) === "#ERROR";
@@ -1538,6 +1610,7 @@ function refreshMeasurementSheetComputedValues() {
 
       cell.classList.toggle("has-formula-cell", hasFormula);
       cell.classList.toggle("has-formula-error", hasError);
+      cell.style.setProperty("--measurement-border-shadow", getMeasurementBorderShadow(format.border));
 
       if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
         input.value = getMeasurementCellInputDisplayValue(rowIndex, columnIndex);
@@ -4216,9 +4289,17 @@ measurementFormatTypeInput?.addEventListener("change", () => {
   if (measurementFormatDecimalsInput) {
     measurementFormatDecimalsInput.disabled = ["general", "text", "integer"].includes(nextType);
   }
+
+  applyMeasurementToolbarFormat({
+    type: nextType,
+    decimals: normalizeMeasurementDecimals(measurementFormatDecimalsInput?.value),
+  });
 });
 measurementFormatDecimalsInput?.addEventListener("input", () => {
   measurementFormatDecimalsInput.value = String(normalizeMeasurementDecimals(measurementFormatDecimalsInput.value));
+  applyMeasurementToolbarFormat({
+    decimals: normalizeMeasurementDecimals(measurementFormatDecimalsInput.value),
+  });
 });
 measurementFormatDecimalsInput?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") {
@@ -4226,21 +4307,12 @@ measurementFormatDecimalsInput?.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
-  measurementFormatApplyButton?.click();
+  commitMeasurementEditMode();
 });
-measurementFormatApplyButton?.addEventListener("click", () => {
-  if (!state.measurementSheet.activeCell) {
-    return;
-  }
-
-  applyMeasurementFormatToRange({
-    type: measurementFormatTypeInput?.value,
-    decimals: normalizeMeasurementDecimals(measurementFormatDecimalsInput?.value),
+measurementFormatBorderInput?.addEventListener("change", () => {
+  applyMeasurementToolbarFormat({
+    borderPreset: measurementFormatBorderInput.value,
   });
-  refreshMeasurementSheetComputedValues();
-  renderMeasurementSelection();
-  renderMeasurementActiveCell();
-  syncMeasurementToolbar();
 });
 measurementFillCopyButton?.addEventListener("click", () => {
   applyMeasurementFill("copy");

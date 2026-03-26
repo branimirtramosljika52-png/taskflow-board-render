@@ -1,7 +1,15 @@
 const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   type: "general",
   decimals: 2,
+  border: Object.freeze({
+    top: false,
+    right: false,
+    bottom: false,
+    left: false,
+  }),
 });
+
+const BORDER_PRESETS = new Set(["none", "all", "top", "right", "bottom", "left"]);
 
 function clampMeasurementDecimals(value) {
   const parsed = Number.parseInt(value, 10);
@@ -43,6 +51,62 @@ function formatMeasurementPercentValue(value, decimals) {
   }).format(value).replace(/[\s\u00A0]+%$/, "%");
 }
 
+export function normalizeMeasurementBorder(border = {}) {
+  if (typeof border === "string") {
+    if (!BORDER_PRESETS.has(border)) {
+      return { ...DEFAULT_MEASUREMENT_FORMAT.border };
+    }
+
+    if (border === "none") {
+      return { ...DEFAULT_MEASUREMENT_FORMAT.border };
+    }
+
+    if (border === "all") {
+      return {
+        top: true,
+        right: true,
+        bottom: true,
+        left: true,
+      };
+    }
+
+    return {
+      top: border === "top",
+      right: border === "right",
+      bottom: border === "bottom",
+      left: border === "left",
+    };
+  }
+
+  return {
+    top: Boolean(border?.top),
+    right: Boolean(border?.right),
+    bottom: Boolean(border?.bottom),
+    left: Boolean(border?.left),
+  };
+}
+
+export function getMeasurementBorderPreset(border = {}) {
+  const normalized = normalizeMeasurementBorder(border);
+  const sides = Object.entries(normalized)
+    .filter(([, enabled]) => enabled)
+    .map(([side]) => side);
+
+  if (sides.length === 0) {
+    return "none";
+  }
+
+  if (sides.length === 4) {
+    return "all";
+  }
+
+  if (sides.length === 1) {
+    return sides[0];
+  }
+
+  return "custom";
+}
+
 export function normalizeMeasurementCellFormat(format = {}) {
   const type = ["general", "number", "integer", "percent", "text"].includes(format?.type)
     ? format.type
@@ -51,6 +115,7 @@ export function normalizeMeasurementCellFormat(format = {}) {
   return {
     type,
     decimals: clampMeasurementDecimals(format?.decimals),
+    border: normalizeMeasurementBorder(format?.border),
   };
 }
 

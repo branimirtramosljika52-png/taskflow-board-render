@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326v" />
+    <link rel="stylesheet" href="/styles.css?v=20260326w" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -535,7 +535,19 @@
                   <input id="measurement-format-decimals" type="number" min="0" max="6" step="1" value="2" />
                 </label>
 
-                <button id="measurement-format-apply" type="button" class="ghost-button">Apply format</button>
+                <label class="measurement-toolbar-format">
+                  <span class="measurement-toolbar-label">Border</span>
+                  <select id="measurement-format-border">
+                    <option value="none">No border</option>
+                    <option value="all">All borders</option>
+                    <option value="outline">Outline</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                    <option value="custom" disabled>Custom</option>
+                  </select>
+                </label>
               </div>
             </div>
 
@@ -1084,7 +1096,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326v"></script>
-    <script type="module" src="/src/main.js?v=20260326v"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326w"></script>
+    <script type="module" src="/src/main.js?v=20260326w"></script>
   </body>
 </html>
