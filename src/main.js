@@ -42,6 +42,11 @@ const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
 const userBadge = document.querySelector("#user-badge");
+const userMenuPanel = document.querySelector("#user-menu-panel");
+const userMenuAvatar = document.querySelector("#user-menu-avatar");
+const userMenuName = document.querySelector("#user-menu-name");
+const userMenuEmail = document.querySelector("#user-menu-email");
+const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const logoutButton = document.querySelector("#logout-button");
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
@@ -163,12 +168,16 @@ const organizationResetButton = document.querySelector("#organization-reset");
 const userForm = document.querySelector("#user-form");
 const userError = document.querySelector("#user-error");
 const userIdInput = document.querySelector("#user-id");
+const userAvatarDataUrlInput = document.querySelector("#user-avatar-data-url");
 const userFirstNameInput = document.querySelector("#user-first-name");
 const userLastNameInput = document.querySelector("#user-last-name");
 const userEmailInput = document.querySelector("#user-email");
 const userPasswordInput = document.querySelector("#user-password");
 const userOrganizationField = document.querySelector("#user-organization-field");
 const userOrganizationIdInput = document.querySelector("#user-organization-id");
+const userOrganizationMemberships = document.querySelector("#user-organization-memberships");
+const userAvatarFileInput = document.querySelector("#user-avatar-file");
+const userAvatarPreview = document.querySelector("#user-avatar-preview");
 const userRoleInput = document.querySelector("#user-role");
 const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
 const userIsActiveInput = document.querySelector("#user-is-active");
@@ -191,6 +200,7 @@ const loginContentResetButton = document.querySelector("#login-content-reset");
 const loginContentBody = document.querySelector("#login-content-body");
 const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
+let userMenuOpen = false;
 
 function setConnectionStatus() {
   if (state.storage === "mysql") {
@@ -243,7 +253,7 @@ async function requestTokenRefresh() {
 }
 
 async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
-  const organizationHeader = state.activeOrganizationId && state.user?.role === "super_admin"
+  const organizationHeader = state.activeOrganizationId
     ? { "X-Organization-Id": state.activeOrganizationId }
     : {};
   const response = await fetch(`${API_BASE}${path}`, {
@@ -360,6 +370,107 @@ function replaceSelectOptions(select, options, selectedValue = "") {
   } else {
     select.value = "";
   }
+}
+
+function getUserInitials(userLike = {}) {
+  const firstName = String(userLike.firstName ?? "").trim();
+  const lastName = String(userLike.lastName ?? "").trim();
+  const fullName = String(userLike.fullName ?? "").trim();
+  const seed = [firstName, lastName].filter(Boolean).join(" ") || fullName || String(userLike.email ?? "");
+  const parts = seed.split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "U";
+}
+
+function renderAvatar(target, userLike = {}) {
+  if (!target) {
+    return;
+  }
+
+  target.replaceChildren();
+  target.classList.toggle("has-image", Boolean(userLike.avatarDataUrl));
+
+  if (userLike.avatarDataUrl) {
+    const image = document.createElement("img");
+    image.src = userLike.avatarDataUrl;
+    image.alt = userLike.fullName || userLike.email || "User";
+    target.append(image);
+    return;
+  }
+
+  target.textContent = getUserInitials(userLike);
+}
+
+function getSelectedUserOrganizationIds() {
+  if (!userOrganizationMemberships) {
+    return [];
+  }
+
+  return Array.from(userOrganizationMemberships.querySelectorAll('input[type="checkbox"]:checked'))
+    .map((input) => input.value)
+    .filter(Boolean);
+}
+
+function syncUserPrimaryOrganizationSelection() {
+  const selectedOrganizationIds = getSelectedUserOrganizationIds();
+  const currentPrimary = userOrganizationIdInput.value;
+
+  if (selectedOrganizationIds.length === 0) {
+    userOrganizationIdInput.value = "";
+    return;
+  }
+
+  if (currentPrimary && selectedOrganizationIds.includes(currentPrimary)) {
+    return;
+  }
+
+  userOrganizationIdInput.value = selectedOrganizationIds[0];
+}
+
+function renderUserOrganizationMemberships(selectedIds = []) {
+  if (!userOrganizationMemberships) {
+    return;
+  }
+
+  const allowedRole = state.user?.role;
+  const normalizedSelectedIds = Array.from(new Set(
+    (selectedIds.length > 0 ? selectedIds : [userOrganizationIdInput.value || state.activeOrganizationId])
+      .filter(Boolean),
+  ));
+
+  userOrganizationMemberships.replaceChildren(...state.organizations.map((organization) => {
+    const label = document.createElement("label");
+    label.className = "membership-pill";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = organization.id;
+    checkbox.checked = normalizedSelectedIds.includes(organization.id);
+    checkbox.disabled = allowedRole !== "super_admin" && state.organizations.length === 1;
+    checkbox.addEventListener("change", () => {
+      if (getSelectedUserOrganizationIds().length === 0) {
+        checkbox.checked = true;
+      }
+
+      syncUserPrimaryOrganizationSelection();
+    });
+
+    const caption = document.createElement("span");
+    caption.textContent = organization.name;
+    label.append(checkbox, caption);
+    return label;
+  }));
+
+  syncUserPrimaryOrganizationSelection();
+}
+
+function setUserMenuOpen(isOpen) {
+  userMenuOpen = isOpen && Boolean(state.user);
+
+  if (userMenuPanel) {
+    userMenuPanel.hidden = !userMenuOpen;
+  }
+
+  userBadge?.setAttribute("aria-expanded", userMenuOpen ? "true" : "false");
 }
 
 function formatDate(value) {
@@ -532,19 +643,44 @@ function renderAuthState() {
       : state.user.role === "admin"
         ? "Admin"
         : "User";
+    const organizationLabel = (state.user.organizations ?? [])
+      .map((item) => item.name)
+      .filter(Boolean)
+      .join(", ");
 
-    userBadge.textContent = `${state.user.fullName} (${roleLabel})`;
+    userBadge.replaceChildren();
+    const badgeAvatar = document.createElement("span");
+    badgeAvatar.className = "user-badge-avatar-slot";
+    const badgeCopy = document.createElement("span");
+    badgeCopy.className = "user-badge-copy";
+    const badgeName = document.createElement("strong");
+    badgeName.textContent = state.user.fullName;
+    const badgeRole = document.createElement("span");
+    badgeRole.textContent = roleLabel;
+    badgeCopy.append(badgeName, badgeRole);
+    userBadge.append(badgeAvatar, badgeCopy);
+    renderAvatar(badgeAvatar, state.user);
+    userMenuName.textContent = state.user.fullName || state.user.email;
+    userMenuEmail.textContent = state.user.email || "";
+    userMenuOrganizations.textContent = organizationLabel || (organization ? organization.name : "");
+    renderAvatar(userMenuAvatar, state.user);
     organizationContext.textContent = organization ? organization.name : "";
-    organizationSwitcherWrap.hidden = !getIsSuperAdmin();
+    organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(state.user.role === "super_admin" || state.user.role === "admin");
   } else {
     userBadge.textContent = "";
+    userMenuName.textContent = "";
+    userMenuEmail.textContent = "";
+    userMenuOrganizations.textContent = "";
+    renderAvatar(userMenuAvatar, {});
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
     loginError.textContent = "";
     setLoginBusy(false);
   }
+
+  setUserMenuOpen(false);
 }
 
 function slugifyValue(value) {
@@ -782,15 +918,21 @@ function buildOrganizationPayload() {
 }
 
 function buildUserPayload() {
+  const selectedOrganizationIds = getSelectedUserOrganizationIds();
+  const primaryOrganizationId = userOrganizationIdInput.value || selectedOrganizationIds[0] || state.activeOrganizationId;
+  const organizationIds = Array.from(new Set([primaryOrganizationId, ...selectedOrganizationIds].filter(Boolean)));
+
   return {
     firstName: userFirstNameInput.value,
     lastName: userLastNameInput.value,
     email: userEmailInput.value,
     password: userPasswordInput.value,
-    organizationId: userOrganizationIdInput.value || state.activeOrganizationId,
+    organizationId: primaryOrganizationId,
+    organizationIds,
     role: userRoleInput.value,
     legacyUsername: userLegacyUsernameInput.value,
     isActive: userIsActiveInput.value,
+    avatarDataUrl: userAvatarDataUrlInput.value,
   };
 }
 
@@ -851,9 +993,12 @@ function resetOrganizationForm() {
 function resetUserForm() {
   userForm.reset();
   userIdInput.value = "";
+  userAvatarDataUrlInput.value = "";
   userError.textContent = "";
   userIsActiveInput.value = "true";
-  userRoleInput.value = state.user?.role === "super_admin" ? "user" : "user";
+  userRoleInput.value = "user";
+  renderAvatar(userAvatarPreview, {});
+  renderUserOrganizationMemberships([state.activeOrganizationId || state.organizations[0]?.id].filter(Boolean));
 }
 
 function resetLoginContentForm() {
@@ -956,6 +1101,7 @@ function hydrateUserForm(user) {
   state.activeView = "management";
   renderActiveView();
   userIdInput.value = user.id;
+  userAvatarDataUrlInput.value = user.avatarDataUrl || "";
   userFirstNameInput.value = user.firstName;
   userLastNameInput.value = user.lastName;
   userEmailInput.value = user.email;
@@ -964,6 +1110,8 @@ function hydrateUserForm(user) {
   userRoleInput.value = user.role;
   userLegacyUsernameInput.value = user.legacyUsername || "";
   userIsActiveInput.value = String(user.isActive);
+  renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
+  renderAvatar(userAvatarPreview, user);
   userError.textContent = "";
 }
 
@@ -1023,7 +1171,6 @@ function renderSharedOptions() {
   const roleOptions = [
     { value: "user", label: "User" },
     { value: "admin", label: "Admin" },
-    ...(getIsSuperAdmin() ? [{ value: "super_admin", label: "Super Admin" }] : []),
   ];
 
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
@@ -1052,9 +1199,10 @@ function renderSharedOptions() {
   }
 
   replaceSelectOptions(userRoleInput, roleOptions, userRoleInput.value || "user");
+  renderUserOrganizationMemberships(getSelectedUserOrganizationIds());
 
   if (userOrganizationField) {
-    userOrganizationField.hidden = !getIsSuperAdmin();
+    userOrganizationField.hidden = state.organizations.length === 0;
   }
 
   if (loginContentPanel) {
@@ -1355,17 +1503,19 @@ function renderUsers() {
       createStackCell({
         title: user.fullName || user.email,
         subtitle: user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
+        tertiary: (user.organizations ?? []).map((organization) => organization.name).join(", "),
       }),
       createStackCell({
         title: user.email,
         subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Jos bez prijave",
       }),
       createStackCell({
-        title: user.role,
+        title: user.role === "admin" ? "Admin" : user.role === "super_admin" ? "Super Admin" : "User",
         subtitle: user.isActive ? "Active" : "Inactive",
       }),
       createStackCell({
         title: user.organizationName || "Bez organizacije",
+        subtitle: user.organizations?.length > 1 ? `${user.organizations.length} organizations` : "Single organization",
       }),
       createStackCell({
         title: user.isActive ? "Active" : "Inactive",
@@ -1427,11 +1577,33 @@ function renderSignupRequests() {
     actionsCell.className = "table-actions";
 
     if (request.status === "pending") {
+      const organizationSelect = document.createElement("select");
+      organizationSelect.className = "signup-inline-select";
+      organizationSelect.append(
+        createOption("__new__", `Create new: ${request.organizationName}`, "__new__"),
+        ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
+      );
+
+      const roleSelect = document.createElement("select");
+      roleSelect.className = "signup-inline-select";
+      roleSelect.append(
+        createOption("admin", "Admin", "admin"),
+        createOption("user", "User", "admin"),
+      );
+
+      const inlineControls = document.createElement("div");
+      inlineControls.className = "signup-approval-controls";
+      inlineControls.append(organizationSelect, roleSelect);
+
       actionsCell.append(
+        inlineControls,
         createActionButton("Approve", "card-button", () => {
           void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
             method: "POST",
-            body: {},
+            body: {
+              organizationId: organizationSelect.value === "__new__" ? "" : organizationSelect.value,
+              role: roleSelect.value,
+            },
           }), syncError);
         }),
         createActionButton("Reject", "card-button card-danger", () => {
@@ -1455,7 +1627,8 @@ function renderSignupRequests() {
       }),
       createStackCell({
         title: request.organizationName,
-        subtitle: request.note || "Bez napomene",
+        subtitle: request.organizationOib ? `OIB ${request.organizationOib}` : "Bez OIB-a",
+        tertiary: request.note || "",
       }),
       createStackCell({
         title: request.status,
@@ -1597,6 +1770,68 @@ locationForm.addEventListener("submit", (event) => {
 });
 
 locationResetButton.addEventListener("click", resetLocationForm);
+
+userBadge?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setUserMenuOpen(!userMenuOpen);
+});
+
+document.addEventListener("click", (event) => {
+  if (!userMenuOpen) {
+    return;
+  }
+
+  if (event.target instanceof Node && userMenuPanel?.contains(event.target)) {
+    return;
+  }
+
+  if (event.target instanceof Node && userBadge?.contains(event.target)) {
+    return;
+  }
+
+  setUserMenuOpen(false);
+});
+
+userOrganizationIdInput?.addEventListener("change", () => {
+  const primaryOrganizationId = userOrganizationIdInput.value;
+
+  if (!primaryOrganizationId || !userOrganizationMemberships) {
+    return;
+  }
+
+  const matchingCheckbox = userOrganizationMemberships.querySelector(`input[value="${CSS.escape(primaryOrganizationId)}"]`);
+
+  if (matchingCheckbox instanceof HTMLInputElement) {
+    matchingCheckbox.checked = true;
+  }
+});
+
+userAvatarFileInput?.addEventListener("change", () => {
+  const file = userAvatarFileInput.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    userError.textContent = "Avatar image must be smaller than 2 MB.";
+    userAvatarFileInput.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    userAvatarDataUrlInput.value = String(reader.result ?? "");
+    renderAvatar(userAvatarPreview, {
+      firstName: userFirstNameInput.value,
+      lastName: userLastNameInput.value,
+      email: userEmailInput.value,
+      avatarDataUrl: userAvatarDataUrlInput.value,
+    });
+    userError.textContent = "";
+  });
+  reader.readAsDataURL(file);
+});
 
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();

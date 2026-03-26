@@ -133,6 +133,14 @@ function buildUserFromTokenPayload(payload) {
   };
 }
 
+async function hydrateRequestUser(userLike) {
+  if (!userLike?.id || typeof tenantRepository.getUserById !== "function") {
+    return userLike ?? null;
+  }
+
+  return await tenantRepository.getUserById(userLike.id);
+}
+
 async function clearRequestAuth(request, response) {
   const cookies = parseCookies(request.headers.cookie ?? "");
   const refreshToken = getRefreshTokenFromCookies(cookies);
@@ -187,7 +195,7 @@ async function tryRefreshAuth(request, response, cookies) {
     secure: shouldUseSecureCookies(request),
   }));
 
-  return rotated.user;
+  return hydrateRequestUser(rotated.user);
 }
 
 async function getRequestUser(request, response) {
@@ -200,7 +208,7 @@ async function getRequestUser(request, response) {
   const accessVerification = verifyToken(accessToken, jwtSecret, { expectedType: "access" });
 
   if (accessVerification.ok) {
-    const user = buildUserFromTokenPayload(accessVerification.payload);
+    const user = await hydrateRequestUser(buildUserFromTokenPayload(accessVerification.payload));
     request[requestUserSymbol] = user;
     return user;
   }

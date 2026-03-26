@@ -31,8 +31,8 @@ test("buildLegacyEmail creates stable fallback emails", () => {
 
 test("super admin and admin organization permissions are enforced", () => {
   const superAdmin = { role: ROLE_SUPER_ADMIN, organizationId: "1" };
-  const admin = { role: ROLE_ADMIN, organizationId: "5" };
-  const user = { role: ROLE_USER, organizationId: "5" };
+  const admin = { role: ROLE_ADMIN, organizationId: "5", organizationIds: ["5", "8"] };
+  const user = { role: ROLE_USER, organizationId: "5", organizationIds: ["5"] };
 
   assert.equal(canManageOrganizations(superAdmin), true);
   assert.equal(canManageOrganizations(admin), false);
@@ -41,20 +41,23 @@ test("super admin and admin organization permissions are enforced", () => {
 
   assert.equal(canManageOrganizationUsers(superAdmin, "99", ROLE_SUPER_ADMIN), true);
   assert.equal(canManageOrganizationUsers(admin, "5", ROLE_USER), true);
+  assert.equal(canManageOrganizationUsers(admin, ["5", "8"], ROLE_USER), true);
   assert.equal(canManageOrganizationUsers(admin, "5", ROLE_ADMIN), true);
   assert.equal(canManageOrganizationUsers(admin, "5", ROLE_SUPER_ADMIN), false);
-  assert.equal(canManageOrganizationUsers(admin, "8", ROLE_USER), false);
+  assert.equal(canManageOrganizationUsers(admin, "8", ROLE_USER), true);
+  assert.equal(canManageOrganizationUsers(admin, ["5", "9"], ROLE_USER), false);
   assert.equal(canManageOrganizationUsers(user, "5", ROLE_USER), false);
 });
 
 test("resolveEffectiveOrganizationId respects super admin switching and member scoping", () => {
   const organizations = [{ id: 1 }, { id: 5 }, { id: 9 }];
   const superAdmin = { role: ROLE_SUPER_ADMIN, organizationId: "5" };
-  const admin = { role: ROLE_ADMIN, organizationId: "9" };
+  const admin = { role: ROLE_ADMIN, organizationId: "9", organizationIds: ["9", "1"] };
 
   assert.equal(resolveEffectiveOrganizationId(superAdmin, "1", organizations), "1");
   assert.equal(resolveEffectiveOrganizationId(superAdmin, "", organizations), "5");
-  assert.equal(resolveEffectiveOrganizationId(admin, "1", organizations), "9");
+  assert.equal(resolveEffectiveOrganizationId(admin, "1", organizations), "1");
+  assert.equal(resolveEffectiveOrganizationId(admin, "", organizations), "9");
 });
 
 test("pickLoginContent returns an active item or a fallback", () => {

@@ -22,6 +22,26 @@ function normalizeText(value) {
   return String(value ?? "").trim();
 }
 
+function normalizeOrganizationIds(values = []) {
+  const entries = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    entries
+      .map((value) => normalizeText(value))
+      .filter(Boolean),
+  ));
+}
+
+function getActorOrganizationIds(actor) {
+  return normalizeOrganizationIds([
+    actor?.organizationId,
+    ...(Array.isArray(actor?.organizationIds) ? actor.organizationIds : []),
+  ]);
+}
+
+function hasOrganizationAccess(actor, organizationId) {
+  return getActorOrganizationIds(actor).includes(normalizeText(organizationId));
+}
+
 export function normalizeRole(value) {
   const raw = normalizeText(value).toLowerCase();
 
@@ -95,7 +115,7 @@ export function canEditOrganization(actor, organizationId) {
     return false;
   }
 
-  return String(actor?.organizationId ?? "") === String(organizationId ?? "");
+  return hasOrganizationAccess(actor, organizationId);
 }
 
 export function canManageLoginContent(actor) {
@@ -105,8 +125,7 @@ export function canManageLoginContent(actor) {
 export function canManageOrganizationUsers(actor, organizationId, targetRole = ROLE_USER) {
   const actorRole = normalizeRole(actor?.role);
   const targetNormalizedRole = normalizeRole(targetRole);
-  const actorOrganizationId = actor?.organizationId ? String(actor.organizationId) : "";
-  const targetOrganizationId = organizationId ? String(organizationId) : "";
+  const targetOrganizationIds = normalizeOrganizationIds(organizationId);
 
   if (actorRole === ROLE_SUPER_ADMIN) {
     return true;
@@ -116,7 +135,11 @@ export function canManageOrganizationUsers(actor, organizationId, targetRole = R
     return false;
   }
 
-  if (!actorOrganizationId || actorOrganizationId !== targetOrganizationId) {
+  if (targetOrganizationIds.length === 0) {
+    return false;
+  }
+
+  if (!targetOrganizationIds.every((id) => hasOrganizationAccess(actor, id))) {
     return false;
   }
 
@@ -126,18 +149,23 @@ export function canManageOrganizationUsers(actor, organizationId, targetRole = R
 export function resolveEffectiveOrganizationId(actor, requestedOrganizationId, organizations = []) {
   const actorRole = normalizeRole(actor?.role);
   const availableIds = organizations.map((organization) => String(organization.id));
+  const requested = normalizeText(requestedOrganizationId);
+  const actorOrganizationIds = getActorOrganizationIds(actor)
+    .filter((organizationId) => availableIds.includes(organizationId));
 
   if (actorRole !== ROLE_SUPER_ADMIN) {
-    return actor?.organizationId ? String(actor.organizationId) : "";
-  }
+    if (requested && actorOrganizationIds.includes(requested)) {
+      return requested;
+    }
 
-  const requested = normalizeText(requestedOrganizationId);
+    return actorOrganizationIds[0] ?? "";
+  }
 
   if (requested && availableIds.includes(requested)) {
     return requested;
   }
 
-  const actorOrganizationId = actor?.organizationId ? String(actor.organizationId) : "";
+  const actorOrganizationId = actorOrganizationIds[0] ?? "";
 
   if (actorOrganizationId && availableIds.includes(actorOrganizationId)) {
     return actorOrganizationId;

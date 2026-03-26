@@ -71,8 +71,20 @@
               <select id="organization-switcher"></select>
             </label>
           </div>
-          <div id="user-badge" class="user-badge"></div>
-          <button id="logout-button" type="button" class="ghost-button">Odjava</button>
+          <div class="user-menu">
+            <button id="user-badge" type="button" class="user-badge user-menu-trigger"></button>
+            <div id="user-menu-panel" class="user-menu-panel" hidden>
+              <div class="user-menu-summary">
+                <div id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true"></div>
+                <div class="user-menu-copy">
+                  <strong id="user-menu-name"></strong>
+                  <span id="user-menu-email"></span>
+                  <span id="user-menu-organizations"></span>
+                </div>
+              </div>
+              <button id="logout-button" type="button" class="ghost-button user-menu-logout">Odjava</button>
+            </div>
+          </div>
         </div>
 
         <header class="hero">
@@ -645,6 +657,7 @@
 
             <form id="user-form" class="entity-form">
               <input id="user-id" type="hidden" />
+              <input id="user-avatar-data-url" type="hidden" />
 
               <div class="form-grid">
                 <label class="field">
@@ -664,7 +677,7 @@
                   <input id="user-password" type="password" maxlength="160" placeholder="Leave blank to keep current" />
                 </label>
                 <label id="user-organization-field" class="field">
-                  <span>Organization</span>
+                  <span>Primary organization</span>
                   <select id="user-organization-id"></select>
                 </label>
                 <label class="field">
@@ -672,8 +685,21 @@
                   <select id="user-role">
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
-                    <option value="super_admin">Super Admin</option>
                   </select>
+                </label>
+                <label class="field field-span-full">
+                  <span>Organization access</span>
+                  <div id="user-organization-memberships" class="membership-grid"></div>
+                </label>
+                <label class="field field-span-full">
+                  <span>User photo</span>
+                  <div class="avatar-upload-row">
+                    <div id="user-avatar-preview" class="user-avatar-preview" aria-hidden="true"></div>
+                    <div class="avatar-upload-copy">
+                      <input id="user-avatar-file" type="file" accept="image/*" />
+                      <p class="inline-help">Upload a profile image that will appear in the top right user menu.</p>
+                    </div>
+                  </div>
                 </label>
                 <label class="field">
                   <span>Legacy username</span>

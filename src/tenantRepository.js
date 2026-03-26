@@ -42,6 +42,34 @@ function normalizeOib(value) {
   return dbString(value).replace(/\s+/g, "");
 }
 
+function normalizeOrganizationIds(values = []) {
+  const entries = Array.isArray(values)
+    ? values
+    : String(values ?? "")
+      .split(",");
+
+  return Array.from(new Set(
+    entries
+      .map((value) => dbString(value))
+      .filter(Boolean),
+  ));
+}
+
+function mergePrimaryOrganization(primaryOrganizationId, organizationIds = []) {
+  const primaryId = dbString(primaryOrganizationId);
+  const ids = normalizeOrganizationIds(organizationIds);
+
+  if (!primaryId) {
+    return ids;
+  }
+
+  return [primaryId, ...ids.filter((id) => id !== primaryId)];
+}
+
+function serializeOrganizationIds(primaryOrganizationId, organizationIds = []) {
+  return mergePrimaryOrganization(primaryOrganizationId, organizationIds).join(",");
+}
+
 function normalizeTimestamp(value) {
   if (!value) {
     return null;
@@ -113,6 +141,8 @@ function sanitizeUser(row) {
 
   const firstName = row.first_name ?? "";
   const lastName = row.last_name ?? "";
+  const primaryOrganizationId = row.organization_id ? String(row.organization_id) : "";
+  const organizationIds = mergePrimaryOrganization(primaryOrganizationId, row.organization_ids_csv);
 
   return {
     id: String(row.id),
@@ -121,11 +151,14 @@ function sanitizeUser(row) {
     firstName,
     lastName,
     fullName: [firstName, lastName].filter(Boolean).join(" ") || row.ime_prezime || row.korisnicko_ime || row.email || "User",
-    organizationId: row.organization_id ? String(row.organization_id) : "",
+    organizationId: primaryOrganizationId || organizationIds[0] || "",
     organizationName: row.organization_name ?? "",
+    organizationIds,
+    organizations: Array.isArray(row.organizations) ? row.organizations : [],
     role: normalizeRole(row.role ?? row.razina_prava ?? ROLE_USER),
     isActive: row.is_active === undefined ? true : Boolean(Number(row.is_active)),
     legacyUsername: row.legacy_username ?? row.korisnicko_ime ?? "",
+    avatarDataUrl: row.avatar_data_url ?? "",
     lastLoginAt: normalizeTimestamp(row.last_login_at),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -193,6 +226,9 @@ function normalizeOrganizationInput(input = {}) {
 }
 
 function normalizeUserInput(input = {}) {
+  const organizationIds = normalizeOrganizationIds(input.organizationIds);
+  const primaryOrganizationId = dbString(input.organizationId) || organizationIds[0] || "";
+
   return {
     firstName: dbString(input.firstName),
     lastName: dbString(input.lastName),
@@ -200,8 +236,10 @@ function normalizeUserInput(input = {}) {
     password: dbString(input.password),
     role: normalizeRole(input.role),
     isActive: toBooleanFlag(input.isActive, true),
-    organizationId: dbString(input.organizationId),
+    organizationId: primaryOrganizationId,
+    organizationIds: mergePrimaryOrganization(primaryOrganizationId, organizationIds),
     legacyUsername: dbString(input.legacyUsername),
+    avatarDataUrl: dbString(input.avatarDataUrl),
   };
 }
 
@@ -298,8 +336,10 @@ async function ensureSchema(connection) {
     CREATE TABLE IF NOT EXISTS app_users (
       id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       organization_id INT NULL,
+      organization_ids_csv TEXT NULL,
       first_name VARCHAR(120) NOT NULL DEFAULT '',
       last_name VARCHAR(160) NOT NULL DEFAULT '',
+      avatar_data_url LONGTEXT NULL,
       email VARCHAR(255) NOT NULL,
       legacy_username VARCHAR(100) NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -387,15 +427,41 @@ async function ensureSchema(connection) {
 
   await ensureColumn(
     connection,
+    "app_users",
+    "organization_ids_csv",
+    "TEXT NULL AFTER organization_id",
+  );
+
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_data_url",
+    "LONGTEXT NULL AFTER last_name",
+  );
+
+  await ensureColumn(
+    connection,
     "signup_requests",
     "organization_oib",
     "VARCHAR(32) NOT NULL DEFAULT '' AFTER organization_name",
   );
+
+  await connection.query(`
+    UPDATE app_users
+    SET organization_ids_csv = CAST(organization_id AS CHAR)
+    WHERE organization_id IS NOT NULL
+      AND (organization_ids_csv IS NULL OR organization_ids_csv = '')
+  `);
 }
 
 async function fetchOrganizations(connection, accessibleIds = null) {
   const ids = (accessibleIds ?? []).map((value) => Number(value)).filter(Number.isFinite);
   const hasFilter = Array.isArray(accessibleIds) && ids.length > 0;
+
+  if (Array.isArray(accessibleIds) && ids.length === 0) {
+    return [];
+  }
+
   const [rows] = hasFilter
     ? await connection.query(
       `
@@ -415,31 +481,36 @@ async function fetchOrganizations(connection, accessibleIds = null) {
   return rows.map(sanitizeOrganization);
 }
 
-async function fetchUsers(connection, actor, effectiveOrganizationId) {
+async function fetchUsers(connection, actor, effectiveOrganizationId, accessibleOrganizations = []) {
   const actorRole = normalizeRole(actor?.role);
-  let query = `
-    SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
-           u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+  const activeOrganizationId = dbString(effectiveOrganizationId);
+  const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
+  const [rows] = await connection.query(`
+    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+           u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
            o.name AS organization_name
     FROM app_users u
     LEFT JOIN organizations o ON o.id = u.organization_id
-  `;
-  const params = [];
+    ORDER BY o.name ASC, u.first_name ASC, u.last_name ASC, u.email ASC
+  `);
 
-  if (actorRole === ROLE_ADMIN) {
-    query += " WHERE u.organization_id = ? ";
-    params.push(Number(actor.organizationId));
-  } else if (actorRole === ROLE_USER) {
-    query += " WHERE u.id = ? ";
-    params.push(Number(actor.id));
-  } else if (effectiveOrganizationId) {
-    query += " WHERE u.organization_id = ? OR u.role = 'super_admin' ";
-    params.push(Number(effectiveOrganizationId));
+  let users = rows.map(sanitizeUser);
+
+  if (actorRole === ROLE_USER) {
+    users = users.filter((user) => user.id === String(actor?.id));
+  } else if (actorRole === ROLE_ADMIN) {
+    users = users.filter((user) => (
+      user.role !== ROLE_SUPER_ADMIN
+      && user.organizationIds.includes(activeOrganizationId)
+      && user.organizationIds.every((organizationId) => accessibleOrganizationIds.has(organizationId))
+    ));
+  } else if (activeOrganizationId) {
+    users = users.filter((user) => (
+      user.role === ROLE_SUPER_ADMIN || user.organizationIds.includes(activeOrganizationId)
+    ));
   }
 
-  query += " ORDER BY o.name ASC, u.first_name ASC, u.last_name ASC, u.email ASC";
-  const [rows] = await connection.query(query, params);
-  return rows.map(sanitizeUser);
+  return decorateUsersWithOrganizations(users, accessibleOrganizations);
 }
 
 async function fetchLoginContentItems(connection) {
@@ -488,6 +559,41 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
     locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
     workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
   };
+}
+
+function decorateUsersWithOrganizations(users = [], organizations = []) {
+  const organizationsById = new Map(
+    organizations.map((organization) => [String(organization.id), organization]),
+  );
+
+  return users.map((user) => {
+    const organizationIds = mergePrimaryOrganization(user.organizationId, user.organizationIds);
+    const resolvedOrganizations = organizationIds
+      .map((organizationId) => {
+        const organization = organizationsById.get(String(organizationId));
+
+        if (!organization) {
+          return null;
+        }
+
+        return {
+          id: String(organization.id),
+          name: organization.name,
+        };
+      })
+      .filter(Boolean);
+    const primaryOrganization = resolvedOrganizations.find((organization) => organization.id === user.organizationId)
+      ?? resolvedOrganizations[0]
+      ?? null;
+
+    return {
+      ...user,
+      organizationId: primaryOrganization?.id ?? user.organizationId,
+      organizationName: primaryOrganization?.name ?? user.organizationName ?? "",
+      organizationIds,
+      organizations: resolvedOrganizations,
+    };
+  });
 }
 
 async function fetchSuperAdminEmails(connection) {
@@ -636,11 +742,12 @@ async function seedDefaultData(connection) {
       await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, first_name, last_name, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            (organization_id, organization_ids_csv, first_name, last_name, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
         [
           Number(defaultOrganizationId),
+          serializeOrganizationIds(defaultOrganizationId),
           parts.firstName,
           parts.lastName,
           buildLegacyEmail(row.korisnicko_ime, row.id),
@@ -772,6 +879,8 @@ export class MemoryTenantRepository {
         id: "1",
         organizationId: "1",
         organizationName: DEFAULT_ORGANIZATION_NAME,
+        organizationIds: ["1"],
+        organizations: [{ id: "1", name: DEFAULT_ORGANIZATION_NAME }],
         firstName: "Local",
         lastName: "Super Admin",
         fullName: "Local Super Admin",
@@ -780,6 +889,7 @@ export class MemoryTenantRepository {
         legacyUsername: "admin",
         role: ROLE_SUPER_ADMIN,
         isActive: true,
+        avatarDataUrl: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastLoginAt: null,
@@ -792,6 +902,11 @@ export class MemoryTenantRepository {
 
   async getPublicLoginScreen() {
     return pickLoginContent(this.loginContentItems);
+  }
+
+  async getUserById(userId) {
+    const user = this.users.find((item) => item.id === String(userId));
+    return user ? decorateUsersWithOrganizations([{ ...user }], this.organizations)[0] ?? null : null;
   }
 
   async authenticateUser(identifier, password) {
@@ -817,7 +932,7 @@ export class MemoryTenantRepository {
     }
 
     user.lastLoginAt = new Date().toISOString();
-    return { ...user };
+    return this.getUserById(user.id);
   }
 
   async storeRefreshToken(user, token, metadata = {}) {
@@ -855,7 +970,7 @@ export class MemoryTenantRepository {
     });
 
     return {
-      user: { ...user },
+      user: await this.getUserById(user.id),
       expiresAt,
     };
   }
@@ -876,12 +991,25 @@ export class MemoryTenantRepository {
     );
 
     return {
-      organizations: this.organizations.map((item) => ({ ...item })),
+      organizations: this.organizations.filter((organization) => (
+        normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+        || mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(String(organization.id))
+      )).map((item) => ({ ...item })),
       activeOrganizationId,
       currentOrganization: this.organizations.find((item) => item.id === activeOrganizationId) ?? null,
-      users: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
-        ? this.users.map((item) => ({ ...item }))
-        : this.users.filter((item) => String(item.organizationId) === String(activeOrganizationId)).map((item) => ({ ...item })),
+      users: decorateUsersWithOrganizations(
+        normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+          ? this.users.filter((item) => item.role === ROLE_SUPER_ADMIN || item.organizationIds.includes(String(activeOrganizationId)))
+          : this.users.filter((item) => (
+            item.role !== ROLE_SUPER_ADMIN
+            && item.organizationIds.includes(String(activeOrganizationId))
+            && item.organizationIds.every((organizationId) => mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(organizationId))
+          )),
+        this.organizations.filter((organization) => (
+          normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+          || mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(String(organization.id))
+        )),
+      ).map((item) => ({ ...item })),
       loginContentItems: canManageLoginContent(actor) ? this.loginContentItems.map((item) => ({ ...item })) : [],
       signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
         ? this.signupRequests.map((item) => ({ ...item }))
@@ -926,18 +1054,19 @@ export class MemoryTenantRepository {
 
   async createUser(actor, input) {
     const normalized = normalizeUserInput(input);
+    const targetOrganizationIds = normalized.organizationIds;
     const targetOrganizationId = normalized.organizationId || actor?.organizationId;
 
-    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+    if (!canManageOrganizationUsers(actor, targetOrganizationIds, normalized.role)) {
       throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
     }
 
     assertText(normalized.email, "Email je obavezan.");
     assertText(normalized.password, "Lozinka je obavezna.");
 
-    const organization = this.organizations.find((item) => item.id === String(targetOrganizationId));
+    const organizations = this.organizations.filter((item) => targetOrganizationIds.includes(String(item.id)));
 
-    if (!organization) {
+    if (organizations.length !== targetOrganizationIds.length || !targetOrganizationId) {
       throw createHttpError(400, "Odabrana organizacija ne postoji.");
     }
 
@@ -945,7 +1074,9 @@ export class MemoryTenantRepository {
     const next = {
       id: nextId,
       organizationId: String(targetOrganizationId),
-      organizationName: organization.name,
+      organizationName: organizations.find((organization) => organization.id === String(targetOrganizationId))?.name ?? "",
+      organizationIds: targetOrganizationIds,
+      organizations: organizations.map((organization) => ({ id: organization.id, name: organization.name })),
       firstName: normalized.firstName,
       lastName: normalized.lastName,
       fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
@@ -954,13 +1085,14 @@ export class MemoryTenantRepository {
       legacyUsername: normalized.legacyUsername || normalized.email,
       role: normalized.role,
       isActive: normalized.isActive,
+      avatarDataUrl: normalized.avatarDataUrl,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastLoginAt: null,
       passwordHash: await createPasswordHash(normalized.password),
     };
     this.users.push(next);
-    return { ...next };
+    return this.getUserById(nextId);
   }
 
   async updateUser(actor, userId, patch) {
@@ -971,15 +1103,23 @@ export class MemoryTenantRepository {
     }
 
     const normalized = normalizeUserInput({ ...current, ...patch });
+    const targetOrganizationIds = normalized.organizationIds;
     const targetOrganizationId = normalized.organizationId || current.organizationId;
 
-    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+    if (!canManageOrganizationUsers(actor, targetOrganizationIds, normalized.role)) {
       throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
     }
 
-    const organization = this.organizations.find((item) => item.id === String(targetOrganizationId));
+    const organizations = this.organizations.filter((item) => targetOrganizationIds.includes(String(item.id)));
+    if (organizations.length !== targetOrganizationIds.length || !targetOrganizationId) {
+      throw createHttpError(400, "Odabrana organizacija ne postoji.");
+    }
+
+    const organization = organizations.find((item) => item.id === String(targetOrganizationId));
     current.organizationId = String(targetOrganizationId);
     current.organizationName = organization?.name ?? "";
+    current.organizationIds = targetOrganizationIds;
+    current.organizations = organizations.map((item) => ({ id: item.id, name: item.name }));
     current.firstName = normalized.firstName;
     current.lastName = normalized.lastName;
     current.fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
@@ -988,13 +1128,14 @@ export class MemoryTenantRepository {
     current.username = current.legacyUsername || current.email;
     current.role = normalized.role;
     current.isActive = normalized.isActive;
+    current.avatarDataUrl = normalized.avatarDataUrl || current.avatarDataUrl;
     current.updatedAt = new Date().toISOString();
 
     if (normalized.password) {
       current.passwordHash = await createPasswordHash(normalized.password);
     }
 
-    return { ...current };
+    return this.getUserById(current.id);
   }
 
   async createLoginContent(actor, input) {
@@ -1103,31 +1244,40 @@ export class MemoryTenantRepository {
       throw createHttpError(400, "Zahtjev vise nije pending.");
     }
 
-    const organization = {
-      id: String(this.organizations.length + 1),
-      ...normalizeOrganizationInput({
-        name: request.organizationName,
-        oib: request.organizationOib,
-        contactEmail: request.email,
-        contactPhone: request.phone,
-      }),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    this.organizations.push(organization);
+    const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
+    const useExistingOrganization = dbString(input.organizationId);
+    let organization = this.organizations.find((item) => item.id === useExistingOrganization) ?? null;
+
+    if (!organization) {
+      organization = {
+        id: String(this.organizations.length + 1),
+        ...normalizeOrganizationInput({
+          name: request.organizationName,
+          oib: request.organizationOib,
+          contactEmail: request.email,
+          contactPhone: request.phone,
+        }),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      this.organizations.push(organization);
+    }
 
     const user = {
       id: String(this.users.length + 1),
       organizationId: organization.id,
       organizationName: organization.name,
+      organizationIds: [organization.id],
+      organizations: [{ id: organization.id, name: organization.name }],
       firstName: request.firstName,
       lastName: request.lastName,
       fullName: request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim(),
       email: request.email,
       username: request.email,
       legacyUsername: "",
-      role: ROLE_ADMIN,
+      role: approvedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : approvedRole,
       isActive: true,
+      avatarDataUrl: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastLoginAt: null,
@@ -1205,11 +1355,13 @@ export class MySqlTenantRepository {
       return fetchOrganizations(connection);
     }
 
-    if (!actor?.organizationId) {
+    const organizationIds = mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds);
+
+    if (organizationIds.length === 0) {
       return [];
     }
 
-    return fetchOrganizations(connection, [actor.organizationId]);
+    return fetchOrganizations(connection, organizationIds);
   }
 
   async getContext(connection, actor, requestedOrganizationId) {
@@ -1239,6 +1391,35 @@ export class MySqlTenantRepository {
     }
   }
 
+  async getUserById(userId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(userId)],
+      );
+
+      if (!rows[0]) {
+        return null;
+      }
+
+      const user = sanitizeUser(rows[0]);
+      const organizations = await fetchOrganizations(connection, user.organizationIds);
+      return decorateUsersWithOrganizations([user], organizations)[0] ?? null;
+    } finally {
+      connection.release();
+    }
+  }
+
   async authenticateUser(identifier, password) {
     const connection = await this.pool.getConnection();
 
@@ -1246,7 +1427,8 @@ export class MySqlTenantRepository {
       const needle = dbString(identifier).toLowerCase();
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.email, u.legacy_username,
                  u.password_hash, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name, o.status AS organization_status
           FROM app_users u
@@ -1286,10 +1468,7 @@ export class MySqlTenantRepository {
         [Number(userRow.id)],
       );
 
-      return sanitizeUser({
-        ...userRow,
-        last_login_at: new Date(),
-      });
+      return this.getUserById(userRow.id);
     } finally {
       connection.release();
     }
@@ -1334,7 +1513,8 @@ export class MySqlTenantRepository {
 
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.first_name, u.last_name, u.email, u.legacy_username,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.email, u.legacy_username,
                  u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
           FROM app_refresh_tokens rt
@@ -1378,7 +1558,7 @@ export class MySqlTenantRepository {
       await connection.commit();
 
       return {
-        user: sanitizeUser(userRow),
+        user: await this.getUserById(userRow.id),
         expiresAt: nextExpiresAt.toISOString(),
       };
     } catch (error) {
@@ -1415,7 +1595,7 @@ export class MySqlTenantRepository {
 
       return {
         ...context,
-        users: await fetchUsers(connection, actor, context.activeOrganizationId),
+        users: await fetchUsers(connection, actor, context.activeOrganizationId, context.organizations),
         loginContentItems: canManageLoginContent(actor) ? await fetchLoginContentItems(connection) : [],
         signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN ? await fetchSignupRequests(connection) : [],
         ...scopedSnapshot,
@@ -1525,7 +1705,7 @@ export class MySqlTenantRepository {
     const normalized = normalizeUserInput(input);
     const targetOrganizationId = normalized.organizationId || actor?.organizationId;
 
-    if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+    if (!canManageOrganizationUsers(actor, normalized.organizationIds, normalized.role)) {
       throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
     }
 
@@ -1534,12 +1714,9 @@ export class MySqlTenantRepository {
     const connection = await this.pool.getConnection();
 
     try {
-      const [organizationRows] = await connection.query(
-        "SELECT id FROM organizations WHERE id = ? LIMIT 1",
-        [Number(targetOrganizationId)],
-      );
+      const organizations = await fetchOrganizations(connection, normalized.organizationIds);
 
-      if (!organizationRows[0]) {
+      if (organizations.length !== normalized.organizationIds.length || !targetOrganizationId) {
         throw createHttpError(400, "Odabrana organizacija ne postoji.");
       }
 
@@ -1547,13 +1724,15 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, first_name, last_name, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
+          serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
           normalized.firstName,
           normalized.lastName,
+          normalized.avatarDataUrl || null,
           normalized.email,
           normalized.legacyUsername || null,
           passwordHash,
@@ -1562,17 +1741,7 @@ export class MySqlTenantRepository {
         ],
       );
 
-      const [rows] = await connection.query(
-        `
-          SELECT u.*, o.name AS organization_name
-          FROM app_users u
-          LEFT JOIN organizations o ON o.id = u.organization_id
-          WHERE u.id = ?
-          LIMIT 1
-        `,
-        [Number(result.insertId)],
-      );
-      return sanitizeUser(rows[0]);
+      return this.getUserById(result.insertId);
     } catch (error) {
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
@@ -1607,14 +1776,22 @@ export class MySqlTenantRepository {
       });
       const targetOrganizationId = normalized.organizationId || current.organization_id;
 
-      if (!canManageOrganizationUsers(actor, targetOrganizationId, normalized.role)) {
+      if (!canManageOrganizationUsers(actor, normalized.organizationIds, normalized.role)) {
         throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
+      }
+
+      const organizations = await fetchOrganizations(connection, normalized.organizationIds);
+
+      if (organizations.length !== normalized.organizationIds.length || !targetOrganizationId) {
+        throw createHttpError(400, "Odabrana organizacija ne postoji.");
       }
 
       const updateFields = [
         "organization_id = ?",
+        "organization_ids_csv = ?",
         "first_name = ?",
         "last_name = ?",
+        "avatar_data_url = ?",
         "email = ?",
         "legacy_username = ?",
         "role = ?",
@@ -1622,8 +1799,10 @@ export class MySqlTenantRepository {
       ];
       const params = [
         Number(targetOrganizationId),
+        serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
         normalized.firstName,
         normalized.lastName,
+        normalized.avatarDataUrl || current.avatar_data_url || null,
         normalized.email,
         normalized.legacyUsername || null,
         normalized.role,
@@ -1638,17 +1817,7 @@ export class MySqlTenantRepository {
       params.push(Number(userId));
       await connection.query(`UPDATE app_users SET ${updateFields.join(", ")} WHERE id = ?`, params);
 
-      const [nextRows] = await connection.query(
-        `
-          SELECT u.*, o.name AS organization_name
-          FROM app_users u
-          LEFT JOIN organizations o ON o.id = u.organization_id
-          WHERE u.id = ?
-          LIMIT 1
-        `,
-        [Number(userId)],
-      );
-      return sanitizeUser(nextRows[0]);
+      return this.getUserById(userId);
     } catch (error) {
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
@@ -1878,27 +2047,46 @@ export class MySqlTenantRepository {
         throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
       }
 
-      const [organizationResult] = await connection.query(
-        `
-          INSERT INTO organizations
-            (name, oib, contact_email, contact_phone, status)
-          VALUES (?, ?, ?, ?, 'active')
-        `,
-        [request.organizationName, request.organizationOib, request.email, request.phone],
-      );
+      const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
+      const selectedOrganizationId = dbString(input.organizationId);
+      let organizationId = selectedOrganizationId;
+
+      if (organizationId) {
+        const [existingOrganizations] = await connection.query(
+          "SELECT id FROM organizations WHERE id = ? LIMIT 1",
+          [Number(organizationId)],
+        );
+
+        if (!existingOrganizations[0]) {
+          throw createHttpError(400, "Odabrana organizacija ne postoji.");
+        }
+      } else {
+        const [organizationResult] = await connection.query(
+          `
+            INSERT INTO organizations
+              (name, oib, contact_email, contact_phone, status)
+            VALUES (?, ?, ?, ?, 'active')
+          `,
+          [request.organizationName, request.organizationOib, request.email, request.phone],
+        );
+        organizationId = String(organizationResult.insertId);
+      }
 
       const [userResult] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, first_name, last_name, email, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, 'admin', 1)
+            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url, email, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
         [
-          Number(organizationResult.insertId),
+          Number(organizationId),
+          serializeOrganizationIds(organizationId),
           request.firstName,
           request.lastName,
+          null,
           request.email,
           current.password_hash,
+          approvedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : approvedRole,
         ],
       );
 
@@ -1914,7 +2102,7 @@ export class MySqlTenantRepository {
           WHERE id = ?
         `,
         [
-          Number(organizationResult.insertId),
+          Number(organizationId),
           Number(userResult.insertId),
           dbString(input.processedNote),
           Number(actor.id),

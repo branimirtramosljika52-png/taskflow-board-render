@@ -91,6 +91,36 @@ test("memory tenant repository lets admins create users only inside their organi
   );
 });
 
+test("memory tenant repository supports users with access to multiple organizations", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organizationA = await repository.createOrganization(superAdmin, { name: "Org A" });
+  const organizationB = await repository.createOrganization(superAdmin, { name: "Org B" });
+
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: organizationA.id,
+    organizationIds: [organizationA.id, organizationB.id],
+    firstName: "Mia",
+    lastName: "Multi",
+    email: "mia@example.com",
+    password: "secret123",
+    role: "admin",
+  });
+
+  assert.deepEqual(createdUser.organizationIds, [organizationA.id, organizationB.id]);
+
+  const scoped = await repository.getSnapshot(createdUser, organizationB.id, {
+    companies: [],
+    locations: [],
+    workOrders: [],
+  });
+
+  assert.equal(scoped.activeOrganizationId, organizationB.id);
+  assert.equal(scoped.organizations.length, 2);
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
@@ -125,6 +155,32 @@ test("memory tenant repository stores and approves signup requests", async () =>
   assert.equal(approvedUser.organizationName, "Nova Organizacija");
   const createdOrganization = repository.organizations.find((item) => item.id === approvedUser.organizationId);
   assert.equal(createdOrganization?.oib, "12345678901");
+});
+
+test("memory tenant repository approves signup requests into an existing organization with selected role", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const existingOrganization = await repository.createOrganization(superAdmin, { name: "Existing Org" });
+  const response = await repository.submitSignupRequest({
+    organizationName: "Requested Org",
+    organizationOib: "12345678901",
+    firstName: "Iva",
+    lastName: "Requester",
+    email: "iva-request@example.com",
+    password: "tajna123",
+  });
+
+  await repository.approveSignupRequest(superAdmin, response.request.id, {
+    organizationId: existingOrganization.id,
+    role: "user",
+  });
+
+  const approvedUser = await repository.authenticateUser("iva-request@example.com", "tajna123");
+  assert.ok(approvedUser);
+  assert.equal(approvedUser.role, "user");
+  assert.equal(approvedUser.organizationId, existingOrganization.id);
 });
 
 test("memory tenant repository blocks duplicate pending signup requests by email", async () => {
