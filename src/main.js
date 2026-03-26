@@ -38,9 +38,10 @@ const state = {
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
 const authLoginView = document.querySelector("#auth-login-view");
-const authSignupView = document.querySelector("#auth-signup-view");
 const openSignupButton = document.querySelector("#open-signup-button");
-const backToLoginButton = document.querySelector("#back-to-login-button");
+const signupModal = document.querySelector("#signup-modal");
+const signupModalBackdrop = document.querySelector("#signup-modal-backdrop");
+const closeSignupButton = document.querySelector("#close-signup-button");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -53,9 +54,6 @@ const signupEmailInput = document.querySelector("#signup-email");
 const signupPasswordInput = document.querySelector("#signup-password");
 const signupSubmitButton = document.querySelector("#signup-submit-button");
 const signupFeedback = document.querySelector("#signup-feedback");
-const loginContentAccent = document.querySelector("#login-content-accent");
-const loginContentHeading = document.querySelector("#login-content-heading");
-const loginContentQuote = document.querySelector("#login-content-quote");
 const userBadge = document.querySelector("#user-badge");
 const logoutButton = document.querySelector("#logout-button");
 const organizationContext = document.querySelector("#organization-context");
@@ -267,12 +265,14 @@ function setAuthMode(mode) {
   state.authMode = mode === "signup" ? "signup" : "login";
 
   if (authLoginView) {
-    authLoginView.hidden = state.authMode !== "login";
+    authLoginView.hidden = false;
   }
 
-  if (authSignupView) {
-    authSignupView.hidden = state.authMode !== "signup";
+  if (signupModal) {
+    signupModal.hidden = state.authMode !== "signup";
   }
+
+  document.body.classList.toggle("is-signup-open", !state.user && state.authMode === "signup");
 
   if (state.authMode === "login") {
     signupFeedback.textContent = "";
@@ -358,7 +358,7 @@ async function refreshSession() {
 }
 
 async function refreshLoginContent() {
-  renderLoginContent();
+  return null;
 }
 
 async function runMutation(callback, errorTarget) {
@@ -566,17 +566,7 @@ function isOverdueWorkOrder(item) {
 }
 
 function renderLoginContent() {
-  if (loginContentAccent) {
-    loginContentAccent.textContent = "Secure access";
-  }
-
-  if (loginContentHeading) {
-    loginContentHeading.textContent = "Welcome back";
-  }
-
-  if (loginContentQuote) {
-    loginContentQuote.textContent = "Sign in with your email to continue into your organization workspace.";
-  }
+  return;
 }
 
 function renderAuthState() {
@@ -586,6 +576,10 @@ function renderAuthState() {
   document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (authenticated) {
+    if (state.authMode !== "login") {
+      setAuthMode("login");
+    }
+
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -1711,7 +1705,11 @@ loginForm.addEventListener("submit", (event) => {
   });
 });
 
-backToLoginButton?.addEventListener("click", () => {
+closeSignupButton?.addEventListener("click", () => {
+  setAuthMode("login");
+});
+
+signupModalBackdrop?.addEventListener("click", () => {
   setAuthMode("login");
 });
 
@@ -1719,6 +1717,7 @@ openSignupButton?.addEventListener("click", () => {
   signupFeedback.textContent = "";
   signupFeedback.classList.remove("is-error");
   setAuthMode("signup");
+  signupOrganizationNameInput?.focus();
 });
 
 signupForm?.addEventListener("submit", (event) => {
@@ -1741,6 +1740,12 @@ signupForm?.addEventListener("submit", (event) => {
   }).finally(() => {
     setSignupBusy(false);
   });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.authMode === "signup" && !state.user) {
+    setAuthMode("login");
+  }
 });
 
 logoutButton.addEventListener("click", () => {

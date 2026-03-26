@@ -19,29 +19,37 @@
               <span class="auth-logo-word">Safety360</span>
             </div>
 
-            <div class="auth-login-copy auth-login-copy-minimal">
-              <p id="login-content-accent" class="auth-kicker">Secure access</p>
-              <h1 id="login-content-heading">Welcome back</h1>
-              <p id="login-content-quote" class="auth-minimal-copy">
-                Sign in with your email to continue into your organization workspace.
-              </p>
-            </div>
-
             <form id="login-form" class="auth-form auth-form-tenant">
               <label class="field">
                 <span>Email</span>
-                <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <rect x="4" y="6.5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                      <path d="M5.5 8 12 12.5 18.5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                  <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
+                </div>
               </label>
 
               <label class="field">
                 <span>Password</span>
-                <input
-                  id="login-password"
-                  type="password"
-                  autocomplete="current-password"
-                  placeholder="Password"
-                  required
-                />
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                      <path d="M8 10V7.5A4 4 0 0 1 12 4a4 4 0 0 1 4 3.5V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    </svg>
+                  </span>
+                  <input
+                    id="login-password"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Password"
+                    required
+                  />
+                </div>
               </label>
 
               <button id="login-submit-button" type="submit" class="primary-button auth-submit-button">Sign in</button>
@@ -54,25 +62,22 @@
 
             <p id="login-error" class="form-error" aria-live="polite"></p>
           </section>
+        </section>
 
-          <section id="auth-signup-view" class="auth-view" hidden aria-label="Request access">
-            <div class="auth-logo auth-logo-compact" aria-label="Safety360">
-              <div class="auth-logo-mark">
-                <span></span>
-                <span></span>
-              </div>
-              <span class="auth-logo-word">Safety360</span>
-            </div>
+        <div id="signup-modal" class="auth-modal" hidden>
+          <button id="signup-modal-backdrop" type="button" class="auth-modal-backdrop" aria-label="Close request access"></button>
 
-            <div class="auth-login-copy auth-login-copy-minimal">
-              <p class="auth-kicker">Request access</p>
-              <h1>Create your access request</h1>
-              <p class="auth-minimal-copy">
-                Send your organization and contact details. The administrator gets the request by email and can approve your account.
+          <section class="auth-modal-panel" role="dialog" aria-modal="true" aria-labelledby="signup-modal-title">
+            <button id="close-signup-button" type="button" class="auth-modal-close" aria-label="Close request access">×</button>
+
+            <div class="auth-modal-copy">
+              <h2 id="signup-modal-title">Create access request</h2>
+              <p>
+                Enter your organization, full name, email and password. The administrator will receive your request by email.
               </p>
             </div>
 
-            <form id="signup-form" class="auth-form auth-form-tenant">
+            <form id="signup-form" class="auth-form auth-form-tenant auth-signup-form">
               <label class="field">
                 <span>Organization</span>
                 <input id="signup-organization-name" type="text" placeholder="Organization name" required />
@@ -85,25 +90,36 @@
 
               <label class="field">
                 <span>Email</span>
-                <input id="signup-email" type="email" autocomplete="email" placeholder="Email address" required />
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <rect x="4" y="6.5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                      <path d="M5.5 8 12 12.5 18.5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                  <input id="signup-email" type="email" autocomplete="email" placeholder="Email address" required />
+                </div>
               </label>
 
               <label class="field">
                 <span>Password</span>
-                <input id="signup-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+                      <path d="M8 10V7.5A4 4 0 0 1 12 4a4 4 0 0 1 4 3.5V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    </svg>
+                  </span>
+                  <input id="signup-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+                </div>
               </label>
 
               <button id="signup-submit-button" type="submit" class="primary-button auth-submit-button">Send request</button>
             </form>
 
-            <div class="auth-switch-row">
-              <span class="auth-switch-label">Already have access?</span>
-              <button id="back-to-login-button" type="button" class="auth-switch-link">Back to sign in</button>
-            </div>
-
             <p id="signup-feedback" class="form-success" aria-live="polite"></p>
           </section>
-        </section>
+        </div>
       </div>
     </section>
 
