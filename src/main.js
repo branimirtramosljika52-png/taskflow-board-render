@@ -69,6 +69,7 @@ const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
 const appFrame = document.querySelector("#app-frame");
 const appSidebar = document.querySelector("#app-sidebar");
+const appHomeButton = document.querySelector("#app-home-button");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -81,6 +82,7 @@ const userMenuName = document.querySelector("#user-menu-name");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const logoutButton = document.querySelector("#logout-button");
+const sidebarHomeButton = document.querySelector("#sidebar-home-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
 const sidebarCollapseToggle = document.querySelector("#sidebar-collapse-toggle");
 const railButtons = Array.from(document.querySelectorAll("[data-sidebar-group]"));
@@ -2103,6 +2105,16 @@ sidebarSelfDashActions.forEach((button) => {
 
     focusSelfDashArea(target);
   });
+});
+
+appHomeButton?.addEventListener("click", () => {
+  state.activeSidebarGroup = "home";
+  focusSelfDashArea("top");
+});
+
+sidebarHomeButton?.addEventListener("click", () => {
+  state.activeSidebarGroup = "home";
+  focusSelfDashArea("top");
 });
 
 sidebarCollapseToggle?.addEventListener("click", () => {

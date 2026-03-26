@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-    <link rel="stylesheet" href="/styles.css?v=20260326k" />
+    <link rel="stylesheet" href="/styles.css?v=20260326l" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -64,7 +64,7 @@
     <main id="app-shell" class="app-shell" hidden>
       <section id="app-frame" class="app-frame">
         <aside class="app-rail" aria-label="Primarna navigacija">
-          <div class="app-rail-logo">S</div>
+          <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljački panel">S</button>
           <nav class="app-rail-nav">
             <button
               type="button"
@@ -113,7 +113,12 @@
 
         <aside id="app-sidebar" class="app-sidebar">
           <div class="sidebar-header">
-            <div class="sidebar-brand-pill" aria-label="Safety360">
+            <button
+              id="sidebar-home-button"
+              type="button"
+              class="sidebar-brand-pill"
+              aria-label="Otvori upravljački panel"
+            >
               <div class="auth-logo-mark">
                 <span></span>
                 <span></span>
@@ -122,7 +127,7 @@
                 <strong>Safety360</strong>
                 <span id="sidebar-active-organization">Workspace</span>
               </div>
-            </div>
+            </button>
             <button id="sidebar-collapse-toggle" type="button" class="sidebar-collapse-button" aria-label="Minimize sidebar">
               <span aria-hidden="true">&larr;</span>
             </button>
@@ -984,7 +989,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260326k"></script>
-    <script type="module" src="/src/main.js?v=20260326k"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260326l"></script>
+    <script type="module" src="/src/main.js?v=20260326l"></script>
   </body>
 </html>
