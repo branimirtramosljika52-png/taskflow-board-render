@@ -4392,6 +4392,56 @@ function updateWorkOrderStatusSelectTheme(select, value) {
   select.dataset.status = slugifyValue(value);
 }
 
+function createWorkOrderStatusSelect(item) {
+  const select = document.createElement("select");
+  select.className = "work-item-status-select";
+  select.dataset.preventRowOpen = "true";
+  select.disabled = state.user?.role === "user";
+
+  WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
+    const node = document.createElement("option");
+    node.value = option.value;
+    node.textContent = option.label;
+    select.append(node);
+  });
+
+  select.value = item.status || "Otvoreni RN";
+  updateWorkOrderStatusSelectTheme(select, select.value);
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    select.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  select.addEventListener("change", () => {
+    const previousValue = item.status || "Otvoreni RN";
+    const nextValue = select.value;
+
+    updateWorkOrderStatusSelectTheme(select, nextValue);
+    select.disabled = true;
+
+    void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
+      method: "PATCH",
+      body: { status: nextValue },
+    })).then((success) => {
+      const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(item.id));
+
+      if (!success) {
+        select.value = previousValue;
+        updateWorkOrderStatusSelectTheme(select, previousValue);
+      } else {
+        select.value = updatedItem?.status || nextValue;
+        updateWorkOrderStatusSelectTheme(select, select.value);
+      }
+
+      select.disabled = state.user?.role === "user";
+    });
+  });
+
+  return select;
+}
+
 function normalizeWorkOrderClientReference(value) {
   const normalized = String(value ?? "").trim();
 
@@ -4999,7 +5049,7 @@ function renderCompactWorkOrdersList() {
         });
       });
 
-      statusRow.append(createWorkOrderStatusDropdown(item));
+      statusRow.append(createWorkOrderStatusSelect(item));
       basicsStack.append(statusRow);
 
       basicsStack.append(
