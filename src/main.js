@@ -1088,6 +1088,14 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
     return false;
   }
 
+  if (state.workOrderAutoSave.saving) {
+    state.workOrderAutoSave.dirty = true;
+    state.workOrderAutoSave.timerId = window.setTimeout(() => {
+      void persistWorkOrderAutoSave();
+    }, WORK_ORDER_AUTOSAVE_DELAY_MS);
+    return false;
+  }
+
   const payload = buildWorkOrderPayload();
   const fingerprint = getWorkOrderPayloadFingerprint(payload);
   const isEditing = Boolean(workOrderIdInput.value);
@@ -1142,6 +1150,11 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
   }
 
   setWorkOrderSaveState("saved");
+
+  if (state.workOrderAutoSave.dirty) {
+    queueWorkOrderAutoSave();
+  }
+
   return true;
 }
 
@@ -6090,19 +6103,16 @@ workOrderCompanyIdInput.addEventListener("change", () => {
   rebuildWorkOrderLocationOptions("");
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
-  queueWorkOrderAutoSave();
 });
 
 workOrderLocationIdInput.addEventListener("change", () => {
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
-  queueWorkOrderAutoSave();
 });
 
 workOrderContactSlotInput.addEventListener("change", () => {
   applySelectedContactDefaults();
   renderWorkOrderEditorSummary();
-  queueWorkOrderAutoSave();
 });
 
 workOrderForm.addEventListener("input", () => {
@@ -6112,7 +6122,7 @@ workOrderForm.addEventListener("input", () => {
 
 workOrderForm.addEventListener("change", () => {
   renderWorkOrderEditorSummary();
-  queueWorkOrderAutoSave();
+  void persistWorkOrderAutoSave({ immediate: true });
 });
 
 workOrdersTableWrap.addEventListener("scroll", () => {

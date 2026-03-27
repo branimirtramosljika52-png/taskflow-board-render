@@ -2021,7 +2021,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-save-state {
-  display: inline-flex;
+  display: none;
   align-items: center;
   min-height: 30px;
   padding: 0 10px;
