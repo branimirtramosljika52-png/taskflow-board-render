@@ -24,6 +24,7 @@ import {
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
+const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
@@ -90,6 +91,14 @@ const state = {
     error: "",
   },
   workOrderEditorOpen: false,
+  workOrderAutoSave: {
+    timerId: null,
+    saving: false,
+    dirty: false,
+    lastFingerprint: "",
+    lastSavedAt: "",
+    state: "idle",
+  },
   activeSidebarGroup: "home",
   sidebarCollapsed: false,
   railHidden: false,
@@ -194,6 +203,7 @@ const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
+const workOrderSaveState = document.querySelector("#work-order-save-state");
 const workOrderActivityList = document.querySelector("#work-order-activity-list");
 const workOrderActivityEmpty = document.querySelector("#work-order-activity-empty");
 const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
@@ -1002,6 +1012,161 @@ function scrollWorkOrderEditorToTop() {
   workOrderActivityList?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function setWorkOrderSaveState(mode, message = "") {
+  if (!workOrderSaveState) {
+    return;
+  }
+
+  const defaultMessages = {
+    idle: "Automatsko spremanje je spremno.",
+    pending: "Promjene cekaju spremanje...",
+    saving: "Spremanje u tijeku...",
+    saved: "Sve promjene su spremljene.",
+    blocked: "Odaberi tvrtku da se RN spremi.",
+    error: "Spremanje nije uspjelo.",
+  };
+
+  state.workOrderAutoSave.state = mode;
+  workOrderSaveState.dataset.state = mode;
+  workOrderSaveState.textContent = message || defaultMessages[mode] || defaultMessages.idle;
+}
+
+function clearWorkOrderAutoSaveTimer() {
+  if (state.workOrderAutoSave.timerId) {
+    window.clearTimeout(state.workOrderAutoSave.timerId);
+    state.workOrderAutoSave.timerId = null;
+  }
+}
+
+function resetWorkOrderAutoSaveState() {
+  clearWorkOrderAutoSaveTimer();
+  state.workOrderAutoSave = {
+    timerId: null,
+    saving: false,
+    dirty: false,
+    lastFingerprint: "",
+    lastSavedAt: "",
+    state: "idle",
+  };
+  setWorkOrderSaveState("idle");
+}
+
+function getWorkOrderPayloadFingerprint(payload = buildWorkOrderPayload()) {
+  return JSON.stringify(payload);
+}
+
+function canAutoSaveWorkOrder(payload = buildWorkOrderPayload()) {
+  if (workOrderIdInput.value) {
+    return true;
+  }
+
+  return Boolean(payload.companyId);
+}
+
+function findCreatedWorkOrderMatch(previousIds, payload) {
+  const created = state.workOrders.find((item) => !previousIds.has(String(item.id)));
+
+  if (created) {
+    return created;
+  }
+
+  return state.workOrders.find((item) => (
+    String(item.companyId || "") === String(payload.companyId || "")
+    && String(item.locationId || "") === String(payload.locationId || "")
+    && String(item.openedDate || "") === String(payload.openedDate || "")
+    && String(item.serviceLine || "") === String(payload.serviceLine || "")
+    && String(item.department || "") === String(payload.department || "")
+    && String(item.executor1 || "") === String(payload.executor1 || "")
+    && String(item.executor2 || "") === String(payload.executor2 || "")
+  )) ?? null;
+}
+
+async function persistWorkOrderAutoSave({ immediate = false } = {}) {
+  clearWorkOrderAutoSaveTimer();
+
+  if (!state.workOrderEditorOpen || !state.user) {
+    return false;
+  }
+
+  const payload = buildWorkOrderPayload();
+  const fingerprint = getWorkOrderPayloadFingerprint(payload);
+  const isEditing = Boolean(workOrderIdInput.value);
+
+  if (!canAutoSaveWorkOrder(payload)) {
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("blocked");
+    return false;
+  }
+
+  if (isEditing && fingerprint === state.workOrderAutoSave.lastFingerprint && !immediate) {
+    setWorkOrderSaveState("saved");
+    return true;
+  }
+
+  state.workOrderAutoSave.saving = true;
+  state.workOrderAutoSave.dirty = false;
+  setWorkOrderSaveState("saving");
+
+  const editingId = workOrderIdInput.value;
+  const path = isEditing ? `/work-orders/${editingId}` : "/work-orders";
+  const method = isEditing ? "PATCH" : "POST";
+  const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: payload,
+  }), workOrderError);
+
+  state.workOrderAutoSave.saving = false;
+
+  if (!success) {
+    state.workOrderAutoSave.dirty = true;
+    setWorkOrderSaveState("error", workOrderError.textContent || "Spremanje nije uspjelo.");
+    return false;
+  }
+
+  state.workOrderAutoSave.lastFingerprint = fingerprint;
+  state.workOrderAutoSave.lastSavedAt = new Date().toISOString();
+
+  if (isEditing) {
+    workOrderNumberPreview.textContent = `Uredujes ${state.workOrders.find((item) => String(item.id) === String(editingId))?.workOrderNumber || editingId}`;
+    void loadWorkOrderActivity(editingId);
+  } else {
+    const created = findCreatedWorkOrderMatch(previousIds, payload);
+
+    if (created) {
+      workOrderIdInput.value = created.id;
+      workOrderNumberPreview.textContent = `Uredujes ${created.workOrderNumber}`;
+      renderWorkOrderEditorSummary();
+      void loadWorkOrderActivity(created.id);
+    }
+  }
+
+  setWorkOrderSaveState("saved");
+  return true;
+}
+
+function queueWorkOrderAutoSave() {
+  if (!state.workOrderEditorOpen || !state.user) {
+    return;
+  }
+
+  const payload = buildWorkOrderPayload();
+
+  if (!canAutoSaveWorkOrder(payload)) {
+    clearWorkOrderAutoSaveTimer();
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("blocked");
+    return;
+  }
+
+  state.workOrderAutoSave.dirty = true;
+  setWorkOrderSaveState("pending");
+  clearWorkOrderAutoSaveTimer();
+  state.workOrderAutoSave.timerId = window.setTimeout(() => {
+    void persistWorkOrderAutoSave();
+  }, WORK_ORDER_AUTOSAVE_DELAY_MS);
+}
+
 function renderWorkOrderEditorSummary() {
   if (!workOrderEditorTitle || !workOrderEditorSubtitle || !workOrderEditorMeta) {
     return;
@@ -1010,11 +1175,13 @@ function renderWorkOrderEditorSummary() {
   const activeId = String(workOrderIdInput.value || "");
   const persistedItem = state.workOrders.find((item) => String(item.id) === activeId) ?? null;
   const workOrderNumber = persistedItem?.workOrderNumber || "";
-  const companyName = getSelectedOptionText(workOrderCompanyIdInput) || workOrderHeadquartersInput.value || "Bez tvrtke";
-  const locationName = getSelectedOptionText(workOrderLocationIdInput) || workOrderRegionInput.value || "Bez lokacije";
   const serviceLine = String(workOrderServiceLineInput.value ?? "").trim();
   const department = String(workOrderDepartmentInput.value ?? "").trim();
   const description = String(workOrderDescriptionInput.value ?? "").trim();
+  const companyName = "";
+  const locationName = "";
+  const compactServiceSummary = [department, serviceLine].filter(Boolean).join(" • ");
+  const serviceSummary = [department, serviceLine].filter(Boolean).join(" • ");
   const executorValues = [workOrderExecutor1Input.value, workOrderExecutor2Input.value]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
@@ -1024,6 +1191,10 @@ function renderWorkOrderEditorSummary() {
   workOrderEditorSubtitle.textContent = description
     || [serviceLine, department, companyName, locationName].filter(Boolean).join(" • ")
     || "Odaberi klijenta, lokaciju i unesi detalje radnog naloga.";
+
+  workOrderEditorSubtitle.textContent = description
+    || compactServiceSummary
+    || "Promjene se spremaju automatski.";
 
   const statusBadge = createBadge(
     getSelectedOptionText(workOrderStatusInput) || workOrderStatusInput.value || "Otvoreni RN",
@@ -1051,8 +1222,6 @@ function renderWorkOrderEditorSummary() {
   const facts = document.createElement("div");
   facts.className = "work-order-editor-facts";
   facts.append(
-    createWorkOrderEditorMetaItem("company", "Klijent", companyName),
-    createWorkOrderEditorMetaItem("location", "Lokacija", locationName),
     createWorkOrderEditorMetaItem(
       "dates",
       "Datumi",
@@ -1090,6 +1259,7 @@ function renderWorkOrderEditorSummary() {
   assigneeMeta.classList.add("is-assignee-group");
   facts.append(assigneeMeta);
   workOrderEditorMeta.replaceChildren(chips, facts);
+  workOrderStatusInput.dataset.status = slugifyValue(workOrderStatusInput.value || "Otvoreni RN");
 }
 
 function getCompany(companyId) {
@@ -3656,10 +3826,19 @@ function syncWorkOrderEditorModal() {
 function openWorkOrderEditor() {
   state.workOrderEditorOpen = true;
   renderWorkOrderEditorSummary();
+  if (workOrderIdInput.value) {
+    state.workOrderAutoSave.lastFingerprint = getWorkOrderPayloadFingerprint();
+    setWorkOrderSaveState("saved");
+  } else if (canAutoSaveWorkOrder()) {
+    setWorkOrderSaveState("idle");
+  } else {
+    setWorkOrderSaveState("blocked");
+  }
   syncWorkOrderEditorModal();
 }
 
 function closeWorkOrderEditor({ reset = false } = {}) {
+  clearWorkOrderAutoSaveTimer();
   state.workOrderEditorOpen = false;
   syncWorkOrderEditorModal();
 
@@ -3683,6 +3862,7 @@ function focusWorkOrderComposer(prefill = {}) {
   }
 
   renderWorkOrderEditorSummary();
+  setWorkOrderSaveState("blocked");
   openWorkOrderEditor();
 }
 
@@ -4059,6 +4239,7 @@ function buildLoginContentPayload() {
 }
 
 function resetWorkOrderForm() {
+  resetWorkOrderAutoSaveState();
   workOrderForm.reset();
   workOrderIdInput.value = "";
   workOrderError.textContent = "";
@@ -4075,6 +4256,7 @@ function resetWorkOrderForm() {
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
   renderWorkOrderEditorSummary();
+  setWorkOrderSaveState("blocked");
 }
 
 function resetCompanyForm() {
@@ -4165,6 +4347,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   const { loadActivity = true } = options;
   state.activeView = "selfdash";
   renderActiveView();
+  resetWorkOrderAutoSaveState();
   workOrderIdInput.value = workOrder.id;
   workOrderNumberPreview.textContent = `Uredujes ${workOrder.workOrderNumber}`;
   workOrderStatusInput.value = workOrder.status;
@@ -4192,6 +4375,8 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderInvoiceNoteInput.value = workOrder.invoiceNote;
   workOrderError.textContent = "";
   renderWorkOrderEditorSummary();
+  state.workOrderAutoSave.lastFingerprint = getWorkOrderPayloadFingerprint();
+  setWorkOrderSaveState("saved");
   openWorkOrderEditor();
 
   if (loadActivity) {
@@ -5905,24 +6090,29 @@ workOrderCompanyIdInput.addEventListener("change", () => {
   rebuildWorkOrderLocationOptions("");
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
+  queueWorkOrderAutoSave();
 });
 
 workOrderLocationIdInput.addEventListener("change", () => {
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
+  queueWorkOrderAutoSave();
 });
 
 workOrderContactSlotInput.addEventListener("change", () => {
   applySelectedContactDefaults();
   renderWorkOrderEditorSummary();
+  queueWorkOrderAutoSave();
 });
 
 workOrderForm.addEventListener("input", () => {
   renderWorkOrderEditorSummary();
+  queueWorkOrderAutoSave();
 });
 
 workOrderForm.addEventListener("change", () => {
   renderWorkOrderEditorSummary();
+  queueWorkOrderAutoSave();
 });
 
 workOrdersTableWrap.addEventListener("scroll", () => {
@@ -5948,32 +6138,7 @@ workOrderFilterCompanyInput.addEventListener("change", () => {
 
 workOrderForm.addEventListener("submit", (event) => {
   event.preventDefault();
-
-  const isEditing = Boolean(workOrderIdInput.value);
-  const editingId = workOrderIdInput.value;
-  const path = isEditing ? `/work-orders/${workOrderIdInput.value}` : "/work-orders";
-  const method = isEditing ? "PATCH" : "POST";
-
-  void runMutation(() => apiRequest(path, {
-    method,
-    body: buildWorkOrderPayload(),
-  }), workOrderError).then((success) => {
-    if (success) {
-      if (isEditing) {
-        const updatedWorkOrder = state.workOrders.find((item) => String(item.id) === String(editingId));
-
-        if (updatedWorkOrder) {
-          hydrateWorkOrderForm(updatedWorkOrder, { loadActivity: false });
-          void loadWorkOrderActivity(editingId);
-          return;
-        }
-      }
-
-      closeWorkOrderEditor();
-      resetWorkOrderForm();
-      resetWorkOrderActivityState();
-    }
-  });
+  void persistWorkOrderAutoSave({ immediate: true });
 });
 
 workOrderResetButton.addEventListener("click", resetWorkOrderForm);

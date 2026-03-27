@@ -1640,7 +1640,7 @@ body.is-work-order-editor-open {
 
 .work-order-editor-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 0;
   height: 100%;
   min-height: 0;
@@ -1781,7 +1781,7 @@ body.is-work-order-editor-open {
 
 .work-order-editor-facts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px 10px;
 }
 
@@ -1793,8 +1793,8 @@ body.is-work-order-editor-open {
   min-width: 0;
   padding: 8px 10px;
   border-radius: 14px;
-  border: 1px solid #edf1f7;
-  background: #f9fbff;
+  border: 1px solid #e5eaf4;
+  background: #f7f9fd;
 }
 
 .work-order-editor-meta-icon {
@@ -1878,8 +1878,8 @@ body.is-work-order-editor-open {
   gap: 12px;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid #e8ecf5;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #dde4f0;
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .work-order-editor-section.is-overview,
@@ -1924,8 +1924,8 @@ body.is-work-order-editor-open {
   gap: 10px;
   padding: 12px;
   border-radius: 16px;
-  border: 1px solid #eef1f7;
-  background: linear-gradient(180deg, #fbfcff, #f7f9fd);
+  border: 1px solid #e5ebf5;
+  background: linear-gradient(180deg, #fafcff, #f5f8fd);
 }
 
 .work-order-editor-subsection-head {
@@ -1965,7 +1965,7 @@ body.is-work-order-editor-open {
 .work-order-editor-form .field {
   padding: 10px;
   border-radius: 16px;
-  border: 1px solid #edf0f6;
+  border: 1px solid #e1e6f0;
   background: #ffffff;
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
@@ -1987,8 +1987,8 @@ body.is-work-order-editor-open {
 .work-order-editor-form select,
 .work-order-editor-form textarea {
   border-radius: 12px;
-  border: 1px solid #e4e8f1;
-  background: #f7f9fc;
+  border: 1px solid #dce3ef;
+  background: #f5f8fc;
 }
 
 .work-order-editor-form textarea {
@@ -2002,6 +2002,7 @@ body.is-work-order-editor-open {
   grid-column: 1 / -1;
   margin-top: 2px;
   padding-top: 10px;
+  justify-content: flex-start;
   background: linear-gradient(180deg, rgba(247, 249, 253, 0), rgba(247, 249, 253, 0.96) 40%);
 }
 
@@ -2015,10 +2016,85 @@ body.is-work-order-editor-open {
 
 .work-order-editor-heading-actions .helper-copy {
   margin: 0;
+  color: #6a7388;
+  font-size: 0.77rem;
+}
+
+.work-order-save-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #dfe4ef;
+  background: #f8faff;
+  color: #60708d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.work-order-save-state[data-state="pending"],
+.work-order-save-state[data-state="saving"] {
+  color: #5a6690;
+  background: #eef3ff;
+  border-color: #d9e4ff;
+}
+
+.work-order-save-state[data-state="saved"] {
+  color: #2f7452;
+  background: #e8f6ee;
+  border-color: #cfe7d8;
+}
+
+.work-order-save-state[data-state="blocked"] {
+  color: #8a6b21;
+  background: #fff5db;
+  border-color: #f0dfab;
+}
+
+.work-order-save-state[data-state="error"] {
+  color: #8a3f48;
+  background: #fdecef;
+  border-color: #f2cfd6;
 }
 
 .work-order-editor-close {
   min-height: 36px;
+}
+
+#work-order-status {
+  font-weight: 700;
+}
+
+#work-order-status[data-status="otvoreni-rn"] {
+  color: #5a6373;
+  background-color: #eef1f4;
+  border-color: #dde2e8;
+}
+
+#work-order-status[data-status="gotov-rn"] {
+  color: #2b7848;
+  background-color: #dff5e6;
+  border-color: #cbe6d5;
+}
+
+#work-order-status[data-status="ovjeren-rn"] {
+  color: #6d4d00;
+  background-color: #e7c760;
+  border-color: #d7b54a;
+}
+
+#work-order-status[data-status="fakturiran-rn"] {
+  color: #245b37;
+  background-color: #bfe1ca;
+  border-color: #aaccb6;
+}
+
+#work-order-status[data-status="storno-rn"] {
+  color: #48515d;
+  background-color: #d8dde4;
+  border-color: #c8ced7;
 }
 
 .work-order-activity-panel {
