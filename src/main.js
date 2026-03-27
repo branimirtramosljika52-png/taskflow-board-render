@@ -4928,36 +4928,16 @@ function renderCompactWorkOrdersList() {
     wrap.className = "work-executor-list";
 
     executors.forEach((executor) => {
-      const matchedUser = findUserForExecutor(executor);
       const avatar = document.createElement("span");
       avatar.className = "work-executor-avatar";
       avatar.title = executor;
       const tone = getExecutorTone(executor);
       avatar.style.setProperty("--executor-bg", tone.bg);
       avatar.style.setProperty("--executor-fg", tone.fg);
-      avatar.classList.toggle("has-image", Boolean(matchedUser?.avatarDataUrl));
-
-      if (matchedUser?.avatarDataUrl) {
-        const image = document.createElement("img");
-        image.src = matchedUser.avatarDataUrl;
-        image.alt = executor;
-        avatar.append(image);
-
-        const badge = document.createElement("span");
-        badge.className = "work-executor-initials-badge";
-        badge.textContent = getUserInitials({ fullName: executor });
-        avatar.append(badge);
-      } else {
-        const icon = document.createElement("span");
-        icon.className = "work-executor-fallback-icon";
-        icon.innerHTML = "&#128100;";
-
-        const initials = document.createElement("span");
-        initials.className = "work-executor-initials";
-        initials.textContent = getUserInitials({ fullName: executor });
-
-        avatar.append(icon, initials);
-      }
+      const initials = document.createElement("span");
+      initials.className = "work-executor-initials";
+      initials.textContent = getUserInitials({ fullName: executor }) || "?";
+      avatar.append(initials);
 
       wrap.append(avatar);
     });

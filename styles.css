@@ -2875,7 +2875,6 @@ body.is-work-order-editor-open {
 }
 
 .work-executor-avatar {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2888,52 +2887,14 @@ body.is-work-order-editor-open {
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  overflow: hidden;
-}
-
-.work-executor-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.work-executor-avatar.has-image {
-  border-color: rgba(67, 77, 98, 0.18);
-}
-
-.work-executor-fallback-icon {
-  position: absolute;
-  inset: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(70, 80, 101, 0.28);
-  font-size: 1rem;
-  line-height: 1;
 }
 
 .work-executor-initials {
-  position: relative;
-  z-index: 1;
-}
-
-.work-executor-initials-badge {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(22, 26, 35, 0.88);
-  color: #ffffff;
-  border: 2px solid #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  width: 100%;
+  text-transform: uppercase;
 }
 
 .work-executor-empty {
