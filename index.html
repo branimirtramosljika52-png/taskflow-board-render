@@ -293,7 +293,7 @@
                   <form id="work-order-form" class="entity-form work-order-editor-form">
                     <input id="work-order-id" type="hidden" />
 
-                    <section class="work-order-editor-section">
+                    <section class="work-order-editor-section is-overview">
                       <div class="work-order-editor-section-head">
                         <div>
                           <p class="work-order-editor-section-kicker">Pregled</p>
@@ -334,7 +334,7 @@
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section">
+                    <section class="work-order-editor-section is-client">
                       <div class="work-order-editor-section-head">
                         <div>
                           <p class="work-order-editor-section-kicker">Klijent</p>
@@ -342,60 +342,75 @@
                         </div>
                       </div>
 
-                      <div class="form-grid form-grid-wide">
-                        <label class="field">
-                          <span>Tvrtka</span>
-                          <select id="work-order-company-id"></select>
-                        </label>
+                      <div class="work-order-editor-subgrid">
+                        <div class="work-order-editor-subsection">
+                          <div class="work-order-editor-subsection-head">Klijent</div>
+                          <div class="form-grid form-grid-client-identity">
+                            <label class="field">
+                              <span>Tvrtka</span>
+                              <select id="work-order-company-id"></select>
+                            </label>
 
-                        <label class="field">
-                          <span>Sjediste</span>
-                          <input id="work-order-headquarters" type="text" readonly />
-                        </label>
+                            <label class="field">
+                              <span>Sjediste</span>
+                              <input id="work-order-headquarters" type="text" readonly />
+                            </label>
 
-                        <label class="field">
-                          <span>OIB</span>
-                          <input id="work-order-company-oib" type="text" readonly />
-                        </label>
+                            <label class="field">
+                              <span>OIB</span>
+                              <input id="work-order-company-oib" type="text" readonly />
+                            </label>
 
-                        <label class="field">
-                          <span>Vrsta ugovora</span>
-                          <input id="work-order-contract-type" type="text" readonly />
-                        </label>
+                            <label class="field">
+                              <span>Vrsta ugovora</span>
+                              <input id="work-order-contract-type" type="text" readonly />
+                            </label>
+                          </div>
+                        </div>
 
-                        <label class="field">
-                          <span>Lokacija</span>
-                          <select id="work-order-location-id"></select>
-                        </label>
+                        <div class="work-order-editor-subsection">
+                          <div class="work-order-editor-subsection-head">Lokacija</div>
+                          <div class="form-grid form-grid-client-location">
+                            <label class="field">
+                              <span>Lokacija</span>
+                              <select id="work-order-location-id"></select>
+                            </label>
 
-                        <label class="field">
-                          <span>Koordinate</span>
-                          <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
-                        </label>
+                            <label class="field">
+                              <span>Koordinate</span>
+                              <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
+                            </label>
 
-                        <label class="field">
-                          <span>Regija</span>
-                          <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
-                        </label>
+                            <label class="field">
+                              <span>Regija</span>
+                              <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
+                            </label>
+                          </div>
+                        </div>
 
-                        <label class="field">
-                          <span>Kontakt osoba</span>
-                          <select id="work-order-contact-slot"></select>
-                        </label>
+                        <div class="work-order-editor-subsection">
+                          <div class="work-order-editor-subsection-head">Kontakt</div>
+                          <div class="form-grid form-grid-client-contact">
+                            <label class="field">
+                              <span>Kontakt osoba</span>
+                              <select id="work-order-contact-slot"></select>
+                            </label>
 
-                        <label class="field">
-                          <span>Kontakt broj</span>
-                          <input id="work-order-contact-phone" type="text" placeholder="+385 ..." />
-                        </label>
+                            <label class="field">
+                              <span>Kontakt broj</span>
+                              <input id="work-order-contact-phone" type="text" placeholder="+385 ..." />
+                            </label>
 
-                        <label class="field">
-                          <span>Kontakt email</span>
-                          <input id="work-order-contact-email" type="email" placeholder="kontakt@tvrtka.hr" />
-                        </label>
+                            <label class="field">
+                              <span>Kontakt email</span>
+                              <input id="work-order-contact-email" type="email" placeholder="kontakt@tvrtka.hr" />
+                            </label>
+                          </div>
+                        </div>
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section">
+                    <section class="work-order-editor-section is-service">
                       <div class="work-order-editor-section-head">
                         <div>
                           <p class="work-order-editor-section-kicker">Izvedba</p>
@@ -403,45 +418,55 @@
                         </div>
                       </div>
 
-                      <div class="form-grid form-grid-wide">
-                        <label class="field">
-                          <span>Usluga</span>
-                          <input id="work-order-service-line" type="text" placeholder="Vrsta usluge" />
-                        </label>
+                      <div class="work-order-editor-subgrid">
+                        <div class="work-order-editor-subsection">
+                          <div class="work-order-editor-subsection-head">Usluga</div>
+                          <div class="form-grid form-grid-service-main">
+                            <label class="field">
+                              <span>Odjel</span>
+                              <input id="work-order-department" type="text" placeholder="Odjel" />
+                            </label>
 
-                        <label class="field">
-                          <span>Odjel</span>
-                          <input id="work-order-department" type="text" placeholder="Odjel" />
-                        </label>
+                            <label class="field">
+                              <span>Usluga</span>
+                              <input id="work-order-service-line" type="text" placeholder="Vrsta usluge" />
+                            </label>
 
-                        <label class="field">
-                          <span>Veza RN</span>
-                          <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
-                        </label>
+                            <label class="field">
+                              <span>Veza RN</span>
+                              <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
+                            </label>
 
-                        <label class="field">
-                          <span>Tezinski faktor / iznos</span>
-                          <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
-                        </label>
+                            <label class="field">
+                              <span>Tagovi</span>
+                              <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
+                            </label>
+                          </div>
+                        </div>
 
-                        <label class="field">
-                          <span>Nalog zavrsio</span>
-                          <input id="work-order-completed-by" type="text" placeholder="Zavrsio" />
-                        </label>
+                        <div class="work-order-editor-subsection">
+                          <div class="work-order-editor-subsection-head">Obrada</div>
+                          <div class="form-grid form-grid-service-meta">
+                            <label class="field">
+                              <span>Tezinski faktor / iznos</span>
+                              <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
+                            </label>
 
-                        <label class="field">
-                          <span>Datum fakture</span>
-                          <input id="work-order-invoice-date" type="date" />
-                        </label>
+                            <label class="field">
+                              <span>Nalog zavrsio</span>
+                              <input id="work-order-completed-by" type="text" placeholder="Zavrsio" />
+                            </label>
 
-                        <label class="field">
-                          <span>Tagovi</span>
-                          <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
-                        </label>
+                            <label class="field">
+                              <span>Datum fakture</span>
+                              <input id="work-order-invoice-date" type="date" />
+                            </label>
+                          </div>
+                        </div>
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section">
+                    <section class="work-order-editor-section is-notes">
                       <div class="work-order-editor-section-head">
                         <div>
                           <p class="work-order-editor-section-kicker">Biljeske</p>
@@ -449,7 +474,7 @@
                         </div>
                       </div>
 
-                      <div class="form-grid form-grid-text">
+                      <div class="form-grid form-grid-notes">
                         <label class="field field-span-full">
                           <span>Opis radnog naloga</span>
                           <textarea id="work-order-description" rows="5" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
