@@ -4783,6 +4783,37 @@ function renderGroupedWorkOrdersList() {
         return wrap;
       };
 
+      const createTagPill = (value) => {
+        if (!value) {
+          return null;
+        }
+
+        const pill = document.createElement("span");
+        pill.className = "work-item-tag-pill";
+        pill.textContent = value;
+        return pill;
+      };
+
+      const createPriorityPill = (value) => {
+        if (!value) {
+          return null;
+        }
+
+        const pill = document.createElement("span");
+        pill.className = "work-item-priority-pill";
+        pill.dataset.priority = slugifyValue(value);
+
+        const icon = document.createElement("span");
+        icon.className = "work-item-priority-icon";
+        icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11M4 3h6.2c.42 0 .67.47.43.81l-1.05 1.46a.75.75 0 0 0 0 .88l1.05 1.46c.24.34-.01.81-.43.81H4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>';
+
+        const text = document.createElement("span");
+        text.textContent = value;
+
+        pill.append(icon, text);
+        return pill;
+      };
+
       const groupOne = document.createElement("div");
       groupOne.className = "work-item-cell work-item-cell-group";
       const rowStatusBadge = createBadge(item.status || "Bez statusa", statusBadgeClass(item.status));
@@ -5050,6 +5081,37 @@ function renderCompactWorkOrdersList() {
         return wrap;
       };
 
+      const createTagPill = (value) => {
+        if (!value) {
+          return null;
+        }
+
+        const pill = document.createElement("span");
+        pill.className = "work-item-tag-pill";
+        pill.textContent = value;
+        return pill;
+      };
+
+      const createPriorityPill = (value) => {
+        if (!value) {
+          return null;
+        }
+
+        const pill = document.createElement("span");
+        pill.className = "work-item-priority-pill";
+        pill.dataset.priority = slugifyValue(value);
+
+        const icon = document.createElement("span");
+        icon.className = "work-item-priority-icon";
+        icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11M4 3h6.2c.42 0 .67.47.43.81l-1.05 1.46a.75.75 0 0 0 0 .88l1.05 1.46c.24.34-.01.81-.43.81H4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>';
+
+        const text = document.createElement("span");
+        text.textContent = value;
+
+        pill.append(icon, text);
+        return pill;
+      };
+
       const executorValues = [item.executor1, item.executor2].filter(Boolean);
       rowCard.classList.add("is-clickable");
       row.addEventListener("click", (event) => {
@@ -5123,6 +5185,22 @@ function renderCompactWorkOrdersList() {
         item.coordinates || "",
       ));
 
+      const locationMeta = document.createElement("div");
+      locationMeta.className = "work-item-location-meta";
+      const tagPill = createTagPill(item.tagText || "");
+      const priorityPill = createPriorityPill(
+        item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
+      );
+      if (tagPill) {
+        locationMeta.append(tagPill);
+      }
+      if (priorityPill) {
+        locationMeta.append(priorityPill);
+      }
+      if (locationMeta.childElementCount) {
+        locationCell.append(locationMeta);
+      }
+
       const contactCell = document.createElement("div");
       contactCell.className = "work-item-cell work-item-cell-group";
       contactCell.append(createValueStack(
@@ -5151,16 +5229,6 @@ function renderCompactWorkOrdersList() {
         serviceNote.className = "work-item-service-note";
         serviceNote.textContent = serviceDescription;
         serviceCell.append(serviceNote);
-      }
-
-      const servicePills = createInlinePills(
-        item.tagText ? `#${item.tagText}` : "",
-        item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
-        item.dueDate ? `Rok ${formatDate(item.dueDate)}` : "",
-      );
-      if (servicePills) {
-        servicePills.classList.add("work-item-inline-pills-compact");
-        serviceCell.append(servicePills);
       }
 
       const executorsCell = document.createElement("div");

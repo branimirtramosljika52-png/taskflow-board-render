@@ -2831,6 +2831,70 @@ body.is-work-order-editor-open {
   font-size: 0.7rem;
 }
 
+.work-item-location-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-item-tag-pill,
+.work-item-priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.work-item-tag-pill {
+  background: #f7d7db;
+  border-color: #efc3c9;
+  color: #7c4050;
+}
+
+.work-item-priority-pill {
+  background: #ffffff;
+  border-color: #e1e6ef;
+  color: #6a7388;
+}
+
+.work-item-priority-icon {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.work-item-priority-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.work-item-priority-pill[data-priority="urgent"] {
+  color: #c64545;
+}
+
+.work-item-priority-pill[data-priority="high"] {
+  color: #dd8b22;
+}
+
+.work-item-priority-pill[data-priority="normal"] {
+  color: #4c63d5;
+}
+
+.work-item-priority-pill[data-priority="niski-prioritet"],
+.work-item-priority-pill[data-priority="bez-prioriteta"] {
+  color: #6c758b;
+}
+
 .work-item-department-pill {
   display: inline-flex;
   align-items: center;
