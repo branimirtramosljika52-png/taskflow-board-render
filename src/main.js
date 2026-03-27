@@ -4054,11 +4054,11 @@ function renderGroupedWorkOrdersList() {
     columns.className = "work-group-columns";
 
     [
-      { title: "Grupa 1", subtitle: "Broj RN · Status RN" },
-      { title: "Grupa 2", subtitle: "Tvrtka · Sjedište · OIB" },
-      { title: "Grupa 3", subtitle: "Lokacija · Regija · Koordinate" },
-      { title: "Grupa 4", subtitle: "Kontakt osoba · Email · Broj" },
-      { title: "Stavke usluge", subtitle: "Usluga · Odjel · Stavke" },
+      { title: "Osnovno", subtitle: "Broj RN · Status" },
+      { title: "Klijent", subtitle: "Tvrtka · Sjedište · OIB" },
+      { title: "Lokacija", subtitle: "Objekt · Regija · Koordinate" },
+      { title: "Kontakt", subtitle: "Osoba · Email · Broj" },
+      { title: "Usluga", subtitle: "Vrsta usluge · Odjel · Opis" },
       { title: "Akcije", subtitle: "Uredi · Obriši" },
     ].forEach((definition) => {
       const cell = document.createElement("div");
@@ -4083,81 +4083,108 @@ function renderGroupedWorkOrdersList() {
       const row = document.createElement("article");
       row.className = "work-item-row";
 
-      const createDetailLine = (label, value, options = {}) => {
+      const createValueStack = (primary, secondary = "", tertiary = "", options = {}) => {
         const {
           badge = null,
-          emphasis = false,
+          tertiaryClassName = "",
         } = options;
-        const line = document.createElement("div");
-        line.className = "work-item-detail-row";
+        const stack = document.createElement("div");
+        stack.className = "work-item-value-stack";
 
-        const labelNode = document.createElement("span");
-        labelNode.className = "work-item-detail-label";
-        labelNode.textContent = label;
+        const primaryNode = document.createElement("strong");
+        primaryNode.className = "work-item-value-primary";
+        primaryNode.textContent = primary || "—";
+        stack.append(primaryNode);
+
+        if (secondary) {
+          const secondaryNode = document.createElement("span");
+          secondaryNode.className = "work-item-value-secondary";
+          secondaryNode.textContent = secondary;
+          stack.append(secondaryNode);
+        }
 
         if (badge) {
           const badgeWrap = document.createElement("div");
           badgeWrap.className = "work-item-detail-badge-wrap";
           badgeWrap.append(badge);
-          line.append(labelNode, badgeWrap);
-          return line;
+          stack.append(badgeWrap);
         }
 
-        const valueNode = document.createElement(emphasis ? "strong" : "span");
-        valueNode.className = emphasis
-          ? "work-item-detail-value is-emphasis"
-          : "work-item-detail-value";
-        valueNode.textContent = value || "—";
-        line.append(labelNode, valueNode);
-        return line;
+        if (tertiary) {
+          const tertiaryNode = document.createElement("span");
+          tertiaryNode.className = ["work-item-value-tertiary", tertiaryClassName].filter(Boolean).join(" ");
+          tertiaryNode.textContent = tertiary;
+          stack.append(tertiaryNode);
+        }
+
+        return stack;
+      };
+
+      const createInlinePills = (...values) => {
+        const filteredValues = values.filter(Boolean);
+
+        if (!filteredValues.length) {
+          return null;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "work-item-inline-pills";
+        filteredValues.forEach((value) => {
+          const pill = document.createElement("span");
+          pill.className = "work-item-inline-pill";
+          pill.textContent = value;
+          wrap.append(pill);
+        });
+        return wrap;
       };
 
       const groupOne = document.createElement("div");
       groupOne.className = "work-item-cell work-item-cell-group";
       const rowStatusBadge = createBadge(item.status || "Bez statusa", statusBadgeClass(item.status));
       rowStatusBadge.classList.add("work-group-status-badge", "work-item-status-badge");
-      groupOne.append(
-        createDetailLine("Broj RN", item.workOrderNumber || "Bez broja", { emphasis: true }),
-        createDetailLine("Status RN", "", { badge: rowStatusBadge }),
-      );
+      groupOne.append(createValueStack(item.workOrderNumber || "Bez broja", "", "", { badge: rowStatusBadge }));
 
       const groupTwo = document.createElement("div");
       groupTwo.className = "work-item-cell work-item-cell-group";
-      groupTwo.append(
-        createDetailLine("Tvrtka", item.companyName || "Bez tvrtke", { emphasis: true }),
-        createDetailLine("Sjedište", item.headquarters || "Bez sjedišta"),
-        createDetailLine("OIB", item.companyOib || "Bez OIB-a"),
-      );
+      groupTwo.append(createValueStack(
+        item.companyName || "Bez tvrtke",
+        item.headquarters || "",
+        item.companyOib ? `OIB ${item.companyOib}` : "",
+      ));
 
       const groupThree = document.createElement("div");
       groupThree.className = "work-item-cell work-item-cell-group";
-      groupThree.append(
-        createDetailLine("Lokacija", item.locationName || "Bez lokacije", { emphasis: true }),
-        createDetailLine("Regija", item.region || "Bez regije"),
-        createDetailLine("Koordinate", item.coordinates || "Bez koordinata"),
-      );
+      groupThree.append(createValueStack(
+        item.locationName || "Bez lokacije",
+        item.coordinates || "",
+      ));
+      const locationPills = createInlinePills(item.region || "", item.coordinates ? "GPS" : "");
+      if (locationPills) {
+        groupThree.append(locationPills);
+      }
 
       const groupFour = document.createElement("div");
       groupFour.className = "work-item-cell work-item-cell-group";
-      groupFour.append(
-        createDetailLine("Kontakt osoba", item.contactName || "Bez kontakta", { emphasis: true }),
-        createDetailLine("Email", item.contactEmail || "Bez emaila"),
-        createDetailLine("Broj", item.contactPhone || "Bez broja"),
-      );
+      groupFour.append(createValueStack(
+        item.contactName || item.contactPhone || "Bez kontakta",
+        item.contactEmail || "",
+        item.contactPhone && item.contactPhone !== item.contactName ? item.contactPhone : "",
+      ));
 
       const serviceItems = document.createElement("div");
       serviceItems.className = "work-item-cell work-item-cell-group";
-      serviceItems.append(
-        createDetailLine("Usluga", item.serviceLine || "Bez usluge", { emphasis: true }),
-        createDetailLine("Odjel", item.department || "Bez odjela"),
-        createDetailLine(
-          "Stavke",
-          joinParts([
-            item.description,
-            item.tagText ? `#${item.tagText}` : "",
-          ], " · ") || "Bez stavki",
-        ),
+      serviceItems.append(createValueStack(
+        item.serviceLine || "Bez usluge",
+        item.description || "",
+        "",
+      ));
+      const servicePills = createInlinePills(
+        item.department || "",
+        item.tagText ? `#${item.tagText}` : "",
       );
+      if (servicePills) {
+        serviceItems.append(servicePills);
+      }
 
       const actions = document.createElement("div");
       actions.className = "work-item-cell work-item-actions";
