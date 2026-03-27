@@ -684,6 +684,11 @@ async function handleStaticRequest(response, url) {
   const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = resolve(staticRoot, `.${pathname}`);
   const isSafePath = filePath === staticRoot || filePath.startsWith(`${staticRoot}${sep}`);
+  const noStoreHeaders = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 
   if (!isSafePath) {
     response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
@@ -695,16 +700,16 @@ async function handleStaticRequest(response, url) {
     const file = await readFile(filePath);
     const extension = extname(filePath);
     response.writeHead(200, {
-      "Cache-Control": extension === ".html" ? "no-store" : "public, max-age=300",
       "Content-Type": contentTypes[extension] ?? "application/octet-stream",
+      ...noStoreHeaders,
     });
     response.end(file);
   } catch (error) {
     if (pathname !== "/index.html" && !extname(pathname)) {
       const indexFile = await readFile(resolve(staticRoot, "index.html"));
       response.writeHead(200, {
-        "Cache-Control": "no-store",
         "Content-Type": "text/html; charset=utf-8",
+        ...noStoreHeaders,
       });
       response.end(indexFile);
       return;
