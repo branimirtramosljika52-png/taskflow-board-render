@@ -4408,9 +4408,31 @@ function createWorkOrderStatusSelect(item) {
   select.value = item.status || "Otvoreni RN";
   updateWorkOrderStatusSelectTheme(select, select.value);
 
+  const openPicker = () => {
+    if (select.disabled) {
+      return;
+    }
+
+    select.focus({ preventScroll: true });
+
+    if (typeof select.showPicker === "function") {
+      try {
+        select.showPicker();
+      } catch {
+        // Ignore browsers that deny scripted picker opening.
+      }
+    }
+  };
+
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
     select.addEventListener(eventName, (event) => {
       event.stopPropagation();
+
+      if ((eventName === "pointerdown" || eventName === "mousedown" || eventName === "click")
+        && event instanceof MouseEvent
+        && event.button === 0) {
+        openPicker();
+      }
     });
   });
 

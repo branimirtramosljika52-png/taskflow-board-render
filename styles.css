@@ -2420,12 +2420,12 @@ body.is-work-order-editor-open {
 .work-item-row {
   display: grid;
   grid-template-columns:
-    minmax(160px, 0.78fr)
-    minmax(220px, 1.06fr)
-    minmax(220px, 1.02fr)
-    minmax(195px, 0.9fr)
-    minmax(255px, 1.2fr)
-    minmax(110px, 0.52fr);
+      minmax(132px, 0.62fr)
+      minmax(220px, 1.06fr)
+      minmax(220px, 1.02fr)
+      minmax(195px, 0.9fr)
+      minmax(255px, 1.2fr)
+      minmax(110px, 0.52fr);
   column-gap: 14px;
   min-width: 1240px;
 }
@@ -2676,6 +2676,7 @@ body.is-work-order-editor-open {
 .work-item-status-row {
   display: grid;
   gap: 0;
+  max-width: 136px;
 }
 
 .work-item-status-select,
@@ -2701,6 +2702,8 @@ body.is-work-order-editor-open {
   line-height: 1;
   cursor: pointer;
   text-align: left;
+  position: relative;
+  z-index: 2;
 }
 
 .work-item-status-trigger {
