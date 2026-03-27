@@ -24,8 +24,9 @@ import {
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
-const DEFAULT_MEASUREMENT_ROW_COUNT = 12;
-const MEASUREMENT_ROW_BATCH_SIZE = 24;
+const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
+const MEASUREMENT_ROW_BATCH_SIZE = 48;
+const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
 const DEFAULT_MEASUREMENT_COLUMNS = [
   { id: "point", label: "Mjerno mjesto", placeholder: "Mjerno mjesto", width: 220 },
   { id: "label", label: "Oznaka", placeholder: "Oznaka", width: 120 },
@@ -906,7 +907,7 @@ function ensureMeasurementSheetStructure() {
     state.measurementSheet.rows = buildDefaultMeasurementRows();
   }
 
-  ensureMeasurementMinimumRows(48);
+  ensureMeasurementMinimumRows(MIN_VISIBLE_MEASUREMENT_ROWS);
 }
 
 function getMeasurementColumnIndex(columnId) {
@@ -2667,7 +2668,7 @@ function extendMeasurementSheetRowsIfNeeded() {
   }
 
   const nearBottom = measurementSheetGridWrap.scrollTop + measurementSheetGridWrap.clientHeight
-    >= measurementSheetGridWrap.scrollHeight - 220;
+    >= measurementSheetGridWrap.scrollHeight - 420;
 
   if (!nearBottom) {
     return;
