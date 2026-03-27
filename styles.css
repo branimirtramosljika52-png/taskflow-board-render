@@ -1658,6 +1658,10 @@ body.is-work-order-editor-open {
   background: linear-gradient(180deg, #fcfdff, #f7f9fd);
 }
 
+.work-order-editor-main:focus {
+  outline: none;
+}
+
 .work-order-editor-topbar {
   position: sticky;
   top: 0;
@@ -1666,7 +1670,7 @@ body.is-work-order-editor-open {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: -22px -24px 0;
+  margin: 0 -24px 0;
   padding: 18px 24px 8px;
   background: linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(247, 249, 253, 0.94));
   border-bottom: 1px solid rgba(232, 236, 245, 0.9);
@@ -1951,6 +1955,11 @@ body.is-work-order-editor-open {
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 2px 0 8px;
+  background: linear-gradient(180deg, rgba(248, 249, 253, 0.98), rgba(244, 246, 251, 0.92));
 }
 
 .work-order-activity-head h3 {
@@ -3512,7 +3521,7 @@ body.is-work-order-editor-open {
   }
 
   .work-order-editor-topbar {
-    margin: -18px -16px 0;
+    margin: 0 -16px 0;
     padding: 14px 16px 8px;
     align-items: start;
     flex-direction: column;

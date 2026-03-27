@@ -3620,6 +3620,10 @@ function syncWorkOrderEditorModal() {
   if (isOpen) {
     requestAnimationFrame(() => {
       scrollWorkOrderEditorToTop();
+      workOrderEditorMain?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollWorkOrderEditorToTop();
+      }, 0);
     });
   }
 }
