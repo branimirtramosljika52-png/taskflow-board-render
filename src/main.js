@@ -3833,7 +3833,7 @@ function loadMoreWorkOrders() {
   }
 
   state.workOrderRenderLimit = Math.min(state.workOrderRenderLimit + WORK_ORDER_BATCH_SIZE, total);
-  renderWorkOrders();
+  renderGroupedWorkOrdersList();
 }
 
 function renderWorkOrders() {
@@ -3976,6 +3976,208 @@ function renderWorkOrders() {
       }
 
       row.append(title, region, location, due, priority, contact, actions);
+      body.append(row);
+    });
+
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "work-group-add-row";
+    addRow.textContent = "+ Add task";
+    addRow.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    section.append(groupHeader, columns, body, addRow);
+    return section;
+  }));
+
+  workOrdersEmpty.hidden = filtered.length !== 0;
+
+  if (filtered.length === 0) {
+    workOrdersLoadState.hidden = true;
+    workOrdersLoadState.textContent = "";
+    return;
+  }
+
+  workOrdersLoadState.hidden = false;
+  workOrdersLoadState.textContent = visibleItems.length < filtered.length
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    : `Prikazano svih ${filtered.length} RN.`;
+}
+
+function renderGroupedWorkOrdersList() {
+  const filtered = getFilteredWorkOrders();
+  const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
+  const fullGroups = buildWorkOrderGroups(filtered);
+  const visibleGroups = buildWorkOrderGroups(visibleItems);
+
+  if (workOrdersHelper) {
+    workOrdersHelper.textContent = "";
+    workOrdersHelper.hidden = true;
+  }
+
+  workOrdersBody.replaceChildren(...visibleGroups.map((group) => {
+    const section = document.createElement("section");
+    section.className = "work-group";
+
+    const groupHeader = document.createElement("div");
+    groupHeader.className = "work-group-header";
+
+    const headerLead = document.createElement("div");
+    headerLead.className = "work-group-lead";
+
+    const foldIcon = document.createElement("span");
+    foldIcon.className = "work-group-fold";
+    foldIcon.textContent = "▾";
+
+    const statusBadge = createBadge(group.label, statusBadgeClass(group.status));
+    statusBadge.classList.add("work-group-status-badge");
+
+    const totalCount = fullGroups.find((entry) => entry.status === group.status)?.items.length ?? group.items.length;
+    const count = document.createElement("span");
+    count.className = "work-group-count";
+    count.textContent = String(totalCount);
+
+    headerLead.append(foldIcon, statusBadge, count);
+
+    const groupActions = document.createElement("button");
+    groupActions.type = "button";
+    groupActions.className = "work-group-add-inline";
+    groupActions.textContent = "+ Add task";
+    groupActions.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    groupHeader.append(headerLead, groupActions);
+
+    const columns = document.createElement("div");
+    columns.className = "work-group-columns";
+
+    [
+      { title: "Grupa 1", subtitle: "Broj RN · Status RN" },
+      { title: "Grupa 2", subtitle: "Tvrtka · Sjedište · OIB" },
+      { title: "Grupa 3", subtitle: "Lokacija · Regija · Koordinate" },
+      { title: "Grupa 4", subtitle: "Kontakt osoba · Email · Broj" },
+      { title: "Stavke usluge", subtitle: "Usluga · Odjel · Stavke" },
+      { title: "Akcije", subtitle: "Uredi · Obriši" },
+    ].forEach((definition) => {
+      const cell = document.createElement("div");
+      cell.className = "work-group-column";
+
+      const title = document.createElement("strong");
+      title.className = "work-group-column-title";
+      title.textContent = definition.title;
+
+      const subtitle = document.createElement("span");
+      subtitle.className = "work-group-column-subtitle";
+      subtitle.textContent = definition.subtitle;
+
+      cell.append(title, subtitle);
+      columns.append(cell);
+    });
+
+    const body = document.createElement("div");
+    body.className = "work-group-body";
+
+    group.items.forEach((item) => {
+      const row = document.createElement("article");
+      row.className = "work-item-row";
+
+      const createDetailLine = (label, value, options = {}) => {
+        const {
+          badge = null,
+          emphasis = false,
+        } = options;
+        const line = document.createElement("div");
+        line.className = "work-item-detail-row";
+
+        const labelNode = document.createElement("span");
+        labelNode.className = "work-item-detail-label";
+        labelNode.textContent = label;
+
+        if (badge) {
+          const badgeWrap = document.createElement("div");
+          badgeWrap.className = "work-item-detail-badge-wrap";
+          badgeWrap.append(badge);
+          line.append(labelNode, badgeWrap);
+          return line;
+        }
+
+        const valueNode = document.createElement(emphasis ? "strong" : "span");
+        valueNode.className = emphasis
+          ? "work-item-detail-value is-emphasis"
+          : "work-item-detail-value";
+        valueNode.textContent = value || "—";
+        line.append(labelNode, valueNode);
+        return line;
+      };
+
+      const groupOne = document.createElement("div");
+      groupOne.className = "work-item-cell work-item-cell-group";
+      const rowStatusBadge = createBadge(item.status || "Bez statusa", statusBadgeClass(item.status));
+      rowStatusBadge.classList.add("work-group-status-badge", "work-item-status-badge");
+      groupOne.append(
+        createDetailLine("Broj RN", item.workOrderNumber || "Bez broja", { emphasis: true }),
+        createDetailLine("Status RN", "", { badge: rowStatusBadge }),
+      );
+
+      const groupTwo = document.createElement("div");
+      groupTwo.className = "work-item-cell work-item-cell-group";
+      groupTwo.append(
+        createDetailLine("Tvrtka", item.companyName || "Bez tvrtke", { emphasis: true }),
+        createDetailLine("Sjedište", item.headquarters || "Bez sjedišta"),
+        createDetailLine("OIB", item.companyOib || "Bez OIB-a"),
+      );
+
+      const groupThree = document.createElement("div");
+      groupThree.className = "work-item-cell work-item-cell-group";
+      groupThree.append(
+        createDetailLine("Lokacija", item.locationName || "Bez lokacije", { emphasis: true }),
+        createDetailLine("Regija", item.region || "Bez regije"),
+        createDetailLine("Koordinate", item.coordinates || "Bez koordinata"),
+      );
+
+      const groupFour = document.createElement("div");
+      groupFour.className = "work-item-cell work-item-cell-group";
+      groupFour.append(
+        createDetailLine("Kontakt osoba", item.contactName || "Bez kontakta", { emphasis: true }),
+        createDetailLine("Email", item.contactEmail || "Bez emaila"),
+        createDetailLine("Broj", item.contactPhone || "Bez broja"),
+      );
+
+      const serviceItems = document.createElement("div");
+      serviceItems.className = "work-item-cell work-item-cell-group";
+      serviceItems.append(
+        createDetailLine("Usluga", item.serviceLine || "Bez usluge", { emphasis: true }),
+        createDetailLine("Odjel", item.department || "Bez odjela"),
+        createDetailLine(
+          "Stavke",
+          joinParts([
+            item.description,
+            item.tagText ? `#${item.tagText}` : "",
+          ], " · ") || "Bez stavki",
+        ),
+      );
+
+      const actions = document.createElement("div");
+      actions.className = "work-item-cell work-item-actions";
+      actions.append(
+        createActionButton("Uredi", "card-button card-button-light", () => hydrateWorkOrderForm(item)),
+      );
+
+      if (state.user?.role !== "user") {
+        actions.append(
+          createActionButton("Obriši", "card-button card-button-light card-danger", () => {
+            if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
+              return;
+            }
+
+            void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
+          }),
+        );
+      }
+
+      row.append(groupOne, groupTwo, groupThree, groupFour, serviceItems, actions);
       body.append(row);
     });
 
@@ -4362,7 +4564,7 @@ function render() {
   renderLoginContent();
   renderSummary();
   renderSharedOptions();
-  renderWorkOrders();
+  renderGroupedWorkOrdersList();
   renderCompanies();
   renderLocations();
   renderManagement();
@@ -4465,15 +4667,15 @@ workOrdersTableWrap.addEventListener("scroll", () => {
 
 workOrderSearchInput.addEventListener("input", () => {
   resetWorkOrderListWindow();
-  renderWorkOrders();
+  renderGroupedWorkOrdersList();
 });
 workOrderFilterStatusInput.addEventListener("change", () => {
   resetWorkOrderListWindow();
-  renderWorkOrders();
+  renderGroupedWorkOrdersList();
 });
 workOrderFilterCompanyInput.addEventListener("change", () => {
   resetWorkOrderListWindow();
-  renderWorkOrders();
+  renderGroupedWorkOrdersList();
 });
 
 workOrderForm.addEventListener("submit", (event) => {
