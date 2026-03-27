@@ -4396,7 +4396,6 @@ function createWorkOrderStatusSelect(item) {
   const select = document.createElement("select");
   select.className = "work-item-status-select";
   select.dataset.preventRowOpen = "true";
-  select.disabled = state.user?.role === "user";
 
   WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
     const node = document.createElement("option");
@@ -4409,10 +4408,6 @@ function createWorkOrderStatusSelect(item) {
   updateWorkOrderStatusSelectTheme(select, select.value);
 
   const openPicker = () => {
-    if (select.disabled) {
-      return;
-    }
-
     select.focus({ preventScroll: true });
 
     if (typeof select.showPicker === "function") {
@@ -4456,8 +4451,6 @@ function createWorkOrderStatusSelect(item) {
         select.value = updatedItem?.status || nextValue;
         updateWorkOrderStatusSelectTheme(select, select.value);
       }
-
-      select.disabled = state.user?.role === "user";
     });
   });
 
