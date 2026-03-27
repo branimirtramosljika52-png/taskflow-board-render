@@ -4501,6 +4501,12 @@ function closeOpenWorkOrderStatusMenus(except = null) {
     }
 
     node.classList.remove("is-open");
+    const trigger = node.querySelector(".work-item-status-trigger");
+    trigger?.setAttribute("aria-expanded", "false");
+    if (node._menuPortal) {
+      node._menuPortal.remove();
+      node._menuPortal = null;
+    }
   });
 }
 
@@ -4514,17 +4520,12 @@ function createWorkOrderStatusDropdown(item) {
   trigger.className = "work-item-status-trigger";
   trigger.dataset.status = slugifyValue(item.status || "Otvoreni RN");
   trigger.textContent = item.status || "Otvoreni RN";
-  trigger.disabled = state.user?.role === "user";
   trigger.setAttribute("aria-haspopup", "menu");
   trigger.setAttribute("aria-expanded", "false");
 
-  const menu = document.createElement("div");
-  menu.className = "work-item-status-menu";
-  menu.setAttribute("role", "menu");
-
   const setPendingState = (isPending) => {
     wrapper.classList.toggle("is-pending", isPending);
-    trigger.disabled = isPending || state.user?.role === "user";
+    trigger.disabled = isPending;
   };
 
   const setCurrentStatus = (value) => {
@@ -4532,44 +4533,91 @@ function createWorkOrderStatusDropdown(item) {
     trigger.textContent = value;
   };
 
-  WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
-    const optionButton = document.createElement("button");
-    optionButton.type = "button";
-    optionButton.className = "work-item-status-option";
-    optionButton.dataset.status = slugifyValue(option.value);
-    optionButton.textContent = option.label;
-    optionButton.setAttribute("role", "menuitem");
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
-    optionButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      closeOpenWorkOrderStatusMenus();
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
 
-      if (option.value === (item.status || "Otvoreni RN")) {
-        return;
-      }
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
 
-      const previousValue = item.status || "Otvoreni RN";
-      setCurrentStatus(option.value);
-      setPendingState(true);
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
 
-      void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
-        method: "PATCH",
-        body: { status: option.value },
-      })).then((success) => {
-        setPendingState(false);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.round(triggerRect.width)}px`;
+  };
 
-        if (!success) {
-          setCurrentStatus(previousValue);
-          return;
-        }
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
 
-        const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(item.id));
-        setCurrentStatus(updatedItem?.status || option.value);
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal";
+    menu.setAttribute("role", "menu");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
       });
     });
 
-    menu.append(optionButton);
-  });
+    WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
+      const optionButton = document.createElement("button");
+      optionButton.type = "button";
+      optionButton.className = "work-item-status-option";
+      optionButton.dataset.status = slugifyValue(option.value);
+      optionButton.textContent = option.label;
+      optionButton.setAttribute("role", "menuitem");
+
+      optionButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeOpenWorkOrderStatusMenus();
+
+        if (option.value === (item.status || "Otvoreni RN")) {
+          return;
+        }
+
+        const previousValue = item.status || "Otvoreni RN";
+        setCurrentStatus(option.value);
+        setPendingState(true);
+
+        void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
+          method: "PATCH",
+          body: { status: option.value },
+        })).then((success) => {
+          setPendingState(false);
+
+          if (!success) {
+            setCurrentStatus(previousValue);
+            return;
+          }
+
+          const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(item.id));
+          setCurrentStatus(updatedItem?.status || option.value);
+        });
+      });
+
+      menu.append(optionButton);
+    });
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => positionMenuPortal(menu));
+  };
 
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
     wrapper.addEventListener(eventName, (event) => {
@@ -4579,18 +4627,14 @@ function createWorkOrderStatusDropdown(item) {
 
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
-
-    if (trigger.disabled) {
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
       return;
     }
-
-    const willOpen = !wrapper.classList.contains("is-open");
-    closeOpenWorkOrderStatusMenus(wrapper);
-    wrapper.classList.toggle("is-open", willOpen);
-    trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    openMenu();
   });
 
-  wrapper.append(trigger, menu);
+  wrapper.append(trigger);
   return wrapper;
 }
 
@@ -5064,7 +5108,7 @@ function renderCompactWorkOrdersList() {
         });
       });
 
-      statusRow.append(createWorkOrderStatusSelect(item));
+      statusRow.append(createWorkOrderStatusDropdown(item));
       basicsStack.append(statusRow);
 
       basicsStack.append(
@@ -6099,7 +6143,8 @@ document.addEventListener("paste", (event) => {
 
 document.addEventListener("click", (event) => {
   if (event.target instanceof Node) {
-    const clickedStatusMenu = event.target instanceof HTMLElement && event.target.closest(".work-item-status-dropdown");
+    const clickedStatusMenu = event.target instanceof HTMLElement
+      && (event.target.closest(".work-item-status-dropdown") || event.target.closest(".work-item-status-menu-portal"));
 
     if (!clickedStatusMenu) {
       closeOpenWorkOrderStatusMenus();
@@ -6137,6 +6182,14 @@ document.addEventListener("click", (event) => {
 
   setUserMenuOpen(false);
 });
+
+window.addEventListener("resize", () => {
+  closeOpenWorkOrderStatusMenus();
+});
+
+document.addEventListener("scroll", () => {
+  closeOpenWorkOrderStatusMenus();
+}, true);
 
 userOrganizationIdInput?.addEventListener("change", () => {
   const primaryOrganizationId = userOrganizationIdInput.value;
