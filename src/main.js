@@ -4176,6 +4176,16 @@ function updateWorkOrderStatusSelectTheme(select, value) {
   select.dataset.status = slugifyValue(value);
 }
 
+function isInteractiveWorkOrderTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(target.closest(
+    "select, button, input, textarea, a, [data-prevent-row-open='true']",
+  ));
+}
+
 function createWorkOrderStatusSelect(item) {
   const select = document.createElement("select");
   select.className = "work-item-status-select";
@@ -4183,21 +4193,26 @@ function createWorkOrderStatusSelect(item) {
   updateWorkOrderStatusSelectTheme(select, select.value);
   select.disabled = state.user?.role === "user";
 
-  select.addEventListener("click", (event) => {
-    event.stopPropagation();
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    select.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
   });
 
-  select.addEventListener("change", () => {
-    updateWorkOrderStatusSelectTheme(select, select.value);
+  select.addEventListener("change", (event) => {
+    event.stopPropagation();
+    const nextValue = select.value;
     const previousValue = item.status || "Otvoreni RN";
 
-    if (select.value === previousValue) {
+    updateWorkOrderStatusSelectTheme(select, nextValue);
+
+    if (nextValue === previousValue) {
       return;
     }
 
     void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
       method: "PATCH",
-      body: { status: select.value },
+      body: { status: nextValue },
     })).then((success) => {
       if (!success) {
         select.value = previousValue;
@@ -4550,6 +4565,26 @@ function renderCompactWorkOrdersList() {
       const row = document.createElement("article");
       row.className = "work-item-row";
 
+      const createBasicField = (label, value, options = {}) => {
+        const {
+          valueClassName = "",
+          fieldClassName = "",
+        } = options;
+        const field = document.createElement("div");
+        field.className = ["work-item-basic-field", fieldClassName].filter(Boolean).join(" ");
+
+        const labelNode = document.createElement("span");
+        labelNode.className = "work-item-basic-label";
+        labelNode.textContent = label;
+
+        const valueNode = document.createElement("strong");
+        valueNode.className = ["work-item-basic-value", valueClassName].filter(Boolean).join(" ");
+        valueNode.textContent = value || "-";
+
+        field.append(labelNode, valueNode);
+        return field;
+      };
+
       const createValueStack = (primary, secondary = "", tertiary = "", options = {}) => {
         const { tertiaryClassName = "" } = options;
         const stack = document.createElement("div");
@@ -4597,7 +4632,10 @@ function renderCompactWorkOrdersList() {
 
       const executorValues = [item.executor1, item.executor2].filter(Boolean);
       rowCard.classList.add("is-clickable");
-      row.addEventListener("click", () => {
+      row.addEventListener("click", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
         hydrateWorkOrderForm(item);
       });
 
@@ -4605,24 +4643,45 @@ function renderCompactWorkOrdersList() {
       basicCell.className = "work-item-cell work-item-cell-group";
 
       const basicsStack = document.createElement("div");
-      basicsStack.className = "work-item-value-stack";
-      const numberLabel = document.createElement("strong");
-      numberLabel.className = "work-item-value-primary";
-      numberLabel.textContent = item.workOrderNumber || "Bez broja";
-      basicsStack.append(numberLabel);
-
-      const openedCopy = document.createElement("span");
-      openedCopy.className = "work-item-value-secondary";
-      openedCopy.textContent = item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "Bez datuma";
-      basicsStack.append(openedCopy);
+      basicsStack.className = "work-item-basic-stack";
+      basicsStack.append(
+        createBasicField("Otvoren", item.openedDate ? formatDate(item.openedDate) : "Bez datuma"),
+        createBasicField(
+          "Rok završetka",
+          item.dueDate ? formatDate(item.dueDate) : "Bez roka",
+          {
+            valueClassName: isOverdueWorkOrder(item) ? "is-overdue" : "",
+          },
+        ),
+      );
 
       const statusRow = document.createElement("div");
-      statusRow.className = "work-item-status-row";
-      statusRow.addEventListener("click", (event) => {
-        event.stopPropagation();
+      statusRow.className = "work-item-basic-field work-item-status-row";
+      statusRow.dataset.preventRowOpen = "true";
+
+      const statusLabel = document.createElement("span");
+      statusLabel.className = "work-item-basic-label";
+      statusLabel.textContent = "Status RN";
+
+      ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+        statusRow.addEventListener(eventName, (event) => {
+          event.stopPropagation();
+        });
       });
-      statusRow.append(createWorkOrderStatusSelect(item));
+
+      statusRow.append(statusLabel, createWorkOrderStatusSelect(item));
       basicsStack.append(statusRow);
+
+      const numberField = createBasicField("Broj RN", item.workOrderNumber || "Bez broja", {
+        valueClassName: "is-work-order-number",
+      });
+      numberField.dataset.preventRowOpen = "true";
+      numberField.addEventListener("click", (event) => {
+        event.stopPropagation();
+        hydrateWorkOrderForm(item);
+      });
+      basicsStack.append(numberField);
+
       basicCell.append(basicsStack);
 
       const clientCell = document.createElement("div");

@@ -2342,6 +2342,51 @@ body.is-work-order-editor-open {
   gap: 7px;
 }
 
+.work-item-basic-stack {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.work-item-basic-field {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.work-item-basic-label {
+  color: #8f96aa;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-item-basic-value {
+  color: #2b3142;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.32;
+  word-break: break-word;
+}
+
+.work-item-basic-value.is-overdue {
+  color: #b34b58;
+}
+
+.work-item-basic-value.is-work-order-number {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e5e9f3;
+  border-radius: 999px;
+  background: #f7f9fd;
+  color: #1f2636;
+  font-size: 0.79rem;
+}
+
 .work-item-value-stack {
   min-width: 0;
   display: grid;
@@ -2416,8 +2461,8 @@ body.is-work-order-editor-open {
 }
 
 .work-item-status-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  gap: 5px;
 }
 
 .work-item-status-select {
