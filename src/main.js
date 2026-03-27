@@ -199,6 +199,24 @@ const workOrderActivityEmpty = document.querySelector("#work-order-activity-empt
 const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
 const workOrderActivityError = document.querySelector("#work-order-activity-error");
 const workOrderActivityCount = document.querySelector("#work-order-activity-count");
+
+if (workOrderEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(workOrderEditorBackdrop);
+}
+
+if (workOrderEditorPanel?.parentElement !== document.body) {
+  document.body.append(workOrderEditorPanel);
+}
+
+if (workOrderEditorBackdrop) {
+  workOrderEditorBackdrop.hidden = true;
+}
+
+if (workOrderEditorPanel) {
+  workOrderEditorPanel.hidden = true;
+  workOrderEditorPanel.setAttribute("aria-hidden", "true");
+}
+
 const workOrderIdInput = document.querySelector("#work-order-id");
 const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
@@ -3610,6 +3628,11 @@ function syncWorkOrderEditorModal() {
 
   workOrderEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-work-order-editor-open", isOpen);
+
+  if (workOrderEditorPanel) {
+    workOrderEditorPanel.hidden = !isOpen;
+    workOrderEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
 
   if (workOrderEditorBackdrop) {
     workOrderEditorBackdrop.hidden = !isOpen;
