@@ -40,6 +40,7 @@ const DEFAULT_MEASUREMENT_COLUMNS = [
   { id: "note", label: "Napomena", placeholder: "Napomena", width: 240 },
 ];
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
+const RAIL_HIDDEN_KEY = "s360-rail-hidden";
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
   companies: "companies",
@@ -85,6 +86,7 @@ const state = {
   workOrderEditorOpen: false,
   activeSidebarGroup: "home",
   sidebarCollapsed: false,
+  railHidden: false,
   measurementSheet: {
     isOpen: false,
     columns: [],
@@ -111,7 +113,16 @@ function readSidebarCollapsedPreference() {
   }
 }
 
+function readRailHiddenPreference() {
+  try {
+    return window.localStorage.getItem(RAIL_HIDDEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 state.sidebarCollapsed = readSidebarCollapsedPreference();
+state.railHidden = readRailHiddenPreference();
 
 let measurementRowCounter = 0;
 let measurementColumnCounter = 0;
@@ -121,6 +132,7 @@ const appShell = document.querySelector("#app-shell");
 const appFrame = document.querySelector("#app-frame");
 const appSidebar = document.querySelector("#app-sidebar");
 const appHomeButton = document.querySelector("#app-home-button");
+const appRailToggle = document.querySelector("#app-rail-toggle");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -557,6 +569,36 @@ function renderAvatar(target, userLike = {}) {
   target.textContent = getUserInitials(userLike);
 }
 
+function normalizeLooseName(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findUserForExecutor(executorName = "") {
+  const normalized = normalizeLooseName(executorName);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return state.users.find((user) => {
+    const candidates = [
+      user.fullName,
+      [user.firstName, user.lastName].filter(Boolean).join(" "),
+      user.legacyUsername,
+      user.email,
+    ].map(normalizeLooseName).filter(Boolean);
+
+    return candidates.includes(normalized);
+  }) ?? null;
+}
+
 function getSelectedUserOrganizationIds() {
   if (!userOrganizationMemberships) {
     return [];
@@ -646,10 +688,19 @@ function persistSidebarCollapsed() {
   }
 }
 
+function persistRailHidden() {
+  try {
+    window.localStorage.setItem(RAIL_HIDDEN_KEY, String(state.railHidden));
+  } catch {
+    return;
+  }
+}
+
 function renderSidebarState() {
   const activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
 
   appFrame?.classList.toggle("is-sidebar-collapsed", state.sidebarCollapsed);
+  appFrame?.classList.toggle("is-rail-hidden", state.railHidden);
   appSidebar?.classList.toggle("is-collapsed", state.sidebarCollapsed);
 
   if (sidebarCollapseToggle) {
@@ -661,6 +712,11 @@ function renderSidebarState() {
   railButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.sidebarGroup === activeGroup);
   });
+
+  if (appRailToggle) {
+    appRailToggle.textContent = state.railHidden ? "Prikazi ikone" : "Sakrij ikone";
+    appRailToggle.setAttribute("aria-pressed", state.railHidden ? "true" : "false");
+  }
 
   sidebarGroupPanels.forEach((panel) => {
     const groupName = panel.dataset.sidebarGroupPanel;
@@ -674,6 +730,12 @@ function renderSidebarState() {
 function setSidebarCollapsed(nextValue) {
   state.sidebarCollapsed = Boolean(nextValue);
   persistSidebarCollapsed();
+  renderSidebarState();
+}
+
+function setRailHidden(nextValue) {
+  state.railHidden = Boolean(nextValue);
+  persistRailHidden();
   renderSidebarState();
 }
 
@@ -4405,13 +4467,37 @@ function renderCompactWorkOrdersList() {
     wrap.className = "work-executor-list";
 
     executors.forEach((executor) => {
+      const matchedUser = findUserForExecutor(executor);
       const avatar = document.createElement("span");
       avatar.className = "work-executor-avatar";
-      avatar.textContent = getUserInitials({ fullName: executor });
       avatar.title = executor;
       const tone = getExecutorTone(executor);
       avatar.style.setProperty("--executor-bg", tone.bg);
       avatar.style.setProperty("--executor-fg", tone.fg);
+      avatar.classList.toggle("has-image", Boolean(matchedUser?.avatarDataUrl));
+
+      if (matchedUser?.avatarDataUrl) {
+        const image = document.createElement("img");
+        image.src = matchedUser.avatarDataUrl;
+        image.alt = executor;
+        avatar.append(image);
+
+        const badge = document.createElement("span");
+        badge.className = "work-executor-initials-badge";
+        badge.textContent = getUserInitials({ fullName: executor });
+        avatar.append(badge);
+      } else {
+        const icon = document.createElement("span");
+        icon.className = "work-executor-fallback-icon";
+        icon.innerHTML = "&#128100;";
+
+        const initials = document.createElement("span");
+        initials.className = "work-executor-initials";
+        initials.textContent = getUserInitials({ fullName: executor });
+
+        avatar.append(icon, initials);
+      }
+
       wrap.append(avatar);
     });
 
@@ -4518,6 +4604,7 @@ function renderCompactWorkOrdersList() {
         item.contractType || "",
         item.contractNumber ? `Ugovor ${item.contractNumber}` : "",
         item.period ? `Pausal ${item.period}` : "",
+        item.linkReference ? `Veza ${item.linkReference}` : "",
       );
       if (clientPills) {
         clientPills.classList.add("work-item-inline-pills-compact");
@@ -4543,15 +4630,27 @@ function renderCompactWorkOrdersList() {
       const serviceCell = document.createElement("div");
       serviceCell.className = "work-item-cell work-item-cell-group";
       const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
-      serviceCell.append(createValueStack(
-        item.serviceLine || "Bez usluge",
-        item.department || "",
-        serviceDescription || "",
-        { tertiaryClassName: "is-service-copy" },
-      ));
+      if (item.department) {
+        const departmentPill = document.createElement("span");
+        departmentPill.className = "work-item-department-pill";
+        departmentPill.textContent = item.department;
+        serviceCell.append(departmentPill);
+      }
+
+      const serviceLine = document.createElement("div");
+      serviceLine.className = "work-item-service-line";
+      serviceLine.textContent = item.serviceLine || "Bez usluge";
+      serviceCell.append(serviceLine);
+
+      if (serviceDescription) {
+        const serviceNote = document.createElement("div");
+        serviceNote.className = "work-item-service-note";
+        serviceNote.textContent = serviceDescription;
+        serviceCell.append(serviceNote);
+      }
+
       const servicePills = createInlinePills(
         item.tagText ? `#${item.tagText}` : "",
-        item.linkReference ? `Veza ${item.linkReference}` : "",
         item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
         item.dueDate ? `Rok ${formatDate(item.dueDate)}` : "",
       );
@@ -5019,6 +5118,10 @@ sidebarHomeButton?.addEventListener("click", () => {
 
 sidebarCollapseToggle?.addEventListener("click", () => {
   setSidebarCollapsed(!state.sidebarCollapsed);
+});
+
+appRailToggle?.addEventListener("click", () => {
+  setRailHidden(!state.railHidden);
 });
 
 workOrderCompanyIdInput.addEventListener("change", () => {
