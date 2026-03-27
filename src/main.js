@@ -1068,7 +1068,9 @@ function renderWorkOrderEditorSummary() {
     assigneeWrap.append(empty);
   }
 
-  facts.append(createWorkOrderEditorMetaItem("assignees", "Izvršitelji", "", assigneeWrap));
+  const assigneeMeta = createWorkOrderEditorMetaItem("assignees", "Izvršitelji", "", assigneeWrap);
+  assigneeMeta.classList.add("is-assignee-group");
+  facts.append(assigneeMeta);
   workOrderEditorMeta.replaceChildren(chips, facts);
 }
 
