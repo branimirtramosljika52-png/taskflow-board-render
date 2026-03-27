@@ -184,7 +184,7 @@ const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-coun
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
 const workOrderEditorCloseButton = document.querySelector("#work-order-editor-close");
-const workOrderEditorMain = workOrderEditorPanel?.querySelector(".work-order-editor-main");
+const workOrderEditorBody = workOrderEditorPanel?.querySelector(".work-order-editor-body");
 const workOrderEditorContext = document.querySelector("#work-order-editor-context");
 const workOrderEditorTitle = document.querySelector("#work-order-editor-title");
 const workOrderEditorSubtitle = document.querySelector("#work-order-editor-subtitle");
@@ -980,7 +980,7 @@ function createWorkOrderEditorMetaItem(iconName, label, value, contentNode = nul
 }
 
 function scrollWorkOrderEditorToTop() {
-  workOrderEditorMain?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  workOrderEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
   workOrderActivityList?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
@@ -3622,7 +3622,7 @@ function syncWorkOrderEditorModal() {
   if (isOpen) {
     requestAnimationFrame(() => {
       scrollWorkOrderEditorToTop();
-      workOrderEditorMain?.focus({ preventScroll: true });
+      workOrderEditorBody?.focus({ preventScroll: true });
       window.setTimeout(() => {
         scrollWorkOrderEditorToTop();
       }, 0);
