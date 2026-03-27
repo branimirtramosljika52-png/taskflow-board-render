@@ -106,6 +106,154 @@ function locationCompositeKey(oib, name) {
   return `${dbString(oib)}::${dbString(name).toLowerCase()}`;
 }
 
+const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
+  status: "Status RN",
+  priority: "Prioritet",
+  openedDate: "Datum otvaranja",
+  dueDate: "Rok zavrsetka",
+  companyName: "Tvrtka",
+  headquarters: "Sjediste",
+  companyOib: "OIB",
+  locationName: "Lokacija",
+  region: "Regija",
+  coordinates: "Koordinate",
+  contactName: "Kontakt osoba",
+  contactPhone: "Kontakt broj",
+  contactEmail: "Kontakt email",
+  executor1: "Izvrsitelj 1",
+  executor2: "Izvrsitelj 2",
+  serviceLine: "Usluga",
+  department: "Odjel",
+  linkReference: "Veza RN",
+  weight: "Tezinski faktor",
+  completedBy: "Nalog zavrsio",
+  invoiceDate: "Datum fakture",
+  tagText: "Tagovi",
+  description: "Opis",
+  invoiceNote: "Napomena",
+};
+
+function formatDateOnlyDisplay(value) {
+  const normalized = normalizeDateOnly(value);
+
+  if (!normalized) {
+    return "";
+  }
+
+  const [year, month, day] = normalized.split("-");
+  return `${day}.${month}.${year}.`;
+}
+
+function formatWorkOrderActivityValue(fieldKey, value) {
+  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
+    return formatDateOnlyDisplay(value);
+  }
+
+  return dbString(value);
+}
+
+function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
+  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
+    return normalizeDateOnly(left) === normalizeDateOnly(right);
+  }
+
+  return dbString(left) === dbString(right);
+}
+
+function getActivityActorLabel(actor = {}) {
+  return dbString(actor.fullName || actor.name || actor.email || actor.username) || "Safety360";
+}
+
+function getActivityActorId(actor = {}) {
+  const numeric = Number(actor.id);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function buildWorkOrderCreatedActivityEntries(workOrder) {
+  return [
+    {
+      actionType: "created",
+      fieldKey: "",
+      fieldLabel: "",
+      oldValue: "",
+      newValue: workOrder.workOrderNumber || "",
+      description: `Kreiran RN ${workOrder.workOrderNumber || ""}`.trim(),
+    },
+  ];
+}
+
+function buildWorkOrderUpdatedActivityEntries(current, next) {
+  return Object.entries(WORK_ORDER_ACTIVITY_FIELD_LABELS).flatMap(([fieldKey, fieldLabel]) => {
+    if (areWorkOrderActivityValuesEqual(fieldKey, current[fieldKey], next[fieldKey])) {
+      return [];
+    }
+
+    const oldValue = formatWorkOrderActivityValue(fieldKey, current[fieldKey]);
+    const newValue = formatWorkOrderActivityValue(fieldKey, next[fieldKey]);
+
+    return [{
+      actionType: fieldKey === "status" ? "status_change" : "updated",
+      fieldKey,
+      fieldLabel,
+      oldValue,
+      newValue,
+      description: fieldKey === "status"
+        ? `Status promijenjen iz "${oldValue || "-"}" u "${newValue || "-"}"`
+        : `${fieldLabel} azuriran`,
+    }];
+  });
+}
+
+function normalizeActivityTimestamp(value) {
+  return normalizeTimestamp(value) ?? new Date().toISOString();
+}
+
+function mapWorkOrderActivityRow(row) {
+  return {
+    id: String(row.id),
+    workOrderId: String(row.work_order_id ?? row.workOrderId ?? ""),
+    actorLabel: row.actor_label ?? row.actorLabel ?? "Safety360",
+    actorUserId: row.actor_user_id === null || row.actor_user_id === undefined
+      ? ""
+      : String(row.actor_user_id),
+    actionType: row.action_type ?? row.actionType ?? "updated",
+    fieldKey: row.field_key ?? row.fieldKey ?? "",
+    fieldLabel: row.field_label ?? row.fieldLabel ?? "",
+    oldValue: row.old_value ?? row.oldValue ?? "",
+    newValue: row.new_value ?? row.newValue ?? "",
+    description: row.description ?? "",
+    createdAt: normalizeActivityTimestamp(row.created_at ?? row.createdAt),
+  };
+}
+
+async function insertWorkOrderActivityEntries(connection, workOrderId, actor, entries = []) {
+  if (!entries.length) {
+    return;
+  }
+
+  for (const entry of entries) {
+    await connection.query(
+      `
+        INSERT INTO web_work_order_activity_logs
+          (work_order_id, actor_user_id, actor_label, action_type, field_key, field_label,
+           old_value, new_value, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        Number(workOrderId),
+        getActivityActorId(actor),
+        getActivityActorLabel(actor),
+        dbString(entry.actionType) || "updated",
+        dbString(entry.fieldKey),
+        dbString(entry.fieldLabel),
+        dbString(entry.oldValue),
+        dbString(entry.newValue),
+        dbString(entry.description),
+      ],
+    );
+  }
+}
+
 function sanitizeUser(row) {
   if (!row) {
     return null;
@@ -331,6 +479,7 @@ export class InMemorySafetyRepository {
         razina_prava: "admin",
       },
     ];
+    this.workOrderActivity = new Map();
   }
 
   async init() {
@@ -482,15 +631,30 @@ export class InMemorySafetyRepository {
     return true;
   }
 
-  async createWorkOrder(input) {
+  async createWorkOrder(input, actor = null) {
     const now = new Date();
     const generatedNumber = `${String(now.getFullYear()).slice(-2)}-${this.snapshot.workOrders.length + 1}`;
     const workOrder = createWorkOrder(input, this.snapshot, () => crypto.randomUUID(), generatedNumber);
     this.snapshot.workOrders = [workOrder, ...this.snapshot.workOrders];
+    this.workOrderActivity.set(String(workOrder.id), [
+      ...buildWorkOrderCreatedActivityEntries(workOrder).map((entry, index) => ({
+        id: `${workOrder.id}-created-${index}`,
+        workOrderId: String(workOrder.id),
+        actorLabel: getActivityActorLabel(actor),
+        actorUserId: getActivityActorId(actor) === null ? "" : String(getActivityActorId(actor)),
+        actionType: entry.actionType,
+        fieldKey: entry.fieldKey,
+        fieldLabel: entry.fieldLabel,
+        oldValue: entry.oldValue,
+        newValue: entry.newValue,
+        description: entry.description,
+        createdAt: new Date().toISOString(),
+      })),
+    ]);
     return workOrder;
   }
 
-  async updateWorkOrder(id, patch) {
+  async updateWorkOrder(id, patch, actor = null) {
     const current = this.snapshot.workOrders.find((item) => item.id === id);
 
     if (!current) {
@@ -499,7 +663,28 @@ export class InMemorySafetyRepository {
 
     const next = updateWorkOrder(current, patch, this.snapshot);
     this.snapshot.workOrders = this.snapshot.workOrders.map((item) => (item.id === id ? next : item));
+    const existingEntries = this.workOrderActivity.get(String(id)) ?? [];
+    const nextEntries = buildWorkOrderUpdatedActivityEntries(current, next).map((entry, index) => ({
+      id: `${id}-updated-${Date.now()}-${index}`,
+      workOrderId: String(id),
+      actorLabel: getActivityActorLabel(actor),
+      actorUserId: getActivityActorId(actor) === null ? "" : String(getActivityActorId(actor)),
+      actionType: entry.actionType,
+      fieldKey: entry.fieldKey,
+      fieldLabel: entry.fieldLabel,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      description: entry.description,
+      createdAt: new Date().toISOString(),
+    }));
+    this.workOrderActivity.set(String(id), [...nextEntries, ...existingEntries]);
     return next;
+  }
+
+  async getWorkOrderActivity(id) {
+    return (this.workOrderActivity.get(String(id)) ?? [])
+      .slice()
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
   }
 
   async deleteWorkOrder(id) {
@@ -528,6 +713,23 @@ export class MySqlSafetyRepository {
         ip_address VARCHAR(64) NOT NULL DEFAULT '',
         INDEX idx_web_refresh_tokens_user_id (user_id),
         INDEX idx_web_refresh_tokens_expires_at (expires_at)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_work_order_activity_logs (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        work_order_id INT NOT NULL,
+        actor_user_id INT NULL,
+        actor_label VARCHAR(160) NOT NULL DEFAULT '',
+        action_type VARCHAR(32) NOT NULL DEFAULT 'updated',
+        field_key VARCHAR(64) NOT NULL DEFAULT '',
+        field_label VARCHAR(120) NOT NULL DEFAULT '',
+        old_value TEXT NULL,
+        new_value TEXT NULL,
+        description TEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_work_order_activity_logs_work_order (work_order_id),
+        INDEX idx_work_order_activity_logs_created (created_at)
       )
     `);
   }
@@ -1008,7 +1210,7 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async createWorkOrder(input) {
+  async createWorkOrder(input, actor = null) {
     const connection = await this.pool.getConnection();
 
     try {
@@ -1068,6 +1270,12 @@ export class MySqlSafetyRepository {
       };
 
       await syncLocationFromWorkOrder(connection, snapshot, workOrder);
+      await insertWorkOrderActivityEntries(
+        connection,
+        result.insertId,
+        actor,
+        buildWorkOrderCreatedActivityEntries(workOrder),
+      );
       await connection.commit();
 
       return workOrder;
@@ -1079,7 +1287,7 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async updateWorkOrder(id, patch) {
+  async updateWorkOrder(id, patch, actor = null) {
     const connection = await this.pool.getConnection();
 
     try {
@@ -1094,6 +1302,7 @@ export class MySqlSafetyRepository {
       }
 
       const next = updateWorkOrder(current, patch, snapshot);
+      const activityEntries = buildWorkOrderUpdatedActivityEntries(current, next);
 
       await connection.query(
         `
@@ -1135,6 +1344,7 @@ export class MySqlSafetyRepository {
       );
 
       await syncLocationFromWorkOrder(connection, snapshot, next);
+      await insertWorkOrderActivityEntries(connection, id, actor, activityEntries);
       await connection.commit();
 
       return next;
@@ -1152,6 +1362,28 @@ export class MySqlSafetyRepository {
     try {
       const [result] = await connection.query("DELETE FROM radni_nalozi WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getWorkOrderActivity(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, action_type, field_key,
+                 field_label, old_value, new_value, description, created_at
+          FROM web_work_order_activity_logs
+          WHERE work_order_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT 200
+        `,
+        [Number(id)],
+      );
+
+      return rows.map((row) => mapWorkOrderActivityRow(row));
     } finally {
       connection.release();
     }

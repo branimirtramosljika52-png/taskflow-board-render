@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260327k" />
+    <link rel="stylesheet" href="/styles.css?v=20260327l" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -266,21 +266,23 @@
           <div id="work-order-editor-backdrop" class="work-order-editor-backdrop" hidden></div>
 
           <section id="work-order-editor-panel" class="panel work-order-editor-panel">
-            <div class="section-heading">
-              <div>
-                <p class="section-kicker">Glavni sheet</p>
-                <h2>SelfDash</h2>
-              </div>
-              <div class="work-order-editor-heading-actions">
-                <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
-                <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close" hidden>Zatvori</button>
-              </div>
-            </div>
+            <div class="work-order-editor-shell">
+              <div class="work-order-editor-main">
+                <div class="section-heading">
+                  <div>
+                    <p class="section-kicker">Radni nalog</p>
+                    <h2>RN Workspace</h2>
+                  </div>
+                  <div class="work-order-editor-heading-actions">
+                    <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
+                    <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close" hidden>Zatvori</button>
+                  </div>
+                </div>
 
-            <form id="work-order-form" class="entity-form">
-              <input id="work-order-id" type="hidden" />
+                <form id="work-order-form" class="entity-form">
+                  <input id="work-order-id" type="hidden" />
 
-              <div class="form-grid form-grid-wide">
+                  <div class="form-grid form-grid-wide">
                 <label class="field">
                   <span>Status RN</span>
                   <select id="work-order-status"></select>
@@ -395,9 +397,9 @@
                   <span>Tagovi</span>
                   <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
                 </label>
-              </div>
+                  </div>
 
-              <div class="form-grid form-grid-text">
+                  <div class="form-grid form-grid-text">
                 <label class="field field-span-full">
                   <span>Opis radnog naloga</span>
                   <textarea id="work-order-description" rows="4" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
@@ -407,16 +409,33 @@
                   <span>Napomena / faktura</span>
                   <textarea id="work-order-invoice-note" rows="4" placeholder="Napomena za RN ili fakturu."></textarea>
                 </label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="primary-button">Spremi RN</button>
+                    <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
+                    <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
+                  </div>
+                </form>
+
+                <p id="work-order-error" class="form-error" aria-live="polite"></p>
               </div>
 
-              <div class="form-actions">
-                <button type="submit" class="primary-button">Spremi RN</button>
-                <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
-                <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
-              </div>
-            </form>
+              <aside class="work-order-activity-panel">
+                <div class="work-order-activity-head">
+                  <div>
+                    <p class="section-kicker">Timeline</p>
+                    <h3>Activity</h3>
+                  </div>
+                  <span id="work-order-activity-count" class="work-order-activity-count">0</span>
+                </div>
 
-            <p id="work-order-error" class="form-error" aria-live="polite"></p>
+                <div id="work-order-activity-loading" class="work-order-activity-loading" hidden>Ucitavanje aktivnosti...</div>
+                <p id="work-order-activity-empty" class="work-order-activity-empty">Otvori radni nalog da vidis promjene i status timeline.</p>
+                <p id="work-order-activity-error" class="form-error work-order-activity-error" hidden></p>
+                <div id="work-order-activity-list" class="work-order-activity-list"></div>
+              </aside>
+            </div>
           </section>
 
           <section class="panel panel-work-orders">
@@ -1107,7 +1126,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260327k"></script>
-    <script type="module" src="/src/main.js?v=20260327k"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260327l"></script>
+    <script type="module" src="/src/main.js?v=20260327l"></script>
   </body>
 </html>

@@ -83,6 +83,12 @@ const state = {
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
+  workOrderActivity: {
+    workOrderId: "",
+    loading: false,
+    items: [],
+    error: "",
+  },
   workOrderEditorOpen: false,
   activeSidebarGroup: "home",
   sidebarCollapsed: false,
@@ -183,6 +189,11 @@ const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
+const workOrderActivityList = document.querySelector("#work-order-activity-list");
+const workOrderActivityEmpty = document.querySelector("#work-order-activity-empty");
+const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
+const workOrderActivityError = document.querySelector("#work-order-activity-error");
+const workOrderActivityCount = document.querySelector("#work-order-activity-count");
 const workOrderIdInput = document.querySelector("#work-order-id");
 const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
@@ -3287,6 +3298,149 @@ function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label ?? value;
 }
 
+function resetWorkOrderActivityState() {
+  state.workOrderActivity = {
+    workOrderId: "",
+    loading: false,
+    items: [],
+    error: "",
+  };
+  renderWorkOrderActivity();
+}
+
+function renderWorkOrderActivity() {
+  if (!workOrderActivityList || !workOrderActivityEmpty || !workOrderActivityLoading || !workOrderActivityError || !workOrderActivityCount) {
+    return;
+  }
+
+  const { workOrderId, loading, items, error } = state.workOrderActivity;
+  workOrderActivityCount.textContent = String(items.length);
+  workOrderActivityLoading.hidden = !loading;
+  workOrderActivityError.hidden = !error;
+  workOrderActivityError.textContent = error;
+  workOrderActivityList.replaceChildren();
+
+  const emptyMessage = !workOrderId
+    ? "Otvori radni nalog da vidis promjene i status timeline."
+    : "Jos nema zabiljezenih promjena za ovaj RN.";
+  workOrderActivityEmpty.textContent = emptyMessage;
+  workOrderActivityEmpty.hidden = loading || Boolean(error) || items.length > 0;
+
+  items.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = "work-order-activity-item";
+
+    const avatar = document.createElement("span");
+    avatar.className = "work-order-activity-avatar";
+    avatar.textContent = getUserInitials({ fullName: entry.actorLabel });
+
+    const body = document.createElement("div");
+    body.className = "work-order-activity-item-body";
+
+    const top = document.createElement("div");
+    top.className = "work-order-activity-item-top";
+
+    const description = document.createElement("strong");
+    description.className = "work-order-activity-description";
+    description.textContent = entry.description || "Azuriranje radnog naloga";
+
+    const time = document.createElement("span");
+    time.className = "work-order-activity-time";
+    time.textContent = formatDateTime(entry.createdAt);
+
+    top.append(description, time);
+
+    const meta = document.createElement("div");
+    meta.className = "work-order-activity-meta";
+
+    const actor = document.createElement("span");
+    actor.className = "work-order-activity-actor";
+    actor.textContent = entry.actorLabel || "Safety360";
+    meta.append(actor);
+
+    if (entry.fieldLabel) {
+      const field = document.createElement("span");
+      field.className = "work-order-activity-field";
+      field.textContent = entry.fieldLabel;
+      meta.append(field);
+    }
+
+    if (entry.oldValue || entry.newValue) {
+      const diff = document.createElement("div");
+      diff.className = "work-order-activity-diff";
+
+      if (entry.oldValue) {
+        const previous = document.createElement("span");
+        previous.className = "work-order-activity-old";
+        previous.textContent = entry.oldValue;
+        diff.append(previous);
+      }
+
+      const arrow = document.createElement("span");
+      arrow.className = "work-order-activity-arrow";
+      arrow.textContent = "->";
+      diff.append(arrow);
+
+      if (entry.newValue) {
+        const next = document.createElement("span");
+        next.className = "work-order-activity-new";
+        next.textContent = entry.newValue;
+        diff.append(next);
+      }
+
+      body.append(top, meta, diff);
+    } else {
+      body.append(top, meta);
+    }
+
+    item.append(avatar, body);
+    workOrderActivityList.append(item);
+  });
+}
+
+async function loadWorkOrderActivity(workOrderId) {
+  if (!workOrderId) {
+    resetWorkOrderActivityState();
+    return;
+  }
+
+  state.workOrderActivity = {
+    workOrderId: String(workOrderId),
+    loading: true,
+    items: [],
+    error: "",
+  };
+  renderWorkOrderActivity();
+
+  try {
+    const payload = await apiRequest(`/work-orders/${workOrderId}/activity`);
+
+    if (state.workOrderActivity.workOrderId !== String(workOrderId)) {
+      return;
+    }
+
+    state.workOrderActivity = {
+      workOrderId: String(workOrderId),
+      loading: false,
+      items: payload.items ?? [],
+      error: "",
+    };
+  } catch (error) {
+    if (state.workOrderActivity.workOrderId !== String(workOrderId)) {
+      return;
+    }
+
+    state.workOrderActivity = {
+      workOrderId: String(workOrderId),
+      loading: false,
+      items: [],
+      error: error.message,
+    };
+  }
+
+  renderWorkOrderActivity();
+}
+
 function syncWorkOrderEditorModal() {
   const isOpen = state.workOrderEditorOpen && state.activeView === "selfdash" && Boolean(state.user);
 
@@ -3313,11 +3467,13 @@ function closeWorkOrderEditor({ reset = false } = {}) {
 
   if (reset) {
     resetWorkOrderForm();
+    resetWorkOrderActivityState();
   }
 }
 
 function focusWorkOrderComposer(prefill = {}) {
   resetWorkOrderForm();
+  resetWorkOrderActivityState();
 
   if (prefill.status) {
     workOrderStatusInput.value = prefill.status;
@@ -3805,7 +3961,8 @@ function hydrateLocationForm(location) {
   locationError.textContent = "";
 }
 
-function hydrateWorkOrderForm(workOrder) {
+function hydrateWorkOrderForm(workOrder, options = {}) {
+  const { loadActivity = true } = options;
   state.activeView = "selfdash";
   renderActiveView();
   workOrderIdInput.value = workOrder.id;
@@ -3835,6 +3992,10 @@ function hydrateWorkOrderForm(workOrder) {
   workOrderInvoiceNoteInput.value = workOrder.invoiceNote;
   workOrderError.textContent = "";
   openWorkOrderEditor();
+
+  if (loadActivity) {
+    void loadWorkOrderActivity(workOrder.id);
+  }
 }
 
 function populateOrganizationForm(organization) {
@@ -4640,6 +4801,32 @@ function renderCompactWorkOrdersList() {
         return field;
       };
 
+      const createMetaIcon = (iconName) => {
+        const icon = document.createElement("span");
+        icon.className = `work-item-meta-icon is-${iconName}`;
+
+        if (iconName === "opened") {
+          icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.75V1.5M12 2.75V1.5M2.75 5.25h10.5M3.75 3.5h8.5a1 1 0 0 1 1 1v7.75a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
+        } else {
+          icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v4l2.5 1.5M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
+        }
+
+        return icon;
+      };
+
+      const createIconMetaLine = (iconName, value, options = {}) => {
+        const { valueClassName = "" } = options;
+        const line = document.createElement("div");
+        line.className = "work-item-meta-line";
+
+        const text = document.createElement("span");
+        text.className = ["work-item-meta-value", valueClassName].filter(Boolean).join(" ");
+        text.textContent = value || "-";
+
+        line.append(createMetaIcon(iconName), text);
+        return line;
+      };
+
       const createValueStack = (primary, secondary = "", tertiary = "", options = {}) => {
         const { tertiaryClassName = "" } = options;
         const stack = document.createElement("div");
@@ -4700,24 +4887,22 @@ function renderCompactWorkOrdersList() {
       const basicsStack = document.createElement("div");
       basicsStack.className = "work-item-basic-stack";
 
-      const numberField = createBasicField("Broj RN", item.workOrderNumber || "Bez broja", {
-        valueClassName: "is-work-order-number",
-        fieldClassName: "is-primary-number",
-      });
+      const numberField = document.createElement("div");
+      numberField.className = "work-item-number-line";
       numberField.dataset.preventRowOpen = "true";
       numberField.addEventListener("click", (event) => {
         event.stopPropagation();
         hydrateWorkOrderForm(item);
       });
+      const numberValue = document.createElement("strong");
+      numberValue.className = "work-item-basic-value is-work-order-number";
+      numberValue.textContent = item.workOrderNumber || "Bez broja";
+      numberField.append(numberValue);
       basicsStack.append(numberField);
 
       const statusRow = document.createElement("div");
       statusRow.className = "work-item-basic-field work-item-status-row";
       statusRow.dataset.preventRowOpen = "true";
-
-      const statusLabel = document.createElement("span");
-      statusLabel.className = "work-item-basic-label";
-      statusLabel.textContent = "Status RN";
 
       ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
         statusRow.addEventListener(eventName, (event) => {
@@ -4725,22 +4910,16 @@ function renderCompactWorkOrdersList() {
         });
       });
 
-      statusRow.append(statusLabel, createWorkOrderStatusSelect(item));
+      statusRow.append(createWorkOrderStatusSelect(item));
       basicsStack.append(statusRow);
 
       basicsStack.append(
-        createBasicField("Otvoren", formatCompactOpenedDate(item.openedDate), {
+        createIconMetaLine("opened", formatCompactOpenedDate(item.openedDate), {
           valueClassName: "is-subtle-date",
-          fieldClassName: "is-date-field",
         }),
-        createBasicField(
-          "Rok završetka",
-          formatCompactDueDate(item.dueDate),
-          {
-            valueClassName: ["is-subtle-date", isOverdueWorkOrder(item) ? "is-overdue" : ""].join(" "),
-            fieldClassName: "is-date-field",
-          },
-        ),
+        createIconMetaLine("due", formatCompactDueDate(item.dueDate), {
+          valueClassName: ["is-subtle-date", isOverdueWorkOrder(item) ? "is-overdue" : ""].join(" "),
+        }),
       );
 
       basicCell.append(basicsStack);
@@ -4754,9 +4933,9 @@ function renderCompactWorkOrdersList() {
       ));
       const clientPills = createInlinePills(
         item.contractType || "",
-        item.contractNumber ? `Ugovor ${item.contractNumber}` : "",
-        item.period ? `Pausal ${item.period}` : "",
-        item.linkReference ? `Veza ${item.linkReference}` : "",
+        item.contractNumber || "",
+        item.period || "",
+        item.linkReference || "",
       );
       if (clientPills) {
         clientPills.classList.add("work-item-inline-pills-compact");
@@ -5316,6 +5495,7 @@ workOrderForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const isEditing = Boolean(workOrderIdInput.value);
+  const editingId = workOrderIdInput.value;
   const path = isEditing ? `/work-orders/${workOrderIdInput.value}` : "/work-orders";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -5324,8 +5504,19 @@ workOrderForm.addEventListener("submit", (event) => {
     body: buildWorkOrderPayload(),
   }), workOrderError).then((success) => {
     if (success) {
+      if (isEditing) {
+        const updatedWorkOrder = state.workOrders.find((item) => String(item.id) === String(editingId));
+
+        if (updatedWorkOrder) {
+          hydrateWorkOrderForm(updatedWorkOrder, { loadActivity: false });
+          void loadWorkOrderActivity(editingId);
+          return;
+        }
+      }
+
       closeWorkOrderEditor();
       resetWorkOrderForm();
+      resetWorkOrderActivityState();
     }
   });
 });
@@ -5954,6 +6145,7 @@ loginContentResetButton?.addEventListener("click", resetLoginContentForm);
 
 setConnectionStatus();
 resetWorkOrderForm();
+resetWorkOrderActivityState();
 resetMeasurementSheet();
 resetCompanyForm();
 resetLocationForm();

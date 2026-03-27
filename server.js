@@ -404,6 +404,7 @@ async function handleApiRequest(request, response, url) {
     const signupRequestActionMatch = url.pathname.match(/^\/api\/signup-requests\/([^/]+)\/(approve|reject)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
+    const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
     if (request.method === "POST" && url.pathname === "/api/organizations") {
@@ -538,7 +539,7 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createWorkOrder(body);
+      await domainRepository.createWorkOrder(body, user);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -623,6 +624,14 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (workOrderActivityMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronaden.");
+      const items = await domainRepository.getWorkOrderActivity(workOrderActivityMatch[1]);
+      sendJson(response, 200, { items });
+      return true;
+    }
+
     if (workOrderMatch && request.method === "PATCH") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
@@ -634,7 +643,7 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], body);
+      const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], body, user);
 
       if (!updated) {
         sendError(response, 404, "Radni nalog nije pronaden.");
