@@ -1370,24 +1370,28 @@ button:hover {
 }
 
 .status-otvoreni-rn {
-  color: var(--status-open);
-  background: var(--status-open-bg);
+  color: #5a6373;
+  background: #eef1f4;
 }
 
-.status-gotov-rn,
+.status-gotov-rn {
+  color: #2b7848;
+  background: #dff5e6;
+}
+
 .status-ovjeren-rn {
-  color: var(--status-done);
-  background: var(--status-done-bg);
+  color: #6d4d00;
+  background: #e7c760;
 }
 
 .status-fakturiran-rn {
-  color: var(--status-invoice);
-  background: var(--status-invoice-bg);
+  color: #245b37;
+  background: #bfe1ca;
 }
 
 .status-storno-rn {
-  color: var(--status-wait);
-  background: var(--status-wait-bg);
+  color: #48515d;
+  background: #d8dde4;
 }
 
 .priority-urgent {
@@ -2152,13 +2156,14 @@ body.is-work-order-editor-open {
 .work-item-row {
   display: grid;
   grid-template-columns:
-    minmax(170px, 0.82fr)
-    minmax(220px, 1.08fr)
-    minmax(220px, 1.04fr)
-    minmax(205px, 0.98fr)
-    minmax(280px, 1.42fr);
+    minmax(160px, 0.78fr)
+    minmax(220px, 1.06fr)
+    minmax(220px, 1.02fr)
+    minmax(195px, 0.9fr)
+    minmax(255px, 1.2fr)
+    minmax(110px, 0.52fr);
   column-gap: 14px;
-  min-width: 1120px;
+  min-width: 1240px;
 }
 
 .work-group-columns {
@@ -2211,6 +2216,10 @@ body.is-work-order-editor-open {
 
 .work-item-card.is-clickable:hover .work-item-row {
   box-shadow: inset 0 0 0 1px #eceeff;
+}
+
+.work-group-flat {
+  overflow: hidden;
 }
 
 .work-item-cell {
@@ -2339,28 +2348,33 @@ body.is-work-order-editor-open {
 }
 
 .work-item-status-select[data-status="otvoreni-rn"] {
-  color: var(--status-open);
-  background-color: var(--status-open-bg);
-  border-color: #d7e8df;
+  color: #5a6373;
+  background-color: #eef1f4;
+  border-color: #dde2e8;
 }
 
-.work-item-status-select[data-status="gotov-rn"],
+.work-item-status-select[data-status="gotov-rn"] {
+  color: #2b7848;
+  background-color: #dff5e6;
+  border-color: #cbe6d5;
+}
+
 .work-item-status-select[data-status="ovjeren-rn"] {
-  color: var(--status-done);
-  background-color: var(--status-done-bg);
-  border-color: #d7ece8;
+  color: #6d4d00;
+  background-color: #e7c760;
+  border-color: #d7b54a;
 }
 
 .work-item-status-select[data-status="fakturiran-rn"] {
-  color: var(--status-invoice);
-  background-color: var(--status-invoice-bg);
-  border-color: #f2d7dd;
+  color: #245b37;
+  background-color: #bfe1ca;
+  border-color: #aaccb6;
 }
 
 .work-item-status-select[data-status="storno-rn"] {
-  color: var(--status-wait);
-  background-color: var(--status-wait-bg);
-  border-color: #e4e3ef;
+  color: #48515d;
+  background-color: #d8dde4;
+  border-color: #c8ced7;
 }
 
 .work-item-status-select:disabled {
@@ -2391,6 +2405,37 @@ body.is-work-order-editor-open {
   min-height: 20px;
   padding: 0 8px;
   font-size: 0.7rem;
+}
+
+.work-item-executors-cell {
+  align-content: start;
+}
+
+.work-executor-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-executor-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--executor-bg, #eef1f5);
+  color: var(--executor-fg, #4f5d73);
+  border: 1px solid rgba(96, 106, 128, 0.12);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.work-executor-empty {
+  color: #98a0b3;
+  font-size: 1rem;
+  line-height: 36px;
 }
 
 .work-item-actions {
