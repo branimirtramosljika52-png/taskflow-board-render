@@ -352,15 +352,47 @@ const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
 let userMenuOpen = false;
 
-function setConnectionStatus() {
-  if (state.storage === "mysql") {
-    connectionStatus.textContent = "Spojeno na MySQL backend";
-    connectionStatus.classList.remove("is-memory");
+function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
+  if (!connectionStatus) {
     return;
   }
 
-  connectionStatus.textContent = "Koristi se privremeni in-memory backend dok DATABASE_URL nije konfiguriran";
-  connectionStatus.classList.add("is-memory");
+  connectionStatus.className = `connection-status is-${tone}`;
+
+  const indicator = document.createElement("span");
+  indicator.className = "connection-status-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+
+  const copy = document.createElement("span");
+  copy.className = "connection-status-copy";
+
+  const labelNode = document.createElement("strong");
+  labelNode.className = "connection-status-label";
+  labelNode.textContent = label;
+
+  const metaNode = document.createElement("span");
+  metaNode.className = "connection-status-meta";
+  metaNode.textContent = meta;
+
+  copy.append(labelNode, metaNode);
+  connectionStatus.replaceChildren(indicator, copy);
+}
+
+function setConnectionStatus() {
+  if (state.storage === "mysql") {
+    renderConnectionStatus({
+      tone: "live",
+      label: "Live",
+      meta: "MySQL sinkroniziran",
+    });
+    return;
+  }
+
+  renderConnectionStatus({
+    tone: "memory",
+    label: "Lokalno",
+    meta: "privremeni backend",
+  });
 }
 
 function setSyncError(message = "") {

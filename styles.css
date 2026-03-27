@@ -958,6 +958,11 @@ fieldset {
   line-height: 0.92;
 }
 
+.hero-copy-minimal {
+  display: flex;
+  align-items: flex-start;
+}
+
 .intro,
 .helper-copy {
   margin: 0;
@@ -967,17 +972,90 @@ fieldset {
 .connection-status {
   display: inline-flex;
   align-items: center;
-  margin: 16px 0 0;
-  padding: 8px 12px;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 20px;
+  border: 1px solid #e7ebf3;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 32px rgba(43, 53, 84, 0.08);
+  color: #263247;
+  min-width: 220px;
+}
+
+.connection-status-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.connection-status-label {
+  color: #1f2940;
+  font-size: 0.83rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.connection-status-meta {
+  color: #7b8398;
+  font-size: 0.74rem;
+  line-height: 1.2;
+}
+
+.connection-status-indicator {
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.connection-status.is-connecting .connection-status-indicator {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(104, 117, 145, 0.22);
+  border-top-color: #566683;
+  background: transparent;
+  animation: connection-spin 0.9s linear infinite;
+}
+
+.connection-status.is-live {
+  border-color: #dfeee6;
+  background: rgba(246, 252, 248, 0.92);
+}
+
+.connection-status.is-live .connection-status-indicator {
+  background: #34b26e;
+  box-shadow: 0 0 0 0 rgba(52, 178, 110, 0.35);
+  animation: connection-pulse 1.8s ease-out infinite;
 }
 
 .connection-status.is-memory {
-  background: var(--warn-soft);
-  color: var(--warn);
+  border-color: #f0e0bf;
+  background: rgba(255, 248, 233, 0.96);
+}
+
+.connection-status.is-memory .connection-status-indicator {
+  background: #d5982c;
+}
+
+@keyframes connection-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes connection-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 178, 110, 0.35);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(52, 178, 110, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 178, 110, 0);
+  }
 }
 
 .summary-grid {

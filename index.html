@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-  <link rel="stylesheet" href="/styles.css?v=20260327h" />
+  <link rel="stylesheet" href="/styles.css?v=20260327i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -226,13 +226,14 @@
         </div>
 
         <header class="hero">
-          <div class="hero-copy">
-            <p class="eyebrow">Safety360 Logic</p>
-            <h1>SelfDash Workspace</h1>
-            <p class="intro">
-              Web verzija logike iz workbooka: glavni SelfDash za radne naloge, uz pomocne liste za tvrtke i lokacije.
-            </p>
-            <p id="connection-status" class="connection-status">Spajanje na backend...</p>
+          <div class="hero-copy hero-copy-minimal">
+            <div id="connection-status" class="connection-status is-connecting" role="status" aria-live="polite">
+              <span class="connection-status-indicator" aria-hidden="true"></span>
+              <span class="connection-status-copy">
+                <strong class="connection-status-label">Povezivanje</strong>
+                <span class="connection-status-meta">ucitavanje podataka...</span>
+              </span>
+            </div>
           </div>
 
           <div class="summary-grid">
@@ -1106,7 +1107,7 @@
       </section>
     </main>
 
-  <script type="module" src="/src/auth-transitions.js?v=20260327h"></script>
-  <script type="module" src="/src/main.js?v=20260327h"></script>
+  <script type="module" src="/src/auth-transitions.js?v=20260327i"></script>
+  <script type="module" src="/src/main.js?v=20260327i"></script>
   </body>
 </html>
