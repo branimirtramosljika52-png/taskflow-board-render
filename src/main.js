@@ -81,6 +81,7 @@ const state = {
   user: null,
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
+  expandedWorkOrderIds: new Set(),
   activeSidebarGroup: "home",
   sidebarCollapsed: false,
   measurementSheet: {
@@ -444,6 +445,9 @@ function applySnapshot(payload) {
   state.signupRequests = payload.signupRequests ?? [];
   state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
+  state.expandedWorkOrderIds = new Set(
+    [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
+  );
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
@@ -3833,7 +3837,7 @@ function loadMoreWorkOrders() {
   }
 
   state.workOrderRenderLimit = Math.min(state.workOrderRenderLimit + WORK_ORDER_BATCH_SIZE, total);
-  renderGroupedWorkOrdersList();
+  renderCompactWorkOrdersList();
 }
 
 function renderWorkOrders() {
@@ -4003,6 +4007,83 @@ function renderWorkOrders() {
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
     ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
     : `Prikazano svih ${filtered.length} RN.`;
+}
+
+function looksLikeWorkOrderLog(text) {
+  const normalized = String(text ?? "").trim();
+  return /^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}:\d{2}\]\s*-\s*.+?:/u.test(normalized);
+}
+
+function getWorkOrderDetailLines(item) {
+  const lines = [];
+  const normalizedDescription = String(item.description ?? "").trim();
+
+  if (normalizedDescription) {
+    lines.push({
+      label: looksLikeWorkOrderLog(normalizedDescription) ? "Dnevnik" : "Opis",
+      value: normalizedDescription,
+      isLog: looksLikeWorkOrderLog(normalizedDescription),
+    });
+  }
+
+  if (item.linkReference) {
+    lines.push({ label: "Poveznica", value: item.linkReference });
+  }
+
+  if (item.completedBy) {
+    lines.push({ label: "Zavrsio", value: item.completedBy });
+  }
+
+  return lines;
+}
+
+function updateWorkOrderStatusSelectTheme(select, value) {
+  select.dataset.status = slugifyValue(value);
+}
+
+function createWorkOrderStatusSelect(item) {
+  const select = document.createElement("select");
+  select.className = "work-item-status-select";
+  replaceSelectOptions(select, WORK_ORDER_STATUS_OPTIONS, item.status || "Otvoreni RN");
+  updateWorkOrderStatusSelectTheme(select, select.value);
+  select.disabled = state.user?.role === "user";
+
+  select.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  select.addEventListener("change", () => {
+    updateWorkOrderStatusSelectTheme(select, select.value);
+    const previousValue = item.status || "Otvoreni RN";
+
+    if (select.value === previousValue) {
+      return;
+    }
+
+    void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
+      method: "PATCH",
+      body: { status: select.value },
+    })).then((success) => {
+      if (!success) {
+        select.value = previousValue;
+        updateWorkOrderStatusSelectTheme(select, select.value);
+      }
+    });
+  });
+
+  return select;
+}
+
+function toggleWorkOrderDetails(workOrderId) {
+  const normalizedId = String(workOrderId);
+
+  if (state.expandedWorkOrderIds.has(normalizedId)) {
+    state.expandedWorkOrderIds.delete(normalizedId);
+  } else {
+    state.expandedWorkOrderIds = new Set([normalizedId]);
+  }
+
+  renderCompactWorkOrdersList();
 }
 
 function renderGroupedWorkOrdersList() {
@@ -4206,6 +4287,301 @@ function renderGroupedWorkOrdersList() {
 
       row.append(groupOne, groupTwo, groupThree, groupFour, serviceItems, actions);
       body.append(row);
+    });
+
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "work-group-add-row";
+    addRow.textContent = "+ Add task";
+    addRow.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    section.append(groupHeader, columns, body, addRow);
+    return section;
+  }));
+
+  workOrdersEmpty.hidden = filtered.length !== 0;
+
+  if (filtered.length === 0) {
+    workOrdersLoadState.hidden = true;
+    workOrdersLoadState.textContent = "";
+    return;
+  }
+
+  workOrdersLoadState.hidden = false;
+  workOrdersLoadState.textContent = visibleItems.length < filtered.length
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    : `Prikazano svih ${filtered.length} RN.`;
+}
+
+function renderCompactWorkOrdersList() {
+  const filtered = getFilteredWorkOrders();
+  const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
+  const fullGroups = buildWorkOrderGroups(filtered);
+  const visibleGroups = buildWorkOrderGroups(visibleItems);
+
+  if (workOrdersHelper) {
+    workOrdersHelper.textContent = "";
+    workOrdersHelper.hidden = true;
+  }
+
+  workOrdersBody.replaceChildren(...visibleGroups.map((group) => {
+    const section = document.createElement("section");
+    section.className = "work-group";
+
+    const groupHeader = document.createElement("div");
+    groupHeader.className = "work-group-header";
+
+    const headerLead = document.createElement("div");
+    headerLead.className = "work-group-lead";
+
+    const foldIcon = document.createElement("span");
+    foldIcon.className = "work-group-fold";
+    foldIcon.textContent = "v";
+
+    const statusBadge = createBadge(group.label, statusBadgeClass(group.status));
+    statusBadge.classList.add("work-group-status-badge");
+
+    const totalCount = fullGroups.find((entry) => entry.status === group.status)?.items.length ?? group.items.length;
+    const count = document.createElement("span");
+    count.className = "work-group-count";
+    count.textContent = String(totalCount);
+
+    headerLead.append(foldIcon, statusBadge, count);
+
+    const groupActions = document.createElement("button");
+    groupActions.type = "button";
+    groupActions.className = "work-group-add-inline";
+    groupActions.textContent = "+ Add task";
+    groupActions.addEventListener("click", () => {
+      focusWorkOrderComposer({ status: group.status });
+    });
+
+    groupHeader.append(headerLead, groupActions);
+
+    const columns = document.createElement("div");
+    columns.className = "work-group-columns";
+
+    ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Akcije"].forEach((label) => {
+      const cell = document.createElement("div");
+      cell.className = "work-group-column";
+
+      const title = document.createElement("strong");
+      title.className = "work-group-column-title";
+      title.textContent = label;
+
+      cell.append(title);
+      columns.append(cell);
+    });
+
+    const body = document.createElement("div");
+    body.className = "work-group-body";
+
+    group.items.forEach((item) => {
+      const rowCard = document.createElement("section");
+      rowCard.className = "work-item-card";
+      const isExpanded = state.expandedWorkOrderIds.has(String(item.id));
+      rowCard.classList.toggle("is-expanded", isExpanded);
+
+      const row = document.createElement("article");
+      row.className = "work-item-row";
+
+      const createValueStack = (primary, secondary = "", tertiary = "", options = {}) => {
+        const { tertiaryClassName = "" } = options;
+        const stack = document.createElement("div");
+        stack.className = "work-item-value-stack";
+
+        const primaryNode = document.createElement("strong");
+        primaryNode.className = "work-item-value-primary";
+        primaryNode.textContent = primary || "-";
+        stack.append(primaryNode);
+
+        if (secondary) {
+          const secondaryNode = document.createElement("span");
+          secondaryNode.className = "work-item-value-secondary";
+          secondaryNode.textContent = secondary;
+          stack.append(secondaryNode);
+        }
+
+        if (tertiary) {
+          const tertiaryNode = document.createElement("span");
+          tertiaryNode.className = ["work-item-value-tertiary", tertiaryClassName].filter(Boolean).join(" ");
+          tertiaryNode.textContent = tertiary;
+          stack.append(tertiaryNode);
+        }
+
+        return stack;
+      };
+
+      const createInlinePills = (...values) => {
+        const filteredValues = values.filter(Boolean);
+
+        if (!filteredValues.length) {
+          return null;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "work-item-inline-pills";
+        filteredValues.forEach((value) => {
+          const pill = document.createElement("span");
+          pill.className = "work-item-inline-pill";
+          pill.textContent = value;
+          wrap.append(pill);
+        });
+        return wrap;
+      };
+
+      const detailLines = getWorkOrderDetailLines(item);
+      const detailAvailable = detailLines.length > 0;
+      const executorValues = [item.executor1, item.executor2].filter(Boolean);
+
+      const basicCell = document.createElement("div");
+      basicCell.className = "work-item-cell work-item-cell-group";
+
+      const basicsStack = document.createElement("div");
+      basicsStack.className = "work-item-value-stack";
+
+      if (detailAvailable) {
+        const numberButton = document.createElement("button");
+        numberButton.type = "button";
+        numberButton.className = "work-item-number-button";
+        numberButton.textContent = item.workOrderNumber || "Bez broja";
+        numberButton.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        numberButton.addEventListener("click", () => {
+          toggleWorkOrderDetails(item.id);
+        });
+        basicsStack.append(numberButton);
+      } else {
+        const numberLabel = document.createElement("strong");
+        numberLabel.className = "work-item-value-primary";
+        numberLabel.textContent = item.workOrderNumber || "Bez broja";
+        basicsStack.append(numberLabel);
+      }
+
+      const openedCopy = document.createElement("span");
+      openedCopy.className = "work-item-value-secondary";
+      openedCopy.textContent = item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "Bez datuma";
+      basicsStack.append(openedCopy);
+
+      const statusRow = document.createElement("div");
+      statusRow.className = "work-item-status-row";
+      statusRow.append(createWorkOrderStatusSelect(item));
+      basicsStack.append(statusRow);
+      basicCell.append(basicsStack);
+
+      const executorPills = createInlinePills(...executorValues);
+      if (executorPills) {
+        executorPills.classList.add("work-item-inline-pills-compact");
+        basicCell.append(executorPills);
+      }
+
+      const clientCell = document.createElement("div");
+      clientCell.className = "work-item-cell work-item-cell-group";
+      clientCell.append(createValueStack(
+        item.companyName || "Bez tvrtke",
+        item.headquarters || "",
+        item.companyOib ? `OIB ${item.companyOib}` : "",
+      ));
+
+      const locationCell = document.createElement("div");
+      locationCell.className = "work-item-cell work-item-cell-group";
+      locationCell.append(createValueStack(
+        item.locationName || "Bez lokacije",
+        item.region || "",
+        item.coordinates || "",
+      ));
+
+      const contactCell = document.createElement("div");
+      contactCell.className = "work-item-cell work-item-cell-group";
+      contactCell.append(createValueStack(
+        item.contactName || item.contactPhone || "Bez kontakta",
+        item.contactEmail || "",
+        item.contactPhone && item.contactPhone !== item.contactName ? item.contactPhone : "",
+      ));
+
+      const serviceCell = document.createElement("div");
+      serviceCell.className = "work-item-cell work-item-cell-group";
+      const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
+      serviceCell.append(createValueStack(
+        item.serviceLine || "Bez usluge",
+        item.department || "",
+        serviceDescription || "",
+        { tertiaryClassName: "is-service-copy" },
+      ));
+      const servicePills = createInlinePills(
+        item.tagText ? `#${item.tagText}` : "",
+        item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
+        item.dueDate ? `Rok ${formatDate(item.dueDate)}` : "",
+      );
+      if (servicePills) {
+        servicePills.classList.add("work-item-inline-pills-compact");
+        serviceCell.append(servicePills);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "work-item-cell work-item-actions";
+      actions.append(
+        createActionButton("Uredi", "card-button card-button-light work-item-action-button", () => hydrateWorkOrderForm(item)),
+      );
+
+      if (state.user?.role !== "user") {
+        actions.append(
+          createActionButton("Obrisi", "card-button card-button-light card-danger work-item-action-button", () => {
+            if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
+              return;
+            }
+
+            void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
+          }),
+        );
+      }
+
+      row.append(basicCell, clientCell, locationCell, contactCell, serviceCell, actions);
+      rowCard.append(row);
+
+      if (detailAvailable && isExpanded) {
+        const detailPanel = document.createElement("div");
+        detailPanel.className = "work-item-detail-panel";
+
+        const detailMeta = document.createElement("div");
+        detailMeta.className = "work-item-detail-meta";
+
+        [
+          item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "",
+          item.dueDate ? `Rok ${formatDate(item.dueDate)}` : "",
+          executorValues.length ? `Izvrsitelji: ${executorValues.join(", ")}` : "",
+        ].filter(Boolean).forEach((value) => {
+          const pill = document.createElement("span");
+          pill.className = "work-item-inline-pill";
+          pill.textContent = value;
+          detailMeta.append(pill);
+        });
+
+        if (detailMeta.childElementCount > 0) {
+          detailPanel.append(detailMeta);
+        }
+
+        detailLines.forEach((line) => {
+          const detailBlock = document.createElement("div");
+          detailBlock.className = "work-item-detail-block";
+
+          const label = document.createElement("span");
+          label.className = "work-item-detail-label";
+          label.textContent = line.label;
+
+          const value = document.createElement("div");
+          value.className = ["work-item-detail-value", line.isLog ? "is-log" : ""].filter(Boolean).join(" ");
+          value.textContent = line.value;
+
+          detailBlock.append(label, value);
+          detailPanel.append(detailBlock);
+        });
+
+        rowCard.append(detailPanel);
+      }
+
+      body.append(rowCard);
     });
 
     const addRow = document.createElement("button");
@@ -4591,7 +4967,7 @@ function render() {
   renderLoginContent();
   renderSummary();
   renderSharedOptions();
-  renderGroupedWorkOrdersList();
+  renderCompactWorkOrdersList();
   renderCompanies();
   renderLocations();
   renderManagement();
@@ -4694,15 +5070,15 @@ workOrdersTableWrap.addEventListener("scroll", () => {
 
 workOrderSearchInput.addEventListener("input", () => {
   resetWorkOrderListWindow();
-  renderGroupedWorkOrdersList();
+  renderCompactWorkOrdersList();
 });
 workOrderFilterStatusInput.addEventListener("change", () => {
   resetWorkOrderListWindow();
-  renderGroupedWorkOrdersList();
+  renderCompactWorkOrdersList();
 });
 workOrderFilterCompanyInput.addEventListener("change", () => {
   resetWorkOrderListWindow();
-  renderGroupedWorkOrdersList();
+  renderCompactWorkOrdersList();
 });
 
 workOrderForm.addEventListener("submit", (event) => {
