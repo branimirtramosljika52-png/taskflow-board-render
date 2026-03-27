@@ -823,25 +823,80 @@ function focusSelfDashArea(target = "top") {
   });
 }
 
-function formatDate(value) {
+function parseDateValue(value) {
   if (!value) {
-    return "Bez datuma";
+    return null;
   }
 
   const rawValue = String(value).trim();
   const directDate = new Date(rawValue);
 
   if (!Number.isNaN(directDate.getTime())) {
-    return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(directDate);
+    return directDate;
   }
 
   const normalizedDateOnly = new Date(`${rawValue.slice(0, 10)}T12:00:00`);
 
   if (!Number.isNaN(normalizedDateOnly.getTime())) {
-    return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(normalizedDateOnly);
+    return normalizedDateOnly;
   }
 
-  return "Bez datuma";
+  return null;
+}
+
+function formatDate(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "Bez datuma";
+  }
+
+  return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(parsedDate);
+}
+
+function formatCompactDate(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "Bez datuma";
+  }
+
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const year = parsedDate.getFullYear();
+  return `${day}.${month}.${year}.`;
+}
+
+function formatCompactDueDate(value) {
+  if (!value) {
+    return "Bez roka";
+  }
+
+  return formatCompactDate(value);
+}
+
+function formatCompactOpenedDate(value) {
+  if (!value) {
+    return "Bez datuma";
+  }
+
+  return formatCompactDate(value);
+}
+
+function formatDateTime(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "Bez datuma";
+  }
+
+  return new Intl.DateTimeFormat("hr-HR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsedDate);
 }
 
 function getCompany(companyId) {
@@ -4644,16 +4699,17 @@ function renderCompactWorkOrdersList() {
 
       const basicsStack = document.createElement("div");
       basicsStack.className = "work-item-basic-stack";
-      basicsStack.append(
-        createBasicField("Otvoren", item.openedDate ? formatDate(item.openedDate) : "Bez datuma"),
-        createBasicField(
-          "Rok završetka",
-          item.dueDate ? formatDate(item.dueDate) : "Bez roka",
-          {
-            valueClassName: isOverdueWorkOrder(item) ? "is-overdue" : "",
-          },
-        ),
-      );
+
+      const numberField = createBasicField("Broj RN", item.workOrderNumber || "Bez broja", {
+        valueClassName: "is-work-order-number",
+        fieldClassName: "is-primary-number",
+      });
+      numberField.dataset.preventRowOpen = "true";
+      numberField.addEventListener("click", (event) => {
+        event.stopPropagation();
+        hydrateWorkOrderForm(item);
+      });
+      basicsStack.append(numberField);
 
       const statusRow = document.createElement("div");
       statusRow.className = "work-item-basic-field work-item-status-row";
@@ -4672,15 +4728,20 @@ function renderCompactWorkOrdersList() {
       statusRow.append(statusLabel, createWorkOrderStatusSelect(item));
       basicsStack.append(statusRow);
 
-      const numberField = createBasicField("Broj RN", item.workOrderNumber || "Bez broja", {
-        valueClassName: "is-work-order-number",
-      });
-      numberField.dataset.preventRowOpen = "true";
-      numberField.addEventListener("click", (event) => {
-        event.stopPropagation();
-        hydrateWorkOrderForm(item);
-      });
-      basicsStack.append(numberField);
+      basicsStack.append(
+        createBasicField("Otvoren", formatCompactOpenedDate(item.openedDate), {
+          valueClassName: "is-subtle-date",
+          fieldClassName: "is-date-field",
+        }),
+        createBasicField(
+          "Rok završetka",
+          formatCompactDueDate(item.dueDate),
+          {
+            valueClassName: ["is-subtle-date", isOverdueWorkOrder(item) ? "is-overdue" : ""].join(" "),
+            fieldClassName: "is-date-field",
+          },
+        ),
+      );
 
       basicCell.append(basicsStack);
 

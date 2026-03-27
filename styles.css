@@ -2345,7 +2345,7 @@ body.is-work-order-editor-open {
 .work-item-basic-stack {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .work-item-basic-field {
@@ -2356,7 +2356,7 @@ body.is-work-order-editor-open {
 
 .work-item-basic-label {
   color: #8f96aa;
-  font-size: 0.64rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2364,10 +2364,14 @@ body.is-work-order-editor-open {
 
 .work-item-basic-value {
   color: #2b3142;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.32;
   word-break: break-word;
+}
+
+.work-item-basic-field.is-primary-number {
+  gap: 2px;
 }
 
 .work-item-basic-value.is-overdue {
@@ -2375,16 +2379,20 @@ body.is-work-order-editor-open {
 }
 
 .work-item-basic-value.is-work-order-number {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid #e5e9f3;
-  border-radius: 999px;
-  background: #f7f9fd;
-  color: #1f2636;
-  font-size: 0.79rem;
+  color: #1b2233;
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.work-item-basic-field.is-date-field {
+  gap: 2px;
+}
+
+.work-item-basic-value.is-subtle-date {
+  color: #8e95a7;
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .work-item-value-stack {
