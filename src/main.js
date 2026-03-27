@@ -82,6 +82,7 @@ const state = {
   activeOrganizationId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
+  workOrderEditorOpen: false,
   activeSidebarGroup: "home",
   sidebarCollapsed: false,
   measurementSheet: {
@@ -162,6 +163,9 @@ const activeWorkOrdersCount = document.querySelector("#active-work-orders-count"
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
 
+const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
+const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
+const workOrderEditorCloseButton = document.querySelector("#work-order-editor-close");
 const workOrderForm = document.querySelector("#work-order-form");
 const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
@@ -3134,6 +3138,35 @@ function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label ?? value;
 }
 
+function syncWorkOrderEditorModal() {
+  const isOpen = state.workOrderEditorOpen && state.activeView === "selfdash" && Boolean(state.user);
+
+  workOrderEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-work-order-editor-open", isOpen);
+
+  if (workOrderEditorBackdrop) {
+    workOrderEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (workOrderEditorCloseButton) {
+    workOrderEditorCloseButton.hidden = !isOpen;
+  }
+}
+
+function openWorkOrderEditor() {
+  state.workOrderEditorOpen = true;
+  syncWorkOrderEditorModal();
+}
+
+function closeWorkOrderEditor({ reset = false } = {}) {
+  state.workOrderEditorOpen = false;
+  syncWorkOrderEditorModal();
+
+  if (reset) {
+    resetWorkOrderForm();
+  }
+}
+
 function focusWorkOrderComposer(prefill = {}) {
   resetWorkOrderForm();
 
@@ -3146,10 +3179,7 @@ function focusWorkOrderComposer(prefill = {}) {
     workOrderPriorityInput.value = prefill.priority;
   }
 
-  workOrderForm.closest(".panel")?.scrollIntoView({
-    behavior: "smooth",
-    block: "start",
-  });
+  openWorkOrderEditor();
 }
 
 function buildWorkOrderGroups(items) {
@@ -3169,6 +3199,11 @@ function renderAuthState() {
   authScreen.hidden = authenticated;
   appShell.hidden = !authenticated;
   document.body.classList.toggle("is-auth-mode", !authenticated);
+
+  if (!authenticated) {
+    state.workOrderEditorOpen = false;
+    syncWorkOrderEditorModal();
+  }
 
   if (authenticated) {
     const isSuperAdmin = getIsSuperAdmin();
@@ -3650,6 +3685,7 @@ function hydrateWorkOrderForm(workOrder) {
   workOrderDescriptionInput.value = workOrder.description;
   workOrderInvoiceNoteInput.value = workOrder.invoiceNote;
   workOrderError.textContent = "";
+  openWorkOrderEditor();
 }
 
 function populateOrganizationForm(organization) {
@@ -3737,7 +3773,12 @@ function renderActiveView() {
     button.classList.toggle("is-active", button.dataset.view === state.activeView);
   }
 
+  if (state.activeView !== "selfdash") {
+    state.workOrderEditorOpen = false;
+  }
+
   renderSidebarState();
+  syncWorkOrderEditorModal();
 }
 
 function renderSharedOptions() {
@@ -4363,7 +4404,7 @@ function renderCompactWorkOrdersList() {
     const columns = document.createElement("div");
     columns.className = "work-group-columns";
 
-    ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Akcije"].forEach((label) => {
+    ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga"].forEach((label) => {
       const cell = document.createElement("div");
       cell.className = "work-group-column";
 
@@ -4381,8 +4422,6 @@ function renderCompactWorkOrdersList() {
     group.items.forEach((item) => {
       const rowCard = document.createElement("section");
       rowCard.className = "work-item-card";
-      const isExpanded = state.expandedWorkOrderIds.has(String(item.id));
-      rowCard.classList.toggle("is-expanded", isExpanded);
 
       const row = document.createElement("article");
       row.className = "work-item-row";
@@ -4432,32 +4471,21 @@ function renderCompactWorkOrdersList() {
         return wrap;
       };
 
-      const detailLines = getWorkOrderDetailLines(item);
-      const detailAvailable = detailLines.length > 0;
       const executorValues = [item.executor1, item.executor2].filter(Boolean);
+      rowCard.classList.add("is-clickable");
+      row.addEventListener("click", () => {
+        hydrateWorkOrderForm(item);
+      });
 
       const basicCell = document.createElement("div");
       basicCell.className = "work-item-cell work-item-cell-group";
 
       const basicsStack = document.createElement("div");
       basicsStack.className = "work-item-value-stack";
-
-      if (detailAvailable) {
-        const numberButton = document.createElement("button");
-        numberButton.type = "button";
-        numberButton.className = "work-item-number-button";
-        numberButton.textContent = item.workOrderNumber || "Bez broja";
-        numberButton.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-        numberButton.addEventListener("click", () => {
-          toggleWorkOrderDetails(item.id);
-        });
-        basicsStack.append(numberButton);
-      } else {
-        const numberLabel = document.createElement("strong");
-        numberLabel.className = "work-item-value-primary";
-        numberLabel.textContent = item.workOrderNumber || "Bez broja";
-        basicsStack.append(numberLabel);
-      }
+      const numberLabel = document.createElement("strong");
+      numberLabel.className = "work-item-value-primary";
+      numberLabel.textContent = item.workOrderNumber || "Bez broja";
+      basicsStack.append(numberLabel);
 
       const openedCopy = document.createElement("span");
       openedCopy.className = "work-item-value-secondary";
@@ -4466,6 +4494,9 @@ function renderCompactWorkOrdersList() {
 
       const statusRow = document.createElement("div");
       statusRow.className = "work-item-status-row";
+      statusRow.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
       statusRow.append(createWorkOrderStatusSelect(item));
       basicsStack.append(statusRow);
       basicCell.append(basicsStack);
@@ -4519,68 +4550,8 @@ function renderCompactWorkOrdersList() {
         serviceCell.append(servicePills);
       }
 
-      const actions = document.createElement("div");
-      actions.className = "work-item-cell work-item-actions";
-      actions.append(
-        createActionButton("Uredi", "card-button card-button-light work-item-action-button", () => hydrateWorkOrderForm(item)),
-      );
-
-      if (state.user?.role !== "user") {
-        actions.append(
-          createActionButton("Obrisi", "card-button card-button-light card-danger work-item-action-button", () => {
-            if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
-              return;
-            }
-
-            void runMutation(() => apiRequest(`/work-orders/${item.id}`, { method: "DELETE" }));
-          }),
-        );
-      }
-
-      row.append(basicCell, clientCell, locationCell, contactCell, serviceCell, actions);
+      row.append(basicCell, clientCell, locationCell, contactCell, serviceCell);
       rowCard.append(row);
-
-      if (detailAvailable && isExpanded) {
-        const detailPanel = document.createElement("div");
-        detailPanel.className = "work-item-detail-panel";
-
-        const detailMeta = document.createElement("div");
-        detailMeta.className = "work-item-detail-meta";
-
-        [
-          item.openedDate ? `Otvoren ${formatDate(item.openedDate)}` : "",
-          item.dueDate ? `Rok ${formatDate(item.dueDate)}` : "",
-          executorValues.length ? `Izvrsitelji: ${executorValues.join(", ")}` : "",
-        ].filter(Boolean).forEach((value) => {
-          const pill = document.createElement("span");
-          pill.className = "work-item-inline-pill";
-          pill.textContent = value;
-          detailMeta.append(pill);
-        });
-
-        if (detailMeta.childElementCount > 0) {
-          detailPanel.append(detailMeta);
-        }
-
-        detailLines.forEach((line) => {
-          const detailBlock = document.createElement("div");
-          detailBlock.className = "work-item-detail-block";
-
-          const label = document.createElement("span");
-          label.className = "work-item-detail-label";
-          label.textContent = line.label;
-
-          const value = document.createElement("div");
-          value.className = ["work-item-detail-value", line.isLog ? "is-log" : ""].filter(Boolean).join(" ");
-          value.textContent = line.value;
-
-          detailBlock.append(label, value);
-          detailPanel.append(detailBlock);
-        });
-
-        rowCard.append(detailPanel);
-      }
-
       body.append(rowCard);
     });
 
@@ -5093,12 +5064,19 @@ workOrderForm.addEventListener("submit", (event) => {
     body: buildWorkOrderPayload(),
   }), workOrderError).then((success) => {
     if (success) {
+      closeWorkOrderEditor();
       resetWorkOrderForm();
     }
   });
 });
 
 workOrderResetButton.addEventListener("click", resetWorkOrderForm);
+workOrderEditorCloseButton?.addEventListener("click", () => {
+  closeWorkOrderEditor({ reset: true });
+});
+workOrderEditorBackdrop?.addEventListener("click", () => {
+  closeWorkOrderEditor({ reset: true });
+});
 workOrderOpenFormButton?.addEventListener("click", () => {
   focusWorkOrderComposer();
 });

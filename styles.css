@@ -1505,6 +1505,57 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   box-shadow: 0 28px 88px rgba(43, 53, 84, 0.22);
 }
 
+.work-order-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  background: rgba(17, 21, 31, 0.32);
+  backdrop-filter: blur(6px);
+}
+
+body.is-work-order-editor-open {
+  overflow: hidden;
+}
+
+.work-order-editor-panel.is-modal-open {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  z-index: 37;
+  width: min(1320px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  transform: translateX(-50%);
+  border: 1px solid rgba(206, 212, 228, 0.94);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.24);
+}
+
+.work-order-editor-panel.is-modal-open .section-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -22px -22px 16px;
+  padding: 22px 22px 16px;
+  background: linear-gradient(180deg, rgba(252, 252, 254, 0.98), rgba(246, 248, 252, 0.96));
+  border-bottom: 1px solid #eef1f7;
+}
+
+.work-order-editor-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.work-order-editor-heading-actions .helper-copy {
+  margin: 0;
+}
+
+.work-order-editor-close {
+  min-height: 36px;
+}
+
 .measurement-sheet-head {
   display: flex;
   align-items: start;
@@ -2105,10 +2156,9 @@ body.is-selecting-measurement-cells .measurement-cell-input {
     minmax(220px, 1.08fr)
     minmax(220px, 1.04fr)
     minmax(205px, 0.98fr)
-    minmax(265px, 1.34fr)
-    minmax(112px, 0.56fr);
+    minmax(280px, 1.42fr);
   column-gap: 14px;
-  min-width: 1260px;
+  min-width: 1120px;
 }
 
 .work-group-columns {
@@ -2145,6 +2195,10 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   border-top: 1px solid #f0eff6;
 }
 
+.work-item-card.is-clickable .work-item-row {
+  cursor: pointer;
+}
+
 .work-item-row {
   align-items: start;
   padding: 10px 14px;
@@ -2153,6 +2207,10 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 .work-item-card:hover .work-item-row,
 .work-item-card.is-expanded .work-item-row {
   background: #fcfcff;
+}
+
+.work-item-card.is-clickable:hover .work-item-row {
+  box-shadow: inset 0 0 0 1px #eceeff;
 }
 
 .work-item-cell {

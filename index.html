@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SelfDash Workspace</title>
-  <link rel="stylesheet" href="/styles.css?v=20260327e" />
+  <link rel="stylesheet" href="/styles.css?v=20260327f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -262,13 +262,18 @@
         <p id="sync-error" class="sync-error" hidden></p>
 
         <section id="selfdash-view" class="workspace-view workspace-dashboard">
-          <section class="panel">
+          <div id="work-order-editor-backdrop" class="work-order-editor-backdrop" hidden></div>
+
+          <section id="work-order-editor-panel" class="panel work-order-editor-panel">
             <div class="section-heading">
               <div>
                 <p class="section-kicker">Glavni sheet</p>
                 <h2>SelfDash</h2>
               </div>
-              <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
+              <div class="work-order-editor-heading-actions">
+                <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
+                <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close" hidden>Zatvori</button>
+              </div>
             </div>
 
             <form id="work-order-form" class="entity-form">
@@ -1100,7 +1105,7 @@
       </section>
     </main>
 
-  <script type="module" src="/src/auth-transitions.js?v=20260327e"></script>
-  <script type="module" src="/src/main.js?v=20260327e"></script>
+  <script type="module" src="/src/auth-transitions.js?v=20260327f"></script>
+  <script type="module" src="/src/main.js?v=20260327f"></script>
   </body>
 </html>
