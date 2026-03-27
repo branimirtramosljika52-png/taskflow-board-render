@@ -4392,6 +4392,33 @@ function updateWorkOrderStatusSelectTheme(select, value) {
   select.dataset.status = slugifyValue(value);
 }
 
+function normalizeWorkOrderClientReference(value) {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized
+    .replace(/^\s*veza(?:\s*rn)?\s*[:\-]?\s*/iu, "")
+    .trim();
+}
+
+function getWorkOrderClientPills(item) {
+  const rawValue = normalizeWorkOrderClientReference(item.linkReference);
+
+  if (!rawValue) {
+    return [];
+  }
+
+  return Array.from(new Set(
+    rawValue
+      .split(/[|,;/]+/u)
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  ));
+}
+
 function isInteractiveWorkOrderTarget(target) {
   if (!(target instanceof Element)) {
     return false;
@@ -4402,42 +4429,104 @@ function isInteractiveWorkOrderTarget(target) {
   ));
 }
 
-function createWorkOrderStatusSelect(item) {
-  const select = document.createElement("select");
-  select.className = "work-item-status-select";
-  replaceSelectOptions(select, WORK_ORDER_STATUS_OPTIONS, item.status || "Otvoreni RN");
-  updateWorkOrderStatusSelectTheme(select, select.value);
-  select.disabled = state.user?.role === "user";
+function closeOpenWorkOrderStatusMenus(except = null) {
+  document.querySelectorAll(".work-item-status-dropdown.is-open").forEach((node) => {
+    if (except && node === except) {
+      return;
+    }
+
+    node.classList.remove("is-open");
+  });
+}
+
+function createWorkOrderStatusDropdown(item) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-item-status-dropdown";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-item-status-trigger";
+  trigger.dataset.status = slugifyValue(item.status || "Otvoreni RN");
+  trigger.textContent = item.status || "Otvoreni RN";
+  trigger.disabled = state.user?.role === "user";
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const menu = document.createElement("div");
+  menu.className = "work-item-status-menu";
+  menu.setAttribute("role", "menu");
+
+  const setPendingState = (isPending) => {
+    wrapper.classList.toggle("is-pending", isPending);
+    trigger.disabled = isPending || state.user?.role === "user";
+  };
+
+  const setCurrentStatus = (value) => {
+    trigger.dataset.status = slugifyValue(value);
+    trigger.textContent = value;
+  };
+
+  WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
+    const optionButton = document.createElement("button");
+    optionButton.type = "button";
+    optionButton.className = "work-item-status-option";
+    optionButton.dataset.status = slugifyValue(option.value);
+    optionButton.textContent = option.label;
+    optionButton.setAttribute("role", "menuitem");
+
+    optionButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeOpenWorkOrderStatusMenus();
+
+      if (option.value === (item.status || "Otvoreni RN")) {
+        return;
+      }
+
+      const previousValue = item.status || "Otvoreni RN";
+      setCurrentStatus(option.value);
+      setPendingState(true);
+
+      void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
+        method: "PATCH",
+        body: { status: option.value },
+      })).then((success) => {
+        setPendingState(false);
+
+        if (!success) {
+          setCurrentStatus(previousValue);
+          return;
+        }
+
+        const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(item.id));
+        setCurrentStatus(updatedItem?.status || option.value);
+      });
+    });
+
+    menu.append(optionButton);
+  });
 
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
-    select.addEventListener(eventName, (event) => {
+    wrapper.addEventListener(eventName, (event) => {
       event.stopPropagation();
     });
   });
 
-  select.addEventListener("change", (event) => {
+  trigger.addEventListener("click", (event) => {
     event.stopPropagation();
-    const nextValue = select.value;
-    const previousValue = item.status || "Otvoreni RN";
 
-    updateWorkOrderStatusSelectTheme(select, nextValue);
-
-    if (nextValue === previousValue) {
+    if (trigger.disabled) {
       return;
     }
 
-    void runMutation(() => apiRequest(`/work-orders/${item.id}`, {
-      method: "PATCH",
-      body: { status: nextValue },
-    })).then((success) => {
-      if (!success) {
-        select.value = previousValue;
-        updateWorkOrderStatusSelectTheme(select, select.value);
-      }
-    });
+    const willOpen = !wrapper.classList.contains("is-open");
+    closeOpenWorkOrderStatusMenus(wrapper);
+    wrapper.classList.toggle("is-open", willOpen);
+    trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
   });
 
-  return select;
+  wrapper.append(trigger, menu);
+  return wrapper;
 }
 
 function toggleWorkOrderDetails(workOrderId) {
@@ -4910,7 +4999,7 @@ function renderCompactWorkOrdersList() {
         });
       });
 
-      statusRow.append(createWorkOrderStatusSelect(item));
+      statusRow.append(createWorkOrderStatusDropdown(item));
       basicsStack.append(statusRow);
 
       basicsStack.append(
@@ -4931,12 +5020,7 @@ function renderCompactWorkOrdersList() {
         item.headquarters || "",
         item.companyOib ? `OIB ${item.companyOib}` : "",
       ));
-      const clientPills = createInlinePills(
-        item.contractType || "",
-        item.contractNumber || "",
-        item.period || "",
-        item.linkReference || "",
-      );
+      const clientPills = createInlinePills(...getWorkOrderClientPills(item));
       if (clientPills) {
         clientPills.classList.add("work-item-inline-pills-compact");
         clientCell.append(clientPills);
@@ -5949,6 +6033,14 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target instanceof Node) {
+    const clickedStatusMenu = event.target instanceof HTMLElement && event.target.closest(".work-item-status-dropdown");
+
+    if (!clickedStatusMenu) {
+      closeOpenWorkOrderStatusMenus();
+    }
+  }
+
   if (state.measurementSheet.fillMenu && event.target instanceof Node) {
     const clickedFillMenu = measurementFillMenu?.contains(event.target);
     const clickedFillHandle = event.target instanceof HTMLElement && event.target.closest(".measurement-fill-handle");

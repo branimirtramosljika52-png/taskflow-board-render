@@ -2678,7 +2678,8 @@ body.is-work-order-editor-open {
   gap: 0;
 }
 
-.work-item-status-select {
+.work-item-status-select,
+.work-item-status-trigger {
   width: 100%;
   min-height: 30px;
   padding: 0 28px 0 10px;
@@ -2699,39 +2700,97 @@ body.is-work-order-editor-open {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
+  text-align: left;
 }
 
-.work-item-status-select[data-status="otvoreni-rn"] {
+.work-item-status-trigger {
+  display: inline-flex;
+  align-items: center;
+  background-origin: border-box;
+}
+
+.work-item-status-dropdown {
+  position: relative;
+}
+
+.work-item-status-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 6;
+  min-width: 180px;
+  display: none;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid #e3e8f2;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 38px rgba(34, 42, 62, 0.14);
+}
+
+.work-item-status-dropdown.is-open .work-item-status-menu {
+  display: grid;
+}
+
+.work-item-status-option {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #f7f9fc;
+  color: #44506a;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.work-item-status-dropdown.is-pending .work-item-status-trigger {
+  opacity: 0.78;
+}
+
+.work-item-status-select[data-status="otvoreni-rn"],
+.work-item-status-trigger[data-status="otvoreni-rn"],
+.work-item-status-option[data-status="otvoreni-rn"] {
   color: #5a6373;
   background-color: #eef1f4;
   border-color: #dde2e8;
 }
 
-.work-item-status-select[data-status="gotov-rn"] {
+.work-item-status-select[data-status="gotov-rn"],
+.work-item-status-trigger[data-status="gotov-rn"],
+.work-item-status-option[data-status="gotov-rn"] {
   color: #2b7848;
   background-color: #dff5e6;
   border-color: #cbe6d5;
 }
 
-.work-item-status-select[data-status="ovjeren-rn"] {
+.work-item-status-select[data-status="ovjeren-rn"],
+.work-item-status-trigger[data-status="ovjeren-rn"],
+.work-item-status-option[data-status="ovjeren-rn"] {
   color: #6d4d00;
   background-color: #e7c760;
   border-color: #d7b54a;
 }
 
-.work-item-status-select[data-status="fakturiran-rn"] {
+.work-item-status-select[data-status="fakturiran-rn"],
+.work-item-status-trigger[data-status="fakturiran-rn"],
+.work-item-status-option[data-status="fakturiran-rn"] {
   color: #245b37;
   background-color: #bfe1ca;
   border-color: #aaccb6;
 }
 
-.work-item-status-select[data-status="storno-rn"] {
+.work-item-status-select[data-status="storno-rn"],
+.work-item-status-trigger[data-status="storno-rn"],
+.work-item-status-option[data-status="storno-rn"] {
   color: #48515d;
   background-color: #d8dde4;
   border-color: #c8ced7;
 }
 
-.work-item-status-select:disabled {
+.work-item-status-select:disabled,
+.work-item-status-trigger:disabled {
   cursor: default;
   opacity: 0.78;
 }
