@@ -9045,6 +9045,16 @@ function buildWorkOrderLeafletPopup(marker) {
   return popup;
 }
 
+function createWorkOrderLeafletPinIcon(isSelected = false) {
+  return window.L.divIcon({
+    className: "work-order-map-pin-icon",
+    html: `<span class="work-order-map-pin${isSelected ? " is-selected" : ""}"><span class="work-order-map-pin-core"></span></span>`,
+    iconSize: [30, 42],
+    iconAnchor: [15, 39],
+    popupAnchor: [0, -32],
+  });
+}
+
 function ensureWorkOrderLeafletMap() {
   if (!workOrderMapCanvas || !window.L) {
     return null;
@@ -9081,14 +9091,12 @@ function syncWorkOrderLeafletMarkers(markers) {
   workOrderLeafletMarkers = new Map();
 
   markers.forEach((marker) => {
-    const tone = getWorkOrderMapMarkerTone(marker.status);
     const isSelected = String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId);
-    const leafletMarker = window.L.circleMarker([marker.latitude, marker.longitude], {
-      radius: isSelected ? 10 : 8,
-      color: tone.stroke,
-      weight: isSelected ? 3 : 2,
-      fillColor: tone.fill,
-      fillOpacity: 0.92,
+    const leafletMarker = window.L.marker([marker.latitude, marker.longitude], {
+      icon: createWorkOrderLeafletPinIcon(isSelected),
+      keyboard: true,
+      riseOnHover: true,
+      zIndexOffset: isSelected ? 800 : 0,
     });
 
     leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker));

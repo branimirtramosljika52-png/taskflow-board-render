@@ -4845,6 +4845,40 @@ body.is-work-order-editor-open {
   line-height: 1.35;
 }
 
+.work-order-map-pin-icon {
+  background: transparent;
+  border: 0;
+}
+
+.work-order-map-pin {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50% 50% 50% 0;
+  background: linear-gradient(180deg, #ffc84e, #f3a321);
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 10px 22px rgba(189, 122, 18, 0.36),
+    0 0 0 1px rgba(200, 136, 35, 0.12);
+  transform: rotate(-45deg);
+}
+
+.work-order-map-pin.is-selected {
+  background: linear-gradient(180deg, #ffb24d, #f07d1a);
+  box-shadow:
+    0 14px 30px rgba(207, 108, 20, 0.42),
+    0 0 0 4px rgba(255, 173, 72, 0.2);
+}
+
+.work-order-map-pin-core {
+  position: absolute;
+  inset: 6px;
+  display: block;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
 .work-order-map-grid,
 .work-order-map-markers {
   position: absolute;
