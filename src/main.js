@@ -943,8 +943,26 @@ function renderModuleView() {
   }
 }
 
+function isSidebarGroupAccessible(groupName) {
+  if (groupName === "organisations") {
+    return !managementTab?.hidden;
+  }
+
+  return ALL_SIDEBAR_GROUPS.includes(groupName);
+}
+
 function renderSidebarState() {
-  const activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
+  let activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
+
+  if (!isSidebarGroupAccessible(activeGroup)) {
+    activeGroup = getSidebarGroupForView();
+
+    if (!isSidebarGroupAccessible(activeGroup)) {
+      activeGroup = "home";
+    }
+
+    state.activeSidebarGroup = activeGroup;
+  }
 
   appFrame?.classList.toggle("is-sidebar-collapsed", state.sidebarCollapsed);
   appFrame?.classList.toggle("is-rail-hidden", state.railHidden);
@@ -957,7 +975,10 @@ function renderSidebarState() {
   }
 
   railButtons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.sidebarGroup === activeGroup);
+    const groupName = button.dataset.sidebarGroup;
+    const isAccessible = isSidebarGroupAccessible(groupName);
+    button.hidden = !isAccessible;
+    button.classList.toggle("is-active", isAccessible && groupName === activeGroup);
   });
 
   sidebarNavItems.forEach((button) => {
@@ -971,7 +992,9 @@ function renderSidebarState() {
 
   sidebarGroupPanels.forEach((panel) => {
     const groupName = panel.dataset.sidebarGroupPanel;
-    const isActive = groupName === activeGroup;
+    const isAccessible = isSidebarGroupAccessible(groupName);
+    const isActive = isAccessible && groupName === activeGroup;
+    panel.hidden = !isActive;
     panel.classList.toggle("is-open", isActive);
     panel.querySelector(".sidebar-group-items")?.toggleAttribute("hidden", state.sidebarCollapsed || !isActive);
     panel.querySelector(".sidebar-group-toggle")?.setAttribute("aria-expanded", isActive && !state.sidebarCollapsed ? "true" : "false");
@@ -4205,12 +4228,6 @@ function renderAuthState() {
       : (organization ? organization.name : "");
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
-    if (sidebarOrganisationsGroupPanel) {
-      sidebarOrganisationsGroupPanel.hidden = managementTab.hidden;
-    }
-    if (railOrganisationsButton) {
-      railOrganisationsButton.hidden = managementTab.hidden;
-    }
 
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = organization ? organization.name : "Safety360";
@@ -4228,12 +4245,6 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
-    if (sidebarOrganisationsGroupPanel) {
-      sidebarOrganisationsGroupPanel.hidden = true;
-    }
-    if (railOrganisationsButton) {
-      railOrganisationsButton.hidden = true;
-    }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
     }
