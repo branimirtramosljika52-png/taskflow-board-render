@@ -7,6 +7,7 @@ import {
   createLocation,
   createWorkOrder,
   filterWorkOrders,
+  getDashboardInsights,
   getDashboardStats,
   nextWorkOrderNumber,
   syncLocationFieldsFromWorkOrder,
@@ -304,4 +305,84 @@ test("support helpers cover numbering, filtering, stats, and location sync", () 
   assert.equal(syncedLocation.coordinates, "45.1234, 16.0000");
   assert.equal(syncedLocation.region, "Sredisnja Hrvatska");
   assert.equal(buildLocationContacts(syncedLocation).length, 2);
+});
+
+test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {
+  const state = buildState();
+  const workOrders = [
+    createWorkOrder(
+      {
+        companyId: "company-1",
+        locationId: "location-1",
+        status: "Otvoreni RN",
+        priority: "Urgent",
+        dueDate: "2026-03-27",
+        region: "Zagreb",
+        executor1: "Ana Anic",
+        description: "Urgent pregled",
+      },
+      state,
+      () => "work-order-1",
+      "RN-00001",
+      () => "2026-03-25T09:00:00.000Z",
+    ),
+    createWorkOrder(
+      {
+        companyId: "company-1",
+        locationId: "location-1",
+        status: "Otvoreni RN",
+        priority: "High",
+        dueDate: "2026-04-02",
+        region: "Zagreb",
+        executor1: "Ana Anic",
+        executor2: "Marko Maric",
+        description: "Tjedni pregled",
+      },
+      state,
+      () => "work-order-2",
+      "RN-00002",
+      () => "2026-03-25T10:00:00.000Z",
+    ),
+    createWorkOrder(
+      {
+        companyId: "company-1",
+        locationId: "location-1",
+        status: "Fakturiran RN",
+        priority: "Normal",
+        dueDate: "2026-03-26",
+        region: "Sjever",
+        description: "Zatvoreni nalog",
+      },
+      state,
+      () => "work-order-3",
+      "RN-00003",
+      () => "2026-03-25T11:00:00.000Z",
+    ),
+  ];
+
+  const insights = getDashboardInsights({
+    companies: state.companies,
+    locations: [
+      state.locations[0],
+      {
+        ...state.locations[0],
+        id: "location-2",
+        name: "Bez koordinata",
+        coordinates: "",
+      },
+    ],
+    workOrders,
+  }, "2026-03-28");
+
+  assert.equal(insights.activeWorkOrders, 2);
+  assert.equal(insights.urgentWorkOrders, 1);
+  assert.equal(insights.dueThisWeekWorkOrders, 1);
+  assert.equal(insights.missingCoordinatesLocations, 1);
+  assert.deepEqual(insights.statusBreakdown.map((item) => item.label), ["Otvoreni RN", "Fakturiran RN"]);
+  assert.deepEqual(insights.priorityBreakdown.map((item) => item.label), ["Urgent", "High"]);
+  assert.equal(insights.topRegions[0].label, "Zagreb");
+  assert.equal(insights.topCompanies[0].label, "Acme d.o.o.");
+  assert.equal(insights.executorLoad[0].label, "Ana Anic");
+  assert.equal(insights.executorLoad[0].count, 2);
+  assert.equal(insights.upcomingWorkOrders[0].workOrderNumber, "RN-00001");
 });

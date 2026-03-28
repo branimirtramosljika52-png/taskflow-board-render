@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328n" />
+    <link rel="stylesheet" href="/styles.css?v=20260328o" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -807,6 +807,81 @@
             </div>
           </section>
 
+          <section id="dashboard-overview-panel" class="panel dashboard-overview-panel" hidden>
+            <div class="dashboard-overview-head">
+              <div>
+                <p class="section-kicker">Home</p>
+                <h2>Dashboard</h2>
+              </div>
+              <p class="helper-copy dashboard-overview-copy">
+                Brzi pregled radnih naloga, prioriteta, rokova i opterecenja po ljudima i regijama.
+              </p>
+            </div>
+
+            <div class="dashboard-signal-grid">
+              <article class="dashboard-signal-card">
+                <span>Otvoreni RN</span>
+                <strong id="dashboard-open-work-orders">0</strong>
+              </article>
+              <article class="dashboard-signal-card">
+                <span>Urgent</span>
+                <strong id="dashboard-urgent-work-orders">0</strong>
+              </article>
+              <article class="dashboard-signal-card">
+                <span>Rok 7 dana</span>
+                <strong id="dashboard-due-this-week">0</strong>
+              </article>
+              <article class="dashboard-signal-card">
+                <span>Bez koordinata</span>
+                <strong id="dashboard-missing-coordinates">0</strong>
+              </article>
+            </div>
+
+            <div class="dashboard-detail-grid">
+              <article class="dashboard-block">
+                <div class="dashboard-block-head">
+                  <h3>Statusi RN</h3>
+                </div>
+                <div id="dashboard-status-breakdown" class="dashboard-breakdown-list"></div>
+              </article>
+
+              <article class="dashboard-block">
+                <div class="dashboard-block-head">
+                  <h3>Prioriteti</h3>
+                </div>
+                <div id="dashboard-priority-breakdown" class="dashboard-breakdown-list"></div>
+              </article>
+
+              <article class="dashboard-block">
+                <div class="dashboard-block-head">
+                  <h3>Top regije</h3>
+                </div>
+                <div id="dashboard-region-breakdown" class="dashboard-breakdown-list"></div>
+              </article>
+
+              <article class="dashboard-block">
+                <div class="dashboard-block-head">
+                  <h3>Top tvrtke</h3>
+                </div>
+                <div id="dashboard-company-breakdown" class="dashboard-breakdown-list"></div>
+              </article>
+
+              <article class="dashboard-block">
+                <div class="dashboard-block-head">
+                  <h3>Izvrsitelji</h3>
+                </div>
+                <div id="dashboard-executor-breakdown" class="dashboard-breakdown-list"></div>
+              </article>
+
+              <article class="dashboard-block dashboard-block-wide">
+                <div class="dashboard-block-head">
+                  <h3>Rokovi i slijedeci RN</h3>
+                </div>
+                <div id="dashboard-upcoming-list" class="dashboard-upcoming-list"></div>
+              </article>
+            </div>
+          </section>
+
           <section class="panel panel-work-orders">
             <div class="workspace-list-head">
               <div class="workspace-list-copy">
@@ -1463,7 +1538,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328n"></script>
-    <script type="module" src="/src/main.js?v=20260328n"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328o"></script>
+    <script type="module" src="/src/main.js?v=20260328o"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@ import {
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
   filterWorkOrders,
+  getDashboardInsights,
   getDashboardStats,
   sortWorkOrders,
 } from "./safetyModel.js";
@@ -333,6 +334,17 @@ const locationsCount = document.querySelector("#locations-count");
 const activeWorkOrdersCount = document.querySelector("#active-work-orders-count");
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
+const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
+const dashboardOpenWorkOrders = document.querySelector("#dashboard-open-work-orders");
+const dashboardUrgentWorkOrders = document.querySelector("#dashboard-urgent-work-orders");
+const dashboardDueThisWeek = document.querySelector("#dashboard-due-this-week");
+const dashboardMissingCoordinates = document.querySelector("#dashboard-missing-coordinates");
+const dashboardStatusBreakdown = document.querySelector("#dashboard-status-breakdown");
+const dashboardPriorityBreakdown = document.querySelector("#dashboard-priority-breakdown");
+const dashboardRegionBreakdown = document.querySelector("#dashboard-region-breakdown");
+const dashboardCompanyBreakdown = document.querySelector("#dashboard-company-breakdown");
+const dashboardExecutorBreakdown = document.querySelector("#dashboard-executor-breakdown");
+const dashboardUpcomingList = document.querySelector("#dashboard-upcoming-list");
 
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
@@ -5038,6 +5050,167 @@ function renderSummary() {
   overdueWorkOrdersCount.textContent = String(stats.overdueWorkOrders);
 }
 
+function createDashboardEmptyState(message) {
+  const empty = document.createElement("p");
+  empty.className = "dashboard-empty";
+  empty.textContent = message;
+  return empty;
+}
+
+function renderDashboardBreakdownList(container, items) {
+  if (!container) {
+    return;
+  }
+
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+
+  if (items.length === 0 || total === 0) {
+    container.replaceChildren(createDashboardEmptyState("Jos nema dovoljno podataka za prikaz."));
+    return;
+  }
+
+  container.replaceChildren(...items.map((item) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-breakdown-row";
+
+    const top = document.createElement("div");
+    top.className = "dashboard-breakdown-top";
+
+    const label = document.createElement("strong");
+    label.textContent = item.label;
+
+    const count = document.createElement("span");
+    count.textContent = String(item.count);
+
+    top.append(label, count);
+
+    const bar = document.createElement("div");
+    bar.className = "dashboard-breakdown-bar";
+
+    const fill = document.createElement("span");
+    fill.style.width = `${Math.max(10, Math.round((item.count / total) * 100))}%`;
+
+    bar.append(fill);
+    row.append(top, bar);
+    return row;
+  }));
+}
+
+function renderDashboardExecutorList(container, items) {
+  if (!container) {
+    return;
+  }
+
+  if (items.length === 0) {
+    container.replaceChildren(createDashboardEmptyState("Nema rasporedenih izvrsitelja."));
+    return;
+  }
+
+  container.replaceChildren(...items.map((item) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-executor-row";
+
+    const avatar = document.createElement("span");
+    avatar.className = "dashboard-executor-avatar";
+    avatar.textContent = getUserInitials({ fullName: item.label });
+
+    const copy = document.createElement("div");
+    copy.className = "dashboard-executor-copy";
+
+    const name = document.createElement("strong");
+    name.textContent = item.label;
+
+    const meta = document.createElement("span");
+    meta.textContent = `${item.count} aktivnih RN`;
+
+    copy.append(name, meta);
+    row.append(avatar, copy);
+    return row;
+  }));
+}
+
+function renderDashboardUpcomingList(container, items) {
+  if (!container) {
+    return;
+  }
+
+  if (items.length === 0) {
+    container.replaceChildren(createDashboardEmptyState("Nema hitnih rokova u sljedecih 14 dana."));
+    return;
+  }
+
+  container.replaceChildren(...items.map((item) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-upcoming-row";
+
+    const identity = document.createElement("div");
+    identity.className = "dashboard-upcoming-identity";
+
+    const number = document.createElement("strong");
+    number.textContent = item.workOrderNumber || "Bez broja";
+
+    const meta = document.createElement("span");
+    meta.textContent = [item.companyName, item.locationName].filter(Boolean).join(" / ") || "Bez klijenta";
+
+    identity.append(number, meta);
+
+    const status = document.createElement("span");
+    status.className = `badge ${statusBadgeClass(item.status)}`;
+    status.textContent = item.status;
+
+    const due = document.createElement("span");
+    due.className = "dashboard-upcoming-date";
+    due.textContent = formatCompactDueDate(item.dueDate);
+
+    row.append(identity, status, due);
+    return row;
+  }));
+}
+
+function renderDashboardOverview() {
+  const shouldShowDashboard = Boolean(
+    dashboardOverviewPanel
+    && state.user
+    && state.activeView === "selfdash"
+    && state.activeSidebarItem === "dashboard",
+  );
+
+  if (!dashboardOverviewPanel) {
+    return;
+  }
+
+  dashboardOverviewPanel.hidden = !shouldShowDashboard;
+
+  if (!shouldShowDashboard) {
+    return;
+  }
+
+  const insights = getDashboardInsights(state);
+
+  if (dashboardOpenWorkOrders) {
+    dashboardOpenWorkOrders.textContent = String(insights.activeWorkOrders);
+  }
+
+  if (dashboardUrgentWorkOrders) {
+    dashboardUrgentWorkOrders.textContent = String(insights.urgentWorkOrders);
+  }
+
+  if (dashboardDueThisWeek) {
+    dashboardDueThisWeek.textContent = String(insights.dueThisWeekWorkOrders);
+  }
+
+  if (dashboardMissingCoordinates) {
+    dashboardMissingCoordinates.textContent = String(insights.missingCoordinatesLocations);
+  }
+
+  renderDashboardBreakdownList(dashboardStatusBreakdown, insights.statusBreakdown);
+  renderDashboardBreakdownList(dashboardPriorityBreakdown, insights.priorityBreakdown);
+  renderDashboardBreakdownList(dashboardRegionBreakdown, insights.topRegions);
+  renderDashboardBreakdownList(dashboardCompanyBreakdown, insights.topCompanies);
+  renderDashboardExecutorList(dashboardExecutorBreakdown, insights.executorLoad);
+  renderDashboardUpcomingList(dashboardUpcomingList, insights.upcomingWorkOrders);
+}
+
 function renderActiveView() {
   const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
 
@@ -5053,6 +5226,7 @@ function renderActiveView() {
     state.workOrderEditorOpen = false;
   }
 
+  renderDashboardOverview();
   renderSidebarState();
   syncWorkOrderEditorModal();
 }

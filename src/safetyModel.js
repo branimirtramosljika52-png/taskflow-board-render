@@ -23,6 +23,7 @@ const PRIORITY_RANK = {
   "Niski prioritet": 3,
   "Bez prioriteta": 4,
 };
+const CLOSED_WORK_ORDER_STATUSES = new Set(["Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"]);
 
 function isoNow() {
   return new Date().toISOString();
@@ -676,8 +677,8 @@ export function getDashboardStats(snapshot, today = todayString()) {
   const workOrders = snapshot.workOrders ?? [];
 
   const overdueWorkOrders = workOrders.filter((item) => item.dueDate && item.dueDate < today && item.status !== "Fakturiran RN").length;
-  const activeWorkOrders = workOrders.filter((item) => !["Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"].includes(item.status)).length;
-  const completedWorkOrders = workOrders.filter((item) => ["Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"].includes(item.status)).length;
+  const activeWorkOrders = workOrders.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status)).length;
+  const completedWorkOrders = workOrders.filter((item) => CLOSED_WORK_ORDER_STATUSES.has(item.status)).length;
 
   return {
     companies: companies.length,
@@ -685,6 +686,112 @@ export function getDashboardStats(snapshot, today = todayString()) {
     activeWorkOrders,
     completedWorkOrders,
     overdueWorkOrders,
+  };
+}
+
+function dateValueToKey(value) {
+  const normalized = normalizeOptionalDate(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const timestamp = Date.parse(`${normalized}T12:00:00Z`);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function countGroupedValues(items, getValue, { fallback = "Bez podatka", limit = Infinity } = {}) {
+  const grouped = new Map();
+
+  items.forEach((item) => {
+    const rawLabel = getValue(item);
+    const label = normalizeText(rawLabel) || fallback;
+    grouped.set(label, (grouped.get(label) ?? 0) + 1);
+  });
+
+  return [...grouped.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+
+      return left.label.localeCompare(right.label, "hr");
+    })
+    .slice(0, limit);
+}
+
+export function getDashboardInsights(snapshot, today = todayString()) {
+  const companies = snapshot.companies ?? [];
+  const locations = snapshot.locations ?? [];
+  const workOrders = snapshot.workOrders ?? [];
+  const todayKey = dateValueToKey(today);
+  const nextWeekKey = todayKey === null ? null : todayKey + (7 * 24 * 60 * 60 * 1000);
+
+  const activeWorkOrders = workOrders.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status));
+  const urgentWorkOrders = activeWorkOrders.filter((item) => item.priority === "Urgent");
+  const dueThisWeek = activeWorkOrders.filter((item) => {
+    const dueDateKey = dateValueToKey(item.dueDate);
+
+    if (dueDateKey === null || todayKey === null || nextWeekKey === null) {
+      return false;
+    }
+
+    return dueDateKey >= todayKey && dueDateKey <= nextWeekKey;
+  });
+  const missingCoordinates = locations.filter((item) => !normalizeText(item.coordinates));
+
+  const statusBreakdown = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+    label: option.label,
+    count: workOrders.filter((item) => item.status === option.value).length,
+  })).filter((item) => item.count > 0);
+
+  const priorityBreakdown = PRIORITY_OPTIONS.map((option) => ({
+    label: option.label,
+    count: activeWorkOrders.filter((item) => item.priority === option.value).length,
+  })).filter((item) => item.count > 0);
+
+  const topRegions = countGroupedValues(activeWorkOrders, (item) => item.region, {
+    fallback: "Bez regije",
+    limit: 5,
+  });
+  const topCompanies = countGroupedValues(activeWorkOrders, (item) => item.companyName, {
+    fallback: "Bez tvrtke",
+    limit: 5,
+  });
+
+  const executorLoad = countGroupedValues(
+    activeWorkOrders.flatMap((item) => [item.executor1, item.executor2].filter((value) => normalizeText(value))),
+    (value) => value,
+    {
+      fallback: "Bez izvrsitelja",
+      limit: 5,
+    },
+  );
+
+  const upcomingWorkOrders = activeWorkOrders
+    .map((item) => ({
+      ...item,
+      dueDateKey: dateValueToKey(item.dueDate),
+    }))
+    .filter((item) => item.dueDateKey !== null && todayKey !== null && item.dueDateKey <= (todayKey + (14 * 24 * 60 * 60 * 1000)))
+    .sort((left, right) => left.dueDateKey - right.dueDateKey)
+    .slice(0, 6)
+    .map(({ dueDateKey, ...item }) => item);
+
+  return {
+    companies: companies.length,
+    locations: locations.length,
+    activeWorkOrders: activeWorkOrders.length,
+    urgentWorkOrders: urgentWorkOrders.length,
+    dueThisWeekWorkOrders: dueThisWeek.length,
+    missingCoordinatesLocations: missingCoordinates.length,
+    statusBreakdown,
+    priorityBreakdown,
+    topRegions,
+    topCompanies,
+    executorLoad,
+    upcomingWorkOrders,
   };
 }
 
