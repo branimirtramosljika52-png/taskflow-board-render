@@ -547,7 +547,7 @@ async function fetchCompanyAssignments(connection) {
   }));
 }
 
-function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
+function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], actor = null) {
   const allowedCompanyIds = new Set(
     assignments
       .filter((assignment) => String(assignment.organizationId) === String(organizationId))
@@ -568,6 +568,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
     )).map((item) => ({
       ...item,
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
+    })),
+    dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      && String(item.userId) === String(actor?.id ?? "")
+    )).map((item) => ({
+      ...item,
+      filters: { ...(item.filters ?? {}) },
     })),
   };
 }
@@ -990,7 +997,14 @@ export class MemoryTenantRepository {
     return this.refreshTokens.delete(hashStoredToken(token));
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
+    companies: [],
+    locations: [],
+    workOrders: [],
+    reminders: [],
+    todoTasks: [],
+    dashboardWidgets: [],
+  }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
     const scopedSnapshot = buildScopedSnapshot(
       rawSnapshot,
@@ -999,6 +1013,7 @@ export class MemoryTenantRepository {
         companyId,
         organizationId,
       })),
+      actor,
     );
 
     return {
@@ -1606,15 +1621,29 @@ export class MySqlTenantRepository {
     }
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
+    companies: [],
+    locations: [],
+    workOrders: [],
+    reminders: [],
+    todoTasks: [],
+    dashboardWidgets: [],
+  }) {
     const connection = await this.pool.getConnection();
 
     try {
       const context = await this.getContext(connection, actor, requestedOrganizationId);
       const assignments = await fetchCompanyAssignments(connection);
       const scopedSnapshot = context.activeOrganizationId
-        ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments)
-        : { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] };
+        ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments, actor)
+        : {
+          companies: [],
+          locations: [],
+          workOrders: [],
+          reminders: [],
+          todoTasks: [],
+          dashboardWidgets: [],
+        };
 
       return {
         ...context,

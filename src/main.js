@@ -1,17 +1,25 @@
 import {
+  DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS,
+  DASHBOARD_WIDGET_DEFINITIONS,
+  DASHBOARD_WIDGET_SIZE_OPTIONS,
+  DASHBOARD_WIDGET_SOURCE_OPTIONS,
+  DASHBOARD_WIDGET_VISUALIZATION_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   TODO_TASK_STATUS_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
+  createDashboardWidget,
   filterReminders,
   filterTodoTasks,
   filterWorkOrders,
-  getDashboardInsights,
+  getDashboardWidgetData,
   getDashboardStats,
   sortReminders,
+  sortDashboardWidgets,
   sortTodoTasks,
   sortWorkOrders,
+  updateDashboardWidget,
 } from "./safetyModel.js";
 import {
   evaluateMeasurementFormula,
@@ -38,6 +46,16 @@ const USER_PRESENCE_OPTIONS = [
   { value: "away", label: "Away" },
   { value: "busy", label: "Busy" },
   { value: "offline", label: "Offline" },
+];
+const DASHBOARD_CHART_COLORS = [
+  "#5b8def",
+  "#e35eb7",
+  "#2db889",
+  "#ffb648",
+  "#7f6df2",
+  "#f57261",
+  "#45c7f0",
+  "#b0b8c9",
 ];
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
@@ -217,10 +235,12 @@ const state = {
   workOrders: [],
   reminders: [],
   todoTasks: [],
+  dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
   activeOrganizationId: "",
   activeTodoTaskId: "",
+  activeDashboardWidgetId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
   workOrderActivity: {
@@ -258,6 +278,12 @@ const state = {
     fillDrag: null,
     fillMenu: null,
     contextMenu: null,
+  },
+  dashboardBuilder: {
+    open: false,
+    draftMode: "create",
+    draftId: "",
+    seeding: false,
   },
 };
 
@@ -350,16 +376,36 @@ const activeWorkOrdersCount = document.querySelector("#active-work-orders-count"
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
 const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
-const dashboardOpenWorkOrders = document.querySelector("#dashboard-open-work-orders");
-const dashboardUrgentWorkOrders = document.querySelector("#dashboard-urgent-work-orders");
-const dashboardDueThisWeek = document.querySelector("#dashboard-due-this-week");
-const dashboardMissingCoordinates = document.querySelector("#dashboard-missing-coordinates");
-const dashboardStatusBreakdown = document.querySelector("#dashboard-status-breakdown");
-const dashboardPriorityBreakdown = document.querySelector("#dashboard-priority-breakdown");
-const dashboardRegionBreakdown = document.querySelector("#dashboard-region-breakdown");
-const dashboardCompanyBreakdown = document.querySelector("#dashboard-company-breakdown");
-const dashboardExecutorBreakdown = document.querySelector("#dashboard-executor-breakdown");
-const dashboardUpcomingList = document.querySelector("#dashboard-upcoming-list");
+const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
+const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
+const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
+const dashboardSeedLayoutButton = document.querySelector("#dashboard-seed-layout");
+const dashboardBuilderPanel = document.querySelector("#dashboard-builder-panel");
+const dashboardBuilderClose = document.querySelector("#dashboard-builder-close");
+const dashboardBuilderTitle = document.querySelector("#dashboard-builder-title");
+const dashboardBuilderCopy = document.querySelector("#dashboard-builder-copy");
+const dashboardWidgetForm = document.querySelector("#dashboard-widget-form");
+const dashboardWidgetIdInput = document.querySelector("#dashboard-widget-id");
+const dashboardWidgetTitleInput = document.querySelector("#dashboard-widget-title");
+const dashboardWidgetVisualizationInput = document.querySelector("#dashboard-widget-visualization");
+const dashboardWidgetSourceInput = document.querySelector("#dashboard-widget-source");
+const dashboardWidgetMetricInput = document.querySelector("#dashboard-widget-metric");
+const dashboardWidgetMetricLabel = document.querySelector("#dashboard-widget-metric-label");
+const dashboardWidgetSizeInput = document.querySelector("#dashboard-widget-size");
+const dashboardWidgetLimitInput = document.querySelector("#dashboard-widget-limit");
+const dashboardWidgetCompanyFilterInput = document.querySelector("#dashboard-widget-company-filter");
+const dashboardWidgetStatusFilterInput = document.querySelector("#dashboard-widget-status-filter");
+const dashboardWidgetPriorityFilterInput = document.querySelector("#dashboard-widget-priority-filter");
+const dashboardWidgetRegionFilterInput = document.querySelector("#dashboard-widget-region-filter");
+const dashboardWidgetExecutorFilterInput = document.querySelector("#dashboard-widget-executor-filter");
+const dashboardWidgetAssigneeFilterInput = document.querySelector("#dashboard-widget-assignee-filter");
+const dashboardWidgetDateWindowInput = document.querySelector("#dashboard-widget-date-window");
+const dashboardWidgetTagFilterInput = document.querySelector("#dashboard-widget-tag-filter");
+const dashboardWidgetDeleteButton = document.querySelector("#dashboard-widget-delete");
+const dashboardWidgetCancelButton = document.querySelector("#dashboard-widget-cancel");
+const dashboardWidgetPreview = document.querySelector("#dashboard-widget-preview");
+const dashboardWidgetError = document.querySelector("#dashboard-widget-error");
+const dashboardWorkOrdersPanel = document.querySelector("#work-order-list-panel");
 const remindersTotalCount = document.querySelector("#reminders-total-count");
 const remindersTodayCount = document.querySelector("#reminders-today-count");
 const remindersOverdueCount = document.querySelector("#reminders-overdue-count");
@@ -798,11 +844,18 @@ function applySnapshot(payload) {
   state.workOrders = payload.workOrders ?? [];
   state.reminders = payload.reminders ?? [];
   state.todoTasks = payload.todoTasks ?? [];
+  state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
   );
   if (!state.todoTasks.some((item) => String(item.id) === String(state.activeTodoTaskId))) {
     state.activeTodoTaskId = state.todoTasks[0]?.id ?? "";
+  }
+  if (!state.dashboardWidgets.some((item) => String(item.id) === String(state.activeDashboardWidgetId))) {
+    state.activeDashboardWidgetId = "";
+    if (state.dashboardBuilder.draftMode === "edit") {
+      closeDashboardBuilder();
+    }
   }
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
@@ -5311,6 +5364,745 @@ function renderDashboardOverview() {
   renderDashboardUpcomingList(dashboardUpcomingList, insights.upcomingWorkOrders);
 }
 
+function createDashboardBuilderEmptyState(message, actions = []) {
+  const empty = document.createElement("div");
+  empty.className = "dashboard-empty-state";
+
+  const copy = document.createElement("p");
+  copy.className = "dashboard-empty";
+  copy.textContent = message;
+  empty.append(copy);
+
+  if (actions.length > 0) {
+    const row = document.createElement("div");
+    row.className = "dashboard-empty-actions";
+    row.append(...actions);
+    empty.append(row);
+  }
+
+  return empty;
+}
+
+function getDashboardWidgets() {
+  return sortDashboardWidgets(state.dashboardWidgets ?? []);
+}
+
+function getDashboardWidgetById(widgetId) {
+  return getDashboardWidgets().find((item) => String(item.id) === String(widgetId)) ?? null;
+}
+
+function getDashboardMetricOptions(source, visualization) {
+  const definition = DASHBOARD_WIDGET_DEFINITIONS[source] ?? DASHBOARD_WIDGET_DEFINITIONS.work_orders;
+
+  if (visualization === "metric") {
+    return definition.metrics ?? [];
+  }
+
+  if (visualization === "list") {
+    return definition.lists ?? [];
+  }
+
+  return definition.groupings ?? [];
+}
+
+function getDashboardRegionOptions() {
+  return [...new Set([
+    ...state.workOrders.map((item) => String(item.region ?? "").trim()),
+    ...state.locations.map((item) => String(item.region ?? "").trim()),
+  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "hr"));
+}
+
+function getDashboardExecutorOptions() {
+  return [...new Set(
+    state.workOrders.flatMap((item) => [item.executor1, item.executor2].map((entry) => String(entry ?? "").trim()).filter(Boolean)),
+  )].sort((left, right) => left.localeCompare(right, "hr"));
+}
+
+function getDashboardTagOptions() {
+  return [...new Set(
+    state.workOrders.flatMap((item) => String(item.tagText ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)),
+  )].sort((left, right) => left.localeCompare(right, "hr"));
+}
+
+function getDashboardStatusOptions(source) {
+  if (source === "reminders") {
+    return REMINDER_STATUS_OPTIONS;
+  }
+
+  if (source === "todo_tasks") {
+    return TODO_TASK_STATUS_OPTIONS;
+  }
+
+  if (source === "locations") {
+    return [];
+  }
+
+  return WORK_ORDER_STATUS_OPTIONS;
+}
+
+function getDashboardPriorityOptions(source) {
+  return source === "todo_tasks" || source === "work_orders" ? PRIORITY_OPTIONS : [];
+}
+
+function getSuggestedDashboardWidgetDrafts() {
+  return [
+    { title: "Otvoreni RN", source: "work_orders", visualization: "metric", metricKey: "active", size: "small", limit: 6, position: 1, filters: {} },
+    { title: "Urgent RN", source: "work_orders", visualization: "metric", metricKey: "urgent", size: "small", limit: 6, position: 2, filters: {} },
+    { title: "Status RN", source: "work_orders", visualization: "donut", metricKey: "status", size: "large", limit: 6, position: 3, filters: {} },
+    { title: "Prioriteti RN", source: "work_orders", visualization: "bar", metricKey: "priority", size: "large", limit: 5, position: 4, filters: {} },
+    { title: "RN po regiji", source: "work_orders", visualization: "bar", metricKey: "region", size: "full", limit: 6, position: 5, filters: {} },
+    { title: "Sljedeci rokovi", source: "work_orders", visualization: "list", metricKey: "upcoming_due", size: "large", limit: 6, position: 6, filters: {} },
+    { title: "Moji ToDo", source: "todo_tasks", visualization: "metric", metricKey: "assigned_to_me", size: "small", limit: 6, position: 7, filters: {} },
+    { title: "Aktivni reminders", source: "reminders", visualization: "metric", metricKey: "active", size: "small", limit: 6, position: 8, filters: {} },
+  ];
+}
+
+function setDashboardWidgetError(message = "") {
+  if (dashboardWidgetError) {
+    dashboardWidgetError.textContent = message;
+  }
+}
+
+function toggleDashboardField(field, isVisible) {
+  if (field) {
+    field.hidden = !isVisible;
+  }
+}
+
+function readDashboardWidgetFormPatch() {
+  return {
+    title: dashboardWidgetTitleInput?.value ?? "",
+    source: dashboardWidgetSourceInput?.value ?? "work_orders",
+    visualization: dashboardWidgetVisualizationInput?.value ?? "metric",
+    metricKey: dashboardWidgetMetricInput?.value ?? "",
+    size: dashboardWidgetSizeInput?.value ?? "medium",
+    limit: Number.parseInt(dashboardWidgetLimitInput?.value ?? "6", 10) || 6,
+    filters: {
+      companyId: dashboardWidgetCompanyFilterInput?.value ?? "",
+      status: dashboardWidgetStatusFilterInput?.value ?? "",
+      priority: dashboardWidgetPriorityFilterInput?.value ?? "",
+      region: dashboardWidgetRegionFilterInput?.value ?? "",
+      executor: dashboardWidgetExecutorFilterInput?.value ?? "",
+      assigneeUserId: dashboardWidgetAssigneeFilterInput?.value ?? "",
+      dateWindow: dashboardWidgetDateWindowInput?.value ?? "all",
+      tag: dashboardWidgetTagFilterInput?.value ?? "",
+    },
+  };
+}
+
+function createDashboardWidgetDraftFromForm() {
+  const patch = readDashboardWidgetFormPatch();
+  const current = getDashboardWidgetById(dashboardWidgetIdInput?.value ?? "");
+
+  if (current) {
+    return updateDashboardWidget(current, patch, state, () => new Date().toISOString());
+  }
+
+  return createDashboardWidget({
+    ...patch,
+    organizationId: state.activeOrganizationId,
+    userId: state.user?.id,
+    position: getDashboardWidgets().length + 1,
+  }, state, () => "dashboard-preview", () => new Date().toISOString());
+}
+
+function syncDashboardWidgetFormOptions() {
+  if (!dashboardWidgetVisualizationInput || !dashboardWidgetSourceInput || !dashboardWidgetMetricInput) {
+    return;
+  }
+
+  const visualization = dashboardWidgetVisualizationInput.value || "metric";
+  const source = dashboardWidgetSourceInput.value || "work_orders";
+  const metricOptions = getDashboardMetricOptions(source, visualization);
+  const currentMetric = dashboardWidgetMetricInput.value;
+
+  replaceSelectOptions(dashboardWidgetMetricInput, metricOptions.map((option) => ({
+    value: option.value,
+    label: option.label,
+  })), currentMetric || metricOptions[0]?.value || "");
+
+  if (dashboardWidgetMetricLabel) {
+    dashboardWidgetMetricLabel.textContent = visualization === "metric"
+      ? "KPI"
+      : visualization === "list"
+        ? "Lista"
+        : "Grupiraj po";
+  }
+
+  replaceSelectOptions(dashboardWidgetCompanyFilterInput, [
+    { value: "", label: "Sve tvrtke" },
+    ...state.companies.map((item) => ({ value: item.id, label: item.name })),
+  ], dashboardWidgetCompanyFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetStatusFilterInput, [
+    { value: "", label: "Svi statusi" },
+    ...getDashboardStatusOptions(source).map((item) => ({ value: item.value, label: item.label })),
+  ], dashboardWidgetStatusFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetPriorityFilterInput, [
+    { value: "", label: "Svi prioriteti" },
+    ...getDashboardPriorityOptions(source).map((item) => ({ value: item.value, label: item.label })),
+  ], dashboardWidgetPriorityFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetRegionFilterInput, [
+    { value: "", label: "Sve regije" },
+    ...getDashboardRegionOptions().map((entry) => ({ value: entry, label: entry })),
+  ], dashboardWidgetRegionFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetExecutorFilterInput, [
+    { value: "", label: "Svi izvrsitelji" },
+    ...getDashboardExecutorOptions().map((entry) => ({ value: entry, label: entry })),
+  ], dashboardWidgetExecutorFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetAssigneeFilterInput, [
+    { value: "", label: "Svi korisnici" },
+    ...state.users.map((item) => ({ value: item.id, label: item.fullName || item.email || item.username || "User" })),
+  ], dashboardWidgetAssigneeFilterInput?.value ?? "");
+
+  replaceSelectOptions(dashboardWidgetDateWindowInput, DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.map((item) => ({
+    value: item.value,
+    label: item.label,
+  })), dashboardWidgetDateWindowInput?.value ?? "all");
+
+  replaceSelectOptions(dashboardWidgetTagFilterInput, [
+    { value: "", label: "Svi tagovi" },
+    ...getDashboardTagOptions().map((entry) => ({ value: entry, label: entry })),
+  ], dashboardWidgetTagFilterInput?.value ?? "");
+
+  const companyField = dashboardWidgetCompanyFilterInput?.closest(".field");
+  const statusField = dashboardWidgetStatusFilterInput?.closest(".field");
+  const priorityField = dashboardWidgetPriorityFilterInput?.closest(".field");
+  const regionField = dashboardWidgetRegionFilterInput?.closest(".field");
+  const executorField = dashboardWidgetExecutorFilterInput?.closest(".field");
+  const assigneeField = dashboardWidgetAssigneeFilterInput?.closest(".field");
+  const dateWindowField = dashboardWidgetDateWindowInput?.closest(".field");
+  const tagField = dashboardWidgetTagFilterInput?.closest(".field");
+  const limitField = dashboardWidgetLimitInput?.closest(".field");
+
+  toggleDashboardField(companyField, source !== "companies");
+  toggleDashboardField(statusField, source !== "locations");
+  toggleDashboardField(priorityField, source === "work_orders" || source === "todo_tasks");
+  toggleDashboardField(regionField, source === "work_orders" || source === "locations");
+  toggleDashboardField(executorField, source === "work_orders");
+  toggleDashboardField(assigneeField, source === "todo_tasks");
+  toggleDashboardField(dateWindowField, source !== "locations");
+  toggleDashboardField(tagField, source === "work_orders");
+  toggleDashboardField(limitField, visualization !== "metric");
+
+  if (dashboardWidgetLimitInput) {
+    dashboardWidgetLimitInput.disabled = visualization === "metric";
+  }
+}
+
+function populateDashboardWidgetForm(widget = null) {
+  if (!dashboardWidgetForm || !dashboardWidgetVisualizationInput || !dashboardWidgetSourceInput) {
+    return;
+  }
+
+  const draft = widget ?? {
+    id: "",
+    title: "",
+    source: "work_orders",
+    visualization: "metric",
+    metricKey: "active",
+    size: "medium",
+    limit: 6,
+    filters: {},
+  };
+
+  dashboardWidgetIdInput.value = draft.id ?? "";
+  dashboardWidgetTitleInput.value = draft.title ?? "";
+  replaceSelectOptions(dashboardWidgetVisualizationInput, DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.visualization ?? "metric");
+  replaceSelectOptions(dashboardWidgetSourceInput, DASHBOARD_WIDGET_SOURCE_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.source ?? "work_orders");
+  replaceSelectOptions(dashboardWidgetSizeInput, DASHBOARD_WIDGET_SIZE_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.size ?? "medium");
+  dashboardWidgetLimitInput.value = String(draft.limit ?? 6);
+  syncDashboardWidgetFormOptions();
+  dashboardWidgetMetricInput.value = draft.metricKey ?? dashboardWidgetMetricInput.value;
+  dashboardWidgetCompanyFilterInput.value = draft.filters?.companyId ?? "";
+  dashboardWidgetStatusFilterInput.value = draft.filters?.status ?? "";
+  dashboardWidgetPriorityFilterInput.value = draft.filters?.priority ?? "";
+  dashboardWidgetRegionFilterInput.value = draft.filters?.region ?? "";
+  dashboardWidgetExecutorFilterInput.value = draft.filters?.executor ?? "";
+  dashboardWidgetAssigneeFilterInput.value = draft.filters?.assigneeUserId ?? "";
+  dashboardWidgetDateWindowInput.value = draft.filters?.dateWindow ?? "all";
+  dashboardWidgetTagFilterInput.value = draft.filters?.tag ?? "";
+}
+
+function openDashboardBuilder(widget = null) {
+  state.dashboardBuilder.open = true;
+  state.dashboardBuilder.draftMode = widget ? "edit" : "create";
+  state.dashboardBuilder.draftId = widget?.id ?? "";
+  state.activeDashboardWidgetId = widget?.id ?? "";
+  setDashboardWidgetError("");
+
+  if (dashboardBuilderTitle) {
+    dashboardBuilderTitle.textContent = widget ? "Uredi karticu" : "Nova kartica";
+  }
+
+  if (dashboardBuilderCopy) {
+    dashboardBuilderCopy.textContent = widget
+      ? "Promijeni vizualizaciju, velicinu i filtre za ovu karticu."
+      : "Dodaj KPI, graf ili listu i slozi Dashboard po svojoj mjeri.";
+  }
+
+  populateDashboardWidgetForm(widget);
+}
+
+function closeDashboardBuilder() {
+  state.dashboardBuilder.open = false;
+  state.dashboardBuilder.draftMode = "create";
+  state.dashboardBuilder.draftId = "";
+  state.activeDashboardWidgetId = "";
+  setDashboardWidgetError("");
+}
+
+function createDashboardChip(label, tone = "neutral") {
+  const chip = document.createElement("span");
+  chip.className = `dashboard-widget-chip is-${tone}`;
+  chip.textContent = label;
+  return chip;
+}
+
+function getDashboardWidgetFilterChips(widget) {
+  const filters = widget.filters ?? {};
+  const chips = [];
+
+  if (filters.companyId) {
+    const company = state.companies.find((item) => String(item.id) === String(filters.companyId));
+    chips.push(createDashboardChip(company?.name || "Tvrtka", "filter"));
+  }
+
+  if (filters.status) {
+    chips.push(createDashboardChip(filters.status, "filter"));
+  }
+
+  if (filters.priority) {
+    chips.push(createDashboardChip(filters.priority, "filter"));
+  }
+
+  if (filters.region) {
+    chips.push(createDashboardChip(filters.region, "filter"));
+  }
+
+  if (filters.executor) {
+    chips.push(createDashboardChip(filters.executor, "filter"));
+  }
+
+  if (filters.assigneeUserId) {
+    const user = state.users.find((item) => String(item.id) === String(filters.assigneeUserId));
+    chips.push(createDashboardChip(user?.fullName || user?.email || "Korisnik", "filter"));
+  }
+
+  if (filters.tag) {
+    chips.push(createDashboardChip(filters.tag, "tag"));
+  }
+
+  if (filters.dateWindow && filters.dateWindow !== "all") {
+    const label = DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.find((item) => item.value === filters.dateWindow)?.label;
+    chips.push(createDashboardChip(label || filters.dateWindow, "filter"));
+  }
+
+  return chips;
+}
+
+function createDashboardDonut(data) {
+  const shell = document.createElement("div");
+  shell.className = "dashboard-chart-shell";
+  const total = data.items.reduce((sum, item) => sum + item.count, 0);
+
+  if (total === 0) {
+    shell.append(createDashboardBuilderEmptyState(data.emptyMessage));
+    return shell;
+  }
+
+  const chartWrap = document.createElement("div");
+  chartWrap.className = "dashboard-donut-wrap";
+
+  let offset = 0;
+  const segments = data.items.map((item, index) => {
+    const value = (item.count / total) * 100;
+    const start = offset;
+    offset += value;
+    return `${DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length]} ${start}% ${offset}%`;
+  });
+
+  const donut = document.createElement("div");
+  donut.className = "dashboard-donut-chart";
+  donut.style.background = `conic-gradient(${segments.join(", ")})`;
+
+  const center = document.createElement("div");
+  center.className = "dashboard-donut-center";
+
+  const centerValue = document.createElement("strong");
+  centerValue.textContent = String(total);
+
+  const centerLabel = document.createElement("span");
+  centerLabel.textContent = "Zapisa";
+
+  center.append(centerValue, centerLabel);
+  donut.append(center);
+  chartWrap.append(donut);
+
+  const legend = document.createElement("div");
+  legend.className = "dashboard-widget-legend";
+
+  data.items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-widget-legend-row";
+
+    const copy = document.createElement("div");
+    copy.className = "dashboard-widget-legend-copy";
+
+    const dot = document.createElement("span");
+    dot.className = "dashboard-widget-legend-dot";
+    dot.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+
+    const label = document.createElement("strong");
+    label.textContent = item.label;
+
+    copy.append(dot, label);
+
+    const value = document.createElement("span");
+    value.textContent = String(item.count);
+
+    row.append(copy, value);
+    legend.append(row);
+  });
+
+  shell.append(chartWrap, legend);
+  return shell;
+}
+
+function createDashboardBarChart(data) {
+  const shell = document.createElement("div");
+  shell.className = "dashboard-chart-shell";
+
+  if ((data.items ?? []).length === 0) {
+    shell.append(createDashboardBuilderEmptyState(data.emptyMessage));
+    return shell;
+  }
+
+  const maxValue = Math.max(...data.items.map((item) => item.count), 1);
+  const chart = document.createElement("div");
+  chart.className = "dashboard-bar-chart";
+
+  data.items.forEach((item, index) => {
+    const column = document.createElement("div");
+    column.className = "dashboard-bar-column";
+
+    const value = document.createElement("span");
+    value.className = "dashboard-bar-value";
+    value.textContent = String(item.count);
+
+    const track = document.createElement("div");
+    track.className = "dashboard-bar-track";
+
+    const fill = document.createElement("span");
+    fill.className = "dashboard-bar-fill";
+    fill.style.height = `${Math.max(12, Math.round((item.count / maxValue) * 100))}%`;
+    fill.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+
+    track.append(fill);
+
+    const label = document.createElement("span");
+    label.className = "dashboard-bar-label";
+    label.textContent = item.label;
+    label.title = item.label;
+
+    column.append(value, track, label);
+    chart.append(column);
+  });
+
+  shell.append(chart);
+  return shell;
+}
+
+function createDashboardList(data) {
+  const list = document.createElement("div");
+  list.className = "dashboard-widget-list";
+
+  if ((data.items ?? []).length === 0) {
+    list.append(createDashboardBuilderEmptyState(data.emptyMessage));
+    return list;
+  }
+
+  data.items.forEach((item) => {
+    const row = document.createElement(item.workOrderId ? "button" : "div");
+    row.className = "dashboard-widget-list-row";
+
+    if (row instanceof HTMLButtonElement) {
+      row.type = "button";
+      row.addEventListener("click", () => {
+        const linked = state.workOrders.find((entry) => String(entry.id) === String(item.workOrderId));
+        if (linked) {
+          hydrateWorkOrderForm(linked);
+        }
+      });
+    }
+
+    const copy = document.createElement("div");
+    copy.className = "dashboard-widget-list-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = item.subtitle || "Bez detalja";
+
+    copy.append(title, subtitle);
+
+    const meta = document.createElement("div");
+    meta.className = "dashboard-widget-list-meta";
+
+    if (item.status) {
+      meta.append(createDashboardChip(item.status, "soft"));
+    }
+
+    if (item.meta) {
+      const date = document.createElement("span");
+      date.className = "dashboard-widget-list-date";
+      date.textContent = item.meta.includes("T") ? formatDateTime(item.meta) : formatDate(item.meta);
+      meta.append(date);
+    }
+
+    row.append(copy, meta);
+    list.append(row);
+  });
+
+  return list;
+}
+
+function createDashboardWidgetCard(widget, { preview = false } = {}) {
+  const card = document.createElement("article");
+  card.className = `dashboard-widget-card size-${widget.size}`;
+  if (preview) {
+    card.classList.add("is-preview");
+  }
+
+  const data = getDashboardWidgetData(state, widget, {
+    userId: state.user?.id,
+  });
+
+  const head = document.createElement("div");
+  head.className = "dashboard-widget-head";
+
+  const copy = document.createElement("div");
+  copy.className = "dashboard-widget-head-copy";
+
+  const kicker = document.createElement("span");
+  kicker.className = "dashboard-widget-kicker";
+  kicker.textContent = `${data.sourceLabel} · ${data.optionLabel}`;
+
+  const title = document.createElement("h3");
+  title.textContent = widget.title;
+
+  copy.append(kicker, title);
+
+  const actions = document.createElement("div");
+  actions.className = "dashboard-widget-actions";
+
+  if (!preview) {
+    const moveUp = createActionButton("↑", "card-button card-button-light dashboard-widget-action", async () => {
+      await moveDashboardWidget(widget.id, -1);
+    });
+    const moveDown = createActionButton("↓", "card-button card-button-light dashboard-widget-action", async () => {
+      await moveDashboardWidget(widget.id, 1);
+    });
+    const edit = createActionButton("Edit", "card-button card-button-light dashboard-widget-action", () => {
+      openDashboardBuilder(widget);
+      renderDashboardOverview();
+    });
+    actions.append(moveUp, moveDown, edit);
+  } else {
+    actions.append(createDashboardChip("Preview", "soft"));
+  }
+
+  head.append(copy, actions);
+
+  const body = document.createElement("div");
+  body.className = "dashboard-widget-body";
+
+  if (data.kind === "metric") {
+    const value = document.createElement("strong");
+    value.className = "dashboard-widget-metric-value";
+    value.textContent = String(data.value);
+
+    const subtitle = document.createElement("span");
+    subtitle.className = "dashboard-widget-metric-subtitle";
+    subtitle.textContent = data.subtitle;
+
+    body.append(value, subtitle);
+  } else if (data.kind === "donut") {
+    body.append(createDashboardDonut(data));
+  } else if (data.kind === "bar") {
+    body.append(createDashboardBarChart(data));
+  } else {
+    body.append(createDashboardList(data));
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "dashboard-widget-footer";
+  footer.append(createDashboardChip(
+    DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
+    "soft",
+  ));
+  footer.append(...getDashboardWidgetFilterChips(widget));
+
+  card.append(head, body, footer);
+  return card;
+}
+
+function renderDashboardWidgetPreview() {
+  if (!dashboardWidgetPreview) {
+    return;
+  }
+
+  if (!state.dashboardBuilder.open) {
+    dashboardWidgetPreview.replaceChildren();
+    return;
+  }
+
+  try {
+    const draft = createDashboardWidgetDraftFromForm();
+    dashboardWidgetPreview.replaceChildren(createDashboardWidgetCard(draft, { preview: true }));
+  } catch (error) {
+    dashboardWidgetPreview.replaceChildren(createDashboardBuilderEmptyState(error.message));
+  }
+}
+
+async function moveDashboardWidget(widgetId, direction) {
+  const widgets = getDashboardWidgets();
+  const index = widgets.findIndex((item) => String(item.id) === String(widgetId));
+  const current = widgets[index];
+  const target = widgets[index + direction];
+
+  if (!current || !target) {
+    return;
+  }
+
+  await runMutation(async () => {
+    await apiRequest(`/dashboard-widgets/${current.id}`, {
+      method: "PATCH",
+      body: { position: target.position },
+    });
+
+    return apiRequest(`/dashboard-widgets/${target.id}`, {
+      method: "PATCH",
+      body: { position: current.position },
+    });
+  }, dashboardWidgetError);
+}
+
+async function createSuggestedDashboardLayout() {
+  if (state.dashboardBuilder.seeding) {
+    return;
+  }
+
+  state.dashboardBuilder.seeding = true;
+  setDashboardWidgetError("");
+  renderDashboardOverview();
+
+  try {
+    let payload = null;
+
+    for (const widget of getSuggestedDashboardWidgetDrafts()) {
+      payload = await apiRequest("/dashboard-widgets", {
+        method: "POST",
+        body: widget,
+      });
+    }
+
+    if (payload) {
+      applySnapshot(payload);
+    }
+  } catch (error) {
+    setDashboardWidgetError(error.message);
+  } finally {
+    state.dashboardBuilder.seeding = false;
+    renderDashboardOverview();
+  }
+}
+
+function renderDashboardWidgetGrid() {
+  if (!dashboardWidgetGrid || !dashboardWidgetEmpty) {
+    return;
+  }
+
+  const widgets = getDashboardWidgets();
+
+  if (widgets.length === 0) {
+    dashboardWidgetGrid.replaceChildren();
+    dashboardWidgetEmpty.hidden = false;
+    dashboardWidgetEmpty.replaceChildren(createDashboardBuilderEmptyState(
+      "Dashboard je prazan. Dodaj svoju prvu karticu ili koristi predlozeni raspored.",
+      [
+        createActionButton("+ Add card", "primary-button", () => {
+          openDashboardBuilder();
+          renderDashboardOverview();
+        }),
+        createActionButton("Starter layout", "ghost-button", () => {
+          void createSuggestedDashboardLayout();
+        }),
+      ],
+    ));
+    return;
+  }
+
+  dashboardWidgetEmpty.hidden = true;
+  dashboardWidgetGrid.replaceChildren(...widgets.map((widget) => createDashboardWidgetCard(widget)));
+}
+
+function renderDashboardOverview() {
+  const shouldShowDashboard = Boolean(
+    dashboardOverviewPanel
+    && state.user
+    && state.activeView === "selfdash"
+    && state.activeSidebarItem === "dashboard",
+  );
+
+  if (!dashboardOverviewPanel) {
+    return;
+  }
+
+  dashboardOverviewPanel.hidden = !shouldShowDashboard;
+
+  if (dashboardWorkOrdersPanel) {
+    dashboardWorkOrdersPanel.hidden = state.activeView === "selfdash" && state.activeSidebarItem === "dashboard";
+  }
+
+  if (!shouldShowDashboard) {
+    return;
+  }
+
+  if (dashboardSeedLayoutButton) {
+    dashboardSeedLayoutButton.hidden = getDashboardWidgets().length > 0;
+    dashboardSeedLayoutButton.disabled = state.dashboardBuilder.seeding;
+    dashboardSeedLayoutButton.textContent = state.dashboardBuilder.seeding ? "Slazem..." : "Starter layout";
+  }
+
+  if (dashboardAddWidgetButton) {
+    dashboardAddWidgetButton.disabled = !state.activeOrganizationId;
+  }
+
+  if (dashboardBuilderPanel) {
+    dashboardBuilderPanel.hidden = !state.dashboardBuilder.open;
+  }
+
+  if (dashboardWidgetDeleteButton) {
+    dashboardWidgetDeleteButton.hidden = !(dashboardWidgetIdInput?.value ?? "");
+  }
+
+  dashboardOverviewPanel.classList.toggle("has-builder-open", state.dashboardBuilder.open);
+  if (state.dashboardBuilder.open) {
+    syncDashboardWidgetFormOptions();
+  }
+  renderDashboardWidgetGrid();
+  renderDashboardWidgetPreview();
+}
+
 function getReminderById(reminderId) {
   return state.reminders.find((item) => String(item.id) === String(reminderId)) ?? null;
 }
@@ -8488,12 +9280,15 @@ logoutButton.addEventListener("click", () => {
     state.workOrders = [];
     state.reminders = [];
     state.todoTasks = [];
+    state.dashboardWidgets = [];
     state.companies = [];
     state.locations = [];
     state.users = [];
     state.signupRequests = [];
     state.loginContentItems = [];
     state.activeTodoTaskId = "";
+    state.activeDashboardWidgetId = "";
+    closeDashboardBuilder();
     state.measurementSheet.columns = [];
     state.measurementSheet.rows = [];
     state.measurementSheet.resizing = null;
@@ -8579,6 +9374,86 @@ loginContentForm?.addEventListener("submit", (event) => {
 });
 
 loginContentResetButton?.addEventListener("click", resetLoginContentForm);
+
+dashboardAddWidgetButton?.addEventListener("click", () => {
+  openDashboardBuilder();
+  renderDashboardOverview();
+});
+
+dashboardSeedLayoutButton?.addEventListener("click", () => {
+  void createSuggestedDashboardLayout();
+});
+
+dashboardBuilderClose?.addEventListener("click", () => {
+  closeDashboardBuilder();
+  renderDashboardOverview();
+});
+
+dashboardWidgetCancelButton?.addEventListener("click", () => {
+  closeDashboardBuilder();
+  renderDashboardOverview();
+});
+
+dashboardWidgetDeleteButton?.addEventListener("click", () => {
+  if (!dashboardWidgetIdInput?.value) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/dashboard-widgets/${dashboardWidgetIdInput.value}`, {
+    method: "DELETE",
+  }), dashboardWidgetError).then((success) => {
+    if (success) {
+      closeDashboardBuilder();
+      renderDashboardOverview();
+    }
+  });
+});
+
+dashboardWidgetForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(dashboardWidgetIdInput.value);
+  const path = isEditing ? `/dashboard-widgets/${dashboardWidgetIdInput.value}` : "/dashboard-widgets";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: readDashboardWidgetFormPatch(),
+  }), dashboardWidgetError).then((success) => {
+    if (success) {
+      closeDashboardBuilder();
+      renderDashboardOverview();
+    }
+  });
+});
+
+[
+  dashboardWidgetTitleInput,
+  dashboardWidgetMetricInput,
+  dashboardWidgetSizeInput,
+  dashboardWidgetLimitInput,
+  dashboardWidgetCompanyFilterInput,
+  dashboardWidgetStatusFilterInput,
+  dashboardWidgetPriorityFilterInput,
+  dashboardWidgetRegionFilterInput,
+  dashboardWidgetExecutorFilterInput,
+  dashboardWidgetAssigneeFilterInput,
+  dashboardWidgetDateWindowInput,
+  dashboardWidgetTagFilterInput,
+].forEach((input) => {
+  input?.addEventListener("input", () => {
+    renderDashboardWidgetPreview();
+  });
+  input?.addEventListener("change", () => {
+    renderDashboardWidgetPreview();
+  });
+});
+
+[dashboardWidgetVisualizationInput, dashboardWidgetSourceInput].forEach((input) => {
+  input?.addEventListener("change", () => {
+    syncDashboardWidgetFormOptions();
+    renderDashboardWidgetPreview();
+  });
+});
 
 setConnectionStatus();
 resetWorkOrderForm();

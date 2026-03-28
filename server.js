@@ -452,6 +452,7 @@ async function handleApiRequest(request, response, url) {
     const signupRequestActionMatch = url.pathname.match(/^\/api\/signup-requests\/([^/]+)\/(approve|reject)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
+    const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
@@ -635,6 +636,18 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/dashboard-widgets") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createDashboardWidget({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+        userId: user.id,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (companyMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
@@ -799,6 +812,25 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (dashboardWidgetMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronadena.");
+      const updated = await domainRepository.updateDashboardWidget(dashboardWidgetMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+        userId: user.id,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Dashboard kartica nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (workOrderMatch && request.method === "DELETE") {
       if (!canDeleteWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo brisati radne naloge.");
@@ -869,6 +901,20 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "ToDo zadatak nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (dashboardWidgetMatch && request.method === "DELETE") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronadena.");
+      const deleted = await domainRepository.deleteDashboardWidget(dashboardWidgetMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Dashboard kartica nije pronadena.");
         return true;
       }
 

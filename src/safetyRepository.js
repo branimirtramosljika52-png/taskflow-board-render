@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import {
   buildLocationContacts,
   createCompany,
+  createDashboardWidget,
   createLocation,
   createReminder,
   createTodoTask,
@@ -10,6 +11,7 @@ import {
   createWorkOrder,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
+  updateDashboardWidget,
   updateLocation,
   updateReminder,
   updateTodoTask,
@@ -117,6 +119,23 @@ function parseNullableInteger(value) {
 
   const numeric = Number(raw);
   return Number.isInteger(numeric) ? numeric : null;
+}
+
+function parseJsonObject(value, fallback = {}) {
+  const raw = dbString(value);
+
+  if (!raw) {
+    return { ...fallback };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : { ...fallback };
+  } catch {
+    return { ...fallback };
+  }
 }
 
 function locationCompositeKey(oib, name) {
@@ -615,12 +634,36 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [dashboardWidgetRows] = await connection.query(`
+    SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
+           size_key, limit_count, sort_order, filters_json, created_at, updated_at
+    FROM web_dashboard_widgets
+    ORDER BY organization_id ASC, user_id ASC, sort_order ASC, id ASC
+  `);
+
+  const dashboardWidgets = dashboardWidgetRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    userId: dbString(row.user_id),
+    title: row.title ?? "",
+    visualization: row.widget_type ?? "metric",
+    source: row.source_type ?? "work_orders",
+    metricKey: row.metric_key ?? "",
+    size: row.size_key ?? "medium",
+    limit: Number(row.limit_count ?? 6),
+    position: Number(row.sort_order ?? 0),
+    filters: parseJsonObject(row.filters_json),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
   return {
     companies,
     locations,
     workOrders,
     reminders,
     todoTasks,
+    dashboardWidgets,
   };
 }
 
@@ -693,6 +736,7 @@ export class InMemorySafetyRepository {
       workOrders: [],
       reminders: [],
       todoTasks: [],
+      dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
     this.users = [
@@ -786,6 +830,10 @@ export class InMemorySafetyRepository {
       todoTasks: this.snapshot.todoTasks.map((item) => ({
         ...item,
         comments: (item.comments ?? []).map((comment) => ({ ...comment })),
+      })),
+      dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
+        ...item,
+        filters: { ...(item.filters ?? {}) },
       })),
     };
   }
@@ -1028,6 +1076,30 @@ export class InMemorySafetyRepository {
     this.snapshot.todoTasks = this.snapshot.todoTasks.filter((item) => item.id !== id);
     return this.snapshot.todoTasks.length !== before;
   }
+
+  async createDashboardWidget(input) {
+    const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
+    return widget;
+  }
+
+  async updateDashboardWidget(id, patch) {
+    const current = this.snapshot.dashboardWidgets.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateDashboardWidget(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.dashboardWidgets = this.snapshot.dashboardWidgets.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteDashboardWidget(id) {
+    const before = this.snapshot.dashboardWidgets.length;
+    this.snapshot.dashboardWidgets = this.snapshot.dashboardWidgets.filter((item) => item.id !== id);
+    return this.snapshot.dashboardWidgets.length !== before;
+  }
 }
 
 export class MySqlSafetyRepository {
@@ -1144,6 +1216,25 @@ export class MySqlSafetyRepository {
         INDEX idx_web_team_task_comments_task (task_id),
         INDEX idx_web_team_task_comments_org (organization_id),
         INDEX idx_web_team_task_comments_created (created_at)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_dashboard_widgets (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        user_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        widget_type VARCHAR(24) NOT NULL DEFAULT 'metric',
+        source_type VARCHAR(24) NOT NULL DEFAULT 'work_orders',
+        metric_key VARCHAR(64) NOT NULL DEFAULT '',
+        size_key VARCHAR(16) NOT NULL DEFAULT 'medium',
+        limit_count INT NOT NULL DEFAULT 6,
+        sort_order INT NOT NULL DEFAULT 1,
+        filters_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_dashboard_widgets_org_user (organization_id, user_id),
+        INDEX idx_web_dashboard_widgets_order (organization_id, user_id, sort_order)
       )
     `);
   }
@@ -2113,6 +2204,105 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createDashboardWidget(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createDashboardWidget(input, snapshot, () => "pending-widget", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_dashboard_widgets
+            (organization_id, user_id, title, widget_type, source_type, metric_key,
+             size_key, limit_count, sort_order, filters_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.userId),
+          draft.title,
+          draft.visualization,
+          draft.source,
+          draft.metricKey,
+          draft.size,
+          Number(draft.limit),
+          Number(draft.position),
+          JSON.stringify(draft.filters ?? {}),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateDashboardWidget(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.dashboardWidgets.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateDashboardWidget(current, patch, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_dashboard_widgets
+          SET title = ?, widget_type = ?, source_type = ?, metric_key = ?, size_key = ?,
+              limit_count = ?, sort_order = ?, filters_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.visualization,
+          next.source,
+          next.metricKey,
+          next.size,
+          Number(next.limit),
+          Number(next.position),
+          JSON.stringify(next.filters ?? {}),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteDashboardWidget(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_dashboard_widgets WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }

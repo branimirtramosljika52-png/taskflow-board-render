@@ -27,10 +27,130 @@ export const TODO_TASK_STATUS_OPTIONS = [
   { value: "done", label: "Zavrseno" },
 ];
 
+export const DASHBOARD_WIDGET_SOURCE_OPTIONS = [
+  { value: "work_orders", label: "Radni nalozi" },
+  { value: "reminders", label: "Reminders" },
+  { value: "todo_tasks", label: "ToDo" },
+  { value: "locations", label: "Lokacije" },
+];
+
+export const DASHBOARD_WIDGET_VISUALIZATION_OPTIONS = [
+  { value: "metric", label: "KPI kartica" },
+  { value: "donut", label: "Donut graf" },
+  { value: "bar", label: "Bar chart" },
+  { value: "list", label: "Lista" },
+];
+
+export const DASHBOARD_WIDGET_SIZE_OPTIONS = [
+  { value: "small", label: "Mala" },
+  { value: "medium", label: "Srednja" },
+  { value: "large", label: "Velika" },
+  { value: "full", label: "Puna sirina" },
+];
+
+export const DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS = [
+  { value: "all", label: "Bez ogranicenja" },
+  { value: "overdue", label: "Kasni" },
+  { value: "7d", label: "Sljedecih 7 dana" },
+  { value: "14d", label: "Sljedecih 14 dana" },
+  { value: "30d", label: "Sljedecih 30 dana" },
+];
+
+export const DASHBOARD_WIDGET_DEFINITIONS = {
+  work_orders: {
+    label: "Radni nalozi",
+    metrics: [
+      { value: "total", label: "Svi radni nalozi" },
+      { value: "active", label: "Otvoreni RN" },
+      { value: "urgent", label: "Urgent RN" },
+      { value: "due_7d", label: "Rok 7 dana" },
+      { value: "overdue", label: "Istek / kasnjenje" },
+      { value: "completed", label: "Zatvoreni RN" },
+      { value: "factured", label: "Fakturirani RN" },
+    ],
+    groupings: [
+      { value: "status", label: "Status RN" },
+      { value: "priority", label: "Prioritet" },
+      { value: "region", label: "Regija" },
+      { value: "company", label: "Tvrtka" },
+      { value: "executor", label: "Izvrsitelj" },
+      { value: "tag", label: "Tag" },
+    ],
+    lists: [
+      { value: "upcoming_due", label: "Sljedeci rokovi" },
+      { value: "overdue", label: "RN kojima je istekao rok" },
+      { value: "urgent_open", label: "Urgent otvoreni RN" },
+      { value: "recent", label: "Nedavno azurirani RN" },
+    ],
+  },
+  reminders: {
+    label: "Reminders",
+    metrics: [
+      { value: "total", label: "Svi reminders" },
+      { value: "active", label: "Aktivni reminders" },
+      { value: "today", label: "Danasnji reminders" },
+      { value: "overdue", label: "Kasneci reminders" },
+      { value: "done", label: "Gotovi reminders" },
+    ],
+    groupings: [
+      { value: "status", label: "Status remindera" },
+      { value: "company", label: "Tvrtka" },
+      { value: "creator", label: "Kreirao" },
+    ],
+    lists: [
+      { value: "due_soon", label: "Reminderi s rokom" },
+      { value: "overdue", label: "Reminderi koji kasne" },
+      { value: "latest", label: "Zadnje promjene" },
+    ],
+  },
+  todo_tasks: {
+    label: "ToDo",
+    metrics: [
+      { value: "total", label: "Svi zadaci" },
+      { value: "assigned_to_me", label: "Dodijeljeno meni" },
+      { value: "created_by_me", label: "Ja sam poslao" },
+      { value: "overdue", label: "Kasneci zadaci" },
+      { value: "done", label: "Zavrseni zadaci" },
+    ],
+    groupings: [
+      { value: "status", label: "Status zadatka" },
+      { value: "priority", label: "Prioritet" },
+      { value: "assignee", label: "Izvrsitelj" },
+      { value: "creator", label: "Posiljatelj" },
+    ],
+    lists: [
+      { value: "assigned_to_me", label: "Moj inbox" },
+      { value: "overdue", label: "Kasneci zadaci" },
+      { value: "open_items", label: "Otvoreni zadaci" },
+      { value: "latest", label: "Nove aktivnosti" },
+    ],
+  },
+  locations: {
+    label: "Lokacije",
+    metrics: [
+      { value: "total", label: "Sve lokacije" },
+      { value: "missing_coordinates", label: "Bez koordinata" },
+    ],
+    groupings: [
+      { value: "region", label: "Regija" },
+      { value: "company", label: "Tvrtka" },
+      { value: "coordinate_state", label: "Stanje koordinata" },
+    ],
+    lists: [
+      { value: "missing_coordinates", label: "Lokacije bez koordinata" },
+      { value: "recent", label: "Nedavno azurirane lokacije" },
+    ],
+  },
+};
+
 const WORK_ORDER_STATUS_SET = new Set(WORK_ORDER_STATUS_OPTIONS.map((option) => option.value));
 const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
+const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
+const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
+const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
+const DASHBOARD_WIDGET_DATE_WINDOW_SET = new Set(DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.map((option) => option.value));
 const PRIORITY_RANK = {
   Urgent: 0,
   High: 1,
@@ -1201,6 +1321,669 @@ function countGroupedValues(items, getValue, { fallback = "Bez podatka", limit =
       return left.label.localeCompare(right.label, "hr");
     })
     .slice(0, limit);
+}
+
+function normalizeDashboardWidgetSource(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return DASHBOARD_WIDGET_SOURCE_SET.has(normalized) ? normalized : "work_orders";
+}
+
+function normalizeDashboardWidgetVisualization(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return DASHBOARD_WIDGET_VISUALIZATION_SET.has(normalized) ? normalized : "metric";
+}
+
+function normalizeDashboardWidgetSize(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return DASHBOARD_WIDGET_SIZE_SET.has(normalized) ? normalized : "medium";
+}
+
+function normalizeDashboardWidgetDateWindow(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return DASHBOARD_WIDGET_DATE_WINDOW_SET.has(normalized) ? normalized : "all";
+}
+
+function normalizeDashboardWidgetLimit(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return 6;
+  }
+
+  return Math.min(12, Math.max(3, parsed));
+}
+
+function getDashboardWidgetOptionsFor(source, visualization) {
+  const normalizedSource = normalizeDashboardWidgetSource(source);
+  const normalizedVisualization = normalizeDashboardWidgetVisualization(visualization);
+  const definition = DASHBOARD_WIDGET_DEFINITIONS[normalizedSource] ?? DASHBOARD_WIDGET_DEFINITIONS.work_orders;
+
+  if (normalizedVisualization === "metric") {
+    return definition.metrics ?? [];
+  }
+
+  if (normalizedVisualization === "list") {
+    return definition.lists ?? [];
+  }
+
+  return definition.groupings ?? [];
+}
+
+function normalizeDashboardWidgetMetricKey(source, visualization, value) {
+  const normalizedValue = normalizeText(value);
+  const options = getDashboardWidgetOptionsFor(source, visualization);
+  const match = options.find((option) => option.value === normalizedValue);
+  return match?.value ?? options[0]?.value ?? "";
+}
+
+function normalizeDashboardWidgetFilters(input = {}) {
+  return {
+    companyId: normalizeText(input.companyId),
+    status: normalizeText(input.status),
+    priority: normalizeText(input.priority),
+    region: normalizeText(input.region),
+    executor: normalizeText(input.executor),
+    assigneeUserId: normalizeText(input.assigneeUserId),
+    dateWindow: normalizeDashboardWidgetDateWindow(input.dateWindow),
+    tag: normalizeText(input.tag),
+  };
+}
+
+function getNextDashboardWidgetPosition(widgets = []) {
+  return widgets.reduce((maxValue, item) => Math.max(maxValue, Number(item.position ?? 0)), 0) + 1;
+}
+
+function normalizeDashboardWidgetPosition(value, widgets = []) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : getNextDashboardWidgetPosition(widgets);
+}
+
+function getDashboardWidgetDefaultTitle(source, visualization, metricKey) {
+  const definition = DASHBOARD_WIDGET_DEFINITIONS[normalizeDashboardWidgetSource(source)] ?? DASHBOARD_WIDGET_DEFINITIONS.work_orders;
+  const option = getDashboardWidgetOptionsFor(source, visualization).find((entry) => entry.value === metricKey);
+  return option?.label ?? `${definition.label} kartica`;
+}
+
+export function createDashboardWidget(
+  input,
+  snapshot,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const source = normalizeDashboardWidgetSource(input.source);
+  const visualization = normalizeDashboardWidgetVisualization(input.visualization);
+  const metricKey = normalizeDashboardWidgetMetricKey(source, visualization, input.metricKey);
+  const timestamp = now();
+  const title = normalizeText(input.title) || getDashboardWidgetDefaultTitle(source, visualization, metricKey);
+
+  return {
+    id: createId(),
+    organizationId: requireText(input.organizationId, "Organizacija"),
+    userId: requireText(input.userId, "Korisnik"),
+    title,
+    source,
+    visualization,
+    metricKey,
+    size: normalizeDashboardWidgetSize(input.size),
+    limit: normalizeDashboardWidgetLimit(input.limit),
+    position: normalizeDashboardWidgetPosition(input.position, snapshot?.dashboardWidgets ?? []),
+    filters: normalizeDashboardWidgetFilters(input.filters),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateDashboardWidget(current, patch, snapshot, now = isoNow) {
+  const source = hasOwn(patch, "source")
+    ? normalizeDashboardWidgetSource(patch.source)
+    : normalizeDashboardWidgetSource(current.source);
+  const visualization = hasOwn(patch, "visualization")
+    ? normalizeDashboardWidgetVisualization(patch.visualization)
+    : normalizeDashboardWidgetVisualization(current.visualization);
+  const metricKey = normalizeDashboardWidgetMetricKey(
+    source,
+    visualization,
+    hasOwn(patch, "metricKey") ? patch.metricKey : current.metricKey,
+  );
+  const title = hasOwn(patch, "title")
+    ? (normalizeText(patch.title) || getDashboardWidgetDefaultTitle(source, visualization, metricKey))
+    : (normalizeText(current.title) || getDashboardWidgetDefaultTitle(source, visualization, metricKey));
+  const mergedFilters = hasOwn(patch, "filters")
+    ? { ...(current.filters ?? {}), ...(patch.filters ?? {}) }
+    : (current.filters ?? {});
+
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : requireText(current.organizationId, "Organizacija"),
+    userId: hasOwn(patch, "userId")
+      ? requireText(patch.userId, "Korisnik")
+      : requireText(current.userId, "Korisnik"),
+    title,
+    source,
+    visualization,
+    metricKey,
+    size: hasOwn(patch, "size") ? normalizeDashboardWidgetSize(patch.size) : normalizeDashboardWidgetSize(current.size),
+    limit: hasOwn(patch, "limit") ? normalizeDashboardWidgetLimit(patch.limit) : normalizeDashboardWidgetLimit(current.limit),
+    position: hasOwn(patch, "position")
+      ? normalizeDashboardWidgetPosition(patch.position, snapshot?.dashboardWidgets ?? [])
+      : normalizeDashboardWidgetPosition(current.position, snapshot?.dashboardWidgets ?? []),
+    filters: normalizeDashboardWidgetFilters(mergedFilters),
+    updatedAt: now(),
+  };
+}
+
+export function sortDashboardWidgets(widgets = []) {
+  return [...widgets].sort((left, right) => {
+    const leftPosition = Number(left.position ?? Number.MAX_SAFE_INTEGER);
+    const rightPosition = Number(right.position ?? Number.MAX_SAFE_INTEGER);
+
+    if (leftPosition !== rightPosition) {
+      return leftPosition - rightPosition;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+function isPastDue(dateValue, todayKey) {
+  const dateKey = dateValueToKey(dateValue);
+  return dateKey !== null && todayKey !== null && dateKey < todayKey;
+}
+
+function isWithinFutureWindow(dateValue, todayKey, days) {
+  const dateKey = dateValueToKey(dateValue);
+
+  if (dateKey === null || todayKey === null) {
+    return false;
+  }
+
+  return dateKey >= todayKey && dateKey <= (todayKey + (days * 24 * 60 * 60 * 1000));
+}
+
+function applyDashboardDateWindow(items, getDate, dateWindow, todayKey, isClosed = () => false) {
+  if (dateWindow === "all") {
+    return items;
+  }
+
+  if (dateWindow === "overdue") {
+    return items.filter((item) => !isClosed(item) && isPastDue(getDate(item), todayKey));
+  }
+
+  const windowDays = Number.parseInt(dateWindow, 10);
+
+  if (!Number.isFinite(windowDays)) {
+    return items;
+  }
+
+  return items.filter((item) => !isClosed(item) && isWithinFutureWindow(getDate(item), todayKey, windowDays));
+}
+
+function splitTags(value) {
+  return normalizeText(value)
+    .split(",")
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+}
+
+function getDashboardFilteredSourceItems(snapshot, widget, context = {}, today = todayString()) {
+  const todayKey = dateValueToKey(today);
+  const filters = normalizeDashboardWidgetFilters(widget.filters);
+
+  if (widget.source === "reminders") {
+    let items = [...(snapshot.reminders ?? [])];
+
+    if (filters.companyId) {
+      items = items.filter((item) => String(item.companyId) === String(filters.companyId));
+    }
+
+    if (filters.status && filters.status !== "all") {
+      items = items.filter((item) => item.status === filters.status);
+    }
+
+    return applyDashboardDateWindow(items, (item) => item.dueDate, filters.dateWindow, todayKey, (item) => item.status === "done");
+  }
+
+  if (widget.source === "todo_tasks") {
+    let items = [...(snapshot.todoTasks ?? [])];
+
+    if (filters.companyId) {
+      items = items.filter((item) => String(item.companyId) === String(filters.companyId));
+    }
+
+    if (filters.status && filters.status !== "all") {
+      items = items.filter((item) => item.status === filters.status);
+    }
+
+    if (filters.priority && filters.priority !== "all") {
+      items = items.filter((item) => item.priority === filters.priority);
+    }
+
+    if (filters.assigneeUserId) {
+      items = items.filter((item) => String(item.assignedToUserId) === String(filters.assigneeUserId));
+    }
+
+    return applyDashboardDateWindow(items, (item) => item.dueDate, filters.dateWindow, todayKey, (item) => item.status === "done");
+  }
+
+  if (widget.source === "locations") {
+    let items = [...(snapshot.locations ?? [])];
+
+    if (filters.companyId) {
+      items = items.filter((item) => String(item.companyId) === String(filters.companyId));
+    }
+
+    if (filters.region) {
+      items = items.filter((item) => normalizeText(item.region) === filters.region);
+    }
+
+    return items;
+  }
+
+  let items = [...(snapshot.workOrders ?? [])];
+
+  if (filters.companyId) {
+    items = items.filter((item) => String(item.companyId) === String(filters.companyId));
+  }
+
+  if (filters.status && filters.status !== "all") {
+    items = items.filter((item) => item.status === filters.status);
+  }
+
+  if (filters.priority && filters.priority !== "all") {
+    items = items.filter((item) => item.priority === filters.priority);
+  }
+
+  if (filters.region) {
+    items = items.filter((item) => normalizeText(item.region) === filters.region);
+  }
+
+  if (filters.executor) {
+    items = items.filter((item) => [item.executor1, item.executor2].some((value) => normalizeText(value) === filters.executor));
+  }
+
+  if (filters.tag) {
+    const tagLower = filters.tag.toLowerCase();
+    items = items.filter((item) => splitTags(item.tagText).some((value) => value.toLowerCase() === tagLower));
+  }
+
+  return applyDashboardDateWindow(items, (item) => item.dueDate, filters.dateWindow, todayKey, (item) => CLOSED_WORK_ORDER_STATUSES.has(item.status));
+}
+
+function buildDashboardDistributionItems(widget, items) {
+  if (widget.source === "reminders") {
+    if (widget.metricKey === "status") {
+      return REMINDER_STATUS_OPTIONS.map((option) => ({
+        label: option.label,
+        count: items.filter((item) => item.status === option.value).length,
+      })).filter((item) => item.count > 0).slice(0, widget.limit);
+    }
+
+    if (widget.metricKey === "company") {
+      return countGroupedValues(items, (item) => item.companyName, {
+        fallback: "Bez tvrtke",
+        limit: widget.limit,
+      });
+    }
+
+    if (widget.metricKey === "creator") {
+      return countGroupedValues(items, (item) => item.createdByLabel, {
+        fallback: "Safety360",
+        limit: widget.limit,
+      });
+    }
+  }
+
+  if (widget.source === "todo_tasks") {
+    if (widget.metricKey === "status") {
+      return TODO_TASK_STATUS_OPTIONS.map((option) => ({
+        label: option.label,
+        count: items.filter((item) => item.status === option.value).length,
+      })).filter((item) => item.count > 0).slice(0, widget.limit);
+    }
+
+    if (widget.metricKey === "priority") {
+      return PRIORITY_OPTIONS.map((option) => ({
+        label: option.label,
+        count: items.filter((item) => item.priority === option.value).length,
+      })).filter((item) => item.count > 0).slice(0, widget.limit);
+    }
+
+    if (widget.metricKey === "assignee") {
+      return countGroupedValues(items, (item) => item.assignedToLabel, {
+        fallback: "Nedodijeljeno",
+        limit: widget.limit,
+      });
+    }
+
+    if (widget.metricKey === "creator") {
+      return countGroupedValues(items, (item) => item.createdByLabel, {
+        fallback: "Safety360",
+        limit: widget.limit,
+      });
+    }
+  }
+
+  if (widget.source === "locations") {
+    if (widget.metricKey === "region") {
+      return countGroupedValues(items, (item) => item.region, {
+        fallback: "Bez regije",
+        limit: widget.limit,
+      });
+    }
+
+    if (widget.metricKey === "company") {
+      return countGroupedValues(items, (item) => item.companyName, {
+        fallback: "Bez tvrtke",
+        limit: widget.limit,
+      });
+    }
+
+    if (widget.metricKey === "coordinate_state") {
+      return countGroupedValues(items, (item) => (normalizeText(item.coordinates) ? "Ima koordinate" : "Bez koordinata"), {
+        limit: widget.limit,
+      });
+    }
+  }
+
+  if (widget.metricKey === "status") {
+    return WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+      label: option.label,
+      count: items.filter((item) => item.status === option.value).length,
+    })).filter((item) => item.count > 0).slice(0, widget.limit);
+  }
+
+  if (widget.metricKey === "priority") {
+    return PRIORITY_OPTIONS.map((option) => ({
+      label: option.label,
+      count: items.filter((item) => item.priority === option.value).length,
+    })).filter((item) => item.count > 0).slice(0, widget.limit);
+  }
+
+  if (widget.metricKey === "region") {
+    return countGroupedValues(items, (item) => item.region, {
+      fallback: "Bez regije",
+      limit: widget.limit,
+    });
+  }
+
+  if (widget.metricKey === "company") {
+    return countGroupedValues(items, (item) => item.companyName, {
+      fallback: "Bez tvrtke",
+      limit: widget.limit,
+    });
+  }
+
+  if (widget.metricKey === "executor") {
+    return countGroupedValues(
+      items.flatMap((item) => [item.executor1, item.executor2].filter((value) => normalizeText(value))),
+      (value) => value,
+      {
+        fallback: "Bez izvrsitelja",
+        limit: widget.limit,
+      },
+    );
+  }
+
+  if (widget.metricKey === "tag") {
+    return countGroupedValues(items.flatMap((item) => splitTags(item.tagText)), (value) => value, {
+      fallback: "Bez taga",
+      limit: widget.limit,
+    });
+  }
+
+  return [];
+}
+
+function buildDashboardMetricValue(widget, items, snapshot, context = {}, today = todayString()) {
+  const todayKey = dateValueToKey(today);
+
+  if (widget.source === "reminders") {
+    if (widget.metricKey === "active") {
+      return items.filter((item) => item.status === "active").length;
+    }
+
+    if (widget.metricKey === "today") {
+      return items.filter((item) => item.dueDate === today).length;
+    }
+
+    if (widget.metricKey === "overdue") {
+      return items.filter((item) => item.status !== "done" && isPastDue(item.dueDate, todayKey)).length;
+    }
+
+    if (widget.metricKey === "done") {
+      return items.filter((item) => item.status === "done").length;
+    }
+
+    return items.length;
+  }
+
+  if (widget.source === "todo_tasks") {
+    if (widget.metricKey === "assigned_to_me") {
+      return items.filter((item) => String(item.assignedToUserId) === String(context.userId ?? "")).length;
+    }
+
+    if (widget.metricKey === "created_by_me") {
+      return items.filter((item) => String(item.createdByUserId) === String(context.userId ?? "")).length;
+    }
+
+    if (widget.metricKey === "overdue") {
+      return items.filter((item) => item.status !== "done" && isPastDue(item.dueDate, todayKey)).length;
+    }
+
+    if (widget.metricKey === "done") {
+      return items.filter((item) => item.status === "done").length;
+    }
+
+    return items.length;
+  }
+
+  if (widget.source === "locations") {
+    if (widget.metricKey === "missing_coordinates") {
+      return items.filter((item) => !normalizeText(item.coordinates)).length;
+    }
+
+    return items.length;
+  }
+
+  if (widget.metricKey === "active") {
+    return items.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status)).length;
+  }
+
+  if (widget.metricKey === "urgent") {
+    return items.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && item.priority === "Urgent").length;
+  }
+
+  if (widget.metricKey === "due_7d") {
+    return items.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && isWithinFutureWindow(item.dueDate, todayKey, 7)).length;
+  }
+
+  if (widget.metricKey === "overdue") {
+    return items.filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && isPastDue(item.dueDate, todayKey)).length;
+  }
+
+  if (widget.metricKey === "completed") {
+    return items.filter((item) => CLOSED_WORK_ORDER_STATUSES.has(item.status)).length;
+  }
+
+  if (widget.metricKey === "factured") {
+    return items.filter((item) => item.status === "Fakturiran RN").length;
+  }
+
+  return items.length;
+}
+
+function mapDashboardListItem(entry, type) {
+  if (type === "reminders") {
+    return {
+      id: entry.id,
+      type,
+      title: entry.title || "Reminder",
+      subtitle: [entry.companyName, entry.locationName, entry.workOrderNumber].filter(Boolean).join(" · ") || "Bez veze",
+      meta: entry.dueDate || entry.updatedAt || "",
+      status: entry.status,
+      workOrderId: entry.workOrderId,
+    };
+  }
+
+  if (type === "todo_tasks") {
+    return {
+      id: entry.id,
+      type,
+      title: entry.title || "ToDo",
+      subtitle: [entry.assignedToLabel, entry.workOrderNumber].filter(Boolean).join(" · ") || "Bez izvrsitelja",
+      meta: entry.dueDate || entry.updatedAt || "",
+      status: entry.status,
+      workOrderId: entry.workOrderId,
+    };
+  }
+
+  if (type === "locations") {
+    return {
+      id: entry.id,
+      type,
+      title: entry.name || "Lokacija",
+      subtitle: [entry.companyName, entry.region].filter(Boolean).join(" · ") || "Bez detalja",
+      meta: normalizeText(entry.coordinates) || "Bez koordinata",
+      status: normalizeText(entry.coordinates) ? "Ima koordinate" : "Bez koordinata",
+      workOrderId: "",
+    };
+  }
+
+  return {
+    id: entry.id,
+    type,
+    title: entry.workOrderNumber || "Bez broja RN",
+    subtitle: [entry.companyName, entry.locationName].filter(Boolean).join(" · ") || "Bez klijenta",
+    meta: entry.dueDate || entry.updatedAt || "",
+    status: entry.status,
+    workOrderId: entry.id,
+  };
+}
+
+function buildDashboardListItems(widget, items, context = {}, today = todayString()) {
+  const todayKey = dateValueToKey(today);
+
+  if (widget.source === "reminders") {
+    let nextItems = [...items];
+
+    if (widget.metricKey === "due_soon") {
+      nextItems = nextItems
+        .filter((item) => item.status !== "done" && item.dueDate)
+        .sort((left, right) => String(left.dueDate ?? "").localeCompare(String(right.dueDate ?? "")));
+    } else if (widget.metricKey === "overdue") {
+      nextItems = nextItems
+        .filter((item) => item.status !== "done" && isPastDue(item.dueDate, todayKey))
+        .sort((left, right) => String(left.dueDate ?? "").localeCompare(String(right.dueDate ?? "")));
+    } else {
+      nextItems = nextItems.sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")));
+    }
+
+    return nextItems.slice(0, widget.limit).map((item) => mapDashboardListItem(item, "reminders"));
+  }
+
+  if (widget.source === "todo_tasks") {
+    let nextItems = [...items];
+
+    if (widget.metricKey === "assigned_to_me") {
+      nextItems = nextItems.filter((item) => String(item.assignedToUserId) === String(context.userId ?? ""));
+    } else if (widget.metricKey === "overdue") {
+      nextItems = nextItems.filter((item) => item.status !== "done" && isPastDue(item.dueDate, todayKey));
+    } else if (widget.metricKey === "open_items") {
+      nextItems = nextItems.filter((item) => item.status !== "done");
+    }
+
+    nextItems = nextItems.sort((left, right) => {
+      if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
+        return left.dueDate.localeCompare(right.dueDate);
+      }
+
+      return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+    });
+
+    return nextItems.slice(0, widget.limit).map((item) => mapDashboardListItem(item, "todo_tasks"));
+  }
+
+  if (widget.source === "locations") {
+    let nextItems = [...items];
+
+    if (widget.metricKey === "missing_coordinates") {
+      nextItems = nextItems.filter((item) => !normalizeText(item.coordinates));
+    }
+
+    nextItems = nextItems.sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")));
+    return nextItems.slice(0, widget.limit).map((item) => mapDashboardListItem(item, "locations"));
+  }
+
+  let nextItems = [...items];
+
+  if (widget.metricKey === "upcoming_due") {
+    nextItems = nextItems
+      .filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && item.dueDate)
+      .sort((left, right) => String(left.dueDate ?? "").localeCompare(String(right.dueDate ?? "")));
+  } else if (widget.metricKey === "overdue") {
+    nextItems = nextItems
+      .filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && isPastDue(item.dueDate, todayKey))
+      .sort((left, right) => String(left.dueDate ?? "").localeCompare(String(right.dueDate ?? "")));
+  } else if (widget.metricKey === "urgent_open") {
+    nextItems = nextItems
+      .filter((item) => !CLOSED_WORK_ORDER_STATUSES.has(item.status) && item.priority === "Urgent")
+      .sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")));
+  } else {
+    nextItems = nextItems.sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")));
+  }
+
+  return nextItems.slice(0, widget.limit).map((item) => mapDashboardListItem(item, "work_orders"));
+}
+
+export function getDashboardWidgetData(snapshot, widget, context = {}, today = todayString()) {
+  const normalizedSource = normalizeDashboardWidgetSource(widget.source);
+  const normalizedVisualization = normalizeDashboardWidgetVisualization(widget.visualization);
+  const normalizedMetricKey = normalizeDashboardWidgetMetricKey(normalizedSource, normalizedVisualization, widget.metricKey);
+  const normalizedWidget = {
+    ...widget,
+    source: normalizedSource,
+    visualization: normalizedVisualization,
+    metricKey: normalizedMetricKey,
+    limit: normalizeDashboardWidgetLimit(widget.limit),
+    filters: normalizeDashboardWidgetFilters(widget.filters),
+  };
+  const choice = getDashboardWidgetOptionsFor(normalizedSource, normalizedVisualization)
+    .find((entry) => entry.value === normalizedMetricKey);
+  const sourceDefinition = DASHBOARD_WIDGET_DEFINITIONS[normalizedSource] ?? DASHBOARD_WIDGET_DEFINITIONS.work_orders;
+  const filteredItems = getDashboardFilteredSourceItems(snapshot, normalizedWidget, context, today);
+
+  if (normalizedVisualization === "metric") {
+    return {
+      kind: "metric",
+      title: normalizedWidget.title,
+      sourceLabel: sourceDefinition.label,
+      optionLabel: choice?.label ?? normalizedWidget.title,
+      value: buildDashboardMetricValue(normalizedWidget, filteredItems, snapshot, context, today),
+      subtitle: `${filteredItems.length} zapisa nakon filtra`,
+    };
+  }
+
+  if (normalizedVisualization === "list") {
+    return {
+      kind: "list",
+      title: normalizedWidget.title,
+      sourceLabel: sourceDefinition.label,
+      optionLabel: choice?.label ?? normalizedWidget.title,
+      items: buildDashboardListItems(normalizedWidget, filteredItems, context, today),
+      emptyMessage: "Nema stavki za zadane filtre.",
+    };
+  }
+
+  return {
+    kind: normalizedVisualization,
+    title: normalizedWidget.title,
+    sourceLabel: sourceDefinition.label,
+    optionLabel: choice?.label ?? normalizedWidget.title,
+    items: buildDashboardDistributionItems(normalizedWidget, filteredItems),
+    emptyMessage: "Nema dovoljno podataka za graf.",
+  };
 }
 
 export function getDashboardInsights(snapshot, today = todayString()) {

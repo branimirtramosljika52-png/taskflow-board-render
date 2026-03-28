@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildLocationContacts,
   createCompany,
+  createDashboardWidget,
   createLocation,
   createReminder,
   createTodoTask,
@@ -12,12 +13,15 @@ import {
   filterReminders,
   filterTodoTasks,
   filterWorkOrders,
+  getDashboardWidgetData,
   getDashboardInsights,
   getDashboardStats,
   nextWorkOrderNumber,
   sortReminders,
+  sortDashboardWidgets,
   sortTodoTasks,
   syncLocationFieldsFromWorkOrder,
+  updateDashboardWidget,
   updateLocation,
   updateReminder,
   updateTodoTask,
@@ -394,6 +398,163 @@ test("dashboard insights summarize workload, priorities and upcoming deadlines",
   assert.equal(insights.executorLoad[0].label, "Ana Anic");
   assert.equal(insights.executorLoad[0].count, 2);
   assert.equal(insights.upcomingWorkOrders[0].workOrderNumber, "RN-00001");
+});
+
+test("dashboard widgets normalize settings and keep deterministic ordering", () => {
+  const widgetA = createDashboardWidget(
+    {
+      organizationId: "10",
+      userId: "22",
+      title: "",
+      source: "work_orders",
+      visualization: "metric",
+      metricKey: "active",
+      size: "small",
+      limit: 99,
+      position: 4,
+      filters: { dateWindow: "7d" },
+    },
+    { dashboardWidgets: [] },
+    () => "widget-a",
+    () => "2026-03-28T09:00:00.000Z",
+  );
+
+  const widgetB = createDashboardWidget(
+    {
+      organizationId: "10",
+      userId: "22",
+      title: "Statusi",
+      source: "work_orders",
+      visualization: "donut",
+      metricKey: "status",
+      size: "large",
+      limit: 5,
+      position: 2,
+      filters: {},
+    },
+    { dashboardWidgets: [widgetA] },
+    () => "widget-b",
+    () => "2026-03-28T09:05:00.000Z",
+  );
+
+  const updated = updateDashboardWidget(
+    widgetA,
+    {
+      visualization: "bar",
+      metricKey: "region",
+      size: "full",
+      filters: { region: "Zagreb", dateWindow: "overdue" },
+    },
+    { dashboardWidgets: [widgetA, widgetB] },
+    () => "2026-03-28T10:00:00.000Z",
+  );
+
+  assert.equal(widgetA.title, "Otvoreni RN");
+  assert.equal(widgetA.limit, 12);
+  assert.equal(updated.visualization, "bar");
+  assert.equal(updated.metricKey, "region");
+  assert.equal(updated.size, "full");
+  assert.equal(updated.filters.region, "Zagreb");
+  assert.equal(updated.filters.dateWindow, "overdue");
+  assert.deepEqual(sortDashboardWidgets([widgetA, widgetB]).map((item) => item.id), ["widget-b", "widget-a"]);
+});
+
+test("dashboard widget data supports KPI, chart and list outputs with filters", () => {
+  const state = buildState();
+  const workOrders = [
+    createWorkOrder(
+      {
+        companyId: "company-1",
+        locationId: "location-1",
+        status: "Otvoreni RN",
+        priority: "Urgent",
+        dueDate: "2026-03-29",
+        region: "Zagreb",
+        executor1: "Ana Anic",
+        tagText: "petrol",
+        description: "Hitni pregled",
+      },
+      state,
+      () => "work-order-1",
+      "RN-10001",
+      () => "2026-03-28T09:00:00.000Z",
+    ),
+    createWorkOrder(
+      {
+        companyId: "company-1",
+        locationId: "location-1",
+        status: "Fakturiran RN",
+        priority: "Normal",
+        dueDate: "2026-03-20",
+        region: "Istra",
+        executor1: "Marko Maric",
+        description: "Zatvoreni nalog",
+      },
+      state,
+      () => "work-order-2",
+      "RN-10002",
+      () => "2026-03-28T08:00:00.000Z",
+    ),
+  ];
+
+  const metricWidget = createDashboardWidget(
+    {
+      organizationId: "10",
+      userId: "22",
+      source: "work_orders",
+      visualization: "metric",
+      metricKey: "active",
+      filters: { companyId: "company-1" },
+    },
+    { dashboardWidgets: [] },
+    () => "metric-widget",
+    () => "2026-03-28T09:10:00.000Z",
+  );
+
+  const chartWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "donut",
+      metricKey: "status",
+      size: "large",
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:11:00.000Z",
+  );
+
+  const listWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "list",
+      metricKey: "upcoming_due",
+      size: "large",
+      limit: 4,
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:12:00.000Z",
+  );
+
+  const snapshot = {
+    ...state,
+    workOrders,
+    reminders: [],
+    todoTasks: [],
+    locations: state.locations,
+  };
+
+  const metricData = getDashboardWidgetData(snapshot, metricWidget, { userId: "22" }, "2026-03-28");
+  const chartData = getDashboardWidgetData(snapshot, chartWidget, { userId: "22" }, "2026-03-28");
+  const listData = getDashboardWidgetData(snapshot, listWidget, { userId: "22" }, "2026-03-28");
+
+  assert.equal(metricData.kind, "metric");
+  assert.equal(metricData.value, 1);
+  assert.equal(chartData.kind, "donut");
+  assert.equal(chartData.items[0].label, "Otvoreni RN");
+  assert.equal(chartData.items[0].count, 1);
+  assert.equal(listData.kind, "list");
+  assert.equal(listData.items[0].title, "RN-10001");
 });
 
 test("createReminder can link to a work order and inherit company context", () => {
