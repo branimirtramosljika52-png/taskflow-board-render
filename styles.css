@@ -2236,9 +2236,10 @@ fieldset {
   inset: 0;
   z-index: 62;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
   overflow: auto;
-  padding: 24px;
+  padding: 16px 24px;
 }
 
 .dashboard-builder-backdrop {
@@ -2254,8 +2255,8 @@ fieldset {
   position: relative;
   z-index: 1;
   width: min(1500px, calc(100vw - 48px));
-  height: min(920px, calc(100vh - 48px));
-  max-height: calc(100vh - 48px);
+  height: calc(100vh - 32px);
+  max-height: calc(100vh - 32px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
@@ -2857,13 +2858,13 @@ button.dashboard-widget-list-row {
   }
 
   .dashboard-builder-modal {
-    padding: 14px;
+    padding: 12px 14px;
   }
 
   .dashboard-builder-dialog {
     width: calc(100vw - 28px);
-    height: calc(100vh - 28px);
-    max-height: calc(100vh - 28px);
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
     padding: 16px;
   }
 
