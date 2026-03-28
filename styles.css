@@ -127,6 +127,7 @@ fieldset {
   grid-template-rows: auto 1fr auto;
   align-content: stretch;
   justify-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -165,13 +166,14 @@ fieldset {
 .app-rail-nav {
   display: grid;
   gap: 8px;
-  width: 100%;
+  width: auto;
   justify-items: center;
+  justify-self: center;
   align-content: start;
 }
 
 .app-rail-footer {
-  width: 100%;
+  width: auto;
   display: flex;
   justify-content: center;
   padding-top: 6px;
@@ -1225,10 +1227,10 @@ fieldset {
   justify-items: center;
   grid-template-columns: 1fr;
   row-gap: 0;
-  width: 54px;
-  min-height: 54px;
+  width: 48px;
+  min-height: 48px;
   padding: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   border: 1px solid rgba(179, 188, 208, 0.94);
   background: rgba(255, 255, 255, 0.82);
   color: #46506c;
@@ -1249,9 +1251,9 @@ fieldset {
 }
 
 .rail-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1262,8 +1264,8 @@ fieldset {
 }
 
 .rail-icon .icon-svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .sidebar-group-icon .icon-svg,
