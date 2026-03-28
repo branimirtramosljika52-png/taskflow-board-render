@@ -1543,21 +1543,21 @@ fieldset {
 }
 
 .rail-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   color: inherit;
-  font-size: 1.02rem;
+  font-size: 1.08rem;
   font-weight: 700;
 }
 
 .rail-icon .icon-svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 .sidebar-group-icon .icon-svg,
