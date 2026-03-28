@@ -318,15 +318,15 @@ fieldset {
 }
 
 .sidebar-group-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 11px;
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(220, 226, 240, 0.94);
   color: #4a5472;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1155,15 +1155,15 @@ fieldset {
 }
 
 .tab-button-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(220, 226, 240, 0.9);
   color: #4f5875;
-  font-size: 0.86rem;
+  font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1199,8 +1199,8 @@ fieldset {
   justify-items: center;
   grid-template-columns: 1fr;
   row-gap: 0;
-  width: 52px;
-  min-height: 52px;
+  width: 54px;
+  min-height: 54px;
   padding: 0;
   border-radius: 16px;
   border: 1px solid rgba(179, 188, 208, 0.94);
@@ -1223,8 +1223,8 @@ fieldset {
 }
 
 .rail-icon {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 13px;
   display: inline-flex;
   align-items: center;
@@ -1233,6 +1233,17 @@ fieldset {
   color: inherit;
   font-size: 1.02rem;
   font-weight: 700;
+}
+
+.rail-icon .icon-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.sidebar-group-icon .icon-svg,
+.tab-button-icon .icon-svg {
+  width: 16px;
+  height: 16px;
 }
 
 .rail-button.is-active .rail-icon {
