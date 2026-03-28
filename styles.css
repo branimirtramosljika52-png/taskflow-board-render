@@ -1622,7 +1622,7 @@ fieldset {
 
 .dashboard-overview-panel {
   display: grid;
-  gap: 18px;
+  gap: 14px;
   background:
     radial-gradient(circle at top right, rgba(235, 103, 181, 0.08), transparent 24%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 255, 0.96));
@@ -1631,7 +1631,7 @@ fieldset {
 .dashboard-overview-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 18px;
 }
 
@@ -1640,8 +1640,7 @@ fieldset {
 }
 
 .dashboard-overview-copy {
-  max-width: 52ch;
-  text-align: right;
+  display: none;
 }
 
 .dashboard-signal-grid {
@@ -2377,9 +2376,13 @@ fieldset {
 .dashboard-widget-preview-head,
 .dashboard-widget-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+#dashboard-builder-copy {
+  display: none;
 }
 
 .dashboard-widget-form,
