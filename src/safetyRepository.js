@@ -81,7 +81,10 @@ function getDatabaseKind() {
   }
 
   if (connectionString.startsWith("mysql://")) {
-  return "mysql";
+    return "mysql";
+  }
+
+  return "memory";
 }
 
 async function ensureColumnExists(pool, tableName, columnName, definition) {
@@ -146,9 +149,6 @@ async function backfillDashboardWidgetLayouts(pool) {
       );
     }
   }
-}
-
-  return "memory";
 }
 
 function normalizeActiveValue(value) {
