@@ -5311,11 +5311,21 @@ function priorityBadgeClass(priority) {
 
 function renderSummary() {
   const stats = getDashboardStats(state);
-  companiesCount.textContent = String(stats.companies);
-  locationsCount.textContent = String(stats.locations);
-  activeWorkOrdersCount.textContent = String(stats.activeWorkOrders);
-  completedWorkOrdersCount.textContent = String(stats.completedWorkOrders);
-  overdueWorkOrdersCount.textContent = String(stats.overdueWorkOrders);
+  if (companiesCount) {
+    companiesCount.textContent = String(stats.companies);
+  }
+  if (locationsCount) {
+    locationsCount.textContent = String(stats.locations);
+  }
+  if (activeWorkOrdersCount) {
+    activeWorkOrdersCount.textContent = String(stats.activeWorkOrders);
+  }
+  if (completedWorkOrdersCount) {
+    completedWorkOrdersCount.textContent = String(stats.completedWorkOrders);
+  }
+  if (overdueWorkOrdersCount) {
+    overdueWorkOrdersCount.textContent = String(stats.overdueWorkOrders);
+  }
 }
 
 function createDashboardEmptyState(message) {
