@@ -1728,7 +1728,8 @@ fieldset {
 
 .reminders-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -1737,6 +1738,15 @@ fieldset {
 .reminders-list-card {
   display: grid;
   gap: 18px;
+}
+
+.reminders-composer-card .entity-form {
+  display: grid;
+  gap: 16px;
+}
+
+.reminders-list-card {
+  min-height: 0;
 }
 
 .reminder-link-preview {
@@ -1756,6 +1766,9 @@ fieldset {
 .reminders-list {
   display: grid;
   gap: 12px;
+  max-height: calc(100vh - 430px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .reminder-card {
