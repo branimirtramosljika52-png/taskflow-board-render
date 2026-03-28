@@ -2237,6 +2237,7 @@ fieldset {
   z-index: 62;
   display: grid;
   place-items: center;
+  overflow: auto;
   padding: 24px;
 }
 
@@ -2253,8 +2254,10 @@ fieldset {
   position: relative;
   z-index: 1;
   width: min(1500px, calc(100vw - 48px));
+  height: min(920px, calc(100vh - 48px));
   max-height: calc(100vh - 48px);
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
   padding: 22px;
   overflow: hidden;
@@ -2271,6 +2274,7 @@ fieldset {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
   gap: 18px;
+  overflow: hidden;
 }
 
 .dashboard-builder-sidebar {
@@ -2279,6 +2283,8 @@ fieldset {
   display: grid;
   align-content: start;
   gap: 14px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .dashboard-builder-search-field {
@@ -2327,6 +2333,7 @@ fieldset {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(340px, 0.88fr);
   gap: 18px;
+  overflow: hidden;
 }
 
 .dashboard-template-library,
@@ -2346,6 +2353,7 @@ fieldset {
 
 .dashboard-template-library {
   align-content: start;
+  max-height: 100%;
   overflow: auto;
 }
 
@@ -2368,7 +2376,9 @@ fieldset {
 }
 
 .dashboard-widget-form {
+  max-height: 100%;
   overflow: auto;
+  padding-bottom: 22px;
 }
 
 .dashboard-widget-template-grid {
@@ -2466,7 +2476,12 @@ fieldset {
 }
 
 .dashboard-widget-form-actions {
+  position: sticky;
+  bottom: 0;
   justify-content: flex-end;
+  padding-top: 12px;
+  margin-top: auto;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(249, 251, 255, 0.98) 42%);
 }
 
 .dashboard-widget-empty {
@@ -2847,6 +2862,7 @@ button.dashboard-widget-list-row {
 
   .dashboard-builder-dialog {
     width: calc(100vw - 28px);
+    height: calc(100vh - 28px);
     max-height: calc(100vh - 28px);
     padding: 16px;
   }
