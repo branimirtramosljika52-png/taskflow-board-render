@@ -1138,6 +1138,18 @@ export class MemoryTenantRepository {
     return this.getUserById(current.id);
   }
 
+  async updateOwnAvatar(actor, avatarDataUrl) {
+    const current = this.users.find((item) => item.id === String(actor?.id));
+
+    if (!current) {
+      return null;
+    }
+
+    current.avatarDataUrl = dbString(avatarDataUrl);
+    current.updatedAt = new Date().toISOString();
+    return this.getUserById(current.id);
+  }
+
   async createLoginContent(actor, input) {
     if (!canManageLoginContent(actor)) {
       throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
@@ -1820,6 +1832,32 @@ export class MySqlTenantRepository {
       return this.getUserById(userId);
     } catch (error) {
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOwnAvatar(actor, avatarDataUrl) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        `
+          UPDATE app_users
+          SET avatar_data_url = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          dbString(avatarDataUrl) || null,
+          Number(actor?.id),
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return null;
+      }
+
+      return this.getUserById(actor.id);
     } finally {
       connection.release();
     }

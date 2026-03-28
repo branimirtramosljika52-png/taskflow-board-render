@@ -280,6 +280,9 @@ const userMenuAvatar = document.querySelector("#user-menu-avatar");
 const userMenuName = document.querySelector("#user-menu-name");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
+const userMenuAvatarButton = document.querySelector("#user-menu-avatar-button");
+const userMenuAvatarFileInput = document.querySelector("#user-menu-avatar-file");
+const userMenuError = document.querySelector("#user-menu-error");
 const logoutButton = document.querySelector("#logout-button");
 const sidebarHomeButton = document.querySelector("#sidebar-home-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
@@ -563,6 +566,14 @@ function setSyncError(message = "") {
   syncError.textContent = message;
 }
 
+function setUserMenuError(message = "") {
+  if (!userMenuError) {
+    return;
+  }
+
+  userMenuError.textContent = message;
+}
+
 function setLoginBusy(isBusy) {
   if (loginSubmitButton) {
     loginSubmitButton.disabled = isBusy;
@@ -764,6 +775,19 @@ function renderAvatar(target, userLike = {}) {
   target.textContent = getUserInitials(userLike);
 }
 
+function readAvatarFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve(String(reader.result ?? ""));
+    });
+    reader.addEventListener("error", () => {
+      reject(new Error("Ne mogu ucitati sliku."));
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
 function normalizeLooseName(value = "") {
   return String(value ?? "")
     .trim()
@@ -887,6 +911,13 @@ function setUserMenuOpen(isOpen) {
   }
 
   userBadge?.setAttribute("aria-expanded", userMenuOpen ? "true" : "false");
+
+  if (!userMenuOpen) {
+    setUserMenuError("");
+    if (userMenuAvatarFileInput) {
+      userMenuAvatarFileInput.value = "";
+    }
+  }
 }
 
 function getSidebarGroupForView(view = state.activeView) {
@@ -4225,6 +4256,7 @@ function renderAuthState() {
     userMenuEmail.textContent = state.user.email || "";
     userMenuOrganizations.textContent = organizationLabel || (organization ? organization.name : "");
     renderAvatar(userMenuAvatar, state.user);
+    setUserMenuError("");
     organizationContext.textContent = isSuperAdmin
       ? `Super admin | ${organization ? organization.name : "Bez aktivne organizacije"}`
       : (organization ? organization.name : "");
@@ -4244,6 +4276,7 @@ function renderAuthState() {
     userMenuEmail.textContent = "";
     userMenuOrganizations.textContent = "";
     renderAvatar(userMenuAvatar, {});
+    setUserMenuError("");
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
@@ -7044,9 +7077,8 @@ userAvatarFileInput?.addEventListener("change", () => {
     return;
   }
 
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    userAvatarDataUrlInput.value = String(reader.result ?? "");
+  void readAvatarFileAsDataUrl(file).then((avatarDataUrl) => {
+    userAvatarDataUrlInput.value = avatarDataUrl;
     renderAvatar(userAvatarPreview, {
       firstName: userFirstNameInput.value,
       lastName: userLastNameInput.value,
@@ -7054,8 +7086,49 @@ userAvatarFileInput?.addEventListener("change", () => {
       avatarDataUrl: userAvatarDataUrlInput.value,
     });
     userError.textContent = "";
+  }).catch(() => {
+    userError.textContent = "Ne mogu ucitati sliku.";
   });
-  reader.readAsDataURL(file);
+});
+
+userMenuAvatarButton?.addEventListener("click", () => {
+  userMenuAvatarFileInput?.click();
+});
+
+userMenuAvatarFileInput?.addEventListener("change", () => {
+  const file = userMenuAvatarFileInput.files?.[0];
+
+  if (!file || !state.user?.id) {
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    setUserMenuError("Avatar image must be smaller than 2 MB.");
+    userMenuAvatarFileInput.value = "";
+    return;
+  }
+
+  setUserMenuError("");
+  userMenuAvatarButton.disabled = true;
+  userMenuAvatarButton.textContent = "Uploading...";
+
+  void readAvatarFileAsDataUrl(file)
+    .then((avatarDataUrl) => runMutation(() => apiRequest("/auth/profile/avatar", {
+      method: "PATCH",
+      body: {
+        avatarDataUrl,
+      },
+    }), userMenuError))
+    .then(() => {
+      userMenuAvatarFileInput.value = "";
+    })
+    .catch(() => {
+      setUserMenuError("Ne mogu ucitati sliku.");
+    })
+    .finally(() => {
+      userMenuAvatarButton.disabled = false;
+      userMenuAvatarButton.textContent = "Change profile picture";
+    });
 });
 
 loginForm.addEventListener("submit", (event) => {

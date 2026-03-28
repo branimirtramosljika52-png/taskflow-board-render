@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328g" />
+    <link rel="stylesheet" href="/styles.css?v=20260328h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -479,6 +479,13 @@
                   <span id="user-menu-email"></span>
                   <span id="user-menu-organizations"></span>
                 </div>
+              </div>
+              <div class="user-menu-actions">
+                <input id="user-menu-avatar-file" type="file" accept="image/*" hidden />
+                <button id="user-menu-avatar-button" type="button" class="ghost-button user-menu-action-button">
+                  Change profile picture
+                </button>
+                <p id="user-menu-error" class="form-error user-menu-error" aria-live="polite"></p>
               </div>
               <button id="logout-button" type="button" class="ghost-button user-menu-logout">Odjava</button>
             </div>
@@ -1441,7 +1448,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328g"></script>
-    <script type="module" src="/src/main.js?v=20260328g"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328h"></script>
+    <script type="module" src="/src/main.js?v=20260328h"></script>
   </body>
 </html>

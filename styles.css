@@ -984,8 +984,24 @@ fieldset {
   margin-bottom: 14px;
 }
 
+.user-menu-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.user-menu-action-button,
 .user-menu-logout {
   width: 100%;
+}
+
+.user-menu-error {
+  min-height: 0;
+  font-size: 0.8rem;
+}
+
+.user-menu-logout {
+  margin-top: 2px;
 }
 
 .hero {

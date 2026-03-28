@@ -133,6 +133,19 @@ test("memory tenant repository supports users with access to multiple organizati
   assert.equal(scoped.organizations.length, 2);
 });
 
+test("memory tenant repository lets a signed-in user update their own avatar", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const updated = await repository.updateOwnAvatar(superAdmin, "data:image/png;base64,avatar");
+
+  assert.ok(updated);
+  assert.equal(updated.avatarDataUrl, "data:image/png;base64,avatar");
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

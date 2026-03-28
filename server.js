@@ -398,6 +398,20 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "PATCH" && url.pathname === "/api/auth/profile/avatar") {
+      const body = await readJsonBody(request);
+      const updatedUser = await tenantRepository.updateOwnAvatar(user, body.avatarDataUrl);
+
+      if (!updatedUser) {
+        sendError(response, 404, "Korisnik nije pronaden.");
+        return true;
+      }
+
+      request[requestUserSymbol] = updatedUser;
+      await writeSnapshot(response, updatedUser, request);
+      return true;
+    }
+
     const organizationMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)$/);
     const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
     const loginContentMatch = url.pathname.match(/^\/api\/login-content\/([^/]+)$/);
