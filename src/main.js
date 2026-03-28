@@ -1,10 +1,13 @@
 import {
+  REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
+  filterReminders,
   filterWorkOrders,
   getDashboardInsights,
   getDashboardStats,
+  sortReminders,
   sortWorkOrders,
 } from "./safetyModel.js";
 import {
@@ -61,6 +64,7 @@ const ALL_SIDEBAR_GROUPS = [
 ];
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
+  reminders: "home",
   companies: "company",
   locations: "locations",
   management: "organisations",
@@ -68,6 +72,7 @@ const VIEW_TO_SIDEBAR_GROUP = {
 };
 const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
   selfdash: ["home", "operations"],
+  reminders: ["home"],
   companies: ["company"],
   locations: ["locations"],
   management: ["organisations"],
@@ -158,7 +163,7 @@ const MODULE_VIEW_DEFINITIONS = {
 };
 const SIDEBAR_ITEM_CONFIG = {
   dashboard: { group: "home", view: "selfdash", focus: "top" },
-  reminders: { group: "home", view: "module", module: "reminders" },
+  reminders: { group: "home", view: "reminders" },
   todo: { group: "home", view: "module", module: "todo" },
   settings: { group: "home", view: "module", module: "settings" },
   "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
@@ -205,6 +210,7 @@ const state = {
   loginContentItems: [],
   loginContent: null,
   workOrders: [],
+  reminders: [],
   activeView: "selfdash",
   user: null,
   activeOrganizationId: "",
@@ -319,6 +325,7 @@ const managementTab = document.querySelector("#management-tab");
 const managementNavLabel = document.querySelector("#management-nav-label");
 const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
+  reminders: document.querySelector("#reminders-view"),
   companies: document.querySelector("#companies-view"),
   locations: document.querySelector("#locations-view"),
   management: document.querySelector("#management-view"),
@@ -345,6 +352,25 @@ const dashboardRegionBreakdown = document.querySelector("#dashboard-region-break
 const dashboardCompanyBreakdown = document.querySelector("#dashboard-company-breakdown");
 const dashboardExecutorBreakdown = document.querySelector("#dashboard-executor-breakdown");
 const dashboardUpcomingList = document.querySelector("#dashboard-upcoming-list");
+const remindersTotalCount = document.querySelector("#reminders-total-count");
+const remindersTodayCount = document.querySelector("#reminders-today-count");
+const remindersOverdueCount = document.querySelector("#reminders-overdue-count");
+const remindersDoneCount = document.querySelector("#reminders-done-count");
+const reminderForm = document.querySelector("#reminder-form");
+const reminderIdInput = document.querySelector("#reminder-id");
+const reminderTitleInput = document.querySelector("#reminder-title");
+const reminderDueDateInput = document.querySelector("#reminder-due-date");
+const reminderStatusInput = document.querySelector("#reminder-status");
+const reminderWorkOrderIdInput = document.querySelector("#reminder-work-order-id");
+const reminderCompanyIdInput = document.querySelector("#reminder-company-id");
+const reminderNoteInput = document.querySelector("#reminder-note");
+const reminderLinkPreview = document.querySelector("#reminder-link-preview");
+const reminderResetButton = document.querySelector("#reminder-reset");
+const reminderError = document.querySelector("#reminder-error");
+const remindersSearchInput = document.querySelector("#reminders-search");
+const remindersFilterStatusInput = document.querySelector("#reminders-filter-status");
+const remindersBody = document.querySelector("#reminders-body");
+const remindersEmpty = document.querySelector("#reminders-empty");
 
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
@@ -358,6 +384,7 @@ const workOrderForm = document.querySelector("#work-order-form");
 const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
+const workOrderOpenReminderButton = document.querySelector("#work-order-open-reminder");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
 const workOrderSaveState = document.querySelector("#work-order-save-state");
 const workOrderActivityList = document.querySelector("#work-order-activity-list");
@@ -721,6 +748,7 @@ function applySnapshot(payload) {
   state.signupRequests = payload.signupRequests ?? [];
   state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
+  state.reminders = payload.reminders ?? [];
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
   );
@@ -1226,6 +1254,16 @@ function activateSidebarItem(itemName, options = {}) {
     state.activeView = "module";
     renderModuleView();
     renderActiveView();
+    return;
+  }
+
+  if (itemConfig.view === "reminders") {
+    state.activeView = "reminders";
+    renderActiveView();
+    workspaceViews.reminders?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
     return;
   }
 
@@ -5211,6 +5249,307 @@ function renderDashboardOverview() {
   renderDashboardUpcomingList(dashboardUpcomingList, insights.upcomingWorkOrders);
 }
 
+function getReminderById(reminderId) {
+  return state.reminders.find((item) => String(item.id) === String(reminderId)) ?? null;
+}
+
+function getReminderLinkedWorkOrder(reminder) {
+  if (!reminder?.workOrderId) {
+    return null;
+  }
+
+  return state.workOrders.find((item) => String(item.id) === String(reminder.workOrderId)) ?? null;
+}
+
+function isReminderOverdue(reminder) {
+  return Boolean(
+    reminder?.dueDate
+    && reminder.status !== "done"
+    && reminder.dueDate < new Date().toISOString().slice(0, 10),
+  );
+}
+
+function getFilteredReminders() {
+  return sortReminders(filterReminders(state.reminders, {
+    query: remindersSearchInput?.value ?? "",
+    status: remindersFilterStatusInput?.value ?? "all",
+  }));
+}
+
+function rebuildReminderWorkOrderOptions(selectedValue = "") {
+  if (!reminderWorkOrderIdInput) {
+    return;
+  }
+
+  const options = [
+    { value: "", label: "Bez vezanog RN" },
+    ...sortWorkOrders(state.workOrders).map((item) => ({
+      value: item.id,
+      label: `${item.workOrderNumber} • ${item.companyName || item.locationName || "RN"}`,
+    })),
+  ];
+
+  replaceSelectOptions(reminderWorkOrderIdInput, options, selectedValue || "");
+}
+
+function rebuildReminderCompanyOptions(selectedValue = "") {
+  if (!reminderCompanyIdInput) {
+    return;
+  }
+
+  const options = [
+    { value: "", label: "Opci reminder" },
+    ...state.companies
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((company) => ({
+        value: company.id,
+        label: company.name,
+      })),
+  ];
+
+  replaceSelectOptions(reminderCompanyIdInput, options, selectedValue || "");
+}
+
+function syncReminderContextFromWorkOrder() {
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === reminderWorkOrderIdInput?.value);
+
+  if (linkedWorkOrder && reminderCompanyIdInput) {
+    reminderCompanyIdInput.value = linkedWorkOrder.companyId || "";
+    reminderCompanyIdInput.disabled = true;
+  } else if (reminderCompanyIdInput) {
+    reminderCompanyIdInput.disabled = false;
+  }
+
+  renderReminderLinkPreview();
+}
+
+function renderReminderLinkPreview() {
+  if (!reminderLinkPreview) {
+    return;
+  }
+
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === reminderWorkOrderIdInput?.value);
+  const company = getCompany(reminderCompanyIdInput?.value || linkedWorkOrder?.companyId || "");
+  const parts = [];
+
+  if (linkedWorkOrder?.workOrderNumber) {
+    parts.push(`RN ${linkedWorkOrder.workOrderNumber}`);
+  }
+
+  if (company?.name) {
+    parts.push(company.name);
+  }
+
+  if (linkedWorkOrder?.locationName) {
+    parts.push(linkedWorkOrder.locationName);
+  }
+
+  reminderLinkPreview.hidden = parts.length === 0;
+  reminderLinkPreview.textContent = parts.join(" • ");
+}
+
+function buildReminderPayload() {
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === reminderWorkOrderIdInput.value);
+
+  return {
+    title: reminderTitleInput.value,
+    dueDate: reminderDueDateInput.value,
+    status: reminderStatusInput.value,
+    workOrderId: reminderWorkOrderIdInput.value,
+    companyId: linkedWorkOrder?.companyId || reminderCompanyIdInput.value,
+    locationId: linkedWorkOrder?.locationId || "",
+    note: reminderNoteInput.value,
+  };
+}
+
+function resetReminderForm() {
+  reminderForm?.reset();
+
+  if (reminderIdInput) {
+    reminderIdInput.value = "";
+  }
+
+  if (reminderStatusInput) {
+    reminderStatusInput.value = "active";
+  }
+
+  if (reminderCompanyIdInput) {
+    reminderCompanyIdInput.disabled = false;
+  }
+
+  if (reminderError) {
+    reminderError.textContent = "";
+  }
+
+  renderReminderLinkPreview();
+}
+
+function hydrateReminderForm(reminder) {
+  state.activeView = "reminders";
+  state.activeSidebarGroup = "home";
+  state.activeSidebarItem = "reminders";
+  renderActiveView();
+
+  reminderIdInput.value = reminder.id;
+  reminderTitleInput.value = reminder.title || "";
+  reminderDueDateInput.value = reminder.dueDate || "";
+  reminderStatusInput.value = reminder.status || "active";
+  rebuildReminderWorkOrderOptions(reminder.workOrderId || "");
+  rebuildReminderCompanyOptions(reminder.companyId || "");
+  reminderCompanyIdInput.value = reminder.companyId || "";
+  reminderNoteInput.value = reminder.note || "";
+  syncReminderContextFromWorkOrder();
+  reminderTitleInput.focus({ preventScroll: true });
+}
+
+function openReminderComposerForWorkOrder(workOrder = null) {
+  state.activeView = "reminders";
+  state.activeSidebarGroup = "home";
+  state.activeSidebarItem = "reminders";
+  renderActiveView();
+  resetReminderForm();
+
+  if (workOrder) {
+    reminderTitleInput.value = `Podsjetnik za ${workOrder.workOrderNumber}`;
+    reminderDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
+    rebuildReminderWorkOrderOptions(workOrder.id);
+    reminderWorkOrderIdInput.value = workOrder.id;
+    rebuildReminderCompanyOptions(workOrder.companyId || "");
+    reminderCompanyIdInput.value = workOrder.companyId || "";
+  }
+
+  syncReminderContextFromWorkOrder();
+  reminderTitleInput.focus({ preventScroll: true });
+}
+
+function createReminderStatusBadge(status) {
+  const option = REMINDER_STATUS_OPTIONS.find((item) => item.value === status);
+  const label = option?.label ?? status ?? "Aktivan";
+  const badge = document.createElement("span");
+  badge.className = `reminder-status-badge is-${status || "active"}`;
+  badge.textContent = label;
+  return badge;
+}
+
+function renderReminderSummary() {
+  const reminders = state.reminders;
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (remindersTotalCount) {
+    remindersTotalCount.textContent = String(reminders.length);
+  }
+
+  if (remindersTodayCount) {
+    remindersTodayCount.textContent = String(reminders.filter((item) => item.dueDate === today).length);
+  }
+
+  if (remindersOverdueCount) {
+    remindersOverdueCount.textContent = String(reminders.filter((item) => isReminderOverdue(item)).length);
+  }
+
+  if (remindersDoneCount) {
+    remindersDoneCount.textContent = String(reminders.filter((item) => item.status === "done").length);
+  }
+}
+
+function renderReminders() {
+  renderReminderSummary();
+
+  if (!remindersBody) {
+    return;
+  }
+
+  const reminders = getFilteredReminders();
+  remindersBody.replaceChildren(...reminders.map((reminder) => {
+    const linkedWorkOrder = getReminderLinkedWorkOrder(reminder);
+    const card = document.createElement("article");
+    card.className = "reminder-card";
+
+    const top = document.createElement("div");
+    top.className = "reminder-card-top";
+    const copy = document.createElement("div");
+    copy.className = "reminder-card-copy";
+    const title = document.createElement("strong");
+    title.className = "reminder-card-title";
+    title.textContent = reminder.title;
+    const subtitle = document.createElement("span");
+    subtitle.className = "reminder-card-subtitle";
+    subtitle.textContent = [
+      reminder.workOrderNumber ? `RN ${reminder.workOrderNumber}` : "",
+      reminder.companyName || "",
+      reminder.locationName || "",
+    ].filter(Boolean).join(" • ") || "Opci reminder";
+    copy.append(title, subtitle);
+
+    const meta = document.createElement("div");
+    meta.className = "reminder-card-meta";
+    meta.append(createReminderStatusBadge(reminder.status));
+
+    const due = document.createElement("span");
+    due.className = `reminder-due-pill${isReminderOverdue(reminder) ? " is-overdue" : ""}`;
+    due.textContent = reminder.dueDate ? formatCompactDate(reminder.dueDate) : "Bez datuma";
+    meta.append(due);
+
+    top.append(copy, meta);
+
+    const note = document.createElement("p");
+    note.className = "reminder-card-note";
+    note.textContent = reminder.note || "Bez dodatne biljeske.";
+
+    const footer = document.createElement("div");
+    footer.className = "reminder-card-footer";
+
+    const footerMeta = document.createElement("div");
+    footerMeta.className = "reminder-card-footer-meta";
+    footerMeta.textContent = reminder.createdByLabel
+      ? `Kreirao ${reminder.createdByLabel}${reminder.createdAt ? ` • ${formatDateTime(reminder.createdAt)}` : ""}`
+      : (reminder.createdAt ? formatDateTime(reminder.createdAt) : "");
+
+    const actions = document.createElement("div");
+    actions.className = "reminder-card-actions";
+
+    if (linkedWorkOrder) {
+      actions.append(createActionButton("Otvori RN", "ghost-button reminder-inline-action", () => {
+        hydrateWorkOrderForm(linkedWorkOrder);
+      }));
+    }
+
+    actions.append(
+      createActionButton(reminder.status === "done" ? "Vrati aktivno" : "Oznaci gotovo", "ghost-button reminder-inline-action", () => {
+        void runMutation(() => apiRequest(`/reminders/${reminder.id}`, {
+          method: "PATCH",
+          body: {
+            status: reminder.status === "done" ? "active" : "done",
+          },
+        }), reminderError);
+      }),
+      createActionButton("Uredi", "ghost-button reminder-inline-action", () => {
+        hydrateReminderForm(reminder);
+      }),
+      createActionButton("Obrisi", "ghost-button reminder-inline-action is-danger", () => {
+        if (!window.confirm(`Obrisati reminder "${reminder.title}"?`)) {
+          return;
+        }
+
+        void runMutation(() => apiRequest(`/reminders/${reminder.id}`, {
+          method: "DELETE",
+        }), reminderError).then((success) => {
+          if (success && reminderIdInput.value === reminder.id) {
+            resetReminderForm();
+          }
+        });
+      }),
+    );
+
+    footer.append(footerMeta, actions);
+    card.append(top, note, footer);
+    return card;
+  }));
+
+  remindersEmpty.hidden = reminders.length !== 0;
+}
+
 function renderActiveView() {
   const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
 
@@ -5253,16 +5592,24 @@ function renderSharedOptions() {
 
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
   replaceSelectOptions(workOrderPriorityInput, PRIORITY_OPTIONS, workOrderPriorityInput.value || "Normal");
+  replaceSelectOptions(reminderStatusInput, REMINDER_STATUS_OPTIONS, reminderStatusInput.value || "active");
   replaceSelectOptions(workOrderFilterStatusInput, [
     { value: "all", label: "Svi statusi" },
     ...WORK_ORDER_STATUS_OPTIONS,
   ], workOrderFilterStatusInput.value || "all");
+  replaceSelectOptions(remindersFilterStatusInput, [
+    { value: "all", label: "Svi statusi" },
+    ...REMINDER_STATUS_OPTIONS,
+  ], remindersFilterStatusInput.value || "all");
 
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
   rebuildWorkOrderFilterCompanyOptions(currentFilterCompanyId);
   rebuildWorkOrderLocationOptions(currentLocationId);
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
+  rebuildReminderWorkOrderOptions(reminderWorkOrderIdInput?.value || "");
+  rebuildReminderCompanyOptions(reminderCompanyIdInput?.value || "");
+  renderReminderLinkPreview();
 
   if (organizationSwitcher) {
     replaceSelectOptions(organizationSwitcher, organizationOptions, state.activeOrganizationId || state.organizations[0]?.id || "");
@@ -6757,6 +7104,7 @@ function render() {
   renderSummary();
   renderSharedOptions();
   renderCompactWorkOrdersList();
+  renderReminders();
   renderCompanies();
   renderLocations();
   renderManagement();
@@ -6882,6 +7230,35 @@ workOrderFilterCompanyInput.addEventListener("change", () => {
   renderCompactWorkOrdersList();
 });
 
+reminderWorkOrderIdInput?.addEventListener("change", () => {
+  syncReminderContextFromWorkOrder();
+});
+
+reminderCompanyIdInput?.addEventListener("change", () => {
+  renderReminderLinkPreview();
+});
+
+reminderForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(reminderIdInput.value);
+  const path = isEditing ? `/reminders/${reminderIdInput.value}` : "/reminders";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildReminderPayload(),
+  }), reminderError).then((success) => {
+    if (success) {
+      resetReminderForm();
+    }
+  });
+});
+
+reminderResetButton?.addEventListener("click", resetReminderForm);
+remindersSearchInput?.addEventListener("input", renderReminders);
+remindersFilterStatusInput?.addEventListener("change", renderReminders);
+
 workOrderForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void persistWorkOrderAutoSave({ immediate: true });
@@ -6896,6 +7273,16 @@ workOrderEditorBackdrop?.addEventListener("click", () => {
 });
 workOrderOpenFormButton?.addEventListener("click", () => {
   focusWorkOrderComposer();
+});
+workOrderOpenReminderButton?.addEventListener("click", () => {
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === workOrderIdInput.value) ?? null;
+  openReminderComposerForWorkOrder(linkedWorkOrder);
+
+  if (!linkedWorkOrder && reminderCompanyIdInput && workOrderCompanyIdInput.value) {
+    rebuildReminderCompanyOptions(workOrderCompanyIdInput.value);
+    reminderCompanyIdInput.value = workOrderCompanyIdInput.value;
+    renderReminderLinkPreview();
+  }
 });
 measurementSheetOpenButton?.addEventListener("click", () => {
   openMeasurementSheet();
@@ -7498,6 +7885,7 @@ logoutButton.addEventListener("click", () => {
     state.user = null;
     state.organizations = [];
     state.workOrders = [];
+    state.reminders = [];
     state.companies = [];
     state.locations = [];
     state.users = [];
@@ -7593,6 +7981,7 @@ setConnectionStatus();
 resetWorkOrderForm();
 resetWorkOrderActivityState();
 resetMeasurementSheet();
+resetReminderForm();
 resetCompanyForm();
 resetLocationForm();
 resetOrganizationForm();

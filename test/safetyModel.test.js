@@ -5,13 +5,17 @@ import {
   buildLocationContacts,
   createCompany,
   createLocation,
+  createReminder,
   createWorkOrder,
+  filterReminders,
   filterWorkOrders,
   getDashboardInsights,
   getDashboardStats,
   nextWorkOrderNumber,
+  sortReminders,
   syncLocationFieldsFromWorkOrder,
   updateLocation,
+  updateReminder,
   updateWorkOrder,
 } from "../src/safetyModel.js";
 
@@ -385,4 +389,101 @@ test("dashboard insights summarize workload, priorities and upcoming deadlines",
   assert.equal(insights.executorLoad[0].label, "Ana Anic");
   assert.equal(insights.executorLoad[0].count, 2);
   assert.equal(insights.upcomingWorkOrders[0].workOrderNumber, "RN-00001");
+});
+
+test("createReminder can link to a work order and inherit company context", () => {
+  const state = buildState();
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Pregled hidranta",
+    },
+    state,
+    () => "work-order-1",
+    "RN-00991",
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  const reminder = createReminder(
+    {
+      organizationId: "55",
+      workOrderId: workOrder.id,
+      title: "Nazvati klijenta",
+      dueDate: "2026-03-28",
+    },
+    {
+      ...state,
+      workOrders: [workOrder],
+      reminders: [],
+    },
+    () => "reminder-1",
+    () => "2026-03-26T08:00:00.000Z",
+  );
+
+  assert.equal(reminder.organizationId, "55");
+  assert.equal(reminder.workOrderId, "work-order-1");
+  assert.equal(reminder.workOrderNumber, "RN-00991");
+  assert.equal(reminder.companyId, "company-1");
+  assert.equal(reminder.locationId, "location-1");
+  assert.equal(reminder.companyName, "Acme d.o.o.");
+});
+
+test("reminders filter, sort and completion updates behave predictably", () => {
+  const state = buildState();
+  const reminderActive = createReminder(
+    {
+      organizationId: "1",
+      title: "Kasni reminder",
+      dueDate: "2026-03-20",
+      status: "active",
+      companyId: "company-1",
+    },
+    {
+      ...state,
+      reminders: [],
+    },
+    () => "reminder-1",
+    () => "2026-03-25T08:00:00.000Z",
+  );
+  const reminderSnoozed = createReminder(
+    {
+      organizationId: "1",
+      title: "Kasnije",
+      dueDate: "2026-03-30",
+      status: "snoozed",
+      companyId: "company-1",
+    },
+    {
+      ...state,
+      reminders: [reminderActive],
+    },
+    () => "reminder-2",
+    () => "2026-03-25T08:05:00.000Z",
+  );
+
+  const doneReminder = updateReminder(
+    reminderActive,
+    { status: "done" },
+    {
+      ...state,
+      reminders: [reminderActive, reminderSnoozed],
+    },
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  assert.equal(doneReminder.status, "done");
+  assert.equal(doneReminder.completedAt, "2026-03-25T09:00:00.000Z");
+
+  const filtered = filterReminders([reminderActive, reminderSnoozed, doneReminder], {
+    query: "kas",
+    status: "active",
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "reminder-1");
+
+  const sorted = sortReminders([doneReminder, reminderSnoozed, reminderActive]);
+  assert.equal(sorted[0].id, "reminder-1");
+  assert.equal(sorted[1].id, "reminder-2");
+  assert.equal(sorted[2].status, "done");
 });

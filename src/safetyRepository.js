@@ -4,10 +4,12 @@ import {
   buildLocationContacts,
   createCompany,
   createLocation,
+  createReminder,
   createWorkOrder,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateLocation,
+  updateReminder,
   updateWorkOrder,
 } from "./safetyModel.js";
 import {
@@ -101,6 +103,17 @@ function parseNullableDecimal(value) {
 
   const numeric = Number(raw);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseNullableInteger(value) {
+  const raw = dbString(value);
+
+  if (!raw) {
+    return null;
+  }
+
+  const numeric = Number(raw);
+  return Number.isInteger(numeric) ? numeric : null;
 }
 
 function locationCompositeKey(oib, name) {
@@ -476,10 +489,57 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const companiesById = new Map(companies.map((company) => [String(company.id), company]));
+  const locationsById = new Map(locations.map((location) => [String(location.id), location]));
+  const workOrdersById = new Map(workOrders.map((workOrder) => [String(workOrder.id), workOrder]));
+
+  const [reminderRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, work_order_id, title, note, due_date,
+           status, created_by_user_id, created_by_label, completed_at, created_at, updated_at
+    FROM web_reminders
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'snoozed' THEN 1
+        WHEN 'done' THEN 2
+        ELSE 9
+      END ASC,
+      due_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const reminders = reminderRows.map((row) => {
+    const linkedWorkOrder = workOrdersById.get(String(row.work_order_id ?? ""));
+    const company = companiesById.get(String(linkedWorkOrder?.companyId ?? row.company_id ?? ""));
+    const location = locationsById.get(String(linkedWorkOrder?.locationId ?? row.location_id ?? ""));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId: linkedWorkOrder?.companyId ?? dbString(row.company_id),
+      companyName: linkedWorkOrder?.companyName ?? company?.name ?? "",
+      locationId: linkedWorkOrder?.locationId ?? dbString(row.location_id),
+      locationName: linkedWorkOrder?.locationName ?? location?.name ?? "",
+      workOrderId: linkedWorkOrder?.id ?? dbString(row.work_order_id),
+      workOrderNumber: linkedWorkOrder?.workOrderNumber ?? "",
+      title: row.title ?? "",
+      note: row.note ?? "",
+      dueDate: normalizeDateOnly(row.due_date),
+      status: row.status ?? "active",
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      completedAt: normalizeTimestamp(row.completed_at),
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   return {
     companies,
     locations,
     workOrders,
+    reminders,
   };
 }
 
@@ -550,6 +610,7 @@ export class InMemorySafetyRepository {
       companies: [],
       locations: [],
       workOrders: [],
+      reminders: [],
     };
     this.refreshTokens = new Map();
     this.users = [
@@ -639,6 +700,7 @@ export class InMemorySafetyRepository {
       companies: [...this.snapshot.companies],
       locations: [...this.snapshot.locations],
       workOrders: [...this.snapshot.workOrders],
+      reminders: [...this.snapshot.reminders],
     };
   }
 
@@ -669,8 +731,9 @@ export class InMemorySafetyRepository {
 
     const hasLocations = this.snapshot.locations.some((item) => item.companyId === id);
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.companyId === id);
+    const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders) {
+    if (hasLocations || hasWorkOrders || hasReminders) {
       throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
     }
 
@@ -704,8 +767,9 @@ export class InMemorySafetyRepository {
     }
 
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
+    const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
 
-    if (hasWorkOrders) {
+    if (hasWorkOrders || hasReminders) {
       throw new Error("Lokacija je vec povezana s radnim nalozima.");
     }
 
@@ -772,7 +836,51 @@ export class InMemorySafetyRepository {
   async deleteWorkOrder(id) {
     const before = this.snapshot.workOrders.length;
     this.snapshot.workOrders = this.snapshot.workOrders.filter((item) => item.id !== id);
+    this.snapshot.reminders = this.snapshot.reminders.map((item) => (
+      item.workOrderId === id
+        ? {
+          ...item,
+          workOrderId: "",
+          workOrderNumber: "",
+          locationId: "",
+          locationName: "",
+          updatedAt: new Date().toISOString(),
+        }
+        : item
+    ));
     return this.snapshot.workOrders.length !== before;
+  }
+
+  async createReminder(input, actor = null) {
+    const reminder = createReminder({
+      ...input,
+      createdByUserId: String(actor?.id ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.reminders = [reminder, ...this.snapshot.reminders];
+    return reminder;
+  }
+
+  async updateReminder(id, patch, actor = null) {
+    const current = this.snapshot.reminders.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateReminder(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.reminders = this.snapshot.reminders.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteReminder(id) {
+    const before = this.snapshot.reminders.length;
+    this.snapshot.reminders = this.snapshot.reminders.filter((item) => item.id !== id);
+    return this.snapshot.reminders.length !== before;
   }
 }
 
@@ -826,6 +934,29 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_location_contacts_location_id (location_id),
         INDEX idx_web_location_contacts_location_sort (location_id, sort_order)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_reminders (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NULL,
+        location_id INT NULL,
+        work_order_id INT NULL,
+        title VARCHAR(180) NOT NULL,
+        note TEXT NOT NULL,
+        due_date DATE NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'active',
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        completed_at DATETIME NULL DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_reminders_organization (organization_id),
+        INDEX idx_web_reminders_company (company_id),
+        INDEX idx_web_reminders_location (location_id),
+        INDEX idx_web_reminders_work_order (work_order_id),
+        INDEX idx_web_reminders_due_status (status, due_date)
       )
     `);
   }
@@ -1133,8 +1264,12 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM radni_nalozi WHERE oib = ?",
         [current.oib],
       );
+      const [[reminderCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_reminders WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0) {
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0) {
         throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
       }
 
@@ -1307,8 +1442,12 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM radni_nalozi WHERE oib = ? AND lokacija = ?",
         [current.companyOib, current.name],
       );
+      const [[reminderCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_reminders WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0) {
         await connection.rollback();
         throw new Error("Lokacija je vec povezana s radnim nalozima.");
       }
@@ -1475,7 +1614,124 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.query(
+        `
+          UPDATE web_reminders
+          SET work_order_id = NULL, location_id = NULL
+          WHERE work_order_id = ?
+        `,
+        [Number(id)],
+      );
       const [result] = await connection.query("DELETE FROM radni_nalozi WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createReminder(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createReminder({
+        ...input,
+        createdByUserId: String(actor?.id ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_reminders
+            (organization_id, company_id, location_id, work_order_id, title, note, due_date,
+             status, created_by_user_id, created_by_label, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          parseNullableInteger(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          parseNullableInteger(draft.workOrderId),
+          draft.title,
+          draft.note,
+          draft.dueDate,
+          draft.status,
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+          draft.completedAt ? new Date(draft.completedAt) : null,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateReminder(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.reminders.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateReminder(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_reminders
+          SET company_id = ?, location_id = ?, work_order_id = ?, title = ?, note = ?, due_date = ?,
+              status = ?, completed_at = ?
+          WHERE id = ?
+        `,
+        [
+          parseNullableInteger(next.companyId),
+          parseNullableInteger(next.locationId),
+          parseNullableInteger(next.workOrderId),
+          next.title,
+          next.note,
+          next.dueDate,
+          next.status,
+          next.completedAt ? new Date(next.completedAt) : null,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteReminder(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_reminders WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
     } finally {
       connection.release();

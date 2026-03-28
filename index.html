@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328o" />
+    <link rel="stylesheet" href="/styles.css?v=20260328p" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -781,6 +781,7 @@
                     </section>
 
                     <div class="form-actions work-order-editor-actions">
+                      <button id="work-order-open-reminder" type="button" class="ghost-button">Reminder</button>
                       <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
                       <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
                     </div>
@@ -1035,6 +1036,121 @@
               <button id="measurement-context-add-row-below" type="button" class="ghost-button">Insert row below</button>
               <button id="measurement-context-add-column-left" type="button" class="ghost-button">Insert column left</button>
               <button id="measurement-context-add-column-right" type="button" class="ghost-button">Insert column right</button>
+            </div>
+          </section>
+        </section>
+
+        <section id="reminders-view" class="workspace-view" hidden>
+          <section class="panel reminders-overview-panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Home</p>
+                <h2>Reminders</h2>
+              </div>
+              <p class="helper-copy">
+                Follow-upovi, rokovi i interni podsjetnici vezani uz organizaciju, klijente i radne naloge.
+              </p>
+            </div>
+
+            <div class="reminders-summary-grid">
+              <article class="summary-card">
+                <span>Ukupno</span>
+                <strong id="reminders-total-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Danas</span>
+                <strong id="reminders-today-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Kasne</span>
+                <strong id="reminders-overdue-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Gotovi</span>
+                <strong id="reminders-done-count">0</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel reminders-workspace-panel">
+            <div class="reminders-layout">
+              <section class="reminders-composer-card">
+                <div class="section-heading">
+                  <div>
+                    <p class="section-kicker">Create</p>
+                    <h3>Novi reminder</h3>
+                  </div>
+                </div>
+
+                <form id="reminder-form" class="entity-form">
+                  <input id="reminder-id" type="hidden" />
+
+                  <div class="form-grid">
+                    <label class="field field-span-full">
+                      <span>Naslov</span>
+                      <input id="reminder-title" type="text" maxlength="180" placeholder="npr. Nazvati klijenta za potvrdu termina" required />
+                    </label>
+
+                    <label class="field">
+                      <span>Datum</span>
+                      <input id="reminder-due-date" type="date" />
+                    </label>
+
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="reminder-status"></select>
+                    </label>
+
+                    <label class="field field-span-full">
+                      <span>Radni nalog</span>
+                      <select id="reminder-work-order-id"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Tvrtka</span>
+                      <select id="reminder-company-id"></select>
+                    </label>
+
+                    <label class="field field-span-full">
+                      <span>Biljeska</span>
+                      <textarea id="reminder-note" rows="5" placeholder="Kratka biljeska, follow-up ili interni podsjetnik."></textarea>
+                    </label>
+                  </div>
+
+                  <div id="reminder-link-preview" class="reminder-link-preview" hidden></div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="primary-button">Spremi reminder</button>
+                    <button id="reminder-reset" type="button" class="ghost-button">Ocisti formu</button>
+                  </div>
+                </form>
+
+                <p id="reminder-error" class="form-error" aria-live="polite"></p>
+              </section>
+
+              <section class="reminders-list-card">
+                <div class="workspace-list-head">
+                  <div class="workspace-list-copy">
+                    <p class="section-kicker">List view</p>
+                    <h3>Popis reminders</h3>
+                  </div>
+                </div>
+
+                <div class="filter-row filter-row-clickup reminders-filter-row">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="reminders-search" type="search" placeholder="Naslov, RN, klijent, biljeska..." />
+                  </label>
+
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="reminders-filter-status"></select>
+                  </label>
+                </div>
+
+                <div id="reminders-body" class="reminders-list"></div>
+                <p id="reminders-empty" class="empty-inline" hidden>Nema reminders za trenutni filter.</p>
+              </section>
             </div>
           </section>
         </section>
@@ -1538,7 +1654,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328o"></script>
-    <script type="module" src="/src/main.js?v=20260328o"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328p"></script>
+    <script type="module" src="/src/main.js?v=20260328p"></script>
   </body>
 </html>

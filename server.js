@@ -282,6 +282,14 @@ function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
   assertInScope(scopedSnapshot.locations, body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
 }
 
+function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.workOrderId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.workOrders, body.workOrderId, "Radni nalog nije dostupan za odabranu organizaciju.");
+}
+
 async function writeSnapshot(response, user, request, statusCode = 200) {
   const { scopedSnapshot } = await getScopedState(user, request);
   sendJson(response, statusCode, {
@@ -418,6 +426,7 @@ async function handleApiRequest(request, response, url) {
     const signupRequestActionMatch = url.pathname.match(/^\/api\/signup-requests\/([^/]+)\/(approve|reject)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
+    const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
@@ -558,6 +567,25 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/reminders") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati reminderima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      assertWorkOrderPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createReminder({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (companyMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
@@ -668,6 +696,32 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (reminderMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati reminderima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronaden.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      assertWorkOrderPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateReminder(reminderMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Reminder nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (workOrderMatch && request.method === "DELETE") {
       if (!canDeleteWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo brisati radne naloge.");
@@ -680,6 +734,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Radni nalog nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (reminderMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati remindere.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronaden.");
+      const deleted = await domainRepository.deleteReminder(reminderMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Reminder nije pronaden.");
         return true;
       }
 

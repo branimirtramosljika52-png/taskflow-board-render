@@ -558,6 +558,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
     companies: (rawSnapshot.companies ?? []).filter((item) => allowedCompanyIds.has(String(item.id))),
     locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
     workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
+    reminders: (rawSnapshot.reminders ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+    )),
   };
 }
 
@@ -979,7 +983,7 @@ export class MemoryTenantRepository {
     return this.refreshTokens.delete(hashStoredToken(token));
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [] }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
     const scopedSnapshot = buildScopedSnapshot(
       rawSnapshot,
@@ -1595,7 +1599,7 @@ export class MySqlTenantRepository {
     }
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [] }) {
     const connection = await this.pool.getConnection();
 
     try {
@@ -1603,7 +1607,7 @@ export class MySqlTenantRepository {
       const assignments = await fetchCompanyAssignments(connection);
       const scopedSnapshot = context.activeOrganizationId
         ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments)
-        : { companies: [], locations: [], workOrders: [] };
+        : { companies: [], locations: [], workOrders: [], reminders: [] };
 
       return {
         ...context,

@@ -14,8 +14,15 @@ export const PRIORITY_OPTIONS = [
   { value: "Bez prioriteta", label: "Bez prioriteta" },
 ];
 
+export const REMINDER_STATUS_OPTIONS = [
+  { value: "active", label: "Aktivan" },
+  { value: "snoozed", label: "Odgoden" },
+  { value: "done", label: "Gotov" },
+];
+
 const WORK_ORDER_STATUS_SET = new Set(WORK_ORDER_STATUS_OPTIONS.map((option) => option.value));
 const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
+const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const PRIORITY_RANK = {
   Urgent: 0,
   High: 1,
@@ -24,6 +31,11 @@ const PRIORITY_RANK = {
   "Bez prioriteta": 4,
 };
 const CLOSED_WORK_ORDER_STATUSES = new Set(["Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"]);
+const REMINDER_STATUS_RANK = {
+  active: 0,
+  snoozed: 1,
+  done: 2,
+};
 
 function isoNow() {
   return new Date().toISOString();
@@ -106,6 +118,11 @@ function normalizeWorkOrderStatus(value) {
   return WORK_ORDER_STATUS_SET.has(status) ? status : "Otvoreni RN";
 }
 
+function normalizeReminderStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return REMINDER_STATUS_SET.has(status) ? status : "active";
+}
+
 function normalizeOib(value) {
   const oib = normalizeText(value).replace(/\s+/g, "");
 
@@ -118,6 +135,110 @@ function normalizeOib(value) {
 
 function normalizeId(value) {
   return normalizeText(value);
+}
+
+function findReminderCompany(state, companyId = "") {
+  if (!companyId) {
+    return null;
+  }
+
+  return (state.companies ?? []).find((item) => item.id === companyId) ?? null;
+}
+
+function findReminderLocation(state, locationId = "", companyId = "") {
+  if (!locationId) {
+    return null;
+  }
+
+  return (state.locations ?? []).find((item) => (
+    item.id === locationId
+    && (!companyId || item.companyId === companyId)
+  )) ?? null;
+}
+
+function findReminderWorkOrder(state, workOrderId = "") {
+  if (!workOrderId) {
+    return null;
+  }
+
+  return (state.workOrders ?? []).find((item) => item.id === workOrderId) ?? null;
+}
+
+function hydrateReminderCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const requestedWorkOrderId = hasOwn(input, "workOrderId")
+    ? normalizeId(input.workOrderId)
+    : normalizeId(current?.workOrderId);
+  const linkedWorkOrder = findReminderWorkOrder(state, requestedWorkOrderId);
+
+  if (requestedWorkOrderId && !linkedWorkOrder) {
+    throw new Error("Povezani radni nalog ne postoji.");
+  }
+
+  let companyId = linkedWorkOrder?.companyId ?? (
+    hasOwn(input, "companyId") ? normalizeId(input.companyId) : normalizeId(current?.companyId)
+  );
+  let locationId = linkedWorkOrder?.locationId ?? (
+    hasOwn(input, "locationId") ? normalizeId(input.locationId) : normalizeId(current?.locationId)
+  );
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+
+  const company = findReminderCompany(state, companyId);
+
+  if (companyId && !company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  let location = findReminderLocation(state, locationId, companyId);
+
+  if (locationId && !location) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  if (linkedWorkOrder) {
+    companyId = linkedWorkOrder.companyId;
+    locationId = linkedWorkOrder.locationId;
+    location = findReminderLocation(state, linkedWorkOrder.locationId, linkedWorkOrder.companyId);
+  }
+
+  const normalizedStatus = hasOwn(input, "status")
+    ? normalizeReminderStatus(input.status)
+    : normalizeReminderStatus(current?.status);
+  const completedAt = normalizedStatus === "done"
+    ? (current?.completedAt ?? timestamp)
+    : null;
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: linkedWorkOrder?.companyName ?? company?.name ?? "",
+    locationId,
+    locationName: linkedWorkOrder?.locationName ?? location?.name ?? "",
+    workOrderId: linkedWorkOrder?.id ?? requestedWorkOrderId,
+    workOrderNumber: linkedWorkOrder?.workOrderNumber ?? current?.workOrderNumber ?? "",
+    title: hasOwn(input, "title") ? requireText(input.title, "Naslov remindera") : current?.title ?? "",
+    note: hasOwn(input, "note") ? normalizeText(input.note) : current?.note ?? "",
+    dueDate: hasOwn(input, "dueDate")
+      ? normalizeOptionalDate(input.dueDate)
+      : normalizeOptionalDate(current?.dueDate),
+    status: normalizedStatus,
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    completedAt,
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 function parseContactSlot(value) {
@@ -606,6 +727,89 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
   }, company, location);
 
   return next;
+}
+
+export function createReminder(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const reminder = hydrateReminderCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...reminder,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateReminder(current, patch, state, now = isoNow) {
+  return hydrateReminderCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
+export function filterReminders(
+  reminders,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return reminders.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.note,
+      item.companyName,
+      item.locationName,
+      item.workOrderNumber,
+      item.createdByLabel,
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortReminders(reminders) {
+  return [...reminders].sort((left, right) => {
+    const leftRank = REMINDER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = REMINDER_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
+      return left.dueDate.localeCompare(right.dueDate);
+    }
+
+    if (left.dueDate && !right.dueDate) {
+      return -1;
+    }
+
+    if (!left.dueDate && right.dueDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
 }
 
 export function nextWorkOrderNumber(workOrders) {
