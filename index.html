@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328r" />
+    <link rel="stylesheet" href="/styles.css?v=20260328s" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1201,7 +1201,7 @@
                 <form id="todo-form" class="entity-form">
                   <input id="todo-id" type="hidden" />
 
-                  <div class="form-grid">
+                  <div class="form-grid todo-form-grid">
                     <label class="field field-span-full">
                       <span>Naslov</span>
                       <input id="todo-title" type="text" maxlength="180" placeholder="npr. Posalji ponudu klijentu" required />
@@ -1257,7 +1257,7 @@
                   </div>
                 </div>
 
-                <div class="filter-row filter-row-clickup reminders-filter-row">
+                <div class="filter-row filter-row-clickup reminders-filter-row todo-filter-row">
                   <label class="field">
                     <span>Pretraga</span>
                     <input id="todo-search" type="search" placeholder="Naslov, poruka, kolega, RN..." />
@@ -1285,7 +1285,7 @@
                   <p class="helper-copy">Klikni zadatak iz srednje kolone da otvoris razgovor, status i detalje.</p>
                 </div>
 
-                <div id="todo-detail-content" hidden>
+                <div id="todo-detail-content" class="todo-detail-content" hidden>
                   <div class="todo-detail-head">
                     <div class="todo-detail-heading">
                       <p class="section-kicker">Conversation</p>
@@ -1853,7 +1853,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328r"></script>
-    <script type="module" src="/src/main.js?v=20260328r"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328s"></script>
+    <script type="module" src="/src/main.js?v=20260328s"></script>
   </body>
 </html>
