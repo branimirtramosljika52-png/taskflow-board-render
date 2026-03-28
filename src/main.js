@@ -42,23 +42,141 @@ const DEFAULT_MEASUREMENT_COLUMNS = [
 ];
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
 const RAIL_HIDDEN_KEY = "s360-rail-hidden";
+const ALL_SIDEBAR_GROUPS = [
+  "home",
+  "organisations",
+  "operations",
+  "company",
+  "locations",
+  "documents",
+  "learning",
+];
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
-  companies: "companies",
-  locations: "companies",
-  management: "admin",
+  companies: "company",
+  locations: "locations",
+  management: "organisations",
+  module: "home",
 };
 const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
-  selfdash: ["home", "tasks"],
-  companies: ["companies"],
-  locations: ["companies"],
-  management: ["admin"],
+  selfdash: ["home", "operations"],
+  companies: ["company"],
+  locations: ["locations"],
+  management: ["organisations"],
+  module: ALL_SIDEBAR_GROUPS,
 };
 const SIDEBAR_GROUP_DEFAULT_VIEW = {
   home: "selfdash",
-  tasks: "selfdash",
-  companies: "companies",
-  admin: "management",
+  organisations: "management",
+  operations: "selfdash",
+  company: "companies",
+  locations: "locations",
+  documents: "module",
+  learning: "module",
+};
+const MODULE_VIEW_DEFINITIONS = {
+  reminders: {
+    kicker: "Home",
+    title: "Reminders",
+    description: "Ovjde mozemo pripremiti podsjetnike, follow-upove i operativne termine vezane uz klijente, opremu i naloge.",
+    chips: ["Follow-up", "Deadlines", "Alerts"],
+  },
+  todo: {
+    kicker: "Home",
+    title: "ToDo",
+    description: "Modul je pripremljen za osobne i timske zadatke, s kratkim pregledom sto je hitno i sto jos ceka obradu.",
+    chips: ["Personal tasks", "Team tasks", "Today"],
+  },
+  settings: {
+    kicker: "Home",
+    title: "Settings",
+    description: "Mjesto za korisnicke postavke, preference prikaza i sistemske opcije koje cemo kasnije odvojiti po ulozi.",
+    chips: ["Profile", "Preferences", "Workspace"],
+  },
+  "measurement-equipment": {
+    kicker: "Organisations",
+    title: "Measurement Equipment",
+    description: "Sekcija za popis i pracenje mjerne opreme, certifikata i servisnih rokova unutar organizacije.",
+    chips: ["Devices", "Calibration", "Service dates"],
+  },
+  vehicles: {
+    kicker: "Organisations",
+    title: "Vehicles",
+    description: "Pregled vozila, raspolozivosti i povezanih operativnih podataka za organizaciju.",
+    chips: ["Fleet", "Availability", "Assignments"],
+  },
+  "safety-authorization": {
+    kicker: "Organisations",
+    title: "Safety Authorization",
+    description: "Prostor za ovlasti, autorizacije i evidenciju sigurnosnih prava zaposlenika i suradnika.",
+    chips: ["Authorizations", "Validity", "Access levels"],
+  },
+  offers: {
+    kicker: "Operations",
+    title: "Offers",
+    description: "Modul za ponude mozemo spojiti ovdje, uz klijente, lokacije i stavke usluge iz istog workspacea.",
+    chips: ["Drafts", "Sent", "Accepted"],
+  },
+  periodics: {
+    kicker: "Operations",
+    title: "Periodics",
+    description: "Pregled periodicnih obveza, kontrola i ponavljajucih naloga za organizaciju i klijente.",
+    chips: ["Cycles", "Recurring", "Service plans"],
+  },
+  contract: {
+    kicker: "Company",
+    title: "Contract",
+    description: "Ovdje mozemo kasnije izdvojiti ugovore, broj ugovora, anekse i povezane komercijalne dokumente.",
+    chips: ["Contracts", "Renewals", "Annexes"],
+  },
+  documents: {
+    kicker: "Documents",
+    title: "Documents",
+    description: "Centralni dokumentni sloj za priloge, obrasce i datoteke vezane uz organizaciju, klijenta ili lokaciju.",
+    chips: ["Files", "Templates", "Evidence"],
+  },
+  tests: {
+    kicker: "Learning",
+    title: "Tests",
+    description: "Mjesto za testove, provjere znanja i internu edukaciju zaposlenika po organizacijama.",
+    chips: ["Knowledge checks", "Exams", "Progress"],
+  },
+  "learning-people": {
+    kicker: "Learning",
+    title: "People",
+    description: "Pregled polaznika, statusa edukacija i napretka po zaposlenicima i timovima.",
+    chips: ["Learners", "Status", "Certificates"],
+  },
+};
+const SIDEBAR_ITEM_CONFIG = {
+  dashboard: { group: "home", view: "selfdash", focus: "top" },
+  reminders: { group: "home", view: "module", module: "reminders" },
+  todo: { group: "home", view: "module", module: "todo" },
+  settings: { group: "home", view: "module", module: "settings" },
+  "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
+  vehicles: { group: "organisations", view: "module", module: "vehicles" },
+  people: { group: "organisations", view: "management" },
+  "safety-authorization": { group: "organisations", view: "module", module: "safety-authorization" },
+  rn: { group: "operations", view: "selfdash", focus: "list" },
+  offers: { group: "operations", view: "module", module: "offers" },
+  periodics: { group: "operations", view: "module", module: "periodics" },
+  "list-company": { group: "company", view: "companies", focus: "list" },
+  "add-company": { group: "company", view: "companies", focus: "form" },
+  contract: { group: "company", view: "module", module: "contract" },
+  "list-location": { group: "locations", view: "locations", focus: "list" },
+  "add-location": { group: "locations", view: "locations", focus: "form" },
+  documents: { group: "documents", view: "module", module: "documents" },
+  tests: { group: "learning", view: "module", module: "tests" },
+  "learning-people": { group: "learning", view: "module", module: "learning-people" },
+};
+const SIDEBAR_GROUP_DEFAULT_ITEM = {
+  home: "dashboard",
+  organisations: "people",
+  operations: "rn",
+  company: "list-company",
+  locations: "list-location",
+  documents: "documents",
+  learning: "tests",
 };
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
@@ -100,6 +218,8 @@ const state = {
     state: "idle",
   },
   activeSidebarGroup: "home",
+  activeSidebarItem: "dashboard",
+  activeModuleItem: "documents",
   sidebarCollapsed: false,
   railHidden: false,
   measurementSheet: {
@@ -164,17 +284,16 @@ const sidebarHomeButton = document.querySelector("#sidebar-home-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
 const sidebarCollapseToggle = document.querySelector("#sidebar-collapse-toggle");
 const railButtons = Array.from(document.querySelectorAll("[data-sidebar-group]"));
-const railAdminButton = document.querySelector("#rail-admin-button");
+const railOrganisationsButton = document.querySelector("#rail-organisations-button");
 const sidebarGroupButtons = Array.from(document.querySelectorAll("[data-group-toggle]"));
 const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-group-panel]"));
-const sidebarAdminGroupPanel = document.querySelector("#sidebar-admin-group-panel");
-const sidebarSelfDashActions = Array.from(document.querySelectorAll("[data-selfdash-focus]"));
+const sidebarOrganisationsGroupPanel = document.querySelector("#sidebar-organisations-group-panel");
+const sidebarNavItems = Array.from(document.querySelectorAll("[data-sidebar-item]"));
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
 const connectionStatus = document.querySelector("#connection-status");
 const syncError = document.querySelector("#sync-error");
-const tabButtons = Array.from(document.querySelectorAll(".tab-button[data-view]"));
 const managementTab = document.querySelector("#management-tab");
 const managementNavLabel = document.querySelector("#management-nav-label");
 const workspaceViews = {
@@ -182,7 +301,12 @@ const workspaceViews = {
   companies: document.querySelector("#companies-view"),
   locations: document.querySelector("#locations-view"),
   management: document.querySelector("#management-view"),
+  module: document.querySelector("#module-view"),
 };
+const moduleViewKicker = document.querySelector("#module-view-kicker");
+const moduleViewTitle = document.querySelector("#module-view-title");
+const moduleViewDescription = document.querySelector("#module-view-description");
+const moduleViewChips = document.querySelector("#module-view-chips");
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -794,6 +918,31 @@ function persistRailHidden() {
   }
 }
 
+function renderModuleView() {
+  const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
+
+  if (moduleViewKicker) {
+    moduleViewKicker.textContent = moduleDefinition.kicker;
+  }
+
+  if (moduleViewTitle) {
+    moduleViewTitle.textContent = moduleDefinition.title;
+  }
+
+  if (moduleViewDescription) {
+    moduleViewDescription.textContent = moduleDefinition.description;
+  }
+
+  if (moduleViewChips) {
+    moduleViewChips.replaceChildren(...(moduleDefinition.chips ?? []).map((chip) => {
+      const chipElement = document.createElement("span");
+      chipElement.className = "module-chip";
+      chipElement.textContent = chip;
+      return chipElement;
+    }));
+  }
+}
+
 function renderSidebarState() {
   const activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
 
@@ -811,6 +960,10 @@ function renderSidebarState() {
     button.classList.toggle("is-active", button.dataset.sidebarGroup === activeGroup);
   });
 
+  sidebarNavItems.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.sidebarItem === state.activeSidebarItem);
+  });
+
   if (appRailToggle) {
     appRailToggle.textContent = state.railHidden ? "Prikazi ikone" : "Sakrij ikone";
     appRailToggle.setAttribute("aria-pressed", state.railHidden ? "true" : "false");
@@ -825,6 +978,13 @@ function renderSidebarState() {
   });
 }
 
+function ensureSidebarExpanded(expandSidebar = false) {
+  if (expandSidebar && state.sidebarCollapsed) {
+    state.sidebarCollapsed = false;
+    persistSidebarCollapsed();
+  }
+}
+
 function setSidebarCollapsed(nextValue) {
   state.sidebarCollapsed = Boolean(nextValue);
   persistSidebarCollapsed();
@@ -837,6 +997,103 @@ function setRailHidden(nextValue) {
   renderSidebarState();
 }
 
+function focusCompanyArea(target = "list") {
+  state.activeView = "companies";
+  renderActiveView();
+
+  window.requestAnimationFrame(() => {
+    if (target === "form") {
+      companyNameInput?.focus({ preventScroll: true });
+    }
+
+    workspaceViews.companies?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
+function focusLocationArea(target = "list") {
+  state.activeView = "locations";
+  renderActiveView();
+
+  window.requestAnimationFrame(() => {
+    if (target === "form") {
+      locationNameInput?.focus({ preventScroll: true });
+    }
+
+    workspaceViews.locations?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
+function activateSidebarItem(itemName, options = {}) {
+  const {
+    expandSidebar = false,
+    preserveGroup = false,
+  } = options;
+  const itemConfig = SIDEBAR_ITEM_CONFIG[itemName];
+
+  if (!itemConfig) {
+    return;
+  }
+
+  ensureSidebarExpanded(expandSidebar);
+  state.activeSidebarItem = itemName;
+
+  if (!preserveGroup && itemConfig.group) {
+    state.activeSidebarGroup = itemConfig.group;
+  }
+
+  if (itemConfig.view === "module") {
+    state.activeModuleItem = itemConfig.module;
+    state.activeView = "module";
+    renderModuleView();
+    renderActiveView();
+    return;
+  }
+
+  if (itemConfig.view === "management") {
+    state.activeView = "management";
+    renderActiveView();
+    workspaceViews.management?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
+  if (itemConfig.view === "companies") {
+    focusCompanyArea(itemConfig.focus);
+    return;
+  }
+
+  if (itemConfig.view === "locations") {
+    focusLocationArea(itemConfig.focus);
+    return;
+  }
+
+  if (itemConfig.view === "selfdash") {
+    state.activeView = "selfdash";
+    renderActiveView();
+
+    if (itemConfig.focus === "list") {
+      workOrdersTableWrap?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      return;
+    }
+
+    workspaceViews.selfdash?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+}
+
 function activateSidebarGroup(groupName, options = {}) {
   const {
     navigate = false,
@@ -844,13 +1101,16 @@ function activateSidebarGroup(groupName, options = {}) {
   } = options;
 
   state.activeSidebarGroup = groupName;
-
-  if (expandSidebar && state.sidebarCollapsed) {
-    state.sidebarCollapsed = false;
-    persistSidebarCollapsed();
-  }
+  ensureSidebarExpanded(expandSidebar);
 
   if (navigate) {
+    const targetItem = SIDEBAR_GROUP_DEFAULT_ITEM[groupName];
+
+    if (targetItem) {
+      activateSidebarItem(targetItem, { preserveGroup: true });
+      return;
+    }
+
     const targetView = SIDEBAR_GROUP_DEFAULT_VIEW[groupName];
 
     if (targetView) {
@@ -864,8 +1124,14 @@ function activateSidebarGroup(groupName, options = {}) {
 function focusSelfDashArea(target = "top") {
   state.activeView = "selfdash";
 
-  if (!["home", "tasks"].includes(state.activeSidebarGroup)) {
-    state.activeSidebarGroup = target === "top" ? "home" : "tasks";
+  if (!["home", "operations"].includes(state.activeSidebarGroup)) {
+    state.activeSidebarGroup = target === "top" ? "home" : "operations";
+  }
+
+  if (target === "top") {
+    state.activeSidebarItem = "dashboard";
+  } else if (target === "list") {
+    state.activeSidebarItem = "rn";
   }
 
   renderActiveView();
@@ -3939,11 +4205,11 @@ function renderAuthState() {
       : (organization ? organization.name : "");
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
-    if (sidebarAdminGroupPanel) {
-      sidebarAdminGroupPanel.hidden = managementTab.hidden;
+    if (sidebarOrganisationsGroupPanel) {
+      sidebarOrganisationsGroupPanel.hidden = managementTab.hidden;
     }
-    if (railAdminButton) {
-      railAdminButton.hidden = managementTab.hidden;
+    if (railOrganisationsButton) {
+      railOrganisationsButton.hidden = managementTab.hidden;
     }
 
     if (sidebarActiveOrganization) {
@@ -3951,7 +4217,7 @@ function renderAuthState() {
     }
 
     if (managementNavLabel) {
-      managementNavLabel.textContent = isSuperAdmin ? "Administration" : "Team";
+      managementNavLabel.textContent = "People";
     }
   } else {
     userBadge.textContent = "";
@@ -3962,17 +4228,17 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
-    if (sidebarAdminGroupPanel) {
-      sidebarAdminGroupPanel.hidden = true;
+    if (sidebarOrganisationsGroupPanel) {
+      sidebarOrganisationsGroupPanel.hidden = true;
     }
-    if (railAdminButton) {
-      railAdminButton.hidden = true;
+    if (railOrganisationsButton) {
+      railOrganisationsButton.hidden = true;
     }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
     }
     if (managementNavLabel) {
-      managementNavLabel.textContent = "Administration";
+      managementNavLabel.textContent = "People";
     }
     loginError.textContent = "";
     setLoginBusy(false);
@@ -4476,10 +4742,6 @@ function renderActiveView() {
 
   for (const [viewName, element] of Object.entries(workspaceViews)) {
     element.hidden = viewName !== state.activeView;
-  }
-
-  for (const button of tabButtons) {
-    button.classList.toggle("is-active", button.dataset.view === state.activeView);
   }
 
   if (state.activeView !== "selfdash") {
@@ -6019,19 +6281,21 @@ function render() {
   renderCompanies();
   renderLocations();
   renderManagement();
+  renderModuleView();
   renderActiveView();
 }
 
-tabButtons.forEach((button) => {
+sidebarNavItems.forEach((button) => {
   button.addEventListener("click", () => {
-    const parentGroup = button.closest("[data-sidebar-group-panel]")?.dataset.sidebarGroupPanel;
+    const itemName = button.dataset.sidebarItem;
 
-    if (parentGroup) {
-      state.activeSidebarGroup = parentGroup;
+    if (!itemName) {
+      return;
     }
 
-    state.activeView = button.dataset.view;
-    renderActiveView();
+    activateSidebarItem(itemName, {
+      expandSidebar: state.sidebarCollapsed,
+    });
   });
 });
 
@@ -6066,27 +6330,16 @@ sidebarGroupButtons.forEach((button) => {
   });
 });
 
-sidebarSelfDashActions.forEach((button) => {
-  button.addEventListener("click", () => {
-    const target = button.dataset.selfdashFocus || "top";
-    const parentGroup = button.closest("[data-sidebar-group-panel]")?.dataset.sidebarGroupPanel;
-
-    if (parentGroup) {
-      state.activeSidebarGroup = parentGroup;
-    }
-
-    focusSelfDashArea(target);
+appHomeButton?.addEventListener("click", () => {
+  activateSidebarItem("dashboard", {
+    expandSidebar: state.sidebarCollapsed,
   });
 });
 
-appHomeButton?.addEventListener("click", () => {
-  state.activeSidebarGroup = "home";
-  focusSelfDashArea("top");
-});
-
 sidebarHomeButton?.addEventListener("click", () => {
-  state.activeSidebarGroup = "home";
-  focusSelfDashArea("top");
+  activateSidebarItem("dashboard", {
+    expandSidebar: state.sidebarCollapsed,
+  });
 });
 
 sidebarCollapseToggle?.addEventListener("click", () => {

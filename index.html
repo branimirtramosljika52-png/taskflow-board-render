@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260327r" />
+    <link rel="stylesheet" href="/styles.css?v=20260328a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -66,47 +66,76 @@
         <aside class="app-rail" aria-label="Primarna navigacija">
           <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljački panel">S</button>
           <nav class="app-rail-nav">
-            <button
-              type="button"
-              class="rail-button is-active"
-              data-sidebar-group="home"
-              title="Home"
-              aria-label="Home"
-            >
-              <span class="rail-icon" aria-hidden="true">&#8962;</span>
+            <button type="button" class="rail-button is-active" data-sidebar-group="home" title="Home" aria-label="Home">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <path d="M4 10.5 12 4l8 6.5"></path>
+                  <path d="M6.5 10v9h11v-9"></path>
+                </svg>
+              </span>
               <span class="rail-label">Home</span>
             </button>
             <button
               type="button"
               class="rail-button"
-              data-sidebar-group="admin"
-              id="rail-admin-button"
+              data-sidebar-group="organisations"
+              id="rail-organisations-button"
               hidden
-              title="Administration"
-              aria-label="Administration"
+              title="Organisations"
+              aria-label="Organisations"
             >
-              <span class="rail-icon" aria-hidden="true">&#9881;</span>
-              <span class="rail-label">Administration</span>
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                  <path d="M8 10h8M8 14h5"></path>
+                </svg>
+              </span>
+              <span class="rail-label">Organisations</span>
             </button>
-            <button
-              type="button"
-              class="rail-button"
-              data-sidebar-group="tasks"
-              title="Tasks"
-              aria-label="Tasks"
-            >
-              <span class="rail-icon" aria-hidden="true">&#10003;</span>
-              <span class="rail-label">Tasks</span>
+            <button type="button" class="rail-button" data-sidebar-group="operations" title="Operations" aria-label="Operations">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                  <path d="M8 10h8M8 14h8"></path>
+                </svg>
+              </span>
+              <span class="rail-label">Operations</span>
             </button>
-            <button
-              type="button"
-              class="rail-button"
-              data-sidebar-group="companies"
-              title="Company"
-              aria-label="Company"
-            >
-              <span class="rail-icon" aria-hidden="true">&#9638;</span>
+            <button type="button" class="rail-button" data-sidebar-group="company" title="Company" aria-label="Company">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <rect x="5" y="4" width="14" height="16" rx="3"></rect>
+                  <path d="M9 9h6M9 13h6M9 17h4"></path>
+                </svg>
+              </span>
               <span class="rail-label">Company</span>
+            </button>
+            <button type="button" class="rail-button" data-sidebar-group="locations" title="Locations" aria-label="Locations">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <path d="M12 20s5-4.35 5-9a5 5 0 1 0-10 0c0 4.65 5 9 5 9Z"></path>
+                  <circle cx="12" cy="11" r="1.8"></circle>
+                </svg>
+              </span>
+              <span class="rail-label">Locations</span>
+            </button>
+            <button type="button" class="rail-button" data-sidebar-group="documents" title="Documents" aria-label="Documents">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <path d="M8 4h6l4 4v12H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
+                  <path d="M14 4v4h4"></path>
+                </svg>
+              </span>
+              <span class="rail-label">Documents</span>
+            </button>
+            <button type="button" class="rail-button" data-sidebar-group="learning" title="Learning" aria-label="Learning">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z"></path>
+                  <path d="M7 10.5v4.25c0 1.2 2.24 2.75 5 2.75s5-1.55 5-2.75V10.5"></path>
+                </svg>
+              </span>
+              <span class="rail-label">Learning</span>
             </button>
           </nav>
         </aside>
@@ -136,64 +165,283 @@
           <nav class="sidebar-groups" aria-label="Pogledi aplikacije">
             <section class="sidebar-group" data-sidebar-group-panel="home">
               <button type="button" class="sidebar-group-toggle" data-group-toggle="home">
-                <span class="sidebar-group-icon" aria-hidden="true">&#8962;</span>
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M4 10.5 12 4l8 6.5"></path>
+                    <path d="M6.5 10v9h11v-9"></path>
+                  </svg>
+                </span>
                 <span class="sidebar-group-label">Home</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
-                <button type="button" class="tab-button sidebar-link sidebar-action" data-selfdash-focus="top">
-                  <span class="tab-button-icon" aria-hidden="true">&#9679;</span>
-                  <strong>Overview</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="dashboard">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <rect x="4" y="4" width="7" height="7" rx="2"></rect>
+                      <rect x="13" y="4" width="7" height="5" rx="2"></rect>
+                      <rect x="13" y="11" width="7" height="9" rx="2"></rect>
+                      <rect x="4" y="13" width="7" height="7" rx="2"></rect>
+                    </svg>
+                  </span>
+                  <strong>Dashboard</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="reminders">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M7.5 8a4.5 4.5 0 1 1 9 0c0 5 2 5.5 2 6H5.5c0-.5 2-1 2-6"></path>
+                      <path d="M10 18a2 2 0 0 0 4 0"></path>
+                    </svg>
+                  </span>
+                  <strong>Reminders</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="todo">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M9 7h10"></path>
+                      <path d="M9 12h10"></path>
+                      <path d="M9 17h10"></path>
+                      <path d="m4.5 7 1.5 1.5L8.5 6"></path>
+                      <path d="m4.5 12 1.5 1.5L8.5 11"></path>
+                      <path d="m4.5 17 1.5 1.5L8.5 16"></path>
+                    </svg>
+                  </span>
+                  <strong>ToDo</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="settings">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M4 7h8"></path>
+                      <path d="M16 7h4"></path>
+                      <path d="M12 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"></path>
+                      <path d="M4 17h4"></path>
+                      <path d="M12 17h8"></path>
+                      <path d="M8 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"></path>
+                    </svg>
+                  </span>
+                  <strong>Settings</strong>
                 </button>
               </div>
             </section>
 
-            <section class="sidebar-group" data-sidebar-group-panel="tasks">
-              <button type="button" class="sidebar-group-toggle" data-group-toggle="tasks">
-                <span class="sidebar-group-icon" aria-hidden="true">&#10003;</span>
-                <span class="sidebar-group-label">Tasks</span>
+            <section id="sidebar-organisations-group-panel" class="sidebar-group" data-sidebar-group-panel="organisations" hidden>
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="organisations">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                    <path d="M8 10h8M8 14h5"></path>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Organisations</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
-                <button type="button" class="tab-button sidebar-link sidebar-action" data-selfdash-focus="composer">
-                  <span class="tab-button-icon" aria-hidden="true">+</span>
-                  <strong>Otvaranje RN</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="measurement-equipment">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M5 15a7 7 0 1 1 14 0"></path>
+                      <path d="m12 12 3-3"></path>
+                      <path d="M12 12v3"></path>
+                    </svg>
+                  </span>
+                  <strong>Measurement Equipment</strong>
                 </button>
-                <button type="button" class="tab-button sidebar-link" data-view="selfdash">
-                  <span class="tab-button-icon" aria-hidden="true">&#9776;</span>
-                  <strong>Lista RN</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="vehicles">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M5 14h14l-1.5-5h-11Z"></path>
+                      <path d="M4 14v3"></path>
+                      <path d="M20 14v3"></path>
+                      <circle cx="8" cy="17" r="1.5"></circle>
+                      <circle cx="16" cy="17" r="1.5"></circle>
+                    </svg>
+                  </span>
+                  <strong>Vehicles</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="people" id="management-tab" hidden>
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <circle cx="9" cy="8.5" r="2.5"></circle>
+                      <circle cx="16.5" cy="9.5" r="2"></circle>
+                      <path d="M5 18c0-2.3 2-4 4.5-4S14 15.7 14 18"></path>
+                      <path d="M14.5 18c.2-1.6 1.5-2.8 3.3-2.8 1.6 0 2.9 1 3.2 2.5"></path>
+                    </svg>
+                  </span>
+                  <strong id="management-nav-label">People</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="safety-authorization">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 4 19 7v5c0 4.2-2.8 6.8-7 8-4.2-1.2-7-3.8-7-8V7l7-3Z"></path>
+                      <path d="m9.5 12 1.7 1.7 3.3-3.7"></path>
+                    </svg>
+                  </span>
+                  <strong>Safety Authorization</strong>
                 </button>
               </div>
             </section>
 
-            <section class="sidebar-group" data-sidebar-group-panel="companies">
-              <button type="button" class="sidebar-group-toggle" data-group-toggle="companies">
-                <span class="sidebar-group-icon" aria-hidden="true">&#9638;</span>
+            <section class="sidebar-group" data-sidebar-group-panel="operations">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="operations">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                    <path d="M8 10h8M8 14h8"></path>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Operations</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="rn">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <rect x="5" y="4" width="14" height="16" rx="3"></rect>
+                      <path d="M9 9h6M9 13h6M9 17h4"></path>
+                    </svg>
+                  </span>
+                  <strong>RN</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="offers">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M7 5h10l3 4-8 10L4 9l3-4Z"></path>
+                      <path d="M9 9h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Offers</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="periodics">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <rect x="4" y="6" width="16" height="14" rx="3"></rect>
+                      <path d="M8 4v4M16 4v4M4 10h16"></path>
+                    </svg>
+                  </span>
+                  <strong>Periodics</strong>
+                </button>
+              </div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="company">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="company">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <rect x="5" y="4" width="14" height="16" rx="3"></rect>
+                    <path d="M9 9h6M9 13h6M9 17h4"></path>
+                  </svg>
+                </span>
                 <span class="sidebar-group-label">Company</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
-                <button type="button" class="tab-button sidebar-link" data-view="companies">
-                  <span class="tab-button-icon" aria-hidden="true">&#9635;</span>
-                  <strong>Tvrtke</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="list-company">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6 19V7h12v12"></path>
+                      <path d="M9 10h1M14 10h1M9 13h1M14 13h1"></path>
+                    </svg>
+                  </span>
+                  <strong>List Company</strong>
                 </button>
-                <button type="button" class="tab-button sidebar-link" data-view="locations">
-                  <span class="tab-button-icon" aria-hidden="true">&#9675;</span>
-                  <strong>Lokacije</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="add-company">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 5v14M5 12h14"></path>
+                    </svg>
+                  </span>
+                  <strong>Add New</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="contract">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M8 4h8l3 3v13H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
+                      <path d="M16 4v4h4"></path>
+                      <path d="M9 13h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Contract</strong>
                 </button>
               </div>
             </section>
 
-            <section id="sidebar-admin-group-panel" class="sidebar-group" data-sidebar-group-panel="admin" hidden>
-              <button type="button" class="sidebar-group-toggle" data-group-toggle="admin">
-                <span class="sidebar-group-icon" aria-hidden="true">&#9881;</span>
-                <span class="sidebar-group-label">Administration</span>
+            <section class="sidebar-group" data-sidebar-group-panel="locations">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="locations">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M12 20s5-4.35 5-9a5 5 0 1 0-10 0c0 4.65 5 9 5 9Z"></path>
+                    <circle cx="12" cy="11" r="1.8"></circle>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Locations</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
-                <button type="button" class="tab-button sidebar-link" data-view="management" id="management-tab" hidden>
-                  <span class="tab-button-icon" aria-hidden="true">&#9881;</span>
-                  <strong id="management-nav-label">Administration</strong>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="list-location">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 20s5-4.35 5-9a5 5 0 1 0-10 0c0 4.65 5 9 5 9Z"></path>
+                      <circle cx="12" cy="11" r="1.8"></circle>
+                    </svg>
+                  </span>
+                  <strong>List Location</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="add-location">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 5v14M5 12h14"></path>
+                    </svg>
+                  </span>
+                  <strong>Add New</strong>
+                </button>
+              </div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="documents">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="documents">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M8 4h6l4 4v12H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
+                    <path d="M14 4v4h4"></path>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Documents</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="tab-strip sidebar-group-items"></div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="learning">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="learning">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z"></path>
+                    <path d="M7 10.5v4.25c0 1.2 2.24 2.75 5 2.75s5-1.55 5-2.75V10.5"></path>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Learning</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="tests">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M8 4h8l3 3v13H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
+                      <path d="M9 10h6M9 14h4"></path>
+                    </svg>
+                  </span>
+                  <strong>Test</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="learning-people">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <circle cx="9" cy="8.5" r="2.5"></circle>
+                      <circle cx="16.5" cy="9.5" r="2"></circle>
+                      <path d="M5 18c0-2.3 2-4 4.5-4S14 15.7 14 18"></path>
+                      <path d="M14.5 18c.2-1.6 1.5-2.8 3.3-2.8 1.6 0 2.9 1 3.2 2.5"></path>
+                    </svg>
+                  </span>
+                  <strong>People</strong>
                 </button>
               </div>
             </section>
@@ -1199,11 +1447,28 @@
             </div>
           </section>
         </section>
+
+        <section id="module-view" class="workspace-view" hidden>
+          <section class="panel module-panel">
+            <div class="section-heading">
+              <div>
+                <p id="module-view-kicker" class="section-kicker">Module</p>
+                <h2 id="module-view-title">Documents</h2>
+              </div>
+            </div>
+
+            <p id="module-view-description" class="helper-copy module-copy">
+              Odabrani modul je spreman za zaseban ekran i daljnju razradu unutar istog workspacea.
+            </p>
+
+            <div id="module-view-chips" class="module-chip-grid"></div>
+          </section>
+        </section>
         </section>
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260327r"></script>
-    <script type="module" src="/src/main.js?v=20260327r"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328a"></script>
+    <script type="module" src="/src/main.js?v=20260328a"></script>
   </body>
 </html>
