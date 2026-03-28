@@ -1,4 +1,6 @@
 import {
+  DASHBOARD_GRID_COLUMN_COUNT,
+  DASHBOARD_WIDGET_HEIGHT_OPTIONS,
   DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS,
   DASHBOARD_WIDGET_DEFINITIONS,
   DASHBOARD_WIDGET_SIZE_OPTIONS,
@@ -13,6 +15,7 @@ import {
   filterReminders,
   filterTodoTasks,
   filterWorkOrders,
+  applyDashboardWidgetGridLayout,
   getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
@@ -58,6 +61,34 @@ const DASHBOARD_CHART_COLORS = [
   "#45c7f0",
   "#b0b8c9",
 ];
+const DASHBOARD_WIDGET_TEMPLATE_CATEGORIES = [
+  { value: "featured", label: "Featured", copy: "Najkorisnije kartice za brzi start." },
+  { value: "work_orders", label: "Radni nalozi", copy: "Operativa, statusi, rokovi i regije." },
+  { value: "reminders", label: "Reminders", copy: "Podsjetnici, rokovi i aktivne stavke." },
+  { value: "todo_tasks", label: "ToDo", copy: "Dodijeljeni zadaci, komunikacija i inbox." },
+  { value: "locations", label: "Lokacije", copy: "Pokrivenost regija i kvaliteta podataka." },
+];
+const DASHBOARD_WIDGET_TEMPLATES = [
+  { key: "featured-open-rn", category: "featured", source: "work_orders", visualization: "metric", metricKey: "active", title: "Otvoreni RN", description: "Brzi KPI za aktivne radne naloge.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "featured-status", category: "featured", source: "work_orders", visualization: "donut", metricKey: "status", title: "Status radnih naloga", description: "Udio RN po statusima na jednom mjestu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "featured-priority", category: "featured", source: "work_orders", visualization: "bar", metricKey: "priority", title: "Prioriteti RN", description: "Pregled prioriteta i opterecenja.", size: "large", gridWidth: 6, gridHeight: 4, limit: 5 },
+  { key: "featured-upcoming", category: "featured", source: "work_orders", visualization: "list", metricKey: "upcoming_due", title: "Sljedeci rokovi", description: "RN koje treba pratiti u narednim danima.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "wo-total", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "total", title: "Svi radni nalozi", description: "Ukupan broj RN nakon aktivnih filtara.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "wo-overdue", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "overdue", title: "RN u kasnjenju", description: "Otvoreni RN kojima je rok vec prosao.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "wo-region-bar", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "region", title: "RN po regiji", description: "Bar chart raspodjele po regijama.", size: "full", gridWidth: 12, gridHeight: 4, limit: 6 },
+  { key: "wo-executor-donut", category: "work_orders", source: "work_orders", visualization: "donut", metricKey: "executor", title: "Opterecenje izvrsitelja", description: "Tko trenutno nosi najvise RN-a.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "reminders-active", category: "reminders", source: "reminders", visualization: "metric", metricKey: "active", title: "Aktivni reminders", description: "Broj otvorenih reminders stavki.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "reminders-status", category: "reminders", source: "reminders", visualization: "donut", metricKey: "status", title: "Reminder statusi", description: "Kako su reminders rasporedeni po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "reminders-due", category: "reminders", source: "reminders", visualization: "list", metricKey: "due_soon", title: "Reminder rokovi", description: "Sto uskoro dolazi na red.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "todo-assigned", category: "todo_tasks", source: "todo_tasks", visualization: "metric", metricKey: "assigned_to_me", title: "Moji zadaci", description: "Koliko zadataka je dodijeljeno meni.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "todo-status", category: "todo_tasks", source: "todo_tasks", visualization: "donut", metricKey: "status", title: "ToDo statusi", description: "Raspodjela timskih zadataka po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "todo-open-items", category: "todo_tasks", source: "todo_tasks", visualization: "list", metricKey: "open_items", title: "Otvoreni ToDo", description: "Aktivna komunikacija i otvoreni taskovi.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "locations-missing", category: "locations", source: "locations", visualization: "metric", metricKey: "missing_coordinates", title: "Lokacije bez koordinata", description: "Lokacije koje jos traze doradu podataka.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "locations-region", category: "locations", source: "locations", visualization: "bar", metricKey: "region", title: "Lokacije po regiji", description: "Raspored lokacija kroz regije.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "locations-list", category: "locations", source: "locations", visualization: "list", metricKey: "recent", title: "Lista lokacija", description: "Brzi pregled lokacija i koordinata.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+];
+const DASHBOARD_GRID_GAP_PX = 14;
+let dashboardWidgetLayoutInteraction = null;
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
@@ -284,6 +315,9 @@ const state = {
     open: false,
     draftMode: "create",
     draftId: "",
+    category: "featured",
+    search: "",
+    templateKey: "",
     seeding: false,
   },
 };
@@ -382,9 +416,13 @@ const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
 const dashboardSeedLayoutButton = document.querySelector("#dashboard-seed-layout");
 const dashboardBuilderPanel = document.querySelector("#dashboard-builder-panel");
+const dashboardBuilderBackdrop = document.querySelector("#dashboard-builder-backdrop");
 const dashboardBuilderClose = document.querySelector("#dashboard-builder-close");
 const dashboardBuilderTitle = document.querySelector("#dashboard-builder-title");
 const dashboardBuilderCopy = document.querySelector("#dashboard-builder-copy");
+const dashboardWidgetSearchInput = document.querySelector("#dashboard-widget-search");
+const dashboardWidgetCategoryList = document.querySelector("#dashboard-widget-category-list");
+const dashboardWidgetTemplateGrid = document.querySelector("#dashboard-widget-template-grid");
 const dashboardWidgetForm = document.querySelector("#dashboard-widget-form");
 const dashboardWidgetIdInput = document.querySelector("#dashboard-widget-id");
 const dashboardWidgetTitleInput = document.querySelector("#dashboard-widget-title");
@@ -393,6 +431,8 @@ const dashboardWidgetSourceInput = document.querySelector("#dashboard-widget-sou
 const dashboardWidgetMetricInput = document.querySelector("#dashboard-widget-metric");
 const dashboardWidgetMetricLabel = document.querySelector("#dashboard-widget-metric-label");
 const dashboardWidgetSizeInput = document.querySelector("#dashboard-widget-size");
+const dashboardWidgetWidthInput = document.querySelector("#dashboard-widget-width");
+const dashboardWidgetHeightInput = document.querySelector("#dashboard-widget-height");
 const dashboardWidgetLimitInput = document.querySelector("#dashboard-widget-limit");
 const dashboardWidgetCompanyFilterInput = document.querySelector("#dashboard-widget-company-filter");
 const dashboardWidgetStatusFilterInput = document.querySelector("#dashboard-widget-status-filter");
@@ -5464,16 +5504,207 @@ function getDashboardPriorityOptions(source) {
 }
 
 function getSuggestedDashboardWidgetDrafts() {
-  return [
-    { title: "Otvoreni RN", source: "work_orders", visualization: "metric", metricKey: "active", size: "small", limit: 6, position: 1, filters: {} },
-    { title: "Urgent RN", source: "work_orders", visualization: "metric", metricKey: "urgent", size: "small", limit: 6, position: 2, filters: {} },
-    { title: "Status RN", source: "work_orders", visualization: "donut", metricKey: "status", size: "large", limit: 6, position: 3, filters: {} },
-    { title: "Prioriteti RN", source: "work_orders", visualization: "bar", metricKey: "priority", size: "large", limit: 5, position: 4, filters: {} },
-    { title: "RN po regiji", source: "work_orders", visualization: "bar", metricKey: "region", size: "full", limit: 6, position: 5, filters: {} },
-    { title: "Sljedeci rokovi", source: "work_orders", visualization: "list", metricKey: "upcoming_due", size: "large", limit: 6, position: 6, filters: {} },
-    { title: "Moji ToDo", source: "todo_tasks", visualization: "metric", metricKey: "assigned_to_me", size: "small", limit: 6, position: 7, filters: {} },
-    { title: "Aktivni reminders", source: "reminders", visualization: "metric", metricKey: "active", size: "small", limit: 6, position: 8, filters: {} },
-  ];
+  return DASHBOARD_WIDGET_TEMPLATES.slice(0, 8).map((template, index) => ({
+    ...createDashboardTemplateDraft(template),
+    position: index + 1,
+  }));
+}
+
+function getDashboardWidgetLayoutPreset(size) {
+  switch (size) {
+    case "small":
+      return { gridWidth: 3, gridHeight: 2 };
+    case "large":
+      return { gridWidth: 6, gridHeight: 4 };
+    case "full":
+      return { gridWidth: DASHBOARD_GRID_COLUMN_COUNT, gridHeight: 4 };
+    default:
+      return { gridWidth: 4, gridHeight: 3 };
+  }
+}
+
+function getDashboardWidgetSizeFromWidth(width) {
+  const normalized = Number.parseInt(String(width ?? ""), 10) || 4;
+
+  if (normalized >= DASHBOARD_GRID_COLUMN_COUNT) {
+    return "full";
+  }
+
+  if (normalized >= 6) {
+    return "large";
+  }
+
+  if (normalized <= 3) {
+    return "small";
+  }
+
+  return "medium";
+}
+
+function clampDashboardWidgetWidth(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Math.min(DASHBOARD_GRID_COLUMN_COUNT, Math.max(3, Number.isFinite(parsed) ? parsed : 4));
+}
+
+function clampDashboardWidgetHeight(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Math.min(6, Math.max(2, Number.isFinite(parsed) ? parsed : 3));
+}
+
+function createDashboardTemplateDraft(template) {
+  return {
+    ...template,
+    filters: { ...(template.filters ?? {}) },
+  };
+}
+
+function findMatchingDashboardTemplate(widget) {
+  return DASHBOARD_WIDGET_TEMPLATES.find((template) => (
+    template.source === widget.source
+    && template.visualization === widget.visualization
+    && template.metricKey === widget.metricKey
+  )) ?? null;
+}
+
+function getDashboardBuilderVisibleTemplates() {
+  const activeCategory = state.dashboardBuilder.category || "featured";
+  const query = String(state.dashboardBuilder.search ?? "").trim().toLowerCase();
+
+  return DASHBOARD_WIDGET_TEMPLATES.filter((template) => {
+    if (activeCategory !== "featured" && template.category !== activeCategory) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return [
+      template.title,
+      template.description,
+      template.source,
+      template.visualization,
+      template.metricKey,
+    ].some((value) => String(value ?? "").trim().toLowerCase().includes(query));
+  });
+}
+
+function syncDashboardBuilderSearchInput() {
+  if (dashboardWidgetSearchInput && dashboardWidgetSearchInput.value !== state.dashboardBuilder.search) {
+    dashboardWidgetSearchInput.value = state.dashboardBuilder.search;
+  }
+}
+
+function createDashboardCategoryButton(category) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "dashboard-category-button";
+
+  if (state.dashboardBuilder.category === category.value) {
+    button.classList.add("is-active");
+  }
+
+  const title = document.createElement("strong");
+  title.textContent = category.label;
+
+  const copy = document.createElement("span");
+  copy.textContent = category.copy;
+
+  button.append(title, copy);
+  button.addEventListener("click", () => {
+    state.dashboardBuilder.category = category.value;
+    renderDashboardOverview();
+  });
+  return button;
+}
+
+function renderDashboardWidgetCategoryList() {
+  if (!dashboardWidgetCategoryList) {
+    return;
+  }
+
+  dashboardWidgetCategoryList.replaceChildren(
+    ...DASHBOARD_WIDGET_TEMPLATE_CATEGORIES.map((category) => createDashboardCategoryButton(category)),
+  );
+}
+
+function selectDashboardWidgetTemplate(template) {
+  state.dashboardBuilder.templateKey = template.key;
+  populateDashboardWidgetForm(createDashboardTemplateDraft(template));
+  renderDashboardOverview();
+}
+
+function createDashboardTemplateCard(template) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "dashboard-template-card";
+
+  if (state.dashboardBuilder.templateKey === template.key) {
+    button.classList.add("is-active");
+  }
+
+  const top = document.createElement("div");
+  top.className = "dashboard-template-card-top";
+
+  const badge = document.createElement("span");
+  badge.className = "dashboard-template-card-icon";
+  badge.textContent = template.visualization === "metric"
+    ? "KPI"
+    : template.visualization === "donut"
+      ? "Pie"
+      : template.visualization === "bar"
+        ? "Bar"
+        : "List";
+
+  const type = document.createElement("span");
+  type.className = "dashboard-template-card-type";
+  type.textContent = `${DASHBOARD_WIDGET_DEFINITIONS[template.source]?.label || "Dashboard"} · ${template.title}`;
+
+  top.append(badge, type);
+
+  const title = document.createElement("strong");
+  title.className = "dashboard-template-card-title";
+  title.textContent = template.title;
+
+  const description = document.createElement("p");
+  description.className = "dashboard-template-card-copy";
+  description.textContent = template.description;
+
+  const footer = document.createElement("div");
+  footer.className = "dashboard-template-card-footer";
+  footer.append(
+    createDashboardChip(DASHBOARD_WIDGET_SOURCE_OPTIONS.find((option) => option.value === template.source)?.label || template.source, "soft"),
+    createDashboardChip(DASHBOARD_WIDGET_SIZE_OPTIONS.find((option) => option.value === template.size)?.label || template.size, "filter"),
+  );
+
+  button.append(top, title, description, footer);
+  button.addEventListener("click", () => {
+    selectDashboardWidgetTemplate(template);
+  });
+  return button;
+}
+
+function renderDashboardWidgetTemplateGrid() {
+  if (!dashboardWidgetTemplateGrid) {
+    return;
+  }
+
+  const templates = getDashboardBuilderVisibleTemplates();
+
+  if (templates.length === 0) {
+    dashboardWidgetTemplateGrid.replaceChildren(
+      createDashboardBuilderEmptyState("Nema predloska za trenutnu pretragu.", [
+        createActionButton("Ocisti pretragu", "ghost-button", () => {
+          state.dashboardBuilder.search = "";
+          syncDashboardBuilderSearchInput();
+          renderDashboardOverview();
+        }),
+      ]),
+    );
+    return;
+  }
+
+  dashboardWidgetTemplateGrid.replaceChildren(...templates.map((template) => createDashboardTemplateCard(template)));
 }
 
 function setDashboardWidgetError(message = "") {
@@ -5489,12 +5720,17 @@ function toggleDashboardField(field, isVisible) {
 }
 
 function readDashboardWidgetFormPatch() {
+  const gridWidth = clampDashboardWidgetWidth(dashboardWidgetWidthInput?.value);
+  const gridHeight = clampDashboardWidgetHeight(dashboardWidgetHeightInput?.value);
+
   return {
     title: dashboardWidgetTitleInput?.value ?? "",
     source: dashboardWidgetSourceInput?.value ?? "work_orders",
     visualization: dashboardWidgetVisualizationInput?.value ?? "metric",
     metricKey: dashboardWidgetMetricInput?.value ?? "",
-    size: dashboardWidgetSizeInput?.value ?? "medium",
+    size: getDashboardWidgetSizeFromWidth(gridWidth),
+    gridWidth,
+    gridHeight,
     limit: Number.parseInt(dashboardWidgetLimitInput?.value ?? "6", 10) || 6,
     filters: {
       companyId: dashboardWidgetCompanyFilterInput?.value ?? "",
@@ -5539,6 +5775,24 @@ function syncDashboardWidgetFormOptions() {
     value: option.value,
     label: option.label,
   })), currentMetric || metricOptions[0]?.value || "");
+
+  replaceSelectOptions(dashboardWidgetSizeInput, DASHBOARD_WIDGET_SIZE_OPTIONS.map((item) => ({
+    value: item.value,
+    label: item.label,
+  })), dashboardWidgetSizeInput?.value ?? "medium");
+
+  replaceSelectOptions(dashboardWidgetWidthInput, Array.from({ length: DASHBOARD_GRID_COLUMN_COUNT - 2 }, (_, index) => {
+    const value = String(index + 3);
+    return {
+      value,
+      label: `${value} kolone`,
+    };
+  }), dashboardWidgetWidthInput?.value ?? "4");
+
+  replaceSelectOptions(dashboardWidgetHeightInput, DASHBOARD_WIDGET_HEIGHT_OPTIONS.map((item) => ({
+    value: item.value,
+    label: item.label,
+  })), dashboardWidgetHeightInput?.value ?? "3");
 
   if (dashboardWidgetMetricLabel) {
     dashboardWidgetMetricLabel.textContent = visualization === "metric"
@@ -5618,6 +5872,7 @@ function populateDashboardWidgetForm(widget = null) {
     return;
   }
 
+  const defaultLayout = getDashboardWidgetLayoutPreset(widget?.size ?? "medium");
   const draft = widget ?? {
     id: "",
     title: "",
@@ -5625,6 +5880,8 @@ function populateDashboardWidgetForm(widget = null) {
     visualization: "metric",
     metricKey: "active",
     size: "medium",
+    gridWidth: defaultLayout.gridWidth,
+    gridHeight: defaultLayout.gridHeight,
     limit: 6,
     filters: {},
   };
@@ -5634,6 +5891,14 @@ function populateDashboardWidgetForm(widget = null) {
   replaceSelectOptions(dashboardWidgetVisualizationInput, DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.visualization ?? "metric");
   replaceSelectOptions(dashboardWidgetSourceInput, DASHBOARD_WIDGET_SOURCE_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.source ?? "work_orders");
   replaceSelectOptions(dashboardWidgetSizeInput, DASHBOARD_WIDGET_SIZE_OPTIONS.map((item) => ({ value: item.value, label: item.label })), draft.size ?? "medium");
+  replaceSelectOptions(dashboardWidgetWidthInput, Array.from({ length: DASHBOARD_GRID_COLUMN_COUNT - 2 }, (_, index) => {
+    const value = String(index + 3);
+    return { value, label: `${value} kolone` };
+  }), String(clampDashboardWidgetWidth(draft.gridWidth ?? defaultLayout.gridWidth)));
+  replaceSelectOptions(dashboardWidgetHeightInput, DASHBOARD_WIDGET_HEIGHT_OPTIONS.map((item) => ({
+    value: item.value,
+    label: item.label,
+  })), String(clampDashboardWidgetHeight(draft.gridHeight ?? defaultLayout.gridHeight)));
   dashboardWidgetLimitInput.value = String(draft.limit ?? 6);
   syncDashboardWidgetFormOptions();
   dashboardWidgetMetricInput.value = draft.metricKey ?? dashboardWidgetMetricInput.value;
@@ -5652,6 +5917,9 @@ function openDashboardBuilder(widget = null) {
   state.dashboardBuilder.draftMode = widget ? "edit" : "create";
   state.dashboardBuilder.draftId = widget?.id ?? "";
   state.activeDashboardWidgetId = widget?.id ?? "";
+  state.dashboardBuilder.category = widget?.source ?? "featured";
+  state.dashboardBuilder.search = "";
+  state.dashboardBuilder.templateKey = findMatchingDashboardTemplate(widget ?? {})?.key ?? "";
   setDashboardWidgetError("");
 
   if (dashboardBuilderTitle) {
@@ -5660,19 +5928,24 @@ function openDashboardBuilder(widget = null) {
 
   if (dashboardBuilderCopy) {
     dashboardBuilderCopy.textContent = widget
-      ? "Promijeni vizualizaciju, velicinu i filtre za ovu karticu."
-      : "Dodaj KPI, graf ili listu i slozi Dashboard po svojoj mjeri.";
+      ? "Promijeni tip kartice, velicinu, filtre i raspored na dashboardu."
+      : "Odaberi predlozak kao u ClickUp builderu, a zatim prilagodi filtre i layout.";
   }
 
-  populateDashboardWidgetForm(widget);
+  syncDashboardBuilderSearchInput();
+  populateDashboardWidgetForm(widget ?? createDashboardTemplateDraft(getDashboardBuilderVisibleTemplates()[0] ?? DASHBOARD_WIDGET_TEMPLATES[0]));
 }
 
 function closeDashboardBuilder() {
   state.dashboardBuilder.open = false;
   state.dashboardBuilder.draftMode = "create";
   state.dashboardBuilder.draftId = "";
+  state.dashboardBuilder.category = "featured";
+  state.dashboardBuilder.search = "";
+  state.dashboardBuilder.templateKey = "";
   state.activeDashboardWidgetId = "";
   setDashboardWidgetError("");
+  syncDashboardBuilderSearchInput();
 }
 
 function createDashboardChip(label, tone = "neutral") {
@@ -5983,7 +6256,7 @@ function renderDashboardWidgetPreview() {
 
   try {
     const draft = createDashboardWidgetDraftFromForm();
-    dashboardWidgetPreview.replaceChildren(createDashboardWidgetCard(draft, { preview: true }));
+    dashboardWidgetPreview.replaceChildren(createDashboardWidgetCanvasCard(draft, { preview: true }));
   } catch (error) {
     dashboardWidgetPreview.replaceChildren(createDashboardBuilderEmptyState(error.message));
   }
@@ -6010,6 +6283,308 @@ async function moveDashboardWidget(widgetId, direction) {
       body: { position: current.position },
     });
   }, dashboardWidgetError);
+}
+
+function getDashboardGridMetrics() {
+  if (!dashboardWidgetGrid) {
+    return null;
+  }
+
+  const styles = window.getComputedStyle(dashboardWidgetGrid);
+  const rect = dashboardWidgetGrid.getBoundingClientRect();
+  const columns = Number.parseInt(styles.getPropertyValue("--dashboard-grid-columns"), 10) || DASHBOARD_GRID_COLUMN_COUNT;
+  const gap = Number.parseFloat(styles.columnGap || styles.gap || `${DASHBOARD_GRID_GAP_PX}`) || DASHBOARD_GRID_GAP_PX;
+  const rowHeight = Number.parseFloat(styles.getPropertyValue("--dashboard-grid-row-height")) || 116;
+  const availableWidth = rect.width - (gap * Math.max(0, columns - 1));
+  const columnWidth = columns > 0 ? availableWidth / columns : rect.width;
+
+  return {
+    columns,
+    gap,
+    rowHeight,
+    stepX: columnWidth + gap,
+    stepY: rowHeight + gap,
+  };
+}
+
+function clearDashboardWidgetInteraction() {
+  if (!dashboardWidgetLayoutInteraction) {
+    return;
+  }
+
+  dashboardWidgetLayoutInteraction.card.classList.remove("is-dragging", "is-resizing");
+  dashboardWidgetLayoutInteraction.card.style.removeProperty("transform");
+  dashboardWidgetLayoutInteraction.card.removeAttribute("data-layout-preview");
+  dashboardWidgetLayoutInteraction = null;
+}
+
+function buildDashboardLayoutWidgets(widgetId, patch) {
+  return applyDashboardWidgetGridLayout(getDashboardWidgets().map((item) => (
+    String(item.id) === String(widgetId)
+      ? updateDashboardWidget(item, patch, state, () => new Date().toISOString())
+      : item
+  )));
+}
+
+function getDashboardWidgetLayoutChanges(nextWidgets) {
+  return nextWidgets.filter((widget) => {
+    const current = getDashboardWidgetById(widget.id);
+
+    if (!current) {
+      return false;
+    }
+
+    return (
+      Number(current.position ?? 0) !== Number(widget.position ?? 0)
+      || Number(current.gridColumn ?? 1) !== Number(widget.gridColumn ?? 1)
+      || Number(current.gridRow ?? 1) !== Number(widget.gridRow ?? 1)
+      || clampDashboardWidgetWidth(current.gridWidth) !== clampDashboardWidgetWidth(widget.gridWidth)
+      || clampDashboardWidgetHeight(current.gridHeight) !== clampDashboardWidgetHeight(widget.gridHeight)
+      || current.size !== widget.size
+    );
+  });
+}
+
+async function persistDashboardWidgetLayout(nextWidgets) {
+  const changedWidgets = getDashboardWidgetLayoutChanges(nextWidgets);
+
+  if (changedWidgets.length === 0) {
+    return;
+  }
+
+  await runMutation(async () => {
+    let payload = null;
+
+    for (const widget of changedWidgets) {
+      payload = await apiRequest(`/dashboard-widgets/${widget.id}`, {
+        method: "PATCH",
+        body: {
+          position: widget.position,
+          size: widget.size,
+          gridColumn: widget.gridColumn,
+          gridRow: widget.gridRow,
+          gridWidth: widget.gridWidth,
+          gridHeight: widget.gridHeight,
+        },
+      });
+    }
+
+    return payload;
+  }, dashboardWidgetError);
+}
+
+async function moveDashboardWidgetOnGrid(widgetId, deltaColumn, deltaRow) {
+  const current = getDashboardWidgetById(widgetId);
+
+  if (!current) {
+    return;
+  }
+
+  const nextWidgets = buildDashboardLayoutWidgets(widgetId, {
+    gridColumn: Math.max(1, Number(current.gridColumn ?? 1) + deltaColumn),
+    gridRow: Math.max(1, Number(current.gridRow ?? 1) + deltaRow),
+  });
+
+  await persistDashboardWidgetLayout(nextWidgets);
+}
+
+async function resizeDashboardWidgetOnGrid(widgetId, deltaWidth, deltaHeight) {
+  const current = getDashboardWidgetById(widgetId);
+
+  if (!current) {
+    return;
+  }
+
+  const nextWidth = clampDashboardWidgetWidth(Number(current.gridWidth ?? 4) + deltaWidth);
+  const nextHeight = clampDashboardWidgetHeight(Number(current.gridHeight ?? 3) + deltaHeight);
+  const nextWidgets = buildDashboardLayoutWidgets(widgetId, {
+    size: getDashboardWidgetSizeFromWidth(nextWidth),
+    gridWidth: nextWidth,
+    gridHeight: nextHeight,
+  });
+
+  await persistDashboardWidgetLayout(nextWidgets);
+}
+
+function beginDashboardWidgetLayoutInteraction(mode, widget, card, event) {
+  const metrics = getDashboardGridMetrics();
+
+  if (!metrics || event.button !== 0) {
+    return;
+  }
+
+  dashboardWidgetLayoutInteraction = {
+    mode,
+    widgetId: widget.id,
+    card,
+    startX: event.clientX,
+    startY: event.clientY,
+    startColumn: Number(widget.gridColumn ?? 1),
+    startRow: Number(widget.gridRow ?? 1),
+    startWidth: clampDashboardWidgetWidth(widget.gridWidth),
+    startHeight: clampDashboardWidgetHeight(widget.gridHeight),
+    previewColumn: Number(widget.gridColumn ?? 1),
+    previewRow: Number(widget.gridRow ?? 1),
+    previewWidth: clampDashboardWidgetWidth(widget.gridWidth),
+    previewHeight: clampDashboardWidgetHeight(widget.gridHeight),
+    metrics,
+  };
+
+  card.classList.add(mode === "move" ? "is-dragging" : "is-resizing");
+  card.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function updateDashboardWidgetLayoutInteraction(event) {
+  if (!dashboardWidgetLayoutInteraction) {
+    return;
+  }
+
+  const interaction = dashboardWidgetLayoutInteraction;
+  const deltaColumns = Math.round((event.clientX - interaction.startX) / interaction.metrics.stepX);
+  const deltaRows = Math.round((event.clientY - interaction.startY) / interaction.metrics.stepY);
+
+  if (interaction.mode === "move") {
+    interaction.previewColumn = Math.max(1, interaction.startColumn + deltaColumns);
+    interaction.previewRow = Math.max(1, interaction.startRow + deltaRows);
+    interaction.card.style.transform = `translate(${deltaColumns * interaction.metrics.stepX}px, ${deltaRows * interaction.metrics.stepY}px)`;
+    interaction.card.dataset.layoutPreview = `${interaction.previewColumn}:${interaction.previewRow}`;
+    return;
+  }
+
+  interaction.previewWidth = clampDashboardWidgetWidth(interaction.startWidth + deltaColumns);
+  interaction.previewHeight = clampDashboardWidgetHeight(interaction.startHeight + deltaRows);
+  interaction.card.dataset.layoutPreview = `${interaction.previewWidth}×${interaction.previewHeight}`;
+}
+
+function commitDashboardWidgetLayoutInteraction() {
+  if (!dashboardWidgetLayoutInteraction) {
+    return;
+  }
+
+  const interaction = dashboardWidgetLayoutInteraction;
+  clearDashboardWidgetInteraction();
+
+  if (interaction.mode === "move") {
+    void moveDashboardWidgetOnGrid(
+      interaction.widgetId,
+      interaction.previewColumn - interaction.startColumn,
+      interaction.previewRow - interaction.startRow,
+    );
+    return;
+  }
+
+  void resizeDashboardWidgetOnGrid(
+    interaction.widgetId,
+    interaction.previewWidth - interaction.startWidth,
+    interaction.previewHeight - interaction.startHeight,
+  );
+}
+
+function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
+  const card = document.createElement("article");
+  card.className = `dashboard-widget-card size-${widget.size}`;
+  card.style.gridColumn = `${Number(widget.gridColumn ?? 1)} / span ${clampDashboardWidgetWidth(widget.gridWidth)}`;
+  card.style.gridRow = `${Number(widget.gridRow ?? 1)} / span ${clampDashboardWidgetHeight(widget.gridHeight)}`;
+  card.dataset.widgetId = widget.id;
+
+  if (preview) {
+    card.classList.add("is-preview");
+  }
+
+  const data = getDashboardWidgetData(state, widget, {
+    userId: state.user?.id,
+  });
+
+  const head = document.createElement("div");
+  head.className = "dashboard-widget-head";
+
+  const copy = document.createElement("div");
+  copy.className = "dashboard-widget-head-copy";
+
+  const kicker = document.createElement("span");
+  kicker.className = "dashboard-widget-kicker";
+  kicker.textContent = `${data.sourceLabel} · ${data.optionLabel}`;
+
+  const title = document.createElement("h3");
+  title.textContent = widget.title;
+  copy.append(kicker, title);
+
+  const actions = document.createElement("div");
+  actions.className = "dashboard-widget-actions";
+
+  if (!preview) {
+    const dragHandle = document.createElement("button");
+    dragHandle.type = "button";
+    dragHandle.className = "card-button card-button-light dashboard-widget-action dashboard-widget-drag-handle";
+    dragHandle.title = "Povuci za premjestanje";
+    dragHandle.textContent = "⋮⋮";
+    dragHandle.addEventListener("pointerdown", (event) => {
+      beginDashboardWidgetLayoutInteraction("move", widget, card, event);
+    });
+
+    const edit = createActionButton("Edit", "card-button card-button-light dashboard-widget-action", () => {
+      openDashboardBuilder(widget);
+      renderDashboardOverview();
+    });
+
+    actions.append(
+      createDashboardChip(`${clampDashboardWidgetWidth(widget.gridWidth)} × ${clampDashboardWidgetHeight(widget.gridHeight)}`, "soft"),
+      dragHandle,
+      edit,
+    );
+  } else {
+    actions.append(createDashboardChip("Preview", "soft"));
+  }
+
+  head.append(copy, actions);
+
+  const body = document.createElement("div");
+  body.className = "dashboard-widget-body";
+
+  if (data.kind === "metric") {
+    const value = document.createElement("strong");
+    value.className = "dashboard-widget-metric-value";
+    value.textContent = String(data.value);
+
+    const subtitle = document.createElement("span");
+    subtitle.className = "dashboard-widget-metric-subtitle";
+    subtitle.textContent = data.subtitle;
+
+    body.append(value, subtitle);
+  } else if (data.kind === "donut") {
+    body.append(createDashboardDonut(data));
+  } else if (data.kind === "bar") {
+    body.append(createDashboardBarChart(data));
+  } else {
+    body.append(createDashboardList(data));
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "dashboard-widget-footer";
+  footer.append(createDashboardChip(
+    DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
+    "soft",
+  ));
+  footer.append(createDashboardChip(`${clampDashboardWidgetWidth(widget.gridWidth)} kol.`, "soft"));
+  footer.append(...getDashboardWidgetFilterChips(widget));
+
+  card.append(head, body, footer);
+
+  if (!preview) {
+    const resizeHandle = document.createElement("button");
+    resizeHandle.type = "button";
+    resizeHandle.className = "dashboard-widget-resize-handle";
+    resizeHandle.title = "Povuci za promjenu velicine";
+    resizeHandle.setAttribute("aria-label", "Promijeni velicinu kartice");
+    resizeHandle.addEventListener("pointerdown", (event) => {
+      beginDashboardWidgetLayoutInteraction("resize", widget, card, event);
+    });
+    card.append(resizeHandle);
+  }
+
+  return card;
 }
 
 async function createSuggestedDashboardLayout() {
@@ -6068,7 +6643,7 @@ function renderDashboardWidgetGrid() {
   }
 
   dashboardWidgetEmpty.hidden = true;
-  dashboardWidgetGrid.replaceChildren(...widgets.map((widget) => createDashboardWidgetCard(widget)));
+  dashboardWidgetGrid.replaceChildren(...widgets.map((widget) => createDashboardWidgetCanvasCard(widget)));
 }
 
 function renderDashboardOverview() {
@@ -6090,6 +6665,7 @@ function renderDashboardOverview() {
   }
 
   if (!shouldShowDashboard) {
+    document.body.classList.remove("is-dashboard-builder-open");
     return;
   }
 
@@ -6109,12 +6685,17 @@ function renderDashboardOverview() {
     dashboardBuilderPanel.hidden = !state.dashboardBuilder.open;
   }
 
+  document.body.classList.toggle("is-dashboard-builder-open", shouldShowDashboard && state.dashboardBuilder.open);
+
   if (dashboardWidgetDeleteButton) {
     dashboardWidgetDeleteButton.hidden = !(dashboardWidgetIdInput?.value ?? "");
   }
 
   dashboardOverviewPanel.classList.toggle("has-builder-open", state.dashboardBuilder.open);
   if (state.dashboardBuilder.open) {
+    syncDashboardBuilderSearchInput();
+    renderDashboardWidgetCategoryList();
+    renderDashboardWidgetTemplateGrid();
     syncDashboardWidgetFormOptions();
   }
   renderDashboardWidgetGrid();
@@ -9029,6 +9610,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  updateDashboardWidgetLayoutInteraction(event);
+
   if (state.measurementSheet.resizing) {
     updateMeasurementColumnWidth(event.clientX);
   }
@@ -9043,12 +9626,14 @@ document.addEventListener("pointermove", (event) => {
 });
 
 document.addEventListener("pointerup", (event) => {
+  commitDashboardWidgetLayoutInteraction();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(true, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();
 });
 
 document.addEventListener("pointercancel", (event) => {
+  clearDashboardWidgetInteraction();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(false, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();
@@ -9389,6 +9974,11 @@ dashboardBuilderClose?.addEventListener("click", () => {
   renderDashboardOverview();
 });
 
+dashboardBuilderBackdrop?.addEventListener("click", () => {
+  closeDashboardBuilder();
+  renderDashboardOverview();
+});
+
 dashboardWidgetCancelButton?.addEventListener("click", () => {
   closeDashboardBuilder();
   renderDashboardOverview();
@@ -9426,10 +10016,17 @@ dashboardWidgetForm?.addEventListener("submit", (event) => {
   });
 });
 
+dashboardWidgetSearchInput?.addEventListener("input", () => {
+  state.dashboardBuilder.search = dashboardWidgetSearchInput.value.trim();
+  renderDashboardOverview();
+});
+
 [
   dashboardWidgetTitleInput,
   dashboardWidgetMetricInput,
   dashboardWidgetSizeInput,
+  dashboardWidgetWidthInput,
+  dashboardWidgetHeightInput,
   dashboardWidgetLimitInput,
   dashboardWidgetCompanyFilterInput,
   dashboardWidgetStatusFilterInput,
@@ -9453,6 +10050,27 @@ dashboardWidgetForm?.addEventListener("submit", (event) => {
     syncDashboardWidgetFormOptions();
     renderDashboardWidgetPreview();
   });
+});
+
+dashboardWidgetSizeInput?.addEventListener("change", () => {
+  const preset = getDashboardWidgetLayoutPreset(dashboardWidgetSizeInput.value);
+
+  if (dashboardWidgetWidthInput) {
+    dashboardWidgetWidthInput.value = String(preset.gridWidth);
+  }
+
+  if (dashboardWidgetHeightInput) {
+    dashboardWidgetHeightInput.value = String(preset.gridHeight);
+  }
+
+  renderDashboardWidgetPreview();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.dashboardBuilder.open) {
+    closeDashboardBuilder();
+    renderDashboardOverview();
+  }
 });
 
 setConnectionStatus();

@@ -48,6 +48,16 @@ export const DASHBOARD_WIDGET_SIZE_OPTIONS = [
   { value: "full", label: "Puna sirina" },
 ];
 
+export const DASHBOARD_GRID_COLUMN_COUNT = 12;
+
+export const DASHBOARD_WIDGET_HEIGHT_OPTIONS = [
+  { value: "2", label: "Niska" },
+  { value: "3", label: "Standard" },
+  { value: "4", label: "Visa" },
+  { value: "5", label: "Velika" },
+  { value: "6", label: "XL" },
+];
+
 export const DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS = [
   { value: "all", label: "Bez ogranicenja" },
   { value: "overdue", label: "Kasni" },
@@ -151,6 +161,15 @@ const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map(
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_DATE_WINDOW_SET = new Set(DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.map((option) => option.value));
+const DASHBOARD_WIDGET_LAYOUT_PRESETS = {
+  small: { width: 3, height: 2 },
+  medium: { width: 4, height: 3 },
+  large: { width: 6, height: 4 },
+  full: { width: DASHBOARD_GRID_COLUMN_COUNT, height: 4 },
+};
+const DASHBOARD_WIDGET_MIN_WIDTH = 3;
+const DASHBOARD_WIDGET_MIN_HEIGHT = 2;
+const DASHBOARD_WIDGET_MAX_HEIGHT = 6;
 const PRIORITY_RANK = {
   Urgent: 0,
   High: 1,
@@ -1343,6 +1362,61 @@ function normalizeDashboardWidgetDateWindow(value) {
   return DASHBOARD_WIDGET_DATE_WINDOW_SET.has(normalized) ? normalized : "all";
 }
 
+function getDashboardWidgetLayoutPreset(size) {
+  return DASHBOARD_WIDGET_LAYOUT_PRESETS[normalizeDashboardWidgetSize(size)] ?? DASHBOARD_WIDGET_LAYOUT_PRESETS.medium;
+}
+
+function normalizeDashboardWidgetGridWidth(value, size = "medium") {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return getDashboardWidgetLayoutPreset(size).width;
+  }
+
+  return Math.min(DASHBOARD_GRID_COLUMN_COUNT, Math.max(DASHBOARD_WIDGET_MIN_WIDTH, parsed));
+}
+
+function normalizeDashboardWidgetGridHeight(value, size = "medium") {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return getDashboardWidgetLayoutPreset(size).height;
+  }
+
+  return Math.min(DASHBOARD_WIDGET_MAX_HEIGHT, Math.max(DASHBOARD_WIDGET_MIN_HEIGHT, parsed));
+}
+
+function normalizeDashboardWidgetGridColumn(value, width = DASHBOARD_WIDGET_LAYOUT_PRESETS.medium.width) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+
+  return Math.min(DASHBOARD_GRID_COLUMN_COUNT - width + 1, Math.max(1, parsed));
+}
+
+function normalizeDashboardWidgetGridRow(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : 1;
+}
+
+function getDashboardWidgetSizeFromWidth(width) {
+  if (width >= DASHBOARD_GRID_COLUMN_COUNT) {
+    return "full";
+  }
+
+  if (width >= 6) {
+    return "large";
+  }
+
+  if (width <= 3) {
+    return "small";
+  }
+
+  return "medium";
+}
+
 function normalizeDashboardWidgetLimit(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
 
@@ -1404,6 +1478,83 @@ function getDashboardWidgetDefaultTitle(source, visualization, metricKey) {
   return option?.label ?? `${definition.label} kartica`;
 }
 
+function getDashboardLayoutOccupancyKey(column, row) {
+  return `${column}:${row}`;
+}
+
+function canPlaceDashboardWidget(occupiedCells, column, row, width, height) {
+  for (let rowOffset = 0; rowOffset < height; rowOffset += 1) {
+    for (let columnOffset = 0; columnOffset < width; columnOffset += 1) {
+      if (occupiedCells.has(getDashboardLayoutOccupancyKey(column + columnOffset, row + rowOffset))) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function markDashboardWidgetPlacement(occupiedCells, column, row, width, height) {
+  for (let rowOffset = 0; rowOffset < height; rowOffset += 1) {
+    for (let columnOffset = 0; columnOffset < width; columnOffset += 1) {
+      occupiedCells.add(getDashboardLayoutOccupancyKey(column + columnOffset, row + rowOffset));
+    }
+  }
+}
+
+function findDashboardWidgetPlacement(
+  occupiedCells,
+  width,
+  height,
+  preferredColumn = 1,
+  preferredRow = 1,
+) {
+  const startRow = Math.max(1, preferredRow);
+  const maxColumn = Math.max(1, DASHBOARD_GRID_COLUMN_COUNT - width + 1);
+
+  for (let row = startRow; row < 1000; row += 1) {
+    const startColumn = row === startRow
+      ? Math.min(maxColumn, Math.max(1, preferredColumn))
+      : 1;
+
+    for (let column = startColumn; column <= maxColumn; column += 1) {
+      if (canPlaceDashboardWidget(occupiedCells, column, row, width, height)) {
+        return { column, row };
+      }
+    }
+  }
+
+  return { column: 1, row: startRow };
+}
+
+export function applyDashboardWidgetGridLayout(widgets = []) {
+  const occupiedCells = new Set();
+  const nextWidgets = [];
+
+  sortDashboardWidgets(widgets).forEach((widget) => {
+    const size = normalizeDashboardWidgetSize(widget.size);
+    const gridWidth = normalizeDashboardWidgetGridWidth(widget.gridWidth, size);
+    const gridHeight = normalizeDashboardWidgetGridHeight(widget.gridHeight, size);
+    const preferredColumn = normalizeDashboardWidgetGridColumn(widget.gridColumn, gridWidth);
+    const preferredRow = normalizeDashboardWidgetGridRow(widget.gridRow);
+    const placement = canPlaceDashboardWidget(occupiedCells, preferredColumn, preferredRow, gridWidth, gridHeight)
+      ? { column: preferredColumn, row: preferredRow }
+      : findDashboardWidgetPlacement(occupiedCells, gridWidth, gridHeight, preferredColumn, preferredRow);
+
+    markDashboardWidgetPlacement(occupiedCells, placement.column, placement.row, gridWidth, gridHeight);
+    nextWidgets.push({
+      ...widget,
+      size: getDashboardWidgetSizeFromWidth(gridWidth),
+      gridColumn: placement.column,
+      gridRow: placement.row,
+      gridWidth,
+      gridHeight,
+    });
+  });
+
+  return nextWidgets;
+}
+
 export function createDashboardWidget(
   input,
   snapshot,
@@ -1415,8 +1566,8 @@ export function createDashboardWidget(
   const metricKey = normalizeDashboardWidgetMetricKey(source, visualization, input.metricKey);
   const timestamp = now();
   const title = normalizeText(input.title) || getDashboardWidgetDefaultTitle(source, visualization, metricKey);
-
-  return {
+  const size = normalizeDashboardWidgetSize(input.size);
+  const draft = {
     id: createId(),
     organizationId: requireText(input.organizationId, "Organizacija"),
     userId: requireText(input.userId, "Korisnik"),
@@ -1424,13 +1575,21 @@ export function createDashboardWidget(
     source,
     visualization,
     metricKey,
-    size: normalizeDashboardWidgetSize(input.size),
+    size,
     limit: normalizeDashboardWidgetLimit(input.limit),
     position: normalizeDashboardWidgetPosition(input.position, snapshot?.dashboardWidgets ?? []),
+    gridWidth: normalizeDashboardWidgetGridWidth(input.gridWidth, size),
+    gridHeight: normalizeDashboardWidgetGridHeight(input.gridHeight, size),
+    gridColumn: normalizeDashboardWidgetGridColumn(input.gridColumn, normalizeDashboardWidgetGridWidth(input.gridWidth, size)),
+    gridRow: normalizeDashboardWidgetGridRow(input.gridRow),
     filters: normalizeDashboardWidgetFilters(input.filters),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+  const laidOutDraft = applyDashboardWidgetGridLayout([...(snapshot?.dashboardWidgets ?? []), draft])
+    .find((widget) => widget.id === draft.id);
+
+  return laidOutDraft ?? draft;
 }
 
 export function updateDashboardWidget(current, patch, snapshot, now = isoNow) {
@@ -1451,6 +1610,19 @@ export function updateDashboardWidget(current, patch, snapshot, now = isoNow) {
   const mergedFilters = hasOwn(patch, "filters")
     ? { ...(current.filters ?? {}), ...(patch.filters ?? {}) }
     : (current.filters ?? {});
+  const requestedSize = hasOwn(patch, "size")
+    ? normalizeDashboardWidgetSize(patch.size)
+    : normalizeDashboardWidgetSize(current.size);
+  const gridWidth = hasOwn(patch, "gridWidth")
+    ? normalizeDashboardWidgetGridWidth(patch.gridWidth, requestedSize)
+    : hasOwn(patch, "size")
+      ? normalizeDashboardWidgetGridWidth(undefined, requestedSize)
+      : normalizeDashboardWidgetGridWidth(current.gridWidth, requestedSize);
+  const gridHeight = hasOwn(patch, "gridHeight")
+    ? normalizeDashboardWidgetGridHeight(patch.gridHeight, requestedSize)
+    : hasOwn(patch, "size")
+      ? normalizeDashboardWidgetGridHeight(undefined, requestedSize)
+      : normalizeDashboardWidgetGridHeight(current.gridHeight, requestedSize);
 
   return {
     ...current,
@@ -1464,11 +1636,19 @@ export function updateDashboardWidget(current, patch, snapshot, now = isoNow) {
     source,
     visualization,
     metricKey,
-    size: hasOwn(patch, "size") ? normalizeDashboardWidgetSize(patch.size) : normalizeDashboardWidgetSize(current.size),
+    size: getDashboardWidgetSizeFromWidth(gridWidth),
     limit: hasOwn(patch, "limit") ? normalizeDashboardWidgetLimit(patch.limit) : normalizeDashboardWidgetLimit(current.limit),
     position: hasOwn(patch, "position")
       ? normalizeDashboardWidgetPosition(patch.position, snapshot?.dashboardWidgets ?? [])
       : normalizeDashboardWidgetPosition(current.position, snapshot?.dashboardWidgets ?? []),
+    gridWidth,
+    gridHeight,
+    gridColumn: hasOwn(patch, "gridColumn")
+      ? normalizeDashboardWidgetGridColumn(patch.gridColumn, gridWidth)
+      : normalizeDashboardWidgetGridColumn(current.gridColumn, gridWidth),
+    gridRow: hasOwn(patch, "gridRow")
+      ? normalizeDashboardWidgetGridRow(patch.gridRow)
+      : normalizeDashboardWidgetGridRow(current.gridRow),
     filters: normalizeDashboardWidgetFilters(mergedFilters),
     updatedAt: now(),
   };

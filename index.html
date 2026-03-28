@@ -831,8 +831,11 @@
                 <div id="dashboard-widget-empty" class="dashboard-widget-empty" hidden></div>
                 <div id="dashboard-widget-grid" class="dashboard-widget-grid"></div>
               </div>
+            </div>
 
-              <aside id="dashboard-builder-panel" class="dashboard-builder-panel" hidden>
+            <div id="dashboard-builder-panel" class="dashboard-builder-modal" hidden>
+              <button id="dashboard-builder-backdrop" type="button" class="dashboard-builder-backdrop" aria-label="Zatvori modal"></button>
+              <aside class="dashboard-builder-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboard-builder-title">
                 <div class="dashboard-builder-panel-head">
                   <div>
                     <p class="section-kicker">Builder</p>
@@ -842,96 +845,127 @@
                   <button id="dashboard-builder-close" type="button" class="ghost-button">Zatvori</button>
                 </div>
 
-                <form id="dashboard-widget-form" class="dashboard-widget-form">
-                  <input id="dashboard-widget-id" type="hidden" />
-
-                  <div class="form-grid dashboard-widget-form-grid">
-                    <label class="field field-span-full">
-                      <span>Naslov kartice</span>
-                      <input id="dashboard-widget-title" type="text" placeholder="npr. Status radnih naloga - PETROL" />
+                <div class="dashboard-builder-dialog-body">
+                  <aside class="dashboard-builder-sidebar">
+                    <label class="field field-span-full dashboard-builder-search-field">
+                      <span>Trazi predlozak</span>
+                      <input id="dashboard-widget-search" type="search" placeholder="KPI, status, reminders, RN..." />
                     </label>
 
-                    <label class="field">
-                      <span>Vizualizacija</span>
-                      <select id="dashboard-widget-visualization"></select>
-                    </label>
+                    <div id="dashboard-widget-category-list" class="dashboard-widget-category-list"></div>
+                  </aside>
 
-                    <label class="field">
-                      <span>Podaci</span>
-                      <select id="dashboard-widget-source"></select>
-                    </label>
+                  <div class="dashboard-builder-main">
+                    <section class="dashboard-template-library">
+                      <div class="dashboard-widget-preview-head">
+                        <strong>Predlosci kartica</strong>
+                        <span>Odaberi pocetak, a zatim prilagodi filtre, velicinu i prikaz.</span>
+                      </div>
+                      <div id="dashboard-widget-template-grid" class="dashboard-widget-template-grid"></div>
+                    </section>
 
-                    <label class="field">
-                      <span id="dashboard-widget-metric-label">KPI</span>
-                      <select id="dashboard-widget-metric"></select>
-                    </label>
+                    <form id="dashboard-widget-form" class="dashboard-widget-form">
+                      <input id="dashboard-widget-id" type="hidden" />
 
-                    <label class="field">
-                      <span>Velicina</span>
-                      <select id="dashboard-widget-size"></select>
-                    </label>
+                      <div class="form-grid dashboard-widget-form-grid">
+                        <label class="field field-span-full">
+                          <span>Naslov kartice</span>
+                          <input id="dashboard-widget-title" type="text" placeholder="npr. Status radnih naloga - PETROL" />
+                        </label>
 
-                    <label class="field">
-                      <span>Koliko stavki</span>
-                      <input id="dashboard-widget-limit" type="number" min="3" max="12" step="1" value="6" />
-                    </label>
+                        <label class="field">
+                          <span>Vizualizacija</span>
+                          <select id="dashboard-widget-visualization"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Tvrtka</span>
-                      <select id="dashboard-widget-company-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Podaci</span>
+                          <select id="dashboard-widget-source"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Status</span>
-                      <select id="dashboard-widget-status-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span id="dashboard-widget-metric-label">KPI</span>
+                          <select id="dashboard-widget-metric"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Prioritet</span>
-                      <select id="dashboard-widget-priority-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Preset</span>
+                          <select id="dashboard-widget-size"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Regija</span>
-                      <select id="dashboard-widget-region-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Sirina</span>
+                          <select id="dashboard-widget-width"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Izvrsitelj</span>
-                      <select id="dashboard-widget-executor-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Visina</span>
+                          <select id="dashboard-widget-height"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Za korisnika</span>
-                      <select id="dashboard-widget-assignee-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Koliko stavki</span>
+                          <input id="dashboard-widget-limit" type="number" min="3" max="12" step="1" value="6" />
+                        </label>
 
-                    <label class="field">
-                      <span>Rok / period</span>
-                      <select id="dashboard-widget-date-window"></select>
-                    </label>
+                        <label class="field">
+                          <span>Tvrtka</span>
+                          <select id="dashboard-widget-company-filter"></select>
+                        </label>
 
-                    <label class="field">
-                      <span>Tag</span>
-                      <select id="dashboard-widget-tag-filter"></select>
-                    </label>
+                        <label class="field">
+                          <span>Status</span>
+                          <select id="dashboard-widget-status-filter"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Prioritet</span>
+                          <select id="dashboard-widget-priority-filter"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Regija</span>
+                          <select id="dashboard-widget-region-filter"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Izvrsitelj</span>
+                          <select id="dashboard-widget-executor-filter"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Za korisnika</span>
+                          <select id="dashboard-widget-assignee-filter"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Rok / period</span>
+                          <select id="dashboard-widget-date-window"></select>
+                        </label>
+
+                        <label class="field">
+                          <span>Tag</span>
+                          <select id="dashboard-widget-tag-filter"></select>
+                        </label>
+                      </div>
+
+                      <div class="dashboard-widget-preview-wrap">
+                        <div class="dashboard-widget-preview-head">
+                          <strong>Preview</strong>
+                          <span>Kako ce kartica izgledati na dashboardu</span>
+                        </div>
+                        <div id="dashboard-widget-preview" class="dashboard-widget-preview"></div>
+                      </div>
+
+                      <div class="form-actions dashboard-widget-form-actions">
+                        <button id="dashboard-widget-delete" type="button" class="ghost-button">Obrisi</button>
+                        <button id="dashboard-widget-cancel" type="button" class="ghost-button">Odustani</button>
+                        <button type="submit" class="primary-button">Spremi karticu</button>
+                      </div>
+                      <p id="dashboard-widget-error" class="form-error" aria-live="polite"></p>
+                    </form>
                   </div>
-
-                  <div class="dashboard-widget-preview-wrap">
-                    <div class="dashboard-widget-preview-head">
-                      <strong>Preview</strong>
-                      <span>Kako ce kartica izgledati na dashboardu</span>
-                    </div>
-                    <div id="dashboard-widget-preview" class="dashboard-widget-preview"></div>
-                  </div>
-
-                  <div class="form-actions dashboard-widget-form-actions">
-                    <button id="dashboard-widget-delete" type="button" class="ghost-button">Obrisi</button>
-                    <button id="dashboard-widget-cancel" type="button" class="ghost-button">Odustani</button>
-                    <button type="submit" class="primary-button">Spremi karticu</button>
-                  </div>
-                  <p id="dashboard-widget-error" class="form-error" aria-live="polite"></p>
-                </form>
+                </div>
               </aside>
             </div>
           </section>

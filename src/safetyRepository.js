@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 
 import {
+  applyDashboardWidgetGridLayout,
   buildLocationContacts,
   createCompany,
   createDashboardWidget,
@@ -80,8 +81,72 @@ function getDatabaseKind() {
   }
 
   if (connectionString.startsWith("mysql://")) {
-    return "mysql";
+  return "mysql";
+}
+
+async function ensureColumnExists(pool, tableName, columnName, definition) {
+  const [rows] = await pool.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+
+  if (rows.length === 0) {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
+}
+
+async function backfillDashboardWidgetLayouts(pool) {
+  const [rows] = await pool.query(`
+    SELECT id, organization_id, user_id, size_key, sort_order, grid_column, grid_row, grid_width, grid_height
+    FROM web_dashboard_widgets
+    ORDER BY organization_id ASC, user_id ASC, sort_order ASC, id ASC
+  `);
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const groupedRows = new Map();
+  rows.forEach((row) => {
+    const key = `${dbString(row.organization_id)}:${dbString(row.user_id)}`;
+    const current = groupedRows.get(key) ?? [];
+    current.push(row);
+    groupedRows.set(key, current);
+  });
+
+  for (const group of groupedRows.values()) {
+    const needsBackfill = group.some((row) => !row.grid_column || !row.grid_row || !row.grid_width || !row.grid_height)
+      || (group.length > 1 && group.every((row) => Number(row.grid_column ?? 1) === 1 && Number(row.grid_row ?? 1) === 1));
+
+    if (!needsBackfill) {
+      continue;
+    }
+
+    const laidOut = applyDashboardWidgetGridLayout(group.map((row) => ({
+      id: String(row.id),
+      size: row.size_key ?? "medium",
+      position: Number(row.sort_order ?? 0),
+      gridColumn: Number(row.grid_column ?? 1),
+      gridRow: Number(row.grid_row ?? 1),
+      gridWidth: Number(row.grid_width ?? 0),
+      gridHeight: Number(row.grid_height ?? 0),
+    })));
+
+    for (const widget of laidOut) {
+      await pool.query(
+        `
+          UPDATE web_dashboard_widgets
+          SET grid_column = ?, grid_row = ?, grid_width = ?, grid_height = ?
+          WHERE id = ?
+        `,
+        [
+          Number(widget.gridColumn),
+          Number(widget.gridRow),
+          Number(widget.gridWidth),
+          Number(widget.gridHeight),
+          Number(widget.id),
+        ],
+      );
+    }
+  }
+}
 
   return "memory";
 }
@@ -636,12 +701,13 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
-           size_key, limit_count, sort_order, filters_json, created_at, updated_at
+           size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height,
+           filters_json, created_at, updated_at
     FROM web_dashboard_widgets
     ORDER BY organization_id ASC, user_id ASC, sort_order ASC, id ASC
   `);
 
-  const dashboardWidgets = dashboardWidgetRows.map((row) => ({
+  const dashboardWidgets = applyDashboardWidgetGridLayout(dashboardWidgetRows.map((row) => ({
     id: String(row.id),
     organizationId: dbString(row.organization_id),
     userId: dbString(row.user_id),
@@ -652,10 +718,14 @@ async function fetchSnapshotFromConnection(connection) {
     size: row.size_key ?? "medium",
     limit: Number(row.limit_count ?? 6),
     position: Number(row.sort_order ?? 0),
+    gridColumn: Number(row.grid_column ?? 1),
+    gridRow: Number(row.grid_row ?? 1),
+    gridWidth: Number(row.grid_width ?? 0),
+    gridHeight: Number(row.grid_height ?? 0),
     filters: parseJsonObject(row.filters_json),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
-  }));
+  })));
 
   return {
     companies,
@@ -1230,6 +1300,10 @@ export class MySqlSafetyRepository {
         size_key VARCHAR(16) NOT NULL DEFAULT 'medium',
         limit_count INT NOT NULL DEFAULT 6,
         sort_order INT NOT NULL DEFAULT 1,
+        grid_column INT NOT NULL DEFAULT 1,
+        grid_row INT NOT NULL DEFAULT 1,
+        grid_width INT NOT NULL DEFAULT 4,
+        grid_height INT NOT NULL DEFAULT 3,
         filters_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1237,6 +1311,11 @@ export class MySqlSafetyRepository {
         INDEX idx_web_dashboard_widgets_order (organization_id, user_id, sort_order)
       )
     `);
+    await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_column", "INT NOT NULL DEFAULT 1");
+    await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_row", "INT NOT NULL DEFAULT 1");
+    await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_width", "INT NOT NULL DEFAULT 4");
+    await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_height", "INT NOT NULL DEFAULT 3");
+    await backfillDashboardWidgetLayouts(this.pool);
   }
 
   async close() {
@@ -2221,8 +2300,8 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_dashboard_widgets
             (organization_id, user_id, title, widget_type, source_type, metric_key,
-             size_key, limit_count, sort_order, filters_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height, filters_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -2234,6 +2313,10 @@ export class MySqlSafetyRepository {
           draft.size,
           Number(draft.limit),
           Number(draft.position),
+          Number(draft.gridColumn),
+          Number(draft.gridRow),
+          Number(draft.gridWidth),
+          Number(draft.gridHeight),
           JSON.stringify(draft.filters ?? {}),
         ],
       );
@@ -2271,7 +2354,8 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_dashboard_widgets
           SET title = ?, widget_type = ?, source_type = ?, metric_key = ?, size_key = ?,
-              limit_count = ?, sort_order = ?, filters_json = ?
+              limit_count = ?, sort_order = ?, grid_column = ?, grid_row = ?, grid_width = ?, grid_height = ?,
+              filters_json = ?
           WHERE id = ?
         `,
         [
@@ -2282,6 +2366,10 @@ export class MySqlSafetyRepository {
           next.size,
           Number(next.limit),
           Number(next.position),
+          Number(next.gridColumn),
+          Number(next.gridRow),
+          Number(next.gridWidth),
+          Number(next.gridHeight),
           JSON.stringify(next.filters ?? {}),
           Number(id),
         ],
