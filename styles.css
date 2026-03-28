@@ -2860,6 +2860,18 @@ button.dashboard-widget-list-row {
   }
 }
 
+@media (max-width: 1100px) {
+  .work-order-map-toolbar-side {
+    justify-items: stretch;
+    min-width: 100%;
+  }
+
+  .work-order-map-filters {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
+
 @media (max-width: 1180px) {
   .dashboard-builder-dialog-body {
     grid-template-columns: 1fr;
@@ -4540,10 +4552,39 @@ body.is-work-order-editor-open {
 .work-order-calendar-toolbar,
 .work-order-map-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+.work-order-map-toolbar-side {
+  min-width: min(100%, 620px);
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.work-order-map-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+  width: min(100%, 620px);
+}
+
+.work-order-map-filter-field {
+  gap: 5px;
+}
+
+.work-order-map-filter-field span {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-map-filter-field select {
+  min-height: 38px;
+  border-radius: 12px;
 }
 
 .work-order-calendar-nav {
@@ -4856,19 +4897,19 @@ body.is-work-order-editor-open {
   width: 26px;
   height: 26px;
   border-radius: 50% 50% 50% 0;
-  background: linear-gradient(180deg, #ffc84e, #f3a321);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pin-fill) 88%, #ffffff), var(--pin-fill));
   border: 2px solid rgba(255, 255, 255, 0.96);
   box-shadow:
-    0 10px 22px rgba(189, 122, 18, 0.36),
-    0 0 0 1px rgba(200, 136, 35, 0.12);
+    0 10px 22px color-mix(in srgb, var(--pin-stroke) 32%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--pin-stroke) 28%, transparent);
   transform: rotate(-45deg);
 }
 
 .work-order-map-pin.is-selected {
-  background: linear-gradient(180deg, #ffb24d, #f07d1a);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pin-fill) 82%, #ffffff), var(--pin-stroke));
   box-shadow:
-    0 14px 30px rgba(207, 108, 20, 0.42),
-    0 0 0 4px rgba(255, 173, 72, 0.2);
+    0 14px 30px color-mix(in srgb, var(--pin-stroke) 40%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--pin-fill) 26%, transparent);
 }
 
 .work-order-map-pin-core {
@@ -4877,6 +4918,31 @@ body.is-work-order-editor-open {
   display: block;
   border-radius: 999px;
   background: #ffffff;
+}
+
+.work-order-map-cluster-icon {
+  background: transparent;
+  border: 0;
+}
+
+.work-order-map-cluster {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--cluster-fill) 84%, #ffffff), var(--cluster-fill));
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--cluster-stroke) 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--cluster-stroke) 24%, transparent);
+  color: #223044;
+}
+
+.work-order-map-cluster strong {
+  font-size: 0.92rem;
+  font-weight: 800;
 }
 
 .work-order-map-grid,

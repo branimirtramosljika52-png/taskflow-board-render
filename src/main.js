@@ -95,6 +95,7 @@ const DASHBOARD_GRID_GAP_PX = 14;
 let dashboardWidgetLayoutInteraction = null;
 let workOrderLeafletMap = null;
 let workOrderLeafletLayer = null;
+let workOrderLeafletClusterLayer = null;
 let workOrderLeafletMarkers = new Map();
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
@@ -323,6 +324,11 @@ const state = {
   },
   workOrderMap: {
     selectedWorkOrderId: "",
+    filters: {
+      status: "all",
+      priority: "all",
+      region: "all",
+    },
   },
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
@@ -727,6 +733,9 @@ const workOrderCalendarUnscheduled = document.querySelector("#work-order-calenda
 const workOrderMapStage = document.querySelector("#work-order-map-stage");
 const workOrderMapCanvas = document.querySelector("#work-order-map-canvas");
 const workOrderMapSummary = document.querySelector("#work-order-map-summary");
+const workOrderMapFilterStatusInput = document.querySelector("#work-order-map-filter-status");
+const workOrderMapFilterPriorityInput = document.querySelector("#work-order-map-filter-priority");
+const workOrderMapFilterRegionInput = document.querySelector("#work-order-map-filter-region");
 const workOrderMapSelectionTitle = document.querySelector("#work-order-map-selection-title");
 const workOrderMapSelection = document.querySelector("#work-order-map-selection");
 const workOrderMapList = document.querySelector("#work-order-map-list");
@@ -8600,6 +8609,7 @@ function renderSharedOptions() {
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
   rebuildWorkOrderFilterCompanyOptions(currentFilterCompanyId);
+  rebuildWorkOrderMapFilterOptions();
   rebuildWorkOrderLocationOptions(currentLocationId);
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
   rebuildReminderWorkOrderOptions(reminderWorkOrderIdInput?.value || "");
@@ -8683,6 +8693,56 @@ function getFilteredWorkOrders() {
     status: workOrderFilterStatusInput.value,
     companyId: workOrderFilterCompanyInput.value,
   }));
+}
+
+function getMapFilteredWorkOrders() {
+  return getFilteredWorkOrders().filter((item) => {
+    if (state.workOrderMap.filters.status !== "all" && item.status !== state.workOrderMap.filters.status) {
+      return false;
+    }
+
+    if (state.workOrderMap.filters.priority !== "all" && item.priority !== state.workOrderMap.filters.priority) {
+      return false;
+    }
+
+    if (state.workOrderMap.filters.region !== "all" && (item.region || "") !== state.workOrderMap.filters.region) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function rebuildWorkOrderMapFilterOptions() {
+  if (!workOrderMapFilterStatusInput || !workOrderMapFilterPriorityInput || !workOrderMapFilterRegionInput) {
+    return;
+  }
+
+  const regionOptions = Array.from(
+    new Set(
+      state.workOrders
+        .map((item) => String(item.region || "").trim())
+        .filter(Boolean),
+    ),
+  )
+    .sort((left, right) => left.localeCompare(right, "hr"))
+    .map((region) => ({ value: region, label: region }));
+
+  replaceSelectOptions(
+    workOrderMapFilterStatusInput,
+    [{ value: "all", label: "Svi statusi" }, ...WORK_ORDER_STATUS_OPTIONS],
+    state.workOrderMap.filters.status,
+  );
+  replaceSelectOptions(
+    workOrderMapFilterPriorityInput,
+    [{ value: "all", label: "Svi prioriteti" }, ...PRIORITY_OPTIONS],
+    state.workOrderMap.filters.priority,
+  );
+  replaceSelectOptions(
+    workOrderMapFilterRegionInput,
+    [{ value: "all", label: "Sve regije" }, ...regionOptions],
+    state.workOrderMap.filters.region,
+  );
 }
 
 function resetWorkOrderListWindow() {
@@ -8811,7 +8871,7 @@ function renderWorkOrderCalendarView() {
     return;
   }
 
-  const filtered = getFilteredWorkOrders();
+  const filtered = getMapFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
   const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
 
@@ -9002,15 +9062,15 @@ function renderWorkOrderCalendarView() {
 function getWorkOrderMapMarkerTone(status) {
   switch (status) {
     case "Ovjeren RN":
-      return { fill: "#d7a317", stroke: "#8e6700" };
+      return { fill: "#c89a18", stroke: "#8c6807" };
     case "Gotov RN":
-      return { fill: "#4eb37a", stroke: "#2b6f4d" };
+      return { fill: "#bde4c6", stroke: "#5f9f71" };
     case "Fakturiran RN":
-      return { fill: "#2e8f62", stroke: "#19573b" };
+      return { fill: "#2e7d55", stroke: "#18462f" };
     case "Storno RN":
-      return { fill: "#6f7784", stroke: "#484e59" };
+      return { fill: "#68707c", stroke: "#3f4550" };
     default:
-      return { fill: "#d23d8f", stroke: "#972966" };
+      return { fill: "#d8dde5", stroke: "#97a1af" };
   }
 }
 
@@ -9045,13 +9105,32 @@ function buildWorkOrderLeafletPopup(marker) {
   return popup;
 }
 
-function createWorkOrderLeafletPinIcon(isSelected = false) {
+function createWorkOrderLeafletPinIcon(tone, isSelected = false) {
   return window.L.divIcon({
     className: "work-order-map-pin-icon",
-    html: `<span class="work-order-map-pin${isSelected ? " is-selected" : ""}"><span class="work-order-map-pin-core"></span></span>`,
+    html: `<span class="work-order-map-pin${isSelected ? " is-selected" : ""}" style="--pin-fill:${tone.fill};--pin-stroke:${tone.stroke};"><span class="work-order-map-pin-core"></span></span>`,
     iconSize: [30, 42],
     iconAnchor: [15, 39],
     popupAnchor: [0, -32],
+  });
+}
+
+function buildWorkOrderClusterIcon(cluster) {
+  const children = cluster.getAllChildMarkers();
+  const byStatus = new Map();
+  children.forEach((child) => {
+    const status = child.options.statusValue || "Otvoreni RN";
+    byStatus.set(status, (byStatus.get(status) || 0) + 1);
+  });
+
+  const dominantStatus = Array.from(byStatus.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] || "Otvoreni RN";
+  const tone = getWorkOrderMapMarkerTone(dominantStatus);
+  const count = cluster.getChildCount();
+
+  return window.L.divIcon({
+    className: "work-order-map-cluster-icon",
+    html: `<span class="work-order-map-cluster" style="--cluster-fill:${tone.fill};--cluster-stroke:${tone.stroke};"><strong>${count}</strong></span>`,
+    iconSize: [48, 48],
   });
 }
 
@@ -9073,7 +9152,16 @@ function ensureWorkOrderLeafletMap() {
       attribution: "&copy; OpenStreetMap",
     }).addTo(workOrderLeafletMap);
 
-    workOrderLeafletLayer = window.L.layerGroup().addTo(workOrderLeafletMap);
+    workOrderLeafletLayer = window.L.markerClusterGroup
+      ? window.L.markerClusterGroup({
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        maxClusterRadius: 56,
+        iconCreateFunction: buildWorkOrderClusterIcon,
+      })
+      : window.L.layerGroup();
+    workOrderLeafletLayer.addTo(workOrderLeafletMap);
+    workOrderLeafletClusterLayer = workOrderLeafletLayer;
     workOrderLeafletMap.setView([45.3, 15.7], 7);
   }
 
@@ -9091,12 +9179,14 @@ function syncWorkOrderLeafletMarkers(markers) {
   workOrderLeafletMarkers = new Map();
 
   markers.forEach((marker) => {
+    const tone = getWorkOrderMapMarkerTone(marker.status);
     const isSelected = String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId);
     const leafletMarker = window.L.marker([marker.latitude, marker.longitude], {
-      icon: createWorkOrderLeafletPinIcon(isSelected),
+      icon: createWorkOrderLeafletPinIcon(tone, isSelected),
       keyboard: true,
       riseOnHover: true,
       zIndexOffset: isSelected ? 800 : 0,
+      statusValue: marker.status,
     });
 
     leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker));
@@ -9216,7 +9306,7 @@ function renderWorkOrderMapView() {
     return;
   }
 
-  const filtered = getFilteredWorkOrders();
+  const filtered = getMapFilteredWorkOrders();
   const map = buildWorkOrderMapMarkers(filtered);
   const markers = map.markers;
   const missingCoordinatesCount = filtered.length - markers.length;
@@ -11250,6 +11340,18 @@ workOrderFilterStatusInput.addEventListener("change", () => {
 });
 workOrderFilterCompanyInput.addEventListener("change", () => {
   resetWorkOrderListWindow();
+  renderWorkOrderWorkspace();
+});
+workOrderMapFilterStatusInput?.addEventListener("change", () => {
+  state.workOrderMap.filters.status = workOrderMapFilterStatusInput.value || "all";
+  renderWorkOrderWorkspace();
+});
+workOrderMapFilterPriorityInput?.addEventListener("change", () => {
+  state.workOrderMap.filters.priority = workOrderMapFilterPriorityInput.value || "all";
+  renderWorkOrderWorkspace();
+});
+workOrderMapFilterRegionInput?.addEventListener("change", () => {
+  state.workOrderMap.filters.region = workOrderMapFilterRegionInput.value || "all";
   renderWorkOrderWorkspace();
 });
 

@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-    <link rel="stylesheet" href="/styles.css?v=20260328ah" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260328aj" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1012,7 +1013,23 @@
                       <p class="section-kicker">Maps</p>
                       <h3>Operativna karta</h3>
                     </div>
-                    <div id="work-order-map-summary" class="work-order-map-summary"></div>
+                    <div class="work-order-map-toolbar-side">
+                      <div id="work-order-map-summary" class="work-order-map-summary"></div>
+                      <div class="work-order-map-filters">
+                        <label class="field work-order-map-filter-field">
+                          <span>Status</span>
+                          <select id="work-order-map-filter-status"></select>
+                        </label>
+                        <label class="field work-order-map-filter-field">
+                          <span>Prioritet</span>
+                          <select id="work-order-map-filter-priority"></select>
+                        </label>
+                        <label class="field work-order-map-filter-field">
+                          <span>Regija</span>
+                          <select id="work-order-map-filter-region"></select>
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
                   <div id="work-order-map-stage" class="work-order-map-stage" aria-label="Karta radnih naloga">
@@ -2080,7 +2097,8 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script type="module" src="/src/auth-transitions.js?v=20260328ah"></script>
-    <script type="module" src="/src/main.js?v=20260328ah"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328aj"></script>
+    <script type="module" src="/src/main.js?v=20260328aj"></script>
   </body>
 </html>
