@@ -246,6 +246,36 @@ const SIDEBAR_GROUP_DEFAULT_ITEM = {
   documents: "documents",
   learning: "tests",
 };
+const SIDEBAR_GROUP_LABELS = {
+  home: "Home",
+  organisations: "Organisations",
+  operations: "Operations",
+  company: "Company",
+  locations: "Locations",
+  documents: "Documents",
+  learning: "Learning",
+};
+const SIDEBAR_ITEM_LABELS = {
+  dashboard: "Dashboard",
+  reminders: "Reminders",
+  todo: "ToDo",
+  settings: "Settings",
+  "measurement-equipment": "Measurement Equipment",
+  vehicles: "Vehicles",
+  people: "People",
+  "safety-authorization": "Safety Authorization",
+  rn: "RN",
+  offers: "Offers",
+  periodics: "Periodics",
+  "list-company": "List Company",
+  "add-company": "Add New",
+  contract: "Contract",
+  "list-location": "List Location",
+  "add-location": "Add New",
+  documents: "Documents",
+  tests: "Test",
+  "learning-people": "People",
+};
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
   "/auth/signup",
@@ -714,38 +744,133 @@ let locationFormContacts = [];
 let currentConnectionTone = "connecting";
 let currentConnectionMeta = "ucitavanje podataka...";
 
-function renderOrganizationContextBadge() {
+function getSidebarGroupLabel(groupName) {
+  if (!groupName) {
+    return "";
+  }
+
+  return SIDEBAR_GROUP_LABELS[groupName]
+    || sidebarGroupPanels
+      .find((panel) => panel.dataset.sidebarGroupPanel === groupName)
+      ?.querySelector(".sidebar-group-label")
+      ?.textContent
+      ?.trim()
+    || groupName;
+}
+
+function getSidebarItemLabel(itemName) {
+  if (!itemName) {
+    return "";
+  }
+
+  return SIDEBAR_ITEM_LABELS[itemName]
+    || sidebarNavItems
+      .find((button) => button.dataset.sidebarItem === itemName)
+      ?.querySelector("strong")
+      ?.textContent
+      ?.trim()
+    || itemName;
+}
+
+function getWorkOrderBreadcrumbLabel() {
+  const activeId = String(workOrderIdInput?.value || "");
+  const persistedItem = state.workOrders.find((item) => String(item.id) === activeId) ?? null;
+  return persistedItem?.workOrderNumber || workOrderEditorTitle?.textContent?.trim() || "Novi RN";
+}
+
+function navigateToBreadcrumb(target) {
+  if (!target) {
+    return;
+  }
+
+  if (state.workOrderEditorOpen && target.kind !== "work-order") {
+    closeWorkOrderEditor();
+  }
+
+  if (target.kind === "group") {
+    activateSidebarGroup(target.group, { navigate: true, expandSidebar: true });
+    return;
+  }
+
+  if (target.kind === "item") {
+    activateSidebarItem(target.item, { expandSidebar: true });
+    return;
+  }
+}
+
+function buildTopbarBreadcrumbs() {
+  const groupName = state.activeSidebarGroup || getSidebarGroupForView();
+  const itemName = state.activeSidebarItem || SIDEBAR_GROUP_DEFAULT_ITEM[groupName];
+  const crumbs = [];
+
+  if (groupName) {
+    crumbs.push({
+      label: getSidebarGroupLabel(groupName),
+      kind: "group",
+      group: groupName,
+    });
+  }
+
+  if (itemName) {
+    crumbs.push({
+      label: getSidebarItemLabel(itemName),
+      kind: "item",
+      item: itemName,
+    });
+  }
+
+  if (state.activeView === "selfdash" && state.workOrderEditorOpen) {
+    crumbs.push({
+      label: getWorkOrderBreadcrumbLabel(),
+      kind: "work-order",
+    });
+  }
+
+  return crumbs.filter((item) => item.label);
+}
+
+function renderTopbarBreadcrumbs() {
   if (!organizationContext) {
     return;
   }
 
-  const organization = state.organizations.find((item) => item.id === state.activeOrganizationId) ?? state.organizations[0] ?? null;
-  const tone = currentConnectionTone === "live" ? "live" : (currentConnectionTone === "connecting" ? "connecting" : "error");
+  const crumbs = buildTopbarBreadcrumbs();
+  organizationContext.className = "organization-context";
 
-  organizationContext.className = `organization-context is-${tone}`;
-
-  if (!organization) {
-    organizationContext.textContent = "";
+  if (crumbs.length === 0) {
+    organizationContext.replaceChildren();
     return;
   }
 
-  const name = document.createElement("span");
-  name.className = "organization-context-name";
-  name.textContent = organization.name;
+  const nodes = [];
 
-  const status = document.createElement("span");
-  status.className = "organization-context-status";
+  crumbs.forEach((crumb, index) => {
+    const isLast = index === crumbs.length - 1;
+    const element = document.createElement(isLast ? "span" : "button");
+    element.className = isLast ? "organization-context-current" : "organization-context-link";
+    element.textContent = crumb.label;
 
-  const dot = document.createElement("span");
-  dot.className = "organization-context-dot";
-  dot.setAttribute("aria-hidden", "true");
+    if (!isLast) {
+      element.type = "button";
+      element.addEventListener("click", () => {
+        navigateToBreadcrumb(crumb);
+      });
+    } else {
+      element.setAttribute("aria-current", "page");
+    }
 
-  const label = document.createElement("span");
-  label.textContent = tone === "live" ? "OK" : (tone === "connecting" ? "..." : "Problem");
+    nodes.push(element);
 
-  status.append(dot, label);
-  organizationContext.replaceChildren(name, status);
-  organizationContext.title = currentConnectionMeta;
+    if (!isLast) {
+      const separator = document.createElement("span");
+      separator.className = "organization-context-separator";
+      separator.setAttribute("aria-hidden", "true");
+      separator.textContent = "/";
+      nodes.push(separator);
+    }
+  });
+
+  organizationContext.replaceChildren(...nodes);
 }
 
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
@@ -774,7 +899,7 @@ function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } =
 
   copy.append(labelNode, metaNode);
   connectionStatus.replaceChildren(indicator, copy);
-  renderOrganizationContextBadge();
+  renderTopbarBreadcrumbs();
 }
 
 function setConnectionStatus() {
@@ -1983,6 +2108,7 @@ function renderWorkOrderEditorSummary() {
   facts.append(assigneeMeta);
   workOrderEditorMeta.replaceChildren(chips, facts);
   workOrderStatusInput.dataset.status = slugifyValue(workOrderStatusInput.value || "Otvoreni RN");
+  renderTopbarBreadcrumbs();
 }
 
 function getCompany(companyId) {
@@ -4557,12 +4683,14 @@ function openWorkOrderEditor() {
   } else {
     setWorkOrderSaveState("blocked");
   }
+  renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
 }
 
 function closeWorkOrderEditor({ reset = false } = {}) {
   clearWorkOrderAutoSaveTimer();
   state.workOrderEditorOpen = false;
+  renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
 
   if (reset) {
@@ -4667,7 +4795,7 @@ function renderAuthState() {
       userMenuLastLogin.textContent = state.user.lastLoginAt ? formatDateTime(state.user.lastLoginAt) : "Upravo sada";
     }
     setUserMenuError("");
-    renderOrganizationContextBadge();
+    renderTopbarBreadcrumbs();
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
 
@@ -7564,6 +7692,7 @@ function renderActiveView() {
 
   renderDashboardOverview();
   renderSidebarState();
+  renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
 }
 
