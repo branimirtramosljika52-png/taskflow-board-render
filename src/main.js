@@ -977,7 +977,16 @@ function renderUserPresenceOptions(selectedPresence = readUserPresence()) {
     button.className = "user-presence-pill";
     button.dataset.presence = option.value;
     button.classList.toggle("is-active", option.value === selectedPresence);
-    button.textContent = option.label;
+
+    const dot = document.createElement("span");
+    dot.className = "user-presence-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const label = document.createElement("span");
+    label.className = "user-presence-label";
+    label.textContent = option.label;
+
+    button.append(dot, label);
     button.addEventListener("click", () => {
       writeUserPresence(option.value);
       renderAuthState();

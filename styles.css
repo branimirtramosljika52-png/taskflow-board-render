@@ -1021,7 +1021,7 @@ fieldset {
 
 .user-menu-status-block {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 12px;
 }
 
@@ -1034,46 +1034,83 @@ fieldset {
 }
 
 .user-menu-presence-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  gap: 4px;
 }
 
 .user-presence-pill {
-  border: 1px solid rgba(150, 160, 173, 0.24);
-  background: #f6f8fc;
-  color: #546174;
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  border: 0;
+  background: transparent;
+  color: #566275;
+  border-radius: 0;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.user-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #98a4b7;
+  box-shadow: 0 0 0 4px rgba(152, 164, 183, 0.08);
+}
+
+.user-presence-pill[data-presence="online"] .user-presence-dot {
+  background: #2fb36f;
+  box-shadow: 0 0 0 4px rgba(47, 179, 111, 0.1);
+}
+
+.user-presence-pill[data-presence="away"] .user-presence-dot {
+  background: #f1b44c;
+  box-shadow: 0 0 0 4px rgba(241, 180, 76, 0.12);
+}
+
+.user-presence-pill[data-presence="busy"] .user-presence-dot {
+  background: #e06363;
+  box-shadow: 0 0 0 4px rgba(224, 99, 99, 0.1);
+}
+
+.user-presence-pill[data-presence="offline"] .user-presence-dot {
+  background: #98a4b7;
 }
 
 .user-presence-pill.is-active {
-  border-color: rgba(84, 114, 255, 0.22);
-  background: rgba(84, 114, 255, 0.1);
   color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.user-presence-pill.is-active .user-presence-label {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
 }
 
 .user-menu-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .user-menu-metric {
-  display: grid;
-  gap: 5px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: #f7f9fc;
-  border: 1px solid rgba(201, 210, 223, 0.72);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .user-menu-metric strong {
   font-size: 0.83rem;
   color: var(--text);
   line-height: 1.25;
+  text-align: right;
 }
 
 .user-menu-actions {
