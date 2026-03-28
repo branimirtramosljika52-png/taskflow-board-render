@@ -329,6 +329,7 @@ const state = {
       priority: "all",
       region: "all",
     },
+    markerSignature: "",
   },
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
@@ -8802,7 +8803,23 @@ function createWorkOrderCalendarCard(workOrder) {
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
-  card.append(top, title, meta);
+  const due = document.createElement("span");
+  due.className = "work-order-calendar-card-due";
+  due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-calendar-card-footer";
+  footer.append(due);
+
+  const executors = [workOrder.executor1, workOrder.executor2].filter(Boolean);
+  if (executors.length > 0) {
+    const executorWrap = document.createElement("div");
+    executorWrap.className = "work-order-calendar-card-executors";
+    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    footer.append(executorWrap);
+  }
+
+  card.append(top, title, meta, footer);
 
   if (workOrder.priority) {
     const priority = createBadge(
@@ -8871,7 +8888,7 @@ function renderWorkOrderCalendarView() {
     return;
   }
 
-  const filtered = getMapFilteredWorkOrders();
+  const filtered = getFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
   const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
 
@@ -8881,12 +8898,28 @@ function renderWorkOrderCalendarView() {
 
   if (workOrderCalendarMeta) {
     const scheduledCount = calendar.lanes.reduce((sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0), 0);
-    workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
   }
 
   if (workOrderCalendarMeta) {
     const scheduledCount = calendar.lanes.reduce((sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0), 0);
-    workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+  }
+
+  if (workOrderCalendarMeta) {
+    const scheduledCount = calendar.lanes.reduce(
+      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
+      0,
+    );
+    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+  }
+
+  if (workOrderCalendarMeta) {
+    const scheduledCount = calendar.lanes.reduce(
+      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
+      0,
+    );
+    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
   }
 
   if (workOrderCalendarUnscheduled) {
@@ -9074,6 +9107,22 @@ function getWorkOrderMapMarkerTone(status) {
   }
 }
 
+function getWorkOrderCalendarTone(status) {
+  const tone = getWorkOrderMapMarkerTone(status);
+  return {
+    accent: tone.stroke,
+    soft: `color-mix(in srgb, ${tone.fill} 28%, #ffffff)`,
+    border: `color-mix(in srgb, ${tone.stroke} 18%, #e6eaf3)`,
+  };
+}
+
+function getWorkOrderMapMarkerSignature(markers = []) {
+  return markers
+    .map((marker) => `${marker.workOrderId}:${marker.latitude.toFixed(4)}:${marker.longitude.toFixed(4)}`)
+    .sort()
+    .join("|");
+}
+
 function buildWorkOrderMapPopup(marker) {
   return `
     <div class="leaflet-work-order-popup">
@@ -9175,6 +9224,10 @@ function syncWorkOrderLeafletMarkers(markers) {
     return;
   }
 
+  const markerSignature = getWorkOrderMapMarkerSignature(markers);
+  const shouldReframe = state.workOrderMap.markerSignature !== markerSignature;
+  state.workOrderMap.markerSignature = markerSignature;
+
   workOrderLeafletLayer.clearLayers();
   workOrderLeafletMarkers = new Map();
 
@@ -9189,7 +9242,6 @@ function syncWorkOrderLeafletMarkers(markers) {
       statusValue: marker.status,
     });
 
-    leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker));
     leafletMarker.on("click", () => {
       state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
       renderWorkOrderCroatiaMapView();
@@ -9199,25 +9251,18 @@ function syncWorkOrderLeafletMarkers(markers) {
     workOrderLeafletMarkers.set(String(marker.workOrderId), leafletMarker);
   });
 
-  if (markers.length > 0) {
+  if (markers.length > 0 && shouldReframe) {
     const bounds = window.L.latLngBounds(markers.map((marker) => [marker.latitude, marker.longitude]));
     map.fitBounds(bounds.pad(0.2), {
       animate: false,
       maxZoom: markers.length === 1 ? 14 : 12,
     });
-  } else {
+  } else if (markers.length === 0) {
     map.setView([45.3, 15.7], 7, { animate: false });
   }
 
   window.requestAnimationFrame(() => {
     map.invalidateSize();
-    const activeMarker = workOrderLeafletMarkers.get(String(state.workOrderMap.selectedWorkOrderId));
-    if (activeMarker) {
-      activeMarker.openPopup();
-      map.panTo(activeMarker.getLatLng(), {
-        animate: false,
-      });
-    }
   });
 }
 
@@ -9306,13 +9351,21 @@ function renderWorkOrderMapView() {
     return;
   }
 
-  const filtered = getMapFilteredWorkOrders();
+  const filtered = getFilteredWorkOrders();
   const map = buildWorkOrderMapMarkers(filtered);
   const markers = map.markers;
   const missingCoordinatesCount = filtered.length - markers.length;
 
   if (workOrderMapSummary) {
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
+  }
+
+  if (workOrderMapSummary) {
     workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez`;
+  }
+
+  if (workOrderMapSummary) {
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
   }
 
   if (workOrderMapSummary) {
@@ -9382,6 +9435,10 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   card.className = "work-order-calendar-card";
   card.draggable = true;
   card.dataset.workOrderId = workOrder.id;
+  const tone = getWorkOrderCalendarTone(workOrder.status || "Otvoreni RN");
+  card.style.setProperty("--calendar-card-accent", tone.accent);
+  card.style.setProperty("--calendar-card-soft", tone.soft);
+  card.style.setProperty("--calendar-card-border", tone.border);
 
   const top = document.createElement("div");
   top.className = "work-order-calendar-card-top";
@@ -9402,7 +9459,23 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
-  card.append(top, title, meta);
+  const due = document.createElement("span");
+  due.className = "work-order-calendar-card-due";
+  due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-calendar-card-footer";
+  footer.append(due);
+
+  const executors = [workOrder.executor1, workOrder.executor2].filter(Boolean);
+  if (executors.length > 0) {
+    const executorWrap = document.createElement("div");
+    executorWrap.className = "work-order-calendar-card-executors";
+    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    footer.append(executorWrap);
+  }
+
+  card.append(top, title, meta, footer);
 
   if (workOrder.priority) {
     const priority = createBadge(
@@ -9454,7 +9527,7 @@ function renderWorkOrderCalendarSchedulerView() {
       (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
       0,
     );
-    workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
   }
 
   if (workOrderCalendarUnscheduled) {
@@ -9469,7 +9542,7 @@ function renderWorkOrderCalendarSchedulerView() {
       label.textContent = "Bez roka";
 
       const meta = document.createElement("span");
-      meta.textContent = "Povuci karticu na datum i izvrsitelje kako bi brzo slozio raspored.";
+      meta.textContent = "Povuci karticu na datum i osobu za brzo slaganje rasporeda.";
       head.append(label, meta);
 
       const list = document.createElement("div");
@@ -9489,7 +9562,7 @@ function renderWorkOrderCalendarSchedulerView() {
 
   const peopleHead = document.createElement("div");
   peopleHead.className = "work-order-calendar-lane-head is-sticky";
-  peopleHead.textContent = "Izvrsitelji";
+  peopleHead.textContent = "Raspored po ljudima";
   headerRow.append(peopleHead);
 
   dayDescriptors.forEach((day) => {
@@ -9508,7 +9581,7 @@ function renderWorkOrderCalendarSchedulerView() {
 
     const dayMeta = document.createElement("span");
     dayMeta.className = "work-order-calendar-day-meta";
-    dayMeta.textContent = dayCount === 0 ? "Bez RN" : `${dayCount} RN`;
+    dayMeta.textContent = dayCount === 0 ? "Prazno" : `${dayCount} RN`;
 
     dayHead.append(dayLabel, dayDate, dayMeta);
     headerRow.append(dayHead);
@@ -9632,7 +9705,7 @@ function renderWorkOrderCroatiaMapView() {
     return;
   }
 
-  const filtered = getFilteredWorkOrders();
+  const filtered = getMapFilteredWorkOrders();
   const mapData = buildWorkOrderMapMarkers(filtered);
   const markers = mapData.markers;
   const missingCoordinatesCount = filtered.length - markers.length;
@@ -12382,3 +12455,4 @@ refreshSession()
     connectionStatus.textContent = "Backend nije dostupan";
     connectionStatus.classList.add("is-memory");
   });
+

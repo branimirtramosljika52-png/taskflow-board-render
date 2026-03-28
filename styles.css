@@ -4641,16 +4641,16 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid {
   overflow: auto;
-  max-height: calc(100vh - 390px);
+  max-height: calc(100vh - 360px);
   border: 1px solid #e8e9f2;
   border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff, #fcfcff);
+  background: linear-gradient(180deg, #ffffff, #fbfcff);
 }
 
 .work-order-calendar-grid-row {
   display: grid;
-  grid-template-columns: 240px repeat(7, minmax(190px, 1fr));
-  min-width: 1570px;
+  grid-template-columns: 258px repeat(7, minmax(200px, 1fr));
+  min-width: 1660px;
 }
 
 .work-order-calendar-grid-row.is-head {
@@ -4661,9 +4661,9 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-lane-head,
 .work-order-calendar-day-head {
-  padding: 14px 16px;
+  padding: 13px 16px;
   border-bottom: 1px solid #ececf4;
-  background: rgba(250, 251, 255, 0.97);
+  background: rgba(248, 250, 255, 0.98);
   backdrop-filter: blur(8px);
 }
 
@@ -4676,7 +4676,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-day-head {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   border-left: 1px solid #f0f1f6;
 }
 
@@ -4693,7 +4693,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-day-date {
-  font-size: 0.92rem;
+  font-size: 0.98rem;
   color: #22283a;
 }
 
@@ -4708,11 +4708,11 @@ body.is-work-order-editor-open {
   left: 0;
   z-index: 2;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
-  padding: 16px;
+  padding: 14px;
   border-bottom: 1px solid #eef0f6;
-  background: linear-gradient(180deg, #fbfcff, #f7f8fd);
+  background: linear-gradient(180deg, #f9fbff, #f4f7fd);
 }
 
 .work-order-calendar-lane-top {
@@ -4756,11 +4756,13 @@ body.is-work-order-editor-open {
   display: grid;
   align-content: start;
   gap: 8px;
-  min-height: 126px;
+  min-height: 144px;
   padding: 12px;
   border-bottom: 1px solid #eef0f6;
   border-left: 1px solid #f0f1f6;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(252, 252, 255, 0.96));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(251, 252, 255, 0.98)),
+    repeating-linear-gradient(180deg, rgba(226, 230, 240, 0.22) 0, rgba(226, 230, 240, 0.22) 1px, transparent 1px, transparent 42px);
   transition: background 120ms ease, box-shadow 120ms ease;
 }
 
@@ -4779,17 +4781,24 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-card {
+  position: relative;
   display: grid;
-  gap: 7px;
+  gap: 6px;
   justify-items: start;
   width: 100%;
-  padding: 10px 11px;
-  border-radius: 16px;
-  border: 1px solid #e9e7f6;
-  background: #ffffff;
+  padding: 10px 12px 11px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--calendar-card-border, #e9e7f6);
+  border-left: 4px solid var(--calendar-card-accent, #97a1af);
+  background: linear-gradient(180deg, var(--calendar-card-soft, #ffffff), #ffffff);
   text-align: left;
-  box-shadow: 0 10px 24px rgba(69, 76, 108, 0.08);
+  box-shadow: 0 8px 18px rgba(69, 76, 108, 0.08);
   cursor: pointer;
+}
+
+.work-order-calendar-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(69, 76, 108, 0.12);
 }
 
 .work-order-calendar-card.is-dragging {
@@ -4819,11 +4828,33 @@ body.is-work-order-editor-open {
   font-size: 0.86rem;
   font-weight: 700;
   color: #2a3044;
+  line-height: 1.3;
 }
 
 .work-order-calendar-card-meta {
   font-size: 0.78rem;
   color: #788199;
+}
+
+.work-order-calendar-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.work-order-calendar-card-due {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #62708f;
+}
+
+.work-order-calendar-card-executors {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .work-order-map-layout {
