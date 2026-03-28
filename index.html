@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328l" />
+    <link rel="stylesheet" href="/styles.css?v=20260328m" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -484,17 +484,22 @@
               </div>
               <div class="user-menu-status-block">
                 <span class="user-menu-section-label">Status</span>
-                <div id="user-menu-presence-options" class="user-menu-presence-options"></div>
+                <div class="user-menu-presence-picker">
+                  <button
+                    id="user-menu-presence-button"
+                    type="button"
+                    class="user-menu-presence-trigger"
+                    aria-haspopup="menu"
+                    aria-expanded="false"
+                  >
+                    <span class="user-presence-dot" aria-hidden="true"></span>
+                    <span id="user-menu-presence-label" class="user-menu-presence-label-text"></span>
+                    <span class="user-menu-presence-caret" aria-hidden="true">&#9662;</span>
+                  </button>
+                  <div id="user-menu-presence-menu" class="user-menu-presence-menu" hidden></div>
+                </div>
               </div>
               <div class="user-menu-metrics">
-                <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Aktivna organizacija</span>
-                  <strong id="user-menu-active-org"></strong>
-                </div>
-                <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Pristup</span>
-                  <strong id="user-menu-org-count"></strong>
-                </div>
                 <div class="user-menu-metric">
                   <span class="user-menu-metric-label">Zadnja prijava</span>
                   <strong id="user-menu-last-login"></strong>
@@ -1458,7 +1463,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328l"></script>
-    <script type="module" src="/src/main.js?v=20260328l"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328m"></script>
+    <script type="module" src="/src/main.js?v=20260328m"></script>
   </body>
 </html>

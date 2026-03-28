@@ -1070,6 +1070,10 @@ fieldset {
   border-bottom: 1px solid rgba(216, 223, 236, 0.88);
 }
 
+.user-menu-presence-picker {
+  position: relative;
+}
+
 .user-menu-section-label,
 .user-menu-metric-label {
   font-size: 0.72rem;
@@ -1078,12 +1082,70 @@ fieldset {
   color: var(--muted);
 }
 
-.user-menu-presence-options {
-  display: grid;
-  gap: 6px;
+.user-menu-presence-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #566275;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.user-presence-pill {
+.user-menu-presence-trigger:hover {
+  color: var(--accent-strong);
+}
+
+.user-menu-presence-trigger .user-presence-dot {
+  box-shadow: none;
+}
+
+.user-menu-presence-trigger[data-presence="online"] .user-presence-dot {
+  background: #2fb36f;
+}
+
+.user-menu-presence-trigger[data-presence="away"] .user-presence-dot {
+  background: #f1b44c;
+}
+
+.user-menu-presence-trigger[data-presence="busy"] .user-presence-dot {
+  background: #e06363;
+}
+
+.user-menu-presence-trigger[data-presence="offline"] .user-presence-dot {
+  background: #98a4b7;
+}
+
+.user-menu-presence-caret {
+  font-size: 0.7rem;
+  color: #8b95ab;
+  transition: transform 160ms ease;
+}
+
+.user-menu-presence-trigger.is-open .user-menu-presence-caret {
+  transform: rotate(180deg);
+}
+
+.user-menu-presence-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 168px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 219, 235, 0.94);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 36px rgba(18, 30, 59, 0.12);
+  z-index: 3;
+}
+
+.user-presence-option {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1097,10 +1159,12 @@ fieldset {
   font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: color 160ms ease, transform 160ms ease;
+  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
-.user-presence-pill:hover {
+.user-presence-option:hover {
+  background: rgba(233, 239, 248, 0.86);
+  border-radius: 10px;
   color: var(--accent-strong);
   transform: translateX(1px);
 }
@@ -1113,47 +1177,47 @@ fieldset {
   box-shadow: 0 0 0 4px rgba(152, 164, 183, 0.08);
 }
 
-.user-presence-pill[data-presence="online"] .user-presence-dot {
+.user-presence-option[data-presence="online"] .user-presence-dot {
   background: #2fb36f;
   box-shadow: 0 0 0 4px rgba(47, 179, 111, 0.1);
 }
 
-.user-presence-pill[data-presence="away"] .user-presence-dot {
+.user-presence-option[data-presence="away"] .user-presence-dot {
   background: #f1b44c;
   box-shadow: 0 0 0 4px rgba(241, 180, 76, 0.12);
 }
 
-.user-presence-pill[data-presence="busy"] .user-presence-dot {
+.user-presence-option[data-presence="busy"] .user-presence-dot {
   background: #e06363;
   box-shadow: 0 0 0 4px rgba(224, 99, 99, 0.1);
 }
 
-.user-presence-pill[data-presence="offline"] .user-presence-dot {
+.user-presence-option[data-presence="offline"] .user-presence-dot {
   background: #98a4b7;
 }
 
-.user-presence-pill.is-active {
+.user-presence-option.is-active {
   color: var(--accent-strong);
   font-weight: 700;
+  background: rgba(233, 239, 248, 0.92);
+  border-radius: 10px;
 }
 
-.user-presence-pill.is-active .user-presence-label {
-  text-decoration: underline;
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 3px;
+.user-presence-option.is-active .user-presence-label {
+  text-decoration: none;
 }
 
 .user-menu-metrics {
   display: grid;
-  gap: 9px;
+  gap: 6px;
   margin-bottom: 12px;
 }
 
 .user-menu-metric {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1163,7 +1227,7 @@ fieldset {
   font-size: 0.83rem;
   color: var(--text);
   line-height: 1.25;
-  text-align: right;
+  text-align: left;
 }
 
 .user-menu-actions {

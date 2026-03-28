@@ -268,6 +268,7 @@ state.railHidden = readRailHiddenPreference();
 
 let measurementRowCounter = 0;
 let measurementColumnCounter = 0;
+let userPresenceMenuOpen = false;
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
@@ -289,7 +290,9 @@ const userMenuRole = document.querySelector("#user-menu-role");
 const userMenuPresenceCurrent = document.querySelector("#user-menu-presence-current");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
-const userMenuPresenceOptions = document.querySelector("#user-menu-presence-options");
+const userMenuPresenceButton = document.querySelector("#user-menu-presence-button");
+const userMenuPresenceLabel = document.querySelector("#user-menu-presence-label");
+const userMenuPresenceMenu = document.querySelector("#user-menu-presence-menu");
 const userMenuActiveOrg = document.querySelector("#user-menu-active-org");
 const userMenuOrgCount = document.querySelector("#user-menu-org-count");
 const userMenuLastLogin = document.querySelector("#user-menu-last-login");
@@ -960,6 +963,7 @@ function setUserMenuOpen(isOpen) {
   userBadge?.setAttribute("aria-expanded", userMenuOpen ? "true" : "false");
 
   if (!userMenuOpen) {
+    setUserPresenceMenuOpen(false);
     setUserMenuError("");
     if (userMenuAvatarFileInput) {
       userMenuAvatarFileInput.value = "";
@@ -967,17 +971,42 @@ function setUserMenuOpen(isOpen) {
   }
 }
 
+function setUserPresenceMenuOpen(isOpen) {
+  userPresenceMenuOpen = Boolean(isOpen && userMenuOpen && state.user);
+
+  if (userMenuPresenceMenu) {
+    userMenuPresenceMenu.hidden = !userPresenceMenuOpen;
+  }
+
+  if (userMenuPresenceButton) {
+    userMenuPresenceButton.setAttribute("aria-expanded", userPresenceMenuOpen ? "true" : "false");
+    userMenuPresenceButton.classList.toggle("is-open", userPresenceMenuOpen);
+  }
+}
+
 function renderUserPresenceOptions(selectedPresence = readUserPresence()) {
-  if (!userMenuPresenceOptions) {
+  const selectedOption = USER_PRESENCE_OPTIONS.find((option) => option.value === selectedPresence) ?? USER_PRESENCE_OPTIONS[0];
+
+  if (userMenuPresenceButton) {
+    userMenuPresenceButton.dataset.presence = selectedOption.value;
+  }
+
+  if (userMenuPresenceLabel) {
+    userMenuPresenceLabel.textContent = selectedOption.label;
+  }
+
+  if (!userMenuPresenceMenu) {
     return;
   }
 
-  userMenuPresenceOptions.replaceChildren(...USER_PRESENCE_OPTIONS.map((option) => {
+  userMenuPresenceMenu.replaceChildren(...USER_PRESENCE_OPTIONS.map((option) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "user-presence-pill";
+    button.className = "user-presence-option";
     button.dataset.presence = option.value;
     button.classList.toggle("is-active", option.value === selectedPresence);
+    button.setAttribute("role", "menuitemradio");
+    button.setAttribute("aria-checked", option.value === selectedPresence ? "true" : "false");
 
     const dot = document.createElement("span");
     dot.className = "user-presence-dot";
@@ -990,6 +1019,7 @@ function renderUserPresenceOptions(selectedPresence = readUserPresence()) {
     button.append(dot, label);
     button.addEventListener("click", () => {
       writeUserPresence(option.value);
+      setUserPresenceMenuOpen(false);
       renderAuthState();
     });
     return button;
@@ -6853,6 +6883,16 @@ userBadge?.addEventListener("click", (event) => {
   setUserMenuOpen(!userMenuOpen);
 });
 
+userMenuPresenceButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+
+  if (!userMenuOpen) {
+    return;
+  }
+
+  setUserPresenceMenuOpen(!userPresenceMenuOpen);
+});
+
 document.addEventListener("keydown", (event) => {
   if (!state.measurementSheet.isOpen) {
     return;
@@ -7146,6 +7186,15 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target instanceof Node && userMenuPanel?.contains(event.target)) {
+    if (userPresenceMenuOpen) {
+      const clickedPresenceControl = userMenuPresenceButton?.contains(event.target)
+        || userMenuPresenceMenu?.contains(event.target);
+
+      if (!clickedPresenceControl) {
+        setUserPresenceMenuOpen(false);
+      }
+    }
+
     return;
   }
 
@@ -7224,7 +7273,7 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
 
   setUserMenuError("");
   userMenuAvatarButton.disabled = true;
-  userMenuAvatarButton.textContent = "Uploading...";
+  userMenuAvatarButton.textContent = "Spremanje...";
 
   void readAvatarFileAsDataUrl(file)
     .then((avatarDataUrl) => runMutation(() => apiRequest("/auth/profile/avatar", {
@@ -7241,7 +7290,7 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
     })
     .finally(() => {
       userMenuAvatarButton.disabled = false;
-      userMenuAvatarButton.textContent = "Change profile picture";
+      userMenuAvatarButton.textContent = "Promijeni profilnu sliku";
     });
 });
 
