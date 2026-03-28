@@ -126,7 +126,7 @@ function parseContactSlot(value) {
 
   const slot = Number(value);
 
-  if (!Number.isInteger(slot) || slot < 1 || slot > 3) {
+  if (!Number.isInteger(slot) || slot < 1) {
     return null;
   }
 
@@ -173,11 +173,26 @@ function mergeContactFields(base, patch = {}) {
   return next;
 }
 
-export function buildLocationContacts(location) {
-  if (!location) {
+function normalizeLocationContacts(contacts = []) {
+  if (!Array.isArray(contacts)) {
     return [];
   }
 
+  return contacts
+    .map((contact, index) => ({
+      slot: parseContactSlot(contact?.slot) ?? (index + 1),
+      name: normalizeText(contact?.name),
+      phone: normalizeText(contact?.phone),
+      email: normalizeText(contact?.email),
+    }))
+    .filter((contact) => contact.name || contact.phone || contact.email)
+    .map((contact, index) => ({
+      ...contact,
+      slot: index + 1,
+    }));
+}
+
+function extractLegacyLocationContacts(location) {
   const contacts = [];
 
   for (const slot of [1, 2, 3]) {
@@ -194,6 +209,61 @@ export function buildLocationContacts(location) {
   }
 
   return contacts;
+}
+
+function applyLocationContacts(target, contacts = []) {
+  const normalizedContacts = normalizeLocationContacts(contacts);
+  target.contacts = normalizedContacts;
+
+  for (const slot of [1, 2, 3]) {
+    const contact = normalizedContacts[slot - 1];
+    target[`contactName${slot}`] = contact?.name ?? "";
+    target[`contactPhone${slot}`] = contact?.phone ?? "";
+    target[`contactEmail${slot}`] = contact?.email ?? "";
+  }
+
+  return target;
+}
+
+function hasLegacyContactFields(input = {}) {
+  return [1, 2, 3].some((slot) => (
+    hasOwn(input, `contactName${slot}`)
+    || hasOwn(input, `contactPhone${slot}`)
+    || hasOwn(input, `contactEmail${slot}`)
+  ));
+}
+
+function resolvePatchedLocationContacts(current, patch = {}) {
+  if (hasOwn(patch, "contacts")) {
+    return patch.contacts;
+  }
+
+  if (!hasLegacyContactFields(patch)) {
+    return buildLocationContacts(current);
+  }
+
+  const mergedLegacyContacts = extractLegacyLocationContacts(mergeContactFields(current, patch));
+  const extraContacts = buildLocationContacts(current)
+    .slice(3)
+    .map((contact) => ({
+      name: contact.name,
+      phone: contact.phone,
+      email: contact.email,
+    }));
+
+  return [...mergedLegacyContacts, ...extraContacts];
+}
+
+export function buildLocationContacts(location) {
+  if (!location) {
+    return [];
+  }
+
+  if (Array.isArray(location.contacts)) {
+    return normalizeLocationContacts(location.contacts);
+  }
+
+  return extractLegacyLocationContacts(location);
 }
 
 function selectLocationContact(location, preferredSlot) {
@@ -276,18 +346,6 @@ export function createLocation(
   }
 
   const timestamp = now();
-  const baseContacts = mergeContactFields({
-    contactName1: "",
-    contactPhone1: "",
-    contactEmail1: "",
-    contactName2: "",
-    contactPhone2: "",
-    contactEmail2: "",
-    contactName3: "",
-    contactPhone3: "",
-    contactEmail3: "",
-  }, input);
-
   const location = {
     id: createId(),
     companyId,
@@ -298,10 +356,26 @@ export function createLocation(
     coordinates: normalizeText(input.coordinates),
     region: normalizeText(input.region),
     note: normalizeText(input.note),
-    ...baseContacts,
+    ...mergeContactFields({
+      contactName1: "",
+      contactPhone1: "",
+      contactEmail1: "",
+      contactName2: "",
+      contactPhone2: "",
+      contactEmail2: "",
+      contactName3: "",
+      contactPhone3: "",
+      contactEmail3: "",
+    }, input),
+    contacts: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+
+  applyLocationContacts(
+    location,
+    hasOwn(input, "contacts") ? input.contacts : extractLegacyLocationContacts(input),
+  );
 
   const duplicate = state.locations.some((item) => {
     if (item.companyId !== location.companyId) {
@@ -339,7 +413,7 @@ export function updateLocation(current, patch, state, now = isoNow) {
     updatedAt: now(),
   };
 
-  Object.assign(next, mergeContactFields(current, patch));
+  applyLocationContacts(next, resolvePatchedLocationContacts(current, patch));
 
   const duplicate = state.locations.some((item) => {
     if (item.id === current.id || item.companyId !== next.companyId) {

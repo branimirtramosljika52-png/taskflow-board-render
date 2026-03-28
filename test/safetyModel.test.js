@@ -10,6 +10,7 @@ import {
   getDashboardStats,
   nextWorkOrderNumber,
   syncLocationFieldsFromWorkOrder,
+  updateLocation,
   updateWorkOrder,
 } from "../src/safetyModel.js";
 
@@ -184,6 +185,72 @@ test("updateWorkOrder refreshes snapshot fields when location and contact change
   assert.equal(next.region, "Dalmacija");
   assert.equal(next.contactName, "Petra Bencic");
   assert.equal(next.status, "Ovjeren RN");
+});
+
+test("locations support dynamic contacts beyond the legacy three slots", () => {
+  const company = createCompany(
+    {
+      name: "Delta d.o.o.",
+      oib: "10987654321",
+    },
+    [],
+    () => "company-delta",
+    () => "2026-03-25T08:00:00.000Z",
+  );
+
+  const location = createLocation(
+    {
+      companyId: company.id,
+      name: "Lab Zagreb",
+      contacts: [
+        { name: "Kontakt 1", phone: "111", email: "k1@delta.hr" },
+        { name: "Kontakt 2", phone: "222", email: "k2@delta.hr" },
+        { name: "Kontakt 3", phone: "333", email: "k3@delta.hr" },
+        { name: "Kontakt 4", phone: "444", email: "k4@delta.hr" },
+      ],
+    },
+    { companies: [company], locations: [] },
+    () => "location-delta",
+    () => "2026-03-25T08:05:00.000Z",
+  );
+
+  assert.equal(buildLocationContacts(location).length, 4);
+  assert.equal(location.contactName1, "Kontakt 1");
+  assert.equal(location.contactName2, "Kontakt 2");
+  assert.equal(location.contactName3, "Kontakt 3");
+
+  const updatedLocation = updateLocation(
+    location,
+    {
+      contacts: [
+        ...buildLocationContacts(location),
+        { name: "Kontakt 5", phone: "555", email: "k5@delta.hr" },
+      ],
+    },
+    { companies: [company], locations: [location] },
+    () => "2026-03-25T08:10:00.000Z",
+  );
+
+  const updatedContacts = buildLocationContacts(updatedLocation);
+  assert.equal(updatedContacts.length, 5);
+  assert.equal(updatedContacts[4].slot, 5);
+
+  const workOrder = createWorkOrder(
+    {
+      companyId: company.id,
+      locationId: updatedLocation.id,
+      contactSlot: 5,
+      description: "Test dinamicnog kontakta",
+    },
+    { companies: [company], locations: [updatedLocation], workOrders: [] },
+    () => "work-order-delta",
+    "RN-00077",
+    () => "2026-03-25T08:15:00.000Z",
+  );
+
+  assert.equal(workOrder.contactSlot, 5);
+  assert.equal(workOrder.contactName, "Kontakt 5");
+  assert.equal(workOrder.contactPhone, "555");
 });
 
 test("support helpers cover numbering, filtering, stats, and location sync", () => {

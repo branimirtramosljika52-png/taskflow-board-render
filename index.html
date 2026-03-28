@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328f" />
+    <link rel="stylesheet" href="/styles.css?v=20260328g" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1094,55 +1094,17 @@
                 </label>
               </div>
 
-              <div class="contact-grid">
-                <fieldset class="contact-card">
-                  <legend>Kontakt 1</legend>
-                  <label class="field">
-                    <span>Ime</span>
-                    <input id="location-contact-name-1" type="text" maxlength="160" />
-                  </label>
-                  <label class="field">
-                    <span>Broj</span>
-                    <input id="location-contact-phone-1" type="text" maxlength="80" />
-                  </label>
-                  <label class="field">
-                    <span>Email</span>
-                    <input id="location-contact-email-1" type="email" maxlength="160" />
-                  </label>
-                </fieldset>
-
-                <fieldset class="contact-card">
-                  <legend>Kontakt 2</legend>
-                  <label class="field">
-                    <span>Ime</span>
-                    <input id="location-contact-name-2" type="text" maxlength="160" />
-                  </label>
-                  <label class="field">
-                    <span>Broj</span>
-                    <input id="location-contact-phone-2" type="text" maxlength="80" />
-                  </label>
-                  <label class="field">
-                    <span>Email</span>
-                    <input id="location-contact-email-2" type="email" maxlength="160" />
-                  </label>
-                </fieldset>
-
-                <fieldset class="contact-card">
-                  <legend>Kontakt 3</legend>
-                  <label class="field">
-                    <span>Ime</span>
-                    <input id="location-contact-name-3" type="text" maxlength="160" />
-                  </label>
-                  <label class="field">
-                    <span>Broj</span>
-                    <input id="location-contact-phone-3" type="text" maxlength="80" />
-                  </label>
-                  <label class="field">
-                    <span>Email</span>
-                    <input id="location-contact-email-3" type="email" maxlength="160" />
-                  </label>
-                </fieldset>
+              <div class="contact-grid-toolbar">
+                <div>
+                  <p class="section-kicker">Kontakti lokacije</p>
+                  <h3 class="subsection-title">Kontakt podaci</h3>
+                </div>
+                <button id="location-add-contact" type="button" class="ghost-button">
+                  Dodaj kontakt
+                </button>
               </div>
+
+              <div id="location-contacts-list" class="contact-grid" aria-live="polite"></div>
 
               <label class="field field-span-full">
                 <span>Napomena</span>
@@ -1479,7 +1441,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328f"></script>
-    <script type="module" src="/src/main.js?v=20260328f"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328g"></script>
+    <script type="module" src="/src/main.js?v=20260328g"></script>
   </body>
 </html>

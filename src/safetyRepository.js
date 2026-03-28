@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 
 import {
+  buildLocationContacts,
   createCompany,
   createLocation,
   createWorkOrder,
@@ -104,6 +105,79 @@ function parseNullableDecimal(value) {
 
 function locationCompositeKey(oib, name) {
   return `${dbString(oib)}::${dbString(name).toLowerCase()}`;
+}
+
+function extractLegacyLocationContactsFromRow(row) {
+  const contacts = [];
+
+  for (const slot of [1, 2, 3]) {
+    const suffix = slot === 1 ? "" : String(slot);
+    const contact = {
+      slot,
+      name: dbString(row[`kontakt_osoba${suffix}`]),
+      phone: dbString(row[`kontakt_broj${suffix}`]),
+      email: dbString(row[`kontakt_email${suffix}`]),
+    };
+
+    if (contact.name || contact.phone || contact.email) {
+      contacts.push(contact);
+    }
+  }
+
+  return contacts;
+}
+
+function groupLocationContactsByLocationId(rows = []) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const locationId = String(row.location_id ?? "");
+
+    if (!locationId) {
+      continue;
+    }
+
+    const list = grouped.get(locationId) ?? [];
+    const contact = {
+      slot: Number(row.sort_order) || (list.length + 1),
+      name: dbString(row.contact_name),
+      phone: dbString(row.contact_phone),
+      email: dbString(row.contact_email),
+    };
+
+    if (contact.name || contact.phone || contact.email) {
+      list.push(contact);
+      grouped.set(locationId, list);
+    }
+  }
+
+  return grouped;
+}
+
+async function replaceLocationContacts(connection, locationId, contacts = []) {
+  await connection.query(
+    "DELETE FROM web_location_contacts WHERE location_id = ?",
+    [Number(locationId)],
+  );
+
+  const normalizedContacts = buildLocationContacts({ contacts });
+
+  for (const [index, contact] of normalizedContacts.entries()) {
+    await connection.query(
+      `
+        INSERT INTO web_location_contacts
+          (location_id, sort_order, contact_name, contact_phone, contact_email)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        Number(locationId),
+        index + 1,
+        dbString(contact.name),
+        dbString(contact.phone),
+        dbString(contact.email),
+      ],
+    );
+  }
 }
 
 const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
@@ -305,9 +379,16 @@ async function fetchSnapshotFromConnection(connection) {
     FROM lokacije
     ORDER BY naziv_tvrtke ASC, lokacija ASC
   `);
+  const [locationContactRows] = await connection.query(`
+    SELECT id, location_id, sort_order, contact_name, contact_phone, contact_email
+    FROM web_location_contacts
+    ORDER BY location_id ASC, sort_order ASC, id ASC
+  `);
+  const locationContactsById = groupLocationContactsByLocationId(locationContactRows);
 
   const locations = locationRows.map((row) => {
     const company = companiesByOib.get(row.firma_oib ?? "");
+    const contacts = locationContactsById.get(String(row.id)) ?? extractLegacyLocationContactsFromRow(row);
 
     return {
       id: String(row.id),
@@ -319,15 +400,16 @@ async function fetchSnapshotFromConnection(connection) {
       coordinates: row.koordinate ?? "",
       region: row.regija ?? "",
       note: row.napomena ?? "",
-      contactName1: row.kontakt_osoba ?? "",
-      contactPhone1: row.kontakt_broj ?? "",
-      contactEmail1: row.kontakt_email ?? "",
-      contactName2: row.kontakt_osoba2 ?? "",
-      contactPhone2: row.kontakt_broj2 ?? "",
-      contactEmail2: row.kontakt_email2 ?? "",
-      contactName3: row.kontakt_osoba3 ?? "",
-      contactPhone3: row.kontakt_broj3 ?? "",
-      contactEmail3: row.kontakt_email3 ?? "",
+      contacts,
+      contactName1: contacts[0]?.name ?? "",
+      contactPhone1: contacts[0]?.phone ?? "",
+      contactEmail1: contacts[0]?.email ?? "",
+      contactName2: contacts[1]?.name ?? "",
+      contactPhone2: contacts[1]?.phone ?? "",
+      contactEmail2: contacts[1]?.email ?? "",
+      contactName3: contacts[2]?.name ?? "",
+      contactPhone3: contacts[2]?.phone ?? "",
+      contactEmail3: contacts[2]?.email ?? "",
       createdAt: normalizeTimestamp(row.vrijeme_promjene),
       updatedAt: normalizeTimestamp(row.vrijeme_promjene),
       companyOib: row.firma_oib ?? "",
@@ -732,6 +814,20 @@ export class MySqlSafetyRepository {
         INDEX idx_work_order_activity_logs_created (created_at)
       )
     `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_location_contacts (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        location_id INT NOT NULL,
+        sort_order INT NOT NULL DEFAULT 1,
+        contact_name VARCHAR(160) NOT NULL DEFAULT '',
+        contact_phone VARCHAR(80) NOT NULL DEFAULT '',
+        contact_email VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_location_contacts_location_id (location_id),
+        INDEX idx_web_location_contacts_location_sort (location_id, sort_order)
+      )
+    `);
   }
 
   async close() {
@@ -1053,6 +1149,8 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
+
       const snapshot = await fetchSnapshotFromConnection(connection);
       const location = createLocation(input, snapshot);
       const company = snapshot.companies.find((item) => item.id === location.companyId);
@@ -1086,9 +1184,12 @@ export class MySqlSafetyRepository {
           company.headquarters,
           location.period,
           location.representative,
-          location.note,
+            location.note,
         ],
       );
+
+      await replaceLocationContacts(connection, result.insertId, location.contacts);
+      await connection.commit();
 
       return {
         ...location,
@@ -1097,6 +1198,9 @@ export class MySqlSafetyRepository {
         companyName: company.name,
         headquarters: company.headquarters,
       };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
@@ -1153,6 +1257,8 @@ export class MySqlSafetyRepository {
         ],
       );
 
+      await replaceLocationContacts(connection, id, next.contacts);
+
       await connection.query(
         `
           UPDATE radni_nalozi
@@ -1187,10 +1293,13 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
+
       const snapshot = await fetchSnapshotFromConnection(connection);
       const current = snapshot.locations.find((item) => item.id === id);
 
       if (!current) {
+        await connection.rollback();
         return false;
       }
 
@@ -1200,11 +1309,17 @@ export class MySqlSafetyRepository {
       );
 
       if (workOrderCount.total > 0) {
+        await connection.rollback();
         throw new Error("Lokacija je vec povezana s radnim nalozima.");
       }
 
+      await connection.query("DELETE FROM web_location_contacts WHERE location_id = ?", [Number(id)]);
       const [result] = await connection.query("DELETE FROM lokacije WHERE id = ?", [Number(id)]);
+      await connection.commit();
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

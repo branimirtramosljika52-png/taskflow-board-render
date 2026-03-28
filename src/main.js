@@ -447,15 +447,8 @@ const locationCoordinatesInput = document.querySelector("#location-coordinates")
 const locationPeriodInput = document.querySelector("#location-period");
 const locationRepresentativeInput = document.querySelector("#location-representative");
 const locationIsActiveInput = document.querySelector("#location-is-active");
-const locationContactName1Input = document.querySelector("#location-contact-name-1");
-const locationContactPhone1Input = document.querySelector("#location-contact-phone-1");
-const locationContactEmail1Input = document.querySelector("#location-contact-email-1");
-const locationContactName2Input = document.querySelector("#location-contact-name-2");
-const locationContactPhone2Input = document.querySelector("#location-contact-phone-2");
-const locationContactEmail2Input = document.querySelector("#location-contact-email-2");
-const locationContactName3Input = document.querySelector("#location-contact-name-3");
-const locationContactPhone3Input = document.querySelector("#location-contact-phone-3");
-const locationContactEmail3Input = document.querySelector("#location-contact-email-3");
+const locationContactsList = document.querySelector("#location-contacts-list");
+const locationAddContactButton = document.querySelector("#location-add-contact");
 const locationNoteInput = document.querySelector("#location-note");
 const locationsBody = document.querySelector("#locations-body");
 const locationsEmpty = document.querySelector("#locations-empty");
@@ -520,6 +513,7 @@ const loginContentBody = document.querySelector("#login-content-body");
 const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
 let userMenuOpen = false;
+let locationFormContacts = [];
 
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
   if (!connectionStatus) {
@@ -4464,6 +4458,134 @@ function buildCompanyPayload() {
   };
 }
 
+function createEmptyLocationContactDraft() {
+  return {
+    name: "",
+    phone: "",
+    email: "",
+  };
+}
+
+function sanitizeLocationContactDrafts(contacts = [], { ensureOne = false } = {}) {
+  const drafts = Array.isArray(contacts)
+    ? contacts.map((contact) => ({
+      name: String(contact?.name ?? "").trim(),
+      phone: String(contact?.phone ?? "").trim(),
+      email: String(contact?.email ?? "").trim(),
+    }))
+    : [];
+
+  if (ensureOne && drafts.length === 0) {
+    return [createEmptyLocationContactDraft()];
+  }
+
+  return drafts;
+}
+
+function setLocationFormContacts(contacts = [], { ensureOne = false } = {}) {
+  locationFormContacts = sanitizeLocationContactDrafts(contacts, { ensureOne });
+  renderLocationContactCards();
+}
+
+function updateLocationFormContact(index, key, value) {
+  if (!locationFormContacts[index]) {
+    return;
+  }
+
+  locationFormContacts[index][key] = value;
+}
+
+function addLocationFormContact(contact = createEmptyLocationContactDraft()) {
+  locationFormContacts = [
+    ...locationFormContacts,
+    {
+      name: String(contact?.name ?? "").trim(),
+      phone: String(contact?.phone ?? "").trim(),
+      email: String(contact?.email ?? "").trim(),
+    },
+  ];
+  renderLocationContactCards();
+}
+
+function removeLocationFormContact(index) {
+  locationFormContacts = locationFormContacts.filter((_, contactIndex) => contactIndex !== index);
+
+  if (locationFormContacts.length === 0) {
+    locationFormContacts = [createEmptyLocationContactDraft()];
+  }
+
+  renderLocationContactCards();
+}
+
+function renderLocationContactCards() {
+  if (!locationContactsList) {
+    return;
+  }
+
+  if (locationFormContacts.length === 0) {
+    locationContactsList.replaceChildren();
+    return;
+  }
+
+  locationContactsList.replaceChildren(...locationFormContacts.map((contact, index) => {
+    const card = document.createElement("fieldset");
+    card.className = "contact-card";
+
+    const header = document.createElement("div");
+    header.className = "contact-card-header";
+
+    const heading = document.createElement("div");
+    heading.className = "contact-card-heading";
+
+    const title = document.createElement("span");
+    title.className = "contact-card-title";
+    title.textContent = `Kontakt ${index + 1}`;
+
+    const subtitle = document.createElement("span");
+    subtitle.className = "contact-card-index";
+    subtitle.textContent = "Ime, broj i email";
+
+    heading.append(title, subtitle);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "contact-card-remove";
+    removeButton.textContent = "Ukloni";
+    removeButton.disabled = locationFormContacts.length === 1;
+    removeButton.addEventListener("click", () => removeLocationFormContact(index));
+
+    header.append(heading, removeButton);
+
+    const createInputField = (labelText, key, type = "text", maxLength = "160") => {
+      const label = document.createElement("label");
+      label.className = "field";
+
+      const span = document.createElement("span");
+      span.textContent = labelText;
+
+      const input = document.createElement("input");
+      input.type = type;
+      input.maxLength = Number(maxLength);
+      input.value = contact[key] ?? "";
+      input.addEventListener("input", (event) => {
+        updateLocationFormContact(index, key, event.currentTarget.value);
+      });
+
+      label.append(span, input);
+      return label;
+    };
+
+    card.append(
+      header,
+      createInputField("Ime", "name"),
+      createInputField("Broj", "phone", "text", "80"),
+      createInputField("Email", "email", "email"),
+    );
+
+    return card;
+  }));
+}
+
 function buildLocationPayload() {
   return {
     companyId: locationCompanyIdInput.value,
@@ -4473,15 +4595,9 @@ function buildLocationPayload() {
     period: locationPeriodInput.value,
     representative: locationRepresentativeInput.value,
     isActive: locationIsActiveInput.value,
-    contactName1: locationContactName1Input.value,
-    contactPhone1: locationContactPhone1Input.value,
-    contactEmail1: locationContactEmail1Input.value,
-    contactName2: locationContactName2Input.value,
-    contactPhone2: locationContactPhone2Input.value,
-    contactEmail2: locationContactEmail2Input.value,
-    contactName3: locationContactName3Input.value,
-    contactPhone3: locationContactPhone3Input.value,
-    contactEmail3: locationContactEmail3Input.value,
+    contacts: sanitizeLocationContactDrafts(locationFormContacts).filter((contact) => (
+      contact.name || contact.phone || contact.email
+    )),
     note: locationNoteInput.value,
   };
 }
@@ -4570,6 +4686,7 @@ function resetLocationForm() {
   locationError.textContent = "";
   locationIsActiveInput.value = "true";
   rebuildLocationCompanyOptions("");
+  setLocationFormContacts([], { ensureOne: true });
 }
 
 function resetOrganizationForm() {
@@ -4628,15 +4745,7 @@ function hydrateLocationForm(location) {
   locationPeriodInput.value = location.period;
   locationRepresentativeInput.value = location.representative;
   locationIsActiveInput.value = String(location.isActive);
-  locationContactName1Input.value = location.contactName1;
-  locationContactPhone1Input.value = location.contactPhone1;
-  locationContactEmail1Input.value = location.contactEmail1;
-  locationContactName2Input.value = location.contactName2;
-  locationContactPhone2Input.value = location.contactPhone2;
-  locationContactEmail2Input.value = location.contactEmail2;
-  locationContactName3Input.value = location.contactName3;
-  locationContactPhone3Input.value = location.contactPhone3;
-  locationContactEmail3Input.value = location.contactEmail3;
+  setLocationFormContacts(buildLocationContacts(location), { ensureOne: true });
   locationNoteInput.value = location.note;
   locationError.textContent = "";
 }
@@ -6584,6 +6693,10 @@ locationForm.addEventListener("submit", (event) => {
       resetLocationForm();
     }
   });
+});
+
+locationAddContactButton?.addEventListener("click", () => {
+  addLocationFormContact();
 });
 
 locationResetButton.addEventListener("click", resetLocationForm);
