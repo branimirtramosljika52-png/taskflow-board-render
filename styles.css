@@ -2524,6 +2524,7 @@ fieldset {
 .dashboard-widget-card.is-dragging,
 .dashboard-widget-card.is-resizing {
   z-index: 3;
+  transition: none;
   box-shadow: 0 22px 48px rgba(64, 74, 110, 0.22);
 }
 
@@ -2586,6 +2587,11 @@ fieldset {
 
 .dashboard-widget-drag-handle:active {
   cursor: grabbing;
+}
+
+body.is-dragging-dashboard-widget,
+body.is-dragging-dashboard-widget * {
+  user-select: none !important;
 }
 
 .dashboard-widget-body {

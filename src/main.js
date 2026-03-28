@@ -6300,6 +6300,7 @@ function getDashboardGridMetrics() {
 
   return {
     columns,
+    columnWidth,
     gap,
     rowHeight,
     stepX: columnWidth + gap,
@@ -6307,14 +6308,44 @@ function getDashboardGridMetrics() {
   };
 }
 
-function clearDashboardWidgetInteraction() {
+function applyDashboardWidgetCardGridStyle(card, {
+  gridColumn = 1,
+  gridRow = 1,
+  gridWidth = 4,
+  gridHeight = 3,
+} = {}) {
+  if (!card) {
+    return;
+  }
+
+  card.style.gridColumn = `${Math.max(1, Number(gridColumn) || 1)} / span ${clampDashboardWidgetWidth(gridWidth)}`;
+  card.style.gridRow = `${Math.max(1, Number(gridRow) || 1)} / span ${clampDashboardWidgetHeight(gridHeight)}`;
+}
+
+function clearDashboardWidgetInteraction({ revertLayout = true } = {}) {
   if (!dashboardWidgetLayoutInteraction) {
     return;
   }
 
-  dashboardWidgetLayoutInteraction.card.classList.remove("is-dragging", "is-resizing");
-  dashboardWidgetLayoutInteraction.card.style.removeProperty("transform");
-  dashboardWidgetLayoutInteraction.card.removeAttribute("data-layout-preview");
+  const interaction = dashboardWidgetLayoutInteraction;
+  interaction.card.classList.remove("is-dragging", "is-resizing");
+  interaction.card.style.removeProperty("transform");
+  interaction.card.style.removeProperty("width");
+  interaction.card.style.removeProperty("height");
+  interaction.card.style.removeProperty("will-change");
+  interaction.card.removeAttribute("data-layout-preview");
+  interaction.card.releasePointerCapture?.(interaction.pointerId);
+  document.body.classList.remove("is-dragging-dashboard-widget");
+
+  if (revertLayout) {
+    applyDashboardWidgetCardGridStyle(interaction.card, {
+      gridColumn: interaction.startColumn,
+      gridRow: interaction.startRow,
+      gridWidth: interaction.startWidth,
+      gridHeight: interaction.startHeight,
+    });
+  }
+
   dashboardWidgetLayoutInteraction = null;
 }
 
@@ -6345,14 +6376,21 @@ function getDashboardWidgetLayoutChanges(nextWidgets) {
   });
 }
 
-async function persistDashboardWidgetLayout(nextWidgets) {
+async function persistDashboardWidgetLayout(nextWidgets, { optimistic = false } = {}) {
   const changedWidgets = getDashboardWidgetLayoutChanges(nextWidgets);
 
   if (changedWidgets.length === 0) {
-    return;
+    return true;
   }
 
-  await runMutation(async () => {
+  const previousWidgets = state.dashboardWidgets;
+
+  if (optimistic) {
+    state.dashboardWidgets = nextWidgets;
+    renderDashboardOverview();
+  }
+
+  const success = await runMutation(async () => {
     let payload = null;
 
     for (const widget of changedWidgets) {
@@ -6371,6 +6409,14 @@ async function persistDashboardWidgetLayout(nextWidgets) {
 
     return payload;
   }, dashboardWidgetError);
+
+  if (!success && optimistic) {
+    state.dashboardWidgets = previousWidgets;
+    renderDashboardOverview();
+    void refreshSnapshot().catch(() => {});
+  }
+
+  return success;
 }
 
 async function moveDashboardWidgetOnGrid(widgetId, deltaColumn, deltaRow) {
@@ -6417,6 +6463,7 @@ function beginDashboardWidgetLayoutInteraction(mode, widget, card, event) {
     mode,
     widgetId: widget.id,
     card,
+    pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
     startColumn: Number(widget.gridColumn ?? 1),
@@ -6427,11 +6474,15 @@ function beginDashboardWidgetLayoutInteraction(mode, widget, card, event) {
     previewRow: Number(widget.gridRow ?? 1),
     previewWidth: clampDashboardWidgetWidth(widget.gridWidth),
     previewHeight: clampDashboardWidgetHeight(widget.gridHeight),
+    startPixelWidth: card.getBoundingClientRect().width,
+    startPixelHeight: card.getBoundingClientRect().height,
     metrics,
   };
 
   card.classList.add(mode === "move" ? "is-dragging" : "is-resizing");
+  card.style.willChange = mode === "move" ? "transform" : "width, height";
   card.setPointerCapture?.(event.pointerId);
+  document.body.classList.add("is-dragging-dashboard-widget");
   event.preventDefault();
   event.stopPropagation();
 }
@@ -6442,20 +6493,24 @@ function updateDashboardWidgetLayoutInteraction(event) {
   }
 
   const interaction = dashboardWidgetLayoutInteraction;
-  const deltaColumns = Math.round((event.clientX - interaction.startX) / interaction.metrics.stepX);
-  const deltaRows = Math.round((event.clientY - interaction.startY) / interaction.metrics.stepY);
+  const deltaX = event.clientX - interaction.startX;
+  const deltaY = event.clientY - interaction.startY;
+  const deltaColumns = Math.round(deltaX / interaction.metrics.stepX);
+  const deltaRows = Math.round(deltaY / interaction.metrics.stepY);
 
   if (interaction.mode === "move") {
     interaction.previewColumn = Math.max(1, interaction.startColumn + deltaColumns);
     interaction.previewRow = Math.max(1, interaction.startRow + deltaRows);
-    interaction.card.style.transform = `translate(${deltaColumns * interaction.metrics.stepX}px, ${deltaRows * interaction.metrics.stepY}px)`;
+    interaction.card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
     interaction.card.dataset.layoutPreview = `${interaction.previewColumn}:${interaction.previewRow}`;
     return;
   }
 
   interaction.previewWidth = clampDashboardWidgetWidth(interaction.startWidth + deltaColumns);
   interaction.previewHeight = clampDashboardWidgetHeight(interaction.startHeight + deltaRows);
-  interaction.card.dataset.layoutPreview = `${interaction.previewWidth}×${interaction.previewHeight}`;
+  interaction.card.style.width = `${Math.max(interaction.metrics.columnWidth, interaction.startPixelWidth + deltaX)}px`;
+  interaction.card.style.height = `${Math.max(interaction.metrics.rowHeight, interaction.startPixelHeight + deltaY)}px`;
+  interaction.card.dataset.layoutPreview = `${interaction.previewWidth}x${interaction.previewHeight}`;
 }
 
 function commitDashboardWidgetLayoutInteraction() {
@@ -6464,29 +6519,36 @@ function commitDashboardWidgetLayoutInteraction() {
   }
 
   const interaction = dashboardWidgetLayoutInteraction;
-  clearDashboardWidgetInteraction();
+  const nextWidgets = interaction.mode === "move"
+    ? buildDashboardLayoutWidgets(interaction.widgetId, {
+      gridColumn: interaction.previewColumn,
+      gridRow: interaction.previewRow,
+    })
+    : buildDashboardLayoutWidgets(interaction.widgetId, {
+      size: getDashboardWidgetSizeFromWidth(interaction.previewWidth),
+      gridWidth: interaction.previewWidth,
+      gridHeight: interaction.previewHeight,
+    });
+  const hasChanges = getDashboardWidgetLayoutChanges(nextWidgets).length > 0;
 
-  if (interaction.mode === "move") {
-    void moveDashboardWidgetOnGrid(
-      interaction.widgetId,
-      interaction.previewColumn - interaction.startColumn,
-      interaction.previewRow - interaction.startRow,
-    );
+  clearDashboardWidgetInteraction({ revertLayout: !hasChanges });
+
+  if (!hasChanges) {
     return;
   }
 
-  void resizeDashboardWidgetOnGrid(
-    interaction.widgetId,
-    interaction.previewWidth - interaction.startWidth,
-    interaction.previewHeight - interaction.startHeight,
-  );
+  void persistDashboardWidgetLayout(nextWidgets, { optimistic: true });
 }
 
 function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
   const card = document.createElement("article");
   card.className = `dashboard-widget-card size-${widget.size}`;
-  card.style.gridColumn = `${Number(widget.gridColumn ?? 1)} / span ${clampDashboardWidgetWidth(widget.gridWidth)}`;
-  card.style.gridRow = `${Number(widget.gridRow ?? 1)} / span ${clampDashboardWidgetHeight(widget.gridHeight)}`;
+  applyDashboardWidgetCardGridStyle(card, {
+    gridColumn: Number(widget.gridColumn ?? 1),
+    gridRow: Number(widget.gridRow ?? 1),
+    gridWidth: clampDashboardWidgetWidth(widget.gridWidth),
+    gridHeight: clampDashboardWidgetHeight(widget.gridHeight),
+  });
   card.dataset.widgetId = widget.id;
 
   if (preview) {
