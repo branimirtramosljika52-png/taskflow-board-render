@@ -528,6 +528,10 @@ const workOrderActivityLoading = document.querySelector("#work-order-activity-lo
 const workOrderActivityError = document.querySelector("#work-order-activity-error");
 const workOrderActivityCount = document.querySelector("#work-order-activity-count");
 
+if (dashboardBuilderPanel?.parentElement !== document.body) {
+  document.body.append(dashboardBuilderPanel);
+}
+
 if (workOrderEditorBackdrop?.parentElement !== document.body) {
   document.body.append(workOrderEditorBackdrop);
 }
