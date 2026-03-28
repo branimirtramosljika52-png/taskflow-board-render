@@ -93,13 +93,13 @@ fieldset {
   padding: 18px;
   backdrop-filter: blur(14px);
   display: grid;
-  grid-template-columns: 88px minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: 112px minmax(220px, 280px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
 .app-frame.is-sidebar-collapsed {
-  grid-template-columns: 88px 0 minmax(0, 1fr);
+  grid-template-columns: 112px 0 minmax(0, 1fr);
 }
 
 .app-frame.is-rail-hidden {
@@ -118,7 +118,7 @@ fieldset {
   position: sticky;
   top: 12px;
   min-height: calc(100vh - 60px);
-  padding: 12px 12px;
+  padding: 12px 14px;
   border-radius: 28px;
   border: 1px solid rgba(167, 153, 205, 0.92);
   background:
@@ -146,9 +146,9 @@ fieldset {
 }
 
 .app-rail-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 15px;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1515,9 +1515,9 @@ fieldset {
   grid-template-columns: 1fr;
   grid-template-rows: auto auto;
   row-gap: 3px;
-  width: 66px;
-  min-height: 82px;
-  padding: 8px 5px 10px;
+  width: 84px;
+  min-height: 92px;
+  padding: 10px 6px 12px;
   border-radius: 16px;
   border: 1px solid rgba(173, 181, 212, 0.96);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(243, 246, 252, 0.88));
@@ -1543,21 +1543,21 @@ fieldset {
 }
 
 .rail-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   color: inherit;
-  font-size: 0.98rem;
+  font-size: 1.02rem;
   font-weight: 700;
 }
 
 .rail-icon .icon-svg {
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
 }
 
 .sidebar-group-icon .icon-svg,
@@ -1574,13 +1574,13 @@ fieldset {
   display: block;
   max-width: 100%;
   color: currentColor;
-  font-size: 0.54rem;
+  font-size: 0.56rem;
   font-weight: 700;
   line-height: 1.12;
   letter-spacing: 0.05em;
   text-align: center;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  word-break: normal;
   text-transform: uppercase;
   opacity: 0.94;
 }
