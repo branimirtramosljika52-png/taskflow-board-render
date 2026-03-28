@@ -44,6 +44,8 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
+const CHAT_POLL_INTERVAL_MS = 7_000;
+const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
@@ -350,6 +352,24 @@ const state = {
     templateKey: "",
     seeding: false,
   },
+  chat: {
+    open: false,
+    tab: "conversations",
+    search: "",
+    conversations: [],
+    users: [],
+    presenceByUserId: {},
+    activeConversationId: "",
+    composerOpen: false,
+    composerTitle: "",
+    composerParticipantIds: [],
+    unreadTotal: 0,
+    loaded: false,
+    loading: false,
+    sending: false,
+    error: "",
+    lastOrganizationId: "",
+  },
 };
 
 function readSidebarCollapsedPreference() {
@@ -374,6 +394,9 @@ state.railHidden = readRailHiddenPreference();
 let measurementRowCounter = 0;
 let measurementColumnCounter = 0;
 let userPresenceMenuOpen = false;
+let chatPollTimerId = null;
+let chatLastPresenceSyncAt = 0;
+let chatLastPresenceValue = "";
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
@@ -405,6 +428,34 @@ const userMenuAvatarButton = document.querySelector("#user-menu-avatar-button");
 const userMenuAvatarFileInput = document.querySelector("#user-menu-avatar-file");
 const userMenuError = document.querySelector("#user-menu-error");
 const logoutButton = document.querySelector("#logout-button");
+const chatDock = document.querySelector("#chat-dock");
+const chatLauncher = document.querySelector("#chat-launcher");
+const chatLauncherPresence = document.querySelector("#chat-launcher-presence");
+const chatLauncherCaption = document.querySelector("#chat-launcher-caption");
+const chatLauncherUnread = document.querySelector("#chat-launcher-unread");
+const chatPanel = document.querySelector("#chat-panel");
+const chatCloseButton = document.querySelector("#chat-close-button");
+const chatNewGroupButton = document.querySelector("#chat-new-group-button");
+const chatTabButtons = Array.from(document.querySelectorAll("[data-chat-tab]"));
+const chatSearchInput = document.querySelector("#chat-search-input");
+const chatListCaption = document.querySelector("#chat-list-caption");
+const chatConversationsView = document.querySelector("#chat-conversations-view");
+const chatPeopleView = document.querySelector("#chat-people-view");
+const chatThreadEmpty = document.querySelector("#chat-thread-empty");
+const chatThreadView = document.querySelector("#chat-thread-view");
+const chatThreadTitle = document.querySelector("#chat-thread-title");
+const chatThreadMeta = document.querySelector("#chat-thread-meta");
+const chatThreadMessages = document.querySelector("#chat-thread-messages");
+const chatMessageForm = document.querySelector("#chat-message-form");
+const chatMessageInput = document.querySelector("#chat-message-input");
+const chatSendButton = document.querySelector("#chat-send-button");
+const chatError = document.querySelector("#chat-error");
+const chatComposer = document.querySelector("#chat-composer");
+const chatComposerTitleInput = document.querySelector("#chat-composer-title");
+const chatComposerUsers = document.querySelector("#chat-composer-users");
+const chatComposerCreateButton = document.querySelector("#chat-composer-create");
+const chatComposerError = document.querySelector("#chat-composer-error");
+const chatComposerCloseButtons = Array.from(document.querySelectorAll("[data-chat-composer-close]"));
 const sidebarHomeButton = document.querySelector("#sidebar-home-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
 const sidebarCollapseToggle = document.querySelector("#sidebar-collapse-toggle");
@@ -1105,6 +1156,7 @@ function applySnapshot(payload) {
   setConnectionStatus();
   setSyncError("");
   render();
+  ensureChatContext();
 }
 
 async function refreshSnapshot() {
@@ -1408,9 +1460,692 @@ function renderUserPresenceOptions(selectedPresence = readUserPresence()) {
       writeUserPresence(option.value);
       setUserPresenceMenuOpen(false);
       renderAuthState();
+      void syncChatState({ silent: true, forcePresence: true });
     });
     return button;
   }));
+}
+
+function getChatPresenceValue() {
+  return normalizeUserPresence(readUserPresence(state.user));
+}
+
+function clearChatPollTimer() {
+  if (chatPollTimerId) {
+    window.clearTimeout(chatPollTimerId);
+    chatPollTimerId = null;
+  }
+}
+
+function resetChatState() {
+  clearChatPollTimer();
+  chatLastPresenceSyncAt = 0;
+  chatLastPresenceValue = "";
+  state.chat.open = false;
+  state.chat.tab = "conversations";
+  state.chat.search = "";
+  state.chat.conversations = [];
+  state.chat.users = [];
+  state.chat.presenceByUserId = {};
+  state.chat.activeConversationId = "";
+  state.chat.composerOpen = false;
+  state.chat.composerTitle = "";
+  state.chat.composerParticipantIds = [];
+  state.chat.unreadTotal = 0;
+  state.chat.loaded = false;
+  state.chat.loading = false;
+  state.chat.sending = false;
+  state.chat.error = "";
+  state.chat.lastOrganizationId = "";
+}
+
+function setChatError(message = "") {
+  state.chat.error = message;
+
+  if (chatError) {
+    chatError.textContent = message;
+  }
+
+  if (chatComposerError) {
+    chatComposerError.textContent = message;
+  }
+}
+
+function getChatConversationById(conversationId = state.chat.activeConversationId) {
+  return state.chat.conversations.find((conversation) => String(conversation.id) === String(conversationId)) ?? null;
+}
+
+function findChatConversationByParticipants(participantIds = []) {
+  const signature = Array.from(new Set([state.user?.id, ...participantIds].filter(Boolean).map(String))).sort().join("|");
+  return state.chat.conversations.find((conversation) => {
+    const conversationSignature = Array.from(new Set((conversation.participantIds ?? []).map(String))).sort().join("|");
+    return conversationSignature === signature;
+  }) ?? null;
+}
+
+function formatChatTimestamp(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "";
+  }
+
+  const nowDate = new Date();
+  const sameDay = parsedDate.toDateString() === nowDate.toDateString();
+
+  return sameDay
+    ? new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit" }).format(parsedDate)
+    : formatCompactDate(value);
+}
+
+function buildChatPresenceLabel(status = "offline") {
+  return USER_PRESENCE_OPTIONS.find((option) => option.value === status)?.label ?? "Offline";
+}
+
+function createChatAvatar(userLike = {}, presence = "offline", className = "chat-person-avatar") {
+  const avatar = document.createElement("span");
+  avatar.className = className;
+  renderAvatar(avatar, userLike);
+  applyPresenceToAvatar(avatar, presence);
+  return avatar;
+}
+
+function createChatChip(label) {
+  const chip = document.createElement("span");
+  chip.className = "chat-mini-chip";
+  chip.textContent = label;
+  return chip;
+}
+
+function applyChatSnapshot(payload = {}) {
+  state.chat.conversations = payload.conversations ?? [];
+  state.chat.users = payload.users ?? [];
+  state.chat.presenceByUserId = payload.presenceByUserId ?? {};
+  state.chat.loaded = true;
+  state.chat.lastOrganizationId = payload.organizationId ?? state.activeOrganizationId;
+  state.chat.unreadTotal = state.chat.conversations.reduce((sum, conversation) => sum + Number(conversation.unreadCount ?? 0), 0);
+
+  const hasActiveConversation = state.chat.conversations.some((conversation) => String(conversation.id) === String(state.chat.activeConversationId));
+
+  if (!hasActiveConversation) {
+    state.chat.activeConversationId = state.chat.conversations[0]?.id ?? "";
+  }
+
+  renderChatDock();
+
+  const activeConversation = getChatConversationById();
+  if (state.chat.open && activeConversation && Number(activeConversation.unreadCount ?? 0) > 0) {
+    void markChatConversationRead(activeConversation.id);
+  }
+}
+
+function scheduleChatPoll(delay = CHAT_POLL_INTERVAL_MS) {
+  clearChatPollTimer();
+
+  if (!state.user || !state.activeOrganizationId) {
+    return;
+  }
+
+  chatPollTimerId = window.setTimeout(() => {
+    void syncChatState({ silent: true });
+  }, delay);
+}
+
+async function syncChatState({ silent = false, forcePresence = false } = {}) {
+  if (!state.user || !state.activeOrganizationId || state.chat.loading) {
+    return;
+  }
+
+  state.chat.loading = true;
+
+  const presenceValue = getChatPresenceValue();
+  const shouldSyncPresence = forcePresence
+    || !state.chat.loaded
+    || state.chat.lastOrganizationId !== state.activeOrganizationId
+    || presenceValue !== chatLastPresenceValue
+    || (Date.now() - chatLastPresenceSyncAt) >= CHAT_PRESENCE_HEARTBEAT_MS;
+
+  try {
+    const payload = shouldSyncPresence
+      ? await apiRequest("/chat/presence", {
+        method: "POST",
+        body: { status: presenceValue },
+      })
+      : await apiRequest("/chat/bootstrap");
+
+    if (shouldSyncPresence) {
+      chatLastPresenceSyncAt = Date.now();
+      chatLastPresenceValue = presenceValue;
+    }
+
+    setChatError("");
+    applyChatSnapshot(payload);
+  } catch (error) {
+    if (error.statusCode === 401) {
+      resetChatState();
+      state.user = null;
+      renderAuthState();
+      return;
+    }
+
+    if (!silent) {
+      setChatError(error.message);
+      renderChatDock();
+    }
+  } finally {
+    state.chat.loading = false;
+    scheduleChatPoll();
+  }
+}
+
+function ensureChatContext() {
+  if (!state.user || !state.activeOrganizationId) {
+    resetChatState();
+    renderChatDock();
+    return;
+  }
+
+  if (!state.chat.loaded || state.chat.lastOrganizationId !== state.activeOrganizationId) {
+    void syncChatState({ silent: true, forcePresence: true });
+    return;
+  }
+
+  renderChatDock();
+  scheduleChatPoll();
+}
+
+async function markChatConversationRead(conversationId = state.chat.activeConversationId) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation || Number(conversation.unreadCount ?? 0) === 0) {
+    return;
+  }
+
+  try {
+    const payload = await apiRequest(`/chat/conversations/${conversation.id}/read`, {
+      method: "POST",
+      body: {},
+    });
+    applyChatSnapshot(payload);
+  } catch {
+    return;
+  }
+}
+
+function setChatComposerOpen(isOpen) {
+  state.chat.composerOpen = Boolean(isOpen);
+
+  if (!state.chat.composerOpen) {
+    state.chat.composerTitle = "";
+    state.chat.composerParticipantIds = [];
+    setChatError("");
+  }
+
+  renderChatDock();
+}
+
+function setChatOpen(isOpen) {
+  state.chat.open = Boolean(isOpen);
+
+  if (!state.chat.open) {
+    setChatComposerOpen(false);
+  } else if (!state.chat.loaded) {
+    void syncChatState({ silent: true, forcePresence: true });
+  } else if (state.chat.activeConversationId) {
+    void markChatConversationRead(state.chat.activeConversationId);
+  }
+
+  renderChatDock();
+}
+
+function getFilteredChatConversations() {
+  const query = state.chat.search.trim().toLowerCase();
+
+  if (!query) {
+    return state.chat.conversations;
+  }
+
+  return state.chat.conversations.filter((conversation) => {
+    const haystack = [
+      conversation.title,
+      conversation.lastMessage?.body,
+      ...(conversation.participants ?? []).map((participant) => participant.fullName || participant.email),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(query);
+  });
+}
+
+function getFilteredChatUsers() {
+  const query = state.chat.search.trim().toLowerCase();
+
+  return state.chat.users
+    .filter((user) => String(user.id) !== String(state.user?.id))
+    .filter((user) => {
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [user.fullName, user.email].join(" ").toLowerCase();
+      return haystack.includes(query);
+    })
+    .sort((left, right) => {
+      const leftPresence = state.chat.presenceByUserId[left.id] ?? "offline";
+      const rightPresence = state.chat.presenceByUserId[right.id] ?? "offline";
+      const leftOnline = leftPresence === "online" ? 1 : 0;
+      const rightOnline = rightPresence === "online" ? 1 : 0;
+
+      if (leftOnline !== rightOnline) {
+        return rightOnline - leftOnline;
+      }
+
+      return String(left.fullName || left.email).localeCompare(String(right.fullName || right.email), "hr");
+    });
+}
+
+function renderChatConversationList() {
+  if (!chatConversationsView) {
+    return;
+  }
+
+  const conversations = getFilteredChatConversations();
+
+  if (conversations.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "chat-empty-inline";
+    empty.textContent = state.chat.search ? "Nema razgovora za zadani pojam." : "Jos nema aktivnih razgovora.";
+    chatConversationsView.replaceChildren(empty);
+    return;
+  }
+
+  chatConversationsView.replaceChildren(...conversations.map((conversation) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-list-card";
+    button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
+
+    const head = document.createElement("div");
+    head.className = "chat-list-card-head";
+
+    const avatarSeed = conversation.participants.find((participant) => String(participant.id) !== String(state.user?.id))
+      ?? conversation.participants[0]
+      ?? { fullName: conversation.title };
+    const avatarPresence = conversation.kind === "direct"
+      ? (state.chat.presenceByUserId[avatarSeed.id] ?? "offline")
+      : "online";
+    const avatar = createChatAvatar(avatarSeed, avatarPresence, "chat-participant-avatar");
+
+    const copy = document.createElement("div");
+    copy.className = "chat-list-card-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = conversation.title;
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = conversation.lastMessage
+      ? `${conversation.lastMessage.authorName} · ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
+      : `${conversation.participants.length} sudionika`;
+
+    copy.append(title, subtitle);
+    head.append(avatar, copy);
+
+    const preview = document.createElement("p");
+    preview.className = "chat-list-card-preview";
+    preview.textContent = conversation.lastMessage?.body || "Bez poruka za sada.";
+
+    const meta = document.createElement("div");
+    meta.className = "chat-list-card-meta";
+
+    const chips = document.createElement("div");
+    chips.className = "chat-list-chip-row";
+    chips.append(
+      createChatChip(conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "General" : "Grupa"),
+      createChatChip(`${conversation.participants.length} cl.`),
+    );
+
+    meta.append(chips);
+
+    if (conversation.unreadCount > 0) {
+      const unread = document.createElement("span");
+      unread.className = "chat-unread-badge";
+      unread.textContent = String(conversation.unreadCount);
+      meta.append(unread);
+    }
+
+    button.append(head, preview, meta);
+    button.addEventListener("click", () => {
+      state.chat.activeConversationId = conversation.id;
+      state.chat.open = true;
+      renderChatDock();
+      void markChatConversationRead(conversation.id);
+    });
+    return button;
+  }));
+}
+
+function renderChatPeopleList() {
+  if (!chatPeopleView) {
+    return;
+  }
+
+  const people = getFilteredChatUsers();
+
+  if (people.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "chat-empty-inline";
+    empty.textContent = state.chat.search ? "Nema kolega za taj pojam." : "Nema dostupnih kolega u organizaciji.";
+    chatPeopleView.replaceChildren(empty);
+    return;
+  }
+
+  chatPeopleView.replaceChildren(...people.map((person) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-person-card";
+
+    const head = document.createElement("div");
+    head.className = "chat-person-card-head";
+    head.append(createChatAvatar(person, state.chat.presenceByUserId[person.id] ?? "offline", "chat-person-avatar"));
+
+    const copy = document.createElement("div");
+    copy.className = "chat-person-card-copy";
+    const title = document.createElement("strong");
+    title.textContent = person.fullName || person.email;
+    const subtitle = document.createElement("span");
+    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[person.id] ?? "offline")} · ${person.email || "bez emaila"}`;
+    copy.append(title, subtitle);
+    head.append(copy);
+
+    const chipRow = document.createElement("div");
+    chipRow.className = "chat-list-chip-row";
+    chipRow.append(
+      createChatChip(person.role === "super_admin" ? "Super admin" : person.role === "admin" ? "Admin" : "User"),
+      createChatChip("Direktni chat"),
+    );
+
+    button.append(head, chipRow);
+    button.addEventListener("click", () => {
+      void startDirectChatWithUser(person.id);
+    });
+    return button;
+  }));
+}
+
+function renderChatThread() {
+  if (!chatThreadEmpty || !chatThreadView || !chatThreadMessages) {
+    return;
+  }
+
+  const conversation = getChatConversationById();
+
+  chatThreadEmpty.hidden = Boolean(conversation);
+  chatThreadView.hidden = !conversation;
+
+  if (!conversation) {
+    chatThreadMessages.replaceChildren();
+    return;
+  }
+
+  if (chatThreadTitle) {
+    chatThreadTitle.textContent = conversation.title;
+  }
+
+  if (chatThreadMeta) {
+    const onlineCount = (conversation.participants ?? [])
+      .filter((participant) => (state.chat.presenceByUserId[participant.id] ?? "offline") === "online")
+      .length;
+    chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
+  }
+
+  chatThreadMessages.replaceChildren(...(conversation.messages ?? []).map((message) => {
+    const row = document.createElement("div");
+    row.className = "chat-message-row";
+    const isOwn = String(message.authorId) === String(state.user?.id);
+    row.classList.toggle("is-own", isOwn);
+
+    if (!isOwn) {
+      const author = state.chat.users.find((user) => String(user.id) === String(message.authorId))
+        ?? { id: message.authorId, fullName: message.authorName, avatarDataUrl: message.authorAvatarDataUrl };
+      row.append(createChatAvatar(author, state.chat.presenceByUserId[message.authorId] ?? "offline", "chat-participant-avatar"));
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "chat-message-bubble";
+
+    const meta = document.createElement("div");
+    meta.className = "chat-message-meta";
+    const authorName = document.createElement("strong");
+    authorName.textContent = isOwn ? "Vi" : (message.authorName || "Kolega");
+    const time = document.createElement("span");
+    time.textContent = formatChatTimestamp(message.createdAt);
+    meta.append(authorName, time);
+
+    const body = document.createElement("p");
+    body.className = "chat-message-body";
+    body.textContent = message.body;
+
+    bubble.append(meta, body);
+    row.append(bubble);
+    return row;
+  }));
+
+  if (chatMessageInput) {
+    chatMessageInput.disabled = state.chat.sending;
+  }
+
+  if (chatSendButton) {
+    chatSendButton.disabled = state.chat.sending;
+  }
+
+  window.requestAnimationFrame(() => {
+    chatThreadMessages.scrollTop = chatThreadMessages.scrollHeight;
+  });
+}
+
+function renderChatComposer() {
+  if (!chatComposer) {
+    return;
+  }
+
+  chatComposer.hidden = !state.chat.composerOpen;
+
+  if (!state.chat.composerOpen) {
+    return;
+  }
+
+  if (chatComposerTitleInput && chatComposerTitleInput.value !== state.chat.composerTitle) {
+    chatComposerTitleInput.value = state.chat.composerTitle;
+  }
+
+  if (!chatComposerUsers) {
+    return;
+  }
+
+  const availableUsers = state.chat.users.filter((user) => String(user.id) !== String(state.user?.id));
+
+  if (availableUsers.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "chat-empty-inline";
+    empty.textContent = "Trenutno nema drugih korisnika u aktivnoj organizaciji.";
+    chatComposerUsers.replaceChildren(empty);
+    return;
+  }
+
+  chatComposerUsers.replaceChildren(...availableUsers.map((user) => {
+    const label = document.createElement("label");
+    label.className = "chat-composer-user";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = user.id;
+    checkbox.checked = state.chat.composerParticipantIds.includes(user.id);
+    checkbox.addEventListener("change", () => {
+      const nextIds = new Set(state.chat.composerParticipantIds);
+      if (checkbox.checked) {
+        nextIds.add(user.id);
+      } else {
+        nextIds.delete(user.id);
+      }
+      state.chat.composerParticipantIds = Array.from(nextIds);
+    });
+
+    const avatar = createChatAvatar(user, state.chat.presenceByUserId[user.id] ?? "offline", "chat-person-avatar");
+    const copy = document.createElement("span");
+    copy.className = "chat-composer-user-copy";
+    const title = document.createElement("strong");
+    title.textContent = user.fullName || user.email;
+    const subtitle = document.createElement("span");
+    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[user.id] ?? "offline")} · ${user.email || "bez emaila"}`;
+    copy.append(title, subtitle);
+
+    label.append(checkbox, avatar, copy);
+    return label;
+  }));
+}
+
+function renderChatDock() {
+  const authenticated = Boolean(state.user);
+
+  if (chatDock) {
+    chatDock.hidden = !authenticated;
+  }
+
+  if (!authenticated) {
+    return;
+  }
+
+  const currentPresence = getChatPresenceValue();
+
+  if (chatLauncherPresence) {
+    chatLauncherPresence.dataset.presence = currentPresence;
+  }
+
+  if (chatLauncherCaption) {
+    chatLauncherCaption.textContent = state.chat.unreadTotal > 0
+      ? `${state.chat.unreadTotal} novih poruka`
+      : "Live team chat";
+  }
+
+  if (chatLauncherUnread) {
+    chatLauncherUnread.hidden = state.chat.unreadTotal <= 0;
+    chatLauncherUnread.textContent = String(state.chat.unreadTotal);
+  }
+
+  if (chatLauncher) {
+    chatLauncher.setAttribute("aria-expanded", state.chat.open ? "true" : "false");
+  }
+
+  if (chatPanel) {
+    chatPanel.hidden = !state.chat.open;
+  }
+
+  chatTabButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.chatTab === state.chat.tab);
+  });
+
+  if (chatConversationsView) {
+    chatConversationsView.hidden = state.chat.tab !== "conversations";
+  }
+
+  if (chatPeopleView) {
+    chatPeopleView.hidden = state.chat.tab !== "people";
+  }
+
+  if (chatSearchInput && chatSearchInput.value !== state.chat.search) {
+    chatSearchInput.value = state.chat.search;
+  }
+
+  if (chatListCaption) {
+    chatListCaption.textContent = state.chat.tab === "people"
+      ? "Pokreni direktni chat ili slozi novu grupu."
+      : "Aktivni razgovori i trenutna prisutnost kolega.";
+  }
+
+  setChatError(state.chat.error);
+  renderChatConversationList();
+  renderChatPeopleList();
+  renderChatThread();
+  renderChatComposer();
+}
+
+async function startDirectChatWithUser(userId) {
+  try {
+    setChatError("");
+    const payload = await apiRequest("/chat/conversations", {
+      method: "POST",
+      body: {
+        participantIds: [userId],
+      },
+    });
+    applyChatSnapshot(payload);
+    const conversation = findChatConversationByParticipants([userId]);
+    state.chat.activeConversationId = conversation?.id ?? state.chat.activeConversationId;
+    state.chat.tab = "conversations";
+    setChatOpen(true);
+    renderChatDock();
+    if (state.chat.activeConversationId) {
+      await markChatConversationRead(state.chat.activeConversationId);
+    }
+  } catch (error) {
+    setChatError(error.message);
+    renderChatDock();
+  }
+}
+
+async function createChatGroupConversation() {
+  try {
+    setChatError("");
+    const payload = await apiRequest("/chat/conversations", {
+      method: "POST",
+      body: {
+        title: state.chat.composerTitle,
+        participantIds: state.chat.composerParticipantIds,
+      },
+    });
+    applyChatSnapshot(payload);
+    const participantSignature = Array.from(new Set([state.user?.id, ...state.chat.composerParticipantIds].filter(Boolean).map(String))).sort().join("|");
+    const conversation = state.chat.conversations.find((item) => Array.from(new Set((item.participantIds ?? []).map(String))).sort().join("|") === participantSignature)
+      ?? state.chat.conversations[0]
+      ?? null;
+    state.chat.activeConversationId = conversation?.id ?? "";
+    state.chat.tab = "conversations";
+    setChatComposerOpen(false);
+    setChatOpen(true);
+    renderChatDock();
+  } catch (error) {
+    setChatError(error.message);
+    renderChatDock();
+  }
+}
+
+async function sendChatMessage() {
+  const conversation = getChatConversationById();
+  const messageBody = String(chatMessageInput?.value ?? "").trim();
+
+  if (!conversation || !messageBody) {
+    return;
+  }
+
+  state.chat.sending = true;
+  renderChatDock();
+
+  try {
+    const payload = await apiRequest(`/chat/conversations/${conversation.id}/messages`, {
+      method: "POST",
+      body: { body: messageBody },
+    });
+    if (chatMessageInput) {
+      chatMessageInput.value = "";
+    }
+    applyChatSnapshot(payload);
+  } catch (error) {
+    setChatError(error.message);
+  } finally {
+    state.chat.sending = false;
+    renderChatDock();
+  }
 }
 
 function getSidebarGroupForView(view = state.activeView) {
@@ -4733,11 +5468,15 @@ function renderAuthState() {
   const authenticated = Boolean(state.user);
   authScreen.hidden = authenticated;
   appShell.hidden = !authenticated;
+  if (chatDock) {
+    chatDock.hidden = !authenticated;
+  }
   document.body.classList.toggle("is-auth-mode", !authenticated);
 
   if (!authenticated) {
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
+    resetChatState();
   }
 
   if (authenticated) {
@@ -4806,6 +5545,7 @@ function renderAuthState() {
     if (managementNavLabel) {
       managementNavLabel.textContent = "People";
     }
+    renderChatDock();
   } else {
     userBadge.textContent = "";
     userMenuName.textContent = "";
@@ -4840,6 +5580,7 @@ function renderAuthState() {
     }
     loginError.textContent = "";
     setLoginBusy(false);
+    renderChatDock();
   }
 
   setUserMenuOpen(false);
@@ -9253,6 +9994,7 @@ function render() {
   renderManagement();
   renderModuleView();
   renderActiveView();
+  renderChatDock();
 }
 
 sidebarNavItems.forEach((button) => {
@@ -9322,6 +10064,56 @@ appRailToggle?.addEventListener("click", () => {
 
 appRailRestore?.addEventListener("click", () => {
   setRailHidden(false);
+});
+
+chatLauncher?.addEventListener("click", () => {
+  setChatOpen(!state.chat.open);
+});
+
+chatCloseButton?.addEventListener("click", () => {
+  setChatOpen(false);
+});
+
+chatNewGroupButton?.addEventListener("click", () => {
+  setChatComposerOpen(true);
+});
+
+chatTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.chat.tab = button.dataset.chatTab || "conversations";
+    renderChatDock();
+  });
+});
+
+chatSearchInput?.addEventListener("input", () => {
+  state.chat.search = chatSearchInput.value.trim();
+  renderChatDock();
+});
+
+chatMessageForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void sendChatMessage();
+});
+
+chatMessageInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    void sendChatMessage();
+  }
+});
+
+chatComposerTitleInput?.addEventListener("input", () => {
+  state.chat.composerTitle = chatComposerTitleInput.value.trim();
+});
+
+chatComposerCreateButton?.addEventListener("click", () => {
+  void createChatGroupConversation();
+});
+
+chatComposerCloseButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setChatComposerOpen(false);
+  });
 });
 
 workOrderCompanyIdInput.addEventListener("change", () => {
@@ -10113,6 +10905,7 @@ logoutButton.addEventListener("click", () => {
   void apiRequest("/auth/logout", {
     method: "POST",
   }).finally(() => {
+    resetChatState();
     state.user = null;
     state.organizations = [];
     state.workOrders = [];
@@ -10139,6 +10932,7 @@ logoutButton.addEventListener("click", () => {
     state.measurementSheet.selectionDrag = null;
     state.measurementSheet.fillDrag = null;
     state.measurementSheet.fillMenu = null;
+    state.measurementSheet.contextMenu = null;
     loginForm.reset();
     closeMeasurementSheet();
     renderAuthState();
@@ -10148,6 +10942,10 @@ logoutButton.addEventListener("click", () => {
 
 organizationSwitcher?.addEventListener("change", () => {
   state.activeOrganizationId = organizationSwitcher.value;
+  state.chat.loaded = false;
+  state.chat.lastOrganizationId = "";
+  state.chat.activeConversationId = "";
+  renderChatDock();
   const selectedOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId);
 
   if (selectedOrganization && getIsSuperAdmin()) {
@@ -10320,6 +11118,14 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.chat.composerOpen) {
+    setChatComposerOpen(false);
+  }
+
+  if (event.key === "Escape" && state.chat.open && !state.chat.composerOpen && !state.workOrderEditorOpen) {
+    setChatOpen(false);
+  }
+
   if (event.key === "Escape" && state.dashboardBuilder.open) {
     closeDashboardBuilder();
     renderDashboardOverview();

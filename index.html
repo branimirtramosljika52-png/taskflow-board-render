@@ -1917,7 +1917,117 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328ae"></script>
-    <script type="module" src="/src/main.js?v=20260328ae"></script>
+    <section id="chat-dock" class="chat-dock" hidden>
+      <button id="chat-launcher" type="button" class="chat-launcher" aria-expanded="false">
+        <span id="chat-launcher-presence" class="chat-launcher-presence" data-presence="online" aria-hidden="true"></span>
+        <span class="chat-launcher-copy">
+          <strong>Communicator</strong>
+          <span id="chat-launcher-caption">Live team chat</span>
+        </span>
+        <span id="chat-launcher-unread" class="chat-launcher-unread" hidden>0</span>
+      </button>
+
+      <section id="chat-panel" class="chat-panel" hidden>
+        <div class="chat-panel-header">
+          <div class="chat-panel-title">
+            <span class="chat-panel-kicker">Live chat</span>
+            <strong>Communicator</strong>
+          </div>
+          <div class="chat-panel-actions">
+            <button id="chat-new-group-button" type="button" class="ghost-button chat-header-button">Nova grupa</button>
+            <button id="chat-close-button" type="button" class="ghost-button chat-header-button" aria-label="Zatvori chat">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-panel-tabs">
+          <button id="chat-tab-conversations" type="button" class="chat-tab-button is-active" data-chat-tab="conversations">Razgovori</button>
+          <button id="chat-tab-people" type="button" class="chat-tab-button" data-chat-tab="people">Ljudi</button>
+        </div>
+
+        <div class="chat-panel-layout">
+          <aside class="chat-list-panel">
+            <label class="chat-search-field">
+              <span class="chat-search-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="m16 16 4 4"></path>
+                </svg>
+              </span>
+              <input id="chat-search-input" type="search" placeholder="Pretrazi razgovore ili kolege" />
+            </label>
+            <p id="chat-list-caption" class="chat-list-caption">Aktivni razgovori i prisutnost kolega.</p>
+            <div id="chat-conversations-view" class="chat-list-view"></div>
+            <div id="chat-people-view" class="chat-list-view" hidden></div>
+          </aside>
+
+          <section class="chat-thread-panel">
+            <div id="chat-thread-empty" class="chat-thread-empty">
+              <strong>Odaberi razgovor</strong>
+              <p>Pokreni direktni chat s kolegom ili otvori grupni razgovor za tim.</p>
+            </div>
+
+            <div id="chat-thread-view" class="chat-thread-view" hidden>
+              <div class="chat-thread-head">
+                <div class="chat-thread-head-copy">
+                  <strong id="chat-thread-title"></strong>
+                  <span id="chat-thread-meta"></span>
+                </div>
+              </div>
+
+              <div id="chat-thread-messages" class="chat-thread-messages"></div>
+
+              <form id="chat-message-form" class="chat-message-form">
+                <textarea
+                  id="chat-message-input"
+                  rows="2"
+                  maxlength="1200"
+                  placeholder="Napisite poruku timu ili kolegi..."
+                  required
+                ></textarea>
+                <div class="chat-message-actions">
+                  <p id="chat-error" class="form-error chat-error" aria-live="polite"></p>
+                  <button id="chat-send-button" type="submit" class="primary-button">Posalji</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+
+        <section id="chat-composer" class="chat-composer" hidden>
+          <div class="chat-composer-backdrop" data-chat-composer-close></div>
+          <div class="chat-composer-card">
+            <div class="chat-composer-head">
+              <div>
+                <span class="chat-panel-kicker">Nova grupa</span>
+                <strong>Pokreni grupni razgovor</strong>
+              </div>
+              <button type="button" class="ghost-button chat-header-button" data-chat-composer-close aria-label="Zatvori composer">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+
+            <label class="field">
+              <span>Naziv grupe</span>
+              <input id="chat-composer-title" type="text" maxlength="120" placeholder="Npr. Intervencija Zagreb" />
+            </label>
+
+            <div class="chat-composer-people">
+              <span class="chat-composer-label">Sudionici</span>
+              <div id="chat-composer-users" class="chat-composer-users"></div>
+            </div>
+
+            <div class="chat-composer-actions">
+              <p id="chat-composer-error" class="form-error chat-error" aria-live="polite"></p>
+              <button id="chat-composer-create" type="button" class="primary-button">Otvori grupu</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <script type="module" src="/src/auth-transitions.js?v=20260328af"></script>
+    <script type="module" src="/src/main.js?v=20260328af"></script>
   </body>
 </html>
