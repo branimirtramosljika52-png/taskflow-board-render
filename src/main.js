@@ -5345,29 +5345,39 @@ function renderDashboardUpcomingList(container, items) {
 
 function renderDashboardInsightsSummary() {
   const insights = getDashboardInsights(state);
+  const openWorkOrdersNode = document.querySelector("#dashboard-open-work-orders");
+  const urgentWorkOrdersNode = document.querySelector("#dashboard-urgent-work-orders");
+  const dueThisWeekNode = document.querySelector("#dashboard-due-this-week");
+  const missingCoordinatesNode = document.querySelector("#dashboard-missing-coordinates");
+  const statusBreakdownNode = document.querySelector("#dashboard-status-breakdown");
+  const priorityBreakdownNode = document.querySelector("#dashboard-priority-breakdown");
+  const regionBreakdownNode = document.querySelector("#dashboard-region-breakdown");
+  const companyBreakdownNode = document.querySelector("#dashboard-company-breakdown");
+  const executorBreakdownNode = document.querySelector("#dashboard-executor-breakdown");
+  const upcomingListNode = document.querySelector("#dashboard-upcoming-list");
 
-  if (dashboardOpenWorkOrders) {
-    dashboardOpenWorkOrders.textContent = String(insights.activeWorkOrders);
+  if (openWorkOrdersNode) {
+    openWorkOrdersNode.textContent = String(insights.activeWorkOrders);
   }
 
-  if (dashboardUrgentWorkOrders) {
-    dashboardUrgentWorkOrders.textContent = String(insights.urgentWorkOrders);
+  if (urgentWorkOrdersNode) {
+    urgentWorkOrdersNode.textContent = String(insights.urgentWorkOrders);
   }
 
-  if (dashboardDueThisWeek) {
-    dashboardDueThisWeek.textContent = String(insights.dueThisWeekWorkOrders);
+  if (dueThisWeekNode) {
+    dueThisWeekNode.textContent = String(insights.dueThisWeekWorkOrders);
   }
 
-  if (dashboardMissingCoordinates) {
-    dashboardMissingCoordinates.textContent = String(insights.missingCoordinatesLocations);
+  if (missingCoordinatesNode) {
+    missingCoordinatesNode.textContent = String(insights.missingCoordinatesLocations);
   }
 
-  renderDashboardBreakdownList(dashboardStatusBreakdown, insights.statusBreakdown);
-  renderDashboardBreakdownList(dashboardPriorityBreakdown, insights.priorityBreakdown);
-  renderDashboardBreakdownList(dashboardRegionBreakdown, insights.topRegions);
-  renderDashboardBreakdownList(dashboardCompanyBreakdown, insights.topCompanies);
-  renderDashboardExecutorList(dashboardExecutorBreakdown, insights.executorLoad);
-  renderDashboardUpcomingList(dashboardUpcomingList, insights.upcomingWorkOrders);
+  renderDashboardBreakdownList(statusBreakdownNode, insights.statusBreakdown);
+  renderDashboardBreakdownList(priorityBreakdownNode, insights.priorityBreakdown);
+  renderDashboardBreakdownList(regionBreakdownNode, insights.topRegions);
+  renderDashboardBreakdownList(companyBreakdownNode, insights.topCompanies);
+  renderDashboardExecutorList(executorBreakdownNode, insights.executorLoad);
+  renderDashboardUpcomingList(upcomingListNode, insights.upcomingWorkOrders);
 }
 
 function createDashboardBuilderEmptyState(message, actions = []) {
