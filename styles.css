@@ -985,7 +985,7 @@ fieldset {
 .user-badge-copy,
 .user-menu-copy {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .user-badge-copy strong,
@@ -1003,12 +1003,12 @@ fieldset {
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  min-width: 312px;
-  padding: 14px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 22px 45px rgba(18, 30, 59, 0.16);
+  min-width: 320px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(212, 219, 235, 0.9);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 22px 48px rgba(18, 30, 59, 0.14);
   z-index: 20;
 }
 
@@ -1016,13 +1016,58 @@ fieldset {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(216, 223, 236, 0.88);
+}
+
+.user-menu-copy strong {
+  font-size: 0.98rem;
+  line-height: 1.15;
+}
+
+.user-menu-presence-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #586478;
+  font-size: 0.8rem;
+}
+
+.user-menu-presence-current::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #98a4b7;
+  box-shadow: 0 0 0 4px rgba(152, 164, 183, 0.08);
+}
+
+.user-menu-presence-current[data-presence="online"]::before {
+  background: #2fb36f;
+  box-shadow: 0 0 0 4px rgba(47, 179, 111, 0.1);
+}
+
+.user-menu-presence-current[data-presence="away"]::before {
+  background: #f1b44c;
+  box-shadow: 0 0 0 4px rgba(241, 180, 76, 0.12);
+}
+
+.user-menu-presence-current[data-presence="busy"]::before {
+  background: #e06363;
+  box-shadow: 0 0 0 4px rgba(224, 99, 99, 0.1);
+}
+
+.user-menu-presence-current[data-presence="offline"]::before {
+  background: #98a4b7;
 }
 
 .user-menu-status-block {
   display: grid;
-  gap: 6px;
+  gap: 7px;
   margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(216, 223, 236, 0.88);
 }
 
 .user-menu-section-label,
@@ -1035,21 +1080,29 @@ fieldset {
 
 .user-menu-presence-options {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .user-presence-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: max-content;
+  width: 100%;
   border: 0;
   background: transparent;
   color: #566275;
   border-radius: 0;
-  padding: 4px 0;
-  font-size: 0.82rem;
+  padding: 3px 0;
+  font-size: 0.84rem;
   font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.user-presence-pill:hover {
+  color: var(--accent-strong);
+  transform: translateX(1px);
 }
 
 .user-presence-dot {
@@ -1092,7 +1145,7 @@ fieldset {
 
 .user-menu-metrics {
   display: grid;
-  gap: 8px;
+  gap: 9px;
   margin-bottom: 12px;
 }
 
@@ -1118,6 +1171,8 @@ fieldset {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(216, 223, 236, 0.88);
 }
 
 .user-menu-link-button {
@@ -1128,6 +1183,7 @@ fieldset {
   font-size: 0.86rem;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .user-menu-link-danger {

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328k" />
+    <link rel="stylesheet" href="/styles.css?v=20260328l" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -477,6 +477,7 @@
                 <div class="user-menu-copy">
                   <strong id="user-menu-name"></strong>
                   <span id="user-menu-role"></span>
+                  <span id="user-menu-presence-current" class="user-menu-presence-current"></span>
                   <span id="user-menu-email"></span>
                   <span id="user-menu-organizations"></span>
                 </div>
@@ -487,22 +488,22 @@
               </div>
               <div class="user-menu-metrics">
                 <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Active org</span>
+                  <span class="user-menu-metric-label">Aktivna organizacija</span>
                   <strong id="user-menu-active-org"></strong>
                 </div>
                 <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Access</span>
+                  <span class="user-menu-metric-label">Pristup</span>
                   <strong id="user-menu-org-count"></strong>
                 </div>
                 <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Last login</span>
+                  <span class="user-menu-metric-label">Zadnja prijava</span>
                   <strong id="user-menu-last-login"></strong>
                 </div>
               </div>
               <div class="user-menu-actions">
                 <input id="user-menu-avatar-file" type="file" accept="image/*" hidden />
                 <button id="user-menu-avatar-button" type="button" class="user-menu-link-button">
-                  Change profile picture
+                  Promijeni profilnu sliku
                 </button>
                 <button id="logout-button" type="button" class="user-menu-link-button user-menu-link-danger">Odjava</button>
                 <p id="user-menu-error" class="form-error user-menu-error" aria-live="polite"></p>
@@ -1457,7 +1458,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328k"></script>
-    <script type="module" src="/src/main.js?v=20260328k"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328l"></script>
+    <script type="module" src="/src/main.js?v=20260328l"></script>
   </body>
 </html>

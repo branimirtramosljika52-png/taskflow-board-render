@@ -286,6 +286,7 @@ const userMenuPanel = document.querySelector("#user-menu-panel");
 const userMenuAvatar = document.querySelector("#user-menu-avatar");
 const userMenuName = document.querySelector("#user-menu-name");
 const userMenuRole = document.querySelector("#user-menu-role");
+const userMenuPresenceCurrent = document.querySelector("#user-menu-presence-current");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
 const userMenuPresenceOptions = document.querySelector("#user-menu-presence-options");
@@ -4330,6 +4331,7 @@ function renderAuthState() {
     userBadge.append(badgeAvatar, badgeCopy);
     renderAvatar(badgeAvatar, state.user);
     applyPresenceToAvatar(badgeAvatar, presence);
+    badgeRole.textContent = roleLabel;
     userMenuName.textContent = state.user.fullName || state.user.email;
     userMenuRole.textContent = `${roleLabel} · ${presenceLabel}`;
     userMenuEmail.textContent = state.user.email || "";
@@ -4337,14 +4339,20 @@ function renderAuthState() {
     renderAvatar(userMenuAvatar, state.user);
     applyPresenceToAvatar(userMenuAvatar, presence);
     renderUserPresenceOptions(presence);
+    userMenuRole.textContent = roleLabel;
+    if (userMenuPresenceCurrent) {
+      userMenuPresenceCurrent.textContent = presenceLabel;
+      userMenuPresenceCurrent.dataset.presence = presence;
+    }
     if (userMenuActiveOrg) {
       userMenuActiveOrg.textContent = organization?.name || "Bez organizacije";
     }
     if (userMenuOrgCount) {
-      userMenuOrgCount.textContent = `${state.user.organizations?.length || 1} org`;
+      const organizationCount = state.user.organizations?.length || 1;
+      userMenuOrgCount.textContent = organizationCount === 1 ? "1 organizacija" : `${organizationCount} organizacije`;
     }
     if (userMenuLastLogin) {
-      userMenuLastLogin.textContent = state.user.lastLoginAt ? formatDateTime(state.user.lastLoginAt) : "Just now";
+      userMenuLastLogin.textContent = state.user.lastLoginAt ? formatDateTime(state.user.lastLoginAt) : "Upravo sada";
     }
     setUserMenuError("");
     organizationContext.textContent = isSuperAdmin
@@ -4364,6 +4372,10 @@ function renderAuthState() {
     userBadge.textContent = "";
     userMenuName.textContent = "";
     userMenuRole.textContent = "";
+    if (userMenuPresenceCurrent) {
+      userMenuPresenceCurrent.textContent = "";
+      delete userMenuPresenceCurrent.dataset.presence;
+    }
     userMenuEmail.textContent = "";
     userMenuOrganizations.textContent = "";
     renderAvatar(userMenuAvatar, {});
