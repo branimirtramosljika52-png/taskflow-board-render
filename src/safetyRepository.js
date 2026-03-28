@@ -5,11 +5,14 @@ import {
   createCompany,
   createLocation,
   createReminder,
+  createTodoTask,
+  createTodoTaskComment,
   createWorkOrder,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateLocation,
   updateReminder,
+  updateTodoTask,
   updateWorkOrder,
 } from "./safetyModel.js";
 import {
@@ -535,11 +538,89 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [todoTaskRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, work_order_id, title, message, status,
+           priority, due_date, created_by_user_id, created_by_label, assigned_to_user_id,
+           assigned_to_label, completed_at, created_at, updated_at
+    FROM web_team_tasks
+    ORDER BY
+      CASE status
+        WHEN 'open' THEN 0
+        WHEN 'in_progress' THEN 1
+        WHEN 'waiting' THEN 2
+        WHEN 'done' THEN 3
+        ELSE 9
+      END ASC,
+      due_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const [todoCommentRows] = await connection.query(`
+    SELECT id, task_id, organization_id, user_id, author_label, message, created_at
+    FROM web_team_task_comments
+    ORDER BY created_at ASC, id ASC
+  `);
+
+  const todoCommentsByTaskId = new Map();
+
+  todoCommentRows.forEach((row) => {
+    const taskId = dbString(row.task_id);
+    const entry = {
+      id: String(row.id),
+      taskId,
+      organizationId: dbString(row.organization_id),
+      userId: dbString(row.user_id),
+      authorLabel: row.author_label ?? "",
+      message: row.message ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+    };
+
+    if (!todoCommentsByTaskId.has(taskId)) {
+      todoCommentsByTaskId.set(taskId, []);
+    }
+
+    todoCommentsByTaskId.get(taskId).push(entry);
+  });
+
+  const todoTasks = todoTaskRows.map((row) => {
+    const linkedWorkOrder = workOrdersById.get(String(row.work_order_id ?? ""));
+    const company = companiesById.get(String(linkedWorkOrder?.companyId ?? row.company_id ?? ""));
+    const location = locationsById.get(String(linkedWorkOrder?.locationId ?? row.location_id ?? ""));
+    const comments = (todoCommentsByTaskId.get(String(row.id)) ?? []).map((comment) => ({ ...comment }));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId: linkedWorkOrder?.companyId ?? dbString(row.company_id),
+      companyName: linkedWorkOrder?.companyName ?? company?.name ?? "",
+      locationId: linkedWorkOrder?.locationId ?? dbString(row.location_id),
+      locationName: linkedWorkOrder?.locationName ?? location?.name ?? "",
+      workOrderId: linkedWorkOrder?.id ?? dbString(row.work_order_id),
+      workOrderNumber: linkedWorkOrder?.workOrderNumber ?? "",
+      title: row.title ?? "",
+      message: row.message ?? "",
+      status: row.status ?? "open",
+      priority: row.priority ?? "Normal",
+      dueDate: normalizeDateOnly(row.due_date),
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      assignedToUserId: dbString(row.assigned_to_user_id),
+      assignedToLabel: row.assigned_to_label ?? "",
+      completedAt: normalizeTimestamp(row.completed_at),
+      commentCount: comments.length,
+      comments,
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   return {
     companies,
     locations,
     workOrders,
     reminders,
+    todoTasks,
   };
 }
 
@@ -611,6 +692,7 @@ export class InMemorySafetyRepository {
       locations: [],
       workOrders: [],
       reminders: [],
+      todoTasks: [],
     };
     this.refreshTokens = new Map();
     this.users = [
@@ -701,6 +783,10 @@ export class InMemorySafetyRepository {
       locations: [...this.snapshot.locations],
       workOrders: [...this.snapshot.workOrders],
       reminders: [...this.snapshot.reminders],
+      todoTasks: this.snapshot.todoTasks.map((item) => ({
+        ...item,
+        comments: (item.comments ?? []).map((comment) => ({ ...comment })),
+      })),
     };
   }
 
@@ -732,8 +818,9 @@ export class InMemorySafetyRepository {
     const hasLocations = this.snapshot.locations.some((item) => item.companyId === id);
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.companyId === id);
     const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
+    const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders) {
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks) {
       throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
     }
 
@@ -766,12 +853,13 @@ export class InMemorySafetyRepository {
       return false;
     }
 
-    const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
-    const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
+      const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
+      const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
+      const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
 
-    if (hasWorkOrders || hasReminders) {
-      throw new Error("Lokacija je vec povezana s radnim nalozima.");
-    }
+      if (hasWorkOrders || hasReminders || hasTodoTasks) {
+        throw new Error("Lokacija je vec povezana s radnim nalozima.");
+      }
 
     this.snapshot.locations = this.snapshot.locations.filter((item) => item.id !== id);
     return true;
@@ -848,6 +936,16 @@ export class InMemorySafetyRepository {
         }
         : item
     ));
+    this.snapshot.todoTasks = this.snapshot.todoTasks.map((item) => (
+      item.workOrderId === id
+        ? {
+          ...item,
+          workOrderId: "",
+          workOrderNumber: "",
+          updatedAt: new Date().toISOString(),
+        }
+        : item
+    ));
     return this.snapshot.workOrders.length !== before;
   }
 
@@ -881,6 +979,54 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.reminders.length;
     this.snapshot.reminders = this.snapshot.reminders.filter((item) => item.id !== id);
     return this.snapshot.reminders.length !== before;
+  }
+
+  async createTodoTask(input, actor = null) {
+    const task = createTodoTask({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.todoTasks = [task, ...this.snapshot.todoTasks];
+    return task;
+  }
+
+  async updateTodoTask(id, patch, actor = null) {
+    const current = this.snapshot.todoTasks.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateTodoTask(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.todoTasks = this.snapshot.todoTasks.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async addTodoTaskComment(id, input, actor = null) {
+    const current = this.snapshot.todoTasks.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = createTodoTaskComment(current, {
+      ...input,
+      userId: String(actor?.id ?? input.userId ?? ""),
+      authorLabel: actor?.fullName || actor?.username || input.authorLabel || "Safety360",
+    }, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.todoTasks = this.snapshot.todoTasks.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteTodoTask(id) {
+    const before = this.snapshot.todoTasks.length;
+    this.snapshot.todoTasks = this.snapshot.todoTasks.filter((item) => item.id !== id);
+    return this.snapshot.todoTasks.length !== before;
   }
 }
 
@@ -957,6 +1103,47 @@ export class MySqlSafetyRepository {
         INDEX idx_web_reminders_location (location_id),
         INDEX idx_web_reminders_work_order (work_order_id),
         INDEX idx_web_reminders_due_status (status, due_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_team_tasks (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NULL,
+        location_id INT NULL,
+        work_order_id INT NULL,
+        title VARCHAR(180) NOT NULL,
+        message TEXT NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'open',
+        priority VARCHAR(40) NOT NULL DEFAULT 'Normal',
+        due_date DATE NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        assigned_to_user_id INT NULL,
+        assigned_to_label VARCHAR(160) NOT NULL DEFAULT '',
+        completed_at DATETIME NULL DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_team_tasks_organization (organization_id),
+        INDEX idx_web_team_tasks_company (company_id),
+        INDEX idx_web_team_tasks_location (location_id),
+        INDEX idx_web_team_tasks_work_order (work_order_id),
+        INDEX idx_web_team_tasks_status_due (status, due_date),
+        INDEX idx_web_team_tasks_assigned (assigned_to_user_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_team_task_comments (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        task_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        user_id INT NULL,
+        author_label VARCHAR(160) NOT NULL DEFAULT '',
+        message TEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_web_team_task_comments_task (task_id),
+        INDEX idx_web_team_task_comments_org (organization_id),
+        INDEX idx_web_team_task_comments_created (created_at)
       )
     `);
   }
@@ -1268,8 +1455,12 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_reminders WHERE company_id = ?",
         [Number(id)],
       );
+      const [[todoTaskCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_team_tasks WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0) {
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0) {
         throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
       }
 
@@ -1446,8 +1637,12 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_reminders WHERE location_id = ?",
         [Number(id)],
       );
+      const [[todoTaskCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_team_tasks WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0) {
         await connection.rollback();
         throw new Error("Lokacija je vec povezana s radnim nalozima.");
       }
@@ -1622,6 +1817,14 @@ export class MySqlSafetyRepository {
         `,
         [Number(id)],
       );
+      await connection.query(
+        `
+          UPDATE web_team_tasks
+          SET work_order_id = NULL
+          WHERE work_order_id = ?
+        `,
+        [Number(id)],
+      );
       const [result] = await connection.query("DELETE FROM radni_nalozi WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
     } finally {
@@ -1733,6 +1936,183 @@ export class MySqlSafetyRepository {
     try {
       const [result] = await connection.query("DELETE FROM web_reminders WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createTodoTask(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createTodoTask({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_team_tasks
+            (organization_id, company_id, location_id, work_order_id, title, message, status, priority,
+             due_date, created_by_user_id, created_by_label, assigned_to_user_id, assigned_to_label, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          parseNullableInteger(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          parseNullableInteger(draft.workOrderId),
+          draft.title,
+          draft.message,
+          draft.status,
+          draft.priority,
+          draft.dueDate,
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+          parseNullableInteger(draft.assignedToUserId),
+          draft.assignedToLabel,
+          draft.completedAt ? new Date(draft.completedAt) : null,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateTodoTask(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.todoTasks.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateTodoTask(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_team_tasks
+          SET company_id = ?, location_id = ?, work_order_id = ?, title = ?, message = ?, status = ?,
+              priority = ?, due_date = ?, assigned_to_user_id = ?, assigned_to_label = ?, completed_at = ?
+          WHERE id = ?
+        `,
+        [
+          parseNullableInteger(next.companyId),
+          parseNullableInteger(next.locationId),
+          parseNullableInteger(next.workOrderId),
+          next.title,
+          next.message,
+          next.status,
+          next.priority,
+          next.dueDate,
+          parseNullableInteger(next.assignedToUserId),
+          next.assignedToLabel,
+          next.completedAt ? new Date(next.completedAt) : null,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async addTodoTaskComment(id, input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.todoTasks.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = createTodoTaskComment(current, {
+        ...input,
+        userId: String(actor?.id ?? input.userId ?? ""),
+        authorLabel: actor?.fullName || actor?.username || input.authorLabel || "Safety360",
+      }, () => "pending-comment", () => new Date().toISOString());
+      const latestComment = next.comments[next.comments.length - 1];
+
+      await connection.query(
+        `
+          INSERT INTO web_team_task_comments
+            (task_id, organization_id, user_id, author_label, message, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(id),
+          Number(current.organizationId),
+          parseNullableInteger(latestComment.userId),
+          latestComment.authorLabel,
+          latestComment.message,
+          latestComment.createdAt ? new Date(latestComment.createdAt) : new Date(),
+        ],
+      );
+
+      await connection.query(
+        `
+          UPDATE web_team_tasks
+          SET updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [Number(id)],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteTodoTask(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      await connection.query("DELETE FROM web_team_task_comments WHERE task_id = ?", [Number(id)]);
+      const [result] = await connection.query("DELETE FROM web_team_tasks WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

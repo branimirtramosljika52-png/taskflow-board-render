@@ -6,16 +6,21 @@ import {
   createCompany,
   createLocation,
   createReminder,
+  createTodoTask,
+  createTodoTaskComment,
   createWorkOrder,
   filterReminders,
+  filterTodoTasks,
   filterWorkOrders,
   getDashboardInsights,
   getDashboardStats,
   nextWorkOrderNumber,
   sortReminders,
+  sortTodoTasks,
   syncLocationFieldsFromWorkOrder,
   updateLocation,
   updateReminder,
+  updateTodoTask,
   updateWorkOrder,
 } from "../src/safetyModel.js";
 
@@ -486,4 +491,102 @@ test("reminders filter, sort and completion updates behave predictably", () => {
   assert.equal(sorted[0].id, "reminder-1");
   assert.equal(sorted[1].id, "reminder-2");
   assert.equal(sorted[2].status, "done");
+});
+
+test("todo tasks support assignment, work-order linking, comments and filtering", () => {
+  const state = buildState();
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Dogovor s klijentom",
+    },
+    state,
+    () => "work-order-1",
+    "RN-00155",
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  const todo = createTodoTask(
+    {
+      organizationId: "7",
+      title: "Nazovi klijenta",
+      message: "Treba potvrditi termin i poslati odgovor kolegi.",
+      assignedToUserId: "22",
+      assignedToLabel: "Iva Novak",
+      createdByUserId: "11",
+      createdByLabel: "Branimir Tramošljika",
+      workOrderId: workOrder.id,
+      dueDate: "2026-03-29",
+      priority: "High",
+    },
+    {
+      ...state,
+      workOrders: [workOrder],
+      todoTasks: [],
+    },
+    () => "todo-1",
+    () => "2026-03-26T08:00:00.000Z",
+  );
+
+  assert.equal(todo.companyId, "company-1");
+  assert.equal(todo.locationId, "location-1");
+  assert.equal(todo.workOrderNumber, "RN-00155");
+  assert.equal(todo.assignedToLabel, "Iva Novak");
+
+  const commented = createTodoTaskComment(
+    todo,
+    {
+      userId: "22",
+      authorLabel: "Iva Novak",
+      message: "Preuzimam, javim povratnu informaciju danas.",
+    },
+    () => "comment-1",
+    () => "2026-03-26T09:00:00.000Z",
+  );
+
+  assert.equal(commented.comments.length, 1);
+  assert.equal(commented.commentCount, 1);
+  assert.equal(commented.comments[0].message, "Preuzimam, javim povratnu informaciju danas.");
+
+  const progressed = updateTodoTask(
+    commented,
+    {
+      status: "in_progress",
+      priority: "Urgent",
+    },
+    {
+      ...state,
+      workOrders: [workOrder],
+      todoTasks: [commented],
+    },
+    () => "2026-03-26T10:00:00.000Z",
+  );
+
+  assert.equal(progressed.status, "in_progress");
+  assert.equal(progressed.priority, "Urgent");
+
+  const filtered = filterTodoTasks([progressed], {
+    query: "klijenta",
+    status: "in_progress",
+    scope: "assigned",
+    userId: "22",
+  });
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "todo-1");
+
+  const sorted = sortTodoTasks([
+    {
+      ...progressed,
+      id: "todo-2",
+      title: "Kasnije",
+      dueDate: "2026-04-02",
+      priority: "Normal",
+      updatedAt: "2026-03-26T08:00:00.000Z",
+    },
+    progressed,
+  ]);
+
+  assert.equal(sorted[0].id, "todo-1");
 });

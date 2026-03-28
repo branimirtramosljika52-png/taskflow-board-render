@@ -562,6 +562,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = []) {
       String(item.organizationId) === String(organizationId)
       || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
     )),
+    todoTasks: (rawSnapshot.todoTasks ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+    )).map((item) => ({
+      ...item,
+      comments: (item.comments ?? []).map((comment) => ({ ...comment })),
+    })),
   };
 }
 
@@ -983,7 +990,7 @@ export class MemoryTenantRepository {
     return this.refreshTokens.delete(hashStoredToken(token));
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
     const scopedSnapshot = buildScopedSnapshot(
       rawSnapshot,
@@ -1599,7 +1606,7 @@ export class MySqlTenantRepository {
     }
   }
 
-  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [] }) {
+  async getSnapshot(actor, requestedOrganizationId, rawSnapshot = { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] }) {
     const connection = await this.pool.getConnection();
 
     try {
@@ -1607,7 +1614,7 @@ export class MySqlTenantRepository {
       const assignments = await fetchCompanyAssignments(connection);
       const scopedSnapshot = context.activeOrganizationId
         ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments)
-        : { companies: [], locations: [], workOrders: [], reminders: [] };
+        : { companies: [], locations: [], workOrders: [], reminders: [], todoTasks: [] };
 
       return {
         ...context,

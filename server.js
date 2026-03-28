@@ -290,6 +290,32 @@ function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
   assertInScope(scopedSnapshot.workOrders, body.workOrderId, "Radni nalog nije dostupan za odabranu organizaciju.");
 }
 
+function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, "assignedToUserId")) {
+    return {};
+  }
+
+  const assignedToUserId = String(body.assignedToUserId ?? "").trim();
+
+  if (!assignedToUserId) {
+    return {
+      assignedToUserId: "",
+      assignedToLabel: "",
+    };
+  }
+
+  const assignedUser = assertInScope(
+    scopedSnapshot.users,
+    assignedToUserId,
+    "Odabrani kolega nije dostupan za aktivnu organizaciju.",
+  );
+
+  return {
+    assignedToUserId: String(assignedUser.id),
+    assignedToLabel: assignedUser.fullName || assignedUser.email || assignedUser.username || "User",
+  };
+}
+
 async function writeSnapshot(response, user, request, statusCode = 200) {
   const { scopedSnapshot } = await getScopedState(user, request);
   sendJson(response, statusCode, {
@@ -427,6 +453,8 @@ async function handleApiRequest(request, response, url) {
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
+    const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
+    const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
@@ -586,6 +614,27 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/todo-tasks") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ToDo zadacima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      assertWorkOrderPayloadInScope(scopedSnapshot, body);
+      const assignedPayload = resolveAssignedUserPayload(scopedSnapshot, body);
+      await domainRepository.createTodoTask({
+        ...body,
+        ...assignedPayload,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (companyMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
@@ -722,6 +771,34 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (todoTaskMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ToDo zadacima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronaden.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      assertWorkOrderPayloadInScope(scopedSnapshot, body);
+      const assignedPayload = resolveAssignedUserPayload(scopedSnapshot, body);
+      const updated = await domainRepository.updateTodoTask(todoTaskMatch[1], {
+        ...body,
+        ...assignedPayload,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "ToDo zadatak nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (workOrderMatch && request.method === "DELETE") {
       if (!canDeleteWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo brisati radne naloge.");
@@ -753,6 +830,45 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Reminder nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (todoTaskCommentMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo komunicirati kroz ToDo.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.todoTasks, todoTaskCommentMatch[1], "ToDo zadatak nije pronaden.");
+      const updated = await domainRepository.addTodoTaskComment(todoTaskCommentMatch[1], body, user);
+
+      if (!updated) {
+        sendError(response, 404, "ToDo zadatak nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (todoTaskMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati ToDo zadatke.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronaden.");
+      const deleted = await domainRepository.deleteTodoTask(todoTaskMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "ToDo zadatak nije pronaden.");
         return true;
       }
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328p" />
+    <link rel="stylesheet" href="/styles.css?v=20260328r" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -781,6 +781,7 @@
                     </section>
 
                     <div class="form-actions work-order-editor-actions">
+                      <button id="work-order-open-todo" type="button" class="ghost-button">ToDo</button>
                       <button id="work-order-open-reminder" type="button" class="ghost-button">Reminder</button>
                       <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
                       <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
@@ -1151,6 +1152,204 @@
                 <div id="reminders-body" class="reminders-list"></div>
                 <p id="reminders-empty" class="empty-inline" hidden>Nema reminders za trenutni filter.</p>
               </section>
+            </div>
+          </section>
+        </section>
+
+        <section id="todo-view" class="workspace-view" hidden>
+          <section class="panel todo-overview-panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Home</p>
+                <h2>ToDo</h2>
+              </div>
+              <p class="helper-copy">
+                Interni zadaci i kratka komunikacija medu kolegama, s vezom na RN kada treba operativa.
+              </p>
+            </div>
+
+            <div class="todo-summary-grid">
+              <article class="summary-card">
+                <span>Ukupno</span>
+                <strong id="todo-total-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Dodijeljeno meni</span>
+                <strong id="todo-assigned-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Poslao sam</span>
+                <strong id="todo-created-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Kasne</span>
+                <strong id="todo-overdue-count">0</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel todo-workspace-panel">
+            <div class="todo-layout">
+              <section class="todo-composer-card">
+                <div class="section-heading">
+                  <div>
+                    <p class="section-kicker">Send task</p>
+                    <h3>Novi zadatak</h3>
+                  </div>
+                </div>
+
+                <form id="todo-form" class="entity-form">
+                  <input id="todo-id" type="hidden" />
+
+                  <div class="form-grid">
+                    <label class="field field-span-full">
+                      <span>Naslov</span>
+                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Posalji ponudu klijentu" required />
+                    </label>
+
+                    <label class="field">
+                      <span>Za koga</span>
+                      <select id="todo-assigned-to-user-id"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Datum</span>
+                      <input id="todo-due-date" type="date" />
+                    </label>
+
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="todo-status"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Prioritet</span>
+                      <select id="todo-priority"></select>
+                    </label>
+
+                    <label class="field field-span-full">
+                      <span>Radni nalog</span>
+                      <select id="todo-work-order-id"></select>
+                    </label>
+
+                    <label class="field field-span-full">
+                      <span>Poruka</span>
+                      <textarea id="todo-message" rows="6" placeholder="Sto treba napraviti, do kada i sto je bitno?"></textarea>
+                    </label>
+                  </div>
+
+                  <div id="todo-link-preview" class="reminder-link-preview" hidden></div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="primary-button">Posalji zadatak</button>
+                    <button id="todo-reset" type="button" class="ghost-button">Ocisti formu</button>
+                  </div>
+                </form>
+
+                <p id="todo-error" class="form-error" aria-live="polite"></p>
+              </section>
+
+              <section class="todo-list-card">
+                <div class="workspace-list-head">
+                  <div class="workspace-list-copy">
+                    <p class="section-kicker">Inbox</p>
+                    <h3>Popis zadataka</h3>
+                  </div>
+                </div>
+
+                <div class="filter-row filter-row-clickup reminders-filter-row">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="todo-search" type="search" placeholder="Naslov, poruka, kolega, RN..." />
+                  </label>
+
+                  <label class="field">
+                    <span>Pogled</span>
+                    <select id="todo-filter-scope"></select>
+                  </label>
+
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="todo-filter-status"></select>
+                  </label>
+                </div>
+
+                <div id="todo-body" class="todo-list"></div>
+                <p id="todo-empty" class="empty-inline" hidden>Nema zadataka za trenutni filter.</p>
+              </section>
+
+              <aside id="todo-detail-panel" class="todo-detail-card">
+                <div id="todo-detail-empty" class="todo-detail-empty">
+                  <p class="section-kicker">Conversation</p>
+                  <h3>Odaberi zadatak</h3>
+                  <p class="helper-copy">Klikni zadatak iz srednje kolone da otvoris razgovor, status i detalje.</p>
+                </div>
+
+                <div id="todo-detail-content" hidden>
+                  <div class="todo-detail-head">
+                    <div class="todo-detail-heading">
+                      <p class="section-kicker">Conversation</p>
+                      <h3 id="todo-detail-title">ToDo</h3>
+                      <p id="todo-detail-meta" class="helper-copy"></p>
+                    </div>
+
+                    <div class="todo-detail-actions">
+                      <button id="todo-detail-open-work-order" type="button" class="ghost-button" hidden>Otvori RN</button>
+                      <button id="todo-detail-edit" type="button" class="ghost-button">Uredi</button>
+                      <button id="todo-detail-delete" type="button" class="ghost-button">Obrisi</button>
+                    </div>
+                  </div>
+
+                  <p id="todo-detail-message" class="todo-detail-message"></p>
+
+                  <div class="todo-detail-fields">
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="todo-detail-status"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Prioritet</span>
+                      <select id="todo-detail-priority"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Izvrsitelj</span>
+                      <select id="todo-detail-assignee"></select>
+                    </label>
+
+                    <label class="field">
+                      <span>Rok</span>
+                      <input id="todo-detail-due-date" type="date" />
+                    </label>
+                  </div>
+
+                  <section class="todo-comments-section">
+                    <div class="workspace-list-head">
+                      <div class="workspace-list-copy">
+                        <p class="section-kicker">Thread</p>
+                        <h3>Komunikacija</h3>
+                      </div>
+                    </div>
+
+                    <div id="todo-comments-body" class="todo-comments-list"></div>
+                    <p id="todo-comments-empty" class="empty-inline" hidden>Jos nema komentara.</p>
+
+                    <form id="todo-comment-form" class="todo-comment-form">
+                      <label class="field field-span-full">
+                        <span>Dodaj poruku</span>
+                        <textarea id="todo-comment-message" rows="4" placeholder="Napisite kratku poruku kolegi ili update zadatka..." required></textarea>
+                      </label>
+
+                      <div class="form-actions">
+                        <button type="submit" class="primary-button">Posalji poruku</button>
+                      </div>
+                    </form>
+
+                    <p id="todo-comment-error" class="form-error" aria-live="polite"></p>
+                  </section>
+                </div>
+              </aside>
             </div>
           </section>
         </section>
@@ -1654,7 +1853,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328p"></script>
-    <script type="module" src="/src/main.js?v=20260328p"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328r"></script>
+    <script type="module" src="/src/main.js?v=20260328r"></script>
   </body>
 </html>

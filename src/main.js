@@ -1,13 +1,16 @@
 import {
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
+  TODO_TASK_STATUS_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
   filterReminders,
+  filterTodoTasks,
   filterWorkOrders,
   getDashboardInsights,
   getDashboardStats,
   sortReminders,
+  sortTodoTasks,
   sortWorkOrders,
 } from "./safetyModel.js";
 import {
@@ -65,6 +68,7 @@ const ALL_SIDEBAR_GROUPS = [
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
   reminders: "home",
+  todo: "home",
   companies: "company",
   locations: "locations",
   management: "organisations",
@@ -73,6 +77,7 @@ const VIEW_TO_SIDEBAR_GROUP = {
 const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
   selfdash: ["home", "operations"],
   reminders: ["home"],
+  todo: ["home"],
   companies: ["company"],
   locations: ["locations"],
   management: ["organisations"],
@@ -164,7 +169,7 @@ const MODULE_VIEW_DEFINITIONS = {
 const SIDEBAR_ITEM_CONFIG = {
   dashboard: { group: "home", view: "selfdash", focus: "top" },
   reminders: { group: "home", view: "reminders" },
-  todo: { group: "home", view: "module", module: "todo" },
+  todo: { group: "home", view: "todo" },
   settings: { group: "home", view: "module", module: "settings" },
   "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
   vehicles: { group: "organisations", view: "module", module: "vehicles" },
@@ -211,9 +216,11 @@ const state = {
   loginContent: null,
   workOrders: [],
   reminders: [],
+  todoTasks: [],
   activeView: "selfdash",
   user: null,
   activeOrganizationId: "",
+  activeTodoTaskId: "",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
   workOrderActivity: {
@@ -326,6 +333,7 @@ const managementNavLabel = document.querySelector("#management-nav-label");
 const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
   reminders: document.querySelector("#reminders-view"),
+  todo: document.querySelector("#todo-view"),
   companies: document.querySelector("#companies-view"),
   locations: document.querySelector("#locations-view"),
   management: document.querySelector("#management-view"),
@@ -371,6 +379,45 @@ const remindersSearchInput = document.querySelector("#reminders-search");
 const remindersFilterStatusInput = document.querySelector("#reminders-filter-status");
 const remindersBody = document.querySelector("#reminders-body");
 const remindersEmpty = document.querySelector("#reminders-empty");
+const todoTotalCount = document.querySelector("#todo-total-count");
+const todoAssignedCount = document.querySelector("#todo-assigned-count");
+const todoCreatedCount = document.querySelector("#todo-created-count");
+const todoOverdueCount = document.querySelector("#todo-overdue-count");
+const todoForm = document.querySelector("#todo-form");
+const todoIdInput = document.querySelector("#todo-id");
+const todoTitleInput = document.querySelector("#todo-title");
+const todoAssigneeInput = document.querySelector("#todo-assigned-to-user-id");
+const todoDueDateInput = document.querySelector("#todo-due-date");
+const todoStatusInput = document.querySelector("#todo-status");
+const todoPriorityInput = document.querySelector("#todo-priority");
+const todoWorkOrderIdInput = document.querySelector("#todo-work-order-id");
+const todoMessageInput = document.querySelector("#todo-message");
+const todoLinkPreview = document.querySelector("#todo-link-preview");
+const todoResetButton = document.querySelector("#todo-reset");
+const todoError = document.querySelector("#todo-error");
+const todoSearchInput = document.querySelector("#todo-search");
+const todoFilterScopeInput = document.querySelector("#todo-filter-scope");
+const todoFilterStatusInput = document.querySelector("#todo-filter-status");
+const todoBody = document.querySelector("#todo-body");
+const todoEmpty = document.querySelector("#todo-empty");
+const todoDetailPanel = document.querySelector("#todo-detail-panel");
+const todoDetailEmpty = document.querySelector("#todo-detail-empty");
+const todoDetailContent = document.querySelector("#todo-detail-content");
+const todoDetailTitle = document.querySelector("#todo-detail-title");
+const todoDetailMeta = document.querySelector("#todo-detail-meta");
+const todoDetailMessage = document.querySelector("#todo-detail-message");
+const todoDetailStatus = document.querySelector("#todo-detail-status");
+const todoDetailPriority = document.querySelector("#todo-detail-priority");
+const todoDetailAssignee = document.querySelector("#todo-detail-assignee");
+const todoDetailDueDate = document.querySelector("#todo-detail-due-date");
+const todoDetailOpenWorkOrder = document.querySelector("#todo-detail-open-work-order");
+const todoDetailEdit = document.querySelector("#todo-detail-edit");
+const todoDetailDelete = document.querySelector("#todo-detail-delete");
+const todoCommentsBody = document.querySelector("#todo-comments-body");
+const todoCommentsEmpty = document.querySelector("#todo-comments-empty");
+const todoCommentForm = document.querySelector("#todo-comment-form");
+const todoCommentInput = document.querySelector("#todo-comment-message");
+const todoCommentError = document.querySelector("#todo-comment-error");
 
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
@@ -385,6 +432,7 @@ const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderOpenReminderButton = document.querySelector("#work-order-open-reminder");
+const workOrderOpenTodoButton = document.querySelector("#work-order-open-todo");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
 const workOrderSaveState = document.querySelector("#work-order-save-state");
 const workOrderActivityList = document.querySelector("#work-order-activity-list");
@@ -749,9 +797,13 @@ function applySnapshot(payload) {
   state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
   state.reminders = payload.reminders ?? [];
+  state.todoTasks = payload.todoTasks ?? [];
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
   );
+  if (!state.todoTasks.some((item) => String(item.id) === String(state.activeTodoTaskId))) {
+    state.activeTodoTaskId = state.todoTasks[0]?.id ?? "";
+  }
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
@@ -1261,6 +1313,16 @@ function activateSidebarItem(itemName, options = {}) {
     state.activeView = "reminders";
     renderActiveView();
     workspaceViews.reminders?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
+  if (itemConfig.view === "todo") {
+    state.activeView = "todo";
+    renderActiveView();
+    workspaceViews.todo?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
@@ -5550,6 +5612,426 @@ function renderReminders() {
   remindersEmpty.hidden = reminders.length !== 0;
 }
 
+function getTodoTaskById(taskId = state.activeTodoTaskId) {
+  return state.todoTasks.find((item) => String(item.id) === String(taskId)) ?? null;
+}
+
+function getLinkedTodoWorkOrder(task) {
+  if (!task?.workOrderId) {
+    return null;
+  }
+
+  return state.workOrders.find((item) => item.id === task.workOrderId) ?? null;
+}
+
+function isTodoTaskOverdue(task) {
+  if (!task?.dueDate || task.status === "done") {
+    return false;
+  }
+
+  return task.dueDate < new Date().toISOString().slice(0, 10);
+}
+
+function getTodoAssigneeOptions() {
+  return [
+    { value: "", label: "Bez izvrsitelja" },
+    ...[...state.users]
+      .filter((user) => user?.isActive !== false)
+      .sort((left, right) => String(left.fullName || left.email).localeCompare(String(right.fullName || right.email)))
+      .map((user) => ({
+        value: user.id,
+        label: user.fullName || user.email || user.username || "User",
+      })),
+  ];
+}
+
+function getFilteredTodoTasks() {
+  return sortTodoTasks(filterTodoTasks(state.todoTasks, {
+    query: todoSearchInput?.value ?? "",
+    status: todoFilterStatusInput?.value ?? "all",
+    scope: todoFilterScopeInput?.value ?? "assigned",
+    userId: state.user?.id ?? "",
+  }));
+}
+
+function rebuildTodoAssigneeOptions(selectedValue = "") {
+  if (!todoAssigneeInput) {
+    return;
+  }
+
+  replaceSelectOptions(todoAssigneeInput, getTodoAssigneeOptions(), selectedValue || "");
+}
+
+function rebuildTodoDetailAssigneeOptions(selectedValue = "") {
+  if (!todoDetailAssignee) {
+    return;
+  }
+
+  replaceSelectOptions(todoDetailAssignee, getTodoAssigneeOptions(), selectedValue || "");
+}
+
+function rebuildTodoWorkOrderOptions(selectedValue = "") {
+  if (!todoWorkOrderIdInput) {
+    return;
+  }
+
+  const options = [
+    { value: "", label: "Bez vezanog RN" },
+    ...sortWorkOrders(state.workOrders).map((item) => ({
+      value: item.id,
+      label: `${item.workOrderNumber} • ${item.companyName || item.locationName || "RN"}`,
+    })),
+  ];
+
+  replaceSelectOptions(todoWorkOrderIdInput, options, selectedValue || "");
+}
+
+function renderTodoLinkPreview() {
+  if (!todoLinkPreview) {
+    return;
+  }
+
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === todoWorkOrderIdInput?.value);
+
+  if (!linkedWorkOrder) {
+    todoLinkPreview.hidden = true;
+    todoLinkPreview.textContent = "";
+    return;
+  }
+
+  todoLinkPreview.hidden = false;
+  todoLinkPreview.textContent = [
+    linkedWorkOrder.workOrderNumber,
+    linkedWorkOrder.companyName,
+    linkedWorkOrder.locationName,
+  ].filter(Boolean).join(" • ");
+}
+
+function buildTodoTaskPayload() {
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === todoWorkOrderIdInput.value) ?? null;
+
+  return {
+    title: todoTitleInput.value,
+    assignedToUserId: todoAssigneeInput.value,
+    dueDate: todoDueDateInput.value,
+    status: todoStatusInput.value,
+    priority: todoPriorityInput.value,
+    workOrderId: todoWorkOrderIdInput.value,
+    companyId: linkedWorkOrder?.companyId ?? "",
+    locationId: linkedWorkOrder?.locationId ?? "",
+    message: todoMessageInput.value,
+  };
+}
+
+function resetTodoForm() {
+  if (!todoForm) {
+    return;
+  }
+
+  todoIdInput.value = "";
+  todoTitleInput.value = "";
+  todoDueDateInput.value = "";
+  todoStatusInput.value = "open";
+  todoPriorityInput.value = "Normal";
+  rebuildTodoAssigneeOptions("");
+  rebuildTodoWorkOrderOptions("");
+  todoWorkOrderIdInput.value = "";
+  todoMessageInput.value = "";
+
+  if (todoError) {
+    todoError.textContent = "";
+  }
+
+  renderTodoLinkPreview();
+}
+
+function hydrateTodoTaskForm(task) {
+  state.activeView = "todo";
+  state.activeSidebarGroup = "home";
+  state.activeSidebarItem = "todo";
+  state.activeTodoTaskId = task.id;
+  renderActiveView();
+
+  todoIdInput.value = task.id;
+  todoTitleInput.value = task.title || "";
+  todoDueDateInput.value = task.dueDate || "";
+  todoStatusInput.value = task.status || "open";
+  todoPriorityInput.value = task.priority || "Normal";
+  rebuildTodoAssigneeOptions(task.assignedToUserId || "");
+  todoAssigneeInput.value = task.assignedToUserId || "";
+  rebuildTodoWorkOrderOptions(task.workOrderId || "");
+  todoWorkOrderIdInput.value = task.workOrderId || "";
+  todoMessageInput.value = task.message || "";
+  renderTodoLinkPreview();
+  todoTitleInput.focus({ preventScroll: true });
+}
+
+function openTodoComposerForWorkOrder(workOrder = null) {
+  state.activeView = "todo";
+  state.activeSidebarGroup = "home";
+  state.activeSidebarItem = "todo";
+  renderActiveView();
+  resetTodoForm();
+
+  if (workOrder) {
+    todoTitleInput.value = `Zadatak za ${workOrder.workOrderNumber}`;
+    todoDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
+    rebuildTodoWorkOrderOptions(workOrder.id);
+    todoWorkOrderIdInput.value = workOrder.id;
+    todoMessageInput.value = `${workOrder.companyName || "Klijent"} • ${workOrder.locationName || "Lokacija"}`;
+  }
+
+  renderTodoLinkPreview();
+  todoTitleInput.focus({ preventScroll: true });
+}
+
+function createTodoTaskStatusBadge(task) {
+  const label = getOptionLabel(TODO_TASK_STATUS_OPTIONS, task.status || "open");
+  const badge = document.createElement("span");
+  badge.className = `todo-task-status-badge is-${task.status || "open"}`;
+  badge.textContent = label;
+  return badge;
+}
+
+function createTodoTaskPriorityBadge(priority = "Normal") {
+  const badge = document.createElement("span");
+  badge.className = `todo-task-priority-badge ${priorityBadgeClass(priority)}`;
+  badge.textContent = getOptionLabel(PRIORITY_OPTIONS, priority);
+  return badge;
+}
+
+function selectTodoTask(taskId) {
+  state.activeTodoTaskId = String(taskId ?? "");
+  renderTodo();
+}
+
+function renderTodoSummary() {
+  if (!todoTotalCount || !todoAssignedCount || !todoCreatedCount || !todoOverdueCount) {
+    return;
+  }
+
+  const userId = String(state.user?.id ?? "");
+  todoTotalCount.textContent = String(state.todoTasks.length);
+  todoAssignedCount.textContent = String(state.todoTasks.filter((item) => String(item.assignedToUserId) === userId && item.status !== "done").length);
+  todoCreatedCount.textContent = String(state.todoTasks.filter((item) => String(item.createdByUserId) === userId).length);
+  todoOverdueCount.textContent = String(state.todoTasks.filter((item) => isTodoTaskOverdue(item)).length);
+}
+
+function renderTodoList() {
+  if (!todoBody) {
+    return;
+  }
+
+  const tasks = getFilteredTodoTasks();
+
+  if (tasks.length > 0 && !tasks.some((item) => String(item.id) === String(state.activeTodoTaskId))) {
+    state.activeTodoTaskId = tasks[0].id;
+  }
+
+  if (tasks.length === 0) {
+    state.activeTodoTaskId = "";
+  }
+
+  todoBody.replaceChildren(...tasks.map((task) => {
+    const card = document.createElement("article");
+    card.className = "todo-task-card";
+    card.classList.toggle("is-active", String(task.id) === String(state.activeTodoTaskId));
+    card.tabIndex = 0;
+    card.addEventListener("click", () => {
+      selectTodoTask(task.id);
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectTodoTask(task.id);
+      }
+    });
+
+    const head = document.createElement("div");
+    head.className = "todo-task-card-head";
+    const copy = document.createElement("div");
+    copy.className = "todo-task-card-copy";
+    const title = document.createElement("strong");
+    title.className = "todo-task-card-title";
+    title.textContent = task.title;
+    const subtitle = document.createElement("span");
+    subtitle.className = "todo-task-card-subtitle";
+    subtitle.textContent = [
+      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvrsitelja",
+      task.createdByLabel ? `od ${task.createdByLabel}` : "",
+    ].filter(Boolean).join(" • ");
+    copy.append(title, subtitle);
+
+    const badges = document.createElement("div");
+    badges.className = "todo-task-card-badges";
+    badges.append(createTodoTaskStatusBadge(task), createTodoTaskPriorityBadge(task.priority));
+    head.append(copy, badges);
+
+    const message = document.createElement("p");
+    message.className = "todo-task-card-message";
+    message.textContent = task.message || "Bez dodatne poruke.";
+
+    const meta = document.createElement("div");
+    meta.className = "todo-task-card-meta";
+
+    if (task.workOrderNumber) {
+      meta.append(createMetaPill(`RN ${task.workOrderNumber}`, "is-neutral"));
+    }
+
+    if (task.companyName) {
+      meta.append(createMetaPill(task.companyName, "is-soft"));
+    }
+
+    meta.append(createMetaPill(
+      task.dueDate ? formatCompactDate(task.dueDate) : "Bez roka",
+      isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
+    ));
+    meta.append(createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft"));
+
+    card.append(head, message, meta);
+    return card;
+  }));
+
+  if (todoEmpty) {
+    todoEmpty.hidden = tasks.length !== 0;
+  }
+}
+
+function renderTodoDetail() {
+  if (!todoDetailPanel || !todoDetailEmpty || !todoDetailContent) {
+    return;
+  }
+
+  const task = getTodoTaskById();
+
+  todoDetailEmpty.hidden = Boolean(task);
+  todoDetailContent.hidden = !task;
+
+  if (!task) {
+    if (todoCommentsBody) {
+      todoCommentsBody.replaceChildren();
+    }
+
+    if (todoCommentsEmpty) {
+      todoCommentsEmpty.hidden = false;
+    }
+
+    return;
+  }
+
+  if (todoDetailTitle) {
+    todoDetailTitle.textContent = task.title;
+  }
+
+  if (todoDetailMeta) {
+    const lines = [
+      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvrsitelja",
+      task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
+      task.createdAt ? formatDateTime(task.createdAt) : "",
+    ].filter(Boolean);
+    todoDetailMeta.textContent = lines.join(" • ");
+  }
+
+  if (todoDetailMessage) {
+    todoDetailMessage.textContent = task.message || "Bez dodatne poruke.";
+  }
+
+  if (todoDetailStatus) {
+    replaceSelectOptions(todoDetailStatus, TODO_TASK_STATUS_OPTIONS, task.status || "open");
+    todoDetailStatus.value = task.status || "open";
+    todoDetailStatus.dataset.taskId = task.id;
+  }
+
+  if (todoDetailPriority) {
+    replaceSelectOptions(todoDetailPriority, PRIORITY_OPTIONS, task.priority || "Normal");
+    todoDetailPriority.value = task.priority || "Normal";
+    todoDetailPriority.dataset.taskId = task.id;
+  }
+
+  if (todoDetailAssignee) {
+    rebuildTodoDetailAssigneeOptions(task.assignedToUserId || "");
+    todoDetailAssignee.value = task.assignedToUserId || "";
+    todoDetailAssignee.dataset.taskId = task.id;
+  }
+
+  if (todoDetailDueDate) {
+    todoDetailDueDate.value = task.dueDate || "";
+    todoDetailDueDate.dataset.taskId = task.id;
+  }
+
+  if (todoDetailOpenWorkOrder) {
+    const linkedWorkOrder = getLinkedTodoWorkOrder(task);
+    todoDetailOpenWorkOrder.hidden = !linkedWorkOrder;
+    todoDetailOpenWorkOrder.onclick = linkedWorkOrder
+      ? (() => {
+        hydrateWorkOrderForm(linkedWorkOrder);
+      })
+      : null;
+  }
+
+  if (todoDetailEdit) {
+    todoDetailEdit.onclick = () => {
+      hydrateTodoTaskForm(task);
+    };
+  }
+
+  if (todoDetailDelete) {
+    todoDetailDelete.onclick = () => {
+      if (!window.confirm(`Obrisati zadatak "${task.title}"?`)) {
+        return;
+      }
+
+      void runMutation(() => apiRequest(`/todo-tasks/${task.id}`, {
+        method: "DELETE",
+      }), todoCommentError).then((success) => {
+        if (success) {
+          state.activeTodoTaskId = getFilteredTodoTasks()[0]?.id ?? "";
+        }
+      });
+    };
+  }
+
+  if (todoCommentsBody) {
+    todoCommentsBody.replaceChildren(...(task.comments ?? []).map((comment) => {
+      const article = document.createElement("article");
+      article.className = "todo-comment";
+
+      const avatar = document.createElement("span");
+      avatar.className = "todo-comment-avatar";
+      avatar.textContent = getUserInitials({ fullName: comment.authorLabel });
+
+      const content = document.createElement("div");
+      content.className = "todo-comment-content";
+
+      const top = document.createElement("div");
+      top.className = "todo-comment-top";
+      const author = document.createElement("strong");
+      author.textContent = comment.authorLabel || "Safety360";
+      const time = document.createElement("span");
+      time.textContent = formatDateTime(comment.createdAt);
+      top.append(author, time);
+
+      const body = document.createElement("p");
+      body.className = "todo-comment-body";
+      body.textContent = comment.message;
+
+      content.append(top, body);
+      article.append(avatar, content);
+      return article;
+    }));
+  }
+
+  if (todoCommentsEmpty) {
+    todoCommentsEmpty.hidden = (task.comments?.length ?? 0) !== 0;
+  }
+}
+
+function renderTodo() {
+  renderTodoSummary();
+  renderTodoList();
+  renderTodoDetail();
+}
+
 function renderActiveView() {
   const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
 
@@ -5593,6 +6075,8 @@ function renderSharedOptions() {
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
   replaceSelectOptions(workOrderPriorityInput, PRIORITY_OPTIONS, workOrderPriorityInput.value || "Normal");
   replaceSelectOptions(reminderStatusInput, REMINDER_STATUS_OPTIONS, reminderStatusInput.value || "active");
+  replaceSelectOptions(todoStatusInput, TODO_TASK_STATUS_OPTIONS, todoStatusInput?.value || "open");
+  replaceSelectOptions(todoPriorityInput, PRIORITY_OPTIONS, todoPriorityInput?.value || "Normal");
   replaceSelectOptions(workOrderFilterStatusInput, [
     { value: "all", label: "Svi statusi" },
     ...WORK_ORDER_STATUS_OPTIONS,
@@ -5601,6 +6085,16 @@ function renderSharedOptions() {
     { value: "all", label: "Svi statusi" },
     ...REMINDER_STATUS_OPTIONS,
   ], remindersFilterStatusInput.value || "all");
+  replaceSelectOptions(todoFilterStatusInput, [
+    { value: "all", label: "Svi statusi" },
+    ...TODO_TASK_STATUS_OPTIONS,
+  ], todoFilterStatusInput?.value || "all");
+  replaceSelectOptions(todoFilterScopeInput, [
+    { value: "all", label: "Sve" },
+    { value: "assigned", label: "Dodijeljeno meni" },
+    { value: "created", label: "Poslao sam" },
+    { value: "unassigned", label: "Bez izvrsitelja" },
+  ], todoFilterScopeInput?.value || "assigned");
 
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
@@ -5610,6 +6104,10 @@ function renderSharedOptions() {
   rebuildReminderWorkOrderOptions(reminderWorkOrderIdInput?.value || "");
   rebuildReminderCompanyOptions(reminderCompanyIdInput?.value || "");
   renderReminderLinkPreview();
+  rebuildTodoAssigneeOptions(todoAssigneeInput?.value || "");
+  rebuildTodoDetailAssigneeOptions(todoDetailAssignee?.value || "");
+  rebuildTodoWorkOrderOptions(todoWorkOrderIdInput?.value || "");
+  renderTodoLinkPreview();
 
   if (organizationSwitcher) {
     replaceSelectOptions(organizationSwitcher, organizationOptions, state.activeOrganizationId || state.organizations[0]?.id || "");
@@ -7105,6 +7603,7 @@ function render() {
   renderSharedOptions();
   renderCompactWorkOrdersList();
   renderReminders();
+  renderTodo();
   renderCompanies();
   renderLocations();
   renderManagement();
@@ -7258,6 +7757,104 @@ reminderForm?.addEventListener("submit", (event) => {
 reminderResetButton?.addEventListener("click", resetReminderForm);
 remindersSearchInput?.addEventListener("input", renderReminders);
 remindersFilterStatusInput?.addEventListener("change", renderReminders);
+todoWorkOrderIdInput?.addEventListener("change", renderTodoLinkPreview);
+todoForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(todoIdInput.value);
+  const path = isEditing ? `/todo-tasks/${todoIdInput.value}` : "/todo-tasks";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildTodoTaskPayload(),
+  }), todoError).then((success) => {
+    if (success) {
+      if (!isEditing) {
+        resetTodoForm();
+      }
+    }
+  });
+});
+todoResetButton?.addEventListener("click", resetTodoForm);
+todoSearchInput?.addEventListener("input", renderTodo);
+todoFilterScopeInput?.addEventListener("change", renderTodo);
+todoFilterStatusInput?.addEventListener("change", renderTodo);
+todoDetailStatus?.addEventListener("change", () => {
+  const taskId = todoDetailStatus.dataset.taskId;
+
+  if (!taskId) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      status: todoDetailStatus.value,
+    },
+  }), todoCommentError);
+});
+todoDetailPriority?.addEventListener("change", () => {
+  const taskId = todoDetailPriority.dataset.taskId;
+
+  if (!taskId) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      priority: todoDetailPriority.value,
+    },
+  }), todoCommentError);
+});
+todoDetailAssignee?.addEventListener("change", () => {
+  const taskId = todoDetailAssignee.dataset.taskId;
+
+  if (!taskId) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      assignedToUserId: todoDetailAssignee.value,
+    },
+  }), todoCommentError);
+});
+todoDetailDueDate?.addEventListener("change", () => {
+  const taskId = todoDetailDueDate.dataset.taskId;
+
+  if (!taskId) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      dueDate: todoDetailDueDate.value,
+    },
+  }), todoCommentError);
+});
+todoCommentForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const task = getTodoTaskById();
+
+  if (!task) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${task.id}/comments`, {
+    method: "POST",
+    body: {
+      message: todoCommentInput.value,
+    },
+  }), todoCommentError).then((success) => {
+    if (success && todoCommentInput) {
+      todoCommentInput.value = "";
+    }
+  });
+});
 
 workOrderForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -7283,6 +7880,10 @@ workOrderOpenReminderButton?.addEventListener("click", () => {
     reminderCompanyIdInput.value = workOrderCompanyIdInput.value;
     renderReminderLinkPreview();
   }
+});
+workOrderOpenTodoButton?.addEventListener("click", () => {
+  const linkedWorkOrder = state.workOrders.find((item) => item.id === workOrderIdInput.value) ?? null;
+  openTodoComposerForWorkOrder(linkedWorkOrder);
 });
 measurementSheetOpenButton?.addEventListener("click", () => {
   openMeasurementSheet();
@@ -7886,11 +8487,13 @@ logoutButton.addEventListener("click", () => {
     state.organizations = [];
     state.workOrders = [];
     state.reminders = [];
+    state.todoTasks = [];
     state.companies = [];
     state.locations = [];
     state.users = [];
     state.signupRequests = [];
     state.loginContentItems = [];
+    state.activeTodoTaskId = "";
     state.measurementSheet.columns = [];
     state.measurementSheet.rows = [];
     state.measurementSheet.resizing = null;
@@ -7982,6 +8585,7 @@ resetWorkOrderForm();
 resetWorkOrderActivityState();
 resetMeasurementSheet();
 resetReminderForm();
+resetTodoForm();
 resetCompanyForm();
 resetLocationForm();
 resetOrganizationForm();

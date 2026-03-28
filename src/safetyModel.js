@@ -20,9 +20,17 @@ export const REMINDER_STATUS_OPTIONS = [
   { value: "done", label: "Gotov" },
 ];
 
+export const TODO_TASK_STATUS_OPTIONS = [
+  { value: "open", label: "Novo" },
+  { value: "in_progress", label: "U radu" },
+  { value: "waiting", label: "Ceka odgovor" },
+  { value: "done", label: "Zavrseno" },
+];
+
 const WORK_ORDER_STATUS_SET = new Set(WORK_ORDER_STATUS_OPTIONS.map((option) => option.value));
 const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
+const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const PRIORITY_RANK = {
   Urgent: 0,
   High: 1,
@@ -35,6 +43,12 @@ const REMINDER_STATUS_RANK = {
   active: 0,
   snoozed: 1,
   done: 2,
+};
+const TODO_TASK_STATUS_RANK = {
+  open: 0,
+  in_progress: 1,
+  waiting: 2,
+  done: 3,
 };
 
 function isoNow() {
@@ -123,6 +137,11 @@ function normalizeReminderStatus(value) {
   return REMINDER_STATUS_SET.has(status) ? status : "active";
 }
 
+function normalizeTodoTaskStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return TODO_TASK_STATUS_SET.has(status) ? status : "open";
+}
+
 function normalizeOib(value) {
   const oib = normalizeText(value).replace(/\s+/g, "");
 
@@ -157,6 +176,33 @@ function findReminderLocation(state, locationId = "", companyId = "") {
 }
 
 function findReminderWorkOrder(state, workOrderId = "") {
+  if (!workOrderId) {
+    return null;
+  }
+
+  return (state.workOrders ?? []).find((item) => item.id === workOrderId) ?? null;
+}
+
+function findTodoCompany(state, companyId = "") {
+  if (!companyId) {
+    return null;
+  }
+
+  return (state.companies ?? []).find((item) => item.id === companyId) ?? null;
+}
+
+function findTodoLocation(state, locationId = "", companyId = "") {
+  if (!locationId) {
+    return null;
+  }
+
+  return (state.locations ?? []).find((item) => (
+    item.id === locationId
+    && (!companyId || item.companyId === companyId)
+  )) ?? null;
+}
+
+function findTodoWorkOrder(state, workOrderId = "") {
   if (!workOrderId) {
     return null;
   }
@@ -238,6 +284,103 @@ function hydrateReminderCore({
     completedAt,
     createdAt: current?.createdAt ?? timestamp,
     updatedAt: timestamp,
+  };
+}
+
+function hydrateTodoTaskCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const requestedWorkOrderId = hasOwn(input, "workOrderId")
+    ? normalizeId(input.workOrderId)
+    : normalizeId(current?.workOrderId);
+  const linkedWorkOrder = findTodoWorkOrder(state, requestedWorkOrderId);
+
+  if (requestedWorkOrderId && !linkedWorkOrder) {
+    throw new Error("Povezani radni nalog ne postoji.");
+  }
+
+  let companyId = linkedWorkOrder?.companyId ?? (
+    hasOwn(input, "companyId") ? normalizeId(input.companyId) : normalizeId(current?.companyId)
+  );
+  let locationId = linkedWorkOrder?.locationId ?? (
+    hasOwn(input, "locationId") ? normalizeId(input.locationId) : normalizeId(current?.locationId)
+  );
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const company = findTodoCompany(state, companyId);
+
+  if (companyId && !company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  let location = findTodoLocation(state, locationId, companyId);
+
+  if (locationId && !location) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  if (linkedWorkOrder) {
+    companyId = linkedWorkOrder.companyId;
+    locationId = linkedWorkOrder.locationId;
+    location = findTodoLocation(state, linkedWorkOrder.locationId, linkedWorkOrder.companyId);
+  }
+
+  const normalizedStatus = hasOwn(input, "status")
+    ? normalizeTodoTaskStatus(input.status)
+    : normalizeTodoTaskStatus(current?.status);
+  const dueDate = hasOwn(input, "dueDate")
+    ? normalizeOptionalDate(input.dueDate)
+    : normalizeOptionalDate(current?.dueDate);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: linkedWorkOrder?.companyName ?? company?.name ?? "",
+    locationId,
+    locationName: linkedWorkOrder?.locationName ?? location?.name ?? "",
+    workOrderId: linkedWorkOrder?.id ?? requestedWorkOrderId,
+    workOrderNumber: linkedWorkOrder?.workOrderNumber ?? current?.workOrderNumber ?? "",
+    title: hasOwn(input, "title") ? requireText(input.title, "Naslov zadatka") : current?.title ?? "",
+    message: hasOwn(input, "message") ? normalizeText(input.message) : current?.message ?? "",
+    status: normalizedStatus,
+    priority: hasOwn(input, "priority") ? normalizePriority(input.priority) : normalizePriority(current?.priority),
+    dueDate,
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    assignedToUserId: hasOwn(input, "assignedToUserId")
+      ? normalizeText(input.assignedToUserId)
+      : (current?.assignedToUserId ?? ""),
+    assignedToLabel: hasOwn(input, "assignedToLabel")
+      ? normalizeText(input.assignedToLabel)
+      : (current?.assignedToLabel ?? ""),
+    completedAt: normalizedStatus === "done"
+      ? (current?.completedAt ?? timestamp)
+      : null,
+    commentCount: current?.commentCount ?? 0,
+    comments: Array.isArray(current?.comments) ? current.comments.map((comment) => ({ ...comment })) : [],
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function createTodoTaskCommentCore(input, createId = () => crypto.randomUUID(), now = isoNow) {
+  return {
+    id: createId(),
+    taskId: requireText(input.taskId, "Zadatak"),
+    organizationId: requireText(input.organizationId, "Organizacija"),
+    userId: normalizeText(input.userId),
+    authorLabel: normalizeText(input.authorLabel) || "Safety360",
+    message: requireText(input.message, "Poruka"),
+    createdAt: now(),
   };
 }
 
@@ -794,6 +937,141 @@ export function sortReminders(reminders) {
 
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
+    }
+
+    if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
+      return left.dueDate.localeCompare(right.dueDate);
+    }
+
+    if (left.dueDate && !right.dueDate) {
+      return -1;
+    }
+
+    if (!left.dueDate && right.dueDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function createTodoTask(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const task = hydrateTodoTaskCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...task,
+    id: createId(),
+    comments: [],
+    commentCount: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateTodoTask(current, patch, state, now = isoNow) {
+  return hydrateTodoTaskCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
+export function createTodoTaskComment(
+  currentTask,
+  input,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const comment = createTodoTaskCommentCore({
+    ...input,
+    taskId: currentTask.id,
+    organizationId: currentTask.organizationId,
+  }, createId, now);
+  const nextComments = [...(currentTask.comments ?? []), comment];
+
+  return {
+    ...currentTask,
+    comments: nextComments,
+    commentCount: nextComments.length,
+    updatedAt: comment.createdAt,
+  };
+}
+
+export function filterTodoTasks(
+  tasks,
+  { query = "", status = "all", scope = "all", userId = "" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedUserId = normalizeText(userId);
+
+  return tasks.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (scope === "assigned" && normalizedUserId && normalizeText(item.assignedToUserId) !== normalizedUserId) {
+      return false;
+    }
+
+    if (scope === "created" && normalizedUserId && normalizeText(item.createdByUserId) !== normalizedUserId) {
+      return false;
+    }
+
+    if (scope === "unassigned" && normalizeText(item.assignedToUserId)) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.message,
+      item.companyName,
+      item.locationName,
+      item.workOrderNumber,
+      item.createdByLabel,
+      item.assignedToLabel,
+      ...(item.comments ?? []).map((comment) => comment.message),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortTodoTasks(tasks) {
+  return [...tasks].sort((left, right) => {
+    const leftDone = left.status === "done";
+    const rightDone = right.status === "done";
+
+    if (leftDone !== rightDone) {
+      return leftDone ? 1 : -1;
+    }
+
+    const leftRank = TODO_TASK_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = TODO_TASK_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftPriorityRank = PRIORITY_RANK[left.priority] ?? Number.MAX_SAFE_INTEGER;
+    const rightPriorityRank = PRIORITY_RANK[right.priority] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftPriorityRank !== rightPriorityRank) {
+      return leftPriorityRank - rightPriorityRank;
     }
 
     if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
