@@ -218,7 +218,7 @@ async function getRequestUser(request, response) {
   return refreshedUser;
 }
 
-async function readJsonBody(request) {
+async function readRequestBodyText(request) {
   const chunks = [];
 
   for await (const chunk of request) {
@@ -226,16 +226,47 @@ async function readJsonBody(request) {
   }
 
   if (chunks.length === 0) {
-    return {};
+    return "";
   }
 
-  const body = Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readJsonBody(request) {
+  const body = await readRequestBodyText(request);
+
+  if (!body) {
+    return {};
+  }
 
   try {
     return JSON.parse(body);
   } catch {
     throw new Error("Invalid JSON body.");
   }
+}
+
+async function readFormBody(request) {
+  const body = await readRequestBodyText(request);
+
+  if (!body) {
+    return {};
+  }
+
+  const parsed = new URLSearchParams(body);
+  const values = {};
+
+  for (const [key, value] of parsed.entries()) {
+    values[key] = value;
+  }
+
+  return values;
+}
+
+function redirect(response, location, statusCode = 303) {
+  response.statusCode = statusCode;
+  response.setHeader("Location", location);
+  response.end();
 }
 
 function getRequestedOrganizationId(request) {
@@ -973,6 +1004,39 @@ async function handleStaticRequest(response, url) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+
+  if (request.method === "POST" && url.pathname === "/auth/login-form") {
+    try {
+      const body = await readFormBody(request);
+      const user = await tenantRepository.authenticateUser(body.email ?? body.username, body.password);
+
+      if (!user) {
+        redirect(response, "/?loginError=invalid");
+        return;
+      }
+
+      const accessToken = createAccessToken(user, jwtSecret);
+      const refreshToken = createRefreshToken(user, jwtSecret);
+
+      await tenantRepository.storeRefreshToken(user, refreshToken, {
+        ipAddress: getClientIp(request),
+        userAgent: request.headers["user-agent"] ?? "",
+      });
+
+      appendResponseCookies(response, createAuthCookies({
+        accessToken,
+        refreshToken,
+        secure: shouldUseSecureCookies(request),
+      }));
+
+      redirect(response, "/");
+      return;
+    } catch (error) {
+      console.error("Form login failed.", error);
+      redirect(response, "/?loginError=server");
+      return;
+    }
+  }
 
   if (url.pathname.startsWith("/api/")) {
     const handled = await handleApiRequest(request, response, url);

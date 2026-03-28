@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328t" />
+    <link rel="stylesheet" href="/styles.css?v=20260328u" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -24,12 +24,12 @@
               <p>Sign in with your Safety360 account.</p>
             </div>
 
-            <form id="login-form" class="auth-form auth-form-tenant">
+            <form id="login-form" class="auth-form auth-form-tenant" method="post" action="/auth/login-form">
               <label class="field">
                 <span>Email</span>
                 <div class="auth-input-shell">
                   <span class="auth-input-icon auth-input-icon-email" aria-hidden="true"></span>
-                  <input id="login-email" type="email" autocomplete="username" placeholder="Email address" required />
+                  <input id="login-email" name="email" type="text" autocomplete="username" placeholder="Email address" required />
                 </div>
               </label>
 
@@ -39,6 +39,7 @@
                   <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
                   <input
                     id="login-password"
+                    name="password"
                     type="password"
                     autocomplete="current-password"
                     placeholder="Password"
@@ -1904,7 +1905,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328t"></script>
-    <script type="module" src="/src/main.js?v=20260328t"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328u"></script>
+    <script type="module" src="/src/main.js?v=20260328u"></script>
   </body>
 </html>

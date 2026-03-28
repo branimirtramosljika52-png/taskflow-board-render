@@ -759,6 +759,26 @@ function setLoginBusy(isBusy) {
   loginPasswordInput.disabled = isBusy;
 }
 
+function applyLoginRedirectState() {
+  const params = new URLSearchParams(window.location.search);
+  const loginErrorCode = params.get("loginError");
+
+  if (!loginErrorCode || !loginError) {
+    return;
+  }
+
+  if (loginErrorCode === "invalid") {
+    loginError.textContent = "Neispravan email ili lozinka.";
+  } else if (loginErrorCode === "server") {
+    loginError.textContent = "Prijava trenutno nije uspjela. Pokusaj ponovno.";
+  }
+
+  params.delete("loginError");
+  const nextQuery = params.toString();
+  const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, "", nextUrl);
+}
+
 function syncPasswordToggleLabel() {
   return;
 }
@@ -9248,27 +9268,9 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
     });
 });
 
-loginForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+loginForm.addEventListener("submit", () => {
   loginError.textContent = "";
   setLoginBusy(true);
-
-  void apiRequest("/auth/login", {
-    method: "POST",
-    body: {
-      email: loginEmailInput.value,
-      password: loginPasswordInput.value,
-    },
-  }).then((payload) => {
-    state.user = payload.user;
-    loginForm.reset();
-    renderAuthState();
-    return refreshSnapshot();
-  }).catch((error) => {
-    loginError.textContent = error.message;
-  }).finally(() => {
-    setLoginBusy(false);
-  });
 });
 
 logoutButton.addEventListener("click", () => {
@@ -9468,6 +9470,7 @@ resetUserForm();
 resetLoginContentForm();
 renderActiveView();
 renderAuthState();
+applyLoginRedirectState();
 syncPasswordToggleLabel();
 
 refreshLoginContent().catch(() => {
