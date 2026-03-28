@@ -13,6 +13,7 @@ import {
   filterReminders,
   filterTodoTasks,
   filterWorkOrders,
+  getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
   sortReminders,
@@ -750,6 +751,8 @@ function writeUserPresence(value, userLike = state.user) {
 }
 
 function setLoginBusy(isBusy) {
+  loginForm?.classList.toggle("is-submitting", isBusy);
+
   if (loginSubmitButton) {
     loginSubmitButton.disabled = isBusy;
     loginSubmitButton.textContent = isBusy ? "Signing in..." : "Sign in";
@@ -9255,7 +9258,7 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
 
 loginForm.addEventListener("submit", () => {
   loginError.textContent = "";
-  setLoginBusy(true);
+  loginForm.classList.add("is-submitting");
 });
 
 logoutButton.addEventListener("click", () => {
