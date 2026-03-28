@@ -5340,24 +5340,7 @@ function renderDashboardUpcomingList(container, items) {
   }));
 }
 
-function renderDashboardOverview() {
-  const shouldShowDashboard = Boolean(
-    dashboardOverviewPanel
-    && state.user
-    && state.activeView === "selfdash"
-    && state.activeSidebarItem === "dashboard",
-  );
-
-  if (!dashboardOverviewPanel) {
-    return;
-  }
-
-  dashboardOverviewPanel.hidden = !shouldShowDashboard;
-
-  if (!shouldShowDashboard) {
-    return;
-  }
-
+function renderDashboardInsightsSummary() {
   const insights = getDashboardInsights(state);
 
   if (dashboardOpenWorkOrders) {
@@ -6096,6 +6079,8 @@ function renderDashboardOverview() {
   if (!shouldShowDashboard) {
     return;
   }
+
+  renderDashboardInsightsSummary();
 
   if (dashboardSeedLayoutButton) {
     dashboardSeedLayoutButton.hidden = getDashboardWidgets().length > 0;
