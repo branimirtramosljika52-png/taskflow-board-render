@@ -25,6 +25,13 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
+const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
+const USER_PRESENCE_OPTIONS = [
+  { value: "online", label: "Online" },
+  { value: "away", label: "Away" },
+  { value: "busy", label: "Busy" },
+  { value: "offline", label: "Offline" },
+];
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
@@ -278,8 +285,13 @@ const userBadge = document.querySelector("#user-badge");
 const userMenuPanel = document.querySelector("#user-menu-panel");
 const userMenuAvatar = document.querySelector("#user-menu-avatar");
 const userMenuName = document.querySelector("#user-menu-name");
+const userMenuRole = document.querySelector("#user-menu-role");
 const userMenuEmail = document.querySelector("#user-menu-email");
 const userMenuOrganizations = document.querySelector("#user-menu-organizations");
+const userMenuPresenceOptions = document.querySelector("#user-menu-presence-options");
+const userMenuActiveOrg = document.querySelector("#user-menu-active-org");
+const userMenuOrgCount = document.querySelector("#user-menu-org-count");
+const userMenuLastLogin = document.querySelector("#user-menu-last-login");
 const userMenuAvatarButton = document.querySelector("#user-menu-avatar-button");
 const userMenuAvatarFileInput = document.querySelector("#user-menu-avatar-file");
 const userMenuError = document.querySelector("#user-menu-error");
@@ -574,6 +586,32 @@ function setUserMenuError(message = "") {
   userMenuError.textContent = message;
 }
 
+function getUserPresenceStorageKey(userLike = {}) {
+  const identifier = String(userLike?.id ?? userLike?.email ?? "").trim();
+  return identifier ? `${USER_PRESENCE_KEY_PREFIX}${identifier}` : USER_PRESENCE_KEY_PREFIX;
+}
+
+function normalizeUserPresence(value) {
+  const match = USER_PRESENCE_OPTIONS.find((option) => option.value === String(value ?? "").trim().toLowerCase());
+  return match?.value ?? "online";
+}
+
+function readUserPresence(userLike = state.user) {
+  try {
+    return normalizeUserPresence(window.localStorage.getItem(getUserPresenceStorageKey(userLike)));
+  } catch {
+    return "online";
+  }
+}
+
+function writeUserPresence(value, userLike = state.user) {
+  try {
+    window.localStorage.setItem(getUserPresenceStorageKey(userLike), normalizeUserPresence(value));
+  } catch {
+    return;
+  }
+}
+
 function setLoginBusy(isBusy) {
   if (loginSubmitButton) {
     loginSubmitButton.disabled = isBusy;
@@ -775,6 +813,14 @@ function renderAvatar(target, userLike = {}) {
   target.textContent = getUserInitials(userLike);
 }
 
+function applyPresenceToAvatar(target, presence = "online") {
+  if (!target) {
+    return;
+  }
+
+  target.dataset.presence = normalizeUserPresence(presence);
+}
+
 function readAvatarFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -918,6 +964,26 @@ function setUserMenuOpen(isOpen) {
       userMenuAvatarFileInput.value = "";
     }
   }
+}
+
+function renderUserPresenceOptions(selectedPresence = readUserPresence()) {
+  if (!userMenuPresenceOptions) {
+    return;
+  }
+
+  userMenuPresenceOptions.replaceChildren(...USER_PRESENCE_OPTIONS.map((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "user-presence-pill";
+    button.dataset.presence = option.value;
+    button.classList.toggle("is-active", option.value === selectedPresence);
+    button.textContent = option.label;
+    button.addEventListener("click", () => {
+      writeUserPresence(option.value);
+      renderAuthState();
+    });
+    return button;
+  }));
 }
 
 function getSidebarGroupForView(view = state.activeView) {
@@ -4230,6 +4296,8 @@ function renderAuthState() {
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
+    const presence = readUserPresence(state.user);
+    const presenceLabel = USER_PRESENCE_OPTIONS.find((option) => option.value === presence)?.label ?? "Online";
     const roleLabel = state.user.role === "super_admin"
       ? "Super Admin"
       : state.user.role === "admin"
@@ -4248,14 +4316,27 @@ function renderAuthState() {
     const badgeName = document.createElement("strong");
     badgeName.textContent = state.user.fullName;
     const badgeRole = document.createElement("span");
-    badgeRole.textContent = roleLabel;
+    badgeRole.textContent = `${roleLabel} · ${presenceLabel}`;
     badgeCopy.append(badgeName, badgeRole);
     userBadge.append(badgeAvatar, badgeCopy);
     renderAvatar(badgeAvatar, state.user);
+    applyPresenceToAvatar(badgeAvatar, presence);
     userMenuName.textContent = state.user.fullName || state.user.email;
+    userMenuRole.textContent = `${roleLabel} · ${presenceLabel}`;
     userMenuEmail.textContent = state.user.email || "";
     userMenuOrganizations.textContent = organizationLabel || (organization ? organization.name : "");
     renderAvatar(userMenuAvatar, state.user);
+    applyPresenceToAvatar(userMenuAvatar, presence);
+    renderUserPresenceOptions(presence);
+    if (userMenuActiveOrg) {
+      userMenuActiveOrg.textContent = organization?.name || "Bez organizacije";
+    }
+    if (userMenuOrgCount) {
+      userMenuOrgCount.textContent = `${state.user.organizations?.length || 1} org`;
+    }
+    if (userMenuLastLogin) {
+      userMenuLastLogin.textContent = state.user.lastLoginAt ? formatDateTime(state.user.lastLoginAt) : "Just now";
+    }
     setUserMenuError("");
     organizationContext.textContent = isSuperAdmin
       ? `Super admin | ${organization ? organization.name : "Bez aktivne organizacije"}`
@@ -4273,9 +4354,21 @@ function renderAuthState() {
   } else {
     userBadge.textContent = "";
     userMenuName.textContent = "";
+    userMenuRole.textContent = "";
     userMenuEmail.textContent = "";
     userMenuOrganizations.textContent = "";
     renderAvatar(userMenuAvatar, {});
+    applyPresenceToAvatar(userMenuAvatar, "online");
+    renderUserPresenceOptions("online");
+    if (userMenuActiveOrg) {
+      userMenuActiveOrg.textContent = "";
+    }
+    if (userMenuOrgCount) {
+      userMenuOrgCount.textContent = "";
+    }
+    if (userMenuLastLogin) {
+      userMenuLastLogin.textContent = "";
+    }
     setUserMenuError("");
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
