@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildWorkOrderCalendarLanes,
+  buildWorkOrderMapMarkers,
   buildLocationContacts,
   createCompany,
   createDashboardWidget,
@@ -17,6 +19,7 @@ import {
   getDashboardInsights,
   getDashboardStats,
   nextWorkOrderNumber,
+  parseCoordinates,
   sortReminders,
   sortDashboardWidgets,
   sortTodoTasks,
@@ -750,4 +753,86 @@ test("todo tasks support assignment, work-order linking, comments and filtering"
   ]);
 
   assert.equal(sorted[0].id, "todo-1");
+});
+
+test("parseCoordinates extracts numeric latitude and longitude", () => {
+  assert.deepEqual(parseCoordinates("45,8123; 15,9777"), {
+    latitude: 45.8123,
+    longitude: 15.9777,
+  });
+
+  assert.equal(parseCoordinates("bez koordinata"), null);
+});
+
+test("buildWorkOrderCalendarLanes groups work orders by executor lane and day", () => {
+  const lanes = buildWorkOrderCalendarLanes([
+    {
+      id: "wo-1",
+      workOrderNumber: "RN-1",
+      dueDate: "2026-03-30",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+    },
+    {
+      id: "wo-2",
+      workOrderNumber: "RN-2",
+      dueDate: "2026-03-30",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+    },
+    {
+      id: "wo-3",
+      workOrderNumber: "RN-3",
+      dueDate: "2026-04-01",
+      executor1: "",
+      executor2: "",
+    },
+    {
+      id: "wo-4",
+      workOrderNumber: "RN-4",
+      dueDate: "",
+      executor1: "Ana Horvat",
+      executor2: "",
+    },
+  ], "2026-03-30");
+
+  assert.deepEqual(lanes.days, [
+    "2026-03-30",
+    "2026-03-31",
+    "2026-04-01",
+    "2026-04-02",
+    "2026-04-03",
+    "2026-04-04",
+    "2026-04-05",
+  ]);
+  assert.equal(lanes.lanes[0].label, "Ana Horvat + Marko Ilic");
+  assert.equal(lanes.lanes[0].itemsByDate["2026-03-30"].length, 2);
+  assert.equal(lanes.lanes.find((lane) => lane.key === "unassigned").itemsByDate["2026-04-01"].length, 1);
+  assert.equal(lanes.unscheduled.length, 1);
+});
+
+test("buildWorkOrderMapMarkers returns only work orders with valid coordinates", () => {
+  const map = buildWorkOrderMapMarkers([
+    {
+      id: "wo-1",
+      workOrderNumber: "RN-1",
+      companyName: "Acme",
+      locationName: "Zagreb",
+      region: "Zagreb",
+      coordinates: "45.815, 15.982",
+    },
+    {
+      id: "wo-2",
+      workOrderNumber: "RN-2",
+      companyName: "Acme",
+      locationName: "Split",
+      region: "Dalmacija",
+      coordinates: "",
+    },
+  ]);
+
+  assert.equal(map.markers.length, 1);
+  assert.equal(map.markers[0].workOrderNumber, "RN-1");
+  assert.ok(map.markers[0].x >= 0 && map.markers[0].x <= 100);
+  assert.ok(map.markers[0].y >= 0 && map.markers[0].y <= 100);
 });

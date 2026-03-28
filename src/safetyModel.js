@@ -1292,6 +1292,210 @@ export function sortWorkOrders(workOrders) {
   });
 }
 
+function formatLocalDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfWeekDate(value) {
+  const normalized = normalizeOptionalDate(value) ?? todayString();
+  const date = new Date(`${normalized}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return startOfWeekDate(todayString());
+  }
+
+  const offset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - offset);
+  return date;
+}
+
+function addDaysToDateKey(value, days) {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  date.setDate(date.getDate() + days);
+  return formatLocalDateKey(date);
+}
+
+export function parseCoordinates(value) {
+  const rawValue = normalizeText(value)
+    .replace(/[;]/g, ",")
+    .replace(/\s+/g, " ");
+
+  if (!rawValue) {
+    return null;
+  }
+
+  const parts = rawValue.match(/-?\d+(?:[.,]\d+)?/g);
+
+  if (!parts || parts.length < 2) {
+    return null;
+  }
+
+  const latitude = Number(parts[0].replace(",", "."));
+  const longitude = Number(parts[1].replace(",", "."));
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+  };
+}
+
+export function getWorkOrderExecutorGroup(workOrder) {
+  const executors = [workOrder?.executor1, workOrder?.executor2]
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+
+  return {
+    key: executors.length ? executors.map((value) => value.toLowerCase()).join("||") : "unassigned",
+    label: executors.length ? executors.join(" + ") : "Bez izvrsitelja",
+    executors,
+  };
+}
+
+export function buildWorkOrderCalendarLanes(workOrders = [], weekStartValue = todayString(), dayCount = 7) {
+  const weekStartDate = startOfWeekDate(weekStartValue);
+  const weekStart = formatLocalDateKey(weekStartDate);
+  const days = Array.from({ length: dayCount }, (_, index) => addDaysToDateKey(weekStart, index));
+  const daySet = new Set(days);
+  const laneMap = new Map();
+  const unscheduled = [];
+
+  workOrders.forEach((workOrder) => {
+    const lane = getWorkOrderExecutorGroup(workOrder);
+    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+
+    if (!dueDate || !daySet.has(dueDate)) {
+      if (!dueDate) {
+        unscheduled.push(workOrder);
+      }
+      return;
+    }
+
+    if (!laneMap.has(lane.key)) {
+      laneMap.set(lane.key, {
+        ...lane,
+        itemsByDate: Object.fromEntries(days.map((day) => [day, []])),
+      });
+    }
+
+    laneMap.get(lane.key).itemsByDate[dueDate].push(workOrder);
+  });
+
+  const lanes = Array.from(laneMap.values())
+    .sort((left, right) => {
+      if (left.key === "unassigned" && right.key !== "unassigned") {
+        return 1;
+      }
+
+      if (right.key === "unassigned" && left.key !== "unassigned") {
+        return -1;
+      }
+
+      return left.label.localeCompare(right.label, "hr");
+    })
+    .map((lane) => ({
+      ...lane,
+      itemsByDate: Object.fromEntries(days.map((day) => [
+        day,
+        lane.itemsByDate[day].slice().sort((left, right) => String(left.workOrderNumber ?? "").localeCompare(String(right.workOrderNumber ?? ""), "hr")),
+      ])),
+    }));
+
+  return {
+    weekStart,
+    days,
+    lanes,
+    unscheduled: unscheduled
+      .slice()
+      .sort((left, right) => String(left.workOrderNumber ?? "").localeCompare(String(right.workOrderNumber ?? ""), "hr")),
+  };
+}
+
+export function buildWorkOrderMapMarkers(workOrders = [], bounds = null) {
+  const rawMarkers = workOrders
+    .map((workOrder) => {
+      const point = parseCoordinates(workOrder?.coordinates);
+
+      if (!point) {
+        return null;
+      }
+
+      return {
+        id: workOrder.id,
+        workOrderId: workOrder.id,
+        workOrderNumber: workOrder.workOrderNumber,
+        companyName: workOrder.companyName,
+        locationName: workOrder.locationName,
+        region: workOrder.region,
+        status: workOrder.status,
+        priority: workOrder.priority,
+        dueDate: workOrder.dueDate,
+        coordinates: workOrder.coordinates,
+        latitude: point.latitude,
+        longitude: point.longitude,
+      };
+    })
+    .filter(Boolean);
+
+  const fallbackBounds = {
+    minLat: 42.0,
+    maxLat: 47.2,
+    minLon: 13.0,
+    maxLon: 19.8,
+  };
+
+  const computedBounds = bounds || (() => {
+    if (rawMarkers.length === 0) {
+      return fallbackBounds;
+    }
+
+    const latitudes = rawMarkers.map((item) => item.latitude);
+    const longitudes = rawMarkers.map((item) => item.longitude);
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLon = Math.min(...longitudes);
+    const maxLon = Math.max(...longitudes);
+    const latSpan = Math.max(1.2, maxLat - minLat);
+    const lonSpan = Math.max(1.6, maxLon - minLon);
+    const latPadding = latSpan * 0.18;
+    const lonPadding = lonSpan * 0.18;
+
+    return {
+      minLat: minLat - latPadding,
+      maxLat: maxLat + latPadding,
+      minLon: minLon - lonPadding,
+      maxLon: maxLon + lonPadding,
+    };
+  })();
+
+  const latSpan = Math.max(0.0001, computedBounds.maxLat - computedBounds.minLat);
+  const lonSpan = Math.max(0.0001, computedBounds.maxLon - computedBounds.minLon);
+
+  return {
+    bounds: computedBounds,
+    markers: rawMarkers.map((marker) => ({
+      ...marker,
+      x: ((marker.longitude - computedBounds.minLon) / lonSpan) * 100,
+      y: (1 - ((marker.latitude - computedBounds.minLat) / latSpan)) * 100,
+    })),
+  };
+}
+
 export function getDashboardStats(snapshot, today = todayString()) {
   const companies = snapshot.companies ?? [];
   const locations = snapshot.locations ?? [];

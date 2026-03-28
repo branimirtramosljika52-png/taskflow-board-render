@@ -4527,6 +4527,533 @@ body.is-work-order-editor-open {
   background: linear-gradient(180deg, #ffffff, #fcfcfe);
 }
 
+.work-order-mode-view {
+  min-width: 0;
+}
+
+.work-order-calendar-view,
+.work-order-map-view {
+  display: grid;
+  gap: 14px;
+}
+
+.work-order-calendar-toolbar,
+.work-order-map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.work-order-calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.calendar-nav-button {
+  min-width: 44px;
+  padding-inline: 0;
+}
+
+.work-order-calendar-range {
+  font-size: 1rem;
+  color: #1d2238;
+}
+
+.work-order-calendar-meta,
+.work-order-map-summary {
+  font-size: 0.88rem;
+  color: #66708a;
+}
+
+.work-order-calendar-unscheduled {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #eceaf5;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #f9f7ff);
+}
+
+.work-order-calendar-unscheduled-head {
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-calendar-unscheduled-head span {
+  color: #7a8299;
+  font-size: 0.86rem;
+}
+
+.work-order-calendar-unscheduled-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.work-order-calendar-unscheduled-list .work-order-calendar-card {
+  width: min(260px, 100%);
+}
+
+.work-order-calendar-grid {
+  overflow: auto;
+  max-height: calc(100vh - 390px);
+  border: 1px solid #e8e9f2;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff, #fcfcff);
+}
+
+.work-order-calendar-grid-row {
+  display: grid;
+  grid-template-columns: 240px repeat(7, minmax(170px, 1fr));
+  min-width: 1430px;
+}
+
+.work-order-calendar-grid-row.is-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.work-order-calendar-lane-head,
+.work-order-calendar-day-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid #ececf4;
+  background: rgba(250, 251, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+.work-order-calendar-lane-head {
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7f879e;
+}
+
+.work-order-calendar-day-head {
+  display: grid;
+  gap: 4px;
+  border-left: 1px solid #f0f1f6;
+}
+
+.work-order-calendar-day-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8790a6;
+}
+
+.work-order-calendar-day-date {
+  font-size: 0.98rem;
+  color: #22283a;
+}
+
+.work-order-calendar-lane {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 16px;
+  border-bottom: 1px solid #eef0f6;
+  background: linear-gradient(180deg, #fbfcff, #f7f8fd);
+}
+
+.work-order-calendar-lane-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.work-order-calendar-lane-top strong {
+  font-size: 0.94rem;
+  color: #20263a;
+}
+
+.work-order-calendar-lane-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-order-calendar-lane-empty {
+  font-size: 0.82rem;
+  color: #8991a6;
+}
+
+.work-order-mini-executor {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--executor-bg, #e7efff);
+  color: var(--executor-fg, #3a63b8);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.work-order-calendar-cell {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 126px;
+  padding: 12px;
+  border-bottom: 1px solid #eef0f6;
+  border-left: 1px solid #f0f1f6;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(252, 252, 255, 0.96));
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.work-order-calendar-cell:hover {
+  background: linear-gradient(180deg, #ffffff, #faf8ff);
+}
+
+.work-order-calendar-cell.is-drop-target {
+  background: linear-gradient(180deg, #f6f3ff, #f0ebff);
+  box-shadow: inset 0 0 0 1px rgba(170, 136, 255, 0.28);
+}
+
+.work-order-calendar-cell-placeholder {
+  color: #b0b6c9;
+  font-size: 0.8rem;
+}
+
+.work-order-calendar-card {
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+  width: 100%;
+  padding: 10px 11px;
+  border-radius: 16px;
+  border: 1px solid #e9e7f6;
+  background: #ffffff;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(69, 76, 108, 0.08);
+  cursor: pointer;
+}
+
+.work-order-calendar-card.is-dragging {
+  opacity: 0.48;
+}
+
+.work-order-calendar-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.work-order-calendar-card-number {
+  font-size: 0.88rem;
+  color: #20253a;
+}
+
+.work-order-calendar-card-status,
+.work-order-calendar-card-priority {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
+.work-order-calendar-card-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #2a3044;
+}
+
+.work-order-calendar-card-meta {
+  font-size: 0.78rem;
+  color: #788199;
+}
+
+.work-order-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) 340px;
+  gap: 16px;
+}
+
+.work-order-map-canvas-card,
+.work-order-map-selection-card,
+.work-order-map-list-card {
+  border: 1px solid #e8e9f2;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff, #fcfcff);
+  box-shadow: 0 12px 34px rgba(66, 71, 101, 0.07);
+}
+
+.work-order-map-canvas-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.work-order-map-stage {
+  position: relative;
+  min-height: 540px;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid #e8eaf4;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(228, 183, 255, 0.34), transparent 30%),
+    radial-gradient(circle at 80% 18%, rgba(127, 109, 242, 0.16), transparent 30%),
+    linear-gradient(180deg, #f5f7ff, #eef3ff 48%, #eef8f4 100%);
+}
+
+.work-order-map-grid,
+.work-order-map-markers {
+  position: absolute;
+  inset: 0;
+}
+
+.work-order-map-grid {
+  background-image:
+    linear-gradient(rgba(155, 170, 205, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(155, 170, 205, 0.12) 1px, transparent 1px);
+  background-size: 62px 62px;
+}
+
+.work-order-map-surface {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(1px);
+  opacity: 0.78;
+}
+
+.work-order-map-surface-a {
+  inset: 20% auto auto 10%;
+  width: 58%;
+  height: 42%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(231, 236, 255, 0.78));
+  transform: rotate(-8deg);
+}
+
+.work-order-map-surface-b {
+  inset: 50% auto auto 42%;
+  width: 36%;
+  height: 22%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(220, 240, 232, 0.82));
+  transform: rotate(9deg);
+}
+
+.work-order-map-surface-c {
+  inset: 42% auto auto 14%;
+  width: 16%;
+  height: 12%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(223, 232, 255, 0.78));
+  transform: rotate(18deg);
+}
+
+.work-order-map-city {
+  position: absolute;
+  z-index: 1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #7180a0;
+}
+
+.work-order-map-city-zagreb {
+  top: 34%;
+  left: 52%;
+}
+
+.work-order-map-city-rijeka {
+  top: 36%;
+  left: 30%;
+}
+
+.work-order-map-city-split {
+  top: 71%;
+  left: 39%;
+}
+
+.work-order-map-city-osijek {
+  top: 28%;
+  left: 77%;
+}
+
+.work-order-map-marker {
+  position: absolute;
+  z-index: 3;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  padding: 0;
+}
+
+.work-order-map-marker-pulse,
+.work-order-map-marker-pin {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+}
+
+.work-order-map-marker-pulse {
+  width: 28px;
+  height: 28px;
+  background: rgba(214, 66, 136, 0.16);
+  animation: map-marker-pulse 1.8s ease-out infinite;
+}
+
+.work-order-map-marker-pin {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(180deg, #f04ea8, #cb327d);
+  color: #ffffff;
+  font-size: 0.54rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(188, 45, 118, 0.28);
+}
+
+.work-order-map-marker.is-selected .work-order-map-marker-pin {
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(180deg, #3d72ff, #6d54ff);
+  box-shadow: 0 10px 22px rgba(80, 95, 255, 0.28);
+}
+
+.work-order-map-empty {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #626c85;
+  font-size: 0.92rem;
+}
+
+.work-order-map-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.work-order-map-selection-card,
+.work-order-map-list-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.work-order-map-selection-head {
+  display: grid;
+  gap: 2px;
+}
+
+.work-order-map-selection {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-map-selection-empty {
+  margin: 0;
+  color: #7f879c;
+  font-size: 0.92rem;
+}
+
+.work-order-map-selection-top,
+.work-order-map-selection-actions,
+.work-order-map-selection-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-order-map-selection-company {
+  font-size: 1rem;
+  color: #1d2438;
+}
+
+.work-order-map-selection-location,
+.work-order-map-selection-coordinates {
+  margin: 0;
+  color: #6f7892;
+  font-size: 0.88rem;
+}
+
+.work-order-map-selection-stat {
+  min-width: 112px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid #ececf5;
+  background: #fafbff;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-map-selection-stat-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a92a8;
+}
+
+.work-order-map-selection-stat-value {
+  color: #1f2538;
+  font-size: 0.88rem;
+}
+
+.work-order-map-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.work-order-map-list-item {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid #ececf5;
+  background: #ffffff;
+  text-align: left;
+}
+
+.work-order-map-list-item.is-selected {
+  border-color: rgba(102, 88, 231, 0.28);
+  background: linear-gradient(180deg, #fcfaff, #f6f2ff);
+}
+
+.work-order-map-list-item strong {
+  color: #20263a;
+  font-size: 0.9rem;
+}
+
+.work-order-map-list-item span {
+  color: #74809b;
+  font-size: 0.82rem;
+}
+
+.work-order-map-list-meta {
+  font-family: "Consolas", "SFMono-Regular", monospace;
+}
+
+@keyframes map-marker-pulse {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.7);
+  }
+}
+
 .work-orders-groups {
   display: grid;
   gap: 16px;
@@ -7467,5 +7994,34 @@ body.is-work-order-editor-open {
   .chat-panel {
     width: 100%;
     height: min(82vh, calc(100vh - 20px));
+  }
+}
+
+@media (max-width: 1280px) {
+  .work-order-map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-map-list {
+    max-height: 260px;
+  }
+}
+
+@media (max-width: 980px) {
+  .work-order-calendar-toolbar,
+  .work-order-map-toolbar {
+    align-items: stretch;
+  }
+
+  .work-order-calendar-grid {
+    max-height: none;
+  }
+
+  .work-order-calendar-grid-row {
+    min-width: 1260px;
+  }
+
+  .work-order-map-stage {
+    min-height: 420px;
   }
 }

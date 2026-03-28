@@ -960,11 +960,9 @@
             </div>
 
             <div class="workspace-view-chips" aria-label="Pogledi radnog prostora">
-              <button type="button" class="workspace-view-chip is-active" data-jump-view="selfdash">Lista RN</button>
-              <button type="button" class="workspace-view-chip" data-jump-view="companies">Tvrtke</button>
-              <button type="button" class="workspace-view-chip" data-jump-view="locations">Lokacije</button>
-              <span class="workspace-view-chip is-passive">Calendar</span>
-              <span class="workspace-view-chip is-passive">Dashboard</span>
+              <button type="button" class="workspace-view-chip is-active" data-work-order-mode="list">List</button>
+              <button type="button" class="workspace-view-chip" data-work-order-mode="calendar">Calendar</button>
+              <button type="button" class="workspace-view-chip" data-work-order-mode="maps">Maps</button>
             </div>
 
             <div class="filter-row filter-row-clickup">
@@ -984,9 +982,70 @@
               </label>
             </div>
 
-            <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
-              <div id="work-orders-body" class="work-orders-groups"></div>
-            </div>
+            <section id="work-order-list-view" class="work-order-mode-view">
+              <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
+                <div id="work-orders-body" class="work-orders-groups"></div>
+              </div>
+            </section>
+
+            <section id="work-order-calendar-view" class="work-order-mode-view work-order-calendar-view" hidden>
+              <div class="work-order-calendar-toolbar">
+                <div class="work-order-calendar-nav">
+                  <button id="work-order-calendar-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni tjedan">&#8592;</button>
+                  <button id="work-order-calendar-today" type="button" class="ghost-button">Danas</button>
+                  <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći tjedan">&#8594;</button>
+                  <strong id="work-order-calendar-range" class="work-order-calendar-range"></strong>
+                </div>
+                <div id="work-order-calendar-meta" class="work-order-calendar-meta"></div>
+              </div>
+
+              <div id="work-order-calendar-unscheduled" class="work-order-calendar-unscheduled" hidden></div>
+              <div id="work-order-calendar-grid" class="work-order-calendar-grid"></div>
+            </section>
+
+            <section id="work-order-map-view" class="work-order-mode-view work-order-map-view" hidden>
+              <div class="work-order-map-layout">
+                <div class="work-order-map-canvas-card">
+                  <div class="work-order-map-toolbar">
+                    <div>
+                      <p class="section-kicker">Maps</p>
+                      <h3>Operativna karta</h3>
+                    </div>
+                    <div id="work-order-map-summary" class="work-order-map-summary"></div>
+                  </div>
+
+                  <div id="work-order-map-stage" class="work-order-map-stage" aria-label="Karta radnih naloga">
+                    <div class="work-order-map-grid"></div>
+                    <div class="work-order-map-surface work-order-map-surface-a"></div>
+                    <div class="work-order-map-surface work-order-map-surface-b"></div>
+                    <div class="work-order-map-surface work-order-map-surface-c"></div>
+                    <div id="work-order-map-markers" class="work-order-map-markers"></div>
+                    <div class="work-order-map-city work-order-map-city-zagreb">Zagreb</div>
+                    <div class="work-order-map-city work-order-map-city-rijeka">Rijeka</div>
+                    <div class="work-order-map-city work-order-map-city-split">Split</div>
+                    <div class="work-order-map-city work-order-map-city-osijek">Osijek</div>
+                  </div>
+                </div>
+
+                <aside class="work-order-map-side">
+                  <section class="work-order-map-selection-card">
+                    <div class="work-order-map-selection-head">
+                      <p class="section-kicker">Detalji</p>
+                      <h3 id="work-order-map-selection-title">Odaberi marker</h3>
+                    </div>
+                    <div id="work-order-map-selection" class="work-order-map-selection"></div>
+                  </section>
+
+                  <section class="work-order-map-list-card">
+                    <div class="work-order-map-selection-head">
+                      <p class="section-kicker">Koordinate</p>
+                      <h3>Aktivni RN</h3>
+                    </div>
+                    <div id="work-order-map-list" class="work-order-map-list"></div>
+                  </section>
+                </aside>
+              </div>
+            </section>
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
             <p id="work-orders-load-state" class="load-state" hidden></p>
@@ -2027,7 +2086,7 @@
       </section>
     </section>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328af"></script>
-    <script type="module" src="/src/main.js?v=20260328af"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328ag"></script>
+    <script type="module" src="/src/main.js?v=20260328ag"></script>
   </body>
 </html>
