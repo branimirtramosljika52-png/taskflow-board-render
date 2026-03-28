@@ -711,12 +711,50 @@ const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
 let userMenuOpen = false;
 let locationFormContacts = [];
+let currentConnectionTone = "connecting";
+let currentConnectionMeta = "ucitavanje podataka...";
+
+function renderOrganizationContextBadge() {
+  if (!organizationContext) {
+    return;
+  }
+
+  const organization = state.organizations.find((item) => item.id === state.activeOrganizationId) ?? state.organizations[0] ?? null;
+  const tone = currentConnectionTone === "live" ? "live" : (currentConnectionTone === "connecting" ? "connecting" : "error");
+
+  organizationContext.className = `organization-context is-${tone}`;
+
+  if (!organization) {
+    organizationContext.textContent = "";
+    return;
+  }
+
+  const name = document.createElement("span");
+  name.className = "organization-context-name";
+  name.textContent = organization.name;
+
+  const status = document.createElement("span");
+  status.className = "organization-context-status";
+
+  const dot = document.createElement("span");
+  dot.className = "organization-context-dot";
+  dot.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("span");
+  label.textContent = tone === "live" ? "OK" : (tone === "connecting" ? "..." : "Problem");
+
+  status.append(dot, label);
+  organizationContext.replaceChildren(name, status);
+  organizationContext.title = currentConnectionMeta;
+}
 
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
   if (!connectionStatus) {
     return;
   }
 
+  currentConnectionTone = tone;
+  currentConnectionMeta = meta;
   connectionStatus.className = `connection-status is-${tone}`;
 
   const indicator = document.createElement("span");
@@ -736,6 +774,7 @@ function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } =
 
   copy.append(labelNode, metaNode);
   connectionStatus.replaceChildren(indicator, copy);
+  renderOrganizationContextBadge();
 }
 
 function setConnectionStatus() {
@@ -749,15 +788,26 @@ function setConnectionStatus() {
   }
 
   renderConnectionStatus({
-    tone: "memory",
-    label: "Lokalno",
-    meta: "privremeni backend",
+    tone: "error",
+    label: "Offline",
+    meta: "backend nije dostupan",
   });
 }
 
 function setSyncError(message = "") {
   syncError.hidden = !message;
   syncError.textContent = message;
+
+  if (message) {
+    renderConnectionStatus({
+      tone: "error",
+      label: "Problem",
+      meta: message,
+    });
+    return;
+  }
+
+  setConnectionStatus();
 }
 
 function setUserMenuError(message = "") {
@@ -4617,9 +4667,7 @@ function renderAuthState() {
       userMenuLastLogin.textContent = state.user.lastLoginAt ? formatDateTime(state.user.lastLoginAt) : "Upravo sada";
     }
     setUserMenuError("");
-    organizationContext.textContent = isSuperAdmin
-      ? `Super admin | ${organization ? organization.name : "Bez aktivne organizacije"}`
-      : (organization ? organization.name : "");
+    renderOrganizationContextBadge();
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
 

@@ -1275,8 +1275,8 @@ fieldset {
 .hero {
   display: flex;
   justify-content: space-between;
-  align-items: start;
-  gap: 28px;
+  align-items: center;
+  gap: 16px;
 }
 
 .hero-copy {
@@ -1299,8 +1299,7 @@ fieldset {
 }
 
 .hero-copy-minimal {
-  display: flex;
-  align-items: flex-start;
+  display: none;
 }
 
 .intro,
@@ -1399,10 +1398,11 @@ fieldset {
 }
 
 .summary-grid {
-  width: min(620px, 100%);
+  width: min(760px, 100%);
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
+  margin-left: auto;
 }
 
 .summary-card,
@@ -1412,21 +1412,23 @@ fieldset {
 }
 
 .summary-card {
-  border-radius: 20px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 10px 12px;
+  min-height: 88px;
 }
 
 .summary-card span {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   color: var(--muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .summary-card strong {
-  font-size: clamp(1.2rem, 2vw, 2rem);
+  font-size: clamp(1.05rem, 1.8vw, 1.65rem);
+  line-height: 1.05;
 }
 
 .tab-strip {
@@ -6085,14 +6087,65 @@ body.is-work-order-editor-open {
 }
 
 .organization-context {
-  min-height: 2.25rem;
+  min-height: 2rem;
   display: inline-flex;
   align-items: center;
-  padding: 0 14px;
+  gap: 10px;
+  padding: 0 12px;
   border-radius: 999px;
-  background: rgba(30, 106, 82, 0.1);
-  color: var(--accent-strong);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(205, 214, 231, 0.9);
+  color: #233047;
   font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.organization-context-name {
+  white-space: nowrap;
+}
+
+.organization-context-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5f6b84;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.organization-context-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #9ea8bb;
+  box-shadow: 0 0 0 0 rgba(158, 168, 187, 0.3);
+}
+
+.organization-context.is-live {
+  border-color: rgba(151, 214, 173, 0.85);
+  background: rgba(243, 251, 246, 0.92);
+}
+
+.organization-context.is-live .organization-context-dot {
+  background: #2fb16d;
+  box-shadow: 0 0 0 0 rgba(47, 177, 109, 0.32);
+  animation: connection-pulse 1.8s ease-out infinite;
+}
+
+.organization-context.is-error {
+  border-color: rgba(235, 166, 176, 0.86);
+  background: rgba(255, 244, 246, 0.94);
+}
+
+.organization-context.is-error .organization-context-dot {
+  background: #d84b61;
+}
+
+.organization-context.is-connecting .organization-context-dot {
+  background: #8e98ab;
+  animation: connection-pulse 1.8s ease-out infinite;
 }
 
 .management-intro-panel {
