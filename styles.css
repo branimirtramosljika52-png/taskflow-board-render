@@ -4608,8 +4608,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid-row {
   display: grid;
-  grid-template-columns: 240px repeat(7, minmax(170px, 1fr));
-  min-width: 1430px;
+  grid-template-columns: 240px repeat(7, minmax(190px, 1fr));
+  min-width: 1570px;
 }
 
 .work-order-calendar-grid-row.is-head {
@@ -4635,8 +4635,13 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-day-head {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   border-left: 1px solid #f0f1f6;
+}
+
+.work-order-calendar-day-head.is-today {
+  background: linear-gradient(180deg, rgba(244, 238, 255, 0.98), rgba(252, 249, 255, 0.98));
+  box-shadow: inset 0 -1px 0 rgba(184, 146, 255, 0.22);
 }
 
 .work-order-calendar-day-label {
@@ -4647,8 +4652,14 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-day-date {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   color: #22283a;
+}
+
+.work-order-calendar-day-meta {
+  color: #7a8398;
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .work-order-calendar-lane {
@@ -4801,10 +4812,37 @@ body.is-work-order-editor-open {
   overflow: hidden;
   border-radius: 22px;
   border: 1px solid #e8eaf4;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(228, 183, 255, 0.34), transparent 30%),
-    radial-gradient(circle at 80% 18%, rgba(127, 109, 242, 0.16), transparent 30%),
-    linear-gradient(180deg, #f5f7ff, #eef3ff 48%, #eef8f4 100%);
+  background: #dfe8f4;
+}
+
+.work-order-map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.work-order-map-canvas .leaflet-container {
+  width: 100%;
+  height: 100%;
+  font: inherit;
+  background: #dfe8f4;
+}
+
+.leaflet-work-order-popup {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.leaflet-work-order-popup strong {
+  color: #1f2638;
+  font-size: 0.92rem;
+}
+
+.leaflet-work-order-popup span {
+  color: #6e7890;
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 
 .work-order-map-grid,

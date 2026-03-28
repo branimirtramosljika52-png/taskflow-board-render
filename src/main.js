@@ -93,6 +93,9 @@ const DASHBOARD_WIDGET_TEMPLATES = [
 ];
 const DASHBOARD_GRID_GAP_PX = 14;
 let dashboardWidgetLayoutInteraction = null;
+let workOrderLeafletMap = null;
+let workOrderLeafletLayer = null;
+let workOrderLeafletMarkers = new Map();
 const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
@@ -722,7 +725,7 @@ const workOrderCalendarMeta = document.querySelector("#work-order-calendar-meta"
 const workOrderCalendarGrid = document.querySelector("#work-order-calendar-grid");
 const workOrderCalendarUnscheduled = document.querySelector("#work-order-calendar-unscheduled");
 const workOrderMapStage = document.querySelector("#work-order-map-stage");
-const workOrderMapMarkers = document.querySelector("#work-order-map-markers");
+const workOrderMapCanvas = document.querySelector("#work-order-map-canvas");
 const workOrderMapSummary = document.querySelector("#work-order-map-summary");
 const workOrderMapSelectionTitle = document.querySelector("#work-order-map-selection-title");
 const workOrderMapSelection = document.querySelector("#work-order-map-selection");
@@ -2618,6 +2621,7 @@ function shiftDateKey(value, days) {
 }
 
 function buildWorkOrderCalendarWeekDays(weekStart = state.workOrderCalendar.weekStart) {
+  const todayKey = toDateKey(new Date());
   return Array.from({ length: 7 }, (_, index) => {
     const dateKey = shiftDateKey(weekStart, index);
     const parsedDate = parseDateValue(dateKey);
@@ -2631,6 +2635,8 @@ function buildWorkOrderCalendarWeekDays(weekStart = state.workOrderCalendar.week
         day: "2-digit",
         month: "2-digit",
       }).format(parsedDate),
+      fullLabel: formatCompactDate(dateKey),
+      isToday: dateKey === todayKey,
     };
   });
 }
@@ -8735,6 +8741,7 @@ function createWorkOrderCalendarCard(workOrder) {
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
+  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
   card.append(top, title, meta);
 
   if (workOrder.priority) {
@@ -8817,6 +8824,11 @@ function renderWorkOrderCalendarView() {
     workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
   }
 
+  if (workOrderCalendarMeta) {
+    const scheduledCount = calendar.lanes.reduce((sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0), 0);
+    workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+  }
+
   if (workOrderCalendarUnscheduled) {
     workOrderCalendarUnscheduled.hidden = calendar.unscheduled.length === 0;
     workOrderCalendarUnscheduled.replaceChildren();
@@ -8826,6 +8838,8 @@ function renderWorkOrderCalendarView() {
       head.className = "work-order-calendar-unscheduled-head";
       const label = document.createElement("strong");
       label.textContent = "Bez roka";
+      subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" · ") || "Bez detalja";
+
       const meta = document.createElement("span");
       meta.textContent = "Povuci karticu na dan kako bi brzo slozio raspored.";
       head.append(label, meta);
@@ -8851,8 +8865,10 @@ function renderWorkOrderCalendarView() {
   headerRow.append(peopleHead);
 
   dayDescriptors.forEach((day) => {
+    const dayCount = calendar.lanes.reduce((sum, lane) => sum + (lane.itemsByDate[day.key]?.length ?? 0), 0);
     const dayHead = document.createElement("div");
     dayHead.className = "work-order-calendar-day-head";
+    dayHead.classList.toggle("is-today", day.isToday);
 
     const dayLabel = document.createElement("span");
     dayLabel.className = "work-order-calendar-day-label";
@@ -8860,9 +8876,13 @@ function renderWorkOrderCalendarView() {
 
     const dayDate = document.createElement("strong");
     dayDate.className = "work-order-calendar-day-date";
-    dayDate.textContent = day.compactLabel;
+    dayDate.textContent = day.fullLabel;
 
-    dayHead.append(dayLabel, dayDate);
+    const dayMeta = document.createElement("span");
+    dayMeta.className = "work-order-calendar-day-meta";
+    dayMeta.textContent = dayCount === 0 ? "Bez RN" : `${dayCount} RN`;
+
+    dayHead.append(dayLabel, dayDate, dayMeta);
     headerRow.append(dayHead);
   });
 
@@ -8979,28 +8999,128 @@ function renderWorkOrderCalendarView() {
   workOrderCalendarGrid.replaceChildren(fragment);
 }
 
-function createWorkOrderMapMarkerButton(marker) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "work-order-map-marker";
-  button.style.left = `${marker.x}%`;
-  button.style.top = `${marker.y}%`;
-  button.classList.toggle("is-selected", String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId));
-  button.setAttribute("aria-label", `${marker.workOrderNumber} ${marker.locationName || ""}`.trim());
+function getWorkOrderMapMarkerTone(status) {
+  switch (status) {
+    case "Ovjeren RN":
+      return { fill: "#d7a317", stroke: "#8e6700" };
+    case "Gotov RN":
+      return { fill: "#4eb37a", stroke: "#2b6f4d" };
+    case "Fakturiran RN":
+      return { fill: "#2e8f62", stroke: "#19573b" };
+    case "Storno RN":
+      return { fill: "#6f7784", stroke: "#484e59" };
+    default:
+      return { fill: "#d23d8f", stroke: "#972966" };
+  }
+}
 
-  const pulse = document.createElement("span");
-  pulse.className = "work-order-map-marker-pulse";
-  const pin = document.createElement("span");
-  pin.className = "work-order-map-marker-pin";
-  pin.textContent = "RN";
+function buildWorkOrderMapPopup(marker) {
+  return `
+    <div class="leaflet-work-order-popup">
+      <strong>${marker.workOrderNumber || "Bez broja"}</strong>
+      <span>${marker.companyName || "Bez tvrtke"}</span>
+      <span>${[marker.locationName, marker.region].filter(Boolean).join(" · ") || "Bez lokacije"}</span>
+      <span>${marker.dueDate ? `Rok ${formatCompactDate(marker.dueDate)}` : "Bez roka"}</span>
+    </div>
+  `;
+}
 
-  button.append(pulse, pin);
-  button.addEventListener("click", () => {
-    state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
-    renderWorkOrderMapView();
+function buildWorkOrderLeafletPopup(marker) {
+  const popup = document.createElement("div");
+  popup.className = "leaflet-work-order-popup";
+
+  const title = document.createElement("strong");
+  title.textContent = marker.workOrderNumber || "Bez broja";
+
+  const company = document.createElement("span");
+  company.textContent = marker.companyName || "Bez tvrtke";
+
+  const location = document.createElement("span");
+  location.textContent = [marker.locationName, marker.region].filter(Boolean).join(" · ") || "Bez lokacije";
+
+  const due = document.createElement("span");
+  due.textContent = marker.dueDate ? `Rok ${formatCompactDate(marker.dueDate)}` : "Bez roka";
+
+  popup.append(title, company, location, due);
+  return popup;
+}
+
+function ensureWorkOrderLeafletMap() {
+  if (!workOrderMapCanvas || !window.L) {
+    return null;
+  }
+
+  if (!workOrderLeafletMap) {
+    workOrderLeafletMap = window.L.map(workOrderMapCanvas, {
+      zoomControl: true,
+      attributionControl: true,
+      minZoom: 6,
+      maxZoom: 18,
+    });
+
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap",
+    }).addTo(workOrderLeafletMap);
+
+    workOrderLeafletLayer = window.L.layerGroup().addTo(workOrderLeafletMap);
+    workOrderLeafletMap.setView([45.3, 15.7], 7);
+  }
+
+  return workOrderLeafletMap;
+}
+
+function syncWorkOrderLeafletMarkers(markers) {
+  const map = ensureWorkOrderLeafletMap();
+
+  if (!map || !workOrderLeafletLayer) {
+    return;
+  }
+
+  workOrderLeafletLayer.clearLayers();
+  workOrderLeafletMarkers = new Map();
+
+  markers.forEach((marker) => {
+    const tone = getWorkOrderMapMarkerTone(marker.status);
+    const isSelected = String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId);
+    const leafletMarker = window.L.circleMarker([marker.latitude, marker.longitude], {
+      radius: isSelected ? 10 : 8,
+      color: tone.stroke,
+      weight: isSelected ? 3 : 2,
+      fillColor: tone.fill,
+      fillOpacity: 0.92,
+    });
+
+    leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker));
+    leafletMarker.on("click", () => {
+      state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
+      renderWorkOrderCroatiaMapView();
+    });
+
+    workOrderLeafletLayer.addLayer(leafletMarker);
+    workOrderLeafletMarkers.set(String(marker.workOrderId), leafletMarker);
   });
 
-  return button;
+  if (markers.length > 0) {
+    const bounds = window.L.latLngBounds(markers.map((marker) => [marker.latitude, marker.longitude]));
+    map.fitBounds(bounds.pad(0.2), {
+      animate: false,
+      maxZoom: markers.length === 1 ? 14 : 12,
+    });
+  } else {
+    map.setView([45.3, 15.7], 7, { animate: false });
+  }
+
+  window.requestAnimationFrame(() => {
+    map.invalidateSize();
+    const activeMarker = workOrderLeafletMarkers.get(String(state.workOrderMap.selectedWorkOrderId));
+    if (activeMarker) {
+      activeMarker.openPopup();
+      map.panTo(activeMarker.getLatLng(), {
+        animate: false,
+      });
+    }
+  });
 }
 
 function renderWorkOrderMapSelectionCard(selectedMarker) {
@@ -9084,7 +9204,7 @@ function createWorkOrderMetaStat(label, value) {
 }
 
 function renderWorkOrderMapView() {
-  if (!workOrderMapView || !workOrderMapStage || !workOrderMapMarkers) {
+  if (!workOrderMapView || !workOrderMapStage || !workOrderMapCanvas) {
     return;
   }
 
@@ -9097,17 +9217,27 @@ function renderWorkOrderMapView() {
     workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez`;
   }
 
-  workOrderMapMarkers.replaceChildren();
+  if (workOrderMapSummary) {
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
+  }
+
+  if (workOrderMapSummary) {
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
+  }
+
   workOrderMapList?.replaceChildren();
 
   if (markers.length === 0) {
     state.workOrderMap.selectedWorkOrderId = "";
     renderWorkOrderMapSelectionCard(null);
+    syncWorkOrderLeafletMarkers([]);
 
-    const empty = document.createElement("div");
-    empty.className = "work-order-map-empty";
-    empty.textContent = "Za trenutni filter nema RN s koordinatama.";
-    workOrderMapMarkers.append(empty);
+    if (workOrderMapList) {
+      const empty = document.createElement("p");
+      empty.className = "work-order-map-selection-empty";
+      empty.textContent = "Za trenutni filter nema RN s koordinatama.";
+      workOrderMapList.append(empty);
+    }
     return;
   }
 
@@ -9115,9 +9245,9 @@ function renderWorkOrderMapView() {
     state.workOrderMap.selectedWorkOrderId = markers[0].workOrderId;
   }
 
-  markers.forEach((marker) => {
-    workOrderMapMarkers.append(createWorkOrderMapMarkerButton(marker));
+  syncWorkOrderLeafletMarkers(markers);
 
+  markers.forEach((marker) => {
     if (workOrderMapList) {
       const item = document.createElement("button");
       item.type = "button";
@@ -9141,6 +9271,327 @@ function renderWorkOrderMapView() {
       });
       workOrderMapList.append(item);
     }
+  });
+
+  renderWorkOrderMapSelectionCard(
+    markers.find((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId)) ?? null,
+  );
+}
+
+function createWorkOrderCalendarSchedulerCard(workOrder) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "work-order-calendar-card";
+  card.draggable = true;
+  card.dataset.workOrderId = workOrder.id;
+
+  const top = document.createElement("div");
+  top.className = "work-order-calendar-card-top";
+
+  const number = document.createElement("strong");
+  number.className = "work-order-calendar-card-number";
+  number.textContent = workOrder.workOrderNumber || "Bez broja";
+
+  const status = createBadge(workOrder.status || "Otvoreni RN", statusBadgeClass(workOrder.status || "Otvoreni RN"));
+  status.classList.add("work-order-calendar-card-status");
+  top.append(number, status);
+
+  const title = document.createElement("span");
+  title.className = "work-order-calendar-card-title";
+  title.textContent = workOrder.companyName || workOrder.locationName || "Radni nalog";
+
+  const meta = document.createElement("span");
+  meta.className = "work-order-calendar-card-meta";
+  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
+
+  card.append(top, title, meta);
+
+  if (workOrder.priority) {
+    const priority = createBadge(
+      getOptionLabel(PRIORITY_OPTIONS, workOrder.priority),
+      priorityBadgeClass(workOrder.priority),
+    );
+    priority.classList.add("work-order-calendar-card-priority");
+    card.append(priority);
+  }
+
+  card.addEventListener("click", () => {
+    hydrateWorkOrderForm(workOrder);
+  });
+
+  card.addEventListener("dragstart", (event) => {
+    state.workOrderCalendar.draggingWorkOrderId = workOrder.id;
+    event.dataTransfer?.setData("text/plain", String(workOrder.id));
+    event.dataTransfer?.setData("application/x-work-order-id", String(workOrder.id));
+    event.dataTransfer?.setDragImage?.(card, 18, 18);
+    window.requestAnimationFrame(() => {
+      card.classList.add("is-dragging");
+    });
+  });
+
+  card.addEventListener("dragend", () => {
+    state.workOrderCalendar.draggingWorkOrderId = "";
+    card.classList.remove("is-dragging");
+    workOrderCalendarGrid?.querySelectorAll(".is-drop-target").forEach((node) => node.classList.remove("is-drop-target"));
+  });
+
+  return card;
+}
+
+function renderWorkOrderCalendarSchedulerView() {
+  if (!workOrderCalendarView || !workOrderCalendarGrid) {
+    return;
+  }
+
+  const filtered = getFilteredWorkOrders();
+  const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
+  const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
+
+  if (workOrderCalendarRange) {
+    workOrderCalendarRange.textContent = formatCalendarRangeLabel(calendar.weekStart);
+  }
+
+  if (workOrderCalendarMeta) {
+    const scheduledCount = calendar.lanes.reduce(
+      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
+      0,
+    );
+    workOrderCalendarMeta.textContent = `${calendar.lanes.length} grupa · ${scheduledCount} rasporedenih · ${calendar.unscheduled.length} bez roka`;
+  }
+
+  if (workOrderCalendarUnscheduled) {
+    workOrderCalendarUnscheduled.hidden = calendar.unscheduled.length === 0;
+    workOrderCalendarUnscheduled.replaceChildren();
+
+    if (calendar.unscheduled.length > 0) {
+      const head = document.createElement("div");
+      head.className = "work-order-calendar-unscheduled-head";
+
+      const label = document.createElement("strong");
+      label.textContent = "Bez roka";
+
+      const meta = document.createElement("span");
+      meta.textContent = "Povuci karticu na datum i izvrsitelje kako bi brzo slozio raspored.";
+      head.append(label, meta);
+
+      const list = document.createElement("div");
+      list.className = "work-order-calendar-unscheduled-list";
+      calendar.unscheduled.forEach((workOrder) => {
+        list.append(createWorkOrderCalendarSchedulerCard(workOrder));
+      });
+
+      workOrderCalendarUnscheduled.append(head, list);
+    }
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  const headerRow = document.createElement("div");
+  headerRow.className = "work-order-calendar-grid-row is-head";
+
+  const peopleHead = document.createElement("div");
+  peopleHead.className = "work-order-calendar-lane-head is-sticky";
+  peopleHead.textContent = "Izvrsitelji";
+  headerRow.append(peopleHead);
+
+  dayDescriptors.forEach((day) => {
+    const dayCount = calendar.lanes.reduce((sum, lane) => sum + (lane.itemsByDate[day.key]?.length ?? 0), 0);
+    const dayHead = document.createElement("div");
+    dayHead.className = "work-order-calendar-day-head";
+    dayHead.classList.toggle("is-today", day.isToday);
+
+    const dayLabel = document.createElement("span");
+    dayLabel.className = "work-order-calendar-day-label";
+    dayLabel.textContent = day.label;
+
+    const dayDate = document.createElement("strong");
+    dayDate.className = "work-order-calendar-day-date";
+    dayDate.textContent = day.fullLabel;
+
+    const dayMeta = document.createElement("span");
+    dayMeta.className = "work-order-calendar-day-meta";
+    dayMeta.textContent = dayCount === 0 ? "Bez RN" : `${dayCount} RN`;
+
+    dayHead.append(dayLabel, dayDate, dayMeta);
+    headerRow.append(dayHead);
+  });
+
+  fragment.append(headerRow);
+
+  if (calendar.lanes.length === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "work-order-calendar-grid-row";
+
+    const emptyLead = document.createElement("div");
+    emptyLead.className = "work-order-calendar-lane";
+    const emptyTitle = document.createElement("strong");
+    emptyTitle.textContent = "Nema rasporeda";
+    const emptyMeta = document.createElement("span");
+    emptyMeta.className = "work-order-calendar-lane-empty";
+    emptyMeta.textContent = "Odaberi RN i postavi rok zavrsetka ili izvrsitelje.";
+    emptyLead.append(emptyTitle, emptyMeta);
+    emptyRow.append(emptyLead);
+
+    dayDescriptors.forEach(() => {
+      const emptyCell = document.createElement("div");
+      emptyCell.className = "work-order-calendar-cell";
+      const placeholder = document.createElement("span");
+      placeholder.className = "work-order-calendar-cell-placeholder";
+      placeholder.textContent = "Prazno";
+      emptyCell.append(placeholder);
+      emptyRow.append(emptyCell);
+    });
+
+    fragment.append(emptyRow);
+    workOrderCalendarGrid.replaceChildren(fragment);
+    return;
+  }
+
+  calendar.lanes.forEach((lane) => {
+    const row = document.createElement("div");
+    row.className = "work-order-calendar-grid-row";
+
+    const laneCell = document.createElement("div");
+    laneCell.className = "work-order-calendar-lane";
+
+    const laneTop = document.createElement("div");
+    laneTop.className = "work-order-calendar-lane-top";
+
+    const laneName = document.createElement("strong");
+    laneName.textContent = lane.label;
+
+    laneTop.append(laneName);
+
+    const laneMeta = document.createElement("div");
+    laneMeta.className = "work-order-calendar-lane-meta";
+    lane.executors.forEach((executor) => {
+      laneMeta.append(createWorkOrderMiniExecutor(executor));
+    });
+
+    if (lane.executors.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "work-order-calendar-lane-empty";
+      empty.textContent = "Bez izvrsitelja";
+      laneMeta.append(empty);
+    }
+
+    laneCell.append(laneTop, laneMeta);
+    row.append(laneCell);
+
+    dayDescriptors.forEach((day) => {
+      const cell = document.createElement("div");
+      cell.className = "work-order-calendar-cell";
+      cell.dataset.dateKey = day.key;
+      cell.dataset.executorSignature = lane.signature;
+
+      cell.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        cell.classList.add("is-drop-target");
+      });
+
+      cell.addEventListener("dragleave", () => {
+        cell.classList.remove("is-drop-target");
+      });
+
+      cell.addEventListener("drop", (event) => {
+        event.preventDefault();
+        cell.classList.remove("is-drop-target");
+        const droppedWorkOrderId = event.dataTransfer?.getData("application/x-work-order-id")
+          || event.dataTransfer?.getData("text/plain")
+          || state.workOrderCalendar.draggingWorkOrderId;
+
+        if (!droppedWorkOrderId) {
+          return;
+        }
+
+        void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, lane.executors);
+      });
+
+      const items = lane.itemsByDate[day.key] ?? [];
+
+      if (items.length === 0) {
+        const placeholder = document.createElement("span");
+        placeholder.className = "work-order-calendar-cell-placeholder";
+        placeholder.textContent = "Povuci ovdje";
+        cell.append(placeholder);
+      } else {
+        items.forEach((workOrder) => {
+          cell.append(createWorkOrderCalendarSchedulerCard(workOrder));
+        });
+      }
+
+      row.append(cell);
+    });
+
+    fragment.append(row);
+  });
+
+  workOrderCalendarGrid.replaceChildren(fragment);
+}
+
+function renderWorkOrderCroatiaMapView() {
+  if (!workOrderMapView || !workOrderMapStage || !workOrderMapCanvas) {
+    return;
+  }
+
+  const filtered = getFilteredWorkOrders();
+  const mapData = buildWorkOrderMapMarkers(filtered);
+  const markers = mapData.markers;
+  const missingCoordinatesCount = filtered.length - markers.length;
+
+  if (workOrderMapSummary) {
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
+  }
+
+  workOrderMapList?.replaceChildren();
+
+  if (markers.length === 0) {
+    state.workOrderMap.selectedWorkOrderId = "";
+    renderWorkOrderMapSelectionCard(null);
+    syncWorkOrderLeafletMarkers([]);
+
+    if (workOrderMapList) {
+      const empty = document.createElement("p");
+      empty.className = "work-order-map-selection-empty";
+      empty.textContent = "Za trenutni filter nema RN s koordinatama.";
+      workOrderMapList.append(empty);
+    }
+    return;
+  }
+
+  if (!markers.some((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId))) {
+    state.workOrderMap.selectedWorkOrderId = markers[0].workOrderId;
+  }
+
+  syncWorkOrderLeafletMarkers(markers);
+
+  markers.forEach((marker) => {
+    if (!workOrderMapList) {
+      return;
+    }
+
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "work-order-map-list-item";
+    item.classList.toggle("is-selected", String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId));
+
+    const title = document.createElement("strong");
+    title.textContent = marker.workOrderNumber || "Bez broja";
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" · ") || "Bez detalja";
+
+    const meta = document.createElement("span");
+    meta.className = "work-order-map-list-meta";
+    meta.textContent = marker.coordinates || "";
+
+    item.append(title, subtitle, meta);
+    item.addEventListener("click", () => {
+      state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
+      renderWorkOrderCroatiaMapView();
+    });
+
+    workOrderMapList.append(item);
   });
 
   renderWorkOrderMapSelectionCard(
@@ -9183,9 +9634,9 @@ function renderWorkOrderWorkspace() {
   if (state.activeWorkOrderViewMode === "list") {
     renderCompactWorkOrdersList();
   } else if (state.activeWorkOrderViewMode === "calendar") {
-    renderWorkOrderCalendarView();
+    renderWorkOrderCalendarSchedulerView();
   } else {
-    renderWorkOrderMapView();
+    renderWorkOrderCroatiaMapView();
   }
 }
 
