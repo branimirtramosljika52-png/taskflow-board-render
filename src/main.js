@@ -268,6 +268,7 @@ const appFrame = document.querySelector("#app-frame");
 const appSidebar = document.querySelector("#app-sidebar");
 const appHomeButton = document.querySelector("#app-home-button");
 const appRailToggle = document.querySelector("#app-rail-toggle");
+const appRailRestore = document.querySelector("#app-rail-restore");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
@@ -986,8 +987,15 @@ function renderSidebarState() {
   });
 
   if (appRailToggle) {
-    appRailToggle.textContent = state.railHidden ? "Prikazi ikone" : "Sakrij ikone";
-    appRailToggle.setAttribute("aria-pressed", state.railHidden ? "true" : "false");
+    appRailToggle.hidden = state.railHidden;
+    appRailToggle.setAttribute("aria-label", "Sakrij lijevu traku");
+    appRailToggle.innerHTML = `<span aria-hidden="true">&larr;</span>`;
+  }
+
+  if (appRailRestore) {
+    appRailRestore.hidden = !state.railHidden;
+    appRailRestore.setAttribute("aria-label", "Prikazi lijevu traku");
+    appRailRestore.innerHTML = `<span aria-hidden="true">&rarr;</span>`;
   }
 
   sidebarGroupPanels.forEach((panel) => {
@@ -6358,7 +6366,11 @@ sidebarCollapseToggle?.addEventListener("click", () => {
 });
 
 appRailToggle?.addEventListener("click", () => {
-  setRailHidden(!state.railHidden);
+  setRailHidden(true);
+});
+
+appRailRestore?.addEventListener("click", () => {
+  setRailHidden(false);
 });
 
 workOrderCompanyIdInput.addEventListener("change", () => {

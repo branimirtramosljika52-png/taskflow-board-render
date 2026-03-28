@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Safety360</title>
-    <link rel="stylesheet" href="/styles.css?v=20260328d" />
+    <link rel="stylesheet" href="/styles.css?v=20260328e" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -138,7 +138,16 @@
               <span class="rail-label">Learning</span>
             </button>
           </nav>
+          <div class="app-rail-footer">
+            <button id="app-rail-toggle" type="button" class="rail-toggle-button" aria-label="Sakrij lijevu traku">
+              <span aria-hidden="true">&larr;</span>
+            </button>
+          </div>
         </aside>
+
+        <button id="app-rail-restore" type="button" class="rail-restore-button" aria-label="Prikazi lijevu traku" hidden>
+          <span aria-hidden="true">&rarr;</span>
+        </button>
 
         <aside id="app-sidebar" class="app-sidebar">
           <div class="sidebar-header">
@@ -773,7 +782,6 @@
                 <h2>Lista RN</h2>
               </div>
               <div class="workspace-list-actions">
-                <button id="app-rail-toggle" type="button" class="ghost-button">Sakrij ikone</button>
                 <button id="work-order-open-form" type="button" class="primary-button workspace-add-button">+ RN</button>
               </div>
             </div>
@@ -1471,7 +1479,7 @@
       </section>
     </main>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260328d"></script>
-    <script type="module" src="/src/main.js?v=20260328d"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260328e"></script>
+    <script type="module" src="/src/main.js?v=20260328e"></script>
   </body>
 </html>
