@@ -2003,24 +2003,13 @@
               </div>
 
               <div class="offers-layout">
-                <section class="panel offers-launch-panel">
-                  <div class="offers-launch-icon" aria-hidden="true">+</div>
-                  <div class="offers-launch-copy">
-                    <p class="section-kicker">Brza akcija</p>
-                    <h3>Nova ponuda</h3>
-                    <p class="helper-copy module-copy">
-                      Otvori novu ponudu, dodaj stavke i cijene, pa spremi ponudu pod automatskim brojem.
-                    </p>
-                  </div>
-                  <button id="offer-open-form" type="button" class="primary-button offers-launch-button">Otvori novu ponudu</button>
-                </section>
-
                 <section class="panel offers-list-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Ponude</p>
                       <h3>Popis ponuda</h3>
                     </div>
+                    <button id="offer-open-form" type="button" class="primary-button">+ Nova ponuda</button>
                   </div>
 
                   <div class="offers-status-legend" aria-label="Statusi ponuda">
@@ -2046,15 +2035,20 @@
                   <p id="offers-empty" class="helper-copy" hidden>Nema ponuda za prikaz u odabranoj organizaciji.</p>
                 </section>
 
-                <section class="panel offers-editor-panel">
-                  <div class="section-heading offers-section-heading">
-                    <div>
-                      <p class="section-kicker">Editor ponude</p>
-                      <h3>Detalji ponude</h3>
+                <div id="offer-editor-backdrop" class="offer-editor-backdrop" hidden></div>
+                <section id="offer-editor-panel" class="panel offers-editor-panel" hidden>
+                  <div class="offers-editor-fixed-head">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Editor ponude</p>
+                        <h3>Detalji ponude</h3>
+                      </div>
+                      <button id="offer-editor-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
                   </div>
 
-                  <form id="offer-form" class="entity-form">
+                  <div class="offers-editor-body" tabindex="-1">
+                    <form id="offer-form" class="entity-form">
                     <input id="offer-id" type="hidden" />
 
                     <div class="offers-editor-meta">
@@ -2136,7 +2130,8 @@
                       <button id="offer-reset" type="button" class="ghost-button">Nova ponuda</button>
                       <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
-                  </form>
+                    </form>
+                  </div>
                 </section>
               </div>
             </section>

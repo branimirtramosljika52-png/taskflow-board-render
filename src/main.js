@@ -327,6 +327,7 @@ const state = {
   activeTodoTaskId: "",
   activeDashboardWidgetId: "",
   activeWorkOrderViewMode: "list",
+  offerEditorOpen: false,
   workOrderCalendar: {
     weekStart: new Date().toISOString().slice(0, 10),
     showWeekends: true,
@@ -535,6 +536,10 @@ const offersHelper = document.querySelector("#offers-helper");
 const offersList = document.querySelector("#offers-list");
 const offersEmpty = document.querySelector("#offers-empty");
 const offerOpenFormButton = document.querySelector("#offer-open-form");
+const offerEditorBackdrop = document.querySelector("#offer-editor-backdrop");
+const offerEditorPanel = document.querySelector("#offer-editor-panel");
+const offerEditorCloseButton = document.querySelector("#offer-editor-close");
+const offerEditorBody = offerEditorPanel?.querySelector(".offers-editor-body");
 const offerForm = document.querySelector("#offer-form");
 const offerIdInput = document.querySelector("#offer-id");
 const offerNumberPreview = document.querySelector("#offer-number-preview");
@@ -693,6 +698,14 @@ if (workOrderEditorPanel?.parentElement !== document.body) {
   document.body.append(workOrderEditorPanel);
 }
 
+if (offerEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(offerEditorBackdrop);
+}
+
+if (offerEditorPanel?.parentElement !== document.body) {
+  document.body.append(offerEditorPanel);
+}
+
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -700,6 +713,15 @@ if (workOrderEditorBackdrop) {
 if (workOrderEditorPanel) {
   workOrderEditorPanel.hidden = true;
   workOrderEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (offerEditorBackdrop) {
+  offerEditorBackdrop.hidden = true;
+}
+
+if (offerEditorPanel) {
+  offerEditorPanel.hidden = true;
+  offerEditorPanel.setAttribute("aria-hidden", "true");
 }
 
 const workOrderIdInput = document.querySelector("#work-order-id");
@@ -1267,6 +1289,8 @@ function applySnapshot(payload) {
     }
   }
   if (offerIdInput?.value && !state.offers.some((item) => String(item.id) === String(offerIdInput.value))) {
+    state.offerEditorOpen = false;
+    syncOfferEditorModal();
     resetOfferForm();
   }
   state.user = payload.user ?? state.user;
@@ -5678,6 +5702,63 @@ function syncWorkOrderEditorModal() {
   }
 }
 
+function syncOfferEditorModal() {
+  if (state.offerEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "offers"
+    || !state.user
+  )) {
+    state.offerEditorOpen = false;
+  }
+
+  const isOpen = state.offerEditorOpen;
+
+  offerEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-offer-editor-open", isOpen);
+
+  if (offerEditorPanel) {
+    offerEditorPanel.hidden = !isOpen;
+    offerEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (offerEditorBackdrop) {
+    offerEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (offerEditorCloseButton) {
+    offerEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollOfferFormToTop();
+      offerEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollOfferFormToTop();
+      }, 0);
+    });
+  }
+}
+
+function openOfferEditor() {
+  state.offerEditorOpen = true;
+  syncOfferEditorModal();
+}
+
+function closeOfferEditor({ reset = false } = {}) {
+  state.offerEditorOpen = false;
+  syncOfferEditorModal();
+
+  if (reset) {
+    resetOfferForm();
+  }
+}
+
+function dismissOfferEditor() {
+  closeOfferEditor({ reset: true });
+  renderOffersModule();
+}
+
 function openWorkOrderEditor() {
   state.workOrderEditorOpen = true;
   renderWorkOrderEditorSummary();
@@ -5747,6 +5828,9 @@ function renderAuthState() {
   if (!authenticated) {
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
+    state.offerEditorOpen = false;
+    syncOfferEditorModal();
+    resetOfferForm();
     resetChatState();
   }
 
@@ -8701,6 +8785,136 @@ function createOfferStatusBadge(status = "draft") {
   return badge;
 }
 
+function createOfferStatusDropdown(item) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-item-status-dropdown";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-item-status-trigger";
+  trigger.dataset.status = slugifyValue(item.status || "draft");
+  trigger.textContent = getOfferStatusLabel(item.status || "draft");
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const setPendingState = (isPending) => {
+    wrapper.classList.toggle("is-pending", isPending);
+    trigger.disabled = isPending;
+  };
+
+  const setCurrentStatus = (value) => {
+    trigger.dataset.status = slugifyValue(value);
+    trigger.textContent = getOfferStatusLabel(value);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.round(triggerRect.width)}px`;
+  };
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal";
+    menu.setAttribute("role", "menu");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    OFFER_STATUS_OPTIONS.forEach((option) => {
+      const optionButton = document.createElement("button");
+      optionButton.type = "button";
+      optionButton.className = "work-item-status-option";
+      optionButton.dataset.status = slugifyValue(option.value);
+      optionButton.textContent = option.label;
+      optionButton.setAttribute("role", "menuitem");
+
+      optionButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeOpenWorkOrderStatusMenus();
+
+        if (option.value === (item.status || "draft")) {
+          return;
+        }
+
+        const previousValue = item.status || "draft";
+        setCurrentStatus(option.value);
+        setPendingState(true);
+
+        void runMutation(() => apiRequest(`/offers/${item.id}`, {
+          method: "PATCH",
+          body: { status: option.value },
+        })).then((success) => {
+          setPendingState(false);
+
+          if (!success) {
+            setCurrentStatus(previousValue);
+            return;
+          }
+
+          const updatedItem = state.offers.find((entry) => String(entry.id) === String(item.id));
+          setCurrentStatus(updatedItem?.status || option.value);
+        });
+      });
+
+      menu.append(optionButton);
+    });
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => positionMenuPortal(menu));
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+
+    openMenu();
+  });
+
+  wrapper.append(trigger);
+  return wrapper;
+}
+
 function createEmptyOfferItemDraft(item = {}) {
   return {
     description: String(item?.description ?? ""),
@@ -8813,10 +9027,11 @@ function syncOfferTotals() {
   });
 }
 
-function scrollOfferFormIntoView(behavior = "smooth") {
-  offerForm?.scrollIntoView({
-    behavior,
-    block: "start",
+function scrollOfferFormToTop() {
+  offerEditorBody?.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: "auto",
   });
 }
 
@@ -9050,8 +9265,11 @@ function hydrateOfferForm(offer) {
   }
   syncOfferNumberPreview();
   syncOfferTotals();
-  scrollOfferFormIntoView();
-  offerTitleInput.focus({ preventScroll: true });
+  renderOffersModule();
+  openOfferEditor();
+  requestAnimationFrame(() => {
+    offerTitleInput?.focus({ preventScroll: true });
+  });
 }
 
 function renderOffersModule() {
@@ -9087,6 +9305,9 @@ function renderOffersModule() {
     const card = document.createElement("article");
     card.className = "offer-list-card";
     card.classList.add(`is-${offer.status || "draft"}`);
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori ponudu ${offer.offerNumber || offer.title || ""}`.trim());
     if (String(offer.id) === String(offerIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -9104,7 +9325,7 @@ function renderOffersModule() {
     title.textContent = offer.title || "Nova ponuda";
     copy.append(number, title);
 
-    head.append(copy, createOfferStatusBadge(offer.status || "draft"));
+    head.append(copy, createOfferStatusDropdown(offer));
 
     const meta = document.createElement("p");
     meta.className = "offer-list-card-meta";
@@ -9129,8 +9350,28 @@ function renderOffersModule() {
     footer.append(creator, total);
 
     card.append(head, meta, services, footer);
-    card.addEventListener("click", () => {
+    const openOffer = () => {
       hydrateOfferForm(offer);
+    };
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+
+      openOffer();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      openOffer();
     });
     return card;
   }));
@@ -9170,6 +9411,7 @@ function renderActiveView() {
   renderSidebarState();
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
+  syncOfferEditorModal();
 }
 
 function renderSharedOptions() {
@@ -12748,8 +12990,11 @@ workOrderCalendarUnscheduledToggle?.addEventListener("click", () => {
 
 offerOpenFormButton?.addEventListener("click", () => {
   resetOfferForm();
-  scrollOfferFormIntoView();
-  offerTitleInput?.focus({ preventScroll: true });
+  renderOffersModule();
+  openOfferEditor();
+  requestAnimationFrame(() => {
+    offerTitleInput?.focus({ preventScroll: true });
+  });
 });
 
 offersSearchInput?.addEventListener("input", () => {
@@ -12779,6 +13024,10 @@ offerAddItemButton?.addEventListener("click", () => {
 offerResetButton?.addEventListener("click", () => {
   resetOfferForm();
   renderOffersModule();
+  openOfferEditor();
+  requestAnimationFrame(() => {
+    offerTitleInput?.focus({ preventScroll: true });
+  });
 });
 
 offerDeleteButton?.addEventListener("click", () => {
@@ -12796,7 +13045,7 @@ offerDeleteButton?.addEventListener("click", () => {
     method: "DELETE",
   }), offerError).then((success) => {
     if (success) {
-      resetOfferForm();
+      closeOfferEditor({ reset: true });
       renderOffersModule();
     }
   });
@@ -12814,12 +13063,18 @@ offerForm?.addEventListener("submit", (event) => {
     body: buildOfferPayload(),
   }), offerError).then((success) => {
     if (success) {
-      if (!isEditing) {
-        resetOfferForm();
-      }
+      closeOfferEditor({ reset: true });
       renderOffersModule();
     }
   });
+});
+
+offerEditorCloseButton?.addEventListener("click", () => {
+  dismissOfferEditor();
+});
+
+offerEditorBackdrop?.addEventListener("click", () => {
+  dismissOfferEditor();
 });
 
 companyForm.addEventListener("submit", (event) => {
@@ -13508,6 +13763,11 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.offerEditorOpen) {
+    dismissOfferEditor();
+    return;
+  }
+
   if (event.key === "Escape" && state.chat.composerOpen) {
     setChatComposerOpen(false);
   }

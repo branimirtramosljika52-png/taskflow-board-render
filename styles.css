@@ -1622,9 +1622,10 @@ fieldset {
 
 .offers-module {
   display: grid;
-  gap: 14px;
-  width: min(100%, 980px);
-  margin: 0 auto;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }
 
 .offers-summary-grid {
@@ -1693,8 +1694,9 @@ fieldset {
 .offers-layout {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
+  gap: 16px;
   align-items: start;
+  min-width: 0;
 }
 
 .offers-launch-panel,
@@ -1705,6 +1707,78 @@ fieldset {
   min-width: 0;
   overflow: hidden;
   padding: 16px;
+}
+
+.offers-list-panel {
+  gap: 14px;
+  padding: 18px;
+}
+
+.offer-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 68;
+  background: rgba(17, 21, 31, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+body.is-offer-editor-open {
+  overflow: hidden;
+}
+
+.offers-editor-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fbfcfe, #f5f7fb);
+}
+
+.offers-editor-panel.is-modal-open {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 69;
+  width: min(1180px, calc(100vw - 24px));
+  height: calc(100vh - 28px);
+  max-height: none;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid rgba(206, 212, 228, 0.94);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.24);
+  border-radius: 28px;
+}
+
+.offers-editor-fixed-head {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 12px;
+  background: linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(247, 249, 253, 0.96));
+  border-bottom: 1px solid rgba(232, 236, 245, 0.9);
+}
+
+.offers-editor-body {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 12px 20px 20px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.offers-editor-body:focus {
+  outline: none;
+}
+
+.offers-editor-body > .entity-form {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
 }
 
 .offers-section-heading {
@@ -1849,6 +1923,7 @@ fieldset {
 .offer-list-card-copy {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .offer-list-card-title,
@@ -1868,6 +1943,10 @@ fieldset {
 .offer-list-card-total {
   font-size: 0.95rem;
   color: #1d6b4d;
+}
+
+.offer-list-card .work-item-status-dropdown {
+  flex: 0 0 auto;
 }
 
 .offer-status-badge {
@@ -2066,6 +2145,12 @@ fieldset {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .offers-editor-panel.is-modal-open {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 20px);
+    top: 10px;
+  }
+
   .offer-item-row {
     grid-template-columns: 1fr;
   }
@@ -2104,6 +2189,25 @@ fieldset {
 
   .offer-item-remove {
     width: 100%;
+  }
+
+  .offers-list-panel {
+    padding: 16px;
+  }
+
+  .offers-editor-panel.is-modal-open {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    top: 8px;
+    border-radius: 22px;
+  }
+
+  .offers-editor-fixed-head {
+    padding: 16px 16px 10px;
+  }
+
+  .offers-editor-body {
+    padding: 10px 16px 16px;
   }
 
   .offers-launch-panel {
@@ -6840,6 +6944,34 @@ body.is-work-order-editor-open {
   color: #48515d;
   background-color: #d8dde4;
   border-color: #c8ced7;
+}
+
+.work-item-status-trigger[data-status="draft"],
+.work-item-status-option[data-status="draft"] {
+  color: #4f5d78;
+  background-color: rgba(208, 215, 230, 0.62);
+  border-color: rgba(160, 171, 195, 0.74);
+}
+
+.work-item-status-trigger[data-status="sent"],
+.work-item-status-option[data-status="sent"] {
+  color: #235e92;
+  background-color: rgba(198, 225, 255, 0.72);
+  border-color: rgba(127, 174, 220, 0.78);
+}
+
+.work-item-status-trigger[data-status="accepted"],
+.work-item-status-option[data-status="accepted"] {
+  color: #236846;
+  background-color: rgba(201, 239, 216, 0.78);
+  border-color: rgba(132, 199, 157, 0.8);
+}
+
+.work-item-status-trigger[data-status="rejected"],
+.work-item-status-option[data-status="rejected"] {
+  color: #9e3d3d;
+  background-color: rgba(255, 222, 222, 0.82);
+  border-color: rgba(225, 163, 163, 0.8);
 }
 
 .work-item-status-select:disabled,
