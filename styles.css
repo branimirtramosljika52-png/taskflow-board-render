@@ -5004,8 +5004,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-week-row {
   display: grid;
-  grid-template-columns: 240px repeat(7, minmax(180px, 1fr));
-  min-width: 1360px;
+  grid-template-columns: 220px repeat(7, minmax(96px, 1fr));
+  min-width: 920px;
 }
 
 .work-order-calendar-week-row.is-head {
@@ -8671,7 +8671,7 @@ body.is-work-order-editor-open {
 
   .work-order-calendar-grid-row,
   .work-order-calendar-week-row {
-    min-width: 1260px;
+    min-width: 920px;
   }
 
   .work-order-map-stage {
