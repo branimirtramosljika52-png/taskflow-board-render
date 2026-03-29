@@ -508,6 +508,85 @@ test("offers update totals and support filtering and sorting", () => {
   );
 });
 
+test("offers support location scope, contact snapshots, discounts and breakdown rows", () => {
+  const state = buildState();
+
+  const detailedOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationScope: "single",
+      locationId: "location-1",
+      contactSlot: "2",
+      title: "Detaljna ponuda",
+      serviceLine: "Flat plan",
+      offerDate: "2026-03-29",
+      discountRate: 10,
+      items: [
+        {
+          description: "Panik rasvjeta",
+          unit: "kom",
+          quantity: 1,
+          unitPrice: 100,
+          discountRate: 10,
+          breakdowns: [
+            { label: "do 5 mm", amount: 10 },
+            { label: "do 80 mm", amount: 58 },
+          ],
+        },
+      ],
+    },
+    state,
+    () => "offer-detailed",
+    {
+      offerNumber: "2026-AA-005",
+      offerYear: 2026,
+      offerSequence: 5,
+      offerInitials: "AA",
+    },
+    () => "2026-03-29T09:00:00.000Z",
+  );
+
+  const allLocationsOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationScope: "all",
+      title: "Ponuda za sve lokacije",
+      serviceLine: "One-Time",
+      items: [
+        { description: "Pregled", unit: "kom", quantity: 1, unitPrice: 50 },
+      ],
+    },
+    {
+      ...state,
+      offers: [detailedOffer],
+    },
+    () => "offer-all",
+    {
+      offerNumber: "2026-AA-006",
+      offerYear: 2026,
+      offerSequence: 6,
+      offerInitials: "AA",
+    },
+    () => "2026-03-30T09:00:00.000Z",
+  );
+
+  assert.equal(detailedOffer.locationScope, "single");
+  assert.equal(detailedOffer.contactName, "Iva Novak");
+  assert.equal(detailedOffer.offerDate, "2026-03-29");
+  assert.equal(detailedOffer.items[0].breakdowns.length, 2);
+  assert.equal(detailedOffer.items[0].totalPrice, 151.2);
+  assert.equal(detailedOffer.subtotal, 151.2);
+  assert.equal(detailedOffer.discountTotal, 15.12);
+  assert.equal(detailedOffer.taxableSubtotal, 136.08);
+  assert.equal(detailedOffer.total, 170.1);
+  assert.equal(allLocationsOffer.locationScope, "all");
+  assert.equal(allLocationsOffer.locationName, "Sve lokacije");
+  assert.equal(allLocationsOffer.contactName, "");
+  assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 80 mm" }).length, 1);
+});
+
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {
   const state = buildState();
   const workOrders = [

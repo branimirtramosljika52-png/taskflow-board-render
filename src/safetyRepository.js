@@ -721,10 +721,11 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [offerRows] = await connection.query(`
-    SELECT id, organization_id, company_id, location_id, offer_number, offer_year, offer_sequence,
-           offer_initials, title, service_line, status, valid_until, note, currency_code,
-           tax_rate, subtotal_amount, tax_total_amount, grand_total_amount, items_json,
-           created_by_user_id, created_by_label, created_at, updated_at
+    SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
+           offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
+           tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
+           tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
+           contact_email, created_by_user_id, created_by_label, created_at, updated_at
     FROM web_offers
     ORDER BY
       CASE status
@@ -734,7 +735,7 @@ async function fetchSnapshotFromConnection(connection) {
         WHEN 'rejected' THEN 3
         ELSE 9
       END ASC,
-      valid_until ASC,
+      offer_date DESC,
       updated_at DESC,
       id DESC
   `);
@@ -742,11 +743,22 @@ async function fetchSnapshotFromConnection(connection) {
   const offers = offerRows.map((row) => {
     const company = companiesById.get(dbString(row.company_id));
     const location = locationsById.get(dbString(row.location_id));
+    const rawLocationScope = dbString(row.location_scope).toLowerCase();
+    const locationScope = ["all", "single", "none"].includes(rawLocationScope)
+      ? (rawLocationScope === "single" && !dbString(row.location_id) ? "none" : rawLocationScope)
+      : (dbString(row.location_id) ? "single" : "none");
     const items = parseJsonArray(row.items_json).map((item) => ({
       description: dbString(item.description),
       unit: dbString(item.unit),
       quantity: Number(item.quantity ?? 0) || 0,
       unitPrice: Number(item.unitPrice ?? 0) || 0,
+      breakdowns: parseJsonArray(item.breakdowns).map((entry) => ({
+        label: dbString(entry.label),
+        amount: Number(entry.amount ?? 0) || 0,
+      })),
+      breakdownTotal: Number(item.breakdownTotal ?? 0) || 0,
+      discountRate: Number(item.discountRate ?? 0) || 0,
+      discountTotal: Number(item.discountTotal ?? 0) || 0,
       totalPrice: Number(item.totalPrice ?? 0) || 0,
     }));
 
@@ -758,9 +770,18 @@ async function fetchSnapshotFromConnection(connection) {
       companyOib: company?.oib ?? "",
       headquarters: company?.headquarters ?? "",
       locationId: dbString(row.location_id),
-      locationName: location?.name ?? "",
+      locationScope,
+      locationName: locationScope === "all"
+        ? "Sve lokacije"
+        : locationScope === "none"
+          ? "Bez lokacije"
+          : (location?.name ?? ""),
       region: location?.region ?? "",
       coordinates: location?.coordinates ?? "",
+      contactSlot: dbString(row.contact_slot),
+      contactName: row.contact_name ?? "",
+      contactPhone: row.contact_phone ?? "",
+      contactEmail: row.contact_email ?? "",
       offerNumber: row.offer_number ?? "",
       offerYear: Number(row.offer_year ?? 0) || null,
       offerSequence: Number(row.offer_sequence ?? 0) || null,
@@ -768,11 +789,15 @@ async function fetchSnapshotFromConnection(connection) {
       title: row.title ?? "",
       serviceLine: row.service_line ?? "",
       status: row.status ?? "draft",
+      offerDate: normalizeDateOnly(row.offer_date),
       validUntil: normalizeDateOnly(row.valid_until),
       note: row.note ?? "",
       currency: row.currency_code ?? "EUR",
       taxRate: Number(row.tax_rate ?? 0) || 0,
+      discountRate: Number(row.discount_rate ?? 0) || 0,
       subtotal: Number(row.subtotal_amount ?? 0) || 0,
+      discountTotal: Number(row.discount_total_amount ?? 0) || 0,
+      taxableSubtotal: Number(row.taxable_subtotal_amount ?? 0) || 0,
       taxTotal: Number(row.tax_total_amount ?? 0) || 0,
       total: Number(row.grand_total_amount ?? 0) || 0,
       items,
@@ -989,7 +1014,10 @@ export class InMemorySafetyRepository {
       })),
       offers: this.snapshot.offers.map((item) => ({
         ...item,
-        items: (item.items ?? []).map((entry) => ({ ...entry })),
+        items: (item.items ?? []).map((entry) => ({
+          ...entry,
+          breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
+        })),
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
@@ -1423,6 +1451,7 @@ export class MySqlSafetyRepository {
         organization_id INT NOT NULL,
         company_id INT NOT NULL,
         location_id INT NULL,
+        location_scope VARCHAR(16) NOT NULL DEFAULT 'single',
         offer_number VARCHAR(64) NOT NULL,
         offer_year INT NOT NULL,
         offer_sequence INT NOT NULL,
@@ -1430,14 +1459,22 @@ export class MySqlSafetyRepository {
         title VARCHAR(180) NOT NULL,
         service_line VARCHAR(180) NOT NULL DEFAULT '',
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        offer_date DATE NULL,
         valid_until DATE NULL,
         note TEXT NOT NULL,
         currency_code VARCHAR(12) NOT NULL DEFAULT 'EUR',
         tax_rate DECIMAL(10, 2) NOT NULL DEFAULT 25.00,
+        discount_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
         subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        discount_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        taxable_subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         tax_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
+        contact_slot VARCHAR(16) NOT NULL DEFAULT '',
+        contact_name VARCHAR(160) NOT NULL DEFAULT '',
+        contact_phone VARCHAR(80) NOT NULL DEFAULT '',
+        contact_email VARCHAR(180) NOT NULL DEFAULT '',
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1473,6 +1510,25 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelj_rn2");
+    await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
+    await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
+    await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
+    await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
+    await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
+    await ensureColumnExists(this.pool, "web_offers", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER items_json");
+    await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
+    await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
+    await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
+    await this.pool.query(`
+      UPDATE web_offers
+      SET location_scope = CASE
+        WHEN location_id IS NULL THEN 'none'
+        ELSE 'single'
+      END
+      WHERE location_scope IS NULL
+        OR location_scope = ''
+        OR (location_scope = 'single' AND location_id IS NULL)
+    `);
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_column", "INT NOT NULL DEFAULT 1");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_row", "INT NOT NULL DEFAULT 1");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_width", "INT NOT NULL DEFAULT 4");
@@ -2480,16 +2536,18 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_offers
-            (organization_id, company_id, location_id, offer_number, offer_year, offer_sequence,
-             offer_initials, title, service_line, status, valid_until, note, currency_code,
-             tax_rate, subtotal_amount, tax_total_amount, grand_total_amount, items_json,
-             created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
+             offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
+             tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
+             tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
+             contact_email, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           Number(draft.companyId),
           parseNullableInteger(draft.locationId),
+          draft.locationScope || "single",
           draft.offerNumber,
           Number(draft.offerYear),
           Number(draft.offerSequence),
@@ -2497,14 +2555,22 @@ export class MySqlSafetyRepository {
           draft.title,
           draft.serviceLine,
           draft.status,
+          draft.offerDate,
           draft.validUntil,
           draft.note,
           draft.currency,
           parseNullableDecimal(draft.taxRate) ?? 0,
+          parseNullableDecimal(draft.discountRate) ?? 0,
           parseNullableDecimal(draft.subtotal) ?? 0,
+          parseNullableDecimal(draft.discountTotal) ?? 0,
+          parseNullableDecimal(draft.taxableSubtotal) ?? 0,
           parseNullableDecimal(draft.taxTotal) ?? 0,
           parseNullableDecimal(draft.total) ?? 0,
           JSON.stringify(draft.items ?? []),
+          draft.contactSlot ?? "",
+          draft.contactName ?? "",
+          draft.contactPhone ?? "",
+          draft.contactEmail ?? "",
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
         ],
@@ -2546,25 +2612,36 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_offers
-          SET company_id = ?, location_id = ?, title = ?, service_line = ?, status = ?, valid_until = ?,
-              note = ?, currency_code = ?, tax_rate = ?, subtotal_amount = ?, tax_total_amount = ?,
-              grand_total_amount = ?, items_json = ?
+          SET company_id = ?, location_id = ?, location_scope = ?, title = ?, service_line = ?, status = ?,
+              offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
+              subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, tax_total_amount = ?,
+              grand_total_amount = ?, items_json = ?, contact_slot = ?, contact_name = ?, contact_phone = ?,
+              contact_email = ?
           WHERE id = ?
         `,
         [
           Number(next.companyId),
           parseNullableInteger(next.locationId),
+          next.locationScope || "single",
           next.title,
           next.serviceLine,
           next.status,
+          next.offerDate,
           next.validUntil,
           next.note,
           next.currency,
           parseNullableDecimal(next.taxRate) ?? 0,
+          parseNullableDecimal(next.discountRate) ?? 0,
           parseNullableDecimal(next.subtotal) ?? 0,
+          parseNullableDecimal(next.discountTotal) ?? 0,
+          parseNullableDecimal(next.taxableSubtotal) ?? 0,
           parseNullableDecimal(next.taxTotal) ?? 0,
           parseNullableDecimal(next.total) ?? 0,
           JSON.stringify(next.items ?? []),
+          next.contactSlot ?? "",
+          next.contactName ?? "",
+          next.contactPhone ?? "",
+          next.contactEmail ?? "",
           Number(id),
         ],
       );

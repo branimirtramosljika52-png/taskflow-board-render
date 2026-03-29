@@ -2049,7 +2049,24 @@
 
                   <div class="offers-editor-body" tabindex="-1">
                     <form id="offer-form" class="entity-form">
-                    <input id="offer-id" type="hidden" />
+                      <input id="offer-id" type="hidden" />
+
+                      <datalist id="offer-service-line-options">
+                        <option value="Flat plan"></option>
+                        <option value="One-Time"></option>
+                        <option value="Monthly+Per Services"></option>
+                      </datalist>
+
+                      <div class="offers-editor-topline">
+                        <label class="field offer-status-field">
+                          <span>Status</span>
+                          <select id="offer-status" class="work-item-status-select"></select>
+                        </label>
+                        <label class="field">
+                          <span>Datum ponude</span>
+                          <input id="offer-date" type="date" />
+                        </label>
+                      </div>
 
                     <div class="offers-editor-meta">
                       <div class="offers-editor-meta-block">
@@ -2076,16 +2093,12 @@
                         <select id="offer-location-id"></select>
                       </label>
                       <label class="field">
+                        <span>Kontakt osoba</span>
+                        <select id="offer-contact-slot"></select>
+                      </label>
+                      <label class="field">
                         <span>Vrsta usluge</span>
-                        <input id="offer-service-line" maxlength="180" placeholder="Servis, pregled, obuka..." required />
-                      </label>
-                      <label class="field">
-                        <span>Status</span>
-                        <select id="offer-status"></select>
-                      </label>
-                      <label class="field">
-                        <span>Vrijedi do</span>
-                        <input id="offer-valid-until" type="date" />
+                        <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Flat plan, One-Time..." required />
                       </label>
                       <label class="field">
                         <span>PDV %</span>
@@ -2109,9 +2122,24 @@
                     <div id="offer-items" class="offer-items"></div>
 
                     <div class="offers-totals-card">
+                      <div class="offers-discount-controls">
+                        <button id="offer-toggle-discount" type="button" class="ghost-button">Dodaj rabat ponude</button>
+                        <label id="offer-discount-rate-wrap" class="field offers-discount-field" hidden>
+                          <span>Rabat ponude %</span>
+                          <input id="offer-discount-rate" inputmode="decimal" placeholder="10" />
+                        </label>
+                      </div>
                       <div class="offers-total-line">
                         <span>Međuzbroj</span>
                         <strong id="offer-subtotal">0,00 EUR</strong>
+                      </div>
+                      <div id="offer-discount-line" class="offers-total-line" hidden>
+                        <span>Rabat</span>
+                        <strong id="offer-discount-total">0,00 EUR</strong>
+                      </div>
+                      <div id="offer-taxable-subtotal-line" class="offers-total-line" hidden>
+                        <span>Osnovica</span>
+                        <strong id="offer-taxable-subtotal">0,00 EUR</strong>
                       </div>
                       <div class="offers-total-line">
                         <span>PDV</span>

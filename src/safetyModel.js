@@ -34,6 +34,12 @@ export const OFFER_STATUS_OPTIONS = [
   { value: "rejected", label: "Odbijeno" },
 ];
 
+export const OFFER_SERVICE_LINE_SUGGESTIONS = [
+  "Flat plan",
+  "One-Time",
+  "Monthly+Per Services",
+];
+
 export const DASHBOARD_WIDGET_SOURCE_OPTIONS = [
   { value: "work_orders", label: "Radni nalozi" },
   { value: "reminders", label: "Reminders" },
@@ -165,6 +171,7 @@ const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
+const OFFER_LOCATION_SCOPE_SET = new Set(["single", "all", "none"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
@@ -300,6 +307,11 @@ function normalizeOfferStatus(value) {
   return OFFER_STATUS_SET.has(status) ? status : "draft";
 }
 
+function normalizeOfferLocationScope(value, fallback = "none") {
+  const scope = normalizeText(value).toLowerCase();
+  return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
+}
+
 function normalizeOib(value) {
   const oib = normalizeText(value).replace(/\s+/g, "");
 
@@ -333,6 +345,10 @@ function normalizeOfferTaxRate(value) {
   return roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(value, 25)));
 }
 
+function normalizeOfferDiscountRate(value) {
+  return roundCurrencyAmount(Math.min(100, Math.max(0, normalizeFiniteNumber(value, 0))));
+}
+
 export function deriveOfferInitials(value) {
   const normalizedValue = normalizeText(value).trim();
   const raw = normalizedValue
@@ -358,6 +374,24 @@ export function deriveOfferInitials(value) {
   return (compact || "SD").slice(0, 4);
 }
 
+function normalizeOfferBreakdowns(breakdowns = []) {
+  if (!Array.isArray(breakdowns)) {
+    return [];
+  }
+
+  return breakdowns
+    .slice(0, 5)
+    .map((entry) => {
+      const amount = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(entry?.amount, 0)));
+
+      return {
+        label: normalizeText(entry?.label),
+        amount,
+      };
+    })
+    .filter((entry) => entry.label || entry.amount);
+}
+
 function normalizeOfferItems(items = []) {
   if (!Array.isArray(items)) {
     throw new Error("Stavke ponude moraju biti lista.");
@@ -367,16 +401,33 @@ function normalizeOfferItems(items = []) {
     .map((item) => {
       const quantity = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.quantity, 0)));
       const unitPrice = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.unitPrice, 0)));
+      const breakdowns = normalizeOfferBreakdowns(item?.breakdowns);
+      const breakdownTotal = roundCurrencyAmount(
+        breakdowns.reduce((sum, entry) => sum + roundCurrencyAmount(entry.amount), 0),
+      );
+      const grossTotal = roundCurrencyAmount((quantity * unitPrice) + breakdownTotal);
+      const discountRate = normalizeOfferDiscountRate(item?.discountRate);
+      const discountTotal = roundCurrencyAmount(grossTotal * (discountRate / 100));
 
       return {
         description: normalizeText(item?.description),
         unit: normalizeText(item?.unit),
         quantity,
         unitPrice,
-        totalPrice: roundCurrencyAmount(quantity * unitPrice),
+        breakdowns,
+        breakdownTotal,
+        discountRate,
+        discountTotal,
+        totalPrice: roundCurrencyAmount(grossTotal - discountTotal),
       };
     })
-    .filter((item) => item.description || item.quantity || item.unitPrice);
+    .filter((item) => (
+      item.description
+      || item.quantity
+      || item.unitPrice
+      || item.breakdowns.length > 0
+      || item.discountRate > 0
+    ));
 
   if (normalizedItems.length === 0) {
     throw new Error("Dodaj barem jednu stavku ponude.");
@@ -385,14 +436,20 @@ function normalizeOfferItems(items = []) {
   return normalizedItems;
 }
 
-function calculateOfferTotals(items = [], taxRate = 25) {
+function calculateOfferTotals(items = [], taxRate = 25, discountRate = 0) {
   const subtotal = roundCurrencyAmount(items.reduce((sum, item) => sum + roundCurrencyAmount(item.totalPrice), 0));
-  const taxTotal = roundCurrencyAmount(subtotal * (normalizeOfferTaxRate(taxRate) / 100));
+  const normalizedDiscountRate = normalizeOfferDiscountRate(discountRate);
+  const discountTotal = roundCurrencyAmount(subtotal * (normalizedDiscountRate / 100));
+  const taxableSubtotal = roundCurrencyAmount(Math.max(0, subtotal - discountTotal));
+  const taxTotal = roundCurrencyAmount(taxableSubtotal * (normalizeOfferTaxRate(taxRate) / 100));
 
   return {
     subtotal,
+    discountRate: normalizedDiscountRate,
+    discountTotal,
+    taxableSubtotal,
     taxTotal,
-    total: roundCurrencyAmount(subtotal + taxTotal),
+    total: roundCurrencyAmount(taxableSubtotal + taxTotal),
   };
 }
 
@@ -511,8 +568,20 @@ function hydrateOfferCore({
     throw new Error("Odabrana tvrtka ne postoji.");
   }
 
-  const locationWasExplicitlyChanged = hasOwn(input, "locationId");
-  let locationId = locationWasExplicitlyChanged ? normalizeId(input.locationId) : normalizeId(current?.locationId);
+  const fallbackLocationScope = normalizeId(
+    hasOwn(input, "locationId") ? input.locationId : current?.locationId,
+  ) ? "single" : "none";
+  const nextLocationScope = hasOwn(input, "locationScope")
+    ? normalizeOfferLocationScope(input.locationScope, fallbackLocationScope)
+    : normalizeOfferLocationScope(current?.locationScope, fallbackLocationScope);
+  const locationWasExplicitlyChanged = hasOwn(input, "locationId") || hasOwn(input, "locationScope");
+  let locationId = nextLocationScope === "single"
+    ? (hasOwn(input, "locationId") ? normalizeId(input.locationId) : normalizeId(current?.locationId))
+    : "";
+
+  if (nextLocationScope === "single" && !locationId) {
+    throw new Error("Odaberi lokaciju ili odaberi Sve lokacije / Bez lokacije.");
+  }
 
   if (locationId) {
     const belongsToCompany = (state.locations ?? []).some((item) => item.id === locationId && item.companyId === companyId);
@@ -526,17 +595,51 @@ function hydrateOfferCore({
     }
   }
 
-  const location = findOfferLocation(state, locationId, companyId);
+  const locationScope = nextLocationScope === "single" && !locationId ? "none" : nextLocationScope;
+  const location = locationScope === "single" ? findOfferLocation(state, locationId, companyId) : null;
   const organizationId = hasOwn(input, "organizationId")
     ? requireText(input.organizationId, "Organizacija")
     : requireText(current?.organizationId, "Organizacija");
   const taxRate = hasOwn(input, "taxRate")
     ? normalizeOfferTaxRate(input.taxRate)
     : normalizeOfferTaxRate(current?.taxRate ?? 25);
+  const discountRate = hasOwn(input, "discountRate")
+    ? normalizeOfferDiscountRate(input.discountRate)
+    : normalizeOfferDiscountRate(current?.discountRate ?? 0);
   const items = hasOwn(input, "items")
     ? normalizeOfferItems(input.items)
     : (current?.items ?? []);
-  const totals = calculateOfferTotals(items, taxRate);
+  const totals = calculateOfferTotals(items, taxRate, discountRate);
+  const selectedContact = locationScope === "single" && location
+    ? selectLocationContact(location, hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot)
+    : null;
+  const fallbackOfferDate = current?.offerDate ?? timestamp.slice(0, 10);
+  const offerDate = hasOwn(input, "offerDate")
+    ? (normalizeOptionalDate(input.offerDate) ?? timestamp.slice(0, 10))
+    : (normalizeOptionalDate(fallbackOfferDate) ?? timestamp.slice(0, 10));
+  const contactSlot = locationScope === "single"
+    ? normalizeText(hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot ?? selectedContact?.slot)
+    : "";
+  const contactName = locationScope === "single"
+    ? (hasOwn(input, "contactName")
+      ? normalizeText(input.contactName)
+      : (normalizeText(current?.contactName) || selectedContact?.name || ""))
+    : "";
+  const contactPhone = locationScope === "single"
+    ? (hasOwn(input, "contactPhone")
+      ? normalizeText(input.contactPhone)
+      : (normalizeText(current?.contactPhone) || selectedContact?.phone || ""))
+    : "";
+  const contactEmail = locationScope === "single"
+    ? (hasOwn(input, "contactEmail")
+      ? normalizeText(input.contactEmail)
+      : (normalizeText(current?.contactEmail) || selectedContact?.email || ""))
+    : "";
+  const locationName = locationScope === "all"
+    ? "Sve lokacije"
+    : locationScope === "none"
+      ? "Bez lokacije"
+      : (location?.name ?? "");
 
   return {
     id: current?.id ?? "",
@@ -546,9 +649,14 @@ function hydrateOfferCore({
     companyOib: company.oib ?? "",
     headquarters: company.headquarters ?? "",
     locationId,
-    locationName: location?.name ?? "",
+    locationScope,
+    locationName,
     region: location?.region ?? "",
     coordinates: location?.coordinates ?? "",
+    contactSlot,
+    contactName,
+    contactPhone,
+    contactEmail,
     offerNumber: requireText(offerNumber || current?.offerNumber, "Broj ponude"),
     offerYear: Number(offerYear) || Number(timestamp.slice(0, 4)),
     offerSequence: Number(offerSequence) || 0,
@@ -556,6 +664,7 @@ function hydrateOfferCore({
     title: hasOwn(input, "title") ? requireText(input.title, "Naziv ponude") : current?.title ?? "",
     serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
     status: hasOwn(input, "status") ? normalizeOfferStatus(input.status) : normalizeOfferStatus(current?.status),
+    offerDate,
     validUntil: hasOwn(input, "validUntil")
       ? normalizeOptionalDate(input.validUntil)
       : normalizeOptionalDate(current?.validUntil),
@@ -564,7 +673,10 @@ function hydrateOfferCore({
       ? (normalizeText(input.currency).toUpperCase() || "EUR")
       : (normalizeText(current?.currency).toUpperCase() || "EUR"),
     taxRate,
+    discountRate,
     subtotal: totals.subtotal,
+    discountTotal: totals.discountTotal,
+    taxableSubtotal: totals.taxableSubtotal,
     taxTotal: totals.taxTotal,
     total: totals.total,
     items: items.map((item) => ({ ...item })),
@@ -1520,10 +1632,12 @@ export function filterOffers(
       item.title,
       item.companyName,
       item.locationName,
+      item.contactName,
       item.serviceLine,
       item.createdByLabel,
       item.note,
       ...(item.items ?? []).map((entry) => entry.description),
+      ...(item.items ?? []).flatMap((entry) => (entry.breakdowns ?? []).map((detail) => detail.label)),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);
@@ -1539,15 +1653,15 @@ export function sortOffers(offers) {
       return leftRank - rightRank;
     }
 
-    if (left.validUntil && right.validUntil && left.validUntil !== right.validUntil) {
-      return left.validUntil.localeCompare(right.validUntil);
+    if (left.offerDate && right.offerDate && left.offerDate !== right.offerDate) {
+      return right.offerDate.localeCompare(left.offerDate);
     }
 
-    if (left.validUntil && !right.validUntil) {
+    if (left.offerDate && !right.offerDate) {
       return -1;
     }
 
-    if (!left.validUntil && right.validUntil) {
+    if (!left.offerDate && right.offerDate) {
       return 1;
     }
 
