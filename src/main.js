@@ -8910,14 +8910,27 @@ function renderOfferItemRows() {
       removeOfferFormItem(index);
     });
 
-    row.append(
-      createInputField("Usluga", "description", { placeholder: "Opis usluge ili stavke" }),
-      createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj..." }),
-      createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal" }),
-      createInputField("Cijena", "unitPrice", { placeholder: "0,00", inputMode: "decimal" }),
-      total,
-      removeButton,
-    );
+    const descriptionField = createInputField("Usluga", "description", { placeholder: "Opis usluge ili stavke" });
+    descriptionField.classList.add("offer-item-field", "is-description");
+
+    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj..." });
+    unitField.classList.add("offer-item-field", "is-unit");
+
+    const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal" });
+    quantityField.classList.add("offer-item-field", "is-quantity");
+
+    const priceField = createInputField("Cijena", "unitPrice", { placeholder: "0,00", inputMode: "decimal" });
+    priceField.classList.add("offer-item-field", "is-price");
+
+    const metrics = document.createElement("div");
+    metrics.className = "offer-item-metrics";
+    metrics.append(unitField, quantityField, priceField);
+
+    const actions = document.createElement("div");
+    actions.className = "offer-item-actions";
+    actions.append(total, removeButton);
+
+    row.append(descriptionField, metrics, actions);
 
     return row;
   }));
