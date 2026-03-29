@@ -1861,7 +1861,7 @@ function renderChatConversationList() {
 
     const subtitle = document.createElement("span");
     subtitle.textContent = conversation.lastMessage
-      ? `${conversation.lastMessage.authorName} Â· ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
+      ? `${conversation.lastMessage.authorName} · ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
       : `${conversation.participants.length} sudionika`;
 
     copy.append(title, subtitle);
@@ -1930,7 +1930,7 @@ function renderChatPeopleList() {
     const title = document.createElement("strong");
     title.textContent = person.fullName || person.email;
     const subtitle = document.createElement("span");
-    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[person.id] ?? "offline")} Â· ${person.email || "bez emaila"}`;
+    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[person.id] ?? "offline")} · ${person.email || "bez emaila"}`;
     copy.append(title, subtitle);
     head.append(copy);
 
@@ -1972,7 +1972,7 @@ function renderChatThread() {
     const onlineCount = (conversation.participants ?? [])
       .filter((participant) => (state.chat.presenceByUserId[participant.id] ?? "offline") === "online")
       .length;
-    chatThreadMeta.textContent = `${conversation.participants.length} sudionika Â· ${onlineCount} online`;
+    chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
   }
 
   chatThreadMessages.replaceChildren(...(conversation.messages ?? []).map((message) => {
@@ -2073,7 +2073,7 @@ function renderChatComposer() {
     const title = document.createElement("strong");
     title.textContent = user.fullName || user.email;
     const subtitle = document.createElement("span");
-    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[user.id] ?? "offline")} Â· ${user.email || "bez emaila"}`;
+    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[user.id] ?? "offline")} · ${user.email || "bez emaila"}`;
     copy.append(title, subtitle);
 
     label.append(checkbox, avatar, copy);
@@ -2935,16 +2935,16 @@ function renderWorkOrderEditorSummary() {
   const description = String(workOrderDescriptionInput.value ?? "").trim();
   const companyName = "";
   const locationName = "";
-  const compactServiceSummary = [department, serviceLine].filter(Boolean).join(" â€˘ ");
-  const serviceSummary = [department, serviceLine].filter(Boolean).join(" â€˘ ");
+  const compactServiceSummary = [department, serviceLine].filter(Boolean).join(" · ");
+  const serviceSummary = [department, serviceLine].filter(Boolean).join(" · ");
   const executorValues = [workOrderExecutor1Input.value, workOrderExecutor2Input.value]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
 
-  workOrderEditorContext.textContent = activeId ? "UreÄ‘ivanje radnog naloga" : "Otvaranje novog RN";
+  workOrderEditorContext.textContent = activeId ? "Uređivanje radnog naloga" : "Otvaranje novog RN";
   workOrderEditorTitle.textContent = workOrderNumber || "Novi radni nalog";
   workOrderEditorSubtitle.textContent = description
-    || [serviceLine, department, companyName, locationName].filter(Boolean).join(" â€˘ ")
+    || [serviceLine, department, companyName, locationName].filter(Boolean).join(" · ")
     || "Odaberi klijenta, lokaciju i unesi detalje radnog naloga.";
 
   workOrderEditorSubtitle.textContent = description
@@ -2987,12 +2987,12 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorMetaItem(
       "dates",
       "Datumi",
-      `${formatCompactOpenedDate(workOrderOpenedDateInput.value)} â€˘ ${formatCompactDueDate(workOrderDueDateInput.value)}`,
+      `${formatCompactOpenedDate(workOrderOpenedDateInput.value)} · ${formatCompactDueDate(workOrderDueDateInput.value)}`,
     ),
     createWorkOrderEditorMetaItem(
       "service",
       "Usluga",
-      [department, serviceLine].filter(Boolean).join(" â€˘ ") || "Bez usluge",
+      [department, serviceLine].filter(Boolean).join(" · ") || "Bez usluge",
     ),
     createWorkOrderEditorMetaItem(
       "service",
@@ -3018,11 +3018,11 @@ function renderWorkOrderEditorSummary() {
   } else {
     const empty = document.createElement("span");
     empty.className = "work-order-editor-assignees-empty";
-    empty.textContent = "Bez izvrĹˇitelja";
+    empty.textContent = "Bez izvršitelja";
     assigneeWrap.append(empty);
   }
 
-  const assigneeMeta = createWorkOrderEditorMetaItem("assignees", "IzvrĹˇitelji", "", assigneeWrap);
+  const assigneeMeta = createWorkOrderEditorMetaItem("assignees", "Izvršitelji", "", assigneeWrap);
   assigneeMeta.classList.add("is-assignee-group");
   facts.append(assigneeMeta);
   workOrderEditorMeta.replaceChildren(chips, facts);
@@ -5711,14 +5711,14 @@ function renderAuthState() {
     const badgeName = document.createElement("strong");
     badgeName.textContent = state.user.fullName;
     const badgeRole = document.createElement("span");
-    badgeRole.textContent = `${roleLabel} Â· ${presenceLabel}`;
+    badgeRole.textContent = `${roleLabel} · ${presenceLabel}`;
     badgeCopy.append(badgeName, badgeRole);
     userBadge.append(badgeAvatar, badgeCopy);
     renderAvatar(badgeAvatar, state.user);
     applyPresenceToAvatar(badgeAvatar, presence);
     badgeRole.textContent = roleLabel;
     userMenuName.textContent = state.user.fullName || state.user.email;
-    userMenuRole.textContent = `${roleLabel} Â· ${presenceLabel}`;
+    userMenuRole.textContent = `${roleLabel} · ${presenceLabel}`;
     userMenuEmail.textContent = state.user.email || "";
     userMenuOrganizations.textContent = organizationLabel || (organization ? organization.name : "");
     renderAvatar(userMenuAvatar, state.user);
@@ -6798,7 +6798,7 @@ function createDashboardTemplateCard(template) {
 
   const type = document.createElement("span");
   type.className = "dashboard-template-card-type";
-  type.textContent = `${DASHBOARD_WIDGET_DEFINITIONS[template.source]?.label || "Dashboard"} Â· ${template.title}`;
+  type.textContent = `${DASHBOARD_WIDGET_DEFINITIONS[template.source]?.label || "Dashboard"} · ${template.title}`;
 
   top.append(badge, type);
 
@@ -7323,7 +7323,7 @@ function createDashboardWidgetCard(widget, { preview = false } = {}) {
 
   const kicker = document.createElement("span");
   kicker.className = "dashboard-widget-kicker";
-  kicker.textContent = `${data.sourceLabel} Â· ${data.optionLabel}`;
+  kicker.textContent = `${data.sourceLabel} · ${data.optionLabel}`;
 
   const title = document.createElement("h3");
   title.textContent = widget.title;
@@ -7334,10 +7334,10 @@ function createDashboardWidgetCard(widget, { preview = false } = {}) {
   actions.className = "dashboard-widget-actions";
 
   if (!preview) {
-    const moveUp = createActionButton("â†‘", "card-button card-button-light dashboard-widget-action", async () => {
+    const moveUp = createActionButton("↑", "card-button card-button-light dashboard-widget-action", async () => {
       await moveDashboardWidget(widget.id, -1);
     });
-    const moveDown = createActionButton("â†“", "card-button card-button-light dashboard-widget-action", async () => {
+    const moveDown = createActionButton("↓", "card-button card-button-light dashboard-widget-action", async () => {
       await moveDashboardWidget(widget.id, 1);
     });
     const edit = createActionButton("Edit", "card-button card-button-light dashboard-widget-action", () => {
@@ -7707,7 +7707,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
 
   const kicker = document.createElement("span");
   kicker.className = "dashboard-widget-kicker";
-  kicker.textContent = `${data.sourceLabel} Â· ${data.optionLabel}`;
+  kicker.textContent = `${data.sourceLabel} · ${data.optionLabel}`;
 
   const title = document.createElement("h3");
   title.textContent = widget.title;
@@ -7721,7 +7721,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
     dragHandle.type = "button";
     dragHandle.className = "card-button card-button-light dashboard-widget-action dashboard-widget-drag-handle";
     dragHandle.title = "Povuci za premjestanje";
-    dragHandle.textContent = "â‹®â‹®";
+    dragHandle.textContent = "⋮⋮";
     dragHandle.addEventListener("pointerdown", (event) => {
       beginDashboardWidgetLayoutInteraction("move", widget, card, event);
     });
@@ -7732,7 +7732,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
     });
 
     actions.append(
-      createDashboardChip(`${clampDashboardWidgetWidth(widget.gridWidth)} Ă— ${clampDashboardWidgetHeight(widget.gridHeight)}`, "soft"),
+      createDashboardChip(`${clampDashboardWidgetWidth(widget.gridWidth)} × ${clampDashboardWidgetHeight(widget.gridHeight)}`, "soft"),
       dragHandle,
       edit,
     );
@@ -7940,7 +7940,7 @@ function rebuildReminderWorkOrderOptions(selectedValue = "") {
     { value: "", label: "Bez vezanog RN" },
     ...sortWorkOrders(state.workOrders).map((item) => ({
       value: item.id,
-      label: `${item.workOrderNumber} â€˘ ${item.companyName || item.locationName || "RN"}`,
+      label: `${item.workOrderNumber} · ${item.companyName || item.locationName || "RN"}`,
     })),
   ];
 
@@ -8001,7 +8001,7 @@ function renderReminderLinkPreview() {
   }
 
   reminderLinkPreview.hidden = parts.length === 0;
-  reminderLinkPreview.textContent = parts.join(" â€˘ ");
+  reminderLinkPreview.textContent = parts.join(" · ");
 }
 
 function buildReminderPayload() {
@@ -8134,7 +8134,7 @@ function renderReminders() {
       reminder.workOrderNumber ? `RN ${reminder.workOrderNumber}` : "",
       reminder.companyName || "",
       reminder.locationName || "",
-    ].filter(Boolean).join(" â€˘ ") || "Opci reminder";
+    ].filter(Boolean).join(" · ") || "Opci reminder";
     copy.append(title, subtitle);
 
     const meta = document.createElement("div");
@@ -8158,7 +8158,7 @@ function renderReminders() {
     const footerMeta = document.createElement("div");
     footerMeta.className = "reminder-card-footer-meta";
     footerMeta.textContent = reminder.createdByLabel
-      ? `Kreirao ${reminder.createdByLabel}${reminder.createdAt ? ` â€˘ ${formatDateTime(reminder.createdAt)}` : ""}`
+      ? `Kreirao ${reminder.createdByLabel}${reminder.createdAt ? ` · ${formatDateTime(reminder.createdAt)}` : ""}`
       : (reminder.createdAt ? formatDateTime(reminder.createdAt) : "");
 
     const actions = document.createElement("div");
@@ -8272,7 +8272,7 @@ function rebuildTodoWorkOrderOptions(selectedValue = "") {
     { value: "", label: "Bez vezanog RN" },
     ...sortWorkOrders(state.workOrders).map((item) => ({
       value: item.id,
-      label: `${item.workOrderNumber} â€˘ ${item.companyName || item.locationName || "RN"}`,
+      label: `${item.workOrderNumber} · ${item.companyName || item.locationName || "RN"}`,
     })),
   ];
 
@@ -8297,7 +8297,7 @@ function renderTodoLinkPreview() {
     linkedWorkOrder.workOrderNumber,
     linkedWorkOrder.companyName,
     linkedWorkOrder.locationName,
-  ].filter(Boolean).join(" â€˘ ");
+  ].filter(Boolean).join(" · ");
 }
 
 function buildTodoTaskPayload() {
@@ -8371,7 +8371,7 @@ function openTodoComposerForWorkOrder(workOrder = null) {
     todoDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
     rebuildTodoWorkOrderOptions(workOrder.id);
     todoWorkOrderIdInput.value = workOrder.id;
-    todoMessageInput.value = `${workOrder.companyName || "Klijent"} â€˘ ${workOrder.locationName || "Lokacija"}`;
+    todoMessageInput.value = `${workOrder.companyName || "Klijent"} · ${workOrder.locationName || "Lokacija"}`;
   }
 
   renderTodoLinkPreview();
@@ -8452,7 +8452,7 @@ function renderTodoList() {
     subtitle.textContent = [
       task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvrsitelja",
       task.createdByLabel ? `od ${task.createdByLabel}` : "",
-    ].filter(Boolean).join(" â€˘ ");
+    ].filter(Boolean).join(" · ");
     copy.append(title, subtitle);
 
     const badges = document.createElement("div");
@@ -8522,7 +8522,7 @@ function renderTodoDetail() {
       task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
       task.createdAt ? formatDateTime(task.createdAt) : "",
     ].filter(Boolean);
-    todoDetailMeta.textContent = lines.join(" â€˘ ");
+    todoDetailMeta.textContent = lines.join(" · ");
   }
 
   if (todoDetailMessage) {
@@ -8884,7 +8884,7 @@ function createWorkOrderCalendarCard(workOrder) {
 
   const meta = document.createElement("span");
   meta.className = "work-order-calendar-card-meta";
-  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" Â· ") || "Bez lokacije";
+  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
   due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
@@ -9197,7 +9197,7 @@ function buildWorkOrderMapPopup(marker) {
     <div class="leaflet-work-order-popup">
       <strong>${marker.workOrderNumber || "Bez broja"}</strong>
       <span>${marker.companyName || "Bez tvrtke"}</span>
-      <span>${[marker.locationName, marker.region].filter(Boolean).join(" Â· ") || "Bez lokacije"}</span>
+      <span>${[marker.locationName, marker.region].filter(Boolean).join(" · ") || "Bez lokacije"}</span>
       <span>${marker.dueDate ? `Rok ${formatCompactDate(marker.dueDate)}` : "Bez roka"}</span>
     </div>
   `;
@@ -9542,7 +9542,7 @@ function renderWorkOrderMapSelectionCard(selectedMarker) {
 
   const location = document.createElement("p");
   location.className = "work-order-map-selection-location";
-  location.textContent = [selectedMarker.locationName, selectedMarker.region].filter(Boolean).join(" Â· ") || "Bez lokacije";
+  location.textContent = [selectedMarker.locationName, selectedMarker.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
   const coordinates = document.createElement("p");
   coordinates.className = "work-order-map-selection-coordinates";
@@ -9597,23 +9597,23 @@ function renderWorkOrderMapView() {
   const missingCoordinatesCount = filtered.length - markers.length;
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama Â· ${missingCoordinatesCount} bez koordinata`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
   }
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama Â· ${missingCoordinatesCount} bez`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez`;
   }
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama Â· ${missingCoordinatesCount} bez koordinata`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
   }
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama Â· ${missingCoordinatesCount} bez koordinata`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
   }
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama Â· ${missingCoordinatesCount} bez koordinata`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
   }
 
   workOrderMapList?.replaceChildren();
@@ -9650,7 +9650,7 @@ function renderWorkOrderMapView() {
       title.textContent = marker.workOrderNumber || "Bez broja";
 
       const subtitle = document.createElement("span");
-      subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" Â· ") || "Bez detalja";
+      subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" · ") || "Bez detalja";
 
       const meta = document.createElement("span");
       meta.className = "work-order-map-list-meta";
@@ -9698,7 +9698,7 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
 
   const meta = document.createElement("span");
   meta.className = "work-order-calendar-card-meta";
-  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" Â· ") || "Bez lokacije";
+  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
@@ -10305,7 +10305,7 @@ function renderWorkOrders() {
 
     const foldIcon = document.createElement("span");
     foldIcon.className = "work-group-fold";
-    foldIcon.textContent = "â–ľ";
+    foldIcon.textContent = "▾";
 
     const statusBadge = createBadge(group.label, statusBadgeClass(group.status));
     statusBadge.classList.add("work-group-status-badge");
@@ -10348,7 +10348,7 @@ function renderWorkOrders() {
       title.className = "work-item-cell work-item-cell-name";
       const titleCheck = document.createElement("span");
       titleCheck.className = "work-item-check";
-      titleCheck.textContent = "âś“";
+      titleCheck.textContent = "✓";
       const titleCopy = document.createElement("div");
       titleCopy.className = "work-item-copy";
       const titlePrimary = document.createElement("strong");
@@ -10765,7 +10765,7 @@ function renderGroupedWorkOrdersList() {
 
     const foldIcon = document.createElement("span");
     foldIcon.className = "work-group-fold";
-    foldIcon.textContent = "â–ľ";
+    foldIcon.textContent = "▾";
 
     const statusBadge = createBadge(group.label, statusBadgeClass(group.status));
     statusBadge.classList.add("work-group-status-badge");
@@ -10791,12 +10791,12 @@ function renderGroupedWorkOrdersList() {
     columns.className = "work-group-columns";
 
     [
-      { title: "Osnovno", subtitle: "Broj RN Â· Status" },
-      { title: "Klijent", subtitle: "Tvrtka Â· SjediĹˇte Â· OIB" },
-      { title: "Lokacija", subtitle: "Objekt Â· Regija Â· Koordinate" },
-      { title: "Kontakt", subtitle: "Osoba Â· Email Â· Broj" },
-      { title: "Usluga", subtitle: "Vrsta usluge Â· Odjel Â· Opis" },
-      { title: "Akcije", subtitle: "Uredi Â· ObriĹˇi" },
+      { title: "Osnovno", subtitle: "Broj RN · Status" },
+      { title: "Klijent", subtitle: "Tvrtka · Sjedište · OIB" },
+      { title: "Lokacija", subtitle: "Objekt · Regija · Koordinate" },
+      { title: "Kontakt", subtitle: "Osoba · Email · Broj" },
+      { title: "Usluga", subtitle: "Vrsta usluge · Odjel · Opis" },
+      { title: "Akcije", subtitle: "Uredi · Obriši" },
     ].forEach((definition) => {
       const cell = document.createElement("div");
       cell.className = "work-group-column";
@@ -10830,7 +10830,7 @@ function renderGroupedWorkOrdersList() {
 
         const primaryNode = document.createElement("strong");
         primaryNode.className = "work-item-value-primary";
-        primaryNode.textContent = primary || "â€”";
+        primaryNode.textContent = primary || "—";
         stack.append(primaryNode);
 
         if (secondary) {
@@ -10962,7 +10962,7 @@ function renderGroupedWorkOrdersList() {
 
       if (state.user?.role !== "user") {
         actions.append(
-          createActionButton("ObriĹˇi", "card-button card-button-light card-danger", () => {
+          createActionButton("Obriši", "card-button card-button-light card-danger", () => {
             if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
               return;
             }
@@ -11068,7 +11068,7 @@ function renderCompactWorkOrdersList() {
     if (executors.length === 0) {
       const empty = document.createElement("span");
       empty.className = "work-executor-empty";
-      empty.textContent = "â€”";
+      empty.textContent = "—";
       wrap.append(empty);
     }
 
