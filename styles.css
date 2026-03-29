@@ -4708,6 +4708,97 @@ body.is-work-order-editor-open {
   background: linear-gradient(180deg, #ffffff, #fbfcff);
 }
 
+.work-order-calendar-month-week {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e8e9f2;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff, #fcfcff);
+  box-shadow: 0 10px 28px rgba(67, 74, 107, 0.06);
+}
+
+.work-order-calendar-month-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px 0;
+  color: #79829a;
+  font-size: 0.8rem;
+}
+
+.work-order-calendar-month-week-head strong {
+  color: #20263a;
+  font-size: 0.9rem;
+}
+
+.work-order-calendar-month-grid {
+  display: grid;
+  gap: 10px;
+  min-width: max-content;
+}
+
+.work-order-calendar-month-day {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 180px;
+  border: 1px solid #ebeef6;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 251, 255, 0.98));
+  overflow: hidden;
+  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.work-order-calendar-month-day.is-outside-month {
+  opacity: 0.56;
+}
+
+.work-order-calendar-month-day.is-today {
+  border-color: rgba(176, 137, 255, 0.42);
+  box-shadow: 0 0 0 2px rgba(186, 154, 255, 0.12);
+}
+
+.work-order-calendar-month-day.is-drop-target {
+  background: linear-gradient(180deg, #f7f4ff, #f1ebff);
+  box-shadow: inset 0 0 0 1px rgba(170, 136, 255, 0.28);
+}
+
+.work-order-calendar-month-day-top {
+  display: grid;
+  gap: 3px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid #eef1f7;
+  background: linear-gradient(180deg, rgba(247, 249, 255, 0.98), rgba(252, 253, 255, 0.98));
+}
+
+.work-order-calendar-month-day-body {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 8px;
+  min-height: 118px;
+}
+
+.work-order-calendar-month-day .work-order-calendar-card,
+.work-order-calendar-month-day .work-order-calendar-cell-group {
+  width: 100%;
+}
+
+.work-order-calendar-month-day .work-order-calendar-card {
+  padding: 8px 10px 9px 12px;
+  gap: 5px;
+}
+
+.work-order-calendar-month-day .work-order-calendar-card-title {
+  font-size: 0.8rem;
+}
+
+.work-order-calendar-month-day .work-order-calendar-card-meta,
+.work-order-calendar-month-day .work-order-calendar-card-due {
+  font-size: 0.72rem;
+}
+
 .work-order-calendar-grid-row {
   display: grid;
   grid-template-columns: 132px repeat(7, minmax(76px, 1fr));

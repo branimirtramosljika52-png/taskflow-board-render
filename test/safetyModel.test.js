@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildWorkOrderCalendarLanes,
+  buildWorkOrderCalendarMonthWeeks,
   buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   buildLocationContacts,
@@ -833,6 +834,44 @@ test("buildWorkOrderCalendarLanes groups work orders by executor lane and day", 
   assert.equal(lanes.lanes[0].itemsByDate["2026-03-30"].length, 2);
   assert.equal(lanes.lanes.find((lane) => lane.key === "unassigned").itemsByDate["2026-04-01"].length, 1);
   assert.equal(lanes.unscheduled.length, 1);
+});
+
+test("buildWorkOrderCalendarMonthWeeks groups calendar items by day and keeps undated items separate", () => {
+  const calendar = buildWorkOrderCalendarMonthWeeks([
+    {
+      id: "wo-m1",
+      workOrderNumber: "RN-10",
+      dueDate: "2026-03-03",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+    },
+    {
+      id: "wo-m2",
+      workOrderNumber: "RN-11",
+      dueDate: "2026-03-03",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+    },
+    {
+      id: "wo-m3",
+      workOrderNumber: "RN-12",
+      dueDate: "",
+      executor1: "Ana Horvat",
+      executor2: "",
+    },
+  ], "2026-03-15");
+
+  assert.equal(calendar.weeks.length >= 4, true);
+  assert.equal(calendar.weeks[0].days[0].key, "2026-02-23");
+
+  const targetWeek = calendar.weeks.find((week) => week.days.some((day) => day.key === "2026-03-03"));
+  assert.ok(targetWeek);
+
+  const targetDay = targetWeek.days.find((day) => day.key === "2026-03-03");
+  assert.equal(targetDay.items.length, 2);
+  assert.deepEqual(targetDay.items.map((item) => item.workOrderNumber), ["RN-10", "RN-11"]);
+  assert.equal(calendar.unscheduled.length, 1);
+  assert.equal(calendar.unscheduled[0].workOrderNumber, "RN-12");
 });
 
 test("buildWorkOrderCalendarTeamWeeks groups work orders by assigned team and keeps undated items on the side", () => {

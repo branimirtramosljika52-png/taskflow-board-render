@@ -1661,6 +1661,81 @@ export function buildWorkOrderCalendarLanes(workOrders = [], weekStartValue = to
   };
 }
 
+export function buildWorkOrderCalendarMonthWeeks(workOrders = [], anchorDateValue = todayString()) {
+  const normalizedAnchor = normalizeOptionalDate(anchorDateValue) ?? todayString();
+  const monthStart = `${normalizedAnchor.slice(0, 7)}-01`;
+  const monthStartDate = new Date(`${monthStart}T00:00:00`);
+  const monthEndDate = new Date(monthStartDate);
+  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0);
+  const monthEnd = formatLocalDateKey(monthEndDate);
+  const displayStart = formatLocalDateKey(startOfWeekDate(monthStart));
+  const displayEnd = addDaysToDateKey(formatLocalDateKey(startOfWeekDate(monthEnd)), 6);
+  const weeks = [];
+  const weekMap = new Map();
+  const dayMap = new Map();
+  const unscheduled = [];
+
+  for (let cursor = displayStart; cursor <= displayEnd; cursor = addDaysToDateKey(cursor, 7)) {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const key = addDaysToDateKey(cursor, index);
+      const day = {
+        key,
+        inMonth: key >= monthStart && key <= monthEnd,
+        isToday: key === todayString(),
+        items: [],
+      };
+      dayMap.set(key, day);
+      return day;
+    });
+
+    const week = {
+      key: cursor,
+      weekStart: cursor,
+      days,
+      totalCount: 0,
+    };
+
+    weeks.push(week);
+    weekMap.set(cursor, week);
+  }
+
+  workOrders.forEach((workOrder) => {
+    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+
+    if (!dueDate) {
+      unscheduled.push(workOrder);
+      return;
+    }
+
+    const day = dayMap.get(dueDate);
+    if (!day) {
+      return;
+    }
+
+    day.items.push(workOrder);
+
+    const weekKey = formatLocalDateKey(startOfWeekDate(dueDate));
+    const week = weekMap.get(weekKey);
+    if (week) {
+      week.totalCount += 1;
+    }
+  });
+
+  return {
+    anchorDate: normalizedAnchor,
+    monthStart,
+    monthEnd,
+    weeks: weeks.map((week) => ({
+      ...week,
+      days: week.days.map((day) => ({
+        ...day,
+        items: sortWorkOrdersByCalendarKey(day.items),
+      })),
+    })),
+    unscheduled: sortWorkOrdersByCalendarKey(unscheduled),
+  };
+}
+
 export function buildWorkOrderMapMarkers(workOrders = [], bounds = null) {
   const rawMarkers = workOrders
     .map((workOrder) => {
