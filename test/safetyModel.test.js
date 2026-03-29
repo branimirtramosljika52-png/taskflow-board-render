@@ -19,6 +19,7 @@ import {
   getDashboardWidgetData,
   getDashboardInsights,
   getDashboardStats,
+  groupWorkOrdersByExecutorSet,
   nextWorkOrderNumber,
   parseCoordinates,
   sortReminders,
@@ -206,6 +207,25 @@ test("updateWorkOrder refreshes snapshot fields when location and contact change
   assert.equal(next.contactName, "Petra Bencic");
   assert.equal(next.status, "Ovjeren RN");
   assert.equal(next.teamLabel, "Tim Jug");
+});
+
+test("groupWorkOrdersByExecutorSet merges work orders with the same executor combination", () => {
+  const items = [
+    { id: "1", workOrderNumber: "RN-001", executor1: "Ana Horvat", executor2: "Marko Kova", dueDate: "2026-03-29" },
+    { id: "2", workOrderNumber: "RN-002", executor1: "Ana Horvat", executor2: "Marko Kova", dueDate: "2026-03-29" },
+    { id: "3", workOrderNumber: "RN-003", executor1: "Petra Juric", executor2: "", dueDate: "2026-03-29" },
+  ];
+
+  const groups = groupWorkOrdersByExecutorSet(items);
+
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].label, "Ana Horvat + Marko Kova");
+  assert.equal(groups[0].items.length, 2);
+  assert.deepEqual(
+    groups[0].items.map((item) => item.workOrderNumber),
+    ["RN-001", "RN-002"],
+  );
+  assert.equal(groups[1].label, "Petra Juric");
 });
 
 test("locations support dynamic contacts beyond the legacy three slots", () => {

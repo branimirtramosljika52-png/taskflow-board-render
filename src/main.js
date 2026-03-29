@@ -22,6 +22,7 @@
   getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
+  groupWorkOrdersByExecutorSet,
   sortReminders,
   sortDashboardWidgets,
   sortTodoTasks,
@@ -9789,6 +9790,67 @@ function createWorkOrderCalendarGroupLead(group) {
   return lead;
 }
 
+function createWorkOrderCalendarExecutorGroup(items = []) {
+  const groups = groupWorkOrdersByExecutorSet(items);
+
+  if (groups.length === 1 && groups[0].items.length === 1) {
+    return createWorkOrderCalendarSchedulerCard(groups[0].items[0]);
+  }
+
+  const wrap = document.createDocumentFragment();
+
+  groups.forEach((executorGroup) => {
+    const groupCard = document.createElement("section");
+    groupCard.className = "work-order-calendar-cell-group";
+    groupCard.dataset.executorGroupKey = executorGroup.key;
+
+    const header = document.createElement("div");
+    header.className = "work-order-calendar-cell-group-head";
+
+    const lead = document.createElement("div");
+    lead.className = "work-order-calendar-cell-group-lead";
+
+    const avatars = document.createElement("div");
+    avatars.className = "work-order-calendar-cell-group-avatars";
+    if (executorGroup.executors.length > 0) {
+      executorGroup.executors.slice(0, 3).forEach((executor) => avatars.append(createWorkOrderMiniExecutor(executor)));
+    } else {
+      avatars.append(createWorkOrderMiniExecutor("Bez izvršitelja"));
+    }
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-calendar-cell-group-copy";
+
+    const title = document.createElement("strong");
+    title.className = "work-order-calendar-cell-group-title";
+    title.textContent = executorGroup.label;
+
+    const meta = document.createElement("span");
+    meta.className = "work-order-calendar-cell-group-meta";
+    meta.textContent = executorGroup.items.length === 1 ? "1 RN" : `${executorGroup.items.length} RN`;
+
+    copy.append(title, meta);
+    lead.append(avatars, copy);
+
+    const count = document.createElement("span");
+    count.className = "work-order-calendar-cell-group-count";
+    count.textContent = String(executorGroup.items.length);
+
+    header.append(lead, count);
+
+    const list = document.createElement("div");
+    list.className = "work-order-calendar-cell-group-list";
+    executorGroup.items.forEach((workOrder) => {
+      list.append(createWorkOrderCalendarSchedulerCard(workOrder));
+    });
+
+    groupCard.append(header, list);
+    wrap.append(groupCard);
+  });
+
+  return wrap;
+}
+
 function createWorkOrderCalendarWeekCell(day, group, items) {
   const cell = document.createElement("div");
   cell.className = "work-order-calendar-week-cell";
@@ -9829,11 +9891,76 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
     return cell;
   }
 
-  items.forEach((workOrder) => {
-    cell.append(createWorkOrderCalendarSchedulerCard(workOrder));
-  });
+  cell.append(createWorkOrderCalendarExecutorGroup(items));
 
   return cell;
+}
+
+function bindWorkOrderCalendarGrabScroll() {
+  if (!workOrderCalendarGrid || workOrderCalendarGrid.dataset.grabBound === "true") {
+    return;
+  }
+
+  workOrderCalendarGrid.dataset.grabBound = "true";
+  let activePointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+
+  const release = () => {
+    activePointerId = null;
+    workOrderCalendarGrid.classList.remove("is-grabbing");
+  };
+
+  const isInteractiveTarget = (target) => target.closest([
+    "button",
+    "a",
+    "input",
+    "select",
+    "textarea",
+    ".work-order-calendar-card",
+    ".work-order-calendar-unscheduled",
+  ].join(", "));
+
+  workOrderCalendarGrid.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || isInteractiveTarget(event.target)) {
+      return;
+    }
+
+    activePointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    startLeft = workOrderCalendarGrid.scrollLeft;
+    startTop = workOrderCalendarGrid.scrollTop;
+    workOrderCalendarGrid.classList.add("is-grabbing");
+    workOrderCalendarGrid.setPointerCapture?.(event.pointerId);
+  });
+
+  workOrderCalendarGrid.addEventListener("pointermove", (event) => {
+    if (activePointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    workOrderCalendarGrid.scrollLeft = startLeft - deltaX;
+    workOrderCalendarGrid.scrollTop = startTop - deltaY;
+  });
+
+  workOrderCalendarGrid.addEventListener("pointerup", release);
+  workOrderCalendarGrid.addEventListener("pointercancel", release);
+  workOrderCalendarGrid.addEventListener("mouseleave", release);
+  workOrderCalendarGrid.addEventListener("wheel", (event) => {
+    const shouldPanHorizontally = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+
+    if (!shouldPanHorizontally) {
+      return;
+    }
+
+    event.preventDefault();
+    workOrderCalendarGrid.scrollLeft += event.deltaX || event.deltaY;
+  }, { passive: false });
 }
 
 function createWorkOrderCalendarUnscheduledGroup(group) {
@@ -9861,6 +9988,8 @@ function renderWorkOrderCalendarSchedulerView() {
   if (!workOrderCalendarView || !workOrderCalendarGrid) {
     return;
   }
+
+  bindWorkOrderCalendarGrabScroll();
 
   const filtered = getFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarTeamWeeks(filtered, state.workOrderCalendar.weekStart);

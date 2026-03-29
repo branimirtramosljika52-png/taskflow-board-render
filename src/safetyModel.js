@@ -1369,6 +1369,47 @@ export function getWorkOrderExecutorGroup(workOrder) {
   };
 }
 
+export function groupWorkOrdersByExecutorSet(workOrders = []) {
+  const groupMap = new Map();
+
+  workOrders.forEach((workOrder) => {
+    const executorGroup = getWorkOrderExecutorGroup(workOrder);
+    const current = groupMap.get(executorGroup.key);
+
+    if (current) {
+      current.items.push(workOrder);
+      return;
+    }
+
+    groupMap.set(executorGroup.key, {
+      ...executorGroup,
+      isUnassigned: executorGroup.key === "unassigned",
+      items: [workOrder],
+    });
+  });
+
+  return Array.from(groupMap.values())
+    .sort((left, right) => {
+      if (left.isUnassigned && !right.isUnassigned) {
+        return 1;
+      }
+
+      if (!left.isUnassigned && right.isUnassigned) {
+        return -1;
+      }
+
+      if (left.executors.length !== right.executors.length) {
+        return right.executors.length - left.executors.length;
+      }
+
+      return left.label.localeCompare(right.label, "hr");
+    })
+    .map((group) => ({
+      ...group,
+      items: sortWorkOrdersByCalendarKey(group.items),
+    }));
+}
+
 export function getWorkOrderTeamGroup(workOrder) {
   const label = normalizeText(workOrder?.teamLabel);
 
