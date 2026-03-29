@@ -9240,6 +9240,15 @@ function buildWorkOrderClusterIcon(cluster) {
   });
 }
 
+function refreshWorkOrderLeafletMarkerSelection() {
+  workOrderLeafletMarkers.forEach((leafletMarker, workOrderId) => {
+    const tone = getWorkOrderMapMarkerTone(leafletMarker.options.statusValue);
+    const isSelected = String(workOrderId) === String(state.workOrderMap.selectedWorkOrderId);
+    leafletMarker.setIcon(createWorkOrderLeafletPinIcon(tone, isSelected));
+    leafletMarker.setZIndexOffset(isSelected ? 800 : 0);
+  });
+}
+
 function ensureWorkOrderLeafletMap() {
   if (!workOrderMapCanvas || !window.L) {
     return null;
@@ -9310,7 +9319,10 @@ function syncWorkOrderLeafletMarkers(markers) {
     leafletMarker.on("click", () => {
       state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
       state.workOrderMap.popupWorkOrderId = marker.workOrderId;
-      renderWorkOrderCroatiaMapView();
+      refreshWorkOrderLeafletMarkerSelection();
+      window.requestAnimationFrame(() => {
+        leafletMarker.openPopup();
+      });
     });
     leafletMarker.on("popupclose", () => {
       if (String(state.workOrderMap.popupWorkOrderId) === String(marker.workOrderId)) {
@@ -9787,22 +9799,13 @@ function renderWorkOrderCroatiaMapView() {
   const missingCoordinatesCount = filtered.length - markers.length;
 
   if (workOrderMapSummary) {
-    workOrderMapSummary.textContent = `${markers.length} s koordinatama · ${missingCoordinatesCount} bez koordinata`;
+    workOrderMapSummary.textContent = `${markers.length} s koordinatama � ${missingCoordinatesCount} bez koordinata`;
   }
-
-  workOrderMapList?.replaceChildren();
 
   if (markers.length === 0) {
     state.workOrderMap.selectedWorkOrderId = "";
-    renderWorkOrderMapSelectionCard(null);
+    state.workOrderMap.popupWorkOrderId = "";
     syncWorkOrderLeafletMarkers([]);
-
-    if (workOrderMapList) {
-      const empty = document.createElement("p");
-      empty.className = "work-order-map-selection-empty";
-      empty.textContent = "Za trenutni filter nema RN s koordinatama.";
-      workOrderMapList.append(empty);
-    }
     return;
   }
 
@@ -9810,43 +9813,12 @@ function renderWorkOrderCroatiaMapView() {
     state.workOrderMap.selectedWorkOrderId = markers[0].workOrderId;
   }
 
+  if (!markers.some((item) => String(item.workOrderId) === String(state.workOrderMap.popupWorkOrderId))) {
+    state.workOrderMap.popupWorkOrderId = "";
+  }
+
   syncWorkOrderLeafletMarkers(markers);
-
-  markers.forEach((marker) => {
-    if (!workOrderMapList) {
-      return;
-    }
-
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "work-order-map-list-item";
-    item.classList.toggle("is-selected", String(marker.workOrderId) === String(state.workOrderMap.selectedWorkOrderId));
-
-    const title = document.createElement("strong");
-    title.textContent = marker.workOrderNumber || "Bez broja";
-
-    const subtitle = document.createElement("span");
-    subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" · ") || "Bez detalja";
-
-    const meta = document.createElement("span");
-    meta.className = "work-order-map-list-meta";
-    meta.textContent = marker.coordinates || "";
-
-    item.append(title, subtitle, meta);
-    item.addEventListener("click", () => {
-      state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
-      state.workOrderMap.popupWorkOrderId = marker.workOrderId;
-      renderWorkOrderCroatiaMapView();
-    });
-
-    workOrderMapList.append(item);
-  });
-
-  renderWorkOrderMapSelectionCard(
-    markers.find((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId)) ?? null,
-  );
 }
-
 function renderWorkOrderWorkspace() {
   updateWorkOrderModeButtons();
 
@@ -12532,4 +12504,5 @@ refreshSession()
     connectionStatus.textContent = "Backend nije dostupan";
     connectionStatus.classList.add("is-memory");
   });
+
 
