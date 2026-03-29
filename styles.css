@@ -4994,6 +4994,27 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
 }
 
+.work-order-map-popup-status {
+  display: grid;
+  gap: 4px;
+  min-width: 148px;
+}
+
+.work-order-map-popup-status-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #818aa0;
+}
+
+.work-order-map-popup-status-select {
+  min-width: 148px;
+  min-height: 32px;
+  padding-right: 30px;
+  font-size: 0.78rem;
+  box-shadow: 0 6px 14px rgba(73, 84, 114, 0.07);
+}
+
 .work-order-map-popup-executors {
   display: inline-flex;
   align-items: center;
