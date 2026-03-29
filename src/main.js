@@ -9794,14 +9794,10 @@ function createWorkOrderCalendarExecutorGroup(items = []) {
   const wrap = document.createDocumentFragment();
 
   groups.forEach((executorGroup) => {
-    if (executorGroup.items.length === 1) {
-      wrap.append(createWorkOrderCalendarSchedulerCard(executorGroup.items[0]));
-      return;
-    }
-
     const groupCard = document.createElement("details");
     groupCard.className = "work-order-calendar-cell-group";
     groupCard.dataset.executorGroupKey = executorGroup.key;
+    groupCard.open = executorGroup.items.length === 1;
 
     const header = document.createElement("summary");
     header.className = "work-order-calendar-cell-group-summary";
