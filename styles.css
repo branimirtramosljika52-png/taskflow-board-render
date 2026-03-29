@@ -2100,6 +2100,20 @@ body.is-offer-editor-open {
   padding-inline: 12px;
 }
 
+.offer-item-mini-action.is-icon-only,
+.offer-summary-toggle.is-icon-only {
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+}
+
 .offer-item-mini-action::before,
 .offer-summary-toggle::before {
   content: "";
@@ -2233,11 +2247,6 @@ body.is-offer-editor-open {
 
 .offers-total-line strong {
   color: var(--text);
-}
-
-.offer-list-card-total.is-hidden {
-  color: var(--muted);
-  font-size: 0.82rem;
 }
 
 .offers-total-line.is-grand {

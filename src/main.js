@@ -567,6 +567,7 @@ const offerTaxableSubtotal = document.querySelector("#offer-taxable-subtotal");
 const offerTaxTotal = document.querySelector("#offer-tax-total");
 const offerGrandTotalLine = document.querySelector("#offer-grand-total-line");
 const offerGrandTotal = document.querySelector("#offer-grand-total");
+const offerTotalsCard = document.querySelector(".offers-totals-card");
 const offerToggleDiscountButton = document.querySelector("#offer-toggle-discount");
 const offerToggleTotalButton = document.querySelector("#offer-toggle-total");
 const offerDiscountRateWrap = document.querySelector("#offer-discount-rate-wrap");
@@ -5421,6 +5422,8 @@ function createActionButton(label, className, onClick) {
   button.type = "button";
   button.className = className;
   button.textContent = label;
+  button.setAttribute("aria-label", label);
+  button.title = label;
   button.addEventListener("click", onClick);
   return button;
 }
@@ -9048,6 +9051,7 @@ function syncOfferNumberPreview() {
 function syncOfferTotals() {
   const totals = getOfferDraftTotals();
   const currency = "EUR";
+  const totalsVisible = isOfferTotalVisible();
 
   if (offerSubtotal) {
     offerSubtotal.textContent = formatCurrencyAmount(totals.subtotal, currency);
@@ -9068,11 +9072,15 @@ function syncOfferTotals() {
     offerTotalPreview.textContent = formatCurrencyAmount(totals.total, currency);
   }
   if (offerDiscountLine) {
-    offerDiscountLine.hidden = !(isOfferDiscountVisible() && totals.discountRate > 0);
+    offerDiscountLine.hidden = !totalsVisible || !(isOfferDiscountVisible() && totals.discountRate > 0);
   }
   if (offerTaxableSubtotalLine) {
-    offerTaxableSubtotalLine.hidden = !(isOfferDiscountVisible() && totals.discountRate > 0);
+    offerTaxableSubtotalLine.hidden = !totalsVisible || !(isOfferDiscountVisible() && totals.discountRate > 0);
   }
+
+  offerItems?.querySelectorAll(".offer-item-total").forEach((node) => {
+    node.hidden = !totalsVisible;
+  });
 
   offerItems?.querySelectorAll("[data-offer-item-total-index]").forEach((node) => {
     const index = Number(node.getAttribute("data-offer-item-total-index"));
@@ -9113,7 +9121,10 @@ function setOfferDiscountVisibility(visible, { clearValue = false } = {}) {
   }
 
   if (offerToggleDiscountButton) {
-    offerToggleDiscountButton.textContent = visible ? "Makni rabat ponude" : "Dodaj rabat ponude";
+    const label = visible ? "Makni rabat ponude" : "Dodaj rabat ponude";
+    offerToggleDiscountButton.textContent = label;
+    offerToggleDiscountButton.setAttribute("aria-label", label);
+    offerToggleDiscountButton.title = label;
   }
 
   if (!visible && clearValue && offerDiscountRateInput) {
@@ -9128,14 +9139,23 @@ function setOfferTotalVisibility(visible) {
     offerTotalPreviewBlock.hidden = !visible;
   }
 
-  if (offerGrandTotalLine) {
-    offerGrandTotalLine.hidden = !visible;
-  }
+  offerTotalsCard?.querySelectorAll(".offers-total-line").forEach((node) => {
+    node.hidden = !visible;
+  });
+
+  offerItems?.querySelectorAll(".offer-item-total").forEach((node) => {
+    node.hidden = !visible;
+  });
 
   if (offerToggleTotalButton) {
+    const label = visible ? "Makni ukupni iznos" : "Prikazi ukupni iznos";
     offerToggleTotalButton.dataset.visibility = visible ? "visible" : "hidden";
-    offerToggleTotalButton.textContent = visible ? "Makni ukupni iznos" : "Prikazi ukupni iznos";
+    offerToggleTotalButton.textContent = label;
+    offerToggleTotalButton.setAttribute("aria-label", label);
+    offerToggleTotalButton.title = label;
   }
+
+  syncOfferTotals();
 }
 
 function setOfferFormItems(items = [], { ensureOne = true } = {}) {
@@ -9328,7 +9348,7 @@ function renderOfferItemRows() {
 
     const discountButton = createActionButton(
       item.showDiscount ? "Makni rabat" : "Dodaj rabat",
-      "ghost-button offer-item-mini-action is-discount",
+      "ghost-button offer-item-mini-action is-discount is-icon-only",
       () => {
         toggleOfferItemDiscount(index);
       },
@@ -9336,7 +9356,7 @@ function renderOfferItemRows() {
 
     const breakdownButton = createActionButton(
       item.showBreakdowns ? "Makni razradu" : "Dodaj razradu",
-      "ghost-button offer-item-mini-action is-breakdown",
+      "ghost-button offer-item-mini-action is-breakdown is-icon-only",
       () => {
         toggleOfferItemBreakdowns(index);
       },
@@ -9822,15 +9842,14 @@ function renderOffersModule() {
     const creator = document.createElement("span");
     creator.className = "offer-list-card-number";
     creator.textContent = offer.createdByLabel || "Safety360";
-    const total = document.createElement("strong");
-    total.className = "offer-list-card-total";
-    if (offer.showTotalAmount === false) {
-      total.classList.add("is-hidden");
-      total.textContent = "Ukupno skriveno";
-    } else {
+    footer.append(creator);
+
+    if (offer.showTotalAmount !== false) {
+      const total = document.createElement("strong");
+      total.className = "offer-list-card-total";
       total.textContent = formatCurrencyAmount(offer.total || 0, offer.currency || "EUR");
+      footer.append(total);
     }
-    footer.append(creator, total);
 
     card.append(head, meta, services, footer);
     const openOffer = () => {
