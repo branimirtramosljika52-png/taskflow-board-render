@@ -4547,6 +4547,11 @@ body.is-work-order-editor-open {
 .work-order-map-view {
   display: grid;
   gap: 14px;
+  min-height: 0;
+}
+
+.work-order-calendar-view {
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .work-order-calendar-toolbar,
@@ -4597,7 +4602,7 @@ body.is-work-order-editor-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   min-height: 0;
 }
 
@@ -4614,6 +4619,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid-shell {
   min-width: 0;
+  min-height: 320px;
+  height: min(72vh, calc(100vh - 332px));
   max-height: calc(100vh - 332px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -8841,7 +8848,9 @@ body.is-work-order-editor-open {
   }
 
   .work-order-calendar-grid-shell {
-    max-height: none;
+    min-height: 280px;
+    height: min(64vh, calc(100vh - 260px));
+    max-height: min(64vh, calc(100vh - 260px));
   }
 
   .work-order-calendar-grid-row,
