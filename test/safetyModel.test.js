@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildWorkOrderCalendarLanes,
+  buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   buildLocationContacts,
   createCompany,
@@ -151,6 +152,7 @@ test("createWorkOrder pulls snapshot data from selected company and location", (
   assert.equal(workOrder.contactSlot, 1);
   assert.equal(workOrder.contactName, "Marko Horvat");
   assert.equal(workOrder.contactPhone, "+38591111222");
+  assert.equal(workOrder.teamLabel, "");
 });
 
 test("updateWorkOrder refreshes snapshot fields when location and contact change", () => {
@@ -190,6 +192,7 @@ test("updateWorkOrder refreshes snapshot fields when location and contact change
     {
       locationId: "location-2",
       status: "Ovjeren RN",
+      teamLabel: "Tim Jug",
     },
     {
       ...state,
@@ -202,6 +205,7 @@ test("updateWorkOrder refreshes snapshot fields when location and contact change
   assert.equal(next.region, "Dalmacija");
   assert.equal(next.contactName, "Petra Bencic");
   assert.equal(next.status, "Ovjeren RN");
+  assert.equal(next.teamLabel, "Tim Jug");
 });
 
 test("locations support dynamic contacts beyond the legacy three slots", () => {
@@ -809,6 +813,62 @@ test("buildWorkOrderCalendarLanes groups work orders by executor lane and day", 
   assert.equal(lanes.lanes[0].itemsByDate["2026-03-30"].length, 2);
   assert.equal(lanes.lanes.find((lane) => lane.key === "unassigned").itemsByDate["2026-04-01"].length, 1);
   assert.equal(lanes.unscheduled.length, 1);
+});
+
+test("buildWorkOrderCalendarTeamWeeks groups work orders by assigned team and keeps undated items on the side", () => {
+  const calendar = buildWorkOrderCalendarTeamWeeks([
+    {
+      id: "wo-1",
+      workOrderNumber: "RN-1",
+      dueDate: "2026-03-03",
+      teamLabel: "Tim Zagreb",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+      region: "Zagreb",
+    },
+    {
+      id: "wo-2",
+      workOrderNumber: "RN-2",
+      dueDate: "2026-03-05",
+      teamLabel: "Tim Zagreb",
+      executor1: "Ana Horvat",
+      executor2: "",
+      region: "Zagreb",
+    },
+    {
+      id: "wo-3",
+      workOrderNumber: "RN-3",
+      dueDate: "2026-03-14",
+      teamLabel: "Tim Slavonija",
+      executor1: "Iva Novak",
+      executor2: "",
+      region: "Slavonija",
+    },
+    {
+      id: "wo-4",
+      workOrderNumber: "RN-4",
+      dueDate: "",
+      teamLabel: "Tim Zagreb",
+      executor1: "Ana Horvat",
+      executor2: "",
+      region: "Zagreb",
+    },
+  ], "2026-03-15");
+
+  assert.equal(calendar.weeks.length >= 4, true);
+  assert.equal(calendar.weeks[0].days.length, 7);
+  assert.equal(calendar.weeks[0].days[0].key, "2026-02-23");
+  assert.equal(calendar.weeks[0].days[6].key, "2026-03-01");
+
+  const zagrebWeek = calendar.weeks.find((week) => week.groups.some((group) => group.label === "Tim Zagreb"));
+  assert.ok(zagrebWeek);
+  const zagrebGroup = zagrebWeek.groups.find((group) => group.label === "Tim Zagreb");
+  assert.equal(zagrebGroup.itemsByDate["2026-03-03"].length, 1);
+  assert.equal(zagrebGroup.itemsByDate["2026-03-05"].length, 1);
+
+  assert.equal(calendar.unscheduledGroups.length, 1);
+  assert.equal(calendar.unscheduledGroups[0].label, "Tim Zagreb");
+  assert.equal(calendar.unscheduledGroups[0].items.length, 1);
 });
 
 test("buildWorkOrderMapMarkers returns only work orders with valid coordinates", () => {

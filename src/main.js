@@ -12,6 +12,7 @@
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
   buildWorkOrderCalendarLanes,
+  buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   createDashboardWidget,
   filterReminders,
@@ -318,7 +319,7 @@ const state = {
   activeDashboardWidgetId: "",
   activeWorkOrderViewMode: "list",
   workOrderCalendar: {
-    weekStart: getStartOfWeekDateKey(new Date().toISOString().slice(0, 10)),
+    weekStart: new Date().toISOString().slice(0, 10),
     showWeekends: true,
     draggingWorkOrderId: "",
     dragLaneKey: "",
@@ -663,6 +664,8 @@ const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
 const workOrderOpenedDateInput = document.querySelector("#work-order-opened-date");
 const workOrderDueDateInput = document.querySelector("#work-order-due-date");
+const workOrderTeamLabelInput = document.querySelector("#work-order-team-label");
+const workOrderTeamSuggestions = document.querySelector("#work-order-team-suggestions");
 const workOrderCompanyIdInput = document.querySelector("#work-order-company-id");
 const workOrderHeadquartersInput = document.querySelector("#work-order-headquarters");
 const workOrderCompanyOibInput = document.querySelector("#work-order-company-oib");
@@ -2633,6 +2636,19 @@ function shiftDateKey(value, days) {
   return toDateKey(shifted);
 }
 
+function shiftMonthDateKey(value, months) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return toDateKey(new Date());
+  }
+
+  const shifted = new Date(parsedDate);
+  shifted.setDate(1);
+  shifted.setMonth(shifted.getMonth() + months);
+  return toDateKey(shifted);
+}
+
 function buildWorkOrderCalendarWeekDays(
   weekStart = state.workOrderCalendar.weekStart,
   showWeekends = state.workOrderCalendar.showWeekends,
@@ -2664,10 +2680,16 @@ function formatCalendarRangeLabel(
   weekStart = state.workOrderCalendar.weekStart,
   showWeekends = state.workOrderCalendar.showWeekends,
 ) {
-  const visibleDays = buildWorkOrderCalendarWeekDays(weekStart, showWeekends);
-  const firstDay = visibleDays[0]?.key ?? weekStart;
-  const lastDay = visibleDays[visibleDays.length - 1]?.key ?? shiftDateKey(weekStart, 6);
-  return `${formatCompactDate(firstDay)} - ${formatCompactDate(lastDay)}`;
+  const parsedDate = parseDateValue(weekStart);
+
+  if (!parsedDate) {
+    return "Kalendar";
+  }
+
+  return new Intl.DateTimeFormat("hr-HR", {
+    month: "long",
+    year: "numeric",
+  }).format(parsedDate);
 }
 
 function getWorkOrderViewModeLabel(mode = state.activeWorkOrderViewMode) {
@@ -2785,6 +2807,7 @@ function findCreatedWorkOrderMatch(previousIds, payload) {
     && String(item.openedDate || "") === String(payload.openedDate || "")
     && String(item.serviceLine || "") === String(payload.serviceLine || "")
     && String(item.department || "") === String(payload.department || "")
+    && String(item.teamLabel || "") === String(payload.teamLabel || "")
     && String(item.executor1 || "") === String(payload.executor1 || "")
     && String(item.executor2 || "") === String(payload.executor2 || "")
   )) ?? null;
@@ -2899,6 +2922,7 @@ function renderWorkOrderEditorSummary() {
   const workOrderNumber = persistedItem?.workOrderNumber || "";
   const serviceLine = String(workOrderServiceLineInput.value ?? "").trim();
   const department = String(workOrderDepartmentInput.value ?? "").trim();
+  const teamLabel = String(workOrderTeamLabelInput.value ?? "").trim();
   const description = String(workOrderDescriptionInput.value ?? "").trim();
   const companyName = "";
   const locationName = "";
@@ -2941,6 +2965,13 @@ function renderWorkOrderEditorSummary() {
     chips.append(tagChip);
   }
 
+  if (teamLabel) {
+    const teamChip = document.createElement("span");
+    teamChip.className = "work-order-editor-tag-chip";
+    teamChip.textContent = teamLabel;
+    chips.append(teamChip);
+  }
+
   const facts = document.createElement("div");
   facts.className = "work-order-editor-facts";
   facts.append(
@@ -2953,6 +2984,11 @@ function renderWorkOrderEditorSummary() {
       "service",
       "Usluga",
       [department, serviceLine].filter(Boolean).join(" â€˘ ") || "Bez usluge",
+    ),
+    createWorkOrderEditorMetaItem(
+      "service",
+      "Tim",
+      teamLabel || "Bez tima",
     ),
   );
 
@@ -2997,6 +3033,28 @@ function getLocationsForCompany(companyId) {
   return state.locations
     .filter((item) => item.companyId === companyId)
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+}
+
+function getWorkOrderTeamOptions() {
+  return Array.from(new Set(
+    state.workOrders
+      .map((item) => String(item.teamLabel ?? "").trim())
+      .filter(Boolean),
+  )).sort((left, right) => left.localeCompare(right, "hr"));
+}
+
+function refreshWorkOrderTeamSuggestions() {
+  if (!workOrderTeamSuggestions) {
+    return;
+  }
+
+  workOrderTeamSuggestions.replaceChildren(
+    ...getWorkOrderTeamOptions().map((label) => {
+      const option = document.createElement("option");
+      option.value = label;
+      return option;
+    }),
+  );
 }
 
 function buildDefaultMeasurementColumns() {
@@ -5885,6 +5943,7 @@ function buildWorkOrderPayload() {
     priority: workOrderPriorityInput.value,
     openedDate: workOrderOpenedDateInput.value,
     dueDate: workOrderDueDateInput.value,
+    teamLabel: workOrderTeamLabelInput.value,
     companyId: workOrderCompanyIdInput.value,
     locationId: workOrderLocationIdInput.value,
     coordinates: workOrderCoordinatesInput.value,
@@ -6126,6 +6185,7 @@ function resetWorkOrderForm() {
   workOrderStatusInput.value = "Otvoreni RN";
   workOrderPriorityInput.value = "Normal";
   workOrderOpenedDateInput.value = new Date().toISOString().slice(0, 10);
+  workOrderTeamLabelInput.value = "";
   rebuildWorkOrderCompanyOptions("");
   rebuildWorkOrderLocationOptions("");
   rebuildWorkOrderContactOptions("", "");
@@ -6226,6 +6286,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderPriorityInput.value = workOrder.priority;
   workOrderOpenedDateInput.value = workOrder.openedDate ?? "";
   workOrderDueDateInput.value = workOrder.dueDate ?? "";
+  workOrderTeamLabelInput.value = workOrder.teamLabel ?? "";
   rebuildWorkOrderCompanyOptions(workOrder.companyId);
   fillWorkOrderCompanySnapshot(workOrder);
   rebuildWorkOrderLocationOptions(workOrder.locationId);
@@ -8815,8 +8876,6 @@ function createWorkOrderCalendarCard(workOrder) {
   const meta = document.createElement("span");
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" Â· ") || "Bez lokacije";
-
-  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" Â· ") || "Bez lokacije";
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
   due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
@@ -8867,21 +8926,30 @@ function createWorkOrderCalendarCard(workOrder) {
   return card;
 }
 
-async function applyWorkOrderCalendarDrop(workOrderId, targetDate, executors = []) {
+async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = []) {
   const workOrder = state.workOrders.find((item) => String(item.id) === String(workOrderId));
 
   if (!workOrder) {
     return;
   }
 
-  const nextExecutor1 = executors[0] ?? "";
-  const nextExecutor2 = executors[1] ?? "";
+  const laneConfig = Array.isArray(laneTarget)
+    ? { executors: laneTarget, teamLabel: null }
+    : {
+      executors: Array.isArray(laneTarget?.executors) ? laneTarget.executors : [],
+      teamLabel: typeof laneTarget?.teamLabel === "string" ? laneTarget.teamLabel : null,
+    };
+  const nextTeamLabel = laneConfig.teamLabel;
   const nextDate = targetDate || "";
+  const nextExecutors = laneConfig.executors;
+  const nextExecutor1 = nextExecutors[0] ?? "";
+  const nextExecutor2 = nextExecutors[1] ?? "";
 
   if (
     String(workOrder.dueDate ?? "") === String(nextDate ?? "")
     && String(workOrder.executor1 ?? "") === String(nextExecutor1)
     && String(workOrder.executor2 ?? "") === String(nextExecutor2)
+    && (nextTeamLabel === null || String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? ""))
   ) {
     return;
   }
@@ -8893,6 +8961,7 @@ async function applyWorkOrderCalendarDrop(workOrderId, targetDate, executors = [
       dueDate: nextDate,
       executor1: nextExecutor1,
       executor2: nextExecutor2,
+      ...(nextTeamLabel === null ? {} : { teamLabel: nextTeamLabel }),
     },
   }));
 }
@@ -9672,53 +9741,164 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   return card;
 }
 
+function getVisibleCalendarWeekDays(days = [], showWeekends = state.workOrderCalendar.showWeekends) {
+  if (showWeekends) {
+    return days;
+  }
+
+  return days.filter((day) => {
+    const parsedDate = parseDateValue(day.key);
+
+    if (!parsedDate) {
+      return true;
+    }
+
+    const dayIndex = parsedDate.getDay();
+    return dayIndex !== 0 && dayIndex !== 6;
+  });
+}
+
+function createWorkOrderCalendarGroupLead(group) {
+  const lead = document.createElement("div");
+  lead.className = "work-order-calendar-team-lead";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "work-order-calendar-team-copy";
+
+  const title = document.createElement("strong");
+  title.className = "work-order-calendar-team-name";
+  title.textContent = group.label;
+
+  const subtitle = document.createElement("span");
+  subtitle.className = "work-order-calendar-team-meta";
+  subtitle.textContent = group.totalCount === 1 ? "1 RN" : `${group.totalCount} RN`;
+
+  titleWrap.append(title, subtitle);
+
+  const metaWrap = document.createElement("div");
+  metaWrap.className = "work-order-calendar-team-side";
+
+  if (group.executors.length > 0) {
+    const avatars = document.createElement("div");
+    avatars.className = "work-order-calendar-team-executors";
+    group.executors.slice(0, 4).forEach((executor) => avatars.append(createWorkOrderMiniExecutor(executor)));
+    metaWrap.append(avatars);
+  }
+
+  lead.append(titleWrap, metaWrap);
+  return lead;
+}
+
+function createWorkOrderCalendarWeekCell(day, group, items) {
+  const cell = document.createElement("div");
+  cell.className = "work-order-calendar-week-cell";
+  cell.dataset.dateKey = day.key;
+  cell.dataset.teamKey = group.key;
+
+  cell.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    cell.classList.add("is-drop-target");
+  });
+
+  cell.addEventListener("dragleave", () => {
+    cell.classList.remove("is-drop-target");
+  });
+
+  cell.addEventListener("drop", (event) => {
+    event.preventDefault();
+    cell.classList.remove("is-drop-target");
+    const droppedWorkOrderId = event.dataTransfer?.getData("application/x-work-order-id")
+      || event.dataTransfer?.getData("text/plain")
+      || state.workOrderCalendar.draggingWorkOrderId;
+
+    if (!droppedWorkOrderId) {
+      return;
+    }
+
+    void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, {
+      teamLabel: group.isUnassigned ? "" : group.label,
+      executors: [],
+    });
+  });
+
+  if (items.length === 0) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "work-order-calendar-cell-placeholder";
+    placeholder.textContent = day.inMonth ? "Povuci ovdje" : "";
+    cell.append(placeholder);
+    return cell;
+  }
+
+  items.forEach((workOrder) => {
+    cell.append(createWorkOrderCalendarSchedulerCard(workOrder));
+  });
+
+  return cell;
+}
+
+function createWorkOrderCalendarUnscheduledGroup(group) {
+  const section = document.createElement("section");
+  section.className = "work-order-calendar-unscheduled-group";
+
+  const header = document.createElement("div");
+  header.className = "work-order-calendar-unscheduled-group-head";
+  header.append(createWorkOrderCalendarGroupLead({
+    ...group,
+    totalCount: group.items.length,
+  }));
+
+  const list = document.createElement("div");
+  list.className = "work-order-calendar-unscheduled-list";
+  group.items.forEach((workOrder) => {
+    list.append(createWorkOrderCalendarSchedulerCard(workOrder));
+  });
+
+  section.append(header, list);
+  return section;
+}
+
 function renderWorkOrderCalendarSchedulerView() {
   if (!workOrderCalendarView || !workOrderCalendarGrid) {
     return;
   }
 
   const filtered = getFilteredWorkOrders();
-  const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
-  const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart, state.workOrderCalendar.showWeekends);
+  const calendar = buildWorkOrderCalendarTeamWeeks(filtered, state.workOrderCalendar.weekStart);
 
   if (workOrderCalendarWeekendsInput) {
     workOrderCalendarWeekendsInput.checked = state.workOrderCalendar.showWeekends;
   }
 
   if (workOrderCalendarRange) {
-    workOrderCalendarRange.textContent = formatCalendarRangeLabel(
-      calendar.weekStart,
-      state.workOrderCalendar.showWeekends,
-    );
+    workOrderCalendarRange.textContent = formatCalendarRangeLabel(calendar.anchorDate);
   }
 
   if (workOrderCalendarMeta) {
-    const scheduledCount = calendar.lanes.reduce(
-      (sum, lane) => sum + dayDescriptors.reduce((laneSum, day) => laneSum + (lane.itemsByDate[day.key]?.length ?? 0), 0),
-      0,
-    );
-    workOrderCalendarMeta.textContent = `${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez roka`;
+    const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
+    const unscheduledCount = calendar.unscheduledGroups.reduce((sum, group) => sum + group.items.length, 0);
+    workOrderCalendarMeta.textContent = `${scheduledCount} raspoređenih · ${unscheduledCount} bez datuma`;
   }
 
   if (workOrderCalendarUnscheduled) {
-    workOrderCalendarUnscheduled.hidden = calendar.unscheduled.length === 0;
+    const unscheduledCount = calendar.unscheduledGroups.reduce((sum, group) => sum + group.items.length, 0);
+    workOrderCalendarUnscheduled.hidden = unscheduledCount === 0;
     workOrderCalendarUnscheduled.replaceChildren();
 
-    if (calendar.unscheduled.length > 0) {
+    if (unscheduledCount > 0) {
       const head = document.createElement("div");
       head.className = "work-order-calendar-unscheduled-head";
 
       const label = document.createElement("strong");
-      label.textContent = "Bez roka";
+      label.textContent = "Bez datuma";
 
       const meta = document.createElement("span");
-      meta.textContent = "Povuci karticu na datum i osobu.";
+      meta.textContent = "Dodijeli datum pa ce se RN pojaviti u kalendaru.";
       head.append(label, meta);
 
       const list = document.createElement("div");
-      list.className = "work-order-calendar-unscheduled-list";
-      calendar.unscheduled.forEach((workOrder) => {
-        list.append(createWorkOrderCalendarSchedulerCard(workOrder));
+      list.className = "work-order-calendar-unscheduled-groups";
+      calendar.unscheduledGroups.forEach((group) => {
+        list.append(createWorkOrderCalendarUnscheduledGroup(group));
       });
 
       workOrderCalendarUnscheduled.append(head, list);
@@ -9726,145 +9906,124 @@ function renderWorkOrderCalendarSchedulerView() {
   }
 
   const fragment = document.createDocumentFragment();
+  const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
 
-  const headerRow = document.createElement("div");
-  headerRow.className = "work-order-calendar-grid-row is-head";
+  if (scheduledCount === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "work-order-calendar-empty";
 
-  const peopleHead = document.createElement("div");
-  peopleHead.className = "work-order-calendar-lane-head is-sticky";
-  peopleHead.textContent = "Raspored po ljudima";
-  headerRow.append(peopleHead);
+    const title = document.createElement("strong");
+    title.textContent = "Nema raspoređenih RN-a";
 
-  dayDescriptors.forEach((day) => {
-    const dayCount = calendar.lanes.reduce((sum, lane) => sum + (lane.itemsByDate[day.key]?.length ?? 0), 0);
-    const dayHead = document.createElement("div");
-    dayHead.className = "work-order-calendar-day-head";
-    dayHead.classList.toggle("is-today", day.isToday);
+    const text = document.createElement("span");
+    text.textContent = "Dodijeli datum i tim da bi se radni nalozi pojavili u kalendaru.";
 
-    const dayLabel = document.createElement("span");
-    dayLabel.className = "work-order-calendar-day-label";
-    dayLabel.textContent = day.label;
-
-    const dayDate = document.createElement("strong");
-    dayDate.className = "work-order-calendar-day-date";
-    dayDate.textContent = day.fullLabel;
-
-    const dayMeta = document.createElement("span");
-    dayMeta.className = "work-order-calendar-day-meta";
-    dayMeta.textContent = dayCount === 0 ? "Prazno" : `${dayCount} RN`;
-
-    dayHead.append(dayLabel, dayDate, dayMeta);
-    headerRow.append(dayHead);
-  });
-
-  fragment.append(headerRow);
-
-  if (calendar.lanes.length === 0) {
-    const emptyRow = document.createElement("div");
-    emptyRow.className = "work-order-calendar-grid-row";
-
-    const emptyLead = document.createElement("div");
-    emptyLead.className = "work-order-calendar-lane";
-    const emptyTitle = document.createElement("strong");
-    emptyTitle.textContent = "Nema rasporeda";
-    const emptyMeta = document.createElement("span");
-    emptyMeta.className = "work-order-calendar-lane-empty";
-    emptyMeta.textContent = "Odaberi RN i postavi rok zavrsetka ili izvrsitelje.";
-    emptyLead.append(emptyTitle, emptyMeta);
-    emptyRow.append(emptyLead);
-
-    dayDescriptors.forEach(() => {
-      const emptyCell = document.createElement("div");
-      emptyCell.className = "work-order-calendar-cell";
-      const placeholder = document.createElement("span");
-      placeholder.className = "work-order-calendar-cell-placeholder";
-      placeholder.textContent = "Prazno";
-      emptyCell.append(placeholder);
-      emptyRow.append(emptyCell);
-    });
-
-    fragment.append(emptyRow);
+    emptyState.append(title, text);
+    fragment.append(emptyState);
     workOrderCalendarGrid.replaceChildren(fragment);
     return;
   }
 
-  calendar.lanes.forEach((lane) => {
-    const row = document.createElement("div");
-    row.className = "work-order-calendar-grid-row";
+  calendar.weeks.forEach((week) => {
+    const visibleDays = getVisibleCalendarWeekDays(week.days, state.workOrderCalendar.showWeekends);
+    const weekBlock = document.createElement("section");
+    weekBlock.className = "work-order-calendar-week-block";
 
-    const laneCell = document.createElement("div");
-    laneCell.className = "work-order-calendar-lane";
+    const weekHead = document.createElement("div");
+    weekHead.className = "work-order-calendar-week-head";
 
-    const laneTop = document.createElement("div");
-    laneTop.className = "work-order-calendar-lane-top";
+    const weekCopy = document.createElement("div");
+    weekCopy.className = "work-order-calendar-week-copy";
 
-    const laneName = document.createElement("strong");
-    laneName.textContent = lane.label;
+    const weekTitle = document.createElement("strong");
+    weekTitle.textContent = `${formatCompactDate(visibleDays[0]?.key ?? week.weekStart)} - ${formatCompactDate(
+      visibleDays[visibleDays.length - 1]?.key ?? visibleDays[0]?.key ?? week.weekStart,
+    )}`;
 
-    laneTop.append(laneName);
+    const weekMeta = document.createElement("span");
+    weekMeta.textContent = week.totalCount === 1 ? "1 RN" : `${week.totalCount} RN`;
 
-    const laneMeta = document.createElement("div");
-    laneMeta.className = "work-order-calendar-lane-meta";
-    lane.executors.forEach((executor) => {
-      laneMeta.append(createWorkOrderMiniExecutor(executor));
+    weekCopy.append(weekTitle, weekMeta);
+    weekHead.append(weekCopy);
+    weekBlock.append(weekHead);
+
+    const headerRow = document.createElement("div");
+    headerRow.className = "work-order-calendar-week-row is-head";
+
+    const teamHead = document.createElement("div");
+    teamHead.className = "work-order-calendar-week-team-head";
+    teamHead.textContent = "Tim";
+    headerRow.append(teamHead);
+
+    visibleDays.forEach((day) => {
+      const dayHead = document.createElement("div");
+      dayHead.className = "work-order-calendar-week-day-head";
+      dayHead.classList.toggle("is-today", day.isToday);
+      dayHead.classList.toggle("is-outside-month", !day.inMonth);
+
+      const label = document.createElement("span");
+      label.className = "work-order-calendar-day-label";
+      label.textContent = new Intl.DateTimeFormat("hr-HR", { weekday: "short" }).format(parseDateValue(day.key));
+
+      const date = document.createElement("strong");
+      date.className = "work-order-calendar-day-date";
+      date.textContent = formatCompactDate(day.key);
+
+      dayHead.append(label, date);
+      headerRow.append(dayHead);
     });
 
-    if (lane.executors.length === 0) {
-      const empty = document.createElement("span");
-      empty.className = "work-order-calendar-lane-empty";
-      empty.textContent = "Bez izvrsitelja";
-      laneMeta.append(empty);
+    weekBlock.append(headerRow);
+
+    if (week.groups.length === 0) {
+      const emptyRow = document.createElement("div");
+      emptyRow.className = "work-order-calendar-week-row";
+
+      const emptyLead = document.createElement("div");
+      emptyLead.className = "work-order-calendar-team-lead";
+
+      const emptyTitleWrap = document.createElement("div");
+      emptyTitleWrap.className = "work-order-calendar-team-copy";
+
+      const emptyTitle = document.createElement("strong");
+      emptyTitle.className = "work-order-calendar-team-name";
+      emptyTitle.textContent = "Bez rasporeda";
+
+      const emptyMeta = document.createElement("span");
+      emptyMeta.className = "work-order-calendar-team-meta";
+      emptyMeta.textContent = "Nema RN za ovaj tjedan";
+
+      emptyTitleWrap.append(emptyTitle, emptyMeta);
+      emptyLead.append(emptyTitleWrap);
+      emptyRow.append(emptyLead);
+
+      visibleDays.forEach((day) => {
+        emptyRow.append(createWorkOrderCalendarWeekCell(day, {
+          key: "team:unassigned",
+          label: "Bez tima",
+          isUnassigned: true,
+        }, []));
+      });
+
+      weekBlock.append(emptyRow);
+      fragment.append(weekBlock);
+      return;
     }
 
-    laneCell.append(laneTop, laneMeta);
-    row.append(laneCell);
+    week.groups.forEach((group) => {
+      const row = document.createElement("div");
+      row.className = "work-order-calendar-week-row";
 
-    dayDescriptors.forEach((day) => {
-      const cell = document.createElement("div");
-      cell.className = "work-order-calendar-cell";
-      cell.dataset.dateKey = day.key;
-      cell.dataset.executorSignature = lane.signature;
+      row.append(createWorkOrderCalendarGroupLead(group));
 
-      cell.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        cell.classList.add("is-drop-target");
+      visibleDays.forEach((day) => {
+        row.append(createWorkOrderCalendarWeekCell(day, group, group.itemsByDate[day.key] ?? []));
       });
 
-      cell.addEventListener("dragleave", () => {
-        cell.classList.remove("is-drop-target");
-      });
-
-      cell.addEventListener("drop", (event) => {
-        event.preventDefault();
-        cell.classList.remove("is-drop-target");
-        const droppedWorkOrderId = event.dataTransfer?.getData("application/x-work-order-id")
-          || event.dataTransfer?.getData("text/plain")
-          || state.workOrderCalendar.draggingWorkOrderId;
-
-        if (!droppedWorkOrderId) {
-          return;
-        }
-
-        void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, lane.executors);
-      });
-
-      const items = lane.itemsByDate[day.key] ?? [];
-
-      if (items.length === 0) {
-        const placeholder = document.createElement("span");
-        placeholder.className = "work-order-calendar-cell-placeholder";
-        placeholder.textContent = "Povuci ovdje";
-        cell.append(placeholder);
-      } else {
-        items.forEach((workOrder) => {
-          cell.append(createWorkOrderCalendarSchedulerCard(workOrder));
-        });
-      }
-
-      row.append(cell);
+      weekBlock.append(row);
     });
 
-    fragment.append(row);
+    fragment.append(weekBlock);
   });
 
   workOrderCalendarGrid.replaceChildren(fragment);
@@ -9903,6 +10062,7 @@ function renderWorkOrderCroatiaMapView() {
 }
 function renderWorkOrderWorkspace() {
   updateWorkOrderModeButtons();
+  refreshWorkOrderTeamSuggestions();
 
   const filtered = getFilteredWorkOrders();
   const emptyTextByMode = {
@@ -11841,17 +12001,17 @@ workOrderModeButtons.forEach((button) => {
 });
 
 workOrderCalendarPrevButton?.addEventListener("click", () => {
-  state.workOrderCalendar.weekStart = shiftDateKey(state.workOrderCalendar.weekStart, -7);
+  state.workOrderCalendar.weekStart = shiftMonthDateKey(state.workOrderCalendar.weekStart, -1);
   renderWorkOrderWorkspace();
 });
 
 workOrderCalendarTodayButton?.addEventListener("click", () => {
-  state.workOrderCalendar.weekStart = getStartOfWeekDateKey(new Date().toISOString().slice(0, 10));
+  state.workOrderCalendar.weekStart = new Date().toISOString().slice(0, 10);
   renderWorkOrderWorkspace();
 });
 
 workOrderCalendarNextButton?.addEventListener("click", () => {
-  state.workOrderCalendar.weekStart = shiftDateKey(state.workOrderCalendar.weekStart, 7);
+  state.workOrderCalendar.weekStart = shiftMonthDateKey(state.workOrderCalendar.weekStart, 1);
   renderWorkOrderWorkspace();
 });
 

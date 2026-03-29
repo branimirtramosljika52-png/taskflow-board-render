@@ -4898,6 +4898,210 @@ body.is-work-order-editor-open {
   margin-left: auto;
 }
 
+.work-order-calendar-content {
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.work-order-calendar-grid {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  max-height: none;
+  padding-right: 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.work-order-calendar-empty {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  border: 1px dashed #dce2ee;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #fafbff);
+  color: #7a8398;
+}
+
+.work-order-calendar-empty strong {
+  color: #21283b;
+  font-size: 0.96rem;
+}
+
+.work-order-calendar-week-block {
+  display: grid;
+  gap: 0;
+  border: 1px solid #e7ebf5;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  box-shadow: 0 10px 28px rgba(48, 58, 86, 0.06);
+}
+
+.work-order-calendar-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #edf1f7;
+  background: linear-gradient(180deg, rgba(245, 239, 255, 0.78), rgba(252, 250, 255, 0.96));
+}
+
+.work-order-calendar-week-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-calendar-week-copy strong {
+  color: #20263a;
+  font-size: 0.96rem;
+}
+
+.work-order-calendar-week-copy span {
+  color: #7a849a;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.work-order-calendar-week-row {
+  display: grid;
+  grid-template-columns: 240px repeat(7, minmax(180px, 1fr));
+  min-width: 1360px;
+}
+
+.work-order-calendar-week-row.is-head {
+  background: rgba(248, 250, 255, 0.98);
+}
+
+.work-order-calendar-week-team-head,
+.work-order-calendar-week-day-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1f7;
+  background: rgba(249, 251, 255, 0.98);
+}
+
+.work-order-calendar-week-team-head {
+  color: #7e879d;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.work-order-calendar-week-day-head {
+  display: grid;
+  gap: 4px;
+  border-left: 1px solid #eef2f8;
+}
+
+.work-order-calendar-week-day-head.is-today {
+  background: linear-gradient(180deg, rgba(244, 238, 255, 0.98), rgba(252, 249, 255, 0.98));
+}
+
+.work-order-calendar-week-day-head.is-outside-month {
+  opacity: 0.62;
+}
+
+.work-order-calendar-team-lead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 14px 14px 16px;
+  border-top: 1px solid #edf1f7;
+  background: linear-gradient(180deg, #fbfcff, #f7f9fd);
+}
+
+.work-order-calendar-team-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-calendar-team-name {
+  color: #22293d;
+  font-size: 0.9rem;
+}
+
+.work-order-calendar-team-meta {
+  color: #7b849a;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.work-order-calendar-team-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.work-order-calendar-team-executors {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.work-order-calendar-week-cell {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 148px;
+  padding: 10px;
+  border-top: 1px solid #edf1f7;
+  border-left: 1px solid #eef2f8;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(251, 252, 255, 0.98)),
+    repeating-linear-gradient(180deg, rgba(226, 230, 240, 0.18) 0, rgba(226, 230, 240, 0.18) 1px, transparent 1px, transparent 42px);
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.work-order-calendar-week-cell:hover {
+  background: linear-gradient(180deg, #ffffff, #faf8ff);
+}
+
+.work-order-calendar-week-cell.is-drop-target {
+  background: linear-gradient(180deg, #f6f3ff, #f0ebff);
+  box-shadow: inset 0 0 0 1px rgba(170, 136, 255, 0.28);
+}
+
+.work-order-calendar-unscheduled {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #eceaf5;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #f9f7ff);
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+}
+
+.work-order-calendar-unscheduled-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-calendar-unscheduled-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #edeaf6;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.work-order-calendar-unscheduled-group-head {
+  padding-bottom: 2px;
+  border-bottom: 1px dashed #eceaf4;
+}
+
 .work-order-map-layout {
   display: block;
 }
@@ -8360,7 +8564,8 @@ body.is-work-order-editor-open {
     max-height: none;
   }
 
-  .work-order-calendar-grid-row {
+  .work-order-calendar-grid-row,
+  .work-order-calendar-week-row {
     min-width: 1260px;
   }
 

@@ -566,6 +566,7 @@
                 <div class="work-order-editor-body" tabindex="-1">
                   <form id="work-order-form" class="entity-form work-order-editor-form">
                     <input id="work-order-id" type="hidden" />
+                    <datalist id="work-order-team-suggestions"></datalist>
 
                     <section class="work-order-editor-section is-overview">
                       <div class="work-order-editor-section-head">
@@ -594,6 +595,11 @@
                         <label class="field">
                           <span>Rok zavrsetka</span>
                           <input id="work-order-due-date" type="date" />
+                        </label>
+
+                        <label class="field">
+                          <span>Tim</span>
+                          <input id="work-order-team-label" type="text" list="work-order-team-suggestions" placeholder="npr. Zagreb, Slavonija, Periodika" />
                         </label>
 
                         <label class="field">
@@ -993,9 +999,9 @@
             <section id="work-order-calendar-view" class="work-order-mode-view work-order-calendar-view" hidden>
               <div class="work-order-calendar-toolbar">
                 <div class="work-order-calendar-nav">
-                  <button id="work-order-calendar-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni tjedan">&#8592;</button>
+                  <button id="work-order-calendar-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni mjesec">&#8592;</button>
                   <button id="work-order-calendar-today" type="button" class="ghost-button">Danas</button>
-                  <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći tjedan">&#8594;</button>
+                  <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeci mjesec">&#8594;</button>
                   <strong id="work-order-calendar-range" class="work-order-calendar-range"></strong>
                 </div>
                 <div class="work-order-calendar-toolbar-side">

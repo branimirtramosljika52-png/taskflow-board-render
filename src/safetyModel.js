@@ -914,6 +914,7 @@ export function createWorkOrder(
     completedBy: normalizeText(input.completedBy),
     description: requireText(input.description, "Opis radnog naloga"),
     linkReference: normalizeText(input.linkReference),
+    teamLabel: normalizeText(input.teamLabel),
     executor1: normalizeText(input.executor1),
     executor2: normalizeText(input.executor2),
     priority: normalizePriority(input.priority),
@@ -973,6 +974,7 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
     completedBy: hasOwn(patch, "completedBy") ? normalizeText(patch.completedBy) : current.completedBy,
     description: hasOwn(patch, "description") ? requireText(patch.description, "Opis radnog naloga") : current.description,
     linkReference: hasOwn(patch, "linkReference") ? normalizeText(patch.linkReference) : current.linkReference,
+    teamLabel: hasOwn(patch, "teamLabel") ? normalizeText(patch.teamLabel) : current.teamLabel,
     executor1: hasOwn(patch, "executor1") ? normalizeText(patch.executor1) : current.executor1,
     executor2: hasOwn(patch, "executor2") ? normalizeText(patch.executor2) : current.executor2,
     priority: hasOwn(patch, "priority") ? normalizePriority(patch.priority) : current.priority,
@@ -1364,6 +1366,188 @@ export function getWorkOrderExecutorGroup(workOrder) {
     key: executors.length ? executors.map((value) => value.toLowerCase()).join("||") : "unassigned",
     label: executors.length ? executors.join(" + ") : "Bez izvrsitelja",
     executors,
+  };
+}
+
+export function getWorkOrderTeamGroup(workOrder) {
+  const label = normalizeText(workOrder?.teamLabel);
+
+  return {
+    key: label ? `team:${label.toLowerCase()}` : "team:unassigned",
+    label: label || "Bez tima",
+    isUnassigned: !label,
+  };
+}
+
+function sortWorkOrderCalendarGroupEntries(left, right) {
+  if (left.isUnassigned && !right.isUnassigned) {
+    return 1;
+  }
+
+  if (!left.isUnassigned && right.isUnassigned) {
+    return -1;
+  }
+
+  return left.label.localeCompare(right.label, "hr");
+}
+
+function sortWorkOrdersByCalendarKey(items = []) {
+  return items
+    .slice()
+    .sort((left, right) => String(left.workOrderNumber ?? "").localeCompare(String(right.workOrderNumber ?? ""), "hr"));
+}
+
+export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue = todayString()) {
+  const normalizedAnchor = normalizeOptionalDate(anchorDateValue) ?? todayString();
+  const monthStart = `${normalizedAnchor.slice(0, 7)}-01`;
+  const monthStartDate = new Date(`${monthStart}T00:00:00`);
+  const monthEndDate = new Date(monthStartDate);
+  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0);
+  const monthEnd = formatLocalDateKey(monthEndDate);
+  const displayStart = formatLocalDateKey(startOfWeekDate(monthStart));
+  const displayEnd = addDaysToDateKey(formatLocalDateKey(startOfWeekDate(monthEnd)), 6);
+  const displayDaySet = new Set();
+  const weeks = [];
+  const weekMap = new Map();
+  const unscheduledGroupMap = new Map();
+
+  for (let cursor = displayStart; cursor <= displayEnd; cursor = addDaysToDateKey(cursor, 7)) {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const key = addDaysToDateKey(cursor, index);
+      displayDaySet.add(key);
+      return {
+        key,
+        inMonth: key >= monthStart && key <= monthEnd,
+        isToday: key === todayString(),
+      };
+    });
+
+    const week = {
+      key: cursor,
+      weekStart: cursor,
+      days,
+      groups: [],
+      totalCount: 0,
+    };
+
+    weeks.push(week);
+    weekMap.set(cursor, week);
+  }
+
+  const ensureWeekGroup = (week, group) => {
+    const current = week.groups.find((entry) => entry.key === group.key);
+
+    if (current) {
+      return current;
+    }
+
+    const created = {
+      ...group,
+      executors: [],
+      regions: [],
+      itemsByDate: Object.fromEntries(week.days.map((day) => [day.key, []])),
+      totalCount: 0,
+    };
+    week.groups.push(created);
+    return created;
+  };
+
+  const ensureUnscheduledGroup = (group) => {
+    if (unscheduledGroupMap.has(group.key)) {
+      return unscheduledGroupMap.get(group.key);
+    }
+
+    const created = {
+      ...group,
+      executors: [],
+      regions: [],
+      items: [],
+    };
+    unscheduledGroupMap.set(group.key, created);
+    return created;
+  };
+
+  workOrders.forEach((workOrder) => {
+    const group = getWorkOrderTeamGroup(workOrder);
+    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+
+    if (!dueDate) {
+      const targetGroup = ensureUnscheduledGroup(group);
+      targetGroup.items.push(workOrder);
+
+      [workOrder?.executor1, workOrder?.executor2]
+        .map((value) => normalizeText(value))
+        .filter(Boolean)
+        .forEach((executor) => {
+          if (!targetGroup.executors.includes(executor)) {
+            targetGroup.executors.push(executor);
+          }
+        });
+
+      if (normalizeText(workOrder?.region) && !targetGroup.regions.includes(normalizeText(workOrder.region))) {
+        targetGroup.regions.push(normalizeText(workOrder.region));
+      }
+
+      return;
+    }
+
+    if (!displayDaySet.has(dueDate)) {
+      return;
+    }
+
+    const weekKey = formatLocalDateKey(startOfWeekDate(dueDate));
+    const week = weekMap.get(weekKey);
+
+    if (!week) {
+      return;
+    }
+
+    const targetGroup = ensureWeekGroup(week, group);
+    targetGroup.itemsByDate[dueDate].push(workOrder);
+    targetGroup.totalCount += 1;
+    week.totalCount += 1;
+
+    [workOrder?.executor1, workOrder?.executor2]
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .forEach((executor) => {
+        if (!targetGroup.executors.includes(executor)) {
+          targetGroup.executors.push(executor);
+        }
+      });
+
+    if (normalizeText(workOrder?.region) && !targetGroup.regions.includes(normalizeText(workOrder.region))) {
+      targetGroup.regions.push(normalizeText(workOrder.region));
+    }
+  });
+
+  const normalizedWeeks = weeks.map((week) => ({
+    ...week,
+    groups: week.groups
+      .sort(sortWorkOrderCalendarGroupEntries)
+      .map((group) => ({
+        ...group,
+        itemsByDate: Object.fromEntries(
+          week.days.map((day) => [day.key, sortWorkOrdersByCalendarKey(group.itemsByDate[day.key] ?? [])]),
+        ),
+      })),
+  }));
+
+  const unscheduledGroups = Array.from(unscheduledGroupMap.values())
+    .sort(sortWorkOrderCalendarGroupEntries)
+    .map((group) => ({
+      ...group,
+      items: sortWorkOrdersByCalendarKey(group.items),
+    }));
+
+  return {
+    anchorDate: normalizedAnchor,
+    monthStart,
+    monthEnd,
+    displayStart,
+    displayEnd,
+    weeks: normalizedWeeks,
+    unscheduledGroups,
   };
 }
 

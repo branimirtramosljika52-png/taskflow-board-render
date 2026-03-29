@@ -285,6 +285,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   priority: "Prioritet",
   openedDate: "Datum otvaranja",
   dueDate: "Rok zavrsetka",
+  teamLabel: "Tim",
   companyName: "Tvrtka",
   headquarters: "Sjediste",
   companyOib: "OIB",
@@ -529,7 +530,7 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
            izvrsitelj_rn2, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
-           odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio
+           tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
   `);
@@ -557,6 +558,7 @@ async function fetchSnapshotFromConnection(connection) {
       locationId: location?.id ?? "",
       locationName: row.lokacija ?? "",
       linkReference: row.veza_rn ?? "",
+      teamLabel: row.tim_rn ?? "",
       executor1: row.izvrsitelj_rn1 ?? "",
       executor2: row.izvrsitelj_rn2 ?? "",
       priority: row.prioritet ?? "Normal",
@@ -1311,6 +1313,7 @@ export class MySqlSafetyRepository {
         INDEX idx_web_dashboard_widgets_order (organization_id, user_id, sort_order)
       )
     `);
+    await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_column", "INT NOT NULL DEFAULT 1");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_row", "INT NOT NULL DEFAULT 1");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_width", "INT NOT NULL DEFAULT 4");
@@ -1845,9 +1848,9 @@ export class MySqlSafetyRepository {
           INSERT INTO radni_nalozi
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
-             izvrsitelj_rn2, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
+             izvrsitelj_rn2, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
              odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -1864,6 +1867,7 @@ export class MySqlSafetyRepository {
           draft.dueDate,
           draft.executor1,
           draft.executor2,
+          draft.teamLabel,
           draft.tagText,
           draft.status,
           draft.invoiceNote,
@@ -1928,7 +1932,7 @@ export class MySqlSafetyRepository {
           UPDATE radni_nalozi
           SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
-              izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
+              izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
               odjel = ?, koordinate = ?, usluge = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
               tezina = ?, rn_zavrsio = ?
           WHERE id = ?
@@ -1947,6 +1951,7 @@ export class MySqlSafetyRepository {
           next.dueDate,
           next.executor1,
           next.executor2,
+          next.teamLabel,
           next.tagText,
           next.status,
           next.invoiceNote,
