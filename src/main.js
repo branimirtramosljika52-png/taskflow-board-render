@@ -8982,8 +8982,8 @@ function renderWorkOrderCalendarView() {
   const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
   const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
   const visibleDayCount = Math.max(dayDescriptors.length, 1);
-  const laneWidth = visibleDayCount <= 5 ? 136 : visibleDayCount === 6 ? 142 : 148;
-  const dayWidth = visibleDayCount <= 5 ? 112 : visibleDayCount === 6 ? 100 : 88;
+  const laneWidth = visibleDayCount <= 5 ? 124 : visibleDayCount === 6 ? 128 : 132;
+  const dayWidth = visibleDayCount <= 5 ? 98 : visibleDayCount === 6 ? 84 : 76;
   const minWidth = laneWidth + visibleDayCount * dayWidth;
   const applyLaneLayout = (row) => {
     row.style.gridTemplateColumns = `${laneWidth}px repeat(${visibleDayCount}, minmax(${dayWidth}px, 1fr))`;
@@ -9163,9 +9163,7 @@ function renderWorkOrderCalendarView() {
         placeholder.textContent = "Povuci ovdje";
         cell.append(placeholder);
       } else {
-        items.forEach((workOrder) => {
-          cell.append(createWorkOrderCalendarCard(workOrder));
-        });
+        cell.append(createWorkOrderCalendarExecutorGroup(items));
       }
 
       row.append(cell);

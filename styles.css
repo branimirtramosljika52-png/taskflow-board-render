@@ -4710,8 +4710,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid-row {
   display: grid;
-  grid-template-columns: 148px repeat(7, minmax(88px, 1fr));
-  min-width: 764px;
+  grid-template-columns: 132px repeat(7, minmax(76px, 1fr));
+  min-width: 664px;
 }
 
 .work-order-calendar-grid-row.is-head {
@@ -4922,8 +4922,8 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-content {
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
   align-items: start;
 }
 
