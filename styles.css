@@ -4749,6 +4749,7 @@ body.is-work-order-editor-open {
 .work-order-calendar-month-day {
   display: grid;
   grid-template-rows: auto 1fr;
+  min-width: 0;
   min-height: 180px;
   border: 1px solid #ebeef6;
   border-radius: 18px;
@@ -4783,13 +4784,16 @@ body.is-work-order-editor-open {
   display: grid;
   align-content: start;
   gap: 8px;
+  min-width: 0;
   padding: 8px;
   min-height: 118px;
 }
 
 .work-order-calendar-month-day .work-order-calendar-card,
 .work-order-calendar-month-day .work-order-calendar-cell-group {
+  min-width: 0;
   width: 100%;
+  max-width: 100%;
 }
 
 .work-order-calendar-month-day .work-order-calendar-card {
@@ -4944,7 +4948,9 @@ body.is-work-order-editor-open {
   display: grid;
   gap: 6px;
   justify-items: start;
+  min-width: 0;
   width: 100%;
+  max-width: 100%;
   padding: 10px 12px 11px 14px;
   border-radius: 14px;
   border: 1px solid var(--calendar-card-border, #e9e7f6);
@@ -4953,6 +4959,7 @@ body.is-work-order-editor-open {
   text-align: left;
   box-shadow: 0 8px 18px rgba(69, 76, 108, 0.08);
   cursor: pointer;
+  overflow: hidden;
   transition: transform 90ms ease, box-shadow 90ms ease, opacity 90ms ease, background 90ms ease, filter 90ms ease;
   will-change: transform;
 }
@@ -4971,19 +4978,27 @@ body.is-work-order-editor-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
   width: 100%;
 }
 
 .work-order-calendar-card-number {
   font-size: 0.88rem;
   color: #20253a;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-card-status,
 .work-order-calendar-card-priority {
   padding: 4px 8px;
   font-size: 0.72rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .work-order-calendar-card-title {
@@ -4991,18 +5006,26 @@ body.is-work-order-editor-open {
   font-weight: 700;
   color: #2a3044;
   line-height: 1.3;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-card-meta {
   font-size: 0.78rem;
   color: #788199;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
   width: 100%;
 }
 
@@ -5010,6 +5033,9 @@ body.is-work-order-editor-open {
   font-size: 0.74rem;
   font-weight: 700;
   color: #62708f;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-card-executors {
@@ -5017,6 +5043,9 @@ body.is-work-order-editor-open {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .work-order-calendar-content {
@@ -5235,10 +5264,12 @@ body.is-work-order-editor-open {
 .work-order-calendar-cell-group-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
   width: 100%;
+  overflow: hidden;
 }
 
 .work-order-calendar-cell-group-lead {
@@ -5265,12 +5296,14 @@ body.is-work-order-editor-open {
   color: #26304a;
   font-size: 0.76rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-cell-group-meta {
   color: #8089a0;
   font-size: 0.68rem;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .work-order-calendar-cell-group-count {

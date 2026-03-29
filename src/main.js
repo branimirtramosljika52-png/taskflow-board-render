@@ -8935,7 +8935,7 @@ function createWorkOrderCalendarCard(workOrder) {
   return card;
 }
 
-async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = []) {
+async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = null) {
   const workOrder = state.workOrders.find((item) => String(item.id) === String(workOrderId));
 
   if (!workOrder) {
@@ -8943,22 +8943,28 @@ async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = 
   }
 
   const laneConfig = Array.isArray(laneTarget)
-    ? { executors: laneTarget, teamLabel: null }
+    ? { executors: laneTarget, hasExecutors: true, teamLabel: null, hasTeamLabel: false }
     : {
       executors: Array.isArray(laneTarget?.executors) ? laneTarget.executors : [],
+      hasExecutors: Array.isArray(laneTarget?.executors),
       teamLabel: typeof laneTarget?.teamLabel === "string" ? laneTarget.teamLabel : null,
+      hasTeamLabel: Object.prototype.hasOwnProperty.call(laneTarget ?? {}, "teamLabel"),
     };
-  const nextTeamLabel = laneConfig.teamLabel;
   const nextDate = targetDate || "";
-  const nextExecutors = laneConfig.executors;
+  const nextExecutors = laneConfig.hasExecutors
+    ? laneConfig.executors
+    : [workOrder.executor1 ?? "", workOrder.executor2 ?? ""];
   const nextExecutor1 = nextExecutors[0] ?? "";
   const nextExecutor2 = nextExecutors[1] ?? "";
+  const nextTeamLabel = laneConfig.hasTeamLabel
+    ? laneConfig.teamLabel
+    : (workOrder.teamLabel ?? "");
 
   if (
     String(workOrder.dueDate ?? "") === String(nextDate ?? "")
     && String(workOrder.executor1 ?? "") === String(nextExecutor1)
     && String(workOrder.executor2 ?? "") === String(nextExecutor2)
-    && (nextTeamLabel === null || String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? ""))
+    && (!laneConfig.hasTeamLabel || String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? ""))
   ) {
     return;
   }
@@ -8970,7 +8976,7 @@ async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = 
       dueDate: nextDate,
       executor1: nextExecutor1,
       executor2: nextExecutor2,
-      ...(nextTeamLabel === null ? {} : { teamLabel: nextTeamLabel }),
+      ...(laneConfig.hasTeamLabel ? { teamLabel: nextTeamLabel } : {}),
     },
   }));
 }
@@ -9116,7 +9122,7 @@ function renderWorkOrderCalendarView() {
         return;
       }
 
-      void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, []);
+      void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key);
     });
 
     const top = document.createElement("div");
@@ -9878,7 +9884,6 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
 
     void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, {
       teamLabel: group.isUnassigned ? "" : group.label,
-      executors: [],
     });
   });
 
