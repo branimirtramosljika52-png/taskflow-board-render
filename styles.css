@@ -2085,8 +2085,48 @@ body.is-offer-editor-open {
 }
 
 .offer-item-mini-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   min-height: 34px;
   padding-inline: 12px;
+}
+
+.offer-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding-inline: 12px;
+}
+
+.offer-item-mini-action::before,
+.offer-summary-toggle::before {
+  content: "";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(50, 94, 76, 0.1);
+  color: #2e6752;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.offer-item-mini-action.is-discount::before,
+.offer-summary-toggle.is-discount::before {
+  content: "%";
+}
+
+.offer-item-mini-action.is-breakdown::before {
+  content: "=";
+}
+
+.offer-summary-toggle.is-total::before {
+  content: "T";
 }
 
 .offer-item-field.is-description {
@@ -2173,7 +2213,7 @@ body.is-offer-editor-open {
 
 .offers-discount-controls {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -2193,6 +2233,11 @@ body.is-offer-editor-open {
 
 .offers-total-line strong {
   color: var(--text);
+}
+
+.offer-list-card-total.is-hidden {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .offers-total-line.is-grand {

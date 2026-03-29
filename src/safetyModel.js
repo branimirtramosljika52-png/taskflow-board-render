@@ -380,7 +380,6 @@ function normalizeOfferBreakdowns(breakdowns = []) {
   }
 
   return breakdowns
-    .slice(0, 5)
     .map((entry) => {
       const amount = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(entry?.amount, 0)));
 
@@ -405,7 +404,7 @@ function normalizeOfferItems(items = []) {
       const breakdownTotal = roundCurrencyAmount(
         breakdowns.reduce((sum, entry) => sum + roundCurrencyAmount(entry.amount), 0),
       );
-      const grossTotal = roundCurrencyAmount((quantity * unitPrice) + breakdownTotal);
+      const grossTotal = roundCurrencyAmount(quantity * unitPrice);
       const discountRate = normalizeOfferDiscountRate(item?.discountRate);
       const discountTotal = roundCurrencyAmount(grossTotal * (discountRate / 100));
 
@@ -606,6 +605,9 @@ function hydrateOfferCore({
   const discountRate = hasOwn(input, "discountRate")
     ? normalizeOfferDiscountRate(input.discountRate)
     : normalizeOfferDiscountRate(current?.discountRate ?? 0);
+  const showTotalAmount = hasOwn(input, "showTotalAmount")
+    ? normalizeBoolean(input.showTotalAmount, true)
+    : normalizeBoolean(current?.showTotalAmount, true);
   const items = hasOwn(input, "items")
     ? normalizeOfferItems(input.items)
     : (current?.items ?? []);
@@ -672,6 +674,7 @@ function hydrateOfferCore({
     currency: hasOwn(input, "currency")
       ? (normalizeText(input.currency).toUpperCase() || "EUR")
       : (normalizeText(current?.currency).toUpperCase() || "EUR"),
+    showTotalAmount,
     taxRate,
     discountRate,
     subtotal: totals.subtotal,

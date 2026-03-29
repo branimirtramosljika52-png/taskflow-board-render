@@ -724,6 +724,7 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
            offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
            tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
+           show_total_amount,
            tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
            contact_email, created_by_user_id, created_by_label, created_at, updated_at
     FROM web_offers
@@ -798,6 +799,7 @@ async function fetchSnapshotFromConnection(connection) {
       subtotal: Number(row.subtotal_amount ?? 0) || 0,
       discountTotal: Number(row.discount_total_amount ?? 0) || 0,
       taxableSubtotal: Number(row.taxable_subtotal_amount ?? 0) || 0,
+      showTotalAmount: row.show_total_amount == null ? true : Boolean(Number(row.show_total_amount)),
       taxTotal: Number(row.tax_total_amount ?? 0) || 0,
       total: Number(row.grand_total_amount ?? 0) || 0,
       items,
@@ -1468,6 +1470,7 @@ export class MySqlSafetyRepository {
         subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         discount_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         taxable_subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        show_total_amount TINYINT(1) NOT NULL DEFAULT 1,
         tax_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
@@ -1515,6 +1518,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
     await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
+    await ensureColumnExists(this.pool, "web_offers", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER items_json");
     await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
@@ -2539,9 +2543,9 @@ export class MySqlSafetyRepository {
             (organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
              offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
              tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
-             tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
-             contact_email, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             show_total_amount, tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name,
+             contact_phone, contact_email, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -2564,6 +2568,7 @@ export class MySqlSafetyRepository {
           parseNullableDecimal(draft.subtotal) ?? 0,
           parseNullableDecimal(draft.discountTotal) ?? 0,
           parseNullableDecimal(draft.taxableSubtotal) ?? 0,
+          draft.showTotalAmount === false ? 0 : 1,
           parseNullableDecimal(draft.taxTotal) ?? 0,
           parseNullableDecimal(draft.total) ?? 0,
           JSON.stringify(draft.items ?? []),
@@ -2614,9 +2619,9 @@ export class MySqlSafetyRepository {
           UPDATE web_offers
           SET company_id = ?, location_id = ?, location_scope = ?, title = ?, service_line = ?, status = ?,
               offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
-              subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, tax_total_amount = ?,
-              grand_total_amount = ?, items_json = ?, contact_slot = ?, contact_name = ?, contact_phone = ?,
-              contact_email = ?
+              subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
+              tax_total_amount = ?, grand_total_amount = ?, items_json = ?, contact_slot = ?, contact_name = ?,
+              contact_phone = ?, contact_email = ?
           WHERE id = ?
         `,
         [
@@ -2635,6 +2640,7 @@ export class MySqlSafetyRepository {
           parseNullableDecimal(next.subtotal) ?? 0,
           parseNullableDecimal(next.discountTotal) ?? 0,
           parseNullableDecimal(next.taxableSubtotal) ?? 0,
+          next.showTotalAmount === false ? 0 : 1,
           parseNullableDecimal(next.taxTotal) ?? 0,
           parseNullableDecimal(next.total) ?? 0,
           JSON.stringify(next.items ?? []),

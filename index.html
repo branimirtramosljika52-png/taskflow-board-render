@@ -2073,7 +2073,7 @@
                         <span class="offers-editor-meta-label">Broj ponude</span>
                         <strong id="offer-number-preview" class="offers-editor-meta-value">Broj se generira pri spremanju.</strong>
                       </div>
-                      <div class="offers-editor-meta-block">
+                      <div id="offer-total-preview-block" class="offers-editor-meta-block">
                         <span class="offers-editor-meta-label">Ukupno</span>
                         <strong id="offer-total-preview" class="offers-editor-meta-value">0,00 EUR</strong>
                       </div>
@@ -2123,7 +2123,8 @@
 
                     <div class="offers-totals-card">
                       <div class="offers-discount-controls">
-                        <button id="offer-toggle-discount" type="button" class="ghost-button">Dodaj rabat ponude</button>
+                        <button id="offer-toggle-discount" type="button" class="ghost-button offer-summary-toggle is-discount">Dodaj rabat ponude</button>
+                        <button id="offer-toggle-total" type="button" class="ghost-button offer-summary-toggle is-total">Makni ukupni iznos</button>
                         <label id="offer-discount-rate-wrap" class="field offers-discount-field" hidden>
                           <span>Rabat ponude %</span>
                           <input id="offer-discount-rate" inputmode="decimal" placeholder="10" />
@@ -2145,7 +2146,7 @@
                         <span>PDV</span>
                         <strong id="offer-tax-total">0,00 EUR</strong>
                       </div>
-                      <div class="offers-total-line is-grand">
+                      <div id="offer-grand-total-line" class="offers-total-line is-grand">
                         <span>Ukupno</span>
                         <strong id="offer-grand-total">0,00 EUR</strong>
                       </div>

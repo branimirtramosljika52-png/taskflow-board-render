@@ -521,6 +521,7 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
       title: "Detaljna ponuda",
       serviceLine: "Flat plan",
       offerDate: "2026-03-29",
+      showTotalAmount: false,
       discountRate: 10,
       items: [
         {
@@ -531,7 +532,11 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
           discountRate: 10,
           breakdowns: [
             { label: "do 5 mm", amount: 10 },
+            { label: "do 20 mm", amount: 18 },
+            { label: "do 40 mm", amount: 32 },
             { label: "do 80 mm", amount: 58 },
+            { label: "do 120 mm", amount: 72 },
+            { label: "do 180 mm", amount: 96 },
           ],
         },
       ],
@@ -575,16 +580,19 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(detailedOffer.locationScope, "single");
   assert.equal(detailedOffer.contactName, "Iva Novak");
   assert.equal(detailedOffer.offerDate, "2026-03-29");
-  assert.equal(detailedOffer.items[0].breakdowns.length, 2);
-  assert.equal(detailedOffer.items[0].totalPrice, 151.2);
-  assert.equal(detailedOffer.subtotal, 151.2);
-  assert.equal(detailedOffer.discountTotal, 15.12);
-  assert.equal(detailedOffer.taxableSubtotal, 136.08);
-  assert.equal(detailedOffer.total, 170.1);
+  assert.equal(detailedOffer.showTotalAmount, false);
+  assert.equal(detailedOffer.items[0].breakdowns.length, 6);
+  assert.equal(detailedOffer.items[0].breakdownTotal, 286);
+  assert.equal(detailedOffer.items[0].totalPrice, 90);
+  assert.equal(detailedOffer.subtotal, 90);
+  assert.equal(detailedOffer.discountTotal, 9);
+  assert.equal(detailedOffer.taxableSubtotal, 81);
+  assert.equal(detailedOffer.total, 101.25);
   assert.equal(allLocationsOffer.locationScope, "all");
   assert.equal(allLocationsOffer.locationName, "Sve lokacije");
   assert.equal(allLocationsOffer.contactName, "");
-  assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 80 mm" }).length, 1);
+  assert.equal(allLocationsOffer.showTotalAmount, true);
+  assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 180 mm" }).length, 1);
 });
 
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {
