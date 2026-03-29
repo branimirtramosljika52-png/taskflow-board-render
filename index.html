@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260329c" />
+    <link rel="stylesheet" href="/styles.css?v=20260329d" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -998,11 +998,19 @@
                   <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći tjedan">&#8594;</button>
                   <strong id="work-order-calendar-range" class="work-order-calendar-range"></strong>
                 </div>
-                <div id="work-order-calendar-meta" class="work-order-calendar-meta"></div>
+                <div class="work-order-calendar-toolbar-side">
+                  <label class="work-order-calendar-toggle">
+                    <input id="work-order-calendar-weekends" type="checkbox" checked />
+                    <span>Vikendi</span>
+                  </label>
+                  <div id="work-order-calendar-meta" class="work-order-calendar-meta"></div>
+                </div>
               </div>
 
-              <div id="work-order-calendar-unscheduled" class="work-order-calendar-unscheduled" hidden></div>
-              <div id="work-order-calendar-grid" class="work-order-calendar-grid"></div>
+              <div class="work-order-calendar-content">
+                <div id="work-order-calendar-grid" class="work-order-calendar-grid"></div>
+                <aside id="work-order-calendar-unscheduled" class="work-order-calendar-unscheduled" hidden></aside>
+              </div>
             </section>
 
             <section id="work-order-map-view" class="work-order-mode-view work-order-map-view" hidden>
@@ -2080,7 +2088,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script type="module" src="/src/auth-transitions.js?v=20260329c"></script>
-    <script type="module" src="/src/main.js?v=20260329c"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260329d"></script>
+    <script type="module" src="/src/main.js?v=20260329d"></script>
   </body>
 </html>

@@ -4558,6 +4558,38 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
 }
 
+.work-order-calendar-toolbar-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.work-order-calendar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e6e9f1;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f8faff);
+  color: #4f5972;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.work-order-calendar-toggle input {
+  accent-color: #d94895;
+}
+
+.work-order-calendar-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 14px;
+  align-items: start;
+}
+
 .work-order-map-toolbar-side {
   min-width: min(100%, 620px);
   display: grid;
@@ -4617,6 +4649,10 @@ body.is-work-order-editor-open {
   border: 1px solid #eceaf5;
   border-radius: 20px;
   background: linear-gradient(180deg, #ffffff, #f9f7ff);
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 330px);
+  overflow: auto;
 }
 
 .work-order-calendar-unscheduled-head {
@@ -4630,13 +4666,12 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-unscheduled-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 10px;
 }
 
 .work-order-calendar-unscheduled-list .work-order-calendar-card {
-  width: min(260px, 100%);
+  width: 100%;
 }
 
 .work-order-calendar-grid {
@@ -8305,6 +8340,20 @@ body.is-work-order-editor-open {
   .work-order-calendar-toolbar,
   .work-order-map-toolbar {
     align-items: stretch;
+  }
+
+  .work-order-calendar-toolbar-side {
+    justify-content: space-between;
+  }
+
+  .work-order-calendar-content {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-calendar-unscheduled {
+    position: static;
+    max-height: none;
+    order: 2;
   }
 
   .work-order-calendar-grid {

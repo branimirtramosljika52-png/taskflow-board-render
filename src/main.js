@@ -319,6 +319,7 @@ const state = {
   activeWorkOrderViewMode: "list",
   workOrderCalendar: {
     weekStart: getStartOfWeekDateKey(new Date().toISOString().slice(0, 10)),
+    showWeekends: true,
     draggingWorkOrderId: "",
     dragLaneKey: "",
   },
@@ -732,6 +733,7 @@ const workOrderCalendarRange = document.querySelector("#work-order-calendar-rang
 const workOrderCalendarMeta = document.querySelector("#work-order-calendar-meta");
 const workOrderCalendarGrid = document.querySelector("#work-order-calendar-grid");
 const workOrderCalendarUnscheduled = document.querySelector("#work-order-calendar-unscheduled");
+const workOrderCalendarWeekendsInput = document.querySelector("#work-order-calendar-weekends");
 const workOrderMapStage = document.querySelector("#work-order-map-stage");
 const workOrderMapCanvas = document.querySelector("#work-order-map-canvas");
 const workOrderMapSummary = document.querySelector("#work-order-map-summary");
@@ -2631,13 +2633,17 @@ function shiftDateKey(value, days) {
   return toDateKey(shifted);
 }
 
-function buildWorkOrderCalendarWeekDays(weekStart = state.workOrderCalendar.weekStart) {
+function buildWorkOrderCalendarWeekDays(
+  weekStart = state.workOrderCalendar.weekStart,
+  showWeekends = state.workOrderCalendar.showWeekends,
+) {
   const todayKey = toDateKey(new Date());
-  return Array.from({ length: 7 }, (_, index) => {
+  const days = Array.from({ length: 7 }, (_, index) => {
     const dateKey = shiftDateKey(weekStart, index);
     const parsedDate = parseDateValue(dateKey);
     return {
       key: dateKey,
+      dayIndex: parsedDate.getDay(),
       label: new Intl.DateTimeFormat("hr-HR", {
         weekday: "short",
       }).format(parsedDate),
@@ -2650,11 +2656,18 @@ function buildWorkOrderCalendarWeekDays(weekStart = state.workOrderCalendar.week
       isToday: dateKey === todayKey,
     };
   });
+
+  return showWeekends ? days : days.filter((day) => day.dayIndex !== 0 && day.dayIndex !== 6);
 }
 
-function formatCalendarRangeLabel(weekStart = state.workOrderCalendar.weekStart) {
-  const weekEnd = shiftDateKey(weekStart, 6);
-  return `${formatCompactDate(weekStart)} - ${formatCompactDate(weekEnd)}`;
+function formatCalendarRangeLabel(
+  weekStart = state.workOrderCalendar.weekStart,
+  showWeekends = state.workOrderCalendar.showWeekends,
+) {
+  const visibleDays = buildWorkOrderCalendarWeekDays(weekStart, showWeekends);
+  const firstDay = visibleDays[0]?.key ?? weekStart;
+  const lastDay = visibleDays[visibleDays.length - 1]?.key ?? shiftDateKey(weekStart, 6);
+  return `${formatCompactDate(firstDay)} - ${formatCompactDate(lastDay)}`;
 }
 
 function getWorkOrderViewModeLabel(mode = state.activeWorkOrderViewMode) {
@@ -9666,18 +9679,25 @@ function renderWorkOrderCalendarSchedulerView() {
 
   const filtered = getFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
-  const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
+  const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart, state.workOrderCalendar.showWeekends);
+
+  if (workOrderCalendarWeekendsInput) {
+    workOrderCalendarWeekendsInput.checked = state.workOrderCalendar.showWeekends;
+  }
 
   if (workOrderCalendarRange) {
-    workOrderCalendarRange.textContent = formatCalendarRangeLabel(calendar.weekStart);
+    workOrderCalendarRange.textContent = formatCalendarRangeLabel(
+      calendar.weekStart,
+      state.workOrderCalendar.showWeekends,
+    );
   }
 
   if (workOrderCalendarMeta) {
     const scheduledCount = calendar.lanes.reduce(
-      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
+      (sum, lane) => sum + dayDescriptors.reduce((laneSum, day) => laneSum + (lane.itemsByDate[day.key]?.length ?? 0), 0),
       0,
     );
-    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} Â· ${scheduledCount} rasporedenih Â· ${calendar.unscheduled.length} bez roka`;
+    workOrderCalendarMeta.textContent = `${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez roka`;
   }
 
   if (workOrderCalendarUnscheduled) {
@@ -9692,7 +9712,7 @@ function renderWorkOrderCalendarSchedulerView() {
       label.textContent = "Bez roka";
 
       const meta = document.createElement("span");
-      meta.textContent = "Povuci karticu na datum i osobu za brzo slaganje rasporeda.";
+      meta.textContent = "Povuci karticu na datum i osobu.";
       head.append(label, meta);
 
       const list = document.createElement("div");
@@ -11832,6 +11852,11 @@ workOrderCalendarTodayButton?.addEventListener("click", () => {
 
 workOrderCalendarNextButton?.addEventListener("click", () => {
   state.workOrderCalendar.weekStart = shiftDateKey(state.workOrderCalendar.weekStart, 7);
+  renderWorkOrderWorkspace();
+});
+
+workOrderCalendarWeekendsInput?.addEventListener("change", () => {
+  state.workOrderCalendar.showWeekends = workOrderCalendarWeekendsInput.checked;
   renderWorkOrderWorkspace();
 });
 
