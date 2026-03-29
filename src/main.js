@@ -6,6 +6,7 @@
   DASHBOARD_WIDGET_SIZE_OPTIONS,
   DASHBOARD_WIDGET_SOURCE_OPTIONS,
   DASHBOARD_WIDGET_VISUALIZATION_OPTIONS,
+  OFFER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   TODO_TASK_STATUS_OPTIONS,
@@ -17,14 +18,18 @@
   buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   createDashboardWidget,
+  deriveOfferInitials,
+  filterOffers,
   filterReminders,
   filterTodoTasks,
   filterWorkOrders,
   applyDashboardWidgetGridLayout,
+  nextOfferNumber,
   getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
   groupWorkOrdersByExecutorSet,
+  sortOffers,
   sortReminders,
   sortDashboardWidgets,
   sortTodoTasks,
@@ -314,6 +319,7 @@ const state = {
   workOrders: [],
   reminders: [],
   todoTasks: [],
+  offers: [],
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
@@ -518,6 +524,39 @@ const moduleViewKicker = document.querySelector("#module-view-kicker");
 const moduleViewTitle = document.querySelector("#module-view-title");
 const moduleViewDescription = document.querySelector("#module-view-description");
 const moduleViewChips = document.querySelector("#module-view-chips");
+const offersModule = document.querySelector("#offers-module");
+const offersTotalCount = document.querySelector("#offers-total-count");
+const offersDraftCount = document.querySelector("#offers-draft-count");
+const offersSentCount = document.querySelector("#offers-sent-count");
+const offersAcceptedCount = document.querySelector("#offers-accepted-count");
+const offersSearchInput = document.querySelector("#offers-search");
+const offersFilterStatusInput = document.querySelector("#offers-filter-status");
+const offersHelper = document.querySelector("#offers-helper");
+const offersList = document.querySelector("#offers-list");
+const offersEmpty = document.querySelector("#offers-empty");
+const offerOpenFormButton = document.querySelector("#offer-open-form");
+const offerForm = document.querySelector("#offer-form");
+const offerIdInput = document.querySelector("#offer-id");
+const offerNumberPreview = document.querySelector("#offer-number-preview");
+const offerTotalPreview = document.querySelector("#offer-total-preview");
+const offerTitleInput = document.querySelector("#offer-title");
+const offerCompanyIdInput = document.querySelector("#offer-company-id");
+const offerLocationIdInput = document.querySelector("#offer-location-id");
+const offerServiceLineInput = document.querySelector("#offer-service-line");
+const offerStatusInput = document.querySelector("#offer-status");
+const offerValidUntilInput = document.querySelector("#offer-valid-until");
+const offerTaxRateInput = document.querySelector("#offer-tax-rate");
+const offerNoteInput = document.querySelector("#offer-note");
+const offerAddItemButton = document.querySelector("#offer-add-item");
+const offerItems = document.querySelector("#offer-items");
+const offerSubtotal = document.querySelector("#offer-subtotal");
+const offerTaxTotal = document.querySelector("#offer-tax-total");
+const offerGrandTotal = document.querySelector("#offer-grand-total");
+const offerError = document.querySelector("#offer-error");
+const offerResetButton = document.querySelector("#offer-reset");
+const offerDeleteButton = document.querySelector("#offer-delete");
+
+let offerFormItems = [];
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1210,6 +1249,7 @@ function applySnapshot(payload) {
   state.workOrders = payload.workOrders ?? [];
   state.reminders = payload.reminders ?? [];
   state.todoTasks = payload.todoTasks ?? [];
+  state.offers = payload.offers ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
@@ -1225,6 +1265,9 @@ function applySnapshot(payload) {
     if (state.dashboardBuilder.draftMode === "edit") {
       closeDashboardBuilder();
     }
+  }
+  if (offerIdInput?.value && !state.offers.some((item) => String(item.id) === String(offerIdInput.value))) {
+    resetOfferForm();
   }
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
@@ -2250,6 +2293,7 @@ function persistRailHidden() {
 
 function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
+  const isOffersModule = state.activeModuleItem === "offers";
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -2270,6 +2314,14 @@ function renderModuleView() {
       chipElement.textContent = chip;
       return chipElement;
     }));
+  }
+
+  if (offersModule) {
+    offersModule.hidden = !isOffersModule;
+  }
+
+  if (isOffersModule) {
+    renderOffersModule();
   }
 }
 
@@ -3173,6 +3225,19 @@ function formatMeasurementAverage(row) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(average);
+}
+
+function formatCurrencyAmount(value, currency = "EUR") {
+  return new Intl.NumberFormat("hr-HR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0) || 0);
+}
+
+function roundMoneyAmount(value) {
+  return Math.round((Number(value ?? 0) || 0) * 100) / 100;
 }
 
 function getSpreadsheetColumnLabel(index) {
@@ -8625,6 +8690,414 @@ function renderTodo() {
   renderTodoDetail();
 }
 
+function getOfferStatusLabel(status = "draft") {
+  return OFFER_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
+
+function createOfferStatusBadge(status = "draft") {
+  const badge = document.createElement("span");
+  badge.className = `offer-status-badge is-${status || "draft"}`;
+  badge.textContent = getOfferStatusLabel(status || "draft");
+  return badge;
+}
+
+function createEmptyOfferItemDraft(item = {}) {
+  return {
+    description: String(item?.description ?? ""),
+    unit: String(item?.unit ?? ""),
+    quantity: String(item?.quantity ?? ""),
+    unitPrice: String(item?.unitPrice ?? ""),
+  };
+}
+
+function parseOfferMoneyInput(value, fallback = 0) {
+  const raw = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function getOfferLineTotal(item = {}) {
+  const quantity = Math.max(0, parseOfferMoneyInput(item.quantity, 0));
+  const unitPrice = Math.max(0, parseOfferMoneyInput(item.unitPrice, 0));
+  return roundMoneyAmount(quantity * unitPrice);
+}
+
+function getOfferDraftTotals() {
+  const subtotal = roundMoneyAmount(offerFormItems.reduce((sum, item) => sum + getOfferLineTotal(item), 0));
+  const taxRate = Math.max(0, parseOfferMoneyInput(offerTaxRateInput?.value, 25));
+  const taxTotal = roundMoneyAmount(subtotal * (taxRate / 100));
+
+  return {
+    subtotal,
+    taxRate,
+    taxTotal,
+    total: roundMoneyAmount(subtotal + taxTotal),
+  };
+}
+
+function syncOfferNumberPreview() {
+  if (!offerNumberPreview) {
+    return;
+  }
+
+  const currentOffer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || ""));
+
+  if (currentOffer?.offerNumber) {
+    offerNumberPreview.textContent = currentOffer.offerNumber;
+    return;
+  }
+
+  const preview = nextOfferNumber(state.offers ?? [], {
+    year: Number(new Date().toISOString().slice(0, 4)),
+    initials: deriveOfferInitials(state.user?.fullName || state.user?.username || "Safety360") || "SD",
+  });
+  offerNumberPreview.textContent = preview.offerNumber;
+}
+
+function syncOfferTotals() {
+  const totals = getOfferDraftTotals();
+  const currency = "EUR";
+
+  if (offerSubtotal) {
+    offerSubtotal.textContent = formatCurrencyAmount(totals.subtotal, currency);
+  }
+  if (offerTaxTotal) {
+    offerTaxTotal.textContent = formatCurrencyAmount(totals.taxTotal, currency);
+  }
+  if (offerGrandTotal) {
+    offerGrandTotal.textContent = formatCurrencyAmount(totals.total, currency);
+  }
+  if (offerTotalPreview) {
+    offerTotalPreview.textContent = formatCurrencyAmount(totals.total, currency);
+  }
+
+  offerItems?.querySelectorAll("[data-offer-item-total-index]").forEach((node) => {
+    const index = Number(node.getAttribute("data-offer-item-total-index"));
+    const item = offerFormItems[index] ?? {};
+    node.textContent = formatCurrencyAmount(getOfferLineTotal(item), currency);
+  });
+}
+
+function setOfferFormItems(items = [], { ensureOne = true } = {}) {
+  offerFormItems = Array.isArray(items) && items.length > 0
+    ? items.map((item) => createEmptyOfferItemDraft(item))
+    : (ensureOne ? [createEmptyOfferItemDraft()] : []);
+  renderOfferItemRows();
+}
+
+function updateOfferFormItem(index, key, value) {
+  offerFormItems = offerFormItems.map((item, itemIndex) => (
+    itemIndex === index
+      ? {
+        ...item,
+        [key]: value,
+      }
+      : item
+  ));
+  syncOfferTotals();
+}
+
+function addOfferFormItem(item = createEmptyOfferItemDraft()) {
+  offerFormItems = [...offerFormItems, createEmptyOfferItemDraft(item)];
+  renderOfferItemRows();
+}
+
+function removeOfferFormItem(index) {
+  offerFormItems = offerFormItems.filter((_, itemIndex) => itemIndex !== index);
+
+  if (offerFormItems.length === 0) {
+    offerFormItems = [createEmptyOfferItemDraft()];
+  }
+
+  renderOfferItemRows();
+}
+
+function renderOfferItemRows() {
+  if (!offerItems) {
+    return;
+  }
+
+  if (offerFormItems.length === 0) {
+    offerItems.replaceChildren();
+    syncOfferTotals();
+    return;
+  }
+
+  offerItems.replaceChildren(...offerFormItems.map((item, index) => {
+    const row = document.createElement("div");
+    row.className = "offer-item-row";
+
+    const createInputField = (labelText, key, {
+      type = "text",
+      placeholder = "",
+      inputMode = "",
+    } = {}) => {
+      const label = document.createElement("label");
+      label.className = "field";
+
+      const span = document.createElement("span");
+      span.textContent = labelText;
+
+      const input = document.createElement("input");
+      input.type = type;
+      input.placeholder = placeholder;
+      input.value = item[key] ?? "";
+      if (inputMode) {
+        input.inputMode = inputMode;
+      }
+      input.addEventListener("input", (event) => {
+        updateOfferFormItem(index, key, event.currentTarget.value);
+      });
+
+      label.append(span, input);
+      return label;
+    };
+
+    const total = document.createElement("div");
+    total.className = "offer-item-total";
+    const totalLabel = document.createElement("span");
+    totalLabel.className = "offer-item-total-label";
+    totalLabel.textContent = "Ukupno";
+    const totalValue = document.createElement("strong");
+    totalValue.className = "offer-item-total-value";
+    totalValue.setAttribute("data-offer-item-total-index", String(index));
+    totalValue.textContent = formatCurrencyAmount(getOfferLineTotal(item), "EUR");
+    total.append(totalLabel, totalValue);
+
+    const removeButton = createActionButton("Ukloni", "card-button card-danger offer-item-remove", () => {
+      removeOfferFormItem(index);
+    });
+
+    row.append(
+      createInputField("Usluga", "description", { placeholder: "Opis usluge ili stavke" }),
+      createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj..." }),
+      createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal" }),
+      createInputField("Cijena", "unitPrice", { placeholder: "0,00", inputMode: "decimal" }),
+      total,
+      removeButton,
+    );
+
+    return row;
+  }));
+
+  syncOfferTotals();
+}
+
+function rebuildOfferCompanyOptions(selectedValue = "") {
+  if (!offerCompanyIdInput) {
+    return;
+  }
+
+  const options = [
+    { value: "", label: "Odaberi tvrtku" },
+    ...state.companies
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((company) => ({
+        value: company.id,
+        label: company.name,
+      })),
+  ];
+
+  replaceSelectOptions(offerCompanyIdInput, options, selectedValue || offerCompanyIdInput.value || "");
+}
+
+function rebuildOfferLocationOptions(selectedValue = "") {
+  if (!offerLocationIdInput) {
+    return;
+  }
+
+  const companyId = offerCompanyIdInput?.value || "";
+  const options = [
+    { value: "", label: companyId ? "Bez lokacije" : "Prvo odaberi tvrtku" },
+    ...state.locations
+      .filter((location) => !companyId || location.companyId === companyId)
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((location) => ({
+        value: location.id,
+        label: location.name,
+      })),
+  ];
+
+  replaceSelectOptions(offerLocationIdInput, options, selectedValue || offerLocationIdInput.value || "");
+}
+
+function buildOfferPayload() {
+  return {
+    title: offerTitleInput.value,
+    companyId: offerCompanyIdInput.value,
+    locationId: offerLocationIdInput.value,
+    serviceLine: offerServiceLineInput.value,
+    status: offerStatusInput.value,
+    validUntil: offerValidUntilInput.value,
+    taxRate: offerTaxRateInput.value,
+    note: offerNoteInput.value,
+    items: offerFormItems.map((item) => ({
+      description: item.description,
+      unit: item.unit,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })),
+  };
+}
+
+function resetOfferForm() {
+  if (!offerForm) {
+    return;
+  }
+
+  offerForm.reset();
+  offerIdInput.value = "";
+  offerError.textContent = "";
+  if (offerStatusInput) {
+    offerStatusInput.value = "draft";
+  }
+  if (offerTaxRateInput) {
+    offerTaxRateInput.value = "25";
+  }
+  rebuildOfferCompanyOptions("");
+  if (offerCompanyIdInput) {
+    offerCompanyIdInput.value = "";
+  }
+  rebuildOfferLocationOptions("");
+  setOfferFormItems([], { ensureOne: true });
+  if (offerDeleteButton) {
+    offerDeleteButton.hidden = true;
+  }
+  syncOfferNumberPreview();
+  syncOfferTotals();
+}
+
+function hydrateOfferForm(offer) {
+  state.activeView = "module";
+  state.activeSidebarGroup = "operations";
+  state.activeSidebarItem = "offers";
+  state.activeModuleItem = "offers";
+  renderModuleView();
+  renderActiveView();
+
+  offerIdInput.value = offer.id;
+  offerTitleInput.value = offer.title || "";
+  rebuildOfferCompanyOptions(offer.companyId || "");
+  offerCompanyIdInput.value = offer.companyId || "";
+  rebuildOfferLocationOptions(offer.locationId || "");
+  offerLocationIdInput.value = offer.locationId || "";
+  offerServiceLineInput.value = offer.serviceLine || "";
+  offerStatusInput.value = offer.status || "draft";
+  offerValidUntilInput.value = offer.validUntil || "";
+  offerTaxRateInput.value = String(offer.taxRate ?? 25);
+  offerNoteInput.value = offer.note || "";
+  setOfferFormItems(offer.items ?? [], { ensureOne: true });
+  offerError.textContent = "";
+  if (offerDeleteButton) {
+    offerDeleteButton.hidden = false;
+  }
+  syncOfferNumberPreview();
+  syncOfferTotals();
+  offerTitleInput.focus({ preventScroll: true });
+}
+
+function renderOffersModule() {
+  if (!offersModule || !offersList || !offersEmpty) {
+    return;
+  }
+
+  const allOffers = sortOffers(state.offers ?? []);
+  const visibleOffers = sortOffers(filterOffers(state.offers ?? [], {
+    query: offersSearchInput?.value || "",
+    status: offersFilterStatusInput?.value || "all",
+  }));
+
+  if (offersTotalCount) {
+    offersTotalCount.textContent = String(allOffers.length);
+  }
+  if (offersDraftCount) {
+    offersDraftCount.textContent = String(allOffers.filter((item) => item.status === "draft").length);
+  }
+  if (offersSentCount) {
+    offersSentCount.textContent = String(allOffers.filter((item) => item.status === "sent").length);
+  }
+  if (offersAcceptedCount) {
+    offersAcceptedCount.textContent = String(allOffers.filter((item) => item.status === "accepted").length);
+  }
+  if (offersHelper) {
+    offersHelper.textContent = visibleOffers.length === allOffers.length
+      ? `Prikazano ${visibleOffers.length} ponuda.`
+      : `Prikazano ${visibleOffers.length} od ${allOffers.length} ponuda.`;
+  }
+
+  offersList.replaceChildren(...visibleOffers.map((offer) => {
+    const card = document.createElement("article");
+    card.className = "offer-list-card";
+    if (String(offer.id) === String(offerIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    const head = document.createElement("div");
+    head.className = "offer-list-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "offer-list-card-copy";
+    const number = document.createElement("span");
+    number.className = "offer-list-card-number";
+    number.textContent = offer.offerNumber || "Bez broja";
+    const title = document.createElement("h4");
+    title.className = "offer-list-card-title";
+    title.textContent = offer.title || "Nova ponuda";
+    copy.append(number, title);
+
+    head.append(copy, createOfferStatusBadge(offer.status || "draft"));
+
+    const meta = document.createElement("p");
+    meta.className = "offer-list-card-meta";
+    meta.textContent = [offer.companyName, offer.locationName].filter(Boolean).join(" · ") || "Bez lokacije";
+
+    const services = document.createElement("p");
+    services.className = "offer-list-card-services";
+    services.textContent = [
+      offer.serviceLine || "Bez vrste usluge",
+      offer.validUntil ? `Vrijedi do ${formatDate(offer.validUntil)}` : "",
+      offer.items?.length ? `${offer.items.length} stavki` : "",
+    ].filter(Boolean).join(" · ");
+
+    const footer = document.createElement("div");
+    footer.className = "offer-list-card-footer";
+    const creator = document.createElement("span");
+    creator.className = "offer-list-card-number";
+    creator.textContent = offer.createdByLabel || "Safety360";
+    const total = document.createElement("strong");
+    total.className = "offer-list-card-total";
+    total.textContent = formatCurrencyAmount(offer.total || 0, offer.currency || "EUR");
+    footer.append(creator, total);
+
+    card.append(head, meta, services, footer);
+    card.addEventListener("click", () => {
+      hydrateOfferForm(offer);
+    });
+    return card;
+  }));
+
+  offersEmpty.hidden = visibleOffers.length !== 0;
+  if (visibleOffers.length === 0) {
+    const emptyCard = document.createElement("div");
+    emptyCard.className = "offers-empty-card";
+    emptyCard.textContent = "Nema ponuda za odabrane filtere. Otvori novu ponudu ili proširi pretragu.";
+    offersList.replaceChildren(emptyCard);
+  }
+
+  if (offerDeleteButton) {
+    offerDeleteButton.hidden = !offerIdInput?.value;
+  }
+  syncOfferNumberPreview();
+  syncOfferTotals();
+}
+
 function renderActiveView() {
   const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
 
@@ -8690,6 +9163,15 @@ function renderSharedOptions() {
     { value: "created", label: "Poslao sam" },
     { value: "unassigned", label: "Bez izvrsitelja" },
   ], todoFilterScopeInput?.value || "assigned");
+  if (offerStatusInput) {
+    replaceSelectOptions(offerStatusInput, OFFER_STATUS_OPTIONS, offerStatusInput.value || "draft");
+  }
+  if (offersFilterStatusInput) {
+    replaceSelectOptions(offersFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...OFFER_STATUS_OPTIONS,
+    ], offersFilterStatusInput.value || "all");
+  }
 
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
@@ -8703,6 +9185,8 @@ function renderSharedOptions() {
   rebuildTodoAssigneeOptions(todoAssigneeInput?.value || "");
   rebuildTodoDetailAssigneeOptions(todoDetailAssignee?.value || "");
   rebuildTodoWorkOrderOptions(todoWorkOrderIdInput?.value || "");
+  rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
+  rebuildOfferLocationOptions(offerLocationIdInput?.value || "");
   renderTodoLinkPreview();
 
   if (organizationSwitcher) {
@@ -12210,6 +12694,81 @@ workOrderCalendarUnscheduledToggle?.addEventListener("click", () => {
   renderWorkOrderWorkspace();
 });
 
+offerOpenFormButton?.addEventListener("click", () => {
+  resetOfferForm();
+  offerTitleInput?.focus({ preventScroll: true });
+});
+
+offersSearchInput?.addEventListener("input", () => {
+  renderOffersModule();
+});
+
+offersFilterStatusInput?.addEventListener("change", () => {
+  renderOffersModule();
+});
+
+offerCompanyIdInput?.addEventListener("change", () => {
+  rebuildOfferLocationOptions("");
+});
+
+offerTaxRateInput?.addEventListener("input", () => {
+  syncOfferTotals();
+});
+
+offerAddItemButton?.addEventListener("click", () => {
+  addOfferFormItem();
+  const lastDescriptionInput = offerItems?.querySelector(".offer-item-row:last-child input");
+  if (lastDescriptionInput instanceof HTMLElement) {
+    lastDescriptionInput.focus({ preventScroll: true });
+  }
+});
+
+offerResetButton?.addEventListener("click", () => {
+  resetOfferForm();
+  renderOffersModule();
+});
+
+offerDeleteButton?.addEventListener("click", () => {
+  const offerId = offerIdInput?.value || "";
+
+  if (!offerId) {
+    return;
+  }
+
+  if (!window.confirm("Obrisati ovu ponudu?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/offers/${offerId}`, {
+    method: "DELETE",
+  }), offerError).then((success) => {
+    if (success) {
+      resetOfferForm();
+      renderOffersModule();
+    }
+  });
+});
+
+offerForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(offerIdInput.value);
+  const path = isEditing ? `/offers/${offerIdInput.value}` : "/offers";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildOfferPayload(),
+  }), offerError).then((success) => {
+    if (success) {
+      if (!isEditing) {
+        resetOfferForm();
+      }
+      renderOffersModule();
+    }
+  });
+});
+
 companyForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -12687,6 +13246,7 @@ logoutButton.addEventListener("click", () => {
     state.workOrders = [];
     state.reminders = [];
     state.todoTasks = [];
+    state.offers = [];
     state.dashboardWidgets = [];
     state.companies = [];
     state.locations = [];
@@ -12711,6 +13271,7 @@ logoutButton.addEventListener("click", () => {
     state.measurementSheet.contextMenu = null;
     loginForm.reset();
     closeMeasurementSheet();
+    resetOfferForm();
     renderAuthState();
     void refreshLoginContent();
   });
@@ -12914,6 +13475,7 @@ resetWorkOrderActivityState();
 resetMeasurementSheet();
 resetReminderForm();
 resetTodoForm();
+resetOfferForm();
 resetCompanyForm();
 resetLocationForm();
 resetOrganizationForm();

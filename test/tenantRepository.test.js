@@ -41,6 +41,10 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
       { id: "wo-1", companyId: "company-1", description: "RN 1" },
       { id: "wo-2", companyId: "company-2", description: "RN 2" },
     ],
+    offers: [
+      { id: "offer-1", organizationId: "1", companyId: "company-1", title: "Ponuda A", items: [] },
+      { id: "offer-2", organizationId: "2", companyId: "company-2", title: "Ponuda B", items: [] },
+    ],
   };
 
   const scoped = await repository.getSnapshot(actor, "2", rawSnapshot);
@@ -50,6 +54,8 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
   assert.equal(scoped.companies[0].id, "company-2");
   assert.equal(scoped.locations[0].id, "location-2");
   assert.equal(scoped.workOrders[0].id, "wo-2");
+  assert.equal(scoped.offers.length, 1);
+  assert.equal(scoped.offers[0].id, "offer-2");
 });
 
 test("memory tenant repository lets admins create users only inside their organization", async () => {

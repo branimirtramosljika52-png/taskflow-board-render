@@ -6,14 +6,18 @@ import {
   createCompany,
   createDashboardWidget,
   createLocation,
+  createOffer,
   createReminder,
   createTodoTask,
   createTodoTaskComment,
   createWorkOrder,
+  deriveOfferInitials,
+  nextOfferNumber,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateDashboardWidget,
   updateLocation,
+  updateOffer,
   updateReminder,
   updateTodoTask,
   updateWorkOrder,
@@ -200,6 +204,21 @@ function parseJsonObject(value, fallback = {}) {
       : { ...fallback };
   } catch {
     return { ...fallback };
+  }
+}
+
+function parseJsonArray(value, fallback = []) {
+  const raw = dbString(value);
+
+  if (!raw) {
+    return [...fallback];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [...fallback];
+  } catch {
+    return [...fallback];
   }
 }
 
@@ -701,6 +720,69 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [offerRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, offer_number, offer_year, offer_sequence,
+           offer_initials, title, service_line, status, valid_until, note, currency_code,
+           tax_rate, subtotal_amount, tax_total_amount, grand_total_amount, items_json,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_offers
+    ORDER BY
+      CASE status
+        WHEN 'draft' THEN 0
+        WHEN 'sent' THEN 1
+        WHEN 'accepted' THEN 2
+        WHEN 'rejected' THEN 3
+        ELSE 9
+      END ASC,
+      valid_until ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const offers = offerRows.map((row) => {
+    const company = companiesById.get(dbString(row.company_id));
+    const location = locationsById.get(dbString(row.location_id));
+    const items = parseJsonArray(row.items_json).map((item) => ({
+      description: dbString(item.description),
+      unit: dbString(item.unit),
+      quantity: Number(item.quantity ?? 0) || 0,
+      unitPrice: Number(item.unitPrice ?? 0) || 0,
+      totalPrice: Number(item.totalPrice ?? 0) || 0,
+    }));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId: dbString(row.company_id),
+      companyName: company?.name ?? "",
+      companyOib: company?.oib ?? "",
+      headquarters: company?.headquarters ?? "",
+      locationId: dbString(row.location_id),
+      locationName: location?.name ?? "",
+      region: location?.region ?? "",
+      coordinates: location?.coordinates ?? "",
+      offerNumber: row.offer_number ?? "",
+      offerYear: Number(row.offer_year ?? 0) || null,
+      offerSequence: Number(row.offer_sequence ?? 0) || null,
+      offerInitials: row.offer_initials ?? "",
+      title: row.title ?? "",
+      serviceLine: row.service_line ?? "",
+      status: row.status ?? "draft",
+      validUntil: normalizeDateOnly(row.valid_until),
+      note: row.note ?? "",
+      currency: row.currency_code ?? "EUR",
+      taxRate: Number(row.tax_rate ?? 0) || 0,
+      subtotal: Number(row.subtotal_amount ?? 0) || 0,
+      taxTotal: Number(row.tax_total_amount ?? 0) || 0,
+      total: Number(row.grand_total_amount ?? 0) || 0,
+      items,
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
            size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height,
@@ -735,6 +817,7 @@ async function fetchSnapshotFromConnection(connection) {
     workOrders,
     reminders,
     todoTasks,
+    offers,
     dashboardWidgets,
   };
 }
@@ -808,6 +891,7 @@ export class InMemorySafetyRepository {
       workOrders: [],
       reminders: [],
       todoTasks: [],
+      offers: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -903,6 +987,10 @@ export class InMemorySafetyRepository {
         ...item,
         comments: (item.comments ?? []).map((comment) => ({ ...comment })),
       })),
+      offers: this.snapshot.offers.map((item) => ({
+        ...item,
+        items: (item.items ?? []).map((entry) => ({ ...entry })),
+      })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
         filters: { ...(item.filters ?? {}) },
@@ -939,9 +1027,10 @@ export class InMemorySafetyRepository {
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.companyId === id);
     const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
+    const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks) {
-      throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers) {
+      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama ili radnim nalozima.");
     }
 
     this.snapshot.companies = this.snapshot.companies.filter((item) => item.id !== id);
@@ -973,13 +1062,14 @@ export class InMemorySafetyRepository {
       return false;
     }
 
-      const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
-      const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
-      const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
+    const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
+    const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
+    const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
+    const hasOffers = this.snapshot.offers.some((item) => item.locationId === id);
 
-      if (hasWorkOrders || hasReminders || hasTodoTasks) {
-        throw new Error("Lokacija je vec povezana s radnim nalozima.");
-      }
+    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers) {
+      throw new Error("Lokacija je vec povezana s ponudama ili radnim nalozima.");
+    }
 
     this.snapshot.locations = this.snapshot.locations.filter((item) => item.id !== id);
     return true;
@@ -1149,6 +1239,43 @@ export class InMemorySafetyRepository {
     return this.snapshot.todoTasks.length !== before;
   }
 
+  async createOffer(input, actor = null) {
+    const timestamp = new Date().toISOString();
+    const numberParts = nextOfferNumber(this.snapshot.offers, {
+      year: Number(timestamp.slice(0, 4)),
+      initials: actor?.fullName || actor?.username || input.createdByLabel || "",
+    });
+    const offer = createOffer({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), numberParts, () => timestamp);
+    this.snapshot.offers = [offer, ...this.snapshot.offers];
+    return offer;
+  }
+
+  async updateOffer(id, patch, actor = null) {
+    const current = this.snapshot.offers.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateOffer(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.offers = this.snapshot.offers.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteOffer(id) {
+    const before = this.snapshot.offers.length;
+    this.snapshot.offers = this.snapshot.offers.filter((item) => item.id !== id);
+    return this.snapshot.offers.length !== before;
+  }
+
   async createDashboardWidget(input) {
     const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
@@ -1288,6 +1415,38 @@ export class MySqlSafetyRepository {
         INDEX idx_web_team_task_comments_task (task_id),
         INDEX idx_web_team_task_comments_org (organization_id),
         INDEX idx_web_team_task_comments_created (created_at)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_offers (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        offer_number VARCHAR(64) NOT NULL,
+        offer_year INT NOT NULL,
+        offer_sequence INT NOT NULL,
+        offer_initials VARCHAR(16) NOT NULL DEFAULT '',
+        title VARCHAR(180) NOT NULL,
+        service_line VARCHAR(180) NOT NULL DEFAULT '',
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        valid_until DATE NULL,
+        note TEXT NOT NULL,
+        currency_code VARCHAR(12) NOT NULL DEFAULT 'EUR',
+        tax_rate DECIMAL(10, 2) NOT NULL DEFAULT 25.00,
+        subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        tax_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        items_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_offers_org_number (organization_id, offer_number),
+        INDEX idx_web_offers_org_status (organization_id, status),
+        INDEX idx_web_offers_company (company_id),
+        INDEX idx_web_offers_location (location_id),
+        INDEX idx_web_offers_valid_until (valid_until)
       )
     `);
     await this.pool.query(`
@@ -1632,9 +1791,13 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_team_tasks WHERE company_id = ?",
         [Number(id)],
       );
+      const [[offerCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_offers WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -1814,10 +1977,14 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_team_tasks WHERE location_id = ?",
         [Number(id)],
       );
+      const [[offerCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_offers WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0) {
         await connection.rollback();
-        throw new Error("Lokacija je vec povezana s radnim nalozima.");
+        throw new Error("Lokacija je vec povezana s ponudama ili radnim nalozima.");
       }
 
       await connection.query("DELETE FROM web_location_contacts WHERE location_id = ?", [Number(id)]);
@@ -2288,6 +2455,136 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createOffer(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const numberParts = nextOfferNumber(snapshot.offers ?? [], {
+        year: Number(new Date().toISOString().slice(0, 4)),
+        initials: deriveOfferInitials(actor?.fullName || actor?.username || input.createdByLabel || ""),
+      });
+      const draft = createOffer({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", numberParts, () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_offers
+            (organization_id, company_id, location_id, offer_number, offer_year, offer_sequence,
+             offer_initials, title, service_line, status, valid_until, note, currency_code,
+             tax_rate, subtotal_amount, tax_total_amount, grand_total_amount, items_json,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          draft.offerNumber,
+          Number(draft.offerYear),
+          Number(draft.offerSequence),
+          draft.offerInitials,
+          draft.title,
+          draft.serviceLine,
+          draft.status,
+          draft.validUntil,
+          draft.note,
+          draft.currency,
+          parseNullableDecimal(draft.taxRate) ?? 0,
+          parseNullableDecimal(draft.subtotal) ?? 0,
+          parseNullableDecimal(draft.taxTotal) ?? 0,
+          parseNullableDecimal(draft.total) ?? 0,
+          JSON.stringify(draft.items ?? []),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOffer(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.offers.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateOffer(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_offers
+          SET company_id = ?, location_id = ?, title = ?, service_line = ?, status = ?, valid_until = ?,
+              note = ?, currency_code = ?, tax_rate = ?, subtotal_amount = ?, tax_total_amount = ?,
+              grand_total_amount = ?, items_json = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          parseNullableInteger(next.locationId),
+          next.title,
+          next.serviceLine,
+          next.status,
+          next.validUntil,
+          next.note,
+          next.currency,
+          parseNullableDecimal(next.taxRate) ?? 0,
+          parseNullableDecimal(next.subtotal) ?? 0,
+          parseNullableDecimal(next.taxTotal) ?? 0,
+          parseNullableDecimal(next.total) ?? 0,
+          JSON.stringify(next.items ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteOffer(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_offers WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }

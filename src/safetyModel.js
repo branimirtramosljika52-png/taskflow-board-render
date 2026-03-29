@@ -27,6 +27,13 @@ export const TODO_TASK_STATUS_OPTIONS = [
   { value: "done", label: "Zavrseno" },
 ];
 
+export const OFFER_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "sent", label: "Poslano" },
+  { value: "accepted", label: "Prihvaceno" },
+  { value: "rejected", label: "Odbijeno" },
+];
+
 export const DASHBOARD_WIDGET_SOURCE_OPTIONS = [
   { value: "work_orders", label: "Radni nalozi" },
   { value: "reminders", label: "Reminders" },
@@ -157,6 +164,7 @@ const WORK_ORDER_STATUS_SET = new Set(WORK_ORDER_STATUS_OPTIONS.map((option) => 
 const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
+const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
@@ -188,6 +196,12 @@ const TODO_TASK_STATUS_RANK = {
   in_progress: 1,
   waiting: 2,
   done: 3,
+};
+const OFFER_STATUS_RANK = {
+  draft: 0,
+  sent: 1,
+  accepted: 2,
+  rejected: 3,
 };
 
 function isoNow() {
@@ -281,6 +295,11 @@ function normalizeTodoTaskStatus(value) {
   return TODO_TASK_STATUS_SET.has(status) ? status : "open";
 }
 
+function normalizeOfferStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return OFFER_STATUS_SET.has(status) ? status : "draft";
+}
+
 function normalizeOib(value) {
   const oib = normalizeText(value).replace(/\s+/g, "");
 
@@ -293,6 +312,111 @@ function normalizeOib(value) {
 
 function normalizeId(value) {
   return normalizeText(value);
+}
+
+function normalizeFiniteNumber(value, fallback = 0) {
+  const raw = normalizeText(value).replace(/\s+/g, "").replace(",", ".");
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function roundCurrencyAmount(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function normalizeOfferTaxRate(value) {
+  return roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(value, 25)));
+}
+
+export function deriveOfferInitials(value) {
+  const normalizedValue = normalizeText(value).trim();
+  const raw = normalizedValue
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+  const tokens = raw
+    .split(/[\s._-]+/u)
+    .map((token) => token.replace(/[^A-Za-z0-9]/gu, ""))
+    .filter(Boolean);
+  const compact = raw.replace(/[^A-Za-z0-9]/gu, "").toUpperCase();
+  const looksLikeInitials = /^[A-Z0-9]{1,4}$/u.test(normalizedValue.replace(/[\s._-]+/gu, ""));
+
+  if (looksLikeInitials && compact) {
+    return compact.slice(0, 4);
+  }
+
+  const initials = tokens.map((token) => token[0]).join("").toUpperCase();
+
+  if (initials) {
+    return initials.slice(0, 4);
+  }
+
+  return (compact || "SD").slice(0, 4);
+}
+
+function normalizeOfferItems(items = []) {
+  if (!Array.isArray(items)) {
+    throw new Error("Stavke ponude moraju biti lista.");
+  }
+
+  const normalizedItems = items
+    .map((item) => {
+      const quantity = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.quantity, 0)));
+      const unitPrice = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.unitPrice, 0)));
+
+      return {
+        description: normalizeText(item?.description),
+        unit: normalizeText(item?.unit),
+        quantity,
+        unitPrice,
+        totalPrice: roundCurrencyAmount(quantity * unitPrice),
+      };
+    })
+    .filter((item) => item.description || item.quantity || item.unitPrice);
+
+  if (normalizedItems.length === 0) {
+    throw new Error("Dodaj barem jednu stavku ponude.");
+  }
+
+  return normalizedItems;
+}
+
+function calculateOfferTotals(items = [], taxRate = 25) {
+  const subtotal = roundCurrencyAmount(items.reduce((sum, item) => sum + roundCurrencyAmount(item.totalPrice), 0));
+  const taxTotal = roundCurrencyAmount(subtotal * (normalizeOfferTaxRate(taxRate) / 100));
+
+  return {
+    subtotal,
+    taxTotal,
+    total: roundCurrencyAmount(subtotal + taxTotal),
+  };
+}
+
+export function nextOfferNumber(offers = [], { year = Number(todayString().slice(0, 4)), initials = "" } = {}) {
+  const normalizedYear = Number(year) || Number(todayString().slice(0, 4));
+  const normalizedInitials = deriveOfferInitials(initials);
+  const nextSequence = offers.reduce((maxValue, offer) => {
+    if (Number(offer.offerYear) !== normalizedYear) {
+      return maxValue;
+    }
+
+    if (deriveOfferInitials(offer.offerInitials) !== normalizedInitials) {
+      return maxValue;
+    }
+
+    return Math.max(maxValue, Number(offer.offerSequence) || 0);
+  }, 0) + 1;
+
+  return {
+    offerNumber: `${normalizedYear}-${normalizedInitials}-${String(nextSequence).padStart(3, "0")}`,
+    offerYear: normalizedYear,
+    offerSequence: nextSequence,
+    offerInitials: normalizedInitials,
+  };
 }
 
 function findReminderCompany(state, companyId = "") {
@@ -347,6 +471,112 @@ function findTodoWorkOrder(state, workOrderId = "") {
   }
 
   return (state.workOrders ?? []).find((item) => item.id === workOrderId) ?? null;
+}
+
+function findOfferCompany(state, companyId = "") {
+  if (!companyId) {
+    return null;
+  }
+
+  return (state.companies ?? []).find((item) => item.id === companyId) ?? null;
+}
+
+function findOfferLocation(state, locationId = "", companyId = "") {
+  if (!locationId) {
+    return null;
+  }
+
+  return (state.locations ?? []).find((item) => (
+    item.id === locationId
+    && (!companyId || item.companyId === companyId)
+  )) ?? null;
+}
+
+function hydrateOfferCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+  offerNumber = current?.offerNumber ?? "",
+  offerYear = current?.offerYear ?? Number(timestamp.slice(0, 4)),
+  offerSequence = current?.offerSequence ?? 0,
+  offerInitials = current?.offerInitials ?? deriveOfferInitials(input?.createdByLabel ?? ""),
+}) {
+  const companyId = hasOwn(input, "companyId")
+    ? requireText(input.companyId, "Tvrtka")
+    : requireText(current?.companyId, "Tvrtka");
+  const company = findOfferCompany(state, companyId);
+
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const locationWasExplicitlyChanged = hasOwn(input, "locationId");
+  let locationId = locationWasExplicitlyChanged ? normalizeId(input.locationId) : normalizeId(current?.locationId);
+
+  if (locationId) {
+    const belongsToCompany = (state.locations ?? []).some((item) => item.id === locationId && item.companyId === companyId);
+
+    if (!belongsToCompany) {
+      if (locationWasExplicitlyChanged) {
+        throw new Error("Odabrana lokacija ne pripada tvrtki.");
+      }
+
+      locationId = "";
+    }
+  }
+
+  const location = findOfferLocation(state, locationId, companyId);
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const taxRate = hasOwn(input, "taxRate")
+    ? normalizeOfferTaxRate(input.taxRate)
+    : normalizeOfferTaxRate(current?.taxRate ?? 25);
+  const items = hasOwn(input, "items")
+    ? normalizeOfferItems(input.items)
+    : (current?.items ?? []);
+  const totals = calculateOfferTotals(items, taxRate);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company.name,
+    companyOib: company.oib ?? "",
+    headquarters: company.headquarters ?? "",
+    locationId,
+    locationName: location?.name ?? "",
+    region: location?.region ?? "",
+    coordinates: location?.coordinates ?? "",
+    offerNumber: requireText(offerNumber || current?.offerNumber, "Broj ponude"),
+    offerYear: Number(offerYear) || Number(timestamp.slice(0, 4)),
+    offerSequence: Number(offerSequence) || 0,
+    offerInitials: deriveOfferInitials(offerInitials),
+    title: hasOwn(input, "title") ? requireText(input.title, "Naziv ponude") : current?.title ?? "",
+    serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
+    status: hasOwn(input, "status") ? normalizeOfferStatus(input.status) : normalizeOfferStatus(current?.status),
+    validUntil: hasOwn(input, "validUntil")
+      ? normalizeOptionalDate(input.validUntil)
+      : normalizeOptionalDate(current?.validUntil),
+    note: hasOwn(input, "note") ? normalizeText(input.note) : current?.note ?? "",
+    currency: hasOwn(input, "currency")
+      ? (normalizeText(input.currency).toUpperCase() || "EUR")
+      : (normalizeText(current?.currency).toUpperCase() || "EUR"),
+    taxRate,
+    subtotal: totals.subtotal,
+    taxTotal: totals.taxTotal,
+    total: totals.total,
+    items: items.map((item) => ({ ...item })),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 function hydrateReminderCore({
@@ -1128,6 +1358,45 @@ export function updateTodoTask(current, patch, state, now = isoNow) {
   });
 }
 
+export function createOffer(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  numberParts = null,
+  now = isoNow,
+) {
+  const timestamp = now();
+  const resolvedNumberParts = numberParts ?? nextOfferNumber(state.offers ?? [], {
+    year: Number(timestamp.slice(0, 4)),
+    initials: input.createdByLabel ?? "",
+  });
+  const offer = hydrateOfferCore({
+    state,
+    input,
+    timestamp,
+    offerNumber: resolvedNumberParts.offerNumber,
+    offerYear: resolvedNumberParts.offerYear,
+    offerSequence: resolvedNumberParts.offerSequence,
+    offerInitials: resolvedNumberParts.offerInitials,
+  });
+
+  return {
+    ...offer,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateOffer(current, patch, state, now = isoNow) {
+  return hydrateOfferCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createTodoTaskComment(
   currentTask,
   input,
@@ -1224,6 +1493,61 @@ export function sortTodoTasks(tasks) {
     }
 
     if (!left.dueDate && right.dueDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function filterOffers(
+  offers,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return offers.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.offerNumber,
+      item.title,
+      item.companyName,
+      item.locationName,
+      item.serviceLine,
+      item.createdByLabel,
+      item.note,
+      ...(item.items ?? []).map((entry) => entry.description),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortOffers(offers) {
+  return [...offers].sort((left, right) => {
+    const leftRank = OFFER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = OFFER_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.validUntil && right.validUntil && left.validUntil !== right.validUntil) {
+      return left.validUntil.localeCompare(right.validUntil);
+    }
+
+    if (left.validUntil && !right.validUntil) {
+      return -1;
+    }
+
+    if (!left.validUntil && right.validUntil) {
       return 1;
     }
 

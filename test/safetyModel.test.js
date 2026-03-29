@@ -11,25 +11,31 @@ import {
   createCompany,
   createDashboardWidget,
   createLocation,
+  createOffer,
   createReminder,
   createTodoTask,
   createTodoTaskComment,
   createWorkOrder,
+  deriveOfferInitials,
   filterReminders,
+  filterOffers,
   filterTodoTasks,
   filterWorkOrders,
   getDashboardWidgetData,
   getDashboardInsights,
   getDashboardStats,
   groupWorkOrdersByExecutorSet,
+  nextOfferNumber,
   nextWorkOrderNumber,
   parseCoordinates,
   sortReminders,
   sortDashboardWidgets,
+  sortOffers,
   sortTodoTasks,
   syncLocationFieldsFromWorkOrder,
   updateDashboardWidget,
   updateLocation,
+  updateOffer,
   updateReminder,
   updateTodoTask,
   updateWorkOrder,
@@ -71,6 +77,10 @@ function buildState() {
     companies: [company],
     locations: [location],
     workOrders: [],
+    reminders: [],
+    todoTasks: [],
+    offers: [],
+    dashboardWidgets: [],
   };
 }
 
@@ -347,6 +357,155 @@ test("support helpers cover numbering, filtering, stats, and location sync", () 
   assert.equal(syncedLocation.coordinates, "45.1234, 16.0000");
   assert.equal(syncedLocation.region, "Sredisnja Hrvatska");
   assert.equal(buildLocationContacts(syncedLocation).length, 2);
+});
+
+test("offers generate year-initials numbering and calculate totals", () => {
+  const state = buildState();
+  const existingOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Postojeca ponuda",
+      serviceLine: "Servis",
+      createdByLabel: "Branimir Test",
+      items: [
+        { description: "Osnovni pregled", unit: "kom", quantity: 1, unitPrice: 100 },
+      ],
+    },
+    state,
+    () => "offer-1",
+    {
+      offerNumber: "2026-BT-001",
+      offerYear: 2026,
+      offerSequence: 1,
+      offerInitials: "BT",
+    },
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  const nextNumber = nextOfferNumber([existingOffer], {
+    year: 2026,
+    initials: deriveOfferInitials("Branimir Test"),
+  });
+
+  const createdOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Nova ponuda",
+      serviceLine: "Odrzavanje",
+      createdByLabel: "Branimir Test",
+      taxRate: 25,
+      items: [
+        { description: "Pregled", unit: "kom", quantity: 2, unitPrice: 50 },
+        { description: "Izlazak na teren", unit: "sat", quantity: 1.5, unitPrice: 40 },
+      ],
+    },
+    {
+      ...state,
+      offers: [existingOffer],
+    },
+    () => "offer-2",
+    nextNumber,
+    () => "2026-03-26T09:00:00.000Z",
+  );
+
+  assert.equal(createdOffer.offerNumber, "2026-BT-002");
+  assert.equal(createdOffer.offerInitials, "BT");
+  assert.equal(createdOffer.companyName, "Acme d.o.o.");
+  assert.equal(createdOffer.locationName, "Pogon Jankomir");
+  assert.equal(createdOffer.subtotal, 160);
+  assert.equal(createdOffer.taxTotal, 40);
+  assert.equal(createdOffer.total, 200);
+  assert.equal(createdOffer.items.length, 2);
+});
+
+test("offers update totals and support filtering and sorting", () => {
+  const state = buildState();
+  const draftOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Godisnji servis",
+      serviceLine: "Servis",
+      status: "draft",
+      createdByLabel: "Ana Admin",
+      items: [
+        { description: "Servis aparata", unit: "kom", quantity: 1, unitPrice: 120 },
+      ],
+    },
+    state,
+    () => "offer-draft",
+    {
+      offerNumber: "2026-AA-001",
+      offerYear: 2026,
+      offerSequence: 1,
+      offerInitials: "AA",
+    },
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  const sentOffer = updateOffer(
+    draftOffer,
+    {
+      status: "sent",
+      validUntil: "2026-03-30",
+      items: [
+        { description: "Servis aparata", unit: "kom", quantity: 2, unitPrice: 140 },
+      ],
+      note: "Poslano klijentu",
+    },
+    {
+      ...state,
+      offers: [draftOffer],
+    },
+    () => "2026-03-26T10:00:00.000Z",
+  );
+
+  const acceptedOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      title: "Obuka zaposlenika",
+      serviceLine: "Obuka",
+      status: "accepted",
+      createdByLabel: "Ana Admin",
+      items: [
+        { description: "Obuka", unit: "sat", quantity: 3, unitPrice: 80 },
+      ],
+    },
+    {
+      ...state,
+      offers: [draftOffer, sentOffer],
+    },
+    () => "offer-accepted",
+    {
+      offerNumber: "2026-AA-002",
+      offerYear: 2026,
+      offerSequence: 2,
+      offerInitials: "AA",
+    },
+    () => "2026-03-27T08:00:00.000Z",
+  );
+
+  const filtered = filterOffers([draftOffer, sentOffer, acceptedOffer], {
+    query: "klijentu",
+    status: "sent",
+  });
+
+  assert.equal(sentOffer.subtotal, 280);
+  assert.equal(sentOffer.taxTotal, 70);
+  assert.equal(sentOffer.total, 350);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].status, "sent");
+  assert.equal(filtered[0].note, "Poslano klijentu");
+  assert.deepEqual(
+    sortOffers([acceptedOffer, sentOffer, draftOffer]).map((item) => item.status),
+    ["draft", "sent", "accepted"],
+  );
 });
 
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {

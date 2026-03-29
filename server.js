@@ -515,6 +515,7 @@ async function handleApiRequest(request, response, url) {
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
+    const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
     const chatConversationMessageMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/messages$/);
@@ -754,6 +755,24 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/offers") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createOffer({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/dashboard-widgets") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -930,6 +949,31 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (offerMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronadena.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateOffer(offerMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Ponuda nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (dashboardWidgetMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -1019,6 +1063,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "ToDo zadatak nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (offerMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati ponude.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronadena.");
+      const deleted = await domainRepository.deleteOffer(offerMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Ponuda nije pronadena.");
         return true;
       }
 

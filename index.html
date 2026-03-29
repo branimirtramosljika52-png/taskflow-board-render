@@ -1981,6 +1981,147 @@
             </p>
 
             <div id="module-view-chips" class="module-chip-grid"></div>
+
+            <section id="offers-module" class="offers-module" hidden>
+              <div class="offers-summary-grid">
+                <article class="offers-stat-card">
+                  <span class="offers-stat-label">Ukupno</span>
+                  <strong id="offers-total-count" class="offers-stat-value">0</strong>
+                </article>
+                <article class="offers-stat-card">
+                  <span class="offers-stat-label">Skice</span>
+                  <strong id="offers-draft-count" class="offers-stat-value">0</strong>
+                </article>
+                <article class="offers-stat-card">
+                  <span class="offers-stat-label">Poslano</span>
+                  <strong id="offers-sent-count" class="offers-stat-value">0</strong>
+                </article>
+                <article class="offers-stat-card">
+                  <span class="offers-stat-label">Prihvaćeno</span>
+                  <strong id="offers-accepted-count" class="offers-stat-value">0</strong>
+                </article>
+              </div>
+
+              <div class="offers-layout">
+                <section class="panel offers-list-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Offers list</p>
+                      <h3>Popis ponuda</h3>
+                    </div>
+                    <button id="offer-open-form" type="button" class="primary-button">+ Nova ponuda</button>
+                  </div>
+
+                  <div class="offers-filters">
+                    <label class="field">
+                      <span>Pretraga</span>
+                      <input id="offers-search" type="search" placeholder="Broj ponude, tvrtka, lokacija, usluga..." />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="offers-filter-status"></select>
+                    </label>
+                  </div>
+
+                  <p id="offers-helper" class="helper-copy module-copy">Ponude su sortirane po statusu i datumu zadnje izmjene.</p>
+                  <div id="offers-list" class="offers-list"></div>
+                  <p id="offers-empty" class="helper-copy" hidden>Nema ponuda za prikaz u odabranoj organizaciji.</p>
+                </section>
+
+                <section class="panel offers-editor-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Offer editor</p>
+                      <h3>Nova ponuda</h3>
+                    </div>
+                  </div>
+
+                  <form id="offer-form" class="entity-form">
+                    <input id="offer-id" type="hidden" />
+
+                    <div class="offers-editor-meta">
+                      <div class="offers-editor-meta-block">
+                        <span class="offers-editor-meta-label">Broj ponude</span>
+                        <strong id="offer-number-preview" class="offers-editor-meta-value">Broj se generira pri spremanju.</strong>
+                      </div>
+                      <div class="offers-editor-meta-block">
+                        <span class="offers-editor-meta-label">Ukupno</span>
+                        <strong id="offer-total-preview" class="offers-editor-meta-value">0,00 EUR</strong>
+                      </div>
+                    </div>
+
+                    <div class="form-grid offers-form-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv ponude</span>
+                        <input id="offer-title" name="offer-title" maxlength="180" placeholder="Godišnje održavanje, dopuna usluga..." required />
+                      </label>
+                      <label class="field">
+                        <span>Tvrtka</span>
+                        <select id="offer-company-id" required></select>
+                      </label>
+                      <label class="field">
+                        <span>Lokacija</span>
+                        <select id="offer-location-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Vrsta usluge</span>
+                        <input id="offer-service-line" maxlength="180" placeholder="Servis, pregled, obuka..." required />
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="offer-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Vrijedi do</span>
+                        <input id="offer-valid-until" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>PDV %</span>
+                        <input id="offer-tax-rate" inputmode="decimal" placeholder="25" />
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
+                    </label>
+
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Stavke ponude</strong>
+                        <p class="inline-help">Dodaj uslugu, količinu i jediničnu cijenu.</p>
+                      </div>
+                      <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
+                    </div>
+
+                    <div id="offer-items" class="offer-items"></div>
+
+                    <div class="offers-totals-card">
+                      <div class="offers-total-line">
+                        <span>Međuzbroj</span>
+                        <strong id="offer-subtotal">0,00 EUR</strong>
+                      </div>
+                      <div class="offers-total-line">
+                        <span>PDV</span>
+                        <strong id="offer-tax-total">0,00 EUR</strong>
+                      </div>
+                      <div class="offers-total-line is-grand">
+                        <span>Ukupno</span>
+                        <strong id="offer-grand-total">0,00 EUR</strong>
+                      </div>
+                    </div>
+
+                    <p id="offer-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi ponudu</button>
+                      <button id="offer-reset" type="button" class="ghost-button">Nova ponuda</button>
+                      <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </section>
           </section>
         </section>
         </section>
