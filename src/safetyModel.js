@@ -1413,10 +1413,20 @@ export function groupWorkOrdersByExecutorSet(workOrders = []) {
 export function getWorkOrderTeamGroup(workOrder) {
   const label = normalizeText(workOrder?.teamLabel);
 
+  if (!label) {
+    const executorGroup = getWorkOrderExecutorGroup(workOrder);
+
+    return {
+      key: `executors:${executorGroup.key}`,
+      label: executorGroup.label,
+      isUnassigned: executorGroup.key === "unassigned",
+    };
+  }
+
   return {
-    key: label ? `team:${label.toLowerCase()}` : "team:unassigned",
-    label: label || "Bez tima",
-    isUnassigned: !label,
+    key: `team:${label.toLowerCase()}`,
+    label,
+    isUnassigned: false,
   };
 }
 

@@ -9795,8 +9795,8 @@ function createWorkOrderCalendarGroupLead(group) {
 }
 
 function getWorkOrderCalendarRowMetrics(visibleDayCount = 7) {
-  const teamWidth = visibleDayCount <= 5 ? 192 : 200;
-  const dayWidth = visibleDayCount <= 5 ? 172 : visibleDayCount === 6 ? 144 : 120;
+  const teamWidth = visibleDayCount <= 5 ? 144 : visibleDayCount === 6 ? 150 : 156;
+  const dayWidth = visibleDayCount <= 5 ? 104 : visibleDayCount === 6 ? 94 : 88;
 
   return {
     teamWidth,
@@ -10132,7 +10132,7 @@ function renderWorkOrderCalendarSchedulerView() {
 
     const teamHead = document.createElement("div");
     teamHead.className = "work-order-calendar-week-team-head";
-    teamHead.textContent = "Tim";
+    teamHead.textContent = "Raspored";
     headerRow.append(teamHead);
 
     visibleDays.forEach((day) => {

@@ -891,6 +891,45 @@ test("buildWorkOrderCalendarTeamWeeks groups work orders by assigned team and ke
   assert.equal(calendar.unscheduledGroups[0].items.length, 1);
 });
 
+test("buildWorkOrderCalendarTeamWeeks falls back to executor grouping when team is empty", () => {
+  const calendar = buildWorkOrderCalendarTeamWeeks([
+    {
+      id: "wo-10",
+      workOrderNumber: "RN-10",
+      dueDate: "2026-03-03",
+      teamLabel: "",
+      executor1: "Branimir Tramošljika",
+      executor2: "Ivan Babić",
+    },
+    {
+      id: "wo-11",
+      workOrderNumber: "RN-11",
+      dueDate: "2026-03-03",
+      teamLabel: "",
+      executor1: "Branimir Tramošljika",
+      executor2: "Ivan Babić",
+    },
+    {
+      id: "wo-12",
+      workOrderNumber: "RN-12",
+      dueDate: "",
+      teamLabel: "",
+      executor1: "Branimir Tramošljika",
+      executor2: "Ivan Babić",
+    },
+  ], "2026-03-15");
+
+  const groupedWeek = calendar.weeks.find((week) => week.groups.some((group) => group.label === "Branimir Tramošljika + Ivan Babić"));
+  assert.ok(groupedWeek);
+
+  const executorGroup = groupedWeek.groups.find((group) => group.label === "Branimir Tramošljika + Ivan Babić");
+  assert.equal(executorGroup.itemsByDate["2026-03-03"].length, 2);
+
+  assert.equal(calendar.unscheduledGroups.length, 1);
+  assert.equal(calendar.unscheduledGroups[0].label, "Branimir Tramošljika + Ivan Babić");
+  assert.equal(calendar.unscheduledGroups[0].items.length, 1);
+});
+
 test("buildWorkOrderMapMarkers returns only work orders with valid coordinates", () => {
   const map = buildWorkOrderMapMarkers([
     {
