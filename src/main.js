@@ -8711,13 +8711,43 @@ function createEmptyOfferItemDraft(item = {}) {
 }
 
 function parseOfferMoneyInput(value, fallback = 0) {
-  const raw = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
+  const raw = String(value ?? "").trim();
 
   if (!raw) {
     return fallback;
   }
 
-  const numeric = Number(raw);
+  const cleaned = raw
+    .replace(/\s+/g, "")
+    .replace(/[^\d,.-]/g, "");
+
+  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") {
+    return fallback;
+  }
+
+  const lastCommaIndex = cleaned.lastIndexOf(",");
+  const lastDotIndex = cleaned.lastIndexOf(".");
+  let normalized = cleaned;
+
+  if (lastCommaIndex !== -1 && lastDotIndex !== -1) {
+    const decimalIndex = Math.max(lastCommaIndex, lastDotIndex);
+    normalized = cleaned.replace(/[,.]/g, (match, offset) => (offset === decimalIndex ? "." : ""));
+  } else if (lastCommaIndex !== -1) {
+    normalized = cleaned.replace(/,/g, (match, offset) => (offset === lastCommaIndex ? "." : ""));
+  } else if (lastDotIndex !== -1) {
+    const dotParts = cleaned.split(".");
+    const isLikelyThousandsFormat = dotParts.length === 2
+      && dotParts[1].length === 3
+      && dotParts.every((part) => /^-?\d+$/.test(part));
+
+    if (isLikelyThousandsFormat) {
+      normalized = cleaned.replace(/\./g, "");
+    } else {
+      normalized = cleaned.replace(/\./g, (match, offset) => (offset === lastDotIndex ? "." : ""));
+    }
+  }
+
+  const numeric = Number(normalized);
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
@@ -8780,6 +8810,13 @@ function syncOfferTotals() {
     const index = Number(node.getAttribute("data-offer-item-total-index"));
     const item = offerFormItems[index] ?? {};
     node.textContent = formatCurrencyAmount(getOfferLineTotal(item), currency);
+  });
+}
+
+function scrollOfferFormIntoView(behavior = "smooth") {
+  offerForm?.scrollIntoView({
+    behavior,
+    block: "start",
   });
 }
 
@@ -9000,6 +9037,7 @@ function hydrateOfferForm(offer) {
   }
   syncOfferNumberPreview();
   syncOfferTotals();
+  scrollOfferFormIntoView();
   offerTitleInput.focus({ preventScroll: true });
 }
 
@@ -9035,6 +9073,7 @@ function renderOffersModule() {
   offersList.replaceChildren(...visibleOffers.map((offer) => {
     const card = document.createElement("article");
     card.className = "offer-list-card";
+    card.classList.add(`is-${offer.status || "draft"}`);
     if (String(offer.id) === String(offerIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -12696,6 +12735,7 @@ workOrderCalendarUnscheduledToggle?.addEventListener("click", () => {
 
 offerOpenFormButton?.addEventListener("click", () => {
   resetOfferForm();
+  scrollOfferFormIntoView();
   offerTitleInput?.focus({ preventScroll: true });
 });
 

@@ -1984,32 +1984,50 @@
 
             <section id="offers-module" class="offers-module" hidden>
               <div class="offers-summary-grid">
-                <article class="offers-stat-card">
+                <article class="offers-stat-card is-total">
                   <span class="offers-stat-label">Ukupno</span>
                   <strong id="offers-total-count" class="offers-stat-value">0</strong>
                 </article>
-                <article class="offers-stat-card">
+                <article class="offers-stat-card is-draft">
                   <span class="offers-stat-label">Skice</span>
                   <strong id="offers-draft-count" class="offers-stat-value">0</strong>
                 </article>
-                <article class="offers-stat-card">
+                <article class="offers-stat-card is-sent">
                   <span class="offers-stat-label">Poslano</span>
                   <strong id="offers-sent-count" class="offers-stat-value">0</strong>
                 </article>
-                <article class="offers-stat-card">
+                <article class="offers-stat-card is-accepted">
                   <span class="offers-stat-label">Prihvaćeno</span>
                   <strong id="offers-accepted-count" class="offers-stat-value">0</strong>
                 </article>
               </div>
 
               <div class="offers-layout">
+                <section class="panel offers-launch-panel">
+                  <div class="offers-launch-icon" aria-hidden="true">+</div>
+                  <div class="offers-launch-copy">
+                    <p class="section-kicker">Brza akcija</p>
+                    <h3>Nova ponuda</h3>
+                    <p class="helper-copy module-copy">
+                      Otvori novu ponudu, dodaj stavke i cijene, pa spremi ponudu pod automatskim brojem.
+                    </p>
+                  </div>
+                  <button id="offer-open-form" type="button" class="primary-button offers-launch-button">Otvori novu ponudu</button>
+                </section>
+
                 <section class="panel offers-list-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
-                      <p class="section-kicker">Offers list</p>
+                      <p class="section-kicker">Ponude</p>
                       <h3>Popis ponuda</h3>
                     </div>
-                    <button id="offer-open-form" type="button" class="primary-button">+ Nova ponuda</button>
+                  </div>
+
+                  <div class="offers-status-legend" aria-label="Statusi ponuda">
+                    <span class="offer-status-badge is-draft">Skica</span>
+                    <span class="offer-status-badge is-sent">Poslano</span>
+                    <span class="offer-status-badge is-accepted">Prihvaceno</span>
+                    <span class="offer-status-badge is-rejected">Odbijeno</span>
                   </div>
 
                   <div class="offers-filters">
@@ -2031,8 +2049,8 @@
                 <section class="panel offers-editor-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
-                      <p class="section-kicker">Offer editor</p>
-                      <h3>Nova ponuda</h3>
+                      <p class="section-kicker">Editor ponude</p>
+                      <h3>Detalji ponude</h3>
                     </div>
                   </div>
 
