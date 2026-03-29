@@ -9794,22 +9794,40 @@ function createWorkOrderCalendarGroupLead(group) {
   return lead;
 }
 
+function getWorkOrderCalendarRowMetrics(visibleDayCount = 7) {
+  const teamWidth = visibleDayCount <= 5 ? 192 : 200;
+  const dayWidth = visibleDayCount <= 5 ? 172 : visibleDayCount === 6 ? 144 : 120;
+
+  return {
+    teamWidth,
+    dayWidth,
+    minWidth: teamWidth + visibleDayCount * dayWidth,
+  };
+}
+
+function applyWorkOrderCalendarRowLayout(row, visibleDayCount = 7) {
+  const metrics = getWorkOrderCalendarRowMetrics(visibleDayCount);
+  row.style.gridTemplateColumns = `${metrics.teamWidth}px repeat(${visibleDayCount}, minmax(${metrics.dayWidth}px, 1fr))`;
+  row.style.minWidth = `${metrics.minWidth}px`;
+}
+
 function createWorkOrderCalendarExecutorGroup(items = []) {
   const groups = groupWorkOrdersByExecutorSet(items);
-
-  if (groups.length === 1 && groups[0].items.length === 1) {
-    return createWorkOrderCalendarSchedulerCard(groups[0].items[0]);
-  }
 
   const wrap = document.createDocumentFragment();
 
   groups.forEach((executorGroup) => {
-    const groupCard = document.createElement("section");
+    if (executorGroup.items.length === 1) {
+      wrap.append(createWorkOrderCalendarSchedulerCard(executorGroup.items[0]));
+      return;
+    }
+
+    const groupCard = document.createElement("details");
     groupCard.className = "work-order-calendar-cell-group";
     groupCard.dataset.executorGroupKey = executorGroup.key;
 
-    const header = document.createElement("div");
-    header.className = "work-order-calendar-cell-group-head";
+    const header = document.createElement("summary");
+    header.className = "work-order-calendar-cell-group-summary";
 
     const lead = document.createElement("div");
     lead.className = "work-order-calendar-cell-group-lead";
@@ -9842,13 +9860,17 @@ function createWorkOrderCalendarExecutorGroup(items = []) {
 
     header.append(lead, count);
 
+    const body = document.createElement("div");
+    body.className = "work-order-calendar-cell-group-body";
+
     const list = document.createElement("div");
     list.className = "work-order-calendar-cell-group-list";
     executorGroup.items.forEach((workOrder) => {
       list.append(createWorkOrderCalendarSchedulerCard(workOrder));
     });
 
-    groupCard.append(header, list);
+    body.append(list);
+    groupCard.append(header, body);
     wrap.append(groupCard);
   });
 
@@ -9923,7 +9945,9 @@ function bindWorkOrderCalendarGrabScroll() {
     "input",
     "select",
     "textarea",
+    "summary",
     ".work-order-calendar-card",
+    ".work-order-calendar-cell-group",
     ".work-order-calendar-unscheduled",
   ].join(", "));
 
@@ -10104,6 +10128,7 @@ function renderWorkOrderCalendarSchedulerView() {
 
     const headerRow = document.createElement("div");
     headerRow.className = "work-order-calendar-week-row is-head";
+    applyWorkOrderCalendarRowLayout(headerRow, visibleDays.length);
 
     const teamHead = document.createElement("div");
     teamHead.className = "work-order-calendar-week-team-head";
@@ -10133,6 +10158,7 @@ function renderWorkOrderCalendarSchedulerView() {
     if (week.groups.length === 0) {
       const emptyRow = document.createElement("div");
       emptyRow.className = "work-order-calendar-week-row";
+      applyWorkOrderCalendarRowLayout(emptyRow, visibleDays.length);
 
       const emptyLead = document.createElement("div");
       emptyLead.className = "work-order-calendar-team-lead";
@@ -10168,6 +10194,7 @@ function renderWorkOrderCalendarSchedulerView() {
     week.groups.forEach((group) => {
       const row = document.createElement("div");
       row.className = "work-order-calendar-week-row";
+      applyWorkOrderCalendarRowLayout(row, visibleDays.length);
 
       row.append(createWorkOrderCalendarGroupLead(group));
 
