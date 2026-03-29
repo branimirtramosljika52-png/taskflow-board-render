@@ -5456,20 +5456,24 @@ body.is-work-order-editor-open {
 
 .work-order-map-popup-card {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 16px 18px;
 }
 
 .work-order-map-popup-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
 
 .work-order-map-popup-kicker {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #79829a;
+  line-height: 1.35;
 }
 
 .work-order-map-popup-actions {
@@ -5502,21 +5506,51 @@ body.is-work-order-editor-open {
 }
 
 .work-order-map-popup-title {
-  font-size: 1.05rem;
+  font-size: 1.08rem;
+  font-weight: 800;
   color: #20263a;
-  line-height: 1.3;
+  line-height: 1.15;
 }
 
-.work-order-map-popup-subtitle {
-  margin: 0;
-  font-size: 0.84rem;
-  color: #6e7890;
+.work-order-map-popup-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.work-order-map-popup-detail {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #e8edf6;
+  background: linear-gradient(180deg, #ffffff, #fafcff);
+}
+
+.work-order-map-popup-detail.is-full {
+  grid-column: 1 / -1;
+}
+
+.work-order-map-popup-detail-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #818aa0;
+}
+
+.work-order-map-popup-detail-value {
+  min-width: 0;
+  font-size: 0.86rem;
+  color: #43506a;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .work-order-map-popup-meta {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -5524,6 +5558,14 @@ body.is-work-order-editor-open {
   display: grid;
   gap: 4px;
   min-width: 148px;
+}
+
+.work-order-map-popup-priority .badge {
+  min-height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .work-order-map-popup-status-label {
@@ -5546,15 +5588,6 @@ body.is-work-order-editor-open {
   align-items: center;
   gap: 6px;
   margin-left: auto;
-}
-
-.work-order-map-popup-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 0.77rem;
-  color: #73809a;
 }
 
 .leaflet-work-order-popup strong {

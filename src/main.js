@@ -9207,15 +9207,23 @@ function buildWorkOrderLeafletPopup(marker) {
   const workOrder = state.workOrders.find((item) => String(item.id) === String(marker.workOrderId)) ?? marker;
   const popup = document.createElement("article");
   popup.className = "work-order-map-popup-card";
+  const companyName = workOrder.companyName || marker.companyName || "Radni nalog";
+  const locationLabel = [workOrder.locationName || marker.locationName, workOrder.region || marker.region]
+    .filter(Boolean)
+    .join(" · ") || "Bez lokacije";
+  const dueLabel = workOrder.dueDate || marker.dueDate
+    ? formatCompactDate(workOrder.dueDate || marker.dueDate)
+    : "Bez roka";
+  const coordinatesLabel = workOrder.coordinates
+    || marker.coordinates
+    || `${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)}`;
 
   const top = document.createElement("div");
   top.className = "work-order-map-popup-top";
 
   const kicker = document.createElement("span");
   kicker.className = "work-order-map-popup-kicker";
-  kicker.textContent = [workOrder.companyName || marker.companyName, workOrder.locationName || marker.locationName]
-    .filter(Boolean)
-    .join(" / ") || "Radni nalog";
+  kicker.textContent = companyName;
 
   const actions = document.createElement("div");
   actions.className = "work-order-map-popup-actions";
@@ -9250,11 +9258,13 @@ function buildWorkOrderLeafletPopup(marker) {
   title.className = "work-order-map-popup-title";
   title.textContent = workOrder.workOrderNumber || marker.workOrderNumber || "Bez broja";
 
-  const subtitle = document.createElement("p");
-  subtitle.className = "work-order-map-popup-subtitle";
-  subtitle.textContent = [workOrder.locationName || marker.locationName, workOrder.region || marker.region]
-    .filter(Boolean)
-    .join(" · ") || "Bez lokacije";
+  const details = document.createElement("div");
+  details.className = "work-order-map-popup-details";
+  details.append(
+    createWorkOrderMapPopupDetail("Lokacija", locationLabel, true),
+    createWorkOrderMapPopupDetail("Rok", dueLabel),
+    createWorkOrderMapPopupDetail("Koordinate", coordinatesLabel),
+  );
 
   const meta = document.createElement("div");
   meta.className = "work-order-map-popup-meta";
@@ -9309,12 +9319,20 @@ function buildWorkOrderLeafletPopup(marker) {
   meta.append(statusWrap);
 
   if (workOrder.priority || marker.priority) {
-    meta.append(
-      createBadge(
-        getOptionLabel(PRIORITY_OPTIONS, workOrder.priority || marker.priority),
-        priorityBadgeClass(workOrder.priority || marker.priority),
-      ),
+    const priorityWrap = document.createElement("div");
+    priorityWrap.className = "work-order-map-popup-status work-order-map-popup-priority";
+
+    const priorityLabel = document.createElement("span");
+    priorityLabel.className = "work-order-map-popup-status-label";
+    priorityLabel.textContent = "Prioritet";
+
+    const priorityBadge = createBadge(
+      getOptionLabel(PRIORITY_OPTIONS, workOrder.priority || marker.priority),
+      priorityBadgeClass(workOrder.priority || marker.priority),
     );
+
+    priorityWrap.append(priorityLabel, priorityBadge);
+    meta.append(priorityWrap);
   }
 
   const executors = [workOrder.executor1 || marker.executor1, workOrder.executor2 || marker.executor2].filter(Boolean);
@@ -9325,20 +9343,25 @@ function buildWorkOrderLeafletPopup(marker) {
     meta.append(executorWrap);
   }
 
-  const footer = document.createElement("div");
-  footer.className = "work-order-map-popup-footer";
-  const due = document.createElement("span");
-  due.textContent = workOrder.dueDate || marker.dueDate
-    ? `Rok ${formatCompactDate(workOrder.dueDate || marker.dueDate)}`
-    : "Bez roka";
-  const coordinates = document.createElement("span");
-  coordinates.textContent = workOrder.coordinates
-    || marker.coordinates
-    || `${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)}`;
-  footer.append(due, coordinates);
-
-  popup.append(top, title, subtitle, meta, footer);
+  popup.append(top, title, details, meta);
   return popup;
+}
+
+function createWorkOrderMapPopupDetail(label, value, fullWidth = false) {
+  const wrap = document.createElement("div");
+  wrap.className = "work-order-map-popup-detail";
+  wrap.classList.toggle("is-full", fullWidth);
+
+  const title = document.createElement("span");
+  title.className = "work-order-map-popup-detail-label";
+  title.textContent = label;
+
+  const copy = document.createElement("strong");
+  copy.className = "work-order-map-popup-detail-value";
+  copy.textContent = value;
+
+  wrap.append(title, copy);
+  return wrap;
 }
 
 function createWorkOrderLeafletPinIcon(tone, isSelected = false) {
