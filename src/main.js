@@ -324,6 +324,7 @@ const state = {
   },
   workOrderMap: {
     selectedWorkOrderId: "",
+    popupWorkOrderId: "",
     filters: {
       status: "all",
       priority: "all",
@@ -9135,22 +9136,78 @@ function buildWorkOrderMapPopup(marker) {
 }
 
 function buildWorkOrderLeafletPopup(marker) {
-  const popup = document.createElement("div");
-  popup.className = "leaflet-work-order-popup";
+  const popup = document.createElement("article");
+  popup.className = "work-order-map-popup-card";
+
+  const top = document.createElement("div");
+  top.className = "work-order-map-popup-top";
+
+  const kicker = document.createElement("span");
+  kicker.className = "work-order-map-popup-kicker";
+  kicker.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" / ") || "Radni nalog";
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-map-popup-actions";
+
+  const openWorkOrderButton = document.createElement("button");
+  openWorkOrderButton.type = "button";
+  openWorkOrderButton.className = "work-order-map-popup-icon-button";
+  openWorkOrderButton.title = "Otvori RN";
+  openWorkOrderButton.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5h6.5V10M12.5 3.5 7 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/><path d="M10.5 7.5v4A1 1 0 0 1 9.5 12.5h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
+  openWorkOrderButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const workOrder = state.workOrders.find((item) => String(item.id) === String(marker.workOrderId));
+    if (workOrder) {
+      hydrateWorkOrderForm(workOrder);
+    }
+  });
+
+  const openMapsLink = document.createElement("a");
+  openMapsLink.className = "work-order-map-popup-icon-button";
+  openMapsLink.href = `https://www.google.com/maps?q=${marker.latitude},${marker.longitude}`;
+  openMapsLink.target = "_blank";
+  openMapsLink.rel = "noreferrer";
+  openMapsLink.title = "Otvori u karti";
+  openMapsLink.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 13.25V4.1a.6.6 0 0 1 .42-.57l2.96-.98a.6.6 0 0 1 .38 0l2.48.82a.6.6 0 0 0 .38 0l2.45-.82a.6.6 0 0 1 .79.57v9.13a.6.6 0 0 1-.42.57l-2.96.98a.6.6 0 0 1-.38 0l-2.48-.82a.6.6 0 0 0-.38 0l-2.45.82a.6.6 0 0 1-.79-.57Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/><circle cx="10.95" cy="6.15" r="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+  openMapsLink.addEventListener("click", (event) => event.stopPropagation());
+
+  actions.append(openWorkOrderButton, openMapsLink);
+  top.append(kicker, actions);
 
   const title = document.createElement("strong");
+  title.className = "work-order-map-popup-title";
   title.textContent = marker.workOrderNumber || "Bez broja";
 
-  const company = document.createElement("span");
-  company.textContent = marker.companyName || "Bez tvrtke";
+  const subtitle = document.createElement("p");
+  subtitle.className = "work-order-map-popup-subtitle";
+  subtitle.textContent = [marker.locationName, marker.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
-  const location = document.createElement("span");
-  location.textContent = [marker.locationName, marker.region].filter(Boolean).join(" · ") || "Bez lokacije";
+  const meta = document.createElement("div");
+  meta.className = "work-order-map-popup-meta";
+  meta.append(createBadge(marker.status || "Otvoreni RN", statusBadgeClass(marker.status || "Otvoreni RN")));
 
+  if (marker.priority) {
+    meta.append(createBadge(getOptionLabel(PRIORITY_OPTIONS, marker.priority), priorityBadgeClass(marker.priority)));
+  }
+
+  const executors = [marker.executor1, marker.executor2].filter(Boolean);
+  if (executors.length > 0) {
+    const executorWrap = document.createElement("div");
+    executorWrap.className = "work-order-map-popup-executors";
+    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    meta.append(executorWrap);
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-map-popup-footer";
   const due = document.createElement("span");
   due.textContent = marker.dueDate ? `Rok ${formatCompactDate(marker.dueDate)}` : "Bez roka";
+  const coordinates = document.createElement("span");
+  coordinates.textContent = marker.coordinates || `${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)}`;
+  footer.append(due, coordinates);
 
-  popup.append(title, company, location, due);
+  popup.append(top, title, subtitle, meta, footer);
   return popup;
 }
 
@@ -9242,9 +9299,23 @@ function syncWorkOrderLeafletMarkers(markers) {
       statusValue: marker.status,
     });
 
+    leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker), {
+      autoPan: false,
+      closeButton: false,
+      className: "work-order-map-popup-shell",
+      minWidth: 300,
+      maxWidth: 360,
+      offset: [0, -20],
+    });
     leafletMarker.on("click", () => {
       state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
+      state.workOrderMap.popupWorkOrderId = marker.workOrderId;
       renderWorkOrderCroatiaMapView();
+    });
+    leafletMarker.on("popupclose", () => {
+      if (String(state.workOrderMap.popupWorkOrderId) === String(marker.workOrderId)) {
+        state.workOrderMap.popupWorkOrderId = "";
+      }
     });
 
     workOrderLeafletLayer.addLayer(leafletMarker);
@@ -9263,6 +9334,10 @@ function syncWorkOrderLeafletMarkers(markers) {
 
   window.requestAnimationFrame(() => {
     map.invalidateSize();
+    const popupMarker = workOrderLeafletMarkers.get(String(state.workOrderMap.popupWorkOrderId));
+    if (popupMarker) {
+      popupMarker.openPopup();
+    }
   });
 }
 
@@ -9380,6 +9455,7 @@ function renderWorkOrderMapView() {
 
   if (markers.length === 0) {
     state.workOrderMap.selectedWorkOrderId = "";
+    state.workOrderMap.popupWorkOrderId = "";
     renderWorkOrderMapSelectionCard(null);
     syncWorkOrderLeafletMarkers([]);
 
@@ -9759,6 +9835,7 @@ function renderWorkOrderCroatiaMapView() {
     item.append(title, subtitle, meta);
     item.addEventListener("click", () => {
       state.workOrderMap.selectedWorkOrderId = marker.workOrderId;
+      state.workOrderMap.popupWorkOrderId = marker.workOrderId;
       renderWorkOrderCroatiaMapView();
     });
 
