@@ -4595,8 +4595,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
   align-items: start;
   min-height: 0;
 }
@@ -4710,8 +4710,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid-row {
   display: grid;
-  grid-template-columns: 258px repeat(7, minmax(200px, 1fr));
-  min-width: 1660px;
+  grid-template-columns: 148px repeat(7, minmax(88px, 1fr));
+  min-width: 764px;
 }
 
 .work-order-calendar-grid-row.is-head {
@@ -4722,7 +4722,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-lane-head,
 .work-order-calendar-day-head {
-  padding: 13px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid #ececf4;
   background: rgba(248, 250, 255, 0.98);
   backdrop-filter: blur(8px);
@@ -4771,7 +4771,7 @@ body.is-work-order-editor-open {
   display: grid;
   gap: 8px;
   align-content: start;
-  padding: 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid #eef0f6;
   background: linear-gradient(180deg, #f9fbff, #f4f7fd);
 }
@@ -4817,8 +4817,8 @@ body.is-work-order-editor-open {
   display: grid;
   align-content: start;
   gap: 8px;
-  min-height: 144px;
-  padding: 12px;
+  min-height: 124px;
+  padding: 10px;
   border-bottom: 1px solid #eef0f6;
   border-left: 1px solid #f0f1f6;
   background:

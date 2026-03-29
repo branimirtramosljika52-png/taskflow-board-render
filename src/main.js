@@ -8976,53 +8976,47 @@ function renderWorkOrderCalendarView() {
     return;
   }
 
+  bindWorkOrderCalendarGrabScroll();
+
   const filtered = getFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarLanes(filtered, state.workOrderCalendar.weekStart);
   const dayDescriptors = buildWorkOrderCalendarWeekDays(calendar.weekStart);
+  const visibleDayCount = Math.max(dayDescriptors.length, 1);
+  const laneWidth = visibleDayCount <= 5 ? 136 : visibleDayCount === 6 ? 142 : 148;
+  const dayWidth = visibleDayCount <= 5 ? 112 : visibleDayCount === 6 ? 100 : 88;
+  const minWidth = laneWidth + visibleDayCount * dayWidth;
+  const applyLaneLayout = (row) => {
+    row.style.gridTemplateColumns = `${laneWidth}px repeat(${visibleDayCount}, minmax(${dayWidth}px, 1fr))`;
+    row.style.minWidth = `${minWidth}px`;
+  };
+  const scheduledCount = calendar.lanes.reduce(
+    (sum, lane) => sum + dayDescriptors.reduce((laneSum, day) => laneSum + (lane.itemsByDate[day.key]?.length ?? 0), 0),
+    0,
+  );
 
   if (workOrderCalendarRange) {
     workOrderCalendarRange.textContent = formatCalendarRangeLabel(calendar.weekStart);
   }
 
   if (workOrderCalendarMeta) {
-    const scheduledCount = calendar.lanes.reduce((sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0), 0);
-    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} Â· ${scheduledCount} rasporedenih Â· ${calendar.unscheduled.length} bez roka`;
+    workOrderCalendarMeta.textContent = `${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez datuma`;
   }
 
-  if (workOrderCalendarMeta) {
-    const scheduledCount = calendar.lanes.reduce((sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0), 0);
-    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} Â· ${scheduledCount} rasporedenih Â· ${calendar.unscheduled.length} bez roka`;
-  }
-
-  if (workOrderCalendarMeta) {
-    const scheduledCount = calendar.lanes.reduce(
-      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
-      0,
-    );
-    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} Â· ${scheduledCount} rasporedenih Â· ${calendar.unscheduled.length} bez roka`;
-  }
-
-  if (workOrderCalendarMeta) {
-    const scheduledCount = calendar.lanes.reduce(
-      (sum, lane) => sum + calendar.days.reduce((laneSum, day) => laneSum + lane.itemsByDate[day].length, 0),
-      0,
-    );
-    workOrderCalendarMeta.textContent = `${formatCalendarRangeLabel(calendar.weekStart)} Â· ${scheduledCount} rasporedenih Â· ${calendar.unscheduled.length} bez roka`;
-  }
+  syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
 
   if (workOrderCalendarUnscheduled) {
-    workOrderCalendarUnscheduled.hidden = calendar.unscheduled.length === 0;
+    workOrderCalendarUnscheduled.hidden = calendar.unscheduled.length === 0 || !state.workOrderCalendar.showUnscheduled;
     workOrderCalendarUnscheduled.replaceChildren();
 
-    if (calendar.unscheduled.length > 0) {
+    if (calendar.unscheduled.length > 0 && state.workOrderCalendar.showUnscheduled) {
       const head = document.createElement("div");
       head.className = "work-order-calendar-unscheduled-head";
+
       const label = document.createElement("strong");
-      label.textContent = "Bez roka";
-      subtitle.textContent = [marker.companyName, marker.locationName].filter(Boolean).join(" Â· ") || "Bez detalja";
+      label.textContent = "Bez datuma";
 
       const meta = document.createElement("span");
-      meta.textContent = "Povuci karticu na dan kako bi brzo slozio raspored.";
+      meta.textContent = "Povuci karticu na dan kako bi se dodijelila u raspored.";
       head.append(label, meta);
 
       const list = document.createElement("div");
@@ -9039,10 +9033,11 @@ function renderWorkOrderCalendarView() {
 
   const headerRow = document.createElement("div");
   headerRow.className = "work-order-calendar-grid-row is-head";
+  applyLaneLayout(headerRow);
 
   const peopleHead = document.createElement("div");
   peopleHead.className = "work-order-calendar-lane-head is-sticky";
-  peopleHead.textContent = "Izvrsitelji";
+  peopleHead.textContent = "Raspored";
   headerRow.append(peopleHead);
 
   dayDescriptors.forEach((day) => {
@@ -9072,6 +9067,7 @@ function renderWorkOrderCalendarView() {
   if (calendar.lanes.length === 0) {
     const emptyRow = document.createElement("div");
     emptyRow.className = "work-order-calendar-grid-row";
+    applyLaneLayout(emptyRow);
 
     const emptyLead = document.createElement("div");
     emptyLead.className = "work-order-calendar-lane";
@@ -9099,6 +9095,7 @@ function renderWorkOrderCalendarView() {
   calendar.lanes.forEach((lane) => {
     const row = document.createElement("div");
     row.className = "work-order-calendar-grid-row";
+    applyLaneLayout(row);
 
     const laneCell = document.createElement("div");
     laneCell.className = "work-order-calendar-lane";
@@ -10278,7 +10275,7 @@ function renderWorkOrderWorkspace() {
   if (state.activeWorkOrderViewMode === "list") {
     renderCompactWorkOrdersList();
   } else if (state.activeWorkOrderViewMode === "calendar") {
-    renderWorkOrderCalendarSchedulerView();
+    renderWorkOrderCalendarView();
   } else {
     renderWorkOrderCroatiaMapView();
   }
