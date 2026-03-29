@@ -322,6 +322,7 @@ const state = {
   workOrderCalendar: {
     weekStart: new Date().toISOString().slice(0, 10),
     showWeekends: true,
+    showUnscheduled: true,
     draggingWorkOrderId: "",
     dragLaneKey: "",
   },
@@ -735,9 +736,12 @@ const workOrderCalendarTodayButton = document.querySelector("#work-order-calenda
 const workOrderCalendarNextButton = document.querySelector("#work-order-calendar-next");
 const workOrderCalendarRange = document.querySelector("#work-order-calendar-range");
 const workOrderCalendarMeta = document.querySelector("#work-order-calendar-meta");
+const workOrderCalendarContent = document.querySelector("#work-order-calendar-content");
+const workOrderCalendarGridShell = document.querySelector("#work-order-calendar-grid-shell");
 const workOrderCalendarGrid = document.querySelector("#work-order-calendar-grid");
 const workOrderCalendarUnscheduled = document.querySelector("#work-order-calendar-unscheduled");
 const workOrderCalendarWeekendsInput = document.querySelector("#work-order-calendar-weekends");
+const workOrderCalendarUnscheduledToggle = document.querySelector("#work-order-calendar-unscheduled-toggle");
 const workOrderMapStage = document.querySelector("#work-order-map-stage");
 const workOrderMapCanvas = document.querySelector("#work-order-map-canvas");
 const workOrderMapSummary = document.querySelector("#work-order-map-summary");
@@ -9897,11 +9901,11 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
 }
 
 function bindWorkOrderCalendarGrabScroll() {
-  if (!workOrderCalendarGrid || workOrderCalendarGrid.dataset.grabBound === "true") {
+  if (!workOrderCalendarGridShell || workOrderCalendarGridShell.dataset.grabBound === "true") {
     return;
   }
 
-  workOrderCalendarGrid.dataset.grabBound = "true";
+  workOrderCalendarGridShell.dataset.grabBound = "true";
   let activePointerId = null;
   let startX = 0;
   let startY = 0;
@@ -9910,7 +9914,7 @@ function bindWorkOrderCalendarGrabScroll() {
 
   const release = () => {
     activePointerId = null;
-    workOrderCalendarGrid.classList.remove("is-grabbing");
+    workOrderCalendarGridShell.classList.remove("is-grabbing");
   };
 
   const isInteractiveTarget = (target) => target.closest([
@@ -9923,7 +9927,7 @@ function bindWorkOrderCalendarGrabScroll() {
     ".work-order-calendar-unscheduled",
   ].join(", "));
 
-  workOrderCalendarGrid.addEventListener("pointerdown", (event) => {
+  workOrderCalendarGridShell.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) {
       return;
     }
@@ -9931,27 +9935,28 @@ function bindWorkOrderCalendarGrabScroll() {
     activePointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
-    startLeft = workOrderCalendarGrid.scrollLeft;
-    startTop = workOrderCalendarGrid.scrollTop;
-    workOrderCalendarGrid.classList.add("is-grabbing");
-    workOrderCalendarGrid.setPointerCapture?.(event.pointerId);
+    startLeft = workOrderCalendarGridShell.scrollLeft;
+    startTop = workOrderCalendarGridShell.scrollTop;
+    workOrderCalendarGridShell.classList.add("is-grabbing");
+    workOrderCalendarGridShell.setPointerCapture?.(event.pointerId);
   });
 
-  workOrderCalendarGrid.addEventListener("pointermove", (event) => {
+  workOrderCalendarGridShell.addEventListener("pointermove", (event) => {
     if (activePointerId !== event.pointerId) {
       return;
     }
 
+    event.preventDefault();
     const deltaX = event.clientX - startX;
     const deltaY = event.clientY - startY;
-    workOrderCalendarGrid.scrollLeft = startLeft - deltaX;
-    workOrderCalendarGrid.scrollTop = startTop - deltaY;
+    workOrderCalendarGridShell.scrollLeft = startLeft - deltaX;
+    workOrderCalendarGridShell.scrollTop = startTop - deltaY;
   });
 
-  workOrderCalendarGrid.addEventListener("pointerup", release);
-  workOrderCalendarGrid.addEventListener("pointercancel", release);
-  workOrderCalendarGrid.addEventListener("mouseleave", release);
-  workOrderCalendarGrid.addEventListener("wheel", (event) => {
+  workOrderCalendarGridShell.addEventListener("pointerup", release);
+  workOrderCalendarGridShell.addEventListener("pointercancel", release);
+  workOrderCalendarGridShell.addEventListener("mouseleave", release);
+  workOrderCalendarGridShell.addEventListener("wheel", (event) => {
     const shouldPanHorizontally = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
 
     if (!shouldPanHorizontally) {
@@ -9959,8 +9964,32 @@ function bindWorkOrderCalendarGrabScroll() {
     }
 
     event.preventDefault();
-    workOrderCalendarGrid.scrollLeft += event.deltaX || event.deltaY;
+    workOrderCalendarGridShell.scrollLeft += event.deltaX || event.deltaY;
   }, { passive: false });
+}
+
+function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
+  if (workOrderCalendarWeekendsInput) {
+    workOrderCalendarWeekendsInput.classList.toggle("is-active", state.workOrderCalendar.showWeekends);
+    workOrderCalendarWeekendsInput.setAttribute("aria-pressed", state.workOrderCalendar.showWeekends ? "true" : "false");
+  }
+
+  if (workOrderCalendarUnscheduledToggle) {
+    const visible = state.workOrderCalendar.showUnscheduled && unscheduledCount > 0;
+    workOrderCalendarUnscheduledToggle.classList.toggle("is-active", visible);
+    workOrderCalendarUnscheduledToggle.setAttribute("aria-pressed", visible ? "true" : "false");
+    workOrderCalendarUnscheduledToggle.disabled = unscheduledCount === 0;
+    workOrderCalendarUnscheduledToggle.textContent = unscheduledCount > 0
+      ? `Bez datuma (${unscheduledCount})`
+      : "Bez datuma";
+  }
+
+  if (workOrderCalendarContent) {
+    workOrderCalendarContent.classList.toggle(
+      "is-unscheduled-hidden",
+      !state.workOrderCalendar.showUnscheduled || unscheduledCount === 0,
+    );
+  }
 }
 
 function createWorkOrderCalendarUnscheduledGroup(group) {
@@ -9994,23 +10023,20 @@ function renderWorkOrderCalendarSchedulerView() {
   const filtered = getFilteredWorkOrders();
   const calendar = buildWorkOrderCalendarTeamWeeks(filtered, state.workOrderCalendar.weekStart);
 
-  if (workOrderCalendarWeekendsInput) {
-    workOrderCalendarWeekendsInput.checked = state.workOrderCalendar.showWeekends;
-  }
-
   if (workOrderCalendarRange) {
     workOrderCalendarRange.textContent = formatCalendarRangeLabel(calendar.anchorDate);
   }
 
+  const unscheduledCount = calendar.unscheduledGroups.reduce((sum, group) => sum + group.items.length, 0);
+  syncWorkOrderCalendarToolbar(unscheduledCount);
+
   if (workOrderCalendarMeta) {
     const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
-    const unscheduledCount = calendar.unscheduledGroups.reduce((sum, group) => sum + group.items.length, 0);
     workOrderCalendarMeta.textContent = `${scheduledCount} raspoređenih · ${unscheduledCount} bez datuma`;
   }
 
   if (workOrderCalendarUnscheduled) {
-    const unscheduledCount = calendar.unscheduledGroups.reduce((sum, group) => sum + group.items.length, 0);
-    workOrderCalendarUnscheduled.hidden = unscheduledCount === 0;
+    workOrderCalendarUnscheduled.hidden = unscheduledCount === 0 || !state.workOrderCalendar.showUnscheduled;
     workOrderCalendarUnscheduled.replaceChildren();
 
     if (unscheduledCount > 0) {
@@ -12144,8 +12170,17 @@ workOrderCalendarNextButton?.addEventListener("click", () => {
   renderWorkOrderWorkspace();
 });
 
-workOrderCalendarWeekendsInput?.addEventListener("change", () => {
-  state.workOrderCalendar.showWeekends = workOrderCalendarWeekendsInput.checked;
+workOrderCalendarWeekendsInput?.addEventListener("click", () => {
+  state.workOrderCalendar.showWeekends = !state.workOrderCalendar.showWeekends;
+  renderWorkOrderWorkspace();
+});
+
+workOrderCalendarUnscheduledToggle?.addEventListener("click", () => {
+  if (workOrderCalendarUnscheduledToggle.disabled) {
+    return;
+  }
+
+  state.workOrderCalendar.showUnscheduled = !state.workOrderCalendar.showUnscheduled;
   renderWorkOrderWorkspace();
 });
 

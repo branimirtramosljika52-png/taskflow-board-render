@@ -1005,16 +1005,18 @@
                   <strong id="work-order-calendar-range" class="work-order-calendar-range"></strong>
                 </div>
                 <div class="work-order-calendar-toolbar-side">
-                  <label class="work-order-calendar-toggle">
-                    <input id="work-order-calendar-weekends" type="checkbox" checked />
-                    <span>Vikendi</span>
-                  </label>
                   <div id="work-order-calendar-meta" class="work-order-calendar-meta"></div>
+                  <div class="work-order-calendar-actions">
+                    <button id="work-order-calendar-weekends" type="button" class="ghost-button work-order-calendar-tool-button is-active" aria-pressed="true">Vikendi</button>
+                    <button id="work-order-calendar-unscheduled-toggle" type="button" class="ghost-button work-order-calendar-tool-button is-active" aria-pressed="true">Bez datuma</button>
+                  </div>
                 </div>
               </div>
 
-              <div class="work-order-calendar-content">
-                <div id="work-order-calendar-grid" class="work-order-calendar-grid"></div>
+              <div id="work-order-calendar-content" class="work-order-calendar-content">
+                <div id="work-order-calendar-grid-shell" class="work-order-calendar-grid-shell">
+                  <div id="work-order-calendar-grid" class="work-order-calendar-grid"></div>
+                </div>
                 <aside id="work-order-calendar-unscheduled" class="work-order-calendar-unscheduled" hidden></aside>
               </div>
             </section>

@@ -4566,21 +4566,31 @@ body.is-work-order-editor-open {
   justify-content: flex-end;
 }
 
-.work-order-calendar-toggle {
+.work-order-calendar-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid #e6e9f1;
+}
+
+.work-order-calendar-tool-button {
+  min-height: 38px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffffff, #f8faff);
-  color: #4f5972;
-  font-size: 0.84rem;
+  border-color: #e5e8f1;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  color: #5b657d;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
-.work-order-calendar-toggle input {
-  accent-color: #d94895;
+.work-order-calendar-tool-button.is-active {
+  border-color: rgba(217, 72, 149, 0.28);
+  background: linear-gradient(180deg, #fff2fb, #fff7fc);
+  color: #a33670;
+}
+
+.work-order-calendar-tool-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .work-order-calendar-content {
@@ -4588,6 +4598,19 @@ body.is-work-order-editor-open {
   grid-template-columns: minmax(0, 1fr) 290px;
   gap: 14px;
   align-items: start;
+  min-height: 0;
+}
+
+.work-order-calendar-content.is-unscheduled-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.work-order-calendar-grid-shell {
+  min-width: 0;
+  max-height: calc(100vh - 332px);
+  overflow: auto;
+  border-radius: 22px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .work-order-map-toolbar-side {
@@ -4907,12 +4930,15 @@ body.is-work-order-editor-open {
 .work-order-calendar-grid {
   display: grid;
   gap: 14px;
-  overflow: auto;
-  max-height: none;
+  min-width: max-content;
   padding-right: 4px;
   border: 0;
   border-radius: 0;
   background: none;
+  min-height: 100%;
+}
+
+.work-order-calendar-grid-shell {
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   scrollbar-gutter: stable both-edges;
@@ -4920,7 +4946,7 @@ body.is-work-order-editor-open {
   cursor: grab;
 }
 
-.work-order-calendar-grid.is-grabbing {
+.work-order-calendar-grid-shell.is-grabbing {
   cursor: grabbing;
   user-select: none;
 }
@@ -8639,7 +8665,7 @@ body.is-work-order-editor-open {
     order: 2;
   }
 
-  .work-order-calendar-grid {
+  .work-order-calendar-grid-shell {
     max-height: none;
   }
 
