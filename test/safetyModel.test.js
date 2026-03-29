@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildWorkOrderCalendarLanes,
+  buildWorkOrderCalendarWeekColumns,
   buildWorkOrderCalendarMonthWeeks,
   buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
@@ -872,6 +873,48 @@ test("buildWorkOrderCalendarMonthWeeks groups calendar items by day and keeps un
   assert.deepEqual(targetDay.items.map((item) => item.workOrderNumber), ["RN-10", "RN-11"]);
   assert.equal(calendar.unscheduled.length, 1);
   assert.equal(calendar.unscheduled[0].workOrderNumber, "RN-12");
+});
+
+test("buildWorkOrderCalendarWeekColumns keeps unassigned work orders out of the main week columns", () => {
+  const calendar = buildWorkOrderCalendarWeekColumns([
+    {
+      id: "wo-w1",
+      workOrderNumber: "RN-21",
+      dueDate: "2026-03-30",
+      executor1: "Ana Horvat",
+      executor2: "Marko Ilic",
+    },
+    {
+      id: "wo-w2",
+      workOrderNumber: "RN-22",
+      dueDate: "2026-03-30",
+      executor1: "",
+      executor2: "",
+    },
+    {
+      id: "wo-w3",
+      workOrderNumber: "RN-23",
+      dueDate: "",
+      executor1: "",
+      executor2: "",
+    },
+  ], "2026-03-30");
+
+  assert.deepEqual(calendar.days.map((day) => day.key), [
+    "2026-03-30",
+    "2026-03-31",
+    "2026-04-01",
+    "2026-04-02",
+    "2026-04-03",
+    "2026-04-04",
+    "2026-04-05",
+  ]);
+  assert.equal(calendar.days[0].items.length, 1);
+  assert.equal(calendar.days[0].items[0].workOrderNumber, "RN-21");
+  assert.equal(calendar.unassigned.length, 1);
+  assert.equal(calendar.unassigned[0].workOrderNumber, "RN-22");
+  assert.equal(calendar.unscheduled.length, 1);
+  assert.equal(calendar.unscheduled[0].workOrderNumber, "RN-23");
 });
 
 test("buildWorkOrderCalendarTeamWeeks groups work orders by assigned team and keeps undated items on the side", () => {

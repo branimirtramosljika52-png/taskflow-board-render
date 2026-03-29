@@ -1736,6 +1736,53 @@ export function buildWorkOrderCalendarMonthWeeks(workOrders = [], anchorDateValu
   };
 }
 
+export function buildWorkOrderCalendarWeekColumns(workOrders = [], weekStartValue = todayString()) {
+  const weekStartDate = startOfWeekDate(weekStartValue);
+  const weekStart = formatLocalDateKey(weekStartDate);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const key = addDaysToDateKey(weekStart, index);
+    return {
+      key,
+      items: [],
+    };
+  });
+  const dayMap = new Map(days.map((day) => [day.key, day]));
+  const unscheduled = [];
+  const unassigned = [];
+
+  workOrders.forEach((workOrder) => {
+    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    const executorGroup = getWorkOrderExecutorGroup(workOrder);
+
+    if (!dueDate) {
+      unscheduled.push(workOrder);
+      return;
+    }
+
+    const day = dayMap.get(dueDate);
+    if (!day) {
+      return;
+    }
+
+    if (executorGroup.key === "unassigned") {
+      unassigned.push(workOrder);
+      return;
+    }
+
+    day.items.push(workOrder);
+  });
+
+  return {
+    weekStart,
+    days: days.map((day) => ({
+      ...day,
+      items: sortWorkOrdersByCalendarKey(day.items),
+    })),
+    unscheduled: sortWorkOrdersByCalendarKey(unscheduled),
+    unassigned: sortWorkOrdersByCalendarKey(unassigned),
+  };
+}
+
 export function buildWorkOrderMapMarkers(workOrders = [], bounds = null) {
   const rawMarkers = workOrders
     .map((workOrder) => {

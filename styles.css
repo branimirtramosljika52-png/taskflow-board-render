@@ -4601,6 +4601,13 @@ body.is-work-order-editor-open {
   min-height: 0;
 }
 
+.work-order-calendar-sidepanels {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
 .work-order-calendar-content.is-unscheduled-hidden {
   grid-template-columns: minmax(0, 1fr);
 }
