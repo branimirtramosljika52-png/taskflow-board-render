@@ -8998,9 +8998,6 @@ function renderWorkOrderCalendarView() {
     })),
     state.workOrderCalendar.showWeekends,
   );
-  const visibleDayCount = state.workOrderCalendar.showWeekends ? 7 : 5;
-  const dayWidth = visibleDayCount <= 5 ? 148 : 116;
-  const minWidth = visibleDayCount * dayWidth;
   const scheduledCount = visibleDays.reduce((sum, day) => sum + day.items.length, 0);
   const firstVisibleDay = visibleDays[0]?.key ?? calendar.weekStart;
   const lastVisibleDay = visibleDays[visibleDays.length - 1]?.key ?? firstVisibleDay;
@@ -9089,8 +9086,9 @@ function renderWorkOrderCalendarView() {
 
   const weekGrid = document.createElement("div");
   weekGrid.className = "work-order-calendar-month-grid";
-  weekGrid.style.gridTemplateColumns = `repeat(${visibleDays.length}, minmax(${dayWidth}px, 1fr))`;
-  weekGrid.style.minWidth = `${minWidth}px`;
+  weekGrid.style.gridTemplateColumns = `repeat(${visibleDays.length}, minmax(0, 1fr))`;
+  weekGrid.style.minWidth = "0";
+  weekGrid.style.width = "100%";
 
   visibleDays.forEach((day) => {
     const cell = document.createElement("div");
@@ -9778,20 +9776,20 @@ function createWorkOrderCalendarGroupLead(group) {
 }
 
 function getWorkOrderCalendarRowMetrics(visibleDayCount = 7) {
-  const teamWidth = visibleDayCount <= 5 ? 136 : visibleDayCount === 6 ? 142 : 148;
-  const dayWidth = visibleDayCount <= 5 ? 96 : visibleDayCount === 6 ? 88 : 82;
+  const teamMinWidth = visibleDayCount <= 5 ? 136 : visibleDayCount === 6 ? 124 : 112;
+  const teamFraction = visibleDayCount <= 5 ? 1.35 : visibleDayCount === 6 ? 1.2 : 1.05;
 
   return {
-    teamWidth,
-    dayWidth,
-    minWidth: teamWidth + visibleDayCount * dayWidth,
+    teamMinWidth,
+    teamFraction,
   };
 }
 
 function applyWorkOrderCalendarRowLayout(row, visibleDayCount = 7) {
   const metrics = getWorkOrderCalendarRowMetrics(visibleDayCount);
-  row.style.gridTemplateColumns = `${metrics.teamWidth}px repeat(${visibleDayCount}, minmax(${metrics.dayWidth}px, 1fr))`;
-  row.style.minWidth = `${metrics.minWidth}px`;
+  row.style.gridTemplateColumns = `minmax(${metrics.teamMinWidth}px, ${metrics.teamFraction}fr) repeat(${visibleDayCount}, minmax(0, 1fr))`;
+  row.style.minWidth = "0";
+  row.style.width = "100%";
 }
 
 function createWorkOrderCalendarExecutorGroup(items = []) {

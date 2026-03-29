@@ -4615,7 +4615,8 @@ body.is-work-order-editor-open {
 .work-order-calendar-grid-shell {
   min-width: 0;
   max-height: calc(100vh - 332px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-radius: 22px;
   -webkit-overflow-scrolling: touch;
 }
@@ -4705,8 +4706,12 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-grid {
-  overflow: auto;
-  max-height: calc(100vh - 360px);
+  overflow-x: hidden;
+  overflow-y: visible;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: none;
   scroll-behavior: smooth;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
@@ -4742,15 +4747,18 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-month-grid {
   display: grid;
-  gap: 10px;
-  min-width: max-content;
+  gap: clamp(6px, 0.7vw, 10px);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .work-order-calendar-month-day {
   display: grid;
   grid-template-rows: auto 1fr;
   min-width: 0;
-  min-height: 180px;
+  max-width: 100%;
+  min-height: clamp(132px, 16vw, 180px);
   border: 1px solid #ebeef6;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 251, 255, 0.98));
@@ -4775,7 +4783,7 @@ body.is-work-order-editor-open {
 .work-order-calendar-month-day-top {
   display: grid;
   gap: 3px;
-  padding: 10px 10px 8px;
+  padding: clamp(7px, 0.8vw, 10px) clamp(7px, 0.8vw, 10px) clamp(6px, 0.7vw, 8px);
   border-bottom: 1px solid #eef1f7;
   background: linear-gradient(180deg, rgba(247, 249, 255, 0.98), rgba(252, 253, 255, 0.98));
 }
@@ -4785,8 +4793,8 @@ body.is-work-order-editor-open {
   align-content: start;
   gap: 8px;
   min-width: 0;
-  padding: 8px;
-  min-height: 118px;
+  padding: clamp(6px, 0.7vw, 8px);
+  min-height: clamp(94px, 12vw, 118px);
 }
 
 .work-order-calendar-month-day .work-order-calendar-card,
@@ -4797,7 +4805,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-month-day .work-order-calendar-card {
-  padding: 8px 10px 9px 12px;
+  padding: clamp(6px, 0.7vw, 8px) clamp(7px, 0.8vw, 10px) clamp(7px, 0.75vw, 9px) clamp(9px, 0.9vw, 12px);
   gap: 5px;
 }
 
@@ -4813,7 +4821,8 @@ body.is-work-order-editor-open {
 .work-order-calendar-grid-row {
   display: grid;
   grid-template-columns: 132px repeat(7, minmax(76px, 1fr));
-  min-width: 664px;
+  min-width: 0;
+  width: 100%;
 }
 
 .work-order-calendar-grid-row.is-head {
@@ -5057,8 +5066,10 @@ body.is-work-order-editor-open {
 .work-order-calendar-grid {
   display: grid;
   gap: 14px;
-  min-width: max-content;
-  padding-right: 4px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding-right: 0;
   border: 0;
   border-radius: 0;
   background: none;
@@ -5131,6 +5142,8 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-week-row {
   display: grid;
+  min-width: 0;
+  width: 100%;
 }
 
 .work-order-calendar-week-row.is-head {
@@ -8833,7 +8846,8 @@ body.is-work-order-editor-open {
 
   .work-order-calendar-grid-row,
   .work-order-calendar-week-row {
-    min-width: 940px;
+    min-width: 0;
+    width: 100%;
   }
 
   .work-order-map-stage {
