@@ -4595,7 +4595,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 220px;
   gap: 12px;
   align-items: start;
   min-height: 0;
@@ -5020,7 +5020,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-content {
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 220px;
   gap: 12px;
   align-items: start;
 }
@@ -8788,7 +8788,7 @@ body.is-work-order-editor-open {
 
   .work-order-calendar-grid-row,
   .work-order-calendar-week-row {
-    min-width: 1040px;
+    min-width: 940px;
   }
 
   .work-order-map-stage {

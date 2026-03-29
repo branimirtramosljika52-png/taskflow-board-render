@@ -9772,8 +9772,8 @@ function createWorkOrderCalendarGroupLead(group) {
 }
 
 function getWorkOrderCalendarRowMetrics(visibleDayCount = 7) {
-  const teamWidth = visibleDayCount <= 5 ? 144 : visibleDayCount === 6 ? 150 : 156;
-  const dayWidth = visibleDayCount <= 5 ? 104 : visibleDayCount === 6 ? 94 : 88;
+  const teamWidth = visibleDayCount <= 5 ? 136 : visibleDayCount === 6 ? 142 : 148;
+  const dayWidth = visibleDayCount <= 5 ? 96 : visibleDayCount === 6 ? 88 : 82;
 
   return {
     teamWidth,
