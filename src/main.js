@@ -341,6 +341,8 @@ const state = {
   activeDashboardWidgetId: "",
   activeVehicleId: "",
   activeVehicleReservationId: "",
+  companyEditorOpen: false,
+  locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
@@ -953,6 +955,12 @@ const workOrderMapList = document.querySelector("#work-order-map-list");
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
+const companyOpenFormButton = document.querySelector("#company-open-form");
+const companyEditorBackdrop = document.querySelector("#company-editor-backdrop");
+const companyEditorPanel = document.querySelector("#company-editor-panel");
+const companyEditorTitle = document.querySelector("#company-editor-title");
+const companyEditorCloseButton = document.querySelector("#company-editor-close");
+const companyEditorBody = document.querySelector("#company-editor-body");
 const companyResetButton = document.querySelector("#company-reset");
 const companyIdInput = document.querySelector("#company-id");
 const companyNameInput = document.querySelector("#company-name");
@@ -972,6 +980,12 @@ const companiesHelper = document.querySelector("#companies-helper");
 
 const locationForm = document.querySelector("#location-form");
 const locationError = document.querySelector("#location-error");
+const locationOpenFormButton = document.querySelector("#location-open-form");
+const locationEditorBackdrop = document.querySelector("#location-editor-backdrop");
+const locationEditorPanel = document.querySelector("#location-editor-panel");
+const locationEditorTitle = document.querySelector("#location-editor-title");
+const locationEditorCloseButton = document.querySelector("#location-editor-close");
+const locationEditorBody = document.querySelector("#location-editor-body");
 const locationResetButton = document.querySelector("#location-reset");
 const locationIdInput = document.querySelector("#location-id");
 const locationCompanyIdInput = document.querySelector("#location-company-id");
@@ -1439,6 +1453,16 @@ function applySnapshot(payload) {
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     resetOfferForm();
+  }
+  if (companyIdInput?.value && !state.companies.some((item) => String(item.id) === String(companyIdInput.value))) {
+    state.companyEditorOpen = false;
+    syncCompanyEditorModal();
+    resetCompanyForm();
+  }
+  if (locationIdInput?.value && !state.locations.some((item) => String(item.id) === String(locationIdInput.value))) {
+    state.locationEditorOpen = false;
+    syncLocationEditorModal();
+    resetLocationForm();
   }
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
@@ -5917,6 +5941,120 @@ function dismissOfferEditor() {
   renderOffersModule();
 }
 
+function scrollCompanyEditorToTop() {
+  companyEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function scrollLocationEditorToTop() {
+  locationEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function syncCompanyEditorModal() {
+  if (state.companyEditorOpen && (state.activeView !== "companies" || !state.user)) {
+    state.companyEditorOpen = false;
+  }
+
+  const isOpen = state.companyEditorOpen;
+
+  companyEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-company-editor-open", isOpen);
+
+  if (companyEditorPanel) {
+    companyEditorPanel.hidden = !isOpen;
+    companyEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (companyEditorBackdrop) {
+    companyEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (companyEditorCloseButton) {
+    companyEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollCompanyEditorToTop();
+      companyEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollCompanyEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function syncLocationEditorModal() {
+  if (state.locationEditorOpen && (state.activeView !== "locations" || !state.user)) {
+    state.locationEditorOpen = false;
+  }
+
+  const isOpen = state.locationEditorOpen;
+
+  locationEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-location-editor-open", isOpen);
+
+  if (locationEditorPanel) {
+    locationEditorPanel.hidden = !isOpen;
+    locationEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (locationEditorBackdrop) {
+    locationEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (locationEditorCloseButton) {
+    locationEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollLocationEditorToTop();
+      locationEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollLocationEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function openCompanyEditor() {
+  state.companyEditorOpen = true;
+  syncCompanyEditorModal();
+}
+
+function closeCompanyEditor({ reset = false } = {}) {
+  state.companyEditorOpen = false;
+  syncCompanyEditorModal();
+
+  if (reset) {
+    resetCompanyForm();
+  }
+}
+
+function dismissCompanyEditor() {
+  closeCompanyEditor({ reset: true });
+  renderCompanies();
+}
+
+function openLocationEditor() {
+  state.locationEditorOpen = true;
+  syncLocationEditorModal();
+}
+
+function closeLocationEditor({ reset = false } = {}) {
+  state.locationEditorOpen = false;
+  syncLocationEditorModal();
+
+  if (reset) {
+    resetLocationForm();
+  }
+}
+
+function dismissLocationEditor() {
+  closeLocationEditor({ reset: true });
+  renderLocations();
+}
+
 function scrollVehicleEditorToTop() {
   vehicleEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
@@ -6140,10 +6278,16 @@ function renderAuthState() {
     syncWorkOrderEditorModal();
     state.offerEditorOpen = false;
     syncOfferEditorModal();
+    state.companyEditorOpen = false;
+    syncCompanyEditorModal();
+    state.locationEditorOpen = false;
+    syncLocationEditorModal();
     state.vehicleEditorOpen = false;
     syncVehicleEditorModal();
     state.vehicleReservationEditorOpen = false;
     syncVehicleReservationModal();
+    resetCompanyForm();
+    resetLocationForm();
     resetOfferForm();
     resetVehicleForm();
     resetChatState();
@@ -6676,6 +6820,9 @@ function resetCompanyForm() {
   companyIdInput.value = "";
   companyError.textContent = "";
   companyIsActiveInput.value = "true";
+  if (companyEditorTitle) {
+    companyEditorTitle.textContent = "Nova tvrtka";
+  }
 }
 
 function resetLocationForm() {
@@ -6685,6 +6832,9 @@ function resetLocationForm() {
   locationIsActiveInput.value = "true";
   rebuildLocationCompanyOptions("");
   setLocationFormContacts([], { ensureOne: true });
+  if (locationEditorTitle) {
+    locationEditorTitle.textContent = "Nova lokacija";
+  }
 }
 
 function resetOrganizationForm() {
@@ -6730,6 +6880,10 @@ function hydrateCompanyForm(company) {
   companyContactEmailInput.value = company.contactEmail;
   companyNoteInput.value = company.note;
   companyError.textContent = "";
+  if (companyEditorTitle) {
+    companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
+  }
+  openCompanyEditor();
 }
 
 function hydrateLocationForm(location) {
@@ -6746,6 +6900,10 @@ function hydrateLocationForm(location) {
   setLocationFormContacts(buildLocationContacts(location), { ensureOne: true });
   locationNoteInput.value = location.note;
   locationError.textContent = "";
+  if (locationEditorTitle) {
+    locationEditorTitle.textContent = `Uredi lokaciju · ${location.name}`;
+  }
+  openLocationEditor();
 }
 
 function hydrateWorkOrderForm(workOrder, options = {}) {
@@ -11281,11 +11439,21 @@ function renderActiveView() {
     state.workOrderEditorOpen = false;
   }
 
+  if (state.activeView !== "companies") {
+    state.companyEditorOpen = false;
+  }
+
+  if (state.activeView !== "locations") {
+    state.locationEditorOpen = false;
+  }
+
   renderDashboardOverview();
   renderWorkOrderWorkspace();
   renderSidebarState();
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
+  syncCompanyEditorModal();
+  syncLocationEditorModal();
   syncOfferEditorModal();
   syncVehicleEditorModal();
   syncVehicleReservationModal();
@@ -14031,6 +14199,11 @@ function renderCompanies() {
   const sortedCompanies = state.companies
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+  const canManageMasterData = getCanManageMasterData();
+
+  if (companyOpenFormButton) {
+    companyOpenFormButton.hidden = !canManageMasterData;
+  }
 
   if (companiesHelper) {
     companiesHelper.textContent = `${sortedCompanies.length} tvrtki uredeno kao list view.`;
@@ -14042,7 +14215,7 @@ function renderCompanies() {
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    if (getCanManageMasterData()) {
+    if (canManageMasterData) {
       actionsCell.append(
         createActionButton("Uredi", "card-button", () => hydrateCompanyForm(company)),
         createActionButton("Obrisi", "card-button card-danger", () => {
@@ -14104,6 +14277,12 @@ function renderLocations() {
 
       return left.name.localeCompare(right.name, "hr");
     });
+  const canManageMasterData = getCanManageMasterData();
+
+  if (locationOpenFormButton) {
+    locationOpenFormButton.hidden = !canManageMasterData;
+    locationOpenFormButton.disabled = state.companies.length === 0;
+  }
 
   if (locationsHelper) {
     locationsHelper.textContent = `${sortedLocations.length} lokacija u urednom list prikazu.`;
@@ -14119,7 +14298,7 @@ function renderLocations() {
       .join(", ") || "Bez kontakata";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
-    if (getCanManageMasterData()) {
+    if (canManageMasterData) {
       actionsCell.append(
         createActionButton("Uredi", "card-button", () => hydrateLocationForm(location)),
         createActionButton("Obrisi", "card-button card-danger", () => {
@@ -15237,6 +15416,22 @@ offerEditorBackdrop?.addEventListener("click", () => {
   dismissOfferEditor();
 });
 
+companyOpenFormButton?.addEventListener("click", () => {
+  resetCompanyForm();
+  openCompanyEditor();
+  requestAnimationFrame(() => {
+    companyNameInput?.focus({ preventScroll: true });
+  });
+});
+
+companyEditorCloseButton?.addEventListener("click", () => {
+  dismissCompanyEditor();
+});
+
+companyEditorBackdrop?.addEventListener("click", () => {
+  dismissCompanyEditor();
+});
+
 companyForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -15249,12 +15444,38 @@ companyForm.addEventListener("submit", (event) => {
     body: buildCompanyPayload(),
   }), companyError).then((success) => {
     if (success) {
-      resetCompanyForm();
+      closeCompanyEditor({ reset: true });
     }
   });
 });
 
-companyResetButton.addEventListener("click", resetCompanyForm);
+companyResetButton.addEventListener("click", () => {
+  resetCompanyForm();
+  openCompanyEditor();
+  requestAnimationFrame(() => {
+    companyNameInput?.focus({ preventScroll: true });
+  });
+});
+
+locationOpenFormButton?.addEventListener("click", () => {
+  if (state.companies.length === 0) {
+    return;
+  }
+
+  resetLocationForm();
+  openLocationEditor();
+  requestAnimationFrame(() => {
+    locationNameInput?.focus({ preventScroll: true });
+  });
+});
+
+locationEditorCloseButton?.addEventListener("click", () => {
+  dismissLocationEditor();
+});
+
+locationEditorBackdrop?.addEventListener("click", () => {
+  dismissLocationEditor();
+});
 
 locationForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -15268,7 +15489,7 @@ locationForm.addEventListener("submit", (event) => {
     body: buildLocationPayload(),
   }), locationError).then((success) => {
     if (success) {
-      resetLocationForm();
+      closeLocationEditor({ reset: true });
     }
   });
 });
@@ -15277,7 +15498,13 @@ locationAddContactButton?.addEventListener("click", () => {
   addLocationFormContact();
 });
 
-locationResetButton.addEventListener("click", resetLocationForm);
+locationResetButton.addEventListener("click", () => {
+  resetLocationForm();
+  openLocationEditor();
+  requestAnimationFrame(() => {
+    locationNameInput?.focus({ preventScroll: true });
+  });
+});
 
 userBadge?.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -15937,6 +16164,16 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.locationEditorOpen) {
+    dismissLocationEditor();
+    return;
+  }
+
+  if (event.key === "Escape" && state.companyEditorOpen) {
+    dismissCompanyEditor();
+    return;
+  }
+
   if (event.key === "Escape" && state.vehicleReservationEditorOpen) {
     dismissVehicleReservationEditor();
     return;

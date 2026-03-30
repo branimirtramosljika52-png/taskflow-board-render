@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330e" />
+    <link rel="stylesheet" href="/styles.css?v=20260330f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1489,84 +1489,17 @@
         </section>
 
         <section id="companies-view" class="workspace-view" hidden>
-          <section class="panel">
-            <div class="section-heading">
+          <section class="panel masterdata-launch-panel">
+            <div class="section-heading offers-section-heading">
               <div>
-                <p class="section-kicker">Pomocni sheet</p>
-                <h2>ListTvrtke</h2>
+                <p class="section-kicker">Master data</p>
+                <h2>Tvrtke</h2>
+              </div>
+              <div class="masterdata-panel-actions">
+                <button id="company-open-form" type="button" class="primary-button">+ Nova tvrtka</button>
               </div>
             </div>
-
-            <form id="company-form" class="entity-form">
-              <input id="company-id" type="hidden" />
-
-              <div class="form-grid">
-                <label class="field">
-                  <span>Naziv tvrtke</span>
-                  <input id="company-name" type="text" maxlength="160" required />
-                </label>
-
-                <label class="field">
-                  <span>Sjediste</span>
-                  <input id="company-headquarters" type="text" maxlength="160" />
-                </label>
-
-                <label class="field">
-                  <span>OIB</span>
-                  <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
-                </label>
-
-                <label class="field">
-                  <span>Vrsta ugovora</span>
-                  <input id="company-contract-type" type="text" maxlength="120" />
-                </label>
-
-                <label class="field">
-                  <span>Broj ugovora</span>
-                  <input id="company-contract-number" type="text" maxlength="120" />
-                </label>
-
-                <label class="field">
-                  <span>Periodika</span>
-                  <input id="company-period" type="text" maxlength="80" />
-                </label>
-
-                <label class="field">
-                  <span>Aktivno</span>
-                  <select id="company-is-active">
-                    <option value="true">Aktivno</option>
-                    <option value="false">Neaktivno</option>
-                  </select>
-                </label>
-
-                <label class="field">
-                  <span>Predstavnik korisnika</span>
-                  <input id="company-representative" type="text" maxlength="160" />
-                </label>
-
-                <label class="field">
-                  <span>Kontakt broj</span>
-                  <input id="company-contact-phone" type="text" maxlength="80" />
-                </label>
-
-                <label class="field">
-                  <span>Kontakt email</span>
-                  <input id="company-contact-email" type="email" maxlength="160" />
-                </label>
-              </div>
-
-              <label class="field field-span-full">
-                <span>Napomena</span>
-                <textarea id="company-note" rows="4"></textarea>
-              </label>
-
-              <div class="form-actions">
-                <button type="submit" class="primary-button">Spremi tvrtku</button>
-                <button id="company-reset" type="button" class="ghost-button">Ocisti formu</button>
-              </div>
-            </form>
-
-            <p id="company-error" class="form-error" aria-live="polite"></p>
+            <p class="helper-copy">Dodavanje i uredivanje tvrtki sada ide kroz popup editor da lista ostane cista i pregledna.</p>
           </section>
 
           <section class="panel">
@@ -1596,84 +1529,108 @@
 
             <p id="companies-empty" class="empty-inline" hidden>Nema unesenih tvrtki.</p>
           </section>
-        </section>
 
-        <section id="locations-view" class="workspace-view" hidden>
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="section-kicker">Pomocni sheet</p>
-                <h2>ListLokacije</h2>
+          <div id="company-editor-backdrop" class="offer-editor-backdrop company-editor-backdrop" hidden></div>
+          <section id="company-editor-panel" class="panel masterdata-editor-panel company-editor-panel" hidden>
+            <div class="masterdata-editor-fixed-head">
+              <div class="section-heading offers-section-heading">
+                <div>
+                  <p class="section-kicker">Company editor</p>
+                  <h3 id="company-editor-title">Nova tvrtka</h3>
+                </div>
+                <div class="masterdata-editor-head-actions">
+                  <button id="company-editor-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
               </div>
             </div>
 
-            <form id="location-form" class="entity-form">
-              <input id="location-id" type="hidden" />
+            <div id="company-editor-body" class="masterdata-editor-body" tabindex="-1">
+              <form id="company-form" class="entity-form">
+                <input id="company-id" type="hidden" />
 
-              <div class="form-grid">
-                <label class="field">
-                  <span>Tvrtka</span>
-                  <select id="location-company-id"></select>
-                </label>
+                <div class="form-grid">
+                  <label class="field">
+                    <span>Naziv tvrtke</span>
+                    <input id="company-name" type="text" maxlength="160" required />
+                  </label>
 
-                <label class="field">
-                  <span>Lokacija</span>
-                  <input id="location-name" type="text" maxlength="160" required />
-                </label>
+                  <label class="field">
+                    <span>Sjediste</span>
+                    <input id="company-headquarters" type="text" maxlength="160" />
+                  </label>
 
-                <label class="field">
-                  <span>Regija</span>
-                  <input id="location-region" type="text" maxlength="120" />
-                </label>
+                  <label class="field">
+                    <span>OIB</span>
+                    <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
+                  </label>
 
-                <label class="field">
-                  <span>Koordinate</span>
-                  <input id="location-coordinates" type="text" maxlength="160" />
-                </label>
+                  <label class="field">
+                    <span>Vrsta ugovora</span>
+                    <input id="company-contract-type" type="text" maxlength="120" />
+                  </label>
 
-                <label class="field">
-                  <span>Periodika</span>
-                  <input id="location-period" type="text" maxlength="80" />
-                </label>
+                  <label class="field">
+                    <span>Broj ugovora</span>
+                    <input id="company-contract-number" type="text" maxlength="120" />
+                  </label>
 
-                <label class="field">
-                  <span>Predstavnik korisnika</span>
-                  <input id="location-representative" type="text" maxlength="160" />
-                </label>
+                  <label class="field">
+                    <span>Periodika</span>
+                    <input id="company-period" type="text" maxlength="80" />
+                  </label>
 
-                <label class="field">
-                  <span>Aktivno</span>
-                  <select id="location-is-active">
-                    <option value="true">Aktivno</option>
-                    <option value="false">Neaktivno</option>
-                  </select>
-                </label>
-              </div>
+                  <label class="field">
+                    <span>Aktivno</span>
+                    <select id="company-is-active">
+                      <option value="true">Aktivno</option>
+                      <option value="false">Neaktivno</option>
+                    </select>
+                  </label>
 
-              <div class="contact-grid-toolbar">
-                <div>
-                  <p class="section-kicker">Kontakti lokacije</p>
-                  <h3 class="subsection-title">Kontakt podaci</h3>
+                  <label class="field">
+                    <span>Predstavnik korisnika</span>
+                    <input id="company-representative" type="text" maxlength="160" />
+                  </label>
+
+                  <label class="field">
+                    <span>Kontakt broj</span>
+                    <input id="company-contact-phone" type="text" maxlength="80" />
+                  </label>
+
+                  <label class="field">
+                    <span>Kontakt email</span>
+                    <input id="company-contact-email" type="email" maxlength="160" />
+                  </label>
                 </div>
-                <button id="location-add-contact" type="button" class="ghost-button">
-                  Dodaj kontakt
-                </button>
+
+                <label class="field field-span-full">
+                  <span>Napomena</span>
+                  <textarea id="company-note" rows="4"></textarea>
+                </label>
+
+                <div class="form-actions">
+                  <button type="submit" class="primary-button">Spremi tvrtku</button>
+                  <button id="company-reset" type="button" class="ghost-button">Ocisti formu</button>
+                </div>
+              </form>
+
+              <p id="company-error" class="form-error" aria-live="polite"></p>
+            </div>
+          </section>
+        </section>
+
+        <section id="locations-view" class="workspace-view" hidden>
+          <section class="panel masterdata-launch-panel">
+            <div class="section-heading offers-section-heading">
+              <div>
+                <p class="section-kicker">Master data</p>
+                <h2>Lokacije</h2>
               </div>
-
-              <div id="location-contacts-list" class="contact-grid" aria-live="polite"></div>
-
-              <label class="field field-span-full">
-                <span>Napomena</span>
-                <textarea id="location-note" rows="4"></textarea>
-              </label>
-
-              <div class="form-actions">
-                <button type="submit" class="primary-button">Spremi lokaciju</button>
-                <button id="location-reset" type="button" class="ghost-button">Ocisti formu</button>
+              <div class="masterdata-panel-actions">
+                <button id="location-open-form" type="button" class="primary-button">+ Nova lokacija</button>
               </div>
-            </form>
-
-            <p id="location-error" class="form-error" aria-live="polite"></p>
+            </div>
+            <p class="helper-copy">Lokacije se sada dodaju i ureduju kroz popup, a glavni ekran ostaje rezerviran za pregled liste.</p>
           </section>
 
           <section class="panel">
@@ -1701,6 +1658,91 @@
             </div>
 
             <p id="locations-empty" class="empty-inline" hidden>Nema unesenih lokacija.</p>
+          </section>
+
+          <div id="location-editor-backdrop" class="offer-editor-backdrop location-editor-backdrop" hidden></div>
+          <section id="location-editor-panel" class="panel masterdata-editor-panel location-editor-panel" hidden>
+            <div class="masterdata-editor-fixed-head">
+              <div class="section-heading offers-section-heading">
+                <div>
+                  <p class="section-kicker">Location editor</p>
+                  <h3 id="location-editor-title">Nova lokacija</h3>
+                </div>
+                <div class="masterdata-editor-head-actions">
+                  <button id="location-editor-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="location-editor-body" class="masterdata-editor-body" tabindex="-1">
+              <form id="location-form" class="entity-form">
+                <input id="location-id" type="hidden" />
+
+                <div class="form-grid">
+                  <label class="field">
+                    <span>Tvrtka</span>
+                    <select id="location-company-id"></select>
+                  </label>
+
+                  <label class="field">
+                    <span>Lokacija</span>
+                    <input id="location-name" type="text" maxlength="160" required />
+                  </label>
+
+                  <label class="field">
+                    <span>Regija</span>
+                    <input id="location-region" type="text" maxlength="120" />
+                  </label>
+
+                  <label class="field">
+                    <span>Koordinate</span>
+                    <input id="location-coordinates" type="text" maxlength="160" />
+                  </label>
+
+                  <label class="field">
+                    <span>Periodika</span>
+                    <input id="location-period" type="text" maxlength="80" />
+                  </label>
+
+                  <label class="field">
+                    <span>Predstavnik korisnika</span>
+                    <input id="location-representative" type="text" maxlength="160" />
+                  </label>
+
+                  <label class="field">
+                    <span>Aktivno</span>
+                    <select id="location-is-active">
+                      <option value="true">Aktivno</option>
+                      <option value="false">Neaktivno</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="contact-grid-toolbar">
+                  <div>
+                    <p class="section-kicker">Kontakti lokacije</p>
+                    <h3 class="subsection-title">Kontakt podaci</h3>
+                  </div>
+                  <button id="location-add-contact" type="button" class="ghost-button">
+                    Dodaj kontakt
+                  </button>
+                </div>
+
+                <div id="location-contacts-list" class="contact-grid" aria-live="polite"></div>
+
+                <label class="field field-span-full">
+                  <span>Napomena</span>
+                  <textarea id="location-note" rows="4"></textarea>
+                </label>
+
+                <div class="form-actions">
+                  <button type="submit" class="primary-button">Spremi lokaciju</button>
+                  <button id="location-reset" type="button" class="ghost-button">Ocisti formu</button>
+                </div>
+              </form>
+
+              <p id="location-error" class="form-error" aria-live="polite"></p>
+            </div>
           </section>
         </section>
 
@@ -2538,6 +2580,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260330e"></script>
+    <script type="module" src="/src/main.js?v=20260330f"></script>
   </body>
 </html>
