@@ -2365,6 +2365,8 @@ body.is-location-editor-open {
 
 .company-editor-body {
   padding: 8px 18px 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .company-editor-body > .entity-form {
@@ -2417,6 +2419,7 @@ body.is-location-editor-open {
   grid-template-columns: minmax(96px, 112px) minmax(0, 1fr);
   column-gap: 14px;
   row-gap: 10px;
+  min-width: 0;
   align-items: start;
 }
 
@@ -2426,21 +2429,31 @@ body.is-location-editor-open {
 
 .masterdata-company-identity-card > .company-logo-upload-row {
   grid-column: 1;
+  min-width: 0;
   align-self: start;
 }
 
 .masterdata-company-identity-card > .masterdata-company-grid {
   grid-column: 2;
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  min-width: 0;
   align-self: start;
 }
 
 .masterdata-company-contact-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.company-editor-panel .field,
+.masterdata-company-grid,
+.masterdata-company-contact-grid {
+  min-width: 0;
 }
 
 #company-note {
   min-height: 56px;
+  max-width: 100%;
 }
 
 .field-company-name {
@@ -4156,6 +4169,10 @@ button.dashboard-widget-list-row {
   gap: 12px;
 }
 
+.form-grid > * {
+  min-width: 0;
+}
+
 .membership-grid {
   display: flex;
   flex-wrap: wrap;
@@ -4539,15 +4556,23 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   position: relative;
   z-index: 1;
   width: min(1500px, calc(100vw - 48px));
+  height: calc(100vh - 48px);
   max-height: calc(100vh - 48px);
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  align-items: start;
   gap: 18px;
+  min-height: 0;
   padding: 22px;
   overflow: hidden;
   border-radius: 28px;
   border: 1px solid rgba(206, 212, 228, 0.92);
   background: linear-gradient(180deg, #fcfcfe, #f6f8fc);
   box-shadow: 0 28px 88px rgba(43, 53, 84, 0.22);
+}
+
+.measurement-sheet-panel > * {
+  min-width: 0;
 }
 
 .work-order-editor-backdrop {
@@ -5358,7 +5383,11 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid-wrap {
   min-height: 0;
+  height: 100%;
+  max-height: none;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   border: 1px solid rgba(224, 228, 237, 0.95);
   border-radius: 16px;
   background: #ffffff;
@@ -5366,6 +5395,7 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid {
   width: max(1320px, 100%);
+  min-height: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 0.88rem;
@@ -9296,6 +9326,7 @@ body.is-work-order-editor-open {
 
   .measurement-sheet-panel {
     width: min(100%, calc(100vw - 24px));
+    height: calc(100vh - 24px);
     max-height: calc(100vh - 24px);
     padding: 18px;
   }
@@ -9321,6 +9352,7 @@ body.is-work-order-editor-open {
 
   .measurement-sheet-panel {
     width: 100%;
+    height: calc(100vh - 24px);
     max-height: calc(100vh - 24px);
     padding: 16px;
     border-radius: 22px;

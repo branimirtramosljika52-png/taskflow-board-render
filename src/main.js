@@ -118,9 +118,9 @@ let workOrderLeafletMap = null;
 let workOrderLeafletLayer = null;
 let workOrderLeafletClusterLayer = null;
 let workOrderLeafletMarkers = new Map();
-const DEFAULT_MEASUREMENT_ROW_COUNT = 48;
-const MEASUREMENT_ROW_BATCH_SIZE = 48;
-const MIN_VISIBLE_MEASUREMENT_ROWS = 180;
+const DEFAULT_MEASUREMENT_ROW_COUNT = 72;
+const MEASUREMENT_ROW_BATCH_SIZE = 60;
+const MIN_VISIBLE_MEASUREMENT_ROWS = 240;
 const WORK_ORDER_VIEW_MODES = [
   { value: "list", label: "List" },
   { value: "calendar", label: "Calendar" },
