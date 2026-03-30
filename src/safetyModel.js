@@ -1366,6 +1366,7 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
   const company = {
     id: createId(),
     name: requireText(input.name, "Naziv tvrtke"),
+    logoDataUrl: normalizeText(input.logoDataUrl),
     headquarters: normalizeText(input.headquarters),
     oib: normalizeOib(input.oib),
     contractType: normalizeText(input.contractType),
@@ -1391,6 +1392,7 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
   const next = {
     ...current,
     name: hasOwn(patch, "name") ? requireText(patch.name, "Naziv tvrtke") : current.name,
+    logoDataUrl: hasOwn(patch, "logoDataUrl") ? normalizeText(patch.logoDataUrl) : current.logoDataUrl,
     headquarters: hasOwn(patch, "headquarters") ? normalizeText(patch.headquarters) : current.headquarters,
     oib: hasOwn(patch, "oib") ? normalizeOib(patch.oib) : current.oib,
     contractType: hasOwn(patch, "contractType") ? normalizeText(patch.contractType) : current.contractType,

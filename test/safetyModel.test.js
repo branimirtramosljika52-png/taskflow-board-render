@@ -41,6 +41,7 @@ import {
   updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
   updateDashboardWidget,
+  updateCompany,
   updateLocation,
   updateOffer,
   updateReminder,
@@ -118,6 +119,34 @@ test("createCompany blocks duplicate OIB values", () => {
     ),
     /OIB/,
   );
+});
+
+test("companies keep uploaded logo data through create and update", () => {
+  const company = createCompany(
+    {
+      name: "Logo Test d.o.o.",
+      oib: "22345678901",
+      logoDataUrl: "data:image/png;base64,AAA",
+    },
+    [],
+    () => "company-logo",
+    () => "2026-03-30T09:00:00.000Z",
+  );
+
+  assert.equal(company.logoDataUrl, "data:image/png;base64,AAA");
+
+  const updated = updateCompany(
+    company,
+    {
+      logoDataUrl: "data:image/png;base64,BBB",
+      isActive: false,
+    },
+    [company],
+    () => "2026-03-30T09:05:00.000Z",
+  );
+
+  assert.equal(updated.logoDataUrl, "data:image/png;base64,BBB");
+  assert.equal(updated.isActive, false);
 });
 
 test("createLocation requires a real company and keeps names unique per company", () => {

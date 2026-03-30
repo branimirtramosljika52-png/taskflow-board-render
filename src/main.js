@@ -637,6 +637,10 @@ const offerTotalPreviewBlock = document.querySelector("#offer-total-preview-bloc
 const offerTotalPreview = document.querySelector("#offer-total-preview");
 const offerTitleInput = document.querySelector("#offer-title");
 const offerCompanyIdInput = document.querySelector("#offer-company-id");
+const offerCompanyPreview = document.querySelector("#offer-company-preview");
+const offerCompanyPreviewLogo = document.querySelector("#offer-company-preview-logo");
+const offerCompanyPreviewName = document.querySelector("#offer-company-preview-name");
+const offerCompanyPreviewMeta = document.querySelector("#offer-company-preview-meta");
 const offerLocationIdInput = document.querySelector("#offer-location-id");
 const offerContactSlotInput = document.querySelector("#offer-contact-slot");
 const offerServiceLineInput = document.querySelector("#offer-service-line");
@@ -868,6 +872,10 @@ const workOrderDueDateInput = document.querySelector("#work-order-due-date");
 const workOrderTeamLabelInput = document.querySelector("#work-order-team-label");
 const workOrderTeamSuggestions = document.querySelector("#work-order-team-suggestions");
 const workOrderCompanyIdInput = document.querySelector("#work-order-company-id");
+const workOrderCompanyPreview = document.querySelector("#work-order-company-preview");
+const workOrderCompanyPreviewLogo = document.querySelector("#work-order-company-preview-logo");
+const workOrderCompanyPreviewName = document.querySelector("#work-order-company-preview-name");
+const workOrderCompanyPreviewMeta = document.querySelector("#work-order-company-preview-meta");
 const workOrderHeadquartersInput = document.querySelector("#work-order-headquarters");
 const workOrderCompanyOibInput = document.querySelector("#work-order-company-oib");
 const workOrderContractTypeInput = document.querySelector("#work-order-contract-type");
@@ -959,10 +967,17 @@ const companyOpenFormButton = document.querySelector("#company-open-form");
 const companyEditorBackdrop = document.querySelector("#company-editor-backdrop");
 const companyEditorPanel = document.querySelector("#company-editor-panel");
 const companyEditorTitle = document.querySelector("#company-editor-title");
+const companyEditorStatusPill = document.querySelector("#company-editor-status-pill");
 const companyEditorCloseButton = document.querySelector("#company-editor-close");
 const companyEditorBody = document.querySelector("#company-editor-body");
 const companyResetButton = document.querySelector("#company-reset");
+const companyDeleteButton = document.querySelector("#company-delete");
 const companyIdInput = document.querySelector("#company-id");
+const companyLogoDataUrlInput = document.querySelector("#company-logo-data-url");
+const companyLogoFileInput = document.querySelector("#company-logo-file");
+const companyLogoPreview = document.querySelector("#company-logo-preview");
+const companyLogoButton = document.querySelector("#company-logo-button");
+const companyLogoClearButton = document.querySelector("#company-logo-clear");
 const companyNameInput = document.querySelector("#company-name");
 const companyHeadquartersInput = document.querySelector("#company-headquarters");
 const companyOibInput = document.querySelector("#company-oib");
@@ -989,6 +1004,10 @@ const locationEditorBody = document.querySelector("#location-editor-body");
 const locationResetButton = document.querySelector("#location-reset");
 const locationIdInput = document.querySelector("#location-id");
 const locationCompanyIdInput = document.querySelector("#location-company-id");
+const locationCompanyPreview = document.querySelector("#location-company-preview");
+const locationCompanyPreviewLogo = document.querySelector("#location-company-preview-logo");
+const locationCompanyPreviewName = document.querySelector("#location-company-preview-name");
+const locationCompanyPreviewMeta = document.querySelector("#location-company-preview-meta");
 const locationNameInput = document.querySelector("#location-name");
 const locationRegionInput = document.querySelector("#location-region");
 const locationCoordinatesInput = document.querySelector("#location-coordinates");
@@ -1568,6 +1587,46 @@ function renderAvatar(target, userLike = {}) {
   }
 
   target.textContent = getUserInitials(userLike);
+}
+
+function renderCompanyLogo(target, companyLike = {}) {
+  renderAvatar(target, {
+    fullName: companyLike.name || companyLike.companyName || "Tvrtka",
+    avatarDataUrl: companyLike.logoDataUrl || companyLike.companyLogoDataUrl || "",
+  });
+}
+
+function describeCompanyPreview(companyLike = {}) {
+  return [
+    companyLike.headquarters || "",
+    companyLike.oib ? `OIB ${companyLike.oib}` : "",
+  ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+}
+
+function syncCompanySelectionPreview(
+  companyId,
+  previewWrap,
+  previewLogo,
+  previewName,
+  previewMeta,
+) {
+  if (!previewWrap || !previewLogo || !previewName || !previewMeta) {
+    return;
+  }
+
+  const company = getCompany(companyId);
+  previewWrap.hidden = !company;
+
+  if (!company) {
+    previewName.textContent = "Tvrtka";
+    previewMeta.textContent = "Odaberi tvrtku za detalje.";
+    renderCompanyLogo(previewLogo, { name: "Tvrtka" });
+    return;
+  }
+
+  previewName.textContent = company.name || "Tvrtka";
+  previewMeta.textContent = describeCompanyPreview(company);
+  renderCompanyLogo(previewLogo, company);
 }
 
 function applyPresenceToAvatar(target, presence = "online") {
@@ -5666,6 +5725,28 @@ function createStackCell({
   return cell;
 }
 
+function createCompanyIdentityCell(company) {
+  const cell = document.createElement("td");
+  const stack = document.createElement("div");
+  stack.className = "company-list-cell";
+
+  const logo = document.createElement("span");
+  logo.className = "company-list-logo";
+  renderCompanyLogo(logo, company);
+
+  const copy = document.createElement("div");
+  copy.className = "company-list-copy";
+  copy.append(
+    createListLine(company.name || "Tvrtka", "list-primary"),
+    createListLine(company.headquarters || "Bez sjedista", "list-secondary"),
+    createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary"),
+  );
+
+  stack.append(logo, copy);
+  cell.append(stack);
+  return cell;
+}
+
 function createBadgeCell(badge, subtitle = "", tertiary = "") {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
@@ -6414,6 +6495,13 @@ function fillWorkOrderCompanySnapshot(companyLike) {
   workOrderHeadquartersInput.value = companyLike?.headquarters ?? "";
   workOrderCompanyOibInput.value = companyLike?.companyOib ?? companyLike?.oib ?? "";
   workOrderContractTypeInput.value = companyLike?.contractType ?? "";
+  syncCompanySelectionPreview(
+    companyLike?.companyId ?? companyLike?.id ?? "",
+    workOrderCompanyPreview,
+    workOrderCompanyPreviewLogo,
+    workOrderCompanyPreviewName,
+    workOrderCompanyPreviewMeta,
+  );
 }
 
 function rebuildWorkOrderCompanyOptions(selectedCompanyId = workOrderCompanyIdInput.value) {
@@ -6586,6 +6674,7 @@ function buildWorkOrderPayload() {
 function buildCompanyPayload() {
   return {
     name: companyNameInput.value,
+    logoDataUrl: companyLogoDataUrlInput?.value || "",
     headquarters: companyHeadquartersInput.value,
     oib: companyOibInput.value,
     contractType: companyContractTypeInput.value,
@@ -6597,6 +6686,30 @@ function buildCompanyPayload() {
     contactEmail: companyContactEmailInput.value,
     note: companyNoteInput.value,
   };
+}
+
+function syncCompanyEditorChrome() {
+  const companyName = companyNameInput?.value?.trim() || "Tvrtka";
+  const isActive = companyIsActiveInput?.value !== "false";
+
+  renderCompanyLogo(companyLogoPreview, {
+    name: companyName,
+    logoDataUrl: companyLogoDataUrlInput?.value || "",
+  });
+
+  if (companyEditorStatusPill) {
+    companyEditorStatusPill.textContent = isActive ? "Aktivno" : "Neaktivno";
+    companyEditorStatusPill.classList.toggle("is-active", isActive);
+    companyEditorStatusPill.classList.toggle("is-inactive", !isActive);
+  }
+
+  if (companyLogoClearButton) {
+    companyLogoClearButton.hidden = !(companyLogoDataUrlInput?.value || "");
+  }
+
+  if (companyDeleteButton) {
+    companyDeleteButton.hidden = !companyIdInput?.value;
+  }
 }
 
 function createEmptyLocationContactDraft() {
@@ -6818,11 +6931,18 @@ function resetWorkOrderForm() {
 function resetCompanyForm() {
   companyForm.reset();
   companyIdInput.value = "";
+  if (companyLogoDataUrlInput) {
+    companyLogoDataUrlInput.value = "";
+  }
+  if (companyLogoFileInput) {
+    companyLogoFileInput.value = "";
+  }
   companyError.textContent = "";
   companyIsActiveInput.value = "true";
   if (companyEditorTitle) {
     companyEditorTitle.textContent = "Nova tvrtka";
   }
+  syncCompanyEditorChrome();
 }
 
 function resetLocationForm() {
@@ -6835,6 +6955,13 @@ function resetLocationForm() {
   if (locationEditorTitle) {
     locationEditorTitle.textContent = "Nova lokacija";
   }
+  syncCompanySelectionPreview(
+    "",
+    locationCompanyPreview,
+    locationCompanyPreviewLogo,
+    locationCompanyPreviewName,
+    locationCompanyPreviewMeta,
+  );
 }
 
 function resetOrganizationForm() {
@@ -6868,6 +6995,12 @@ function hydrateCompanyForm(company) {
   state.activeView = "companies";
   renderActiveView();
   companyIdInput.value = company.id;
+  if (companyLogoDataUrlInput) {
+    companyLogoDataUrlInput.value = company.logoDataUrl || "";
+  }
+  if (companyLogoFileInput) {
+    companyLogoFileInput.value = "";
+  }
   companyNameInput.value = company.name;
   companyHeadquartersInput.value = company.headquarters;
   companyOibInput.value = company.oib;
@@ -6883,6 +7016,7 @@ function hydrateCompanyForm(company) {
   if (companyEditorTitle) {
     companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
   }
+  syncCompanyEditorChrome();
   openCompanyEditor();
 }
 
@@ -6903,6 +7037,13 @@ function hydrateLocationForm(location) {
   if (locationEditorTitle) {
     locationEditorTitle.textContent = `Uredi lokaciju · ${location.name}`;
   }
+  syncCompanySelectionPreview(
+    location.companyId,
+    locationCompanyPreview,
+    locationCompanyPreviewLogo,
+    locationCompanyPreviewName,
+    locationCompanyPreviewMeta,
+  );
   openLocationEditor();
 }
 
@@ -10168,6 +10309,13 @@ function resetOfferForm() {
   }
   rebuildOfferLocationOptions("");
   rebuildOfferContactOptions("", {});
+  syncCompanySelectionPreview(
+    "",
+    offerCompanyPreview,
+    offerCompanyPreviewLogo,
+    offerCompanyPreviewName,
+    offerCompanyPreviewMeta,
+  );
   setOfferFormItems([], { ensureOne: true });
   if (offerDeleteButton) {
     offerDeleteButton.hidden = true;
@@ -10188,6 +10336,13 @@ function hydrateOfferForm(offer) {
   offerTitleInput.value = offer.title || "";
   rebuildOfferCompanyOptions(offer.companyId || "");
   offerCompanyIdInput.value = offer.companyId || "";
+  syncCompanySelectionPreview(
+    offer.companyId || "",
+    offerCompanyPreview,
+    offerCompanyPreviewLogo,
+    offerCompanyPreviewName,
+    offerCompanyPreviewMeta,
+  );
   rebuildOfferLocationOptions(getOfferLocationSelectionValue(offer));
   offerLocationIdInput.value = getOfferLocationSelectionValue(offer);
   rebuildOfferContactOptions(offer.contactSlot || "", {
@@ -11545,6 +11700,27 @@ function renderSharedOptions() {
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
   rebuildOfferLocationOptions(offerLocationIdInput?.value || "");
   rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
+  syncCompanySelectionPreview(
+    workOrderCompanyIdInput?.value || "",
+    workOrderCompanyPreview,
+    workOrderCompanyPreviewLogo,
+    workOrderCompanyPreviewName,
+    workOrderCompanyPreviewMeta,
+  );
+  syncCompanySelectionPreview(
+    locationCompanyIdInput?.value || "",
+    locationCompanyPreview,
+    locationCompanyPreviewLogo,
+    locationCompanyPreviewName,
+    locationCompanyPreviewMeta,
+  );
+  syncCompanySelectionPreview(
+    offerCompanyIdInput?.value || "",
+    offerCompanyPreview,
+    offerCompanyPreviewLogo,
+    offerCompanyPreviewName,
+    offerCompanyPreviewMeta,
+  );
   renderTodoLinkPreview();
 
   if (vehicleScheduleDateInput) {
@@ -14206,39 +14382,37 @@ function renderCompanies() {
   }
 
   if (companiesHelper) {
-    companiesHelper.textContent = `${sortedCompanies.length} tvrtki uredeno kao list view.`;
+    companiesHelper.textContent = canManageMasterData
+      ? `${sortedCompanies.length} tvrtki. Klikni bilo gdje na red za otvaranje i uredjivanje.`
+      : `${sortedCompanies.length} tvrtki uredeno kao list view.`;
   }
 
   companiesBody.replaceChildren(...sortedCompanies.map((company) => {
     const row = document.createElement("tr");
-    row.className = "list-row";
-    const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
-    const actionsCell = document.createElement("td");
-    actionsCell.className = "table-actions";
+    row.className = "list-row company-list-row";
     if (canManageMasterData) {
-      actionsCell.append(
-        createActionButton("Uredi", "card-button", () => hydrateCompanyForm(company)),
-        createActionButton("Obrisi", "card-button card-danger", () => {
-          if (!window.confirm(`Obrisati tvrtku ${company.name}?`)) {
-            return;
-          }
-
-          void runMutation(() => apiRequest(`/companies/${company.id}`, { method: "DELETE" }));
-        }),
-      );
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `Uredi tvrtku ${company.name}`);
+      row.addEventListener("click", () => {
+        hydrateCompanyForm(company);
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          hydrateCompanyForm(company);
+        }
+      });
     }
 
+    const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
+
     row.append(
+      createCompanyIdentityCell(company),
       createStackCell({
-        eyebrow: company.id,
-        title: company.name,
-        subtitle: company.headquarters || "Bez sjedista",
-        meta: company.note ? ["Napomena"] : [],
-      }),
-      createStackCell({
-        title: company.oib || "Bez OIB-a",
-        subtitle: company.representative || "Bez predstavnika",
-        tertiary: company.period ? `Periodika: ${company.period}` : "",
+        title: company.representative || "Bez predstavnika",
+        subtitle: contact,
+        tertiary: company.contactPhone || company.contactEmail ? "Kontakt podaci" : "Nema kontakta",
       }),
       createStackCell({
         title: company.contractType || "Bez ugovora",
@@ -14246,15 +14420,13 @@ function renderCompanies() {
         tertiary: company.period ? `Periodika: ${company.period}` : "",
       }),
       createStackCell({
-        title: contact,
-        subtitle: company.contactPhone || company.contactEmail ? "Kontakt podaci" : "Nema kontakta",
-      }),
-      createStackCell({
         title: company.isActive ? "Aktivna tvrtka" : "Neaktivna tvrtka",
-        subtitle: company.representative || "Bez predstavnika",
-        meta: [createStatusPill(company.isActive ? "Aktivno" : "Neaktivno", company.isActive)],
+        subtitle: company.note ? "Ima internu napomenu" : "Bez dodatne napomene",
+        meta: [
+          createStatusPill(company.isActive ? "Aktivno" : "Neaktivno", company.isActive),
+          company.note ? "Napomena" : "",
+        ],
       }),
-      actionsCell,
     );
 
     return row;
@@ -15324,6 +15496,13 @@ offersFilterStatusInput?.addEventListener("change", () => {
 });
 
 offerCompanyIdInput?.addEventListener("change", () => {
+  syncCompanySelectionPreview(
+    offerCompanyIdInput.value,
+    offerCompanyPreview,
+    offerCompanyPreviewLogo,
+    offerCompanyPreviewName,
+    offerCompanyPreviewMeta,
+  );
   rebuildOfferLocationOptions(OFFER_LOCATION_ALL_VALUE);
   rebuildOfferContactOptions("", {});
 });
@@ -15416,6 +15595,56 @@ offerEditorBackdrop?.addEventListener("click", () => {
   dismissOfferEditor();
 });
 
+companyLogoButton?.addEventListener("click", () => {
+  companyLogoFileInput?.click();
+});
+
+companyLogoClearButton?.addEventListener("click", () => {
+  if (companyLogoDataUrlInput) {
+    companyLogoDataUrlInput.value = "";
+  }
+  if (companyLogoFileInput) {
+    companyLogoFileInput.value = "";
+  }
+  syncCompanyEditorChrome();
+});
+
+companyLogoFileInput?.addEventListener("change", () => {
+  const file = companyLogoFileInput.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    companyError.textContent = "Logo mora biti manji od 2 MB.";
+    companyLogoFileInput.value = "";
+    return;
+  }
+
+  void readAvatarFileAsDataUrl(file).then((logoDataUrl) => {
+    if (companyLogoDataUrlInput) {
+      companyLogoDataUrlInput.value = logoDataUrl;
+    }
+    companyError.textContent = "";
+    syncCompanyEditorChrome();
+  }).catch((error) => {
+    companyError.textContent = error.message;
+  }).finally(() => {
+    if (companyLogoFileInput) {
+      companyLogoFileInput.value = "";
+    }
+  });
+});
+
+companyNameInput?.addEventListener("input", () => {
+  syncCompanyEditorChrome();
+});
+
+companyIsActiveInput?.addEventListener("change", () => {
+  syncCompanyEditorChrome();
+});
+
 companyOpenFormButton?.addEventListener("click", () => {
   resetCompanyForm();
   openCompanyEditor();
@@ -15457,6 +15686,26 @@ companyResetButton.addEventListener("click", () => {
   });
 });
 
+companyDeleteButton?.addEventListener("click", () => {
+  const companyId = companyIdInput?.value || "";
+
+  if (!companyId) {
+    return;
+  }
+
+  if (!window.confirm(`Obrisati tvrtku ${companyNameInput?.value || ""}?`)) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/companies/${companyId}`, {
+    method: "DELETE",
+  }), companyError).then((success) => {
+    if (success) {
+      closeCompanyEditor({ reset: true });
+    }
+  });
+});
+
 locationOpenFormButton?.addEventListener("click", () => {
   if (state.companies.length === 0) {
     return;
@@ -15475,6 +15724,16 @@ locationEditorCloseButton?.addEventListener("click", () => {
 
 locationEditorBackdrop?.addEventListener("click", () => {
   dismissLocationEditor();
+});
+
+locationCompanyIdInput?.addEventListener("change", () => {
+  syncCompanySelectionPreview(
+    locationCompanyIdInput.value,
+    locationCompanyPreview,
+    locationCompanyPreviewLogo,
+    locationCompanyPreviewName,
+    locationCompanyPreviewMeta,
+  );
 });
 
 locationForm.addEventListener("submit", (event) => {

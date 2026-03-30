@@ -471,7 +471,7 @@ async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
     SELECT id, naziv_tvrtke, sjediste, oib, vrsta_ugovora, broj_ugovora, periodika,
            aktivno, predstavnik_korisnika, kontakt_broj, kontakt_email, napomena,
-           datum_izmjene, izmjenu_unio
+           logo_data_url, datum_izmjene, izmjenu_unio
     FROM firme
     ORDER BY naziv_tvrtke ASC
   `);
@@ -479,6 +479,7 @@ async function fetchSnapshotFromConnection(connection) {
   const companies = companyRows.map((row) => ({
     id: String(row.id),
     name: row.naziv_tvrtke,
+    logoDataUrl: row.logo_data_url ?? "",
     headquarters: row.sjediste ?? "",
     oib: row.oib ?? "",
     contractType: row.vrsta_ugovora ?? "",
@@ -1684,6 +1685,7 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelj_rn2");
+    await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
@@ -1882,8 +1884,8 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO firme
             (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, vrsta_ugovora,
-             broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email, datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+             broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email, logo_data_url, datum_izmjene, izmjenu_unio)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -1897,6 +1899,7 @@ export class MySqlSafetyRepository {
           activeLabel(company.isActive),
           company.contactPhone,
           company.contactEmail,
+          company.logoDataUrl,
           "SelfDash Web",
         ],
       );
@@ -1931,7 +1934,7 @@ export class MySqlSafetyRepository {
           UPDATE firme
           SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
               vrsta_ugovora = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
-              kontakt_email = ?, datum_izmjene = NOW(), izmjenu_unio = ?
+              kontakt_email = ?, logo_data_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
           WHERE id = ?
         `,
         [
@@ -1946,6 +1949,7 @@ export class MySqlSafetyRepository {
           activeLabel(next.isActive),
           next.contactPhone,
           next.contactEmail,
+          next.logoDataUrl,
           "SelfDash Web",
           Number(id),
         ],
