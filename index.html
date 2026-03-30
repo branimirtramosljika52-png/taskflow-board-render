@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330h" />
+    <link rel="stylesheet" href="/styles.css?v=20260330i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1578,17 +1578,17 @@
                   </div>
 
                   <div class="form-grid masterdata-company-grid">
-                    <label class="field">
+                    <label class="field field-company-name">
                       <span>Naziv tvrtke</span>
                       <input id="company-name" type="text" maxlength="160" required />
                     </label>
 
-                    <label class="field">
+                    <label class="field field-company-headquarters">
                       <span>Sjediste</span>
                       <input id="company-headquarters" type="text" maxlength="160" />
                     </label>
 
-                    <label class="field">
+                    <label class="field field-company-oib">
                       <span>OIB</span>
                       <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
                     </label>
@@ -1605,17 +1605,17 @@
                     </div>
 
                     <div class="form-grid masterdata-company-grid is-compact">
-                      <label class="field">
+                      <label class="field field-company-representative">
                         <span>Predstavnik korisnika</span>
                         <input id="company-representative" type="text" maxlength="160" />
                       </label>
 
-                      <label class="field">
+                      <label class="field field-company-contact-phone">
                         <span>Kontakt broj</span>
                         <input id="company-contact-phone" type="text" maxlength="80" />
                       </label>
 
-                      <label class="field">
+                      <label class="field field-company-contact-email">
                         <span>Kontakt email</span>
                         <input id="company-contact-email" type="email" maxlength="160" />
                       </label>
@@ -1626,38 +1626,27 @@
                     <div class="masterdata-group-head">
                       <div>
                         <p class="section-kicker">Ugovor</p>
-                        <h4 class="subsection-title">Vrsta ugovora i periodika</h4>
+                        <h4 class="subsection-title">Vrsta ugovora, periodika i aktivnost</h4>
                       </div>
                     </div>
 
-                    <div class="form-grid masterdata-company-grid is-compact">
-                      <label class="field">
+                    <div class="form-grid masterdata-company-contract-grid">
+                      <label class="field field-company-contract-type">
                         <span>Vrsta ugovora</span>
                         <input id="company-contract-type" type="text" maxlength="120" />
                       </label>
 
-                      <label class="field">
+                      <label class="field field-company-contract-number">
                         <span>Broj ugovora</span>
                         <input id="company-contract-number" type="text" maxlength="120" />
                       </label>
 
-                      <label class="field">
+                      <label class="field field-company-period">
                         <span>Periodika</span>
                         <input id="company-period" type="text" maxlength="80" />
                       </label>
-                    </div>
-                  </section>
 
-                  <section class="masterdata-group-card masterdata-company-activity-card">
-                    <div class="masterdata-group-head">
-                      <div>
-                        <p class="section-kicker">Aktivnost</p>
-                        <h4 class="subsection-title">Status tvrtke</h4>
-                      </div>
-                    </div>
-
-                    <div class="form-grid masterdata-company-grid is-compact">
-                      <label class="field">
+                      <label class="field field-company-status">
                         <span>Aktivnost</span>
                         <select id="company-is-active">
                           <option value="true">Aktivno</option>
@@ -2670,6 +2659,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260330h"></script>
+    <script type="module" src="/src/main.js?v=20260330i"></script>
   </body>
 </html>
