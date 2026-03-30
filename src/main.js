@@ -12138,6 +12138,168 @@ function createWorkOrderCalendarCardControl(labelText, control) {
   return field;
 }
 
+function setWorkOrderCalendarExecutorTriggerContent(trigger, value = "") {
+  trigger.replaceChildren();
+  trigger.title = value || "Dodaj izvrsitelja";
+  trigger.setAttribute("aria-label", value || "Dodaj izvrsitelja");
+
+  if (value) {
+    const avatar = createWorkOrderMiniExecutor(value);
+    avatar.removeAttribute("title");
+    trigger.append(avatar);
+    return;
+  }
+
+  const empty = document.createElement("span");
+  empty.className = "work-order-calendar-executor-trigger-empty";
+  empty.textContent = "+";
+  trigger.append(empty);
+}
+
+function createWorkOrderCalendarExecutorPicker(workOrder, slotIndex = 1) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-calendar-executor-picker";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-calendar-executor-trigger";
+  trigger.dataset.preventRowOpen = "true";
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const getCurrentValue = () => (slotIndex === 1 ? (workOrder.executor1 || "") : (workOrder.executor2 || ""));
+  const setPendingState = (isPending) => {
+    wrapper.classList.toggle("is-pending", isPending);
+    trigger.disabled = isPending;
+  };
+  const setCurrentValue = (value) => {
+    setWorkOrderCalendarExecutorTriggerContent(trigger, value);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(176, Math.round(triggerRect.width + 108))}px`;
+  };
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal";
+    menu.setAttribute("role", "menu");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    getWorkOrderExecutorNameOptions(getCurrentValue()).forEach((option) => {
+      const optionButton = document.createElement("button");
+      optionButton.type = "button";
+      optionButton.className = "work-item-status-option work-order-calendar-executor-option";
+      optionButton.setAttribute("role", "menuitem");
+
+      const avatar = document.createElement("span");
+      avatar.className = "work-order-calendar-executor-option-avatar";
+      if (option.value) {
+        avatar.textContent = getUserInitials({ fullName: option.value }) || "?";
+      } else {
+        avatar.textContent = "+";
+        avatar.classList.add("is-empty");
+      }
+
+      const label = document.createElement("span");
+      label.className = "work-order-calendar-executor-option-label";
+      label.textContent = option.label;
+
+      optionButton.append(avatar, label);
+      optionButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeOpenWorkOrderStatusMenus();
+
+        const previousValue = getCurrentValue();
+        if (option.value === previousValue) {
+          return;
+        }
+
+        const nextExecutor1 = slotIndex === 1 ? option.value : (workOrder.executor1 || "");
+        const nextExecutor2 = slotIndex === 2 ? option.value : (workOrder.executor2 || "");
+        setCurrentValue(option.value);
+        setPendingState(true);
+
+        void runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
+          method: "PATCH",
+          body: {
+            executor1: nextExecutor1,
+            executor2: nextExecutor2,
+          },
+        })).then((success) => {
+          setPendingState(false);
+
+          if (!success) {
+            setCurrentValue(previousValue);
+            return;
+          }
+
+          const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
+          setCurrentValue(slotIndex === 1 ? (updatedItem?.executor1 || option.value) : (updatedItem?.executor2 || option.value));
+        });
+      });
+
+      menu.append(optionButton);
+    });
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => positionMenuPortal(menu));
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  setCurrentValue(getCurrentValue());
+  wrapper.append(trigger);
+  return wrapper;
+}
+
 function createWorkOrderCalendarExecutorSelect(workOrder, slotIndex = 1) {
   const select = document.createElement("select");
   select.className = "work-item-status-select work-order-calendar-card-select work-order-calendar-card-executor-select";
@@ -12974,8 +13136,9 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   number.className = "work-order-calendar-card-number";
   number.textContent = workOrder.workOrderNumber || "Bez broja";
 
-  const status = createBadge(workOrder.status || "Otvoreni RN", statusBadgeClass(workOrder.status || "Otvoreni RN"));
-  status.classList.add("work-order-calendar-card-status");
+  const status = createWorkOrderStatusDropdown(workOrder, {
+    className: "work-order-calendar-card-status-dropdown",
+  });
   top.append(number, status);
 
   const title = document.createElement("span");
@@ -12986,20 +13149,6 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
-  const controls = document.createElement("div");
-  controls.className = "work-order-calendar-card-controls";
-  controls.dataset.preventRowOpen = "true";
-  controls.append(
-    createWorkOrderCalendarCardControl(
-      "Status",
-      createWorkOrderStatusSelect(workOrder, {
-        className: "work-order-calendar-card-select work-order-calendar-card-status-select",
-      }),
-    ),
-    createWorkOrderCalendarCardControl("I1", createWorkOrderCalendarExecutorSelect(workOrder, 1)),
-    createWorkOrderCalendarCardControl("I2", createWorkOrderCalendarExecutorSelect(workOrder, 2)),
-  );
-
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
   due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
@@ -13008,15 +13157,16 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   footer.className = "work-order-calendar-card-footer";
   footer.append(due);
 
-  const executors = [workOrder.executor1, workOrder.executor2].filter(Boolean);
-  if (executors.length > 0) {
-    const executorWrap = document.createElement("div");
-    executorWrap.className = "work-order-calendar-card-executors";
-    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
-    footer.append(executorWrap);
-  }
+  const executorWrap = document.createElement("div");
+  executorWrap.className = "work-order-calendar-card-executors";
+  executorWrap.dataset.preventRowOpen = "true";
+  executorWrap.append(
+    createWorkOrderCalendarExecutorPicker(workOrder, 1),
+    createWorkOrderCalendarExecutorPicker(workOrder, 2),
+  );
+  footer.append(executorWrap);
 
-  card.append(top, title, meta, controls, footer);
+  card.append(top, title, meta, footer);
 
   if (workOrder.priority) {
     const priority = createBadge(
@@ -13874,13 +14024,13 @@ function isInteractiveWorkOrderTarget(target) {
 }
 
 function closeOpenWorkOrderStatusMenus(except = null) {
-  document.querySelectorAll(".work-item-status-dropdown.is-open").forEach((node) => {
+  document.querySelectorAll(".work-item-status-dropdown.is-open, .work-order-calendar-executor-picker.is-open").forEach((node) => {
     if (except && node === except) {
       return;
     }
 
     node.classList.remove("is-open");
-    const trigger = node.querySelector(".work-item-status-trigger");
+    const trigger = node.querySelector(".work-item-status-trigger, .work-order-calendar-executor-trigger");
     trigger?.setAttribute("aria-expanded", "false");
     if (node._menuPortal) {
       node._menuPortal.remove();
@@ -13889,9 +14039,10 @@ function closeOpenWorkOrderStatusMenus(except = null) {
   });
 }
 
-function createWorkOrderStatusDropdown(item) {
+function createWorkOrderStatusDropdown(item, options = {}) {
+  const { className = "" } = options;
   const wrapper = document.createElement("div");
-  wrapper.className = "work-item-status-dropdown";
+  wrapper.className = ["work-item-status-dropdown", className].filter(Boolean).join(" ");
   wrapper.dataset.preventRowOpen = "true";
 
   const trigger = document.createElement("button");
@@ -16317,7 +16468,12 @@ document.addEventListener("paste", (event) => {
 document.addEventListener("click", (event) => {
   if (event.target instanceof Node) {
     const clickedStatusMenu = event.target instanceof HTMLElement
-      && (event.target.closest(".work-item-status-dropdown") || event.target.closest(".work-item-status-menu-portal"));
+      && (
+        event.target.closest(".work-item-status-dropdown")
+        || event.target.closest(".work-item-status-menu-portal")
+        || event.target.closest(".work-order-calendar-executor-picker")
+        || event.target.closest(".work-order-calendar-executor-menu-portal")
+      );
 
     if (!clickedStatusMenu) {
       closeOpenWorkOrderStatusMenus();
