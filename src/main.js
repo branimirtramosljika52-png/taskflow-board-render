@@ -13975,21 +13975,44 @@ function bindWorkOrderCalendarGrabScroll() {
 
   workOrderCalendarGridShell.dataset.grabBound = "true";
   workOrderCalendarGridShell.addEventListener("wheel", (event) => {
+    const absDeltaX = Math.abs(event.deltaX);
+    const absDeltaY = Math.abs(event.deltaY);
     const hasHorizontalOverflow = workOrderCalendarGridShell.scrollWidth > workOrderCalendarGridShell.clientWidth + 4;
+    const hasVerticalOverflow = workOrderCalendarGridShell.scrollHeight > workOrderCalendarGridShell.clientHeight + 4;
+    const shouldPanHorizontally = event.shiftKey || absDeltaX > absDeltaY;
 
-    if (!hasHorizontalOverflow) {
+    if (shouldPanHorizontally && hasHorizontalOverflow) {
+      const horizontalDelta = event.deltaX || event.deltaY;
+      const nextScrollLeft = workOrderCalendarGridShell.scrollLeft + horizontalDelta;
+      const maxScrollLeft = Math.max(0, workOrderCalendarGridShell.scrollWidth - workOrderCalendarGridShell.clientWidth);
+      const canConsumeHorizontal = horizontalDelta < 0
+        ? workOrderCalendarGridShell.scrollLeft > 0
+        : workOrderCalendarGridShell.scrollLeft < maxScrollLeft;
+
+      if (canConsumeHorizontal) {
+        event.preventDefault();
+        workOrderCalendarGridShell.scrollLeft = Math.max(0, Math.min(nextScrollLeft, maxScrollLeft));
+      }
       return;
     }
 
-    const shouldPanHorizontally = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+    if (!hasVerticalOverflow || absDeltaY <= 0) {
+      return;
+    }
 
-    if (!shouldPanHorizontally) {
+    const nextScrollTop = workOrderCalendarGridShell.scrollTop + event.deltaY;
+    const maxScrollTop = Math.max(0, workOrderCalendarGridShell.scrollHeight - workOrderCalendarGridShell.clientHeight);
+    const canConsumeVertical = event.deltaY < 0
+      ? workOrderCalendarGridShell.scrollTop > 0
+      : workOrderCalendarGridShell.scrollTop < maxScrollTop;
+
+    if (!canConsumeVertical) {
       return;
     }
 
     event.preventDefault();
-    workOrderCalendarGridShell.scrollLeft += event.deltaX || event.deltaY;
-  }, { passive: false });
+    workOrderCalendarGridShell.scrollTop = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+  }, { passive: false, capture: true });
 }
 
 function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
