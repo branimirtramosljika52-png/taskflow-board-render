@@ -6367,9 +6367,9 @@ body.is-work-order-editor-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
+  min-width: 36px;
+  min-height: 32px;
+  padding: 2px 5px;
   border: 1px solid #dbe2ee;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);
@@ -6388,6 +6388,18 @@ body.is-work-order-editor-open {
   pointer-events: none;
 }
 
+.work-order-calendar-executor-trigger-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.work-order-calendar-executor-trigger-stack .work-order-mini-executor {
+  width: 24px;
+  height: 24px;
+  font-size: 0.66rem;
+}
+
 .work-order-calendar-executor-trigger-empty {
   color: #7e889e;
   font-size: 1rem;
@@ -6395,10 +6407,109 @@ body.is-work-order-editor-open {
   line-height: 1;
 }
 
+.work-order-calendar-executor-menu-portal {
+  gap: 10px;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 10px;
+}
+
+.work-order-calendar-executor-search {
+  display: grid;
+  gap: 6px;
+}
+
+.work-order-calendar-executor-search-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8faff;
+  color: #31405f;
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+.work-order-calendar-executor-search-input:focus {
+  outline: none;
+  border-color: rgba(85, 111, 178, 0.42);
+  box-shadow: 0 0 0 3px rgba(108, 130, 190, 0.12);
+}
+
+.work-order-calendar-executor-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-order-calendar-executor-selection-empty {
+  color: #7f899e;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.work-order-calendar-executor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px 0 4px;
+  border: 1px solid #dde5f1;
+  border-radius: 999px;
+  background: #f6f8fd;
+  color: #405072;
+  cursor: pointer;
+}
+
+.work-order-calendar-executor-chip-label {
+  min-width: 0;
+  max-width: 126px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.work-order-calendar-executor-chip-remove {
+  color: #7b86a0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.work-order-calendar-executor-helper {
+  margin: 0;
+  color: #7a849b;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.work-order-calendar-executor-options {
+  display: grid;
+  gap: 6px;
+  max-height: min(38vh, 252px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .work-order-calendar-executor-option {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.work-order-calendar-executor-option.is-selected {
+  border-color: rgba(89, 121, 192, 0.28);
+  background: rgba(232, 239, 255, 0.92);
+}
+
+.work-order-calendar-executor-option:disabled:not(.is-selected) {
+  opacity: 0.46;
 }
 
 .work-order-calendar-executor-option-avatar {
@@ -6421,8 +6532,36 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-executor-option-label {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.work-order-calendar-executor-option-marker {
+  color: #6c7ca4;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.work-order-calendar-executor-empty {
+  margin: 0;
+  color: #7d869d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.work-order-calendar-executor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.work-order-calendar-executor-clear,
+.work-order-calendar-executor-save {
+  min-height: 34px;
 }
 
 .work-order-calendar-content {
