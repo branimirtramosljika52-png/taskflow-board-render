@@ -847,6 +847,8 @@ async function fetchSnapshotFromConnection(connection) {
       vehicleId: dbString(reservation.vehicleId) || String(row.id),
       status: dbString(reservation.status) || "reserved",
       purpose: dbString(reservation.purpose),
+      reservedForUserIds: parseJsonArray(reservation.reservedForUserIds).map((value) => dbString(value)).filter(Boolean),
+      reservedForLabels: parseJsonArray(reservation.reservedForLabels).map((value) => dbString(value)).filter(Boolean),
       reservedForUserId: dbString(reservation.reservedForUserId),
       reservedForLabel: dbString(reservation.reservedForLabel),
       destination: dbString(reservation.destination),
@@ -1077,7 +1079,11 @@ export class InMemorySafetyRepository {
       })),
       vehicles: this.snapshot.vehicles.map((item) => ({
         ...item,
-        reservations: (item.reservations ?? []).map((reservation) => ({ ...reservation })),
+        reservations: (item.reservations ?? []).map((reservation) => ({
+          ...reservation,
+          reservedForUserIds: [...(reservation.reservedForUserIds ?? [])],
+          reservedForLabels: [...(reservation.reservedForLabels ?? [])],
+        })),
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,

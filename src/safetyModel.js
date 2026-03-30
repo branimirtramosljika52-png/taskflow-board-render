@@ -518,13 +518,22 @@ function normalizeVehicleReservations(reservations = []) {
         return null;
       }
 
+      const reservedForUserIds = Array.isArray(reservation?.reservedForUserIds)
+        ? reservation.reservedForUserIds.map((value) => normalizeText(value)).filter(Boolean)
+        : [normalizeText(reservation?.reservedForUserId)].filter(Boolean);
+      const reservedForLabels = Array.isArray(reservation?.reservedForLabels)
+        ? reservation.reservedForLabels.map((value) => normalizeText(value)).filter(Boolean)
+        : [normalizeText(reservation?.reservedForLabel)].filter(Boolean);
+
       return {
         id: normalizeId(reservation?.id),
         vehicleId: normalizeId(reservation?.vehicleId),
         status: normalizeVehicleReservationStatus(reservation?.status),
         purpose: normalizeText(reservation?.purpose),
-        reservedForUserId: normalizeText(reservation?.reservedForUserId),
-        reservedForLabel: normalizeText(reservation?.reservedForLabel),
+        reservedForUserIds,
+        reservedForLabels,
+        reservedForUserId: reservedForUserIds[0] ?? normalizeText(reservation?.reservedForUserId),
+        reservedForLabel: reservedForLabels.join(", ") || normalizeText(reservation?.reservedForLabel),
         destination: normalizeText(reservation?.destination),
         startAt,
         endAt,
@@ -691,6 +700,16 @@ function hydrateVehicleCore({
   };
 }
 
+function normalizeVehicleReservationAssigneeIds(value) {
+  const rawItems = Array.isArray(value) ? value : [value];
+  return Array.from(new Set(rawItems.map((item) => normalizeText(item)).filter(Boolean)));
+}
+
+function normalizeVehicleReservationAssigneeLabels(value) {
+  const rawItems = Array.isArray(value) ? value : [value];
+  return Array.from(new Set(rawItems.map((item) => normalizeText(item)).filter(Boolean)));
+}
+
 function hydrateVehicleReservationCore({
   current = null,
   vehicle,
@@ -706,6 +725,16 @@ function hydrateVehicleReservationCore({
   const endAt = hasOwn(input, "endAt")
     ? normalizeOptionalDateTime(input.endAt)
     : normalizeOptionalDateTime(current?.endAt);
+  const reservedForUserIds = hasOwn(input, "reservedForUserIds")
+    ? normalizeVehicleReservationAssigneeIds(input.reservedForUserIds)
+    : (hasOwn(input, "reservedForUserId")
+      ? normalizeVehicleReservationAssigneeIds(input.reservedForUserId)
+      : normalizeVehicleReservationAssigneeIds(current?.reservedForUserIds ?? current?.reservedForUserId));
+  const reservedForLabels = hasOwn(input, "reservedForLabels")
+    ? normalizeVehicleReservationAssigneeLabels(input.reservedForLabels)
+    : (hasOwn(input, "reservedForLabel")
+      ? normalizeVehicleReservationAssigneeLabels(input.reservedForLabel)
+      : normalizeVehicleReservationAssigneeLabels(current?.reservedForLabels ?? current?.reservedForLabel));
 
   assertVehicleReservationWindow(startAt, endAt);
 
@@ -714,12 +743,10 @@ function hydrateVehicleReservationCore({
     vehicleId: vehicle.id,
     status,
     purpose: hasOwn(input, "purpose") ? requireText(input.purpose, "Svrha rezervacije") : requireText(current?.purpose, "Svrha rezervacije"),
-    reservedForUserId: hasOwn(input, "reservedForUserId")
-      ? normalizeText(input.reservedForUserId)
-      : (current?.reservedForUserId ?? ""),
-    reservedForLabel: hasOwn(input, "reservedForLabel")
-      ? normalizeText(input.reservedForLabel)
-      : (current?.reservedForLabel ?? ""),
+    reservedForUserIds,
+    reservedForLabels,
+    reservedForUserId: reservedForUserIds[0] ?? "",
+    reservedForLabel: reservedForLabels.join(", "),
     destination: hasOwn(input, "destination") ? normalizeText(input.destination) : (current?.destination ?? ""),
     startAt,
     endAt,
@@ -2173,6 +2200,7 @@ export function filterVehicles(
       vehicle.notes,
       ...(vehicle.reservations ?? []).map((reservation) => reservation.purpose),
       ...(vehicle.reservations ?? []).map((reservation) => reservation.reservedForLabel),
+      ...(vehicle.reservations ?? []).flatMap((reservation) => reservation.reservedForLabels ?? []),
       ...(vehicle.reservations ?? []).map((reservation) => reservation.destination),
     ].join(" ").toLowerCase();
 

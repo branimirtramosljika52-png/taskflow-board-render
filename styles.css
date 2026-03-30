@@ -9802,6 +9802,11 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
 }
 
+.vehicle-reservation-item-head {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .vehicle-list-row-copy,
 .vehicle-reservation-item-copy {
   display: grid;
@@ -9942,6 +9947,79 @@ body.is-vehicle-reservation-open {
 .vehicle-inline-status-select {
   min-width: 170px;
   max-width: 100%;
+}
+
+.vehicle-reservation-assignees-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+}
+
+.vehicle-reservation-assignees-summary {
+  color: #5f7068;
+  font-size: 0.88rem;
+}
+
+.vehicle-reservation-assignee-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vehicle-reservation-assignee-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.vehicle-reservation-assignee-option:hover,
+.vehicle-reservation-assignee-option.is-selected {
+  border-color: rgba(32, 102, 79, 0.28);
+  background: rgba(243, 249, 245, 0.96);
+  box-shadow: 0 10px 18px rgba(30, 64, 51, 0.08);
+}
+
+.vehicle-reservation-assignee-option input {
+  margin: 0;
+}
+
+.vehicle-reservation-assignee-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vehicle-reservation-assignee-copy strong,
+.vehicle-reservation-assignee-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vehicle-reservation-assignee-copy span,
+.vehicle-reservation-assignee-empty,
+.vehicle-reservation-executors-empty {
+  color: #66786f;
+  font-size: 0.84rem;
+}
+
+.vehicle-reservation-executors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.vehicle-reservation-executors.is-compact {
+  gap: 6px;
 }
 
 .vehicle-card-actions {
@@ -10200,7 +10278,8 @@ body.is-vehicle-reservation-open {
 @media (max-width: 760px) {
   .vehicles-summary-grid,
   .vehicles-filters,
-  .vehicles-form-grid {
+  .vehicles-form-grid,
+  .vehicle-reservation-assignee-picker {
     grid-template-columns: minmax(0, 1fr);
   }
 

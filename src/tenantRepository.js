@@ -580,7 +580,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
-      reservations: (item.reservations ?? []).map((reservation) => ({ ...reservation })),
+      reservations: (item.reservations ?? []).map((reservation) => ({
+        ...reservation,
+        reservedForUserIds: [...(reservation.reservedForUserIds ?? [])],
+        reservedForLabels: [...(reservation.reservedForLabels ?? [])],
+      })),
     })),
     dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)

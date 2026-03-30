@@ -629,8 +629,8 @@ test("vehicles create reservations, block overlaps and derive availability", () 
     {
       status: "reserved",
       purpose: "Intervencija Zagreb",
-      reservedForUserId: "user-1",
-      reservedForLabel: "Ana Admin",
+      reservedForUserIds: ["user-1", "user-2"],
+      reservedForLabels: ["Ana Admin", "Marko Servis"],
       destination: "Zagreb",
       startAt: "2026-03-30T07:00:00.000Z",
       endAt: "2026-03-30T15:00:00.000Z",
@@ -641,6 +641,8 @@ test("vehicles create reservations, block overlaps and derive availability", () 
 
   assert.equal(getVehicleAvailabilityStatus(reservedVehicle, "2026-03-30T08:00:00.000Z"), "reserved");
   assert.equal(getVehicleNextReservation(reservedVehicle, "2026-03-30T06:00:00.000Z")?.id, "reservation-1");
+  assert.deepEqual(reservedVehicle.reservations[0].reservedForUserIds, ["user-1", "user-2"]);
+  assert.deepEqual(reservedVehicle.reservations[0].reservedForLabels, ["Ana Admin", "Marko Servis"]);
 
   assert.throws(
     () => createVehicleReservation(

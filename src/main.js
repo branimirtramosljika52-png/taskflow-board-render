@@ -599,7 +599,8 @@ const vehicleReservationForm = document.querySelector("#vehicle-reservation-form
 const vehicleReservationIdInput = document.querySelector("#vehicle-reservation-id");
 const vehicleReservationVehicleIdInput = document.querySelector("#vehicle-reservation-vehicle-id");
 const vehicleReservationStatusInput = document.querySelector("#vehicle-reservation-status");
-const vehicleReservationUserIdInput = document.querySelector("#vehicle-reservation-user-id");
+const vehicleReservationAssigneesPreview = document.querySelector("#vehicle-reservation-assignees-preview");
+const vehicleReservationAssigneesInput = document.querySelector("#vehicle-reservation-assignees");
 const vehicleReservationPurposeInput = document.querySelector("#vehicle-reservation-purpose");
 const vehicleReservationStartAtInput = document.querySelector("#vehicle-reservation-start-at");
 const vehicleReservationEndAtInput = document.querySelector("#vehicle-reservation-end-at");
@@ -10211,24 +10212,140 @@ function getVehicleScheduleHours() {
   );
 }
 
-function rebuildVehicleReservationUserOptions(selectedValue = "") {
-  if (!vehicleReservationUserIdInput) {
+function createVehicleReservationExecutorAvatar(label, { compact = false } = {}) {
+  const avatar = document.createElement("span");
+  avatar.className = compact
+    ? "work-order-mini-executor vehicle-reservation-executor-avatar"
+    : "work-executor-avatar vehicle-reservation-executor-avatar";
+  avatar.title = label;
+  const tone = getExecutorTone(label);
+  avatar.style.setProperty("--executor-bg", tone.bg);
+  avatar.style.setProperty("--executor-fg", tone.fg);
+
+  if (compact) {
+    avatar.textContent = getUserInitials({ fullName: label }) || "?";
+    return avatar;
+  }
+
+  const initials = document.createElement("span");
+  initials.className = "work-executor-initials";
+  initials.textContent = getUserInitials({ fullName: label }) || "?";
+  avatar.append(initials);
+  return avatar;
+}
+
+function getVehicleReservationSelectedUserIds() {
+  if (!vehicleReservationAssigneesInput) {
+    return [];
+  }
+
+  return Array.from(
+    vehicleReservationAssigneesInput.querySelectorAll('input[name="vehicle-reservation-user-id"]:checked'),
+  ).map((input) => String(input.value || "")).filter(Boolean);
+}
+
+function getVehicleReservationSelectedUsers() {
+  const selectedIds = getVehicleReservationSelectedUserIds();
+  return selectedIds
+    .map((userId) => state.users.find((user) => String(user.id) === String(userId)) ?? null)
+    .filter(Boolean);
+}
+
+function getVehicleReservationAssigneeLabels(reservation) {
+  const labels = Array.isArray(reservation?.reservedForLabels) && reservation.reservedForLabels.length > 0
+    ? reservation.reservedForLabels
+    : [reservation?.reservedForLabel].filter(Boolean);
+  return labels.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function createVehicleReservationExecutorList(labels = [], { compact = false, emptyLabel = "Bez izvrsitelja" } = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = compact
+    ? "vehicle-reservation-executors is-compact"
+    : "vehicle-reservation-executors";
+
+  if (!Array.isArray(labels) || labels.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "vehicle-reservation-executors-empty";
+    empty.textContent = emptyLabel;
+    wrap.append(empty);
+    return wrap;
+  }
+
+  labels.forEach((label) => {
+    wrap.append(createVehicleReservationExecutorAvatar(label, { compact }));
+  });
+  return wrap;
+}
+
+function syncVehicleReservationAssigneePreview() {
+  if (!vehicleReservationAssigneesPreview) {
     return;
   }
 
-  const options = [
-    { value: "", label: "Bez osobe" },
-    ...state.users
-      .filter((user) => user.isActive !== false)
-      .slice()
-      .sort((left, right) => (left.fullName || left.email || "").localeCompare(right.fullName || right.email || "", "hr"))
-      .map((user) => ({
-        value: user.id,
-        label: user.fullName || user.email || user.username || "User",
-      })),
-  ];
+  const selectedUsers = getVehicleReservationSelectedUsers();
+  const labels = selectedUsers.map((user) => user.fullName || user.email || user.username || "User");
+  const executors = createVehicleReservationExecutorList(labels);
+  const summary = document.createElement("span");
+  summary.className = "vehicle-reservation-assignees-summary";
+  summary.textContent = labels.length === 0
+    ? "Bez izvrsitelja"
+    : `${labels.length} odabrano`;
 
-  replaceSelectOptions(vehicleReservationUserIdInput, options, selectedValue);
+  vehicleReservationAssigneesPreview.replaceChildren(executors, summary);
+}
+
+function rebuildVehicleReservationUserOptions(selectedValue = []) {
+  if (!vehicleReservationAssigneesInput) {
+    return;
+  }
+
+  const selectedIds = Array.isArray(selectedValue)
+    ? selectedValue.map((value) => String(value || "")).filter(Boolean)
+    : [String(selectedValue || "")].filter(Boolean);
+  const selectedSet = new Set(selectedIds);
+  const users = state.users
+    .filter((user) => user.isActive !== false)
+    .slice()
+    .sort((left, right) => (left.fullName || left.email || "").localeCompare(right.fullName || right.email || "", "hr"));
+
+  if (users.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "vehicle-reservation-assignee-empty";
+    empty.textContent = "Nema aktivnih korisnika za odabir.";
+    vehicleReservationAssigneesInput.replaceChildren(empty);
+    syncVehicleReservationAssigneePreview();
+    return;
+  }
+
+  vehicleReservationAssigneesInput.replaceChildren(...users.map((user) => {
+    const option = document.createElement("label");
+    option.className = "vehicle-reservation-assignee-option";
+    option.classList.toggle("is-selected", selectedSet.has(String(user.id)));
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "vehicle-reservation-user-id";
+    checkbox.value = String(user.id);
+    checkbox.checked = selectedSet.has(String(user.id));
+
+    const avatar = createVehicleReservationExecutorAvatar(user.fullName || user.email || user.username || "User");
+
+    const copy = document.createElement("span");
+    copy.className = "vehicle-reservation-assignee-copy";
+
+    const name = document.createElement("strong");
+    name.textContent = user.fullName || user.email || user.username || "User";
+
+    const meta = document.createElement("span");
+    meta.textContent = user.email || user.username || "Clan tima";
+
+    copy.append(name, meta);
+    option.append(checkbox, avatar, copy);
+    return option;
+  }));
+
+  syncVehicleReservationAssigneePreview();
 }
 
 function rebuildVehicleReservationVehicleOptions(selectedValue = "") {
@@ -10342,12 +10459,16 @@ function buildVehiclePayload() {
 }
 
 function buildVehicleReservationPayload() {
-  const selectedUser = state.users.find((user) => String(user.id) === String(vehicleReservationUserIdInput?.value || ""));
+  const selectedUsers = getVehicleReservationSelectedUsers();
+  const reservedForUserIds = selectedUsers.map((user) => String(user.id));
+  const reservedForLabels = selectedUsers.map((user) => user.fullName || user.email || user.username || "User");
 
   return {
     status: vehicleReservationStatusInput?.value || "reserved",
-    reservedForUserId: vehicleReservationUserIdInput?.value || "",
-    reservedForLabel: selectedUser?.fullName || selectedUser?.email || selectedUser?.username || "",
+    reservedForUserIds,
+    reservedForLabels,
+    reservedForUserId: reservedForUserIds[0] || "",
+    reservedForLabel: reservedForLabels.join(", "),
     purpose: vehicleReservationPurposeInput?.value || "",
     startAt: vehicleReservationStartAtInput?.value || "",
     endAt: vehicleReservationEndAtInput?.value || "",
@@ -10381,7 +10502,7 @@ function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.
     vehicleReservationEndAtInput.value = windowRange.endAt;
   }
 
-  rebuildVehicleReservationUserOptions("");
+  rebuildVehicleReservationUserOptions([]);
 
   if (clearSelection) {
     state.activeVehicleReservationId = "";
@@ -10429,7 +10550,7 @@ function hydrateVehicleReservationForm(vehicle, reservation) {
   if (vehicleReservationStatusInput) {
     vehicleReservationStatusInput.value = reservation.status || "reserved";
   }
-  rebuildVehicleReservationUserOptions(reservation.reservedForUserId || "");
+  rebuildVehicleReservationUserOptions(reservation.reservedForUserIds ?? reservation.reservedForUserId ?? []);
   if (vehicleReservationPurposeInput) {
     vehicleReservationPurposeInput.value = reservation.purpose || "";
   }
@@ -10886,8 +11007,8 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
       const title = document.createElement("strong");
       title.textContent = reservation.purpose || "Rezervacija";
       const meta = document.createElement("span");
-      meta.textContent = `${getVehicleReservationStatusLabel(reservation.status)} | ${reservation.reservedForLabel || "Bez osobe"}`;
-      block.append(title, meta);
+      meta.textContent = getVehicleReservationStatusLabel(reservation.status);
+      block.append(title, meta, createVehicleReservationExecutorList(getVehicleReservationAssigneeLabels(reservation), { compact: true }));
       block.addEventListener("click", () => {
         selectVehicle(vehicle.id);
         hydrateVehicleReservationForm(vehicle, reservation);
@@ -11050,11 +11171,15 @@ function renderVehiclesModule() {
       title.textContent = reservation.purpose || "Rezervacija";
       const meta = document.createElement("span");
       meta.textContent = [
-        reservation.reservedForLabel || "Bez osobe",
+        getVehicleReservationStatusLabel(reservation.status),
         reservation.destination || "",
       ].filter(Boolean).join(" | ");
       copy.append(title, meta);
-      head.append(copy, createVehicleReservationInlineStatusSelect(reservationVehicle, reservation));
+      head.append(
+        copy,
+        createVehicleReservationExecutorList(getVehicleReservationAssigneeLabels(reservation), { compact: true }),
+        createVehicleReservationInlineStatusSelect(reservationVehicle, reservation),
+      );
 
       const windowLabel = document.createElement("p");
       windowLabel.className = "vehicle-reservation-item-window";
@@ -11212,7 +11337,7 @@ function renderSharedOptions() {
   rebuildTodoAssigneeOptions(todoAssigneeInput?.value || "");
   rebuildTodoDetailAssigneeOptions(todoDetailAssignee?.value || "");
   rebuildTodoWorkOrderOptions(todoWorkOrderIdInput?.value || "");
-  rebuildVehicleReservationUserOptions(vehicleReservationUserIdInput?.value || "");
+  rebuildVehicleReservationUserOptions(getVehicleReservationSelectedUserIds());
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
   rebuildOfferLocationOptions(offerLocationIdInput?.value || "");
@@ -14867,6 +14992,18 @@ vehicleReservationVehicleIdInput?.addEventListener("change", () => {
   state.activeVehicleId = vehicleReservationVehicleIdInput.value || "";
   state.activeVehicleReservationId = "";
   renderVehiclesModule();
+});
+
+vehicleReservationAssigneesInput?.addEventListener("change", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+    return;
+  }
+
+  const option = target.closest(".vehicle-reservation-assignee-option");
+  option?.classList.toggle("is-selected", target.checked);
+  syncVehicleReservationAssigneePreview();
 });
 
 vehicleSchedulePrevButton?.addEventListener("click", () => {

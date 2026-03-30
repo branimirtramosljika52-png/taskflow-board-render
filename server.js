@@ -354,17 +354,53 @@ function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
 }
 
 function resolveVehicleReservationUserPayload(scopedSnapshot, body = {}) {
+  const hasUserIds = Object.prototype.hasOwnProperty.call(body, "reservedForUserIds");
+  const hasLabels = Object.prototype.hasOwnProperty.call(body, "reservedForLabels");
   const hasUserId = Object.prototype.hasOwnProperty.call(body, "reservedForUserId");
   const hasLabel = Object.prototype.hasOwnProperty.call(body, "reservedForLabel");
 
-  if (!hasUserId && !hasLabel) {
+  if (!hasUserIds && !hasLabels && !hasUserId && !hasLabel) {
     return {};
+  }
+
+  if (hasUserIds || hasLabels) {
+    const requestedUserIds = Array.isArray(body.reservedForUserIds)
+      ? body.reservedForUserIds.map((value) => normalizeInputValue(value)).filter(Boolean)
+      : [normalizeInputValue(body.reservedForUserId)].filter(Boolean);
+    const uniqueUserIds = Array.from(new Set(requestedUserIds));
+
+    if (uniqueUserIds.length === 0) {
+      return {
+        reservedForUserIds: [],
+        reservedForLabels: hasLabels && Array.isArray(body.reservedForLabels)
+          ? body.reservedForLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
+          : [],
+        reservedForUserId: "",
+        reservedForLabel: "",
+      };
+    }
+
+    const resolvedUsers = uniqueUserIds.map((userId) => assertInScope(
+      scopedSnapshot.users,
+      userId,
+      "Odabrani kolega nije dostupan za aktivnu organizaciju.",
+    ));
+    const reservedForLabels = resolvedUsers.map((user) => user.fullName || user.email || user.username || "User");
+
+    return {
+      reservedForUserIds: resolvedUsers.map((user) => String(user.id)),
+      reservedForLabels,
+      reservedForUserId: String(resolvedUsers[0]?.id ?? ""),
+      reservedForLabel: reservedForLabels.join(", "),
+    };
   }
 
   const reservedForUserId = normalizeInputValue(body.reservedForUserId);
 
   if (!reservedForUserId) {
     return {
+      reservedForUserIds: [],
+      reservedForLabels: [],
       reservedForUserId: "",
       reservedForLabel: hasLabel ? normalizeInputValue(body.reservedForLabel) : "",
     };
@@ -377,6 +413,8 @@ function resolveVehicleReservationUserPayload(scopedSnapshot, body = {}) {
   );
 
   return {
+    reservedForUserIds: [String(reservedUser.id)],
+    reservedForLabels: [reservedUser.fullName || reservedUser.email || reservedUser.username || "User"],
     reservedForUserId: String(reservedUser.id),
     reservedForLabel: reservedUser.fullName || reservedUser.email || reservedUser.username || "User",
   };
