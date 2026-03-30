@@ -6609,13 +6609,7 @@ body.is-work-order-editor-open {
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   scrollbar-gutter: stable both-edges;
-  touch-action: pan-x pan-y;
-  cursor: grab;
-}
-
-.work-order-calendar-grid-shell.is-grabbing {
-  cursor: grabbing;
-  user-select: none;
+  touch-action: auto;
 }
 
 .work-order-calendar-empty {

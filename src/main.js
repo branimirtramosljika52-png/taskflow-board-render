@@ -13928,59 +13928,13 @@ function bindWorkOrderCalendarGrabScroll() {
   }
 
   workOrderCalendarGridShell.dataset.grabBound = "true";
-  let activePointerId = null;
-  let startX = 0;
-  let startY = 0;
-  let startLeft = 0;
-  let startTop = 0;
-
-  const release = () => {
-    activePointerId = null;
-    workOrderCalendarGridShell.classList.remove("is-grabbing");
-  };
-
-  const isInteractiveTarget = (target) => target.closest([
-    "button",
-    "a",
-    "input",
-    "select",
-    "textarea",
-    "summary",
-    ".work-order-calendar-card",
-    ".work-order-calendar-cell-group",
-    ".work-order-calendar-unscheduled",
-  ].join(", "));
-
-  workOrderCalendarGridShell.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || isInteractiveTarget(event.target)) {
-      return;
-    }
-
-    activePointerId = event.pointerId;
-    startX = event.clientX;
-    startY = event.clientY;
-    startLeft = workOrderCalendarGridShell.scrollLeft;
-    startTop = workOrderCalendarGridShell.scrollTop;
-    workOrderCalendarGridShell.classList.add("is-grabbing");
-    workOrderCalendarGridShell.setPointerCapture?.(event.pointerId);
-  });
-
-  workOrderCalendarGridShell.addEventListener("pointermove", (event) => {
-    if (activePointerId !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    const deltaX = event.clientX - startX;
-    const deltaY = event.clientY - startY;
-    workOrderCalendarGridShell.scrollLeft = startLeft - deltaX;
-    workOrderCalendarGridShell.scrollTop = startTop - deltaY;
-  });
-
-  workOrderCalendarGridShell.addEventListener("pointerup", release);
-  workOrderCalendarGridShell.addEventListener("pointercancel", release);
-  workOrderCalendarGridShell.addEventListener("mouseleave", release);
   workOrderCalendarGridShell.addEventListener("wheel", (event) => {
+    const hasHorizontalOverflow = workOrderCalendarGridShell.scrollWidth > workOrderCalendarGridShell.clientWidth + 4;
+
+    if (!hasHorizontalOverflow) {
+      return;
+    }
+
     const shouldPanHorizontally = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
 
     if (!shouldPanHorizontally) {
