@@ -618,6 +618,18 @@ function writeJsonToLocalStorage(key, value) {
   }
 }
 
+function getTargetElement(target) {
+  if (target instanceof Element) {
+    return target;
+  }
+
+  if (target instanceof Node) {
+    return target.parentElement;
+  }
+
+  return null;
+}
+
 function getWorkOrderFilterStorageScope() {
   const organizationId = state.activeOrganizationId || "global";
   const userId = state.user?.id || "guest";
@@ -17880,14 +17892,15 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const targetElement = getTargetElement(event.target);
+
   if (event.target instanceof Node) {
-    const clickedStatusMenu = event.target instanceof HTMLElement
-      && (
-        event.target.closest(".work-item-status-dropdown")
-        || event.target.closest(".work-item-status-menu-portal")
-        || event.target.closest(".work-order-calendar-executor-picker")
-        || event.target.closest(".work-order-calendar-executor-menu-portal")
-      );
+    const clickedStatusMenu = Boolean(
+      targetElement?.closest(".work-item-status-dropdown")
+      || targetElement?.closest(".work-item-status-menu-portal")
+      || targetElement?.closest(".work-order-calendar-executor-picker")
+      || targetElement?.closest(".work-order-calendar-executor-menu-portal"),
+    );
 
     if (!clickedStatusMenu) {
       closeOpenWorkOrderStatusMenus();
@@ -17896,8 +17909,7 @@ document.addEventListener("click", (event) => {
 
   if (
     state.workOrderFilters.builderOpen
-    && event.target instanceof Node
-    && !(event.target instanceof HTMLElement && event.target.closest(".work-order-filter-shell"))
+    && !targetElement?.closest(".work-order-filter-shell")
   ) {
     state.workOrderFilters.builderOpen = false;
     renderWorkOrderFilterSummary();
