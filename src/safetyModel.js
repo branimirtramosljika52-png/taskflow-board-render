@@ -34,6 +34,20 @@ export const OFFER_STATUS_OPTIONS = [
   { value: "rejected", label: "Odbijeno" },
 ];
 
+export const VEHICLE_STATUS_OPTIONS = [
+  { value: "available", label: "Dostupno" },
+  { value: "reserved", label: "Rezervirano" },
+  { value: "service", label: "Servis" },
+  { value: "inactive", label: "Van uporabe" },
+];
+
+export const VEHICLE_RESERVATION_STATUS_OPTIONS = [
+  { value: "reserved", label: "Rezervacija" },
+  { value: "checked_out", label: "Na terenu" },
+  { value: "completed", label: "Zavrseno" },
+  { value: "cancelled", label: "Otkazano" },
+];
+
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
   "Flat plan",
   "One-Time",
@@ -171,6 +185,9 @@ const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
+const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
+const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
+const ACTIVE_VEHICLE_RESERVATION_STATUSES = new Set(["reserved", "checked_out"]);
 const OFFER_LOCATION_SCOPE_SET = new Set(["single", "all", "none"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
@@ -209,6 +226,18 @@ const OFFER_STATUS_RANK = {
   sent: 1,
   accepted: 2,
   rejected: 3,
+};
+const VEHICLE_STATUS_RANK = {
+  reserved: 0,
+  available: 1,
+  service: 2,
+  inactive: 3,
+};
+const VEHICLE_RESERVATION_STATUS_RANK = {
+  checked_out: 0,
+  reserved: 1,
+  completed: 2,
+  cancelled: 3,
 };
 
 function isoNow() {
@@ -254,6 +283,21 @@ function normalizeOptionalDate(value) {
 
   const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
+function normalizeOptionalDateTime(value) {
+  if (!value) {
+    return null;
+  }
+
+  const raw = normalizeText(value);
+
+  if (!raw) {
+    return null;
+  }
+
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function normalizeBoolean(value, fallback = true) {
@@ -305,6 +349,16 @@ function normalizeTodoTaskStatus(value) {
 function normalizeOfferStatus(value) {
   const status = normalizeText(value).toLowerCase();
   return OFFER_STATUS_SET.has(status) ? status : "draft";
+}
+
+function normalizeVehicleStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return VEHICLE_STATUS_SET.has(status) ? status : "available";
+}
+
+function normalizeVehicleReservationStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return VEHICLE_RESERVATION_STATUS_SET.has(status) ? status : "reserved";
 }
 
 function normalizeOfferLocationScope(value, fallback = "none") {
@@ -433,6 +487,255 @@ function normalizeOfferItems(items = []) {
   }
 
   return normalizedItems;
+}
+
+function normalizeVehiclePlateNumber(value) {
+  return normalizeText(value).replace(/\s+/g, " ").toUpperCase();
+}
+
+function normalizeVehicleInteger(value, fallback = null) {
+  const raw = normalizeText(value);
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const numeric = Math.round(normalizeFiniteNumber(raw, Number.NaN));
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
+}
+
+function normalizeVehicleReservations(reservations = []) {
+  if (!Array.isArray(reservations)) {
+    return [];
+  }
+
+  return reservations
+    .map((reservation) => {
+      const startAt = normalizeOptionalDateTime(reservation?.startAt);
+      const endAt = normalizeOptionalDateTime(reservation?.endAt);
+
+      if (!startAt || !endAt) {
+        return null;
+      }
+
+      return {
+        id: normalizeId(reservation?.id),
+        vehicleId: normalizeId(reservation?.vehicleId),
+        status: normalizeVehicleReservationStatus(reservation?.status),
+        purpose: normalizeText(reservation?.purpose),
+        reservedForUserId: normalizeText(reservation?.reservedForUserId),
+        reservedForLabel: normalizeText(reservation?.reservedForLabel),
+        destination: normalizeText(reservation?.destination),
+        startAt,
+        endAt,
+        note: normalizeText(reservation?.note),
+        createdByUserId: normalizeText(reservation?.createdByUserId),
+        createdByLabel: normalizeText(reservation?.createdByLabel),
+        createdAt: normalizeOptionalDateTime(reservation?.createdAt) ?? isoNow(),
+        updatedAt: normalizeOptionalDateTime(reservation?.updatedAt) ?? isoNow(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function findVehicleById(state, vehicleId = "") {
+  if (!vehicleId) {
+    return null;
+  }
+
+  return (state.vehicles ?? []).find((item) => item.id === vehicleId) ?? null;
+}
+
+function findVehicleReservationById(vehicle, reservationId = "") {
+  if (!vehicle || !reservationId) {
+    return null;
+  }
+
+  return (vehicle.reservations ?? []).find((item) => item.id === reservationId) ?? null;
+}
+
+function isVehicleReservationActive(reservation, nowValue = isoNow()) {
+  if (!reservation || !ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation.status))) {
+    return false;
+  }
+
+  const endAt = Date.parse(reservation.endAt ?? "");
+  const nowTimestamp = Date.parse(nowValue);
+
+  return Number.isFinite(endAt) && Number.isFinite(nowTimestamp) ? endAt > nowTimestamp : false;
+}
+
+function reservationsOverlap(left, right) {
+  const leftStart = Date.parse(left?.startAt ?? "");
+  const leftEnd = Date.parse(left?.endAt ?? "");
+  const rightStart = Date.parse(right?.startAt ?? "");
+  const rightEnd = Date.parse(right?.endAt ?? "");
+
+  if (![leftStart, leftEnd, rightStart, rightEnd].every(Number.isFinite)) {
+    return false;
+  }
+
+  return leftStart < rightEnd && leftEnd > rightStart;
+}
+
+function assertVehiclePlateUnique(state, organizationId, plateNumber, currentVehicleId = "") {
+  if (!plateNumber) {
+    return;
+  }
+
+  const duplicate = (state.vehicles ?? []).find((item) => (
+    String(item.organizationId) === String(organizationId)
+    && normalizeVehiclePlateNumber(item.plateNumber) === plateNumber
+    && String(item.id) !== String(currentVehicleId)
+  ));
+
+  if (duplicate) {
+    throw new Error("Vozilo s ovom registracijom vec postoji.");
+  }
+}
+
+function assertVehicleReservationWindow(startAt, endAt) {
+  if (!startAt || !endAt) {
+    throw new Error("Odaberi pocetak i kraj rezervacije.");
+  }
+
+  const startTimestamp = Date.parse(startAt);
+  const endTimestamp = Date.parse(endAt);
+
+  if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) {
+    throw new Error("Termin rezervacije nije ispravan.");
+  }
+
+  if (endTimestamp <= startTimestamp) {
+    throw new Error("Kraj rezervacije mora biti nakon pocetka.");
+  }
+}
+
+function assertVehicleReservationConflict(vehicle, candidate, excludeReservationId = "") {
+  const hasConflict = (vehicle?.reservations ?? []).some((reservation) => {
+    if (String(reservation.id) === String(excludeReservationId)) {
+      return false;
+    }
+
+    if (!ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation.status))) {
+      return false;
+    }
+
+    if (!ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(candidate.status))) {
+      return false;
+    }
+
+    return reservationsOverlap(reservation, candidate);
+  });
+
+  if (hasConflict) {
+    throw new Error("Vozilo je vec rezervirano u odabranom terminu.");
+  }
+}
+
+function hydrateVehicleCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const name = hasOwn(input, "name")
+    ? requireText(input.name, "Naziv vozila")
+    : requireText(current?.name, "Naziv vozila");
+  const plateNumber = hasOwn(input, "plateNumber")
+    ? normalizeVehiclePlateNumber(requireText(input.plateNumber, "Registracija"))
+    : normalizeVehiclePlateNumber(requireText(current?.plateNumber, "Registracija"));
+  const status = hasOwn(input, "status")
+    ? normalizeVehicleStatus(input.status)
+    : normalizeVehicleStatus(current?.status);
+  const reservations = hasOwn(input, "reservations")
+    ? normalizeVehicleReservations(input.reservations)
+    : (current?.reservations ?? []).map((reservation) => ({ ...reservation }));
+
+  assertVehiclePlateUnique(state, organizationId, plateNumber, current?.id ?? "");
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    name,
+    plateNumber,
+    make: hasOwn(input, "make") ? normalizeText(input.make) : (current?.make ?? ""),
+    model: hasOwn(input, "model") ? normalizeText(input.model) : (current?.model ?? ""),
+    category: hasOwn(input, "category") ? normalizeText(input.category) : (current?.category ?? ""),
+    year: hasOwn(input, "year")
+      ? normalizeVehicleInteger(input.year, null)
+      : normalizeVehicleInteger(current?.year, null),
+    color: hasOwn(input, "color") ? normalizeText(input.color) : (current?.color ?? ""),
+    fuelType: hasOwn(input, "fuelType") ? normalizeText(input.fuelType) : (current?.fuelType ?? ""),
+    transmission: hasOwn(input, "transmission") ? normalizeText(input.transmission) : (current?.transmission ?? ""),
+    seatCount: hasOwn(input, "seatCount")
+      ? normalizeVehicleInteger(input.seatCount, null)
+      : normalizeVehicleInteger(current?.seatCount, null),
+    odometerKm: hasOwn(input, "odometerKm")
+      ? normalizeVehicleInteger(input.odometerKm, 0)
+      : normalizeVehicleInteger(current?.odometerKm, 0),
+    serviceDueDate: hasOwn(input, "serviceDueDate")
+      ? normalizeOptionalDate(input.serviceDueDate)
+      : normalizeOptionalDate(current?.serviceDueDate),
+    registrationExpiresOn: hasOwn(input, "registrationExpiresOn")
+      ? normalizeOptionalDate(input.registrationExpiresOn)
+      : normalizeOptionalDate(current?.registrationExpiresOn),
+    notes: hasOwn(input, "notes") ? normalizeText(input.notes) : (current?.notes ?? ""),
+    status,
+    reservations,
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function hydrateVehicleReservationCore({
+  current = null,
+  vehicle,
+  input,
+  timestamp,
+}) {
+  const status = hasOwn(input, "status")
+    ? normalizeVehicleReservationStatus(input.status)
+    : normalizeVehicleReservationStatus(current?.status);
+  const startAt = hasOwn(input, "startAt")
+    ? normalizeOptionalDateTime(input.startAt)
+    : normalizeOptionalDateTime(current?.startAt);
+  const endAt = hasOwn(input, "endAt")
+    ? normalizeOptionalDateTime(input.endAt)
+    : normalizeOptionalDateTime(current?.endAt);
+
+  assertVehicleReservationWindow(startAt, endAt);
+
+  const reservation = {
+    id: current?.id ?? "",
+    vehicleId: vehicle.id,
+    status,
+    purpose: hasOwn(input, "purpose") ? requireText(input.purpose, "Svrha rezervacije") : requireText(current?.purpose, "Svrha rezervacije"),
+    reservedForUserId: hasOwn(input, "reservedForUserId")
+      ? normalizeText(input.reservedForUserId)
+      : (current?.reservedForUserId ?? ""),
+    reservedForLabel: hasOwn(input, "reservedForLabel")
+      ? normalizeText(input.reservedForLabel)
+      : (current?.reservedForLabel ?? ""),
+    destination: hasOwn(input, "destination") ? normalizeText(input.destination) : (current?.destination ?? ""),
+    startAt,
+    endAt,
+    note: hasOwn(input, "note") ? normalizeText(input.note) : (current?.note ?? ""),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+
+  assertVehicleReservationConflict(vehicle, reservation, current?.id ?? "");
+  return reservation;
 }
 
 function calculateOfferTotals(items = [], taxRate = 25, discountRate = 0) {
@@ -1669,6 +1972,243 @@ export function sortOffers(offers) {
     }
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortVehicleReservations(reservations, nowValue = isoNow()) {
+  const nowTimestamp = Date.parse(nowValue);
+
+  return [...(reservations ?? [])].sort((left, right) => {
+    const leftActive = isVehicleReservationActive(left, nowValue);
+    const rightActive = isVehicleReservationActive(right, nowValue);
+
+    if (leftActive !== rightActive) {
+      return leftActive ? -1 : 1;
+    }
+
+    const leftUpcoming = Number.isFinite(nowTimestamp) && Date.parse(left?.startAt ?? "") >= nowTimestamp;
+    const rightUpcoming = Number.isFinite(nowTimestamp) && Date.parse(right?.startAt ?? "") >= nowTimestamp;
+
+    if (leftUpcoming !== rightUpcoming) {
+      return leftUpcoming ? -1 : 1;
+    }
+
+    const leftRank = VEHICLE_RESERVATION_STATUS_RANK[normalizeVehicleReservationStatus(left?.status)] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = VEHICLE_RESERVATION_STATUS_RANK[normalizeVehicleReservationStatus(right?.status)] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftStart = Date.parse(left?.startAt ?? "");
+    const rightStart = Date.parse(right?.startAt ?? "");
+
+    if (Number.isFinite(leftStart) && Number.isFinite(rightStart) && leftStart !== rightStart) {
+      return leftStart - rightStart;
+    }
+
+    return String(right?.updatedAt ?? "").localeCompare(String(left?.updatedAt ?? ""));
+  });
+}
+
+export function getVehicleNextReservation(vehicle, nowValue = isoNow()) {
+  const nowTimestamp = Date.parse(nowValue);
+
+  return sortVehicleReservations(vehicle?.reservations ?? [], nowValue).find((reservation) => {
+    const endTimestamp = Date.parse(reservation?.endAt ?? "");
+
+    if (!Number.isFinite(endTimestamp)) {
+      return false;
+    }
+
+    if (Number.isFinite(nowTimestamp) && endTimestamp <= nowTimestamp) {
+      return false;
+    }
+
+    return ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation?.status));
+  }) ?? null;
+}
+
+export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
+  const baseStatus = normalizeVehicleStatus(vehicle?.status);
+
+  if (baseStatus === "service" || baseStatus === "inactive") {
+    return baseStatus;
+  }
+
+  return getVehicleNextReservation(vehicle, nowValue) ? "reserved" : "available";
+}
+
+export function createVehicle(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const vehicle = hydrateVehicleCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...vehicle,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateVehicle(current, patch, state, now = isoNow) {
+  return hydrateVehicleCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
+export function createVehicleReservation(
+  vehicle,
+  input,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const reservation = hydrateVehicleReservationCore({
+    vehicle,
+    input,
+    timestamp,
+  });
+  const nextReservations = sortVehicleReservations([
+    ...(vehicle.reservations ?? []).map((entry) => ({ ...entry })),
+    {
+      ...reservation,
+      id: createId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  ], timestamp);
+
+  return {
+    ...vehicle,
+    reservations: nextReservations,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateVehicleReservation(vehicle, reservationId, patch, now = isoNow) {
+  const currentReservation = findVehicleReservationById(vehicle, reservationId);
+
+  if (!currentReservation) {
+    throw new Error("Rezervacija vozila nije pronadena.");
+  }
+
+  const timestamp = now();
+  const nextReservation = hydrateVehicleReservationCore({
+    current: currentReservation,
+    vehicle,
+    input: patch,
+    timestamp,
+  });
+
+  return {
+    ...vehicle,
+    reservations: sortVehicleReservations(
+      (vehicle.reservations ?? []).map((reservation) => (
+        String(reservation.id) === String(reservationId)
+          ? nextReservation
+          : { ...reservation }
+      )),
+      timestamp,
+    ),
+    updatedAt: timestamp,
+  };
+}
+
+export function deleteVehicleReservation(vehicle, reservationId, now = isoNow) {
+  const hasReservation = (vehicle.reservations ?? []).some((reservation) => String(reservation.id) === String(reservationId));
+
+  if (!hasReservation) {
+    return null;
+  }
+
+  const timestamp = now();
+
+  return {
+    ...vehicle,
+    reservations: sortVehicleReservations(
+      (vehicle.reservations ?? []).filter((reservation) => String(reservation.id) !== String(reservationId)),
+      timestamp,
+    ),
+    updatedAt: timestamp,
+  };
+}
+
+export function filterVehicles(
+  vehicles,
+  { query = "", status = "all", nowValue = isoNow() } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (vehicles ?? []).filter((vehicle) => {
+    const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
+
+    if (status !== "all" && availabilityStatus !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      vehicle.name,
+      vehicle.plateNumber,
+      vehicle.make,
+      vehicle.model,
+      vehicle.category,
+      vehicle.color,
+      vehicle.notes,
+      ...(vehicle.reservations ?? []).map((reservation) => reservation.purpose),
+      ...(vehicle.reservations ?? []).map((reservation) => reservation.reservedForLabel),
+      ...(vehicle.reservations ?? []).map((reservation) => reservation.destination),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortVehicles(vehicles, nowValue = isoNow()) {
+  return [...(vehicles ?? [])].sort((left, right) => {
+    const leftStatus = getVehicleAvailabilityStatus(left, nowValue);
+    const rightStatus = getVehicleAvailabilityStatus(right, nowValue);
+    const leftRank = VEHICLE_STATUS_RANK[leftStatus] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = VEHICLE_STATUS_RANK[rightStatus] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftNextReservation = getVehicleNextReservation(left, nowValue);
+    const rightNextReservation = getVehicleNextReservation(right, nowValue);
+    const leftStart = Date.parse(leftNextReservation?.startAt ?? "");
+    const rightStart = Date.parse(rightNextReservation?.startAt ?? "");
+
+    if (Number.isFinite(leftStart) && Number.isFinite(rightStart) && leftStart !== rightStart) {
+      return leftStart - rightStart;
+    }
+
+    if (Number.isFinite(leftStart) && !Number.isFinite(rightStart)) {
+      return -1;
+    }
+
+    if (!Number.isFinite(leftStart) && Number.isFinite(rightStart)) {
+      return 1;
+    }
+
+    return `${left.plateNumber} ${left.name}`.localeCompare(`${right.plateNumber} ${right.name}`, "hr");
   });
 }
 

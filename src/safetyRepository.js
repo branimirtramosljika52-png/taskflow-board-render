@@ -10,9 +10,13 @@ import {
   createReminder,
   createTodoTask,
   createTodoTaskComment,
+  createVehicle,
+  createVehicleReservation,
   createWorkOrder,
+  deleteVehicleReservation,
   deriveOfferInitials,
   nextOfferNumber,
+  sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateDashboardWidget,
@@ -20,6 +24,8 @@ import {
   updateOffer,
   updateReminder,
   updateTodoTask,
+  updateVehicle,
+  updateVehicleReservation,
   updateWorkOrder,
 } from "./safetyModel.js";
 import {
@@ -810,6 +816,52 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [vehicleRows] = await connection.query(`
+    SELECT id, organization_id, name, plate_number, make_name, model_name, category, model_year,
+           color, fuel_type, transmission, seat_count, odometer_km, service_due_date,
+           registration_expires_on, notes, status, reservations_json, created_at, updated_at
+    FROM web_vehicles
+    ORDER BY updated_at DESC, id DESC
+  `);
+
+  const vehicles = vehicleRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    name: row.name ?? "",
+    plateNumber: row.plate_number ?? "",
+    make: row.make_name ?? "",
+    model: row.model_name ?? "",
+    category: row.category ?? "",
+    year: parseNullableInteger(row.model_year),
+    color: row.color ?? "",
+    fuelType: row.fuel_type ?? "",
+    transmission: row.transmission ?? "",
+    seatCount: parseNullableInteger(row.seat_count),
+    odometerKm: parseNullableInteger(row.odometer_km) ?? 0,
+    serviceDueDate: normalizeDateOnly(row.service_due_date),
+    registrationExpiresOn: normalizeDateOnly(row.registration_expires_on),
+    notes: row.notes ?? "",
+    status: row.status ?? "available",
+    reservations: sortVehicleReservations(parseJsonArray(row.reservations_json).map((reservation) => ({
+      id: dbString(reservation.id),
+      vehicleId: dbString(reservation.vehicleId) || String(row.id),
+      status: dbString(reservation.status) || "reserved",
+      purpose: dbString(reservation.purpose),
+      reservedForUserId: dbString(reservation.reservedForUserId),
+      reservedForLabel: dbString(reservation.reservedForLabel),
+      destination: dbString(reservation.destination),
+      startAt: normalizeTimestamp(reservation.startAt),
+      endAt: normalizeTimestamp(reservation.endAt),
+      note: dbString(reservation.note),
+      createdByUserId: dbString(reservation.createdByUserId),
+      createdByLabel: dbString(reservation.createdByLabel),
+      createdAt: normalizeTimestamp(reservation.createdAt),
+      updatedAt: normalizeTimestamp(reservation.updatedAt),
+    })).filter((reservation) => reservation.startAt && reservation.endAt)),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
            size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height,
@@ -845,6 +897,7 @@ async function fetchSnapshotFromConnection(connection) {
     reminders,
     todoTasks,
     offers,
+    vehicles,
     dashboardWidgets,
   };
 }
@@ -919,6 +972,7 @@ export class InMemorySafetyRepository {
       reminders: [],
       todoTasks: [],
       offers: [],
+      vehicles: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -1020,6 +1074,10 @@ export class InMemorySafetyRepository {
           ...entry,
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
         })),
+      })),
+      vehicles: this.snapshot.vehicles.map((item) => ({
+        ...item,
+        reservations: (item.reservations ?? []).map((reservation) => ({ ...reservation })),
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
@@ -1306,6 +1364,87 @@ export class InMemorySafetyRepository {
     return this.snapshot.offers.length !== before;
   }
 
+  async createVehicle(input) {
+    const vehicle = createVehicle(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.vehicles = [vehicle, ...this.snapshot.vehicles];
+    return vehicle;
+  }
+
+  async updateVehicle(id, patch) {
+    const current = this.snapshot.vehicles.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateVehicle(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.vehicles = this.snapshot.vehicles.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteVehicle(id) {
+    const before = this.snapshot.vehicles.length;
+    this.snapshot.vehicles = this.snapshot.vehicles.filter((item) => item.id !== id);
+    return this.snapshot.vehicles.length !== before;
+  }
+
+  async createVehicleReservation(vehicleId, input, actor = null) {
+    const current = this.snapshot.vehicles.find((item) => item.id === vehicleId);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = createVehicleReservation(current, {
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.vehicles = this.snapshot.vehicles.map((item) => (item.id === vehicleId ? next : item));
+    return next;
+  }
+
+  async updateVehicleReservation(vehicleId, reservationId, patch, actor = null) {
+    const current = this.snapshot.vehicles.find((item) => item.id === vehicleId);
+
+    if (!current) {
+      return null;
+    }
+
+     const currentReservation = (current.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId));
+
+    if (!currentReservation) {
+      return null;
+    }
+
+    const next = updateVehicleReservation(current, reservationId, {
+      ...patch,
+      createdByUserId: patch.createdByUserId ?? currentReservation.createdByUserId ?? String(actor?.id ?? ""),
+      createdByLabel: patch.createdByLabel
+        ?? currentReservation.createdByLabel
+        ?? (actor?.fullName || actor?.username || "Safety360"),
+    }, () => new Date().toISOString());
+    this.snapshot.vehicles = this.snapshot.vehicles.map((item) => (item.id === vehicleId ? next : item));
+    return next;
+  }
+
+  async deleteVehicleReservation(vehicleId, reservationId) {
+    const current = this.snapshot.vehicles.find((item) => item.id === vehicleId);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = deleteVehicleReservation(current, reservationId, () => new Date().toISOString());
+
+    if (!next) {
+      return null;
+    }
+
+    this.snapshot.vehicles = this.snapshot.vehicles.map((item) => (item.id === vehicleId ? next : item));
+    return next;
+  }
+
   async createDashboardWidget(input) {
     const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
@@ -1487,6 +1626,32 @@ export class MySqlSafetyRepository {
         INDEX idx_web_offers_company (company_id),
         INDEX idx_web_offers_location (location_id),
         INDEX idx_web_offers_valid_until (valid_until)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_vehicles (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        name VARCHAR(180) NOT NULL,
+        plate_number VARCHAR(32) NOT NULL,
+        make_name VARCHAR(120) NOT NULL DEFAULT '',
+        model_name VARCHAR(120) NOT NULL DEFAULT '',
+        category VARCHAR(120) NOT NULL DEFAULT '',
+        model_year INT NULL,
+        color VARCHAR(60) NOT NULL DEFAULT '',
+        fuel_type VARCHAR(60) NOT NULL DEFAULT '',
+        transmission VARCHAR(60) NOT NULL DEFAULT '',
+        seat_count INT NULL,
+        odometer_km INT NOT NULL DEFAULT 0,
+        service_due_date DATE NULL,
+        registration_expires_on DATE NULL,
+        notes TEXT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'available',
+        reservations_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_vehicles_org_plate (organization_id, plate_number),
+        INDEX idx_web_vehicles_org_status (organization_id, status)
       )
     `);
     await this.pool.query(`
@@ -2668,6 +2833,236 @@ export class MySqlSafetyRepository {
     try {
       const [result] = await connection.query("DELETE FROM web_offers WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createVehicle(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createVehicle(input, snapshot, () => "pending-vehicle", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_vehicles
+            (organization_id, name, plate_number, make_name, model_name, category, model_year, color, fuel_type,
+             transmission, seat_count, odometer_km, service_due_date, registration_expires_on, notes, status,
+             reservations_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.name,
+          draft.plateNumber,
+          draft.make,
+          draft.model,
+          draft.category,
+          parseNullableInteger(draft.year),
+          draft.color,
+          draft.fuelType,
+          draft.transmission,
+          parseNullableInteger(draft.seatCount),
+          parseNullableInteger(draft.odometerKm) ?? 0,
+          draft.serviceDueDate,
+          draft.registrationExpiresOn,
+          draft.notes,
+          draft.status,
+          JSON.stringify(draft.reservations ?? []),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateVehicle(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.vehicles.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateVehicle(current, patch, snapshot, () => new Date().toISOString());
+      await connection.query(
+        `
+          UPDATE web_vehicles
+          SET name = ?, plate_number = ?, make_name = ?, model_name = ?, category = ?, model_year = ?, color = ?,
+              fuel_type = ?, transmission = ?, seat_count = ?, odometer_km = ?, service_due_date = ?,
+              registration_expires_on = ?, notes = ?, status = ?, reservations_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.name,
+          next.plateNumber,
+          next.make,
+          next.model,
+          next.category,
+          parseNullableInteger(next.year),
+          next.color,
+          next.fuelType,
+          next.transmission,
+          parseNullableInteger(next.seatCount),
+          parseNullableInteger(next.odometerKm) ?? 0,
+          next.serviceDueDate,
+          next.registrationExpiresOn,
+          next.notes,
+          next.status,
+          JSON.stringify(next.reservations ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteVehicle(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_vehicles WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createVehicleReservation(vehicleId, input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.vehicles.find((item) => item.id === vehicleId);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = createVehicleReservation(current, {
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, () => "pending-reservation", () => new Date().toISOString());
+
+      await connection.query(
+        "UPDATE web_vehicles SET reservations_json = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [JSON.stringify(next.reservations ?? []), next.status, Number(vehicleId)],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateVehicleReservation(vehicleId, reservationId, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.vehicles.find((item) => item.id === vehicleId);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const currentReservation = (current.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId));
+
+      if (!currentReservation) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateVehicleReservation(current, reservationId, {
+        ...patch,
+        createdByUserId: patch.createdByUserId ?? currentReservation.createdByUserId ?? String(actor?.id ?? ""),
+        createdByLabel: patch.createdByLabel
+          ?? currentReservation.createdByLabel
+          ?? (actor?.fullName || actor?.username || "Safety360"),
+      }, () => new Date().toISOString());
+
+      await connection.query(
+        "UPDATE web_vehicles SET reservations_json = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [JSON.stringify(next.reservations ?? []), next.status, Number(vehicleId)],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteVehicleReservation(vehicleId, reservationId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.vehicles.find((item) => item.id === vehicleId);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = deleteVehicleReservation(current, reservationId, () => new Date().toISOString());
+
+      if (!next) {
+        await connection.rollback();
+        return null;
+      }
+
+      await connection.query(
+        "UPDATE web_vehicles SET reservations_json = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [JSON.stringify(next.reservations ?? []), next.status, Number(vehicleId)],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

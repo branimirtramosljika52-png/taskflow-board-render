@@ -576,6 +576,12 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       ...item,
       items: (item.items ?? []).map((entry) => ({ ...entry })),
     })),
+    vehicles: (rawSnapshot.vehicles ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      reservations: (item.reservations ?? []).map((reservation) => ({ ...reservation })),
+    })),
     dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && String(item.userId) === String(actor?.id ?? "")
@@ -1011,6 +1017,7 @@ export class MemoryTenantRepository {
     reminders: [],
     todoTasks: [],
     offers: [],
+    vehicles: [],
     dashboardWidgets: [],
   }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
@@ -1636,6 +1643,7 @@ export class MySqlTenantRepository {
     reminders: [],
     todoTasks: [],
     offers: [],
+    vehicles: [],
     dashboardWidgets: [],
   }) {
     const connection = await this.pool.getConnection();
@@ -1652,6 +1660,7 @@ export class MySqlTenantRepository {
           reminders: [],
           todoTasks: [],
           offers: [],
+          vehicles: [],
           dashboardWidgets: [],
         };
 

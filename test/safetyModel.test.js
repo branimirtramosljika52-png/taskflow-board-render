@@ -15,15 +15,20 @@ import {
   createReminder,
   createTodoTask,
   createTodoTaskComment,
+  createVehicle,
+  createVehicleReservation,
   createWorkOrder,
   deriveOfferInitials,
   filterReminders,
   filterOffers,
   filterTodoTasks,
+  filterVehicles,
   filterWorkOrders,
   getDashboardWidgetData,
   getDashboardInsights,
   getDashboardStats,
+  getVehicleAvailabilityStatus,
+  getVehicleNextReservation,
   groupWorkOrdersByExecutorSet,
   nextOfferNumber,
   nextWorkOrderNumber,
@@ -31,7 +36,9 @@ import {
   sortReminders,
   sortDashboardWidgets,
   sortOffers,
+  sortVehicles,
   sortTodoTasks,
+  updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
   updateDashboardWidget,
   updateLocation,
@@ -76,10 +83,12 @@ function buildState() {
   return {
     companies: [company],
     locations: [location],
+    users: [],
     workOrders: [],
     reminders: [],
     todoTasks: [],
     offers: [],
+    vehicles: [],
     dashboardWidgets: [],
   };
 }
@@ -593,6 +602,132 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(allLocationsOffer.contactName, "");
   assert.equal(allLocationsOffer.showTotalAmount, true);
   assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 180 mm" }).length, 1);
+});
+
+test("vehicles create reservations, block overlaps and derive availability", () => {
+  const state = buildState();
+  const vehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Servisni kombi 1",
+      plateNumber: "ZG 1234 AB",
+      make: "Renault",
+      model: "Trafic",
+      category: "Kombi",
+      year: 2022,
+      seatCount: 3,
+      odometerKm: 142000,
+      status: "available",
+    },
+    state,
+    () => "vehicle-1",
+    () => "2026-03-29T08:00:00.000Z",
+  );
+
+  const reservedVehicle = createVehicleReservation(
+    vehicle,
+    {
+      status: "reserved",
+      purpose: "Intervencija Zagreb",
+      reservedForUserId: "user-1",
+      reservedForLabel: "Ana Admin",
+      destination: "Zagreb",
+      startAt: "2026-03-30T07:00:00.000Z",
+      endAt: "2026-03-30T15:00:00.000Z",
+    },
+    () => "reservation-1",
+    () => "2026-03-29T09:00:00.000Z",
+  );
+
+  assert.equal(getVehicleAvailabilityStatus(reservedVehicle, "2026-03-30T08:00:00.000Z"), "reserved");
+  assert.equal(getVehicleNextReservation(reservedVehicle, "2026-03-30T06:00:00.000Z")?.id, "reservation-1");
+
+  assert.throws(
+    () => createVehicleReservation(
+      reservedVehicle,
+      {
+        status: "reserved",
+        purpose: "Druga voznja",
+        reservedForLabel: "Marko",
+        startAt: "2026-03-30T10:00:00.000Z",
+        endAt: "2026-03-30T12:00:00.000Z",
+      },
+      () => "reservation-2",
+      () => "2026-03-29T09:10:00.000Z",
+    ),
+    /vec rezervirano/i,
+  );
+
+  const completedVehicle = updateVehicleReservation(
+    reservedVehicle,
+    "reservation-1",
+    {
+      status: "completed",
+    },
+    () => "2026-03-30T16:00:00.000Z",
+  );
+
+  assert.equal(getVehicleAvailabilityStatus(completedVehicle, "2026-03-30T16:05:00.000Z"), "available");
+});
+
+test("vehicles filter and sort by availability and search context", () => {
+  const state = buildState();
+  const availableVehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Mali gradski auto",
+      plateNumber: "ZG 0001 AA",
+      status: "available",
+    },
+    state,
+    () => "vehicle-a",
+    () => "2026-03-29T08:00:00.000Z",
+  );
+  const reservedVehicle = createVehicleReservation(
+    createVehicle(
+      {
+        organizationId: "55",
+        name: "Kombi interventni",
+        plateNumber: "ZG 0002 BB",
+        status: "available",
+      },
+      state,
+      () => "vehicle-b",
+      () => "2026-03-29T08:00:00.000Z",
+    ),
+    {
+      purpose: "Split teren",
+      reservedForLabel: "Luka Servis",
+      startAt: "2026-03-30T06:00:00.000Z",
+      endAt: "2026-03-31T18:00:00.000Z",
+    },
+    () => "reservation-b",
+    () => "2026-03-29T08:15:00.000Z",
+  );
+  const serviceVehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Servisna limuzina",
+      plateNumber: "ZG 0003 CC",
+      status: "service",
+    },
+    state,
+    () => "vehicle-c",
+    () => "2026-03-29T08:00:00.000Z",
+  );
+
+  const filtered = filterVehicles([availableVehicle, reservedVehicle, serviceVehicle], {
+    query: "split",
+    status: "reserved",
+    nowValue: "2026-03-30T09:00:00.000Z",
+  });
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "vehicle-b");
+  assert.deepEqual(
+    sortVehicles([availableVehicle, serviceVehicle, reservedVehicle], "2026-03-30T09:00:00.000Z").map((item) => item.id),
+    ["vehicle-b", "vehicle-a", "vehicle-c"],
+  );
 });
 
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {

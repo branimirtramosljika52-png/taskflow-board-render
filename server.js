@@ -323,6 +323,10 @@ function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
   assertInScope(scopedSnapshot.workOrders, body.workOrderId, "Radni nalog nije dostupan za odabranu organizaciju.");
 }
 
+function normalizeInputValue(value) {
+  return String(value ?? "").trim();
+}
+
 function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
   if (!Object.prototype.hasOwnProperty.call(body, "assignedToUserId")) {
     return {};
@@ -346,6 +350,35 @@ function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
   return {
     assignedToUserId: String(assignedUser.id),
     assignedToLabel: assignedUser.fullName || assignedUser.email || assignedUser.username || "User",
+  };
+}
+
+function resolveVehicleReservationUserPayload(scopedSnapshot, body = {}) {
+  const hasUserId = Object.prototype.hasOwnProperty.call(body, "reservedForUserId");
+  const hasLabel = Object.prototype.hasOwnProperty.call(body, "reservedForLabel");
+
+  if (!hasUserId && !hasLabel) {
+    return {};
+  }
+
+  const reservedForUserId = normalizeInputValue(body.reservedForUserId);
+
+  if (!reservedForUserId) {
+    return {
+      reservedForUserId: "",
+      reservedForLabel: hasLabel ? normalizeInputValue(body.reservedForLabel) : "",
+    };
+  }
+
+  const reservedUser = assertInScope(
+    scopedSnapshot.users,
+    reservedForUserId,
+    "Odabrani kolega nije dostupan za aktivnu organizaciju.",
+  );
+
+  return {
+    reservedForUserId: String(reservedUser.id),
+    reservedForLabel: reservedUser.fullName || reservedUser.email || reservedUser.username || "User",
   };
 }
 
@@ -516,6 +549,9 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+    const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
+    const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
+    const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
     const chatConversationMessageMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/messages$/);
@@ -773,6 +809,40 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/vehicles") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati vozilima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createVehicle({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (vehicleReservationsCollectionMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo rezervirati vozila.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationsCollectionMatch[1], "Vozilo nije pronadeno.");
+      const reservationUserPayload = resolveVehicleReservationUserPayload(scopedSnapshot, body);
+      await domainRepository.createVehicleReservation(vehicle.id, {
+        ...body,
+        ...reservationUserPayload,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/dashboard-widgets") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -974,6 +1044,54 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (vehicleMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati vozilima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronadeno.");
+      const updated = await domainRepository.updateVehicle(vehicleMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Vozilo nije pronadeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (vehicleReservationMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati rezervacijama vozila.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronadeno.");
+      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronadena.");
+      const reservationUserPayload = resolveVehicleReservationUserPayload(scopedSnapshot, body);
+      const updated = await domainRepository.updateVehicleReservation(vehicle.id, vehicleReservationMatch[2], {
+        ...body,
+        ...reservationUserPayload,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Rezervacija vozila nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (dashboardWidgetMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -1082,6 +1200,45 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Ponuda nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (vehicleMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati vozila.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronadeno.");
+      const deleted = await domainRepository.deleteVehicle(vehicleMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Vozilo nije pronadeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (vehicleReservationMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati rezervacije vozila.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronadeno.");
+      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronadena.");
+      const deleted = await domainRepository.deleteVehicleReservation(vehicle.id, vehicleReservationMatch[2]);
+
+      if (!deleted) {
+        sendError(response, 404, "Rezervacija vozila nije pronadena.");
         return true;
       }
 
