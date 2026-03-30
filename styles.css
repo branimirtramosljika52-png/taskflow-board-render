@@ -5819,6 +5819,17 @@ body.is-work-order-editor-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-order-calendar-display-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #e6eaf2;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .work-order-calendar-tool-button {
@@ -5994,6 +6005,12 @@ body.is-work-order-editor-open {
 .work-order-calendar-month-week-head strong {
   color: #20263a;
   font-size: 0.9rem;
+}
+
+.work-order-calendar-month-week-head span {
+  color: #7a849a;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .work-order-calendar-month-grid {
@@ -6785,6 +6802,17 @@ body.is-work-order-editor-open {
 .work-order-calendar-cell-group-summary {
   list-style: none;
   cursor: pointer;
+}
+
+.work-order-calendar-cell-group-summary.is-draggable,
+.work-order-calendar-unscheduled-group-head.is-draggable {
+  cursor: grab;
+}
+
+.work-order-calendar-cell-group.is-dragging-group,
+.work-order-calendar-unscheduled-group.is-dragging-group {
+  opacity: 0.58;
+  transform: rotate(1.2deg) scale(0.985);
 }
 
 .work-order-calendar-cell-group-summary::-webkit-details-marker {

@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330t" />
+    <link rel="stylesheet" href="/styles.css?v=20260330u" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1015,6 +1015,10 @@
                 <div class="work-order-calendar-toolbar-side">
                   <div id="work-order-calendar-meta" class="work-order-calendar-meta"></div>
                   <div class="work-order-calendar-actions">
+                    <div class="work-order-calendar-display-toggle" role="group" aria-label="Prikaz kalendara">
+                      <button id="work-order-calendar-display-week" type="button" class="ghost-button work-order-calendar-tool-button is-active" aria-pressed="true">Week</button>
+                      <button id="work-order-calendar-display-month" type="button" class="ghost-button work-order-calendar-tool-button" aria-pressed="false">Month</button>
+                    </div>
                     <button id="work-order-calendar-weekends" type="button" class="ghost-button work-order-calendar-tool-button is-active" aria-pressed="true">Vikendi</button>
                     <button id="work-order-calendar-unscheduled-toggle" type="button" class="ghost-button work-order-calendar-tool-button is-active" aria-pressed="true">Bez datuma</button>
                   </div>
@@ -2661,6 +2665,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260330t"></script>
+    <script type="module" src="/src/main.js?v=20260330u"></script>
   </body>
 </html>
