@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330y" />
+    <link rel="stylesheet" href="/styles.css?v=20260330z" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -981,21 +981,29 @@
               <button type="button" class="workspace-view-chip" data-work-order-mode="maps">Maps</button>
             </div>
 
-            <div class="filter-row filter-row-clickup">
-              <label class="field">
-                <span>Pretraga</span>
-                <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija, odjel..." />
-              </label>
+            <div class="work-order-filter-shell">
+              <div class="filter-row filter-row-clickup work-order-filter-row">
+                <label class="field work-order-search-field">
+                  <span>Pretraga</span>
+                  <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija, odjel..." />
+                </label>
 
-              <label class="field">
-                <span>Status</span>
-                <select id="work-order-filter-status"></select>
-              </label>
+                <div class="work-order-filter-actions">
+                  <button id="work-order-filter-toggle" type="button" class="ghost-button work-order-filter-toggle" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="work-order-filter-toggle-icon" aria-hidden="true">
+                      <svg viewBox="0 0 16 16">
+                        <path d="M2.75 4.25h10.5M4.75 8h6.5M6.5 11.75h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"/>
+                      </svg>
+                    </span>
+                    <span>Filteri</span>
+                    <span id="work-order-filter-count" class="work-order-filter-count" hidden>0</span>
+                  </button>
+                </div>
+              </div>
 
-              <label class="field">
-                <span>Tvrtka</span>
-                <select id="work-order-filter-company"></select>
-              </label>
+              <div id="work-order-filter-summary" class="work-order-filter-summary" hidden></div>
+
+              <section id="work-order-filter-builder" class="work-order-filter-builder" aria-label="RN filteri" hidden></section>
             </div>
 
             <section id="work-order-list-view" class="work-order-mode-view">
@@ -1046,20 +1054,6 @@
                     </div>
                     <div class="work-order-map-toolbar-side">
                       <div id="work-order-map-summary" class="work-order-map-summary"></div>
-                      <div class="work-order-map-filters">
-                        <label class="field work-order-map-filter-field">
-                          <span>Status</span>
-                          <select id="work-order-map-filter-status"></select>
-                        </label>
-                        <label class="field work-order-map-filter-field">
-                          <span>Prioritet</span>
-                          <select id="work-order-map-filter-priority"></select>
-                        </label>
-                        <label class="field work-order-map-filter-field">
-                          <span>Regija</span>
-                          <select id="work-order-map-filter-region"></select>
-                        </label>
-                      </div>
                     </div>
                   </div>
 
@@ -2665,6 +2659,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260330y"></script>
+    <script type="module" src="/src/main.js?v=20260330z"></script>
   </body>
 </html>

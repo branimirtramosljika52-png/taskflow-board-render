@@ -70,6 +70,8 @@ const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok placanja 30 dana od slan
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
+const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
+const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
   { value: "away", label: "Away" },
@@ -128,6 +130,44 @@ const WORK_ORDER_VIEW_MODES = [
   { value: "calendar", label: "Calendar" },
   { value: "maps", label: "Maps" },
 ];
+const WORK_ORDER_FILTER_FIELD_DEFINITIONS = [
+  { value: "status", label: "Status", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "priority", label: "Prioritet", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "companyId", label: "Tvrtka", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "locationId", label: "Lokacija", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "region", label: "Regija", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "executor", label: "Izvršitelj", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "department", label: "Odjel", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "tag", label: "Tag", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "teamLabel", label: "Tim", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "workOrderNumber", label: "Broj RN", type: "text", operators: ["contains", "not_contains", "is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "description", label: "Opis", type: "text", operators: ["contains", "not_contains", "is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "serviceLine", label: "Vrsta usluge", type: "text", operators: ["contains", "not_contains", "is", "is_not", "is_empty", "is_not_empty"] },
+  { value: "dueDate", label: "Datum", type: "date", operators: ["on", "before", "after", "on_or_before", "on_or_after", "today", "yesterday", "tomorrow", "this_week", "last_week", "next_7_days", "last_7_days", "this_month", "last_month", "is_empty", "is_not_empty"] },
+  { value: "openedDate", label: "Otvoren", type: "date", operators: ["on", "before", "after", "on_or_before", "on_or_after", "today", "yesterday", "tomorrow", "this_week", "last_week", "next_7_days", "last_7_days", "this_month", "last_month", "is_empty", "is_not_empty"] },
+];
+const WORK_ORDER_FILTER_OPERATOR_LABELS = {
+  is: "Je",
+  is_not: "Nije",
+  contains: "Sadrži",
+  not_contains: "Ne sadrži",
+  is_empty: "Nema vrijednost",
+  is_not_empty: "Ima vrijednost",
+  on: "Na datum",
+  before: "Prije",
+  after: "Poslije",
+  on_or_before: "Na ili prije",
+  on_or_after: "Na ili poslije",
+  today: "Danas",
+  yesterday: "Jučer",
+  tomorrow: "Sutra",
+  this_week: "Ovaj tjedan",
+  last_week: "Prošli tjedan",
+  next_7_days: "Sljedećih 7 dana",
+  last_7_days: "Zadnjih 7 dana",
+  this_month: "Ovaj mjesec",
+  last_month: "Prošli mjesec",
+};
 const DEFAULT_MEASUREMENT_COLUMNS = [
   { id: "point", label: "Mjerno mjesto", placeholder: "Mjerno mjesto", width: 220 },
   { id: "label", label: "Oznaka", placeholder: "Oznaka", width: 120 },
@@ -362,14 +402,17 @@ const state = {
     dragLaneKey: "",
     expandedGroupKeys: new Set(),
   },
+  workOrderFilters: {
+    builderOpen: false,
+    query: "",
+    activePresetId: "",
+    savedPresets: [],
+    groups: [],
+    storageScope: "",
+  },
   workOrderMap: {
     selectedWorkOrderId: "",
     popupWorkOrderId: "",
-    filters: {
-      status: "all",
-      priority: "all",
-      region: "all",
-    },
     markerSignature: "",
   },
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
@@ -453,6 +496,199 @@ function readRailHiddenPreference() {
   } catch {
     return false;
   }
+}
+
+function createClientSideId(prefix = "id") {
+  try {
+    return `${prefix}-${window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`;
+  } catch {
+    return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+function getWorkOrderFilterFieldDefinition(fieldValue = "") {
+  return WORK_ORDER_FILTER_FIELD_DEFINITIONS.find((field) => field.value === fieldValue)
+    ?? WORK_ORDER_FILTER_FIELD_DEFINITIONS[0];
+}
+
+function getWorkOrderFilterOperatorOptions(fieldValue = "") {
+  const field = getWorkOrderFilterFieldDefinition(fieldValue);
+  return field.operators.map((value) => ({
+    value,
+    label: WORK_ORDER_FILTER_OPERATOR_LABELS[value] || value,
+  }));
+}
+
+function getDefaultWorkOrderFilterOperator(fieldValue = "") {
+  return getWorkOrderFilterOperatorOptions(fieldValue)[0]?.value || "is";
+}
+
+function createWorkOrderFilterRule(fieldValue = WORK_ORDER_FILTER_FIELD_DEFINITIONS[0]?.value || "status") {
+  return {
+    id: createClientSideId("wo-filter-rule"),
+    field: fieldValue,
+    operator: getDefaultWorkOrderFilterOperator(fieldValue),
+    values: [],
+  };
+}
+
+function normalizeWorkOrderFilterRuleState(rule = {}) {
+  const field = getWorkOrderFilterFieldDefinition(rule.field);
+  const operatorOptions = getWorkOrderFilterOperatorOptions(field.value).map((entry) => entry.value);
+  const values = Array.isArray(rule.values)
+    ? rule.values
+    : typeof rule.value === "string"
+      ? [rule.value]
+      : [];
+
+  return {
+    id: String(rule.id || createClientSideId("wo-filter-rule")),
+    field: field.value,
+    operator: operatorOptions.includes(rule.operator) ? rule.operator : getDefaultWorkOrderFilterOperator(field.value),
+    values: values
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  };
+}
+
+function createWorkOrderFilterGroup() {
+  return {
+    id: createClientSideId("wo-filter-group"),
+    join: "AND",
+    match: "AND",
+    rules: [createWorkOrderFilterRule()],
+  };
+}
+
+function normalizeWorkOrderFilterGroupState(group = {}, index = 0) {
+  const rules = Array.isArray(group.rules)
+    ? group.rules.map((rule) => normalizeWorkOrderFilterRuleState(rule))
+    : [createWorkOrderFilterRule()];
+
+  return {
+    id: String(group.id || createClientSideId("wo-filter-group")),
+    join: index === 0
+      ? "AND"
+      : ["AND", "OR"].includes(String(group.join || "").toUpperCase())
+        ? String(group.join).toUpperCase()
+        : "AND",
+    match: ["AND", "OR"].includes(String(group.match || "").toUpperCase())
+      ? String(group.match).toUpperCase()
+      : "AND",
+    rules: rules.length > 0 ? rules : [createWorkOrderFilterRule()],
+  };
+}
+
+function normalizeWorkOrderFilterGroupsState(groups) {
+  const normalizedGroups = Array.isArray(groups)
+    ? groups.map((group, index) => normalizeWorkOrderFilterGroupState(group, index))
+    : [];
+
+  return normalizedGroups.length > 0 ? normalizedGroups : [createWorkOrderFilterGroup()];
+}
+
+function cloneWorkOrderFilterGroups(groups) {
+  return normalizeWorkOrderFilterGroupsState(JSON.parse(JSON.stringify(groups ?? [])));
+}
+
+function normalizeWorkOrderFilterPresetState(preset = {}) {
+  return {
+    id: String(preset.id || createClientSideId("wo-filter-preset")),
+    name: String(preset.name || "").trim() || "Spremljeni filter",
+    query: String(preset.query || "").trim(),
+    groups: normalizeWorkOrderFilterGroupsState(preset.groups),
+  };
+}
+
+function readJsonFromLocalStorage(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonToLocalStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore persistence failures.
+  }
+}
+
+function getWorkOrderFilterStorageScope() {
+  const organizationId = state.activeOrganizationId || "global";
+  const userId = state.user?.id || "guest";
+  return `${userId}:${organizationId}`;
+}
+
+function getWorkOrderFilterStateStorageKey() {
+  return `${WORK_ORDER_FILTER_STATE_KEY_PREFIX}${getWorkOrderFilterStorageScope()}`;
+}
+
+function getWorkOrderFilterPresetsStorageKey() {
+  return `${WORK_ORDER_FILTER_PRESETS_KEY_PREFIX}${getWorkOrderFilterStorageScope()}`;
+}
+
+function getWorkOrderFilterActiveRuleCount(groups = state.workOrderFilters.groups) {
+  return (groups ?? []).reduce((count, group) => count + (group.rules ?? []).filter((rule) => {
+    const field = getWorkOrderFilterFieldDefinition(rule.field);
+    const values = (rule.values ?? []).filter(Boolean);
+
+    if (field.type === "date") {
+      return ["today", "yesterday", "tomorrow", "this_week", "last_week", "next_7_days", "last_7_days", "this_month", "last_month", "is_empty", "is_not_empty"].includes(rule.operator)
+        || values.length > 0;
+    }
+
+    return ["is_empty", "is_not_empty"].includes(rule.operator) || values.length > 0;
+  }).length, 0);
+}
+
+function loadWorkOrderFilterPreferences(force = false) {
+  const nextScope = getWorkOrderFilterStorageScope();
+  if (!force && state.workOrderFilters.storageScope === nextScope) {
+    return;
+  }
+
+  const savedPresets = readJsonFromLocalStorage(getWorkOrderFilterPresetsStorageKey(), [])
+    .map((preset) => normalizeWorkOrderFilterPresetState(preset));
+  const storedState = readJsonFromLocalStorage(getWorkOrderFilterStateStorageKey(), {});
+  const activePresetId = savedPresets.some((preset) => preset.id === storedState.activePresetId)
+    ? storedState.activePresetId
+    : "";
+
+  state.workOrderFilters.storageScope = nextScope;
+  state.workOrderFilters.builderOpen = false;
+  state.workOrderFilters.savedPresets = savedPresets;
+  state.workOrderFilters.activePresetId = activePresetId;
+  state.workOrderFilters.query = String(storedState.query || "").trim();
+  state.workOrderFilters.groups = normalizeWorkOrderFilterGroupsState(storedState.groups);
+
+  if (workOrderSearchInput) {
+    workOrderSearchInput.value = state.workOrderFilters.query;
+  }
+}
+
+function persistWorkOrderFilterState() {
+  if (!state.workOrderFilters.storageScope) {
+    return;
+  }
+
+  writeJsonToLocalStorage(getWorkOrderFilterStateStorageKey(), {
+    query: state.workOrderFilters.query,
+    activePresetId: state.workOrderFilters.activePresetId,
+    groups: state.workOrderFilters.groups,
+  });
+}
+
+function persistWorkOrderFilterPresets() {
+  if (!state.workOrderFilters.storageScope) {
+    return;
+  }
+
+  writeJsonToLocalStorage(getWorkOrderFilterPresetsStorageKey(), state.workOrderFilters.savedPresets);
 }
 
 state.sidebarCollapsed = readSidebarCollapsedPreference();
@@ -903,8 +1139,10 @@ const workOrderTagTextInput = document.querySelector("#work-order-tag-text");
 const workOrderDescriptionInput = document.querySelector("#work-order-description");
 const workOrderInvoiceNoteInput = document.querySelector("#work-order-invoice-note");
 const workOrderSearchInput = document.querySelector("#work-order-search");
-const workOrderFilterStatusInput = document.querySelector("#work-order-filter-status");
-const workOrderFilterCompanyInput = document.querySelector("#work-order-filter-company");
+const workOrderFilterToggle = document.querySelector("#work-order-filter-toggle");
+const workOrderFilterCount = document.querySelector("#work-order-filter-count");
+const workOrderFilterSummary = document.querySelector("#work-order-filter-summary");
+const workOrderFilterBuilder = document.querySelector("#work-order-filter-builder");
 const measurementSheetOpenButton = document.querySelector("#measurement-sheet-open");
 const measurementSheetModal = document.querySelector("#measurement-sheet-modal");
 const measurementSheetBackdrop = document.querySelector("#measurement-sheet-backdrop");
@@ -962,9 +1200,6 @@ const workOrderCalendarDisplayMonthButton = document.querySelector("#work-order-
 const workOrderMapStage = document.querySelector("#work-order-map-stage");
 const workOrderMapCanvas = document.querySelector("#work-order-map-canvas");
 const workOrderMapSummary = document.querySelector("#work-order-map-summary");
-const workOrderMapFilterStatusInput = document.querySelector("#work-order-map-filter-status");
-const workOrderMapFilterPriorityInput = document.querySelector("#work-order-map-filter-priority");
-const workOrderMapFilterRegionInput = document.querySelector("#work-order-map-filter-region");
 const workOrderMapSelectionTitle = document.querySelector("#work-order-map-selection-title");
 const workOrderMapSelection = document.querySelector("#work-order-map-selection");
 const workOrderMapList = document.querySelector("#work-order-map-list");
@@ -1496,6 +1731,7 @@ function applySnapshot(payload) {
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
+  loadWorkOrderFilterPreferences();
   setConnectionStatus();
   setSyncError("");
   render();
@@ -6685,21 +6921,6 @@ function rebuildLocationCompanyOptions(selectedCompanyId = locationCompanyIdInpu
   replaceSelectOptions(locationCompanyIdInput, options, selectedCompanyId);
 }
 
-function rebuildWorkOrderFilterCompanyOptions(selectedCompanyId = workOrderFilterCompanyInput.value) {
-  const options = [
-    { value: "all", label: "Sve tvrtke" },
-    ...state.companies
-      .slice()
-      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
-      .map((company) => ({
-        value: company.id,
-        label: company.name,
-      })),
-  ];
-
-  replaceSelectOptions(workOrderFilterCompanyInput, options, selectedCompanyId || "all");
-}
-
 function rebuildWorkOrderLocationOptions(selectedLocationId = workOrderLocationIdInput.value) {
   const companyId = workOrderCompanyIdInput.value;
   const locations = companyId ? getLocationsForCompany(companyId) : [];
@@ -11768,10 +11989,14 @@ function renderActiveView() {
 function renderSharedOptions() {
   const currentWorkOrderCompanyId = workOrderCompanyIdInput.value;
   const currentLocationCompanyId = locationCompanyIdInput.value;
-  const currentFilterCompanyId = workOrderFilterCompanyInput.value || "all";
   const currentLocationId = workOrderLocationIdInput.value;
   const currentContactSlot = workOrderContactSlotInput.value;
   const currentSnapshotName = getSelectedContactName();
+
+  if (workOrderSearchInput && workOrderSearchInput.value !== state.workOrderFilters.query) {
+    workOrderSearchInput.value = state.workOrderFilters.query;
+  }
+
   const organizationOptions = state.organizations.map((organization) => ({
     value: organization.id,
     label: organization.name,
@@ -11790,10 +12015,6 @@ function renderSharedOptions() {
   replaceSelectOptions(reminderStatusInput, REMINDER_STATUS_OPTIONS, reminderStatusInput.value || "active");
   replaceSelectOptions(todoStatusInput, TODO_TASK_STATUS_OPTIONS, todoStatusInput?.value || "open");
   replaceSelectOptions(todoPriorityInput, PRIORITY_OPTIONS, todoPriorityInput?.value || "Normal");
-  replaceSelectOptions(workOrderFilterStatusInput, [
-    { value: "all", label: "Svi statusi" },
-    ...WORK_ORDER_STATUS_OPTIONS,
-  ], workOrderFilterStatusInput.value || "all");
   replaceSelectOptions(remindersFilterStatusInput, [
     { value: "all", label: "Svi statusi" },
     ...REMINDER_STATUS_OPTIONS,
@@ -11836,8 +12057,6 @@ function renderSharedOptions() {
 
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
-  rebuildWorkOrderFilterCompanyOptions(currentFilterCompanyId);
-  rebuildWorkOrderMapFilterOptions();
   rebuildWorkOrderLocationOptions(currentLocationId);
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
   rebuildReminderWorkOrderOptions(reminderWorkOrderIdInput?.value || "");
@@ -11873,6 +12092,8 @@ function renderSharedOptions() {
     offerCompanyPreviewMeta,
   );
   renderTodoLinkPreview();
+  renderWorkOrderFilterSummary();
+  renderWorkOrderFilterBuilder();
 
   if (vehicleScheduleDateInput) {
     vehicleScheduleDateInput.value = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
@@ -11945,62 +12166,628 @@ function updateWorkOrderModeButtons() {
   });
 }
 
+function getWorkOrderFilterValueOptions(fieldValue = "") {
+  const field = getWorkOrderFilterFieldDefinition(fieldValue);
+
+  if (field.value === "status") {
+    return WORK_ORDER_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+  }
+
+  if (field.value === "priority") {
+    return PRIORITY_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+  }
+
+  if (field.value === "companyId") {
+    return [...state.companies]
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((company) => ({ value: String(company.id), label: company.name }));
+  }
+
+  if (field.value === "locationId") {
+    return [...state.locations]
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((location) => ({
+        value: String(location.id),
+        label: [location.name, location.companyName].filter(Boolean).join(" · "),
+      }));
+  }
+
+  if (field.value === "executor") {
+    const labels = new Set(
+      [
+        ...state.users.map((user) => user.fullName || user.username || user.email || ""),
+        ...state.workOrders.flatMap((item) => [item.executor1, item.executor2]),
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    );
+
+    return [...labels]
+      .sort((left, right) => left.localeCompare(right, "hr"))
+      .map((value) => ({ value, label: value }));
+  }
+
+  if (field.value === "tag") {
+    const tags = new Set(
+      state.workOrders.flatMap((item) => String(item.tagText ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)),
+    );
+
+    return [...tags]
+      .sort((left, right) => left.localeCompare(right, "hr"))
+      .map((value) => ({ value, label: value }));
+  }
+
+  if (["region", "department", "teamLabel"].includes(field.value)) {
+    const key = field.value;
+    const labels = new Set(
+      state.workOrders
+        .map((item) => String(item?.[key] ?? "").trim())
+        .filter(Boolean),
+    );
+
+    return [...labels]
+      .sort((left, right) => left.localeCompare(right, "hr"))
+      .map((value) => ({ value, label: value }));
+  }
+
+  return [];
+}
+
+function workOrderFilterRuleNeedsValue(rule) {
+  return !["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "last_week", "next_7_days", "last_7_days", "this_month", "last_month"].includes(rule.operator);
+}
+
+function findWorkOrderFilterGroup(groupId) {
+  return state.workOrderFilters.groups.find((group) => group.id === groupId) ?? null;
+}
+
+function findWorkOrderFilterRule(ruleId) {
+  for (const group of state.workOrderFilters.groups) {
+    const rule = group.rules.find((entry) => entry.id === ruleId);
+    if (rule) {
+      return { group, rule };
+    }
+  }
+
+  return { group: null, rule: null };
+}
+
+function setWorkOrderFilterActivePreset(id = "") {
+  state.workOrderFilters.activePresetId = id;
+
+  if (!workOrderFilterBuilder) {
+    return;
+  }
+
+  const presetSelect = workOrderFilterBuilder.querySelector("[data-work-order-filter-preset]");
+  if (presetSelect instanceof HTMLSelectElement) {
+    presetSelect.value = id || "";
+  }
+
+  const deleteButton = workOrderFilterBuilder.querySelector("[data-work-order-filter-preset-delete]");
+  if (deleteButton instanceof HTMLButtonElement) {
+    deleteButton.disabled = !id;
+  }
+}
+
+function syncWorkOrderFilterResults({ rerenderBuilder = false } = {}) {
+  persistWorkOrderFilterState();
+  renderWorkOrderFilterSummary();
+  if (rerenderBuilder && state.workOrderFilters.builderOpen) {
+    renderWorkOrderFilterBuilder();
+  }
+  resetWorkOrderListWindow();
+  renderWorkOrderWorkspace();
+}
+
+function getWorkOrderFilterRuleValueSummary(rule) {
+  const field = getWorkOrderFilterFieldDefinition(rule.field);
+
+  if (!workOrderFilterRuleNeedsValue(rule)) {
+    return WORK_ORDER_FILTER_OPERATOR_LABELS[rule.operator] || "Bez vrijednosti";
+  }
+
+  if (field.type === "date") {
+    return rule.values[0] ? formatCompactDate(rule.values[0]) : "Odaberi datum";
+  }
+
+  if (field.type === "text") {
+    return rule.values[0] || "Upiši vrijednost";
+  }
+
+  const options = getWorkOrderFilterValueOptions(rule.field);
+  const labelMap = new Map(options.map((option) => [String(option.value), option.label]));
+  const labels = (rule.values ?? []).map((value) => labelMap.get(String(value)) || value);
+
+  if (labels.length === 0) {
+    return "Odaberi vrijednosti";
+  }
+
+  if (labels.length === 1) {
+    return labels[0];
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]}, ${labels[1]}`;
+  }
+
+  return `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
+}
+
+function formatWorkOrderFilterRuleChip(rule) {
+  const fieldLabel = getWorkOrderFilterFieldDefinition(rule.field).label;
+  const operatorLabel = WORK_ORDER_FILTER_OPERATOR_LABELS[rule.operator] || rule.operator;
+  const valueLabel = getWorkOrderFilterRuleValueSummary(rule);
+
+  if (!workOrderFilterRuleNeedsValue(rule)) {
+    return `${fieldLabel} · ${operatorLabel}`;
+  }
+
+  if (!rule.values?.length) {
+    return "";
+  }
+
+  return `${fieldLabel} · ${operatorLabel} · ${valueLabel}`;
+}
+
+function renderWorkOrderFilterSummary() {
+  if (!workOrderFilterSummary || !workOrderFilterCount || !workOrderFilterToggle) {
+    return;
+  }
+
+  const chips = [];
+  const query = String(state.workOrderFilters.query || "").trim();
+
+  if (query) {
+    chips.push({ label: `Pretraga · ${query}`, preset: false });
+  }
+
+  if (state.workOrderFilters.activePresetId) {
+    const preset = state.workOrderFilters.savedPresets.find((entry) => entry.id === state.workOrderFilters.activePresetId);
+    if (preset) {
+      chips.push({ label: preset.name, preset: true });
+    }
+  }
+
+  state.workOrderFilters.groups.forEach((group) => {
+    group.rules.forEach((rule) => {
+      const label = formatWorkOrderFilterRuleChip(rule);
+      if (label) {
+        chips.push({ label, preset: false });
+      }
+    });
+  });
+
+  workOrderFilterSummary.hidden = chips.length === 0;
+  workOrderFilterSummary.replaceChildren(...chips.slice(0, 8).map((entry) => {
+    const chip = document.createElement("span");
+    chip.className = `work-order-filter-summary-chip${entry.preset ? " is-preset" : ""}`;
+    chip.textContent = entry.label;
+    return chip;
+  }));
+
+  if (chips.length > 8) {
+    const extraChip = document.createElement("span");
+    extraChip.className = "work-order-filter-summary-chip";
+    extraChip.textContent = `+${chips.length - 8}`;
+    workOrderFilterSummary.append(extraChip);
+  }
+
+  const activeCount = getWorkOrderFilterActiveRuleCount() + (query ? 1 : 0);
+  workOrderFilterCount.hidden = activeCount === 0;
+  workOrderFilterCount.textContent = String(activeCount);
+  workOrderFilterToggle.setAttribute("aria-expanded", state.workOrderFilters.builderOpen ? "true" : "false");
+  workOrderFilterToggle.classList.toggle("is-active", state.workOrderFilters.builderOpen || activeCount > 0);
+}
+
+function createWorkOrderFilterValueControl(rule) {
+  const field = getWorkOrderFilterFieldDefinition(rule.field);
+
+  if (!workOrderFilterRuleNeedsValue(rule)) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "work-order-filter-value-placeholder";
+    placeholder.textContent = "Ovaj operator ne traži dodatnu vrijednost.";
+    return placeholder;
+  }
+
+  if (field.type === "date") {
+    const input = document.createElement("input");
+    input.type = "date";
+    input.className = "work-order-filter-value-input";
+    input.value = rule.values[0] || "";
+    input.addEventListener("input", (event) => {
+      const { rule: targetRule } = findWorkOrderFilterRule(rule.id);
+      if (!targetRule) {
+        return;
+      }
+      targetRule.values = event.currentTarget.value ? [event.currentTarget.value] : [];
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults();
+    });
+    return input;
+  }
+
+  if (field.type === "text") {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "work-order-filter-value-input";
+    input.placeholder = "Unesi vrijednost";
+    input.value = rule.values[0] || "";
+    input.addEventListener("input", (event) => {
+      const { rule: targetRule } = findWorkOrderFilterRule(rule.id);
+      if (!targetRule) {
+        return;
+      }
+      targetRule.values = event.currentTarget.value.trim() ? [event.currentTarget.value.trim()] : [];
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults();
+    });
+    return input;
+  }
+
+  const picker = document.createElement("details");
+  picker.className = "work-order-filter-value-picker";
+
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.className = "work-order-filter-value-picker-label";
+  label.textContent = getWorkOrderFilterRuleValueSummary(rule);
+  const caret = document.createElement("span");
+  caret.className = "work-order-filter-value-picker-caret";
+  caret.textContent = "▾";
+  summary.append(label, caret);
+
+  const panel = document.createElement("div");
+  panel.className = "work-order-filter-value-panel";
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "work-order-filter-value-search";
+  search.placeholder = "Pretraži vrijednosti";
+
+  const optionsWrap = document.createElement("div");
+  optionsWrap.className = "work-order-filter-value-options";
+  const options = getWorkOrderFilterValueOptions(rule.field);
+
+  options.forEach((option) => {
+    const optionLabel = document.createElement("label");
+    optionLabel.className = "work-order-filter-value-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = option.value;
+    checkbox.checked = (rule.values ?? []).includes(String(option.value));
+    checkbox.addEventListener("change", () => {
+      const { rule: targetRule } = findWorkOrderFilterRule(rule.id);
+      if (!targetRule) {
+        return;
+      }
+
+      const nextValues = new Set(targetRule.values ?? []);
+      if (checkbox.checked) {
+        nextValues.add(String(option.value));
+      } else {
+        nextValues.delete(String(option.value));
+      }
+      targetRule.values = [...nextValues];
+      label.textContent = getWorkOrderFilterRuleValueSummary(targetRule);
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults();
+    });
+
+    const copy = document.createElement("span");
+    copy.textContent = option.label;
+
+    optionLabel.append(checkbox, copy);
+    optionsWrap.append(optionLabel);
+  });
+
+  search.addEventListener("input", () => {
+    const term = search.value.trim().toLowerCase();
+    optionsWrap.querySelectorAll(".work-order-filter-value-option").forEach((node) => {
+      const text = node.textContent?.trim().toLowerCase() ?? "";
+      node.hidden = Boolean(term) && !text.includes(term);
+    });
+  });
+
+  if (options.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "work-order-filter-empty";
+    empty.textContent = "Trenutno nema dostupnih vrijednosti za ovo polje.";
+    panel.append(empty);
+  } else {
+    panel.append(search, optionsWrap);
+  }
+
+  picker.append(summary, panel);
+  return picker;
+}
+
+function renderWorkOrderFilterBuilder() {
+  if (!workOrderFilterBuilder) {
+    return;
+  }
+
+  workOrderFilterBuilder.hidden = !state.workOrderFilters.builderOpen;
+  workOrderFilterBuilder.replaceChildren();
+
+  if (!state.workOrderFilters.builderOpen) {
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "work-order-filter-builder-head";
+
+  const copy = document.createElement("div");
+  copy.className = "work-order-filter-builder-copy";
+  const title = document.createElement("h3");
+  title.textContent = "RN filteri";
+  const description = document.createElement("p");
+  description.textContent = "Dodaj više pravila, slaži AND / OR grupe i spremi preset za listu, kalendar i kartu.";
+  copy.append(title, description);
+
+  const headActions = document.createElement("div");
+  headActions.className = "work-order-filter-builder-actions";
+
+  const savedSelect = document.createElement("select");
+  savedSelect.dataset.workOrderFilterPreset = "true";
+  replaceSelectOptions(savedSelect, [
+    { value: "", label: "Spremljeni filteri" },
+    ...state.workOrderFilters.savedPresets.map((preset) => ({
+      value: preset.id,
+      label: preset.name,
+    })),
+  ], state.workOrderFilters.activePresetId || "");
+  savedSelect.addEventListener("change", () => {
+    const preset = state.workOrderFilters.savedPresets.find((entry) => entry.id === savedSelect.value);
+    if (!preset) {
+      setWorkOrderFilterActivePreset("");
+      persistWorkOrderFilterState();
+      renderWorkOrderFilterSummary();
+      return;
+    }
+
+    state.workOrderFilters.query = preset.query || "";
+    state.workOrderFilters.groups = cloneWorkOrderFilterGroups(preset.groups);
+    setWorkOrderFilterActivePreset(preset.id);
+    if (workOrderSearchInput) {
+      workOrderSearchInput.value = state.workOrderFilters.query;
+    }
+    syncWorkOrderFilterResults({ rerenderBuilder: true });
+  });
+
+  const saveButton = createActionButton("Spremi", "ghost-button", () => {
+    const suggestedName = state.workOrderFilters.savedPresets.find((entry) => entry.id === state.workOrderFilters.activePresetId)?.name || "";
+    const name = window.prompt("Naziv filtera", suggestedName);
+    if (!name || !name.trim()) {
+      return;
+    }
+
+    const payload = normalizeWorkOrderFilterPresetState({
+      id: state.workOrderFilters.activePresetId || createClientSideId("wo-filter-preset"),
+      name,
+      query: state.workOrderFilters.query,
+      groups: state.workOrderFilters.groups,
+    });
+    const existingIndex = state.workOrderFilters.savedPresets.findIndex((entry) => entry.id === payload.id);
+    if (existingIndex >= 0) {
+      state.workOrderFilters.savedPresets.splice(existingIndex, 1, payload);
+    } else {
+      state.workOrderFilters.savedPresets.unshift(payload);
+    }
+    setWorkOrderFilterActivePreset(payload.id);
+    persistWorkOrderFilterPresets();
+    syncWorkOrderFilterResults({ rerenderBuilder: true });
+  });
+
+  const deleteButton = createActionButton("Obriši", "ghost-button", () => {
+    if (!state.workOrderFilters.activePresetId) {
+      return;
+    }
+
+    state.workOrderFilters.savedPresets = state.workOrderFilters.savedPresets.filter(
+      (entry) => entry.id !== state.workOrderFilters.activePresetId,
+    );
+    setWorkOrderFilterActivePreset("");
+    persistWorkOrderFilterPresets();
+    syncWorkOrderFilterResults({ rerenderBuilder: true });
+  });
+  deleteButton.dataset.workOrderFilterPresetDelete = "true";
+  deleteButton.disabled = !state.workOrderFilters.activePresetId;
+
+  const closeButton = createActionButton("Zatvori", "ghost-button", () => {
+    state.workOrderFilters.builderOpen = false;
+    renderWorkOrderFilterSummary();
+    renderWorkOrderFilterBuilder();
+  });
+
+  headActions.append(savedSelect, saveButton, deleteButton, closeButton);
+  head.append(copy, headActions);
+
+  const groupList = document.createElement("div");
+  groupList.className = "work-order-filter-group-list";
+
+  state.workOrderFilters.groups.forEach((group, groupIndex) => {
+    const groupCard = document.createElement("section");
+    groupCard.className = "work-order-filter-group";
+
+    const groupHead = document.createElement("div");
+    groupHead.className = "work-order-filter-group-head";
+
+    const headline = document.createElement("div");
+    headline.className = "work-order-filter-group-headline";
+
+    if (groupIndex > 0) {
+      const joinSelect = document.createElement("select");
+      joinSelect.className = "work-order-filter-group-join";
+      replaceSelectOptions(joinSelect, [
+        { value: "AND", label: "AND" },
+        { value: "OR", label: "OR" },
+      ], group.join);
+      joinSelect.addEventListener("change", () => {
+        const targetGroup = findWorkOrderFilterGroup(group.id);
+        if (!targetGroup) {
+          return;
+        }
+        targetGroup.join = joinSelect.value || "AND";
+        setWorkOrderFilterActivePreset("");
+        syncWorkOrderFilterResults();
+      });
+      headline.append(joinSelect);
+    }
+
+    const matchSelect = document.createElement("select");
+    matchSelect.className = "work-order-filter-group-match";
+    replaceSelectOptions(matchSelect, [
+      { value: "AND", label: "Sve unutar grupe (AND)" },
+      { value: "OR", label: "Bilo koje unutar grupe (OR)" },
+    ], group.match);
+    matchSelect.addEventListener("change", () => {
+      const targetGroup = findWorkOrderFilterGroup(group.id);
+      if (!targetGroup) {
+        return;
+      }
+      targetGroup.match = matchSelect.value || "AND";
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults();
+    });
+
+    const groupTitle = document.createElement("span");
+    groupTitle.className = "work-order-filter-group-title";
+    groupTitle.textContent = groupIndex === 0 ? "Uvjet" : `Grupa ${groupIndex + 1}`;
+    headline.append(groupTitle, matchSelect);
+
+    const groupActions = document.createElement("div");
+    groupActions.className = "work-order-filter-group-actions";
+    groupActions.append(
+      createActionButton("Dodaj pravilo", "ghost-button", () => {
+        const targetGroup = findWorkOrderFilterGroup(group.id);
+        if (!targetGroup) {
+          return;
+        }
+        targetGroup.rules.push(createWorkOrderFilterRule(targetGroup.rules[0]?.field || "status"));
+        setWorkOrderFilterActivePreset("");
+        syncWorkOrderFilterResults({ rerenderBuilder: true });
+      }),
+    );
+
+    const removeGroupButton = createActionButton("Ukloni grupu", "ghost-button", () => {
+      state.workOrderFilters.groups = state.workOrderFilters.groups.filter((entry) => entry.id !== group.id);
+      state.workOrderFilters.groups = normalizeWorkOrderFilterGroupsState(state.workOrderFilters.groups);
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults({ rerenderBuilder: true });
+    });
+    removeGroupButton.disabled = state.workOrderFilters.groups.length <= 1;
+    groupActions.append(removeGroupButton);
+
+    groupHead.append(headline, groupActions);
+
+    const ruleList = document.createElement("div");
+    ruleList.className = "work-order-filter-rule-list";
+
+    group.rules.forEach((rule) => {
+      const row = document.createElement("div");
+      row.className = "work-order-filter-rule";
+
+      const fieldSelect = document.createElement("select");
+      replaceSelectOptions(fieldSelect, WORK_ORDER_FILTER_FIELD_DEFINITIONS.map((field) => ({
+        value: field.value,
+        label: field.label,
+      })), rule.field);
+      fieldSelect.addEventListener("change", () => {
+        const { rule: targetRule } = findWorkOrderFilterRule(rule.id);
+        if (!targetRule) {
+          return;
+        }
+        targetRule.field = fieldSelect.value;
+        targetRule.operator = getDefaultWorkOrderFilterOperator(fieldSelect.value);
+        targetRule.values = [];
+        setWorkOrderFilterActivePreset("");
+        syncWorkOrderFilterResults({ rerenderBuilder: true });
+      });
+
+      const operatorSelect = document.createElement("select");
+      replaceSelectOptions(operatorSelect, getWorkOrderFilterOperatorOptions(rule.field), rule.operator);
+      operatorSelect.addEventListener("change", () => {
+        const { rule: targetRule } = findWorkOrderFilterRule(rule.id);
+        if (!targetRule) {
+          return;
+        }
+        targetRule.operator = operatorSelect.value;
+        setWorkOrderFilterActivePreset("");
+        syncWorkOrderFilterResults({ rerenderBuilder: true });
+      });
+
+      const valueNode = createWorkOrderFilterValueControl(rule);
+
+      const removeRuleButton = createActionButton("Ukloni", "ghost-button", () => {
+        const targetGroup = findWorkOrderFilterGroup(group.id);
+        if (!targetGroup) {
+          return;
+        }
+        targetGroup.rules = targetGroup.rules.filter((entry) => entry.id !== rule.id);
+        if (targetGroup.rules.length === 0) {
+          targetGroup.rules = [createWorkOrderFilterRule()];
+        }
+        setWorkOrderFilterActivePreset("");
+        syncWorkOrderFilterResults({ rerenderBuilder: true });
+      });
+      removeRuleButton.disabled = group.rules.length <= 1;
+      removeRuleButton.setAttribute("aria-label", "Ukloni pravilo");
+
+      row.append(fieldSelect, operatorSelect, valueNode, removeRuleButton);
+      ruleList.append(row);
+    });
+
+    groupCard.append(groupHead, ruleList);
+    groupList.append(groupCard);
+  });
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-filter-footer";
+  const helper = document.createElement("p");
+  helper.className = "work-order-filter-empty";
+  helper.textContent = "Brza pretraga i svi popup filteri vrijede jednako za List, Calendar i Maps.";
+
+  const footerActions = document.createElement("div");
+  footerActions.className = "work-order-filter-footer-actions";
+  footerActions.append(
+    createActionButton("+ Dodaj grupu", "ghost-button", () => {
+      state.workOrderFilters.groups.push(createWorkOrderFilterGroup());
+      state.workOrderFilters.groups = normalizeWorkOrderFilterGroupsState(state.workOrderFilters.groups);
+      setWorkOrderFilterActivePreset("");
+      syncWorkOrderFilterResults({ rerenderBuilder: true });
+    }),
+    createActionButton("Očisti sve", "ghost-button", () => {
+      state.workOrderFilters.query = "";
+      state.workOrderFilters.groups = [createWorkOrderFilterGroup()];
+      setWorkOrderFilterActivePreset("");
+      if (workOrderSearchInput) {
+        workOrderSearchInput.value = "";
+      }
+      syncWorkOrderFilterResults({ rerenderBuilder: true });
+    }),
+  );
+
+  footer.append(helper, footerActions);
+
+  workOrderFilterBuilder.append(head, groupList, footer);
+}
+
 function getFilteredWorkOrders() {
   return sortWorkOrders(filterWorkOrders(state.workOrders, {
-    query: workOrderSearchInput.value,
-    status: workOrderFilterStatusInput.value,
-    companyId: workOrderFilterCompanyInput.value,
+    query: state.workOrderFilters.query,
+    advancedFilters: {
+      groups: state.workOrderFilters.groups,
+    },
   }));
 }
 
 function getMapFilteredWorkOrders() {
-  return getFilteredWorkOrders().filter((item) => {
-    if (state.workOrderMap.filters.status !== "all" && item.status !== state.workOrderMap.filters.status) {
-      return false;
-    }
-
-    if (state.workOrderMap.filters.priority !== "all" && item.priority !== state.workOrderMap.filters.priority) {
-      return false;
-    }
-
-    if (state.workOrderMap.filters.region !== "all" && (item.region || "") !== state.workOrderMap.filters.region) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-function rebuildWorkOrderMapFilterOptions() {
-  if (!workOrderMapFilterStatusInput || !workOrderMapFilterPriorityInput || !workOrderMapFilterRegionInput) {
-    return;
-  }
-
-  const regionOptions = Array.from(
-    new Set(
-      state.workOrders
-        .map((item) => String(item.region || "").trim())
-        .filter(Boolean),
-    ),
-  )
-    .sort((left, right) => left.localeCompare(right, "hr"))
-    .map((region) => ({ value: region, label: region }));
-
-  replaceSelectOptions(
-    workOrderMapFilterStatusInput,
-    [{ value: "all", label: "Svi statusi" }, ...WORK_ORDER_STATUS_OPTIONS],
-    state.workOrderMap.filters.status,
-  );
-  replaceSelectOptions(
-    workOrderMapFilterPriorityInput,
-    [{ value: "all", label: "Svi prioriteti" }, ...PRIORITY_OPTIONS],
-    state.workOrderMap.filters.priority,
-  );
-  replaceSelectOptions(
-    workOrderMapFilterRegionInput,
-    [{ value: "all", label: "Sve regije" }, ...regionOptions],
-    state.workOrderMap.filters.region,
-  );
+  return getFilteredWorkOrders();
 }
 
 function resetWorkOrderListWindow() {
@@ -14300,6 +15087,7 @@ function renderWorkOrderCroatiaMapView() {
 function renderWorkOrderWorkspace() {
   updateWorkOrderModeButtons();
   refreshWorkOrderTeamSuggestions();
+  renderWorkOrderFilterSummary();
 
   const filtered = getFilteredWorkOrders();
   const emptyTextByMode = {
@@ -15927,29 +16715,15 @@ workOrdersTableWrap.addEventListener("scroll", () => {
   }
 });
 
-workOrderSearchInput.addEventListener("input", () => {
-  resetWorkOrderListWindow();
-  renderWorkOrderWorkspace();
+workOrderSearchInput?.addEventListener("input", () => {
+  state.workOrderFilters.query = workOrderSearchInput.value.trim();
+  setWorkOrderFilterActivePreset("");
+  syncWorkOrderFilterResults();
 });
-workOrderFilterStatusInput.addEventListener("change", () => {
-  resetWorkOrderListWindow();
-  renderWorkOrderWorkspace();
-});
-workOrderFilterCompanyInput.addEventListener("change", () => {
-  resetWorkOrderListWindow();
-  renderWorkOrderWorkspace();
-});
-workOrderMapFilterStatusInput?.addEventListener("change", () => {
-  state.workOrderMap.filters.status = workOrderMapFilterStatusInput.value || "all";
-  renderWorkOrderWorkspace();
-});
-workOrderMapFilterPriorityInput?.addEventListener("change", () => {
-  state.workOrderMap.filters.priority = workOrderMapFilterPriorityInput.value || "all";
-  renderWorkOrderWorkspace();
-});
-workOrderMapFilterRegionInput?.addEventListener("change", () => {
-  state.workOrderMap.filters.region = workOrderMapFilterRegionInput.value || "all";
-  renderWorkOrderWorkspace();
+workOrderFilterToggle?.addEventListener("click", () => {
+  state.workOrderFilters.builderOpen = !state.workOrderFilters.builderOpen;
+  renderWorkOrderFilterSummary();
+  renderWorkOrderFilterBuilder();
 });
 
 reminderWorkOrderIdInput?.addEventListener("change", () => {
@@ -16311,6 +17085,17 @@ document.addEventListener("keydown", (event) => {
 
   event.preventDefault();
   setVehicleReservationAssigneePickerOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !state.workOrderFilters.builderOpen) {
+    return;
+  }
+
+  event.preventDefault();
+  state.workOrderFilters.builderOpen = false;
+  renderWorkOrderFilterSummary();
+  renderWorkOrderFilterBuilder();
 });
 
 vehicleOpenFormButton?.addEventListener("click", () => {
@@ -17107,6 +17892,16 @@ document.addEventListener("click", (event) => {
     if (!clickedStatusMenu) {
       closeOpenWorkOrderStatusMenus();
     }
+  }
+
+  if (
+    state.workOrderFilters.builderOpen
+    && event.target instanceof Node
+    && !(event.target instanceof HTMLElement && event.target.closest(".work-order-filter-shell"))
+  ) {
+    state.workOrderFilters.builderOpen = false;
+    renderWorkOrderFilterSummary();
+    renderWorkOrderFilterBuilder();
   }
 
   if (

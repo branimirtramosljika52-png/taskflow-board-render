@@ -2254,9 +2254,12 @@ export function nextWorkOrderNumber(workOrders) {
 
 export function filterWorkOrders(
   workOrders,
-  { query = "", status = "all", companyId = "all" } = {},
+  { query = "", status = "all", companyId = "all", advancedFilters = null } = {},
 ) {
   const normalizedQuery = normalizeText(query).toLowerCase();
+  const today = todayString();
+  const todayKey = dateValueToKey(today);
+  const normalizedAdvancedFilters = normalizeWorkOrderAdvancedFilters(advancedFilters);
 
   return workOrders.filter((item) => {
     if (status !== "all" && item.status !== status) {
@@ -2268,7 +2271,7 @@ export function filterWorkOrders(
     }
 
     if (!normalizedQuery) {
-      return true;
+      return matchesWorkOrderAdvancedFilters(item, normalizedAdvancedFilters, today, todayKey);
     }
 
     const haystack = [
@@ -2284,8 +2287,277 @@ export function filterWorkOrders(
       item.executor2,
     ].join(" ").toLowerCase();
 
-    return haystack.includes(normalizedQuery);
+    return haystack.includes(normalizedQuery)
+      && matchesWorkOrderAdvancedFilters(item, normalizedAdvancedFilters, today, todayKey);
   });
+}
+
+const WORK_ORDER_ADVANCED_FILTER_FIELDS = new Set([
+  "status",
+  "priority",
+  "companyId",
+  "locationId",
+  "region",
+  "executor",
+  "department",
+  "tag",
+  "teamLabel",
+  "workOrderNumber",
+  "description",
+  "serviceLine",
+  "dueDate",
+  "openedDate",
+]);
+
+const WORK_ORDER_ADVANCED_LOGIC_SET = new Set(["AND", "OR"]);
+const WORK_ORDER_ADVANCED_EMPTY_OPERATORS = new Set(["is_empty", "is_not_empty"]);
+const WORK_ORDER_ADVANCED_TEXT_OPERATORS = new Set(["is", "is_not", "contains", "not_contains"]);
+const WORK_ORDER_ADVANCED_DATE_OPERATORS = new Set([
+  "on",
+  "before",
+  "after",
+  "on_or_before",
+  "on_or_after",
+  "today",
+  "yesterday",
+  "tomorrow",
+  "this_week",
+  "last_week",
+  "next_7_days",
+  "last_7_days",
+  "this_month",
+  "last_month",
+  "is_empty",
+  "is_not_empty",
+]);
+
+function normalizeWorkOrderFilterLogic(value, fallback = "AND") {
+  const normalized = normalizeText(value).toUpperCase();
+  return WORK_ORDER_ADVANCED_LOGIC_SET.has(normalized) ? normalized : fallback;
+}
+
+function normalizeWorkOrderAdvancedRule(input = {}) {
+  const field = normalizeText(input.field);
+
+  if (!WORK_ORDER_ADVANCED_FILTER_FIELDS.has(field)) {
+    return null;
+  }
+
+  const operator = normalizeText(input.operator).toLowerCase() || (field === "dueDate" || field === "openedDate" ? "on" : "is");
+  const isDateField = field === "dueDate" || field === "openedDate";
+  const allowedOperators = isDateField
+    ? WORK_ORDER_ADVANCED_DATE_OPERATORS
+    : new Set([...WORK_ORDER_ADVANCED_EMPTY_OPERATORS, ...WORK_ORDER_ADVANCED_TEXT_OPERATORS]);
+
+  if (!allowedOperators.has(operator)) {
+    return null;
+  }
+
+  const values = Array.isArray(input.values)
+    ? input.values
+    : hasOwn(input, "value")
+      ? [input.value]
+      : [];
+  const normalizedValues = values
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+
+  if (!WORK_ORDER_ADVANCED_EMPTY_OPERATORS.has(operator) && !["today", "yesterday", "tomorrow", "this_week", "last_week", "next_7_days", "last_7_days", "this_month", "last_month"].includes(operator) && normalizedValues.length === 0) {
+    return null;
+  }
+
+  return {
+    field,
+    operator,
+    values: Array.from(new Set(normalizedValues)),
+  };
+}
+
+function normalizeWorkOrderAdvancedGroup(input = {}, index = 0) {
+  const rules = Array.isArray(input.rules)
+    ? input.rules.map((rule) => normalizeWorkOrderAdvancedRule(rule)).filter(Boolean)
+    : [];
+
+  if (rules.length === 0) {
+    return null;
+  }
+
+  return {
+    join: index === 0 ? "AND" : normalizeWorkOrderFilterLogic(input.join, "AND"),
+    match: normalizeWorkOrderFilterLogic(input.match, "AND"),
+    rules,
+  };
+}
+
+function normalizeWorkOrderAdvancedFilters(input) {
+  const groups = Array.isArray(input?.groups)
+    ? input.groups.map((group, index) => normalizeWorkOrderAdvancedGroup(group, index)).filter(Boolean)
+    : [];
+
+  return {
+    groups,
+  };
+}
+
+function getWorkOrderAdvancedFieldValues(item, field) {
+  switch (field) {
+    case "status":
+      return [normalizeText(item.status)];
+    case "priority":
+      return [normalizeText(item.priority)];
+    case "companyId":
+      return [normalizeText(item.companyId)];
+    case "locationId":
+      return [normalizeText(item.locationId)];
+    case "region":
+      return [normalizeText(item.region)];
+    case "executor":
+      return [item.executor1, item.executor2].map((value) => normalizeText(value)).filter(Boolean);
+    case "department":
+      return [normalizeText(item.department)];
+    case "tag":
+      return splitTags(item.tagText);
+    case "teamLabel":
+      return [normalizeText(item.teamLabel)];
+    case "workOrderNumber":
+      return [normalizeText(item.workOrderNumber)];
+    case "description":
+      return [normalizeText(item.description)];
+    case "serviceLine":
+      return [normalizeText(item.serviceLine)];
+    case "dueDate":
+      return [normalizeOptionalDate(item.dueDate)];
+    case "openedDate":
+      return [normalizeOptionalDate(item.openedDate)];
+    default:
+      return [];
+  }
+}
+
+function matchesWorkOrderAdvancedDateRule(value, operator, values, today, todayKey) {
+  const valueKey = dateValueToKey(value);
+
+  if (operator === "is_empty") {
+    return valueKey === null;
+  }
+
+  if (operator === "is_not_empty") {
+    return valueKey !== null;
+  }
+
+  if (valueKey === null || todayKey === null) {
+    return false;
+  }
+
+  const compareKey = dateValueToKey(values[0]);
+  const currentDate = new Date(`${today}T12:00:00Z`);
+  const currentWeekStart = startOfWeekDate(today);
+  const currentWeekStartKey = dateValueToKey(formatLocalDateKey(currentWeekStart));
+  const currentWeekEndKey = currentWeekStartKey === null ? null : currentWeekStartKey + (6 * 24 * 60 * 60 * 1000);
+  const firstDayOfMonth = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 1, 12));
+  const lastDayOfMonth = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() + 1, 0, 12));
+  const thisMonthStartKey = dateValueToKey(formatLocalDateKey(firstDayOfMonth));
+  const thisMonthEndKey = dateValueToKey(formatLocalDateKey(lastDayOfMonth));
+  const lastMonthStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, 1, 12));
+  const lastMonthEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 0, 12));
+  const lastMonthStartKey = dateValueToKey(formatLocalDateKey(lastMonthStart));
+  const lastMonthEndKey = dateValueToKey(formatLocalDateKey(lastMonthEnd));
+
+  switch (operator) {
+    case "on":
+      return compareKey !== null && valueKey === compareKey;
+    case "before":
+      return compareKey !== null && valueKey < compareKey;
+    case "after":
+      return compareKey !== null && valueKey > compareKey;
+    case "on_or_before":
+      return compareKey !== null && valueKey <= compareKey;
+    case "on_or_after":
+      return compareKey !== null && valueKey >= compareKey;
+    case "today":
+      return valueKey === todayKey;
+    case "yesterday":
+      return valueKey === todayKey - (24 * 60 * 60 * 1000);
+    case "tomorrow":
+      return valueKey === todayKey + (24 * 60 * 60 * 1000);
+    case "this_week":
+      return currentWeekStartKey !== null && currentWeekEndKey !== null && valueKey >= currentWeekStartKey && valueKey <= currentWeekEndKey;
+    case "last_week":
+      return currentWeekStartKey !== null && valueKey >= currentWeekStartKey - (7 * 24 * 60 * 60 * 1000) && valueKey < currentWeekStartKey;
+    case "next_7_days":
+      return valueKey >= todayKey && valueKey <= todayKey + (6 * 24 * 60 * 60 * 1000);
+    case "last_7_days":
+      return valueKey <= todayKey && valueKey >= todayKey - (6 * 24 * 60 * 60 * 1000);
+    case "this_month":
+      return thisMonthStartKey !== null && thisMonthEndKey !== null && valueKey >= thisMonthStartKey && valueKey <= thisMonthEndKey;
+    case "last_month":
+      return lastMonthStartKey !== null && lastMonthEndKey !== null && valueKey >= lastMonthStartKey && valueKey <= lastMonthEndKey;
+    default:
+      return false;
+  }
+}
+
+function matchesWorkOrderAdvancedRule(item, rule, today, todayKey) {
+  const values = getWorkOrderAdvancedFieldValues(item, rule.field);
+  const nonEmptyValues = values.map((value) => normalizeText(value)).filter(Boolean);
+
+  if (rule.field === "dueDate" || rule.field === "openedDate") {
+    return matchesWorkOrderAdvancedDateRule(values[0], rule.operator, rule.values, today, todayKey);
+  }
+
+  if (rule.operator === "is_empty") {
+    return nonEmptyValues.length === 0;
+  }
+
+  if (rule.operator === "is_not_empty") {
+    return nonEmptyValues.length > 0;
+  }
+
+  const valuePool = nonEmptyValues.map((value) => value.toLowerCase());
+  const expectedPool = rule.values.map((value) => value.toLowerCase());
+
+  if (expectedPool.length === 0) {
+    return true;
+  }
+
+  if (rule.operator === "is") {
+    return valuePool.some((value) => expectedPool.includes(value));
+  }
+
+  if (rule.operator === "is_not") {
+    return valuePool.length === 0 || valuePool.every((value) => !expectedPool.includes(value));
+  }
+
+  if (rule.operator === "contains") {
+    return valuePool.some((value) => expectedPool.some((expected) => value.includes(expected)));
+  }
+
+  if (rule.operator === "not_contains") {
+    return valuePool.length === 0 || valuePool.every((value) => expectedPool.every((expected) => !value.includes(expected)));
+  }
+
+  return true;
+}
+
+function matchesWorkOrderAdvancedFilters(item, advancedFilters, today = todayString(), todayKey = dateValueToKey(today)) {
+  if (!advancedFilters?.groups?.length) {
+    return true;
+  }
+
+  return advancedFilters.groups.reduce((result, group, index) => {
+    const groupResult = group.match === "OR"
+      ? group.rules.some((rule) => matchesWorkOrderAdvancedRule(item, rule, today, todayKey))
+      : group.rules.every((rule) => matchesWorkOrderAdvancedRule(item, rule, today, todayKey));
+
+    if (index === 0) {
+      return groupResult;
+    }
+
+    return group.join === "OR"
+      ? (result || groupResult)
+      : (result && groupResult);
+  }, true);
 }
 
 export function sortWorkOrders(workOrders) {

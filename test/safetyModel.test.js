@@ -397,6 +397,81 @@ test("support helpers cover numbering, filtering, stats, and location sync", () 
   assert.equal(buildLocationContacts(syncedLocation).length, 2);
 });
 
+test("filterWorkOrders supports advanced AND/OR filters for status, dates, tags and executors", () => {
+  const state = buildState();
+  const first = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Prvi nalog",
+      dueDate: "2026-03-24",
+      status: "Otvoreni RN",
+      executor1: "Ana Kovac",
+      region: "Zagreb",
+      tagText: "hitno, servis",
+    },
+    state,
+    () => "work-order-1",
+    "RN-00001",
+    () => "2026-03-25T09:00:00.000Z",
+  );
+  const second = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Drugi nalog",
+      status: "Fakturiran RN",
+      executor1: "Marko Horvat",
+      region: "Split",
+      tagText: "servis",
+    },
+    state,
+    () => "work-order-2",
+    "RN-00002",
+    () => "2026-03-25T10:00:00.000Z",
+  );
+  const third = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Treći nalog",
+      status: "Otvoreni RN",
+      executor2: "Iva Novak",
+      region: "Zagreb",
+      tagText: "kontrola",
+    },
+    state,
+    () => "work-order-3",
+    "RN-00003",
+    () => "2026-03-25T11:00:00.000Z",
+  );
+
+  const filtered = filterWorkOrders([first, second, third], {
+    advancedFilters: {
+      groups: [
+        {
+          match: "AND",
+          rules: [
+            { field: "status", operator: "is", values: ["Otvoreni RN"] },
+            { field: "region", operator: "is", values: ["Zagreb"] },
+            { field: "dueDate", operator: "is_empty" },
+          ],
+        },
+        {
+          join: "OR",
+          match: "AND",
+          rules: [
+            { field: "tag", operator: "is", values: ["servis"] },
+            { field: "executor", operator: "is", values: ["Marko Horvat"] },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(filtered.map((item) => item.id), ["work-order-2", "work-order-3"]);
+});
+
 test("offers generate year-initials numbering and calculate totals", () => {
   const state = buildState();
   const existingOffer = createOffer(
