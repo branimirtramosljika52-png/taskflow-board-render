@@ -5975,7 +5975,7 @@ body.is-work-order-editor-open {
   max-width: 100%;
   min-width: 0;
   max-height: none;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
   border: 1px solid #e8e9f2;
@@ -5985,6 +5985,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-month-week {
   display: grid;
+  align-content: start;
   gap: 10px;
   padding: 10px;
   border: 1px solid #e8e9f2;
@@ -6016,6 +6017,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-month-grid {
   display: grid;
+  align-items: start;
   gap: clamp(6px, 0.7vw, 10px);
   width: 100%;
   max-width: 100%;
@@ -6595,6 +6597,7 @@ body.is-work-order-editor-open {
 
 .work-order-calendar-grid {
   display: grid;
+  align-content: start;
   gap: 14px;
   min-width: 0;
   width: 100%;
@@ -6603,12 +6606,12 @@ body.is-work-order-editor-open {
   border: 0;
   border-radius: 0;
   background: none;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .work-order-calendar-grid-shell {
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scrollbar-gutter: stable both-edges;
   touch-action: auto;
 }

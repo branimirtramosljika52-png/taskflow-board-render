@@ -13977,12 +13977,13 @@ function bindWorkOrderCalendarGrabScroll() {
   workOrderCalendarGridShell.addEventListener("wheel", (event) => {
     const absDeltaX = Math.abs(event.deltaX);
     const absDeltaY = Math.abs(event.deltaY);
+    const horizontalDelta = (event.deltaX || event.deltaY) * 1.1;
+    const verticalDelta = event.deltaY * 1.18;
     const hasHorizontalOverflow = workOrderCalendarGridShell.scrollWidth > workOrderCalendarGridShell.clientWidth + 4;
     const hasVerticalOverflow = workOrderCalendarGridShell.scrollHeight > workOrderCalendarGridShell.clientHeight + 4;
     const shouldPanHorizontally = event.shiftKey || absDeltaX > absDeltaY;
 
     if (shouldPanHorizontally && hasHorizontalOverflow) {
-      const horizontalDelta = event.deltaX || event.deltaY;
       const nextScrollLeft = workOrderCalendarGridShell.scrollLeft + horizontalDelta;
       const maxScrollLeft = Math.max(0, workOrderCalendarGridShell.scrollWidth - workOrderCalendarGridShell.clientWidth);
       const canConsumeHorizontal = horizontalDelta < 0
@@ -14000,9 +14001,9 @@ function bindWorkOrderCalendarGrabScroll() {
       return;
     }
 
-    const nextScrollTop = workOrderCalendarGridShell.scrollTop + event.deltaY;
+    const nextScrollTop = workOrderCalendarGridShell.scrollTop + verticalDelta;
     const maxScrollTop = Math.max(0, workOrderCalendarGridShell.scrollHeight - workOrderCalendarGridShell.clientHeight);
-    const canConsumeVertical = event.deltaY < 0
+    const canConsumeVertical = verticalDelta < 0
       ? workOrderCalendarGridShell.scrollTop > 0
       : workOrderCalendarGridShell.scrollTop < maxScrollTop;
 
