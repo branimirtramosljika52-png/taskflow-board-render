@@ -2311,9 +2311,9 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel.is-modal-open {
-  width: min(1180px, calc(100vw - 24px));
-  top: 8px;
-  height: calc(100vh - 16px);
+  width: min(1180px, calc(100vw - 28px));
+  top: 12px;
+  height: calc(100vh - 24px);
   z-index: 129;
 }
 
@@ -2364,7 +2364,7 @@ body.is-location-editor-open {
 }
 
 .company-editor-body {
-  padding: 8px 18px 14px;
+  padding: 8px 18px 16px;
 }
 
 .company-editor-body > .entity-form {
@@ -2382,8 +2382,8 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel .masterdata-group-card {
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px 14px;
 }
 
 .masterdata-group-head {
@@ -2399,7 +2399,7 @@ body.is-location-editor-open {
 }
 
 .masterdata-company-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
 .masterdata-company-grid.is-compact {
@@ -2408,13 +2408,15 @@ body.is-location-editor-open {
 
 .masterdata-company-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1.08fr);
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   align-items: start;
 }
 
 .masterdata-company-identity-card {
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(96px, 112px) minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 10px;
   align-items: start;
 }
 
@@ -2424,32 +2426,61 @@ body.is-location-editor-open {
 
 .masterdata-company-identity-card > .company-logo-upload-row {
   grid-column: 1;
-  align-self: stretch;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
+  align-self: start;
 }
 
 .masterdata-company-identity-card > .masterdata-company-grid {
   grid-column: 2;
-  grid-template-columns: minmax(340px, 1.95fr) minmax(300px, 1.5fr) minmax(190px, 0.85fr);
-  align-self: center;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-self: start;
 }
 
-.masterdata-company-contract-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+.masterdata-company-contact-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
 #company-note {
-  min-height: 72px;
+  min-height: 56px;
 }
 
-.field-company-representative,
-.field-company-contact-email,
+.field-company-name {
+  grid-column: span 5;
+}
+
+.field-company-headquarters {
+  grid-column: span 4;
+}
+
+.field-company-oib {
+  grid-column: span 3;
+}
+
 .field-company-contract-type {
+  grid-column: span 4;
+}
+
+.field-company-contract-number {
+  grid-column: span 3;
+}
+
+.field-company-period {
   grid-column: span 2;
+}
+
+.field-company-status {
+  grid-column: span 3;
+}
+
+.field-company-representative {
+  grid-column: span 5;
+}
+
+.field-company-contact-phone {
+  grid-column: span 3;
+}
+
+.field-company-contact-email {
+  grid-column: span 4;
 }
 
 .company-logo-upload-row {
@@ -2476,6 +2507,34 @@ body.is-location-editor-open {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.company-logo-upload-row-compact {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.company-logo-upload-actions-icons {
+  justify-content: center;
+  gap: 8px;
+}
+
+.company-logo-icon-button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.masterdata-company-note-card {
+  gap: 8px;
 }
 
 .company-logo-avatar,
@@ -2572,10 +2631,6 @@ body.is-location-editor-open {
     min-width: 0;
   }
 
-  .masterdata-company-sections {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .masterdata-company-identity-card {
     grid-template-columns: 1fr;
   }
@@ -2586,16 +2641,13 @@ body.is-location-editor-open {
   }
 
   .masterdata-company-identity-card > .company-logo-upload-row {
-    flex-direction: row;
+    justify-items: start;
+    grid-template-columns: auto auto;
     align-items: center;
   }
 
   .masterdata-company-identity-card > .masterdata-company-grid {
-    grid-template-columns: minmax(240px, 1.5fr) minmax(210px, 1fr) minmax(170px, 0.85fr);
-  }
-
-  .masterdata-company-contract-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 }
 
@@ -2607,12 +2659,9 @@ body.is-location-editor-open {
 
   .offers-editor-topline,
   .masterdata-company-grid,
-  .masterdata-company-grid.is-compact {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .masterdata-company-sections {
-    grid-template-columns: 1fr;
+  .masterdata-company-grid.is-compact,
+  .masterdata-company-contact-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .offers-editor-panel.is-modal-open,
@@ -2633,6 +2682,22 @@ body.is-location-editor-open {
   .offer-item-actions {
     justify-content: flex-start;
   }
+
+  .field-company-name,
+  .field-company-headquarters,
+  .field-company-contract-type,
+  .field-company-representative,
+  .field-company-contact-email {
+    grid-column: span 6;
+  }
+
+  .field-company-oib,
+  .field-company-contract-number,
+  .field-company-period,
+  .field-company-status,
+  .field-company-contact-phone {
+    grid-column: span 3;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2646,8 +2711,26 @@ body.is-location-editor-open {
 
   .masterdata-company-grid,
   .masterdata-company-grid.is-compact,
-  .masterdata-company-contract-grid {
+  .masterdata-company-contact-grid {
     grid-template-columns: 1fr;
+  }
+
+  .masterdata-company-identity-card > .company-logo-upload-row {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .field-company-name,
+  .field-company-headquarters,
+  .field-company-oib,
+  .field-company-contract-type,
+  .field-company-contract-number,
+  .field-company-period,
+  .field-company-status,
+  .field-company-representative,
+  .field-company-contact-phone,
+  .field-company-contact-email {
+    grid-column: auto;
   }
 
   .offer-item-metrics,

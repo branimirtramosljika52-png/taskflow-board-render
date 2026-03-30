@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330i" />
+    <link rel="stylesheet" href="/styles.css?v=20260330j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1561,19 +1561,32 @@
                   <div class="masterdata-group-head">
                     <div>
                       <p class="section-kicker">Tvrtka</p>
-                      <h4 class="subsection-title">Osnovni identitet</h4>
+                      <h4 class="subsection-title">Osnovni identitet i ugovor</h4>
                     </div>
                   </div>
 
-                  <div class="company-logo-upload-row">
+                  <div class="company-logo-upload-row company-logo-upload-row-compact">
                     <div id="company-logo-preview" class="company-logo-avatar">TV</div>
-                    <div class="company-logo-upload-copy">
-                      <strong>Logo firme</strong>
-                      <p class="inline-help">Uploadaj logo koji ce se prikazivati kad odaberes firmu u editorima.</p>
-                      <div class="company-logo-upload-actions">
-                        <button id="company-logo-button" type="button" class="ghost-button">Upload logo</button>
-                        <button id="company-logo-clear" type="button" class="ghost-button" hidden>Makni logo</button>
-                      </div>
+                    <div class="company-logo-upload-actions company-logo-upload-actions-icons">
+                      <button
+                        id="company-logo-button"
+                        type="button"
+                        class="ghost-button company-logo-icon-button"
+                        aria-label="Upload logo"
+                        title="Upload logo"
+                      >
+                        &#8682;
+                      </button>
+                      <button
+                        id="company-logo-clear"
+                        type="button"
+                        class="ghost-button company-logo-icon-button"
+                        aria-label="Makni logo"
+                        title="Makni logo"
+                        hidden
+                      >
+                        &#10005;
+                      </button>
                     </div>
                   </div>
 
@@ -1592,6 +1605,29 @@
                       <span>OIB</span>
                       <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
                     </label>
+
+                    <label class="field field-company-contract-type">
+                        <span>Vrsta ugovora</span>
+                        <input id="company-contract-type" type="text" maxlength="120" />
+                    </label>
+
+                    <label class="field field-company-contract-number">
+                        <span>Broj ugovora</span>
+                        <input id="company-contract-number" type="text" maxlength="120" />
+                    </label>
+
+                    <label class="field field-company-period">
+                        <span>Periodika</span>
+                        <input id="company-period" type="text" maxlength="80" />
+                    </label>
+
+                    <label class="field field-company-status">
+                        <span>Status ugovora</span>
+                        <select id="company-is-active">
+                          <option value="true">Aktivno</option>
+                          <option value="false">Neaktivno</option>
+                        </select>
+                    </label>
                   </div>
                 </section>
 
@@ -1604,7 +1640,7 @@
                       </div>
                     </div>
 
-                    <div class="form-grid masterdata-company-grid is-compact">
+                    <div class="form-grid masterdata-company-contact-grid">
                       <label class="field field-company-representative">
                         <span>Predstavnik korisnika</span>
                         <input id="company-representative" type="text" maxlength="160" />
@@ -1621,43 +1657,9 @@
                       </label>
                     </div>
                   </section>
-
-                  <section class="masterdata-group-card">
-                    <div class="masterdata-group-head">
-                      <div>
-                        <p class="section-kicker">Ugovor</p>
-                        <h4 class="subsection-title">Vrsta ugovora, periodika i aktivnost</h4>
-                      </div>
-                    </div>
-
-                    <div class="form-grid masterdata-company-contract-grid">
-                      <label class="field field-company-contract-type">
-                        <span>Vrsta ugovora</span>
-                        <input id="company-contract-type" type="text" maxlength="120" />
-                      </label>
-
-                      <label class="field field-company-contract-number">
-                        <span>Broj ugovora</span>
-                        <input id="company-contract-number" type="text" maxlength="120" />
-                      </label>
-
-                      <label class="field field-company-period">
-                        <span>Periodika</span>
-                        <input id="company-period" type="text" maxlength="80" />
-                      </label>
-
-                      <label class="field field-company-status">
-                        <span>Aktivnost</span>
-                        <select id="company-is-active">
-                          <option value="true">Aktivno</option>
-                          <option value="false">Neaktivno</option>
-                        </select>
-                      </label>
-                    </div>
-                  </section>
                 </div>
 
-                <section class="masterdata-group-card">
+                <section class="masterdata-group-card masterdata-company-note-card">
                   <div class="masterdata-group-head">
                     <div>
                       <p class="section-kicker">Napomena</p>
@@ -1667,7 +1669,7 @@
 
                   <label class="field field-span-full">
                     <span>Napomena</span>
-                    <textarea id="company-note" rows="3"></textarea>
+                    <textarea id="company-note" rows="2"></textarea>
                   </label>
                 </section>
 
@@ -2659,6 +2661,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260330i"></script>
+    <script type="module" src="/src/main.js?v=20260330j"></script>
   </body>
 </html>

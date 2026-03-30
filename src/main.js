@@ -1081,6 +1081,8 @@ const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
 let userMenuOpen = false;
 let locationFormContacts = [];
+let companyEditorScrollLockY = 0;
+let companyEditorScrollLockActive = false;
 let currentConnectionTone = "connecting";
 let currentConnectionMeta = "ucitavanje podataka...";
 
@@ -6039,6 +6041,26 @@ function syncCompanyEditorModal() {
 
   companyEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-company-editor-open", isOpen);
+
+  if (isOpen && !companyEditorScrollLockActive) {
+    companyEditorScrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${companyEditorScrollLockY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    companyEditorScrollLockActive = true;
+  } else if (!isOpen && companyEditorScrollLockActive) {
+    const scrollLockY = companyEditorScrollLockY;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    companyEditorScrollLockY = 0;
+    companyEditorScrollLockActive = false;
+    window.scrollTo({ top: scrollLockY, left: 0, behavior: "auto" });
+  }
 
   if (companyEditorPanel) {
     companyEditorPanel.hidden = !isOpen;
