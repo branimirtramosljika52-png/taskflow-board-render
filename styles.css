@@ -6009,7 +6009,8 @@ body.is-work-order-editor-open {
   grid-template-rows: auto 1fr;
   min-width: 0;
   max-width: 100%;
-  min-height: clamp(132px, 16vw, 180px);
+  min-height: clamp(180px, 22vw, 228px);
+  height: clamp(220px, 32vh, 360px);
   border: 1px solid #ebeef6;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 251, 255, 0.98));
@@ -6052,8 +6053,11 @@ body.is-work-order-editor-open {
   align-content: start;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
   padding: clamp(6px, 0.7vw, 8px);
-  min-height: clamp(94px, 12vw, 118px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .work-order-calendar-day-add {
@@ -6650,7 +6654,7 @@ body.is-work-order-editor-open {
 .work-order-calendar-cell-group-summary,
 .work-order-calendar-cell-group-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: nowrap;
   justify-content: space-between;
   gap: 10px;
@@ -6660,7 +6664,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-cell-group-summary {
-  min-height: 56px;
+  min-height: 64px;
 }
 
 .work-order-calendar-cell-group-lead {
@@ -6680,8 +6684,9 @@ body.is-work-order-editor-open {
 .work-order-calendar-cell-group-copy {
   min-width: 0;
   display: grid;
+  gap: 6px;
   align-content: center;
-  min-height: 40px;
+  min-height: 48px;
 }
 
 .work-order-calendar-cell-group-title {
@@ -6693,6 +6698,29 @@ body.is-work-order-editor-open {
   -webkit-line-clamp: 2;
   overflow: hidden;
   overflow-wrap: anywhere;
+}
+
+.work-order-calendar-cell-group-regions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.work-order-calendar-cell-group-region {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(224, 231, 246, 0.96);
+  color: #5a6686;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .work-order-calendar-cell-group-count {
@@ -6716,6 +6744,10 @@ body.is-work-order-editor-open {
   min-width: 0;
   width: 100%;
   padding-top: 2px;
+  max-height: min(30vh, 280px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .work-order-calendar-cell-group-list {

@@ -12021,7 +12021,7 @@ function createWorkOrderCalendarCard(workOrder) {
 
   const meta = document.createElement("span");
   meta.className = "work-order-calendar-card-meta";
-  meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
+  meta.textContent = workOrder.locationName || "Bez lokacije";
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
   due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
@@ -13329,6 +13329,26 @@ function createWorkOrderCalendarExecutorGroup(items = [], options = {}) {
     title.textContent = executorGroup.label;
 
     copy.append(title);
+
+    const uniqueRegions = Array.from(new Set(
+      executorGroup.items
+        .map((item) => String(item?.region ?? "").trim())
+        .filter(Boolean),
+    )).sort((left, right) => left.localeCompare(right, "hr"));
+
+    if (uniqueRegions.length > 0) {
+      const regions = document.createElement("div");
+      regions.className = "work-order-calendar-cell-group-regions";
+      uniqueRegions.forEach((region) => {
+        const pill = document.createElement("span");
+        pill.className = "work-order-calendar-cell-group-region";
+        pill.textContent = region;
+        pill.title = region;
+        regions.append(pill);
+      });
+      copy.append(regions);
+    }
+
     lead.append(avatars, copy);
 
     const count = document.createElement("span");
