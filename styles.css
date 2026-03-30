@@ -9784,7 +9784,7 @@ body.is-work-order-editor-open {
 
 .vehicle-list-row-main {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
 }
@@ -9827,7 +9827,9 @@ body.is-work-order-editor-open {
 .vehicle-list-row-detail,
 .vehicle-reservation-item-window {
   margin: 0;
+  display: block;
   color: #5f7068;
+  font-size: 0.92rem;
   line-height: 1.5;
 }
 
@@ -10133,6 +10135,7 @@ body.is-vehicle-reservation-open {
 }
 
 .vehicle-schedule-slot:hover,
+.vehicle-schedule-slot.is-selected,
 .vehicle-schedule-slot:focus-visible {
   background: rgba(47, 104, 84, 0.08);
   outline: none;
