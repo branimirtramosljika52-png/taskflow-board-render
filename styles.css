@@ -6317,6 +6317,40 @@ body.is-work-order-editor-open {
   overflow-wrap: anywhere;
 }
 
+.work-order-calendar-card-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.work-order-calendar-card-control {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.work-order-calendar-card-control-label {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a92a8;
+}
+
+.work-order-calendar-card-select {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 24px 0 10px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.work-order-calendar-card-executor-select {
+  background-color: rgba(255, 255, 255, 0.94);
+}
+
 .work-order-calendar-card-footer {
   display: flex;
   align-items: center;
@@ -6344,6 +6378,12 @@ body.is-work-order-editor-open {
   min-width: 0;
   max-width: 100%;
   flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .work-order-calendar-card-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .work-order-calendar-content {

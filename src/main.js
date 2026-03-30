@@ -357,6 +357,7 @@ const state = {
     showUnscheduled: true,
     draggingWorkOrderId: "",
     dragLaneKey: "",
+    expandedGroupKeys: new Set(),
   },
   workOrderMap: {
     selectedWorkOrderId: "",
@@ -12071,6 +12072,112 @@ function createWorkOrderCalendarCard(workOrder) {
   return card;
 }
 
+function getWorkOrderExecutorNameOptions(currentValue = "") {
+  const labels = Array.from(new Set(
+    state.users
+      .filter((user) => user?.isActive !== false)
+      .map((user) => String(user.fullName || user.email || user.username || "").trim())
+      .filter(Boolean),
+  )).sort((left, right) => left.localeCompare(right, "hr"));
+
+  const options = [{ value: "", label: "Bez izvrsitelja" }];
+  const normalizedCurrentValue = String(currentValue ?? "").trim();
+
+  if (normalizedCurrentValue && !labels.includes(normalizedCurrentValue)) {
+    options.push({
+      value: normalizedCurrentValue,
+      label: `${normalizedCurrentValue} (snapshot)`,
+    });
+  }
+
+  labels.forEach((label) => {
+    options.push({ value: label, label });
+  });
+
+  return options;
+}
+
+function bindWorkOrderInlineSelect(select, onChange) {
+  const openPicker = () => {
+    select.focus({ preventScroll: true });
+
+    if (typeof select.showPicker === "function") {
+      try {
+        select.showPicker();
+      } catch {
+        // Ignore browsers that deny scripted picker opening.
+      }
+    }
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    select.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+
+      if ((eventName === "pointerdown" || eventName === "mousedown" || eventName === "click")
+        && event instanceof MouseEvent
+        && event.button === 0) {
+        openPicker();
+      }
+    });
+  });
+
+  select.addEventListener("change", onChange);
+}
+
+function createWorkOrderCalendarCardControl(labelText, control) {
+  const field = document.createElement("label");
+  field.className = "work-order-calendar-card-control";
+  field.dataset.preventRowOpen = "true";
+
+  const label = document.createElement("span");
+  label.className = "work-order-calendar-card-control-label";
+  label.textContent = labelText;
+
+  field.append(label, control);
+  return field;
+}
+
+function createWorkOrderCalendarExecutorSelect(workOrder, slotIndex = 1) {
+  const select = document.createElement("select");
+  select.className = "work-item-status-select work-order-calendar-card-select work-order-calendar-card-executor-select";
+  select.dataset.preventRowOpen = "true";
+  select.setAttribute("aria-label", slotIndex === 1 ? "Izvrsitelj 1" : "Izvrsitelj 2");
+  const currentValue = slotIndex === 1 ? (workOrder.executor1 || "") : (workOrder.executor2 || "");
+  replaceSelectOptions(select, getWorkOrderExecutorNameOptions(currentValue), currentValue);
+
+  bindWorkOrderInlineSelect(select, () => {
+    const previousValue = currentValue;
+    const nextValue = select.value;
+    const nextExecutor1 = slotIndex === 1 ? nextValue : (workOrder.executor1 || "");
+    const nextExecutor2 = slotIndex === 2 ? nextValue : (workOrder.executor2 || "");
+    select.disabled = true;
+
+    void runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
+      method: "PATCH",
+      body: {
+        executor1: nextExecutor1,
+        executor2: nextExecutor2,
+      },
+    })).then((success) => {
+      const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
+      const refreshedValue = slotIndex === 1 ? (updatedItem?.executor1 || nextValue) : (updatedItem?.executor2 || nextValue);
+
+      if (!success) {
+        replaceSelectOptions(select, getWorkOrderExecutorNameOptions(previousValue), previousValue);
+      } else if (select.isConnected) {
+        replaceSelectOptions(select, getWorkOrderExecutorNameOptions(refreshedValue), refreshedValue);
+      }
+
+      if (select.isConnected) {
+        select.disabled = false;
+      }
+    });
+  });
+
+  return select;
+}
+
 function getWorkOrderCalendarDraggedId(event) {
   return event.dataTransfer?.getData("application/x-work-order-id")
     || event.dataTransfer?.getData("text/plain")
@@ -12849,11 +12956,12 @@ function renderWorkOrderMapView() {
 }
 
 function createWorkOrderCalendarSchedulerCard(workOrder) {
-  const card = document.createElement("button");
-  card.type = "button";
+  const card = document.createElement("article");
   card.className = "work-order-calendar-card";
   card.draggable = true;
   card.dataset.workOrderId = workOrder.id;
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
   const tone = getWorkOrderCalendarTone(workOrder.status || "Otvoreni RN");
   card.style.setProperty("--calendar-card-accent", tone.accent);
   card.style.setProperty("--calendar-card-soft", tone.soft);
@@ -12878,6 +12986,20 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = [workOrder.locationName, workOrder.region].filter(Boolean).join(" · ") || "Bez lokacije";
 
+  const controls = document.createElement("div");
+  controls.className = "work-order-calendar-card-controls";
+  controls.dataset.preventRowOpen = "true";
+  controls.append(
+    createWorkOrderCalendarCardControl(
+      "Status",
+      createWorkOrderStatusSelect(workOrder, {
+        className: "work-order-calendar-card-select work-order-calendar-card-status-select",
+      }),
+    ),
+    createWorkOrderCalendarCardControl("I1", createWorkOrderCalendarExecutorSelect(workOrder, 1)),
+    createWorkOrderCalendarCardControl("I2", createWorkOrderCalendarExecutorSelect(workOrder, 2)),
+  );
+
   const due = document.createElement("span");
   due.className = "work-order-calendar-card-due";
   due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
@@ -12894,7 +13016,7 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
     footer.append(executorWrap);
   }
 
-  card.append(top, title, meta, footer);
+  card.append(top, title, meta, controls, footer);
 
   if (workOrder.priority) {
     const priority = createBadge(
@@ -12905,8 +13027,22 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
     card.append(priority);
   }
 
-  card.addEventListener("click", () => {
+  card.addEventListener("click", (event) => {
+    if (isInteractiveWorkOrderTarget(event.target)) {
+      return;
+    }
     hydrateWorkOrderForm(workOrder);
+  });
+
+  card.addEventListener("keydown", (event) => {
+    if (isInteractiveWorkOrderTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      hydrateWorkOrderForm(workOrder);
+    }
   });
 
   card.addEventListener("dragstart", (event) => {
@@ -13003,7 +13139,15 @@ function createWorkOrderCalendarExecutorGroup(items = [], options = {}) {
     const groupCard = document.createElement("details");
     groupCard.className = "work-order-calendar-cell-group";
     groupCard.dataset.executorGroupKey = executorGroup.key;
-    groupCard.open = false;
+    const persistenceKey = targetDate ? `${targetDate}:${executorGroup.key}` : executorGroup.key;
+    groupCard.open = state.workOrderCalendar.expandedGroupKeys.has(persistenceKey);
+    groupCard.addEventListener("toggle", () => {
+      if (groupCard.open) {
+        state.workOrderCalendar.expandedGroupKeys.add(persistenceKey);
+      } else {
+        state.workOrderCalendar.expandedGroupKeys.delete(persistenceKey);
+      }
+    });
 
     if (targetDate && executorGroup.executors.length > 0) {
       bindWorkOrderCalendarDropTarget(groupCard, (droppedWorkOrderId) => {
@@ -13646,9 +13790,10 @@ function updateWorkOrderStatusSelectTheme(select, value) {
   select.dataset.status = slugifyValue(value);
 }
 
-function createWorkOrderStatusSelect(item) {
+function createWorkOrderStatusSelect(item, options = {}) {
+  const { className = "" } = options;
   const select = document.createElement("select");
-  select.className = "work-item-status-select";
+  select.className = ["work-item-status-select", className].filter(Boolean).join(" ");
   select.dataset.preventRowOpen = "true";
 
   WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
@@ -13661,31 +13806,7 @@ function createWorkOrderStatusSelect(item) {
   select.value = item.status || "Otvoreni RN";
   updateWorkOrderStatusSelectTheme(select, select.value);
 
-  const openPicker = () => {
-    select.focus({ preventScroll: true });
-
-    if (typeof select.showPicker === "function") {
-      try {
-        select.showPicker();
-      } catch {
-        // Ignore browsers that deny scripted picker opening.
-      }
-    }
-  };
-
-  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
-    select.addEventListener(eventName, (event) => {
-      event.stopPropagation();
-
-      if ((eventName === "pointerdown" || eventName === "mousedown" || eventName === "click")
-        && event instanceof MouseEvent
-        && event.button === 0) {
-        openPicker();
-      }
-    });
-  });
-
-  select.addEventListener("change", () => {
+  bindWorkOrderInlineSelect(select, () => {
     const previousValue = item.status || "Otvoreni RN";
     const nextValue = select.value;
 
@@ -13704,6 +13825,10 @@ function createWorkOrderStatusSelect(item) {
       } else {
         select.value = updatedItem?.status || nextValue;
         updateWorkOrderStatusSelectTheme(select, select.value);
+      }
+
+      if (select.isConnected) {
+        select.disabled = false;
       }
     });
   });
