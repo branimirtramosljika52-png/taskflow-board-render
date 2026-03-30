@@ -118,6 +118,7 @@ let workOrderLeafletMap = null;
 let workOrderLeafletLayer = null;
 let workOrderLeafletClusterLayer = null;
 let workOrderLeafletMarkers = new Map();
+let workOrderCalendarShellHeightFrame = 0;
 const DEFAULT_MEASUREMENT_ROW_COUNT = 72;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 120;
@@ -13012,6 +13013,7 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   weekSection.append(weekHead, weekGrid);
   fragment.append(weekSection);
   workOrderCalendarGrid.replaceChildren(fragment);
+  queueWorkOrderCalendarGridShellHeightSync();
 }
 
 function renderWorkOrderCalendarMonthMode(filtered) {
@@ -13076,6 +13078,7 @@ function renderWorkOrderCalendarMonthMode(filtered) {
   });
 
   workOrderCalendarGrid.replaceChildren(fragment);
+  queueWorkOrderCalendarGridShellHeightSync();
 }
 
 function renderWorkOrderCalendarView() {
@@ -13922,6 +13925,49 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
   return cell;
 }
 
+function syncWorkOrderCalendarGridShellHeight() {
+  if (!workOrderCalendarGridShell) {
+    return;
+  }
+
+  if (state.activeWorkOrderViewMode !== "calendar" || workOrderCalendarView?.hidden) {
+    workOrderCalendarGridShell.style.removeProperty("--work-order-calendar-shell-height");
+    return;
+  }
+
+  const viewportHeight = window.visualViewport?.height || window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+    return;
+  }
+
+  const shellRect = workOrderCalendarGridShell.getBoundingClientRect();
+  const visibleTop = Math.max(shellRect.top, window.innerWidth <= 980 ? 10 : 16);
+  const bottomGap = window.innerWidth <= 980 ? 16 : 24;
+  const availableHeight = Math.floor(viewportHeight - visibleTop - bottomGap);
+
+  if (!Number.isFinite(availableHeight) || availableHeight <= 120) {
+    workOrderCalendarGridShell.style.removeProperty("--work-order-calendar-shell-height");
+    return;
+  }
+
+  workOrderCalendarGridShell.style.setProperty("--work-order-calendar-shell-height", `${availableHeight}px`);
+}
+
+function queueWorkOrderCalendarGridShellHeightSync() {
+  if (!workOrderCalendarGridShell) {
+    return;
+  }
+
+  if (workOrderCalendarShellHeightFrame) {
+    window.cancelAnimationFrame(workOrderCalendarShellHeightFrame);
+  }
+
+  workOrderCalendarShellHeightFrame = window.requestAnimationFrame(() => {
+    workOrderCalendarShellHeightFrame = 0;
+    syncWorkOrderCalendarGridShellHeight();
+  });
+}
+
 function bindWorkOrderCalendarGrabScroll() {
   if (!workOrderCalendarGridShell || workOrderCalendarGridShell.dataset.grabBound === "true") {
     return;
@@ -14267,6 +14313,8 @@ function renderWorkOrderWorkspace() {
   } else {
     renderWorkOrderCroatiaMapView();
   }
+
+  queueWorkOrderCalendarGridShellHeightSync();
 }
 
 function renderWorkOrders() {
@@ -17110,6 +17158,22 @@ document.addEventListener("scroll", (event) => {
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
   }
+}, true);
+
+window.addEventListener("resize", () => {
+  queueWorkOrderCalendarGridShellHeightSync();
+});
+
+window.visualViewport?.addEventListener("resize", () => {
+  queueWorkOrderCalendarGridShellHeightSync();
+});
+
+document.addEventListener("scroll", () => {
+  if (state.activeWorkOrderViewMode !== "calendar") {
+    return;
+  }
+
+  queueWorkOrderCalendarGridShellHeightSync();
 }, true);
 
 userOrganizationIdInput?.addEventListener("change", () => {

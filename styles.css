@@ -4504,6 +4504,7 @@ button:hover {
 .panel-work-orders {
   display: grid;
   gap: 16px;
+  min-height: 0;
   background: linear-gradient(180deg, #ffffff, #fbfbfd);
 }
 
@@ -5875,8 +5876,8 @@ body.is-work-order-editor-open {
 .work-order-calendar-grid-shell {
   min-width: 0;
   min-height: 320px;
-  height: min(72vh, calc(100vh - 332px));
-  max-height: calc(100vh - 332px);
+  height: var(--work-order-calendar-shell-height, min(72vh, calc(100dvh - 332px)));
+  max-height: var(--work-order-calendar-shell-height, calc(100dvh - 332px));
   overflow-y: auto;
   overflow-x: hidden;
   border-radius: 22px;
@@ -10507,8 +10508,8 @@ body.is-work-order-editor-open {
 
   .work-order-calendar-grid-shell {
     min-height: 280px;
-    height: min(64vh, calc(100vh - 260px));
-    max-height: min(64vh, calc(100vh - 260px));
+    height: var(--work-order-calendar-shell-height, min(64vh, calc(100dvh - 260px)));
+    max-height: var(--work-order-calendar-shell-height, min(64vh, calc(100dvh - 260px)));
   }
 
   .work-order-calendar-grid-row,
