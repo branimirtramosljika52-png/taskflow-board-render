@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330a" />
+    <link rel="stylesheet" href="/styles.css?v=20260330b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2002,33 +2002,67 @@
                 </article>
               </div>
 
-              <div class="vehicles-layout">
-                <section class="panel vehicles-list-panel">
-                  <div class="section-heading offers-section-heading">
-                    <div>
-                      <p class="section-kicker">Fleet</p>
-                      <h3>Vozila organizacije</h3>
-                    </div>
+              <section class="panel vehicles-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Fleet</p>
+                    <h3>Vozila organizacije</h3>
+                  </div>
+                  <div class="vehicles-toolbar-actions">
+                    <button id="vehicle-open-reservation" type="button" class="ghost-button">+ Rezervacija</button>
                     <button id="vehicle-open-form" type="button" class="primary-button">+ Novo vozilo</button>
                   </div>
+                </div>
 
-                  <div class="vehicles-filters">
-                    <label class="field">
-                      <span>Pretraga</span>
-                      <input id="vehicles-search" type="search" placeholder="Naziv, registracija, marka, vozac..." />
-                    </label>
-                    <label class="field">
-                      <span>Status</span>
-                      <select id="vehicles-filter-status"></select>
-                    </label>
+                <div class="vehicles-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="vehicles-search" type="search" placeholder="Naziv, registracija, marka, vozac..." />
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="vehicles-filter-status"></select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel vehicles-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Lista</p>
+                    <h3>Popis vozila</h3>
                   </div>
+                </div>
 
-                  <p id="vehicles-helper" class="helper-copy module-copy">Fleet pregled po dostupnosti, rezervacijama i servisu.</p>
-                  <div id="vehicles-list" class="vehicles-list"></div>
-                  <p id="vehicles-empty" class="helper-copy" hidden>Nema vozila za prikaz u aktivnoj organizaciji.</p>
-                </section>
+                <p id="vehicles-helper" class="helper-copy module-copy">Fleet pregled po dostupnosti, rezervacijama i servisu.</p>
+                <div id="vehicles-list" class="vehicles-list vehicles-list-full"></div>
+                <p id="vehicles-empty" class="helper-copy" hidden>Nema vozila za prikaz u aktivnoj organizaciji.</p>
+              </section>
 
-                <section class="panel vehicles-editor-panel">
+              <section class="panel vehicle-schedule-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Raspored</p>
+                    <h3>Satni raspored vozila</h3>
+                  </div>
+                  <div class="vehicle-schedule-toolbar">
+                    <button id="vehicle-schedule-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni dan">&#8592;</button>
+                    <button id="vehicle-schedule-today" type="button" class="ghost-button">Danas</button>
+                    <input id="vehicle-schedule-date" type="date" class="vehicle-schedule-date-input" />
+                    <button id="vehicle-schedule-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeci dan">&#8594;</button>
+                  </div>
+                </div>
+
+                <p id="vehicle-schedule-helper" class="helper-copy module-copy">Klikni prazan sat da odmah otvoris rezervaciju za to vozilo i termin.</p>
+                <div id="vehicle-schedule-grid-shell" class="vehicle-schedule-grid-shell">
+                  <div id="vehicle-schedule-grid" class="vehicle-schedule-grid"></div>
+                </div>
+                <p id="vehicle-schedule-empty" class="helper-copy" hidden>Nema vozila za prikaz u rasporedu.</p>
+              </section>
+
+              <div id="vehicle-editor-backdrop" class="offer-editor-backdrop vehicle-editor-backdrop" hidden></div>
+              <section id="vehicle-editor-panel" class="panel vehicle-modal-panel" hidden>
+                <div class="vehicles-editor-fixed-head">
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Vehicle editor</p>
@@ -2036,9 +2070,12 @@
                     </div>
                     <div class="vehicles-editor-head-actions">
                       <span id="vehicle-availability-preview" class="vehicle-status-badge is-available">Dostupno</span>
+                      <button id="vehicle-editor-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
                   </div>
+                </div>
 
+                <div class="vehicle-modal-body" tabindex="-1">
                   <form id="vehicle-form" class="entity-form">
                     <input id="vehicle-id" type="hidden" />
 
@@ -2114,64 +2151,84 @@
                       <button id="vehicle-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
                     </div>
                   </form>
+                </div>
+              </section>
+
+              <div id="vehicle-reservation-backdrop" class="offer-editor-backdrop vehicle-editor-backdrop" hidden></div>
+              <section id="vehicle-reservation-panel" class="panel vehicle-modal-panel vehicle-reservation-modal" hidden>
+                <div class="vehicles-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Reservations</p>
+                      <h3 id="vehicle-reservations-title">Rezervacija vozila</h3>
+                    </div>
+                    <div class="vehicles-editor-head-actions">
+                      <button id="vehicle-reservation-close" type="button" class="ghost-button">Zatvori</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="vehicle-modal-body" tabindex="-1">
+                  <form id="vehicle-reservation-form" class="entity-form vehicles-reservation-form">
+                    <input id="vehicle-reservation-id" type="hidden" />
+
+                    <div class="form-grid vehicles-form-grid">
+                      <label class="field">
+                        <span>Vozilo</span>
+                        <select id="vehicle-reservation-vehicle-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="vehicle-reservation-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Rezervirano za</span>
+                        <select id="vehicle-reservation-user-id"></select>
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Svrha</span>
+                        <input id="vehicle-reservation-purpose" maxlength="180" placeholder="Intervencija, teren, obilazak..." required />
+                      </label>
+                      <label class="field">
+                        <span>Polazak</span>
+                        <input id="vehicle-reservation-start-at" type="datetime-local" required />
+                      </label>
+                      <label class="field">
+                        <span>Povratak</span>
+                        <input id="vehicle-reservation-end-at" type="datetime-local" required />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Destinacija</span>
+                        <input id="vehicle-reservation-destination" maxlength="180" placeholder="Grad, lokacija ili ruta" />
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="vehicle-reservation-note" rows="2" placeholder="Kljucevi, oprema, dodatne upute..."></textarea>
+                    </label>
+
+                    <p id="vehicle-reservation-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi rezervaciju</button>
+                      <button id="vehicle-reservation-reset" type="button" class="ghost-button">Nova rezervacija</button>
+                    </div>
+                  </form>
 
                   <section class="vehicles-reservations-panel">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Reservations</p>
-                        <h3 id="vehicle-reservations-title">Rezervacije</h3>
+                        <p class="section-kicker">Pregled</p>
+                        <h3>Rezervacije odabranog vozila</h3>
                       </div>
-                      <button id="vehicle-open-reservation" type="button" class="ghost-button">+ Rezervacija</button>
                     </div>
-
-                    <form id="vehicle-reservation-form" class="entity-form vehicles-reservation-form">
-                      <input id="vehicle-reservation-id" type="hidden" />
-
-                      <div class="form-grid vehicles-form-grid">
-                        <label class="field">
-                          <span>Status</span>
-                          <select id="vehicle-reservation-status"></select>
-                        </label>
-                        <label class="field">
-                          <span>Rezervirano za</span>
-                          <select id="vehicle-reservation-user-id"></select>
-                        </label>
-                        <label class="field field-span-full">
-                          <span>Svrha</span>
-                          <input id="vehicle-reservation-purpose" maxlength="180" placeholder="Intervencija, teren, obilazak..." required />
-                        </label>
-                        <label class="field">
-                          <span>Polazak</span>
-                          <input id="vehicle-reservation-start-at" type="datetime-local" required />
-                        </label>
-                        <label class="field">
-                          <span>Povratak</span>
-                          <input id="vehicle-reservation-end-at" type="datetime-local" required />
-                        </label>
-                        <label class="field field-span-full">
-                          <span>Destinacija</span>
-                          <input id="vehicle-reservation-destination" maxlength="180" placeholder="Grad, lokacija ili ruta" />
-                        </label>
-                      </div>
-
-                      <label class="field field-span-full">
-                        <span>Napomena</span>
-                        <textarea id="vehicle-reservation-note" rows="2" placeholder="Kljucevi, oprema, dodatne upute..."></textarea>
-                      </label>
-
-                      <p id="vehicle-reservation-error" class="form-error" aria-live="polite"></p>
-
-                      <div class="form-actions">
-                        <button type="submit" class="primary-button">Spremi rezervaciju</button>
-                        <button id="vehicle-reservation-reset" type="button" class="ghost-button">Nova rezervacija</button>
-                      </div>
-                    </form>
 
                     <div id="vehicle-reservations-list" class="vehicle-reservations-list"></div>
                     <p id="vehicle-reservations-empty" class="helper-copy" hidden>Odaberi vozilo da pripremis rezervacije i povijest voznje.</p>
                   </section>
-                </section>
-              </div>
+                </div>
+              </section>
             </section>
 
             <section id="offers-module" class="offers-module" hidden>
@@ -2474,7 +2531,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script type="module" src="/src/auth-transitions.js?v=20260330a"></script>
-    <script type="module" src="/src/main.js?v=20260330a"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260330b"></script>
+    <script type="module" src="/src/main.js?v=20260330b"></script>
   </body>
 </html>
