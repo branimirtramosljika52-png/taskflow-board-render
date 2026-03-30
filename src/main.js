@@ -343,6 +343,7 @@ const state = {
   activeVehicleReservationId: "",
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
+  vehicleReservationAssigneePickerOpen: false,
   vehicleScheduleDate: new Date().toISOString().slice(0, 10),
   vehicleScheduleSelection: null,
   activeWorkOrderViewMode: "list",
@@ -599,6 +600,8 @@ const vehicleReservationForm = document.querySelector("#vehicle-reservation-form
 const vehicleReservationIdInput = document.querySelector("#vehicle-reservation-id");
 const vehicleReservationVehicleIdInput = document.querySelector("#vehicle-reservation-vehicle-id");
 const vehicleReservationStatusInput = document.querySelector("#vehicle-reservation-status");
+const vehicleReservationAssigneesDropdown = document.querySelector("#vehicle-reservation-assignees-dropdown");
+const vehicleReservationAssigneesTrigger = document.querySelector("#vehicle-reservation-assignees-trigger");
 const vehicleReservationAssigneesPreview = document.querySelector("#vehicle-reservation-assignees-preview");
 const vehicleReservationAssigneesInput = document.querySelector("#vehicle-reservation-assignees");
 const vehicleReservationPurposeInput = document.querySelector("#vehicle-reservation-purpose");
@@ -5922,6 +5925,27 @@ function scrollVehicleReservationToTop() {
   vehicleReservationBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function syncVehicleReservationAssigneePicker() {
+  if (state.vehicleReservationAssigneePickerOpen && (!state.vehicleReservationEditorOpen || !vehicleReservationAssigneesDropdown)) {
+    state.vehicleReservationAssigneePickerOpen = false;
+  }
+
+  const isOpen = Boolean(state.vehicleReservationAssigneePickerOpen && vehicleReservationAssigneesDropdown);
+
+  vehicleReservationAssigneesDropdown?.classList.toggle("is-open", isOpen);
+  if (vehicleReservationAssigneesTrigger) {
+    vehicleReservationAssigneesTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+  if (vehicleReservationAssigneesInput) {
+    vehicleReservationAssigneesInput.hidden = !isOpen;
+  }
+}
+
+function setVehicleReservationAssigneePickerOpen(isOpen) {
+  state.vehicleReservationAssigneePickerOpen = Boolean(isOpen);
+  syncVehicleReservationAssigneePicker();
+}
+
 function syncVehicleEditorModal() {
   if (state.vehicleEditorOpen && (
     state.activeView !== "module"
@@ -5971,6 +5995,10 @@ function syncVehicleReservationModal() {
 
   const isOpen = state.vehicleReservationEditorOpen;
 
+  if (!isOpen) {
+    state.vehicleReservationAssigneePickerOpen = false;
+  }
+
   vehicleReservationPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-vehicle-reservation-open", isOpen);
 
@@ -5986,6 +6014,8 @@ function syncVehicleReservationModal() {
   if (vehicleReservationCloseButton) {
     vehicleReservationCloseButton.hidden = !isOpen;
   }
+
+  syncVehicleReservationAssigneePicker();
 
   if (isOpen) {
     requestAnimationFrame(() => {
@@ -10285,12 +10315,14 @@ function syncVehicleReservationAssigneePreview() {
 
   const selectedUsers = getVehicleReservationSelectedUsers();
   const labels = selectedUsers.map((user) => user.fullName || user.email || user.username || "User");
-  const executors = createVehicleReservationExecutorList(labels);
+  const executors = createVehicleReservationExecutorList(labels, { compact: true });
   const summary = document.createElement("span");
   summary.className = "vehicle-reservation-assignees-summary";
   summary.textContent = labels.length === 0
-    ? "Bez izvrsitelja"
-    : `${labels.length} odabrano`;
+    ? "Odaberi izvrsitelje"
+    : labels.length === 1
+      ? labels[0]
+      : `${labels.length} izvrsitelja`;
 
   vehicleReservationAssigneesPreview.replaceChildren(executors, summary);
 }
@@ -10346,6 +10378,7 @@ function rebuildVehicleReservationUserOptions(selectedValue = []) {
   }));
 
   syncVehicleReservationAssigneePreview();
+  syncVehicleReservationAssigneePicker();
 }
 
 function rebuildVehicleReservationVehicleOptions(selectedValue = "") {
@@ -10482,6 +10515,7 @@ function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.
     return;
   }
 
+  setVehicleReservationAssigneePickerOpen(false);
   vehicleReservationForm.reset();
   if (vehicleReservationIdInput) {
     vehicleReservationIdInput.value = "";
@@ -10542,6 +10576,7 @@ function resetVehicleForm({ clearSelection = true } = {}) {
 function hydrateVehicleReservationForm(vehicle, reservation) {
   state.activeVehicleId = vehicle.id;
   state.activeVehicleReservationId = reservation.id;
+  setVehicleReservationAssigneePickerOpen(false);
 
   if (vehicleReservationIdInput) {
     vehicleReservationIdInput.value = reservation.id || "";
@@ -14869,6 +14904,15 @@ document.addEventListener("keydown", (event) => {
   clearVehicleScheduleSelection();
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !state.vehicleReservationAssigneePickerOpen) {
+    return;
+  }
+
+  event.preventDefault();
+  setVehicleReservationAssigneePickerOpen(false);
+});
+
 vehicleOpenFormButton?.addEventListener("click", () => {
   resetVehicleForm();
   renderVehiclesModule();
@@ -15004,6 +15048,10 @@ vehicleReservationAssigneesInput?.addEventListener("change", (event) => {
   const option = target.closest(".vehicle-reservation-assignee-option");
   option?.classList.toggle("is-selected", target.checked);
   syncVehicleReservationAssigneePreview();
+});
+
+vehicleReservationAssigneesTrigger?.addEventListener("click", () => {
+  setVehicleReservationAssigneePickerOpen(!state.vehicleReservationAssigneePickerOpen);
 });
 
 vehicleSchedulePrevButton?.addEventListener("click", () => {
@@ -15521,6 +15569,14 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (
+    state.vehicleReservationAssigneePickerOpen
+    && event.target instanceof Node
+    && !vehicleReservationAssigneesDropdown?.contains(event.target)
+  ) {
+    setVehicleReservationAssigneePickerOpen(false);
+  }
+
   if (state.measurementSheet.fillMenu && event.target instanceof Node) {
     const clickedFillMenu = measurementFillMenu?.contains(event.target);
     const clickedFillHandle = event.target instanceof HTMLElement && event.target.closest(".measurement-fill-handle");
@@ -15564,10 +15620,16 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("resize", () => {
   closeOpenWorkOrderStatusMenus();
+  if (state.vehicleReservationAssigneePickerOpen) {
+    setVehicleReservationAssigneePickerOpen(false);
+  }
 });
 
 document.addEventListener("scroll", () => {
   closeOpenWorkOrderStatusMenus();
+  if (state.vehicleReservationAssigneePickerOpen) {
+    setVehicleReservationAssigneePickerOpen(false);
+  }
 }, true);
 
 userOrganizationIdInput?.addEventListener("change", () => {

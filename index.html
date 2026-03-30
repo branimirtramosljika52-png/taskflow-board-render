@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260330d" />
+    <link rel="stylesheet" href="/styles.css?v=20260330e" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2183,8 +2183,13 @@
                       </label>
                       <label class="field field-span-full">
                         <span>Izvršitelji</span>
-                        <div id="vehicle-reservation-assignees-preview" class="vehicle-reservation-assignees-preview"></div>
-                        <div id="vehicle-reservation-assignees" class="vehicle-reservation-assignee-picker"></div>
+                        <div id="vehicle-reservation-assignees-dropdown" class="vehicle-reservation-assignee-dropdown">
+                          <button id="vehicle-reservation-assignees-trigger" type="button" class="vehicle-reservation-assignee-trigger" aria-expanded="false" aria-haspopup="listbox">
+                            <div id="vehicle-reservation-assignees-preview" class="vehicle-reservation-assignees-preview"></div>
+                            <span class="vehicle-reservation-assignee-caret" aria-hidden="true">&#9662;</span>
+                          </button>
+                          <div id="vehicle-reservation-assignees" class="vehicle-reservation-assignee-panel" hidden></div>
+                        </div>
                       </label>
                       <label class="field field-span-full">
                         <span>Svrha</span>
@@ -2532,7 +2537,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script type="module" src="/src/auth-transitions.js?v=20260330d"></script>
-    <script type="module" src="/src/main.js?v=20260330d"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
+    <script type="module" src="/src/main.js?v=20260330e"></script>
   </body>
 </html>

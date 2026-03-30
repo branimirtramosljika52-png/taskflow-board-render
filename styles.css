@@ -9951,21 +9951,75 @@ body.is-vehicle-reservation-open {
 
 .vehicle-reservation-assignees-preview {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  min-height: 38px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .vehicle-reservation-assignees-summary {
   color: #5f7068;
   font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.vehicle-reservation-assignee-picker {
+.vehicle-reservation-assignee-dropdown {
+  position: relative;
+  min-width: 0;
+}
+
+.vehicle-reservation-assignee-trigger {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 104, 84, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #22352d;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.vehicle-reservation-assignee-trigger:hover,
+.vehicle-reservation-assignee-trigger:focus-visible,
+.vehicle-reservation-assignee-dropdown.is-open .vehicle-reservation-assignee-trigger {
+  border-color: rgba(32, 102, 79, 0.28);
+  box-shadow: 0 10px 18px rgba(30, 64, 51, 0.08);
+  outline: none;
+}
+
+.vehicle-reservation-assignee-caret {
+  flex: 0 0 auto;
+  color: #5f7068;
+  transition: transform 140ms ease;
+}
+
+.vehicle-reservation-assignee-dropdown.is-open .vehicle-reservation-assignee-caret {
+  transform: rotate(180deg);
+}
+
+.vehicle-reservation-assignee-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 8;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(47, 104, 84, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 36px rgba(30, 64, 51, 0.14);
 }
 
 .vehicle-reservation-assignee-option {
@@ -10009,6 +10063,11 @@ body.is-vehicle-reservation-open {
 .vehicle-reservation-executors-empty {
   color: #66786f;
   font-size: 0.84rem;
+}
+
+.vehicle-reservation-assignee-empty {
+  margin: 0;
+  padding: 6px 2px;
 }
 
 .vehicle-reservation-executors {
@@ -10279,7 +10338,7 @@ body.is-vehicle-reservation-open {
   .vehicles-summary-grid,
   .vehicles-filters,
   .vehicles-form-grid,
-  .vehicle-reservation-assignee-picker {
+  .vehicle-reservation-assignee-panel {
     grid-template-columns: minmax(0, 1fr);
   }
 
