@@ -13003,7 +13003,7 @@ function createWorkOrderCalendarExecutorGroup(items = [], options = {}) {
     const groupCard = document.createElement("details");
     groupCard.className = "work-order-calendar-cell-group";
     groupCard.dataset.executorGroupKey = executorGroup.key;
-    groupCard.open = executorGroup.items.length === 1;
+    groupCard.open = false;
 
     if (targetDate && executorGroup.executors.length > 0) {
       bindWorkOrderCalendarDropTarget(groupCard, (droppedWorkOrderId) => {
@@ -13034,11 +13034,7 @@ function createWorkOrderCalendarExecutorGroup(items = [], options = {}) {
     title.className = "work-order-calendar-cell-group-title";
     title.textContent = executorGroup.label;
 
-    const meta = document.createElement("span");
-    meta.className = "work-order-calendar-cell-group-meta";
-    meta.textContent = executorGroup.items.length === 1 ? "1 RN" : `${executorGroup.items.length} RN`;
-
-    copy.append(title, meta);
+    copy.append(title);
     lead.append(avatars, copy);
 
     const count = document.createElement("span");
