@@ -6410,7 +6410,9 @@ body.is-work-order-editor-open {
 .work-order-calendar-executor-menu-portal {
   gap: 10px;
   max-width: min(320px, calc(100vw - 24px));
+  max-height: min(70vh, calc(100vh - 24px));
   padding: 10px;
+  overflow: hidden;
 }
 
 .work-order-calendar-executor-search {
@@ -6492,6 +6494,9 @@ body.is-work-order-editor-open {
   gap: 6px;
   max-height: min(38vh, 252px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   padding-right: 2px;
 }
 

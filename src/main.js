@@ -16806,7 +16806,19 @@ window.addEventListener("resize", () => {
   }
 });
 
-document.addEventListener("scroll", () => {
+document.addEventListener("scroll", (event) => {
+  const target = event.target;
+  if (
+    target instanceof HTMLElement
+    && (
+      target.closest(".work-order-calendar-executor-menu-portal")
+      || target.closest(".work-item-status-menu-portal")
+      || target.closest(".vehicle-reservation-assignees-dropdown")
+    )
+  ) {
+    return;
+  }
+
   closeOpenWorkOrderStatusMenus();
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
