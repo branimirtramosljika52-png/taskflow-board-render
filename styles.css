@@ -6009,8 +6009,7 @@ body.is-work-order-editor-open {
   grid-template-rows: auto 1fr;
   min-width: 0;
   max-width: 100%;
-  min-height: clamp(180px, 22vw, 228px);
-  height: clamp(220px, 32vh, 360px);
+  min-height: clamp(132px, 16vw, 180px);
   border: 1px solid #ebeef6;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 251, 255, 0.98));
@@ -6053,11 +6052,8 @@ body.is-work-order-editor-open {
   align-content: start;
   gap: 8px;
   min-width: 0;
-  min-height: 0;
   padding: clamp(6px, 0.7vw, 8px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  min-height: clamp(94px, 12vw, 118px);
 }
 
 .work-order-calendar-day-add {
@@ -6744,10 +6740,6 @@ body.is-work-order-editor-open {
   min-width: 0;
   width: 100%;
   padding-top: 2px;
-  max-height: min(30vh, 280px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .work-order-calendar-cell-group-list {
