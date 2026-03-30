@@ -6416,6 +6416,23 @@ function focusWorkOrderComposer(prefill = {}) {
   resetWorkOrderForm();
   resetWorkOrderActivityState();
 
+  if (Object.prototype.hasOwnProperty.call(prefill, "openedDate")) {
+    workOrderOpenedDateInput.value = prefill.openedDate || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "dueDate")) {
+    workOrderDueDateInput.value = prefill.dueDate || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "teamLabel")) {
+    workOrderTeamLabelInput.value = prefill.teamLabel || "";
+  }
+
+  if (Array.isArray(prefill.executors)) {
+    workOrderExecutor1Input.value = prefill.executors[0] ?? "";
+    workOrderExecutor2Input.value = prefill.executors[1] ?? "";
+  }
+
   if (prefill.status) {
     workOrderStatusInput.value = prefill.status;
     workOrderNumberPreview.textContent = `Novi ${prefill.status}`;
@@ -12054,6 +12071,76 @@ function createWorkOrderCalendarCard(workOrder) {
   return card;
 }
 
+function getWorkOrderCalendarDraggedId(event) {
+  return event.dataTransfer?.getData("application/x-work-order-id")
+    || event.dataTransfer?.getData("text/plain")
+    || state.workOrderCalendar.draggingWorkOrderId
+    || "";
+}
+
+function bindWorkOrderCalendarDropTarget(target, onDrop, { stopPropagation = false } = {}) {
+  if (!target) {
+    return;
+  }
+
+  target.addEventListener("dragover", (event) => {
+    if (!state.workOrderCalendar.draggingWorkOrderId) {
+      return;
+    }
+
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+
+    event.preventDefault();
+    target.classList.add("is-drop-target");
+  });
+
+  target.addEventListener("dragleave", (event) => {
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && target.contains(relatedTarget)) {
+      return;
+    }
+
+    target.classList.remove("is-drop-target");
+  });
+
+  target.addEventListener("drop", (event) => {
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+
+    event.preventDefault();
+    target.classList.remove("is-drop-target");
+
+    const droppedWorkOrderId = getWorkOrderCalendarDraggedId(event);
+    if (!droppedWorkOrderId) {
+      return;
+    }
+
+    onDrop(droppedWorkOrderId, event);
+  });
+}
+
+function createWorkOrderCalendarAddButton(dateKey) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "work-order-calendar-day-add";
+  button.textContent = "+";
+  button.title = `Novi RN za ${formatCompactDate(dateKey)}`;
+  button.setAttribute("aria-label", `Novi RN za ${formatCompactDate(dateKey)}`);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    focusWorkOrderComposer({ dueDate: dateKey });
+  });
+  return button;
+}
+
 async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = null) {
   const workOrder = state.workOrders.find((item) => String(item.id) === String(workOrderId));
 
@@ -12078,25 +12165,32 @@ async function applyWorkOrderCalendarDrop(workOrderId, targetDate, laneTarget = 
   const nextTeamLabel = laneConfig.hasTeamLabel
     ? laneConfig.teamLabel
     : (workOrder.teamLabel ?? "");
+  const sameDate = String(workOrder.dueDate ?? "") === String(nextDate ?? "");
+  const sameExecutors = String(workOrder.executor1 ?? "") === String(nextExecutor1)
+    && String(workOrder.executor2 ?? "") === String(nextExecutor2);
+  const sameTeamLabel = String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? "");
 
-  if (
-    String(workOrder.dueDate ?? "") === String(nextDate ?? "")
-    && String(workOrder.executor1 ?? "") === String(nextExecutor1)
-    && String(workOrder.executor2 ?? "") === String(nextExecutor2)
-    && (!laneConfig.hasTeamLabel || String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? ""))
-  ) {
+  if (sameDate && (!laneConfig.hasExecutors || sameExecutors) && (!laneConfig.hasTeamLabel || sameTeamLabel)) {
     return;
   }
 
   state.workOrderCalendar.draggingWorkOrderId = "";
+  const body = {
+    dueDate: nextDate,
+  };
+
+  if (laneConfig.hasExecutors) {
+    body.executor1 = nextExecutor1;
+    body.executor2 = nextExecutor2;
+  }
+
+  if (laneConfig.hasTeamLabel) {
+    body.teamLabel = nextTeamLabel;
+  }
+
   await runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
     method: "PATCH",
-    body: {
-      dueDate: nextDate,
-      executor1: nextExecutor1,
-      executor2: nextExecutor2,
-      ...(laneConfig.hasTeamLabel ? { teamLabel: nextTeamLabel } : {}),
-    },
+    body,
   }));
 }
 
@@ -12187,22 +12281,6 @@ function renderWorkOrderCalendarView() {
 
   const fragment = document.createDocumentFragment();
 
-  if (scheduledCount === 0) {
-    const emptyState = document.createElement("div");
-    emptyState.className = "work-order-calendar-empty";
-
-    const title = document.createElement("strong");
-    title.textContent = "Nema raspoređenih RN-a";
-
-    const text = document.createElement("span");
-    text.textContent = "Dodijeli datum ili povuci RN iz bloka bez datuma.";
-
-    emptyState.append(title, text);
-    fragment.append(emptyState);
-    workOrderCalendarGrid.replaceChildren(fragment);
-    return;
-  }
-
   const weekGrid = document.createElement("div");
   weekGrid.className = "work-order-calendar-month-grid";
   weekGrid.style.gridTemplateColumns = `repeat(${visibleDays.length}, minmax(0, 1fr))`;
@@ -12215,35 +12293,15 @@ function renderWorkOrderCalendarView() {
     cell.classList.toggle("is-today", day.isToday);
     cell.dataset.date = day.key;
 
-    cell.addEventListener("dragover", (event) => {
-      if (!state.workOrderCalendar.draggingWorkOrderId) {
-        return;
-      }
-
-      event.preventDefault();
-      cell.classList.add("is-drop-target");
-    });
-
-    cell.addEventListener("dragleave", () => {
-      cell.classList.remove("is-drop-target");
-    });
-
-    cell.addEventListener("drop", (event) => {
-      event.preventDefault();
-      cell.classList.remove("is-drop-target");
-      const droppedWorkOrderId = event.dataTransfer?.getData("application/x-work-order-id")
-        || event.dataTransfer?.getData("text/plain")
-        || state.workOrderCalendar.draggingWorkOrderId;
-
-      if (!droppedWorkOrderId) {
-        return;
-      }
-
+    bindWorkOrderCalendarDropTarget(cell, (droppedWorkOrderId) => {
       void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key);
     });
 
     const top = document.createElement("div");
     top.className = "work-order-calendar-month-day-top";
+
+    const topCopy = document.createElement("div");
+    topCopy.className = "work-order-calendar-month-day-copy";
 
     const dayLabel = document.createElement("span");
     dayLabel.className = "work-order-calendar-day-label";
@@ -12257,7 +12315,8 @@ function renderWorkOrderCalendarView() {
     dayMeta.className = "work-order-calendar-day-meta";
     dayMeta.textContent = day.items.length === 0 ? "Bez RN" : `${day.items.length} RN`;
 
-    top.append(dayLabel, dayDate, dayMeta);
+    topCopy.append(dayLabel, dayDate, dayMeta);
+    top.append(topCopy, createWorkOrderCalendarAddButton(day.key));
 
     const body = document.createElement("div");
     body.className = "work-order-calendar-month-day-body";
@@ -12268,7 +12327,7 @@ function renderWorkOrderCalendarView() {
       placeholder.textContent = "Povuci ovdje";
       body.append(placeholder);
     } else {
-      body.append(createWorkOrderCalendarExecutorGroup(day.items));
+      body.append(createWorkOrderCalendarExecutorGroup(day.items, { targetDate: day.key }));
     }
 
     cell.append(top, body);
@@ -12934,7 +12993,8 @@ function applyWorkOrderCalendarRowLayout(row, visibleDayCount = 7) {
   row.style.width = "100%";
 }
 
-function createWorkOrderCalendarExecutorGroup(items = []) {
+function createWorkOrderCalendarExecutorGroup(items = [], options = {}) {
+  const { targetDate = "" } = options;
   const groups = groupWorkOrdersByExecutorSet(items);
 
   const wrap = document.createDocumentFragment();
@@ -12944,6 +13004,14 @@ function createWorkOrderCalendarExecutorGroup(items = []) {
     groupCard.className = "work-order-calendar-cell-group";
     groupCard.dataset.executorGroupKey = executorGroup.key;
     groupCard.open = executorGroup.items.length === 1;
+
+    if (targetDate && executorGroup.executors.length > 0) {
+      bindWorkOrderCalendarDropTarget(groupCard, (droppedWorkOrderId) => {
+        void applyWorkOrderCalendarDrop(droppedWorkOrderId, targetDate, {
+          executors: executorGroup.executors,
+        });
+      }, { stopPropagation: true });
+    }
 
     const header = document.createElement("summary");
     header.className = "work-order-calendar-cell-group-summary";
@@ -13002,29 +13070,8 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
   cell.dataset.dateKey = day.key;
   cell.dataset.teamKey = group.key;
 
-  cell.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    cell.classList.add("is-drop-target");
-  });
-
-  cell.addEventListener("dragleave", () => {
-    cell.classList.remove("is-drop-target");
-  });
-
-  cell.addEventListener("drop", (event) => {
-    event.preventDefault();
-    cell.classList.remove("is-drop-target");
-    const droppedWorkOrderId = event.dataTransfer?.getData("application/x-work-order-id")
-      || event.dataTransfer?.getData("text/plain")
-      || state.workOrderCalendar.draggingWorkOrderId;
-
-    if (!droppedWorkOrderId) {
-      return;
-    }
-
-    void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key, {
-      teamLabel: group.isUnassigned ? "" : group.label,
-    });
+  bindWorkOrderCalendarDropTarget(cell, (droppedWorkOrderId) => {
+    void applyWorkOrderCalendarDrop(droppedWorkOrderId, day.key);
   });
 
   if (items.length === 0) {
@@ -13035,7 +13082,7 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
     return cell;
   }
 
-  cell.append(createWorkOrderCalendarExecutorGroup(items));
+  cell.append(createWorkOrderCalendarExecutorGroup(items, { targetDate: day.key }));
 
   return cell;
 }
@@ -13384,7 +13431,7 @@ function renderWorkOrderWorkspace() {
   }
 
   if (workOrdersEmpty) {
-    const shouldShowEmpty = filtered.length === 0;
+    const shouldShowEmpty = filtered.length === 0 && state.activeWorkOrderViewMode !== "calendar";
     workOrdersEmpty.hidden = !shouldShowEmpty;
     workOrdersEmpty.textContent = emptyTextByMode[state.activeWorkOrderViewMode] || emptyTextByMode.list;
   }

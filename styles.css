@@ -6032,11 +6032,19 @@ body.is-work-order-editor-open {
 }
 
 .work-order-calendar-month-day-top {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   padding: clamp(7px, 0.8vw, 10px) clamp(7px, 0.8vw, 10px) clamp(6px, 0.7vw, 8px);
   border-bottom: 1px solid #eef1f7;
   background: linear-gradient(180deg, rgba(247, 249, 255, 0.98), rgba(252, 253, 255, 0.98));
+}
+
+.work-order-calendar-month-day-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .work-order-calendar-month-day-body {
@@ -6046,6 +6054,36 @@ body.is-work-order-editor-open {
   min-width: 0;
   padding: clamp(6px, 0.7vw, 8px);
   min-height: clamp(94px, 12vw, 118px);
+}
+
+.work-order-calendar-day-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(198, 207, 222, 0.92);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #2d6a54;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.work-order-calendar-day-add:hover {
+  border-color: rgba(45, 106, 84, 0.34);
+  background: #f3fbf7;
+  box-shadow: 0 8px 18px rgba(45, 106, 84, 0.12);
+  transform: translateY(-1px);
+}
+
+.work-order-calendar-day-add:focus-visible {
+  outline: 2px solid rgba(45, 106, 84, 0.24);
+  outline-offset: 2px;
 }
 
 .work-order-calendar-month-day .work-order-calendar-card,
@@ -6513,6 +6551,12 @@ body.is-work-order-editor-open {
 .work-order-calendar-cell-group[open] {
   border-color: rgba(178, 168, 230, 0.86);
   background: linear-gradient(180deg, rgba(254, 252, 255, 0.98), rgba(247, 244, 255, 0.98));
+}
+
+.work-order-calendar-cell-group.is-drop-target {
+  border-color: rgba(119, 90, 207, 0.52);
+  background: linear-gradient(180deg, rgba(248, 244, 255, 0.98), rgba(241, 236, 255, 0.98));
+  box-shadow: inset 0 0 0 1px rgba(119, 90, 207, 0.14);
 }
 
 .work-order-calendar-cell-group-summary {
