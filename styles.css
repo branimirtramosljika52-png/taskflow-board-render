@@ -4569,7 +4569,7 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   z-index: 40;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 10px;
 }
 
 .measurement-sheet-backdrop {
@@ -4584,17 +4584,17 @@ body.is-selecting-measurement-cells .measurement-cell-input {
 .measurement-sheet-panel {
   position: relative;
   z-index: 1;
-  width: min(1500px, calc(100vw - 48px));
-  height: calc(100vh - 48px);
-  max-height: calc(100vh - 48px);
+  width: min(1780px, calc(100vw - 20px));
+  height: calc(100vh - 20px);
+  max-height: calc(100vh - 20px);
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   align-items: start;
-  gap: 18px;
+  gap: 14px;
   min-height: 0;
-  padding: 22px;
+  padding: 16px;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: 24px;
   border: 1px solid rgba(206, 212, 228, 0.92);
   background: linear-gradient(180deg, #fcfcfe, #f6f8fc);
   box-shadow: 0 28px 88px rgba(43, 53, 84, 0.22);
@@ -5803,7 +5803,7 @@ body.is-work-order-editor-open {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .measurement-sheet-head h2 {
@@ -5814,19 +5814,19 @@ body.is-work-order-editor-open {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .measurement-sheet-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .measurement-sheet-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.85fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -5946,12 +5946,12 @@ body.is-work-order-editor-open {
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
   border: 1px solid rgba(224, 228, 237, 0.95);
-  border-radius: 16px;
+  border-radius: 14px;
   background: #ffffff;
 }
 
 .measurement-sheet-grid {
-  width: max(1320px, 100%);
+  width: max(1480px, 100%);
   min-height: 100%;
   border-collapse: collapse;
   table-layout: fixed;
