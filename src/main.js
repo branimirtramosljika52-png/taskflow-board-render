@@ -1155,6 +1155,7 @@ const workOrderFilterToggle = document.querySelector("#work-order-filter-toggle"
 const workOrderFilterCount = document.querySelector("#work-order-filter-count");
 const workOrderFilterSummary = document.querySelector("#work-order-filter-summary");
 const workOrderFilterBuilder = document.querySelector("#work-order-filter-builder");
+const workOrderFilterShell = document.querySelector(".work-order-filter-shell");
 const measurementSheetOpenButton = document.querySelector("#measurement-sheet-open");
 const measurementSheetModal = document.querySelector("#measurement-sheet-modal");
 const measurementSheetBackdrop = document.querySelector("#measurement-sheet-backdrop");
@@ -16736,6 +16737,12 @@ workOrderFilterToggle?.addEventListener("click", () => {
   state.workOrderFilters.builderOpen = !state.workOrderFilters.builderOpen;
   renderWorkOrderFilterSummary();
   renderWorkOrderFilterBuilder();
+});
+workOrderFilterShell?.addEventListener("pointerdown", (event) => {
+  event.stopPropagation();
+});
+workOrderFilterShell?.addEventListener("click", (event) => {
+  event.stopPropagation();
 });
 
 reminderWorkOrderIdInput?.addEventListener("change", () => {
