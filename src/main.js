@@ -3186,7 +3186,7 @@ function renderModuleView() {
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
-  const isServiceCatalogModule = state.activeModuleItem === "list-of-services";
+  const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
 
   if (moduleViewKicker) {
@@ -8501,7 +8501,7 @@ function syncDocumentTemplateEditorModal() {
 function syncServiceCatalogEditorModal() {
   if (state.serviceCatalogEditorOpen && (
     state.activeView !== "module"
-    || state.activeModuleItem !== "list-of-services"
+    || state.activeModuleItem !== "services-catalog"
     || !state.user
   )) {
     state.serviceCatalogEditorOpen = false;
@@ -9689,7 +9689,7 @@ function resetServiceCatalogForm() {
 
 function hydrateServiceCatalogForm(item) {
   state.activeView = "module";
-  state.activeModuleItem = "list-of-services";
+  state.activeModuleItem = "services-catalog";
   renderActiveView();
   renderModuleView();
   state.activeServiceCatalogId = item.id;
