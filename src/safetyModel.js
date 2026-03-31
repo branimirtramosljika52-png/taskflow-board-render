@@ -53,6 +53,11 @@ export const LEGAL_FRAMEWORK_STATUS_OPTIONS = [
   { value: "inactive", label: "Neaktivan" },
 ];
 
+export const SERVICE_CATALOG_STATUS_OPTIONS = [
+  { value: "active", label: "Aktivna" },
+  { value: "inactive", label: "Neaktivna" },
+];
+
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -223,6 +228,7 @@ const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.val
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
+const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
@@ -522,6 +528,153 @@ function resolveWorkOrderExecutorsInput(input = {}, current = null) {
   }
 
   return [];
+}
+
+function normalizeServiceCatalogStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return SERVICE_CATALOG_STATUS_SET.has(status) ? status : "active";
+}
+
+function findServiceCatalogItem(state, serviceId = "", organizationId = "") {
+  if (!serviceId) {
+    return null;
+  }
+
+  return (state.serviceCatalog ?? []).find((item) => (
+    String(item.id) === String(serviceId)
+    && (!organizationId || String(item.organizationId) === String(organizationId))
+  )) ?? null;
+}
+
+function deriveServiceTemplateSnapshot(state, templateIds = [], fallbackTitles = []) {
+  const templateIdList = normalizeIdList(templateIds);
+  const templatesById = new Map(
+    (state.documentTemplates ?? []).map((item) => [String(item.id), item]),
+  );
+  const linkedTemplateTitles = [];
+
+  templateIdList.forEach((templateId) => {
+    const template = templatesById.get(String(templateId));
+    if (template?.title) {
+      linkedTemplateTitles.push(template.title);
+    }
+  });
+
+  if (linkedTemplateTitles.length === 0 && Array.isArray(fallbackTitles)) {
+    fallbackTitles
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .forEach((value) => linkedTemplateTitles.push(value));
+  }
+
+  return {
+    linkedTemplateIds: templateIdList,
+    linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+  };
+}
+
+function normalizeWorkOrderServiceItemSnapshot(item = {}) {
+  const name = normalizeText(item.name);
+  const serviceCode = normalizeText(item.serviceCode);
+
+  if (!name && !serviceCode) {
+    return null;
+  }
+
+  const linkedTemplateIds = normalizeIdList(item.linkedTemplateIds);
+  const linkedTemplateTitles = Array.isArray(item.linkedTemplateTitles)
+    ? item.linkedTemplateTitles.map((value) => normalizeText(value)).filter(Boolean)
+    : [];
+
+  return {
+    serviceId: normalizeId(item.serviceId || item.id),
+    name,
+    serviceCode,
+    linkedTemplateIds,
+    linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+    isCompleted: normalizeBoolean(item.isCompleted, false),
+  };
+}
+
+function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [], organizationId = "") {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const currentMap = new Map();
+  currentItems
+    .map((item) => normalizeWorkOrderServiceItemSnapshot(item))
+    .filter(Boolean)
+    .forEach((item) => {
+      const key = item.serviceId || `${item.serviceCode.toLowerCase()}::${item.name.toLowerCase()}`;
+      currentMap.set(key, item);
+    });
+
+  const seen = new Set();
+  const normalizedItems = [];
+
+  items.forEach((entry) => {
+    const serviceId = normalizeId(entry?.serviceId || entry?.id);
+    const service = serviceId ? findServiceCatalogItem(state, serviceId, organizationId) : null;
+    const name = service?.name || normalizeText(entry?.name);
+    const serviceCode = service?.serviceCode || normalizeText(entry?.serviceCode);
+    const currentKey = serviceId || `${serviceCode.toLowerCase()}::${name.toLowerCase()}`;
+    const current = currentMap.get(currentKey) ?? currentMap.get(serviceId);
+
+    if (serviceId && !service && !current) {
+      throw new Error("Odabrana usluga ne postoji.");
+    }
+
+    if (!name && !serviceCode) {
+      return;
+    }
+
+    const templateSnapshot = deriveServiceTemplateSnapshot(
+      state,
+      service?.linkedTemplateIds ?? entry?.linkedTemplateIds ?? current?.linkedTemplateIds ?? [],
+      service?.linkedTemplateTitles ?? entry?.linkedTemplateTitles ?? current?.linkedTemplateTitles ?? [],
+    );
+
+    const normalizedItem = {
+      serviceId: serviceId || current?.serviceId || "",
+      name: name || current?.name || "",
+      serviceCode: serviceCode || current?.serviceCode || "",
+      ...templateSnapshot,
+      isCompleted: hasOwn(entry ?? {}, "isCompleted")
+        ? normalizeBoolean(entry.isCompleted, false)
+        : normalizeBoolean(current?.isCompleted, false),
+    };
+
+    const dedupeKey = normalizedItem.serviceId || `${normalizedItem.serviceCode.toLowerCase()}::${normalizedItem.name.toLowerCase()}`;
+    if (!dedupeKey || seen.has(dedupeKey)) {
+      return;
+    }
+
+    seen.add(dedupeKey);
+    normalizedItems.push(normalizedItem);
+  });
+
+  return normalizedItems;
+}
+
+export function getWorkOrderServiceItems(workOrder = {}) {
+  return (Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : [])
+    .map((item) => normalizeWorkOrderServiceItemSnapshot(item))
+    .filter(Boolean);
+}
+
+export function getWorkOrderServiceSummary(workOrder = {}) {
+  const serviceItems = getWorkOrderServiceItems(workOrder);
+
+  if (serviceItems.length === 0) {
+    return normalizeText(workOrder.serviceLine);
+  }
+
+  return serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ");
+}
+
+export function getWorkOrderCompletedServiceCount(workOrder = {}) {
+  return getWorkOrderServiceItems(workOrder).filter((item) => item.isCompleted).length;
 }
 
 function slugifyTemplateKey(value, fallback = "FIELD") {
@@ -1781,6 +1934,112 @@ export function updateLocation(current, patch, state, now = isoNow) {
   return next;
 }
 
+export function createServiceCatalogItem(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  const serviceCode = requireText(input.serviceCode, "Sifra usluge");
+  const normalizedTemplateIds = deriveServiceTemplateSnapshot(
+    state,
+    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+  );
+
+  if ((state.serviceCatalog ?? []).some((item) => (
+    String(item.organizationId) === String(organizationId)
+    && normalizeText(item.serviceCode).toLowerCase() === serviceCode.toLowerCase()
+  ))) {
+    throw new Error("Usluga s tom sifrom vec postoji.");
+  }
+
+  return {
+    id: createId(),
+    organizationId,
+    name: requireText(input.name, "Ime usluge"),
+    serviceCode,
+    status: normalizeServiceCatalogStatus(input.status),
+    linkedTemplateIds: normalizedTemplateIds.linkedTemplateIds,
+    linkedTemplateTitles: normalizedTemplateIds.linkedTemplateTitles,
+    note: normalizeText(input.note),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
+  const organizationId = hasOwn(patch, "organizationId")
+    ? requireText(patch.organizationId, "Organizacija")
+    : current.organizationId;
+  const serviceCode = hasOwn(patch, "serviceCode")
+    ? requireText(patch.serviceCode, "Sifra usluge")
+    : current.serviceCode;
+  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
+    ? deriveServiceTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+    : deriveServiceTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+
+  if ((state.serviceCatalog ?? []).some((item) => (
+    String(item.id) !== String(current.id)
+    && String(item.organizationId) === String(organizationId)
+    && normalizeText(item.serviceCode).toLowerCase() === serviceCode.toLowerCase()
+  ))) {
+    throw new Error("Usluga s tom sifrom vec postoji.");
+  }
+
+  return {
+    ...current,
+    organizationId,
+    name: hasOwn(patch, "name") ? requireText(patch.name, "Ime usluge") : current.name,
+    serviceCode,
+    status: hasOwn(patch, "status") ? normalizeServiceCatalogStatus(patch.status) : current.status,
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    updatedAt: now(),
+  };
+}
+
+export function filterServiceCatalogItems(
+  items,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.name,
+      item.serviceCode,
+      item.note,
+      ...(item.linkedTemplateTitles ?? []),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortServiceCatalogItems(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftRank = left.status === "active" ? 0 : 1;
+    const rightRank = right.status === "active" ? 0 : 1;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return `${left.serviceCode} ${left.name}`.localeCompare(`${right.serviceCode} ${right.name}`, "hr");
+  });
+}
+
 export function createLegalFramework(
   input,
   state,
@@ -2078,12 +2337,19 @@ function hydrateWorkOrderCore(base, company, location) {
   const executors = hasOwn(base ?? {}, "executors")
     ? normalizeWorkOrderExecutors(base?.executors)
     : normalizeWorkOrderExecutors(base?.executors, [base?.executor1, base?.executor2]);
+  const serviceItems = hasOwn(base ?? {}, "serviceItems")
+    ? getWorkOrderServiceItems(base)
+    : getWorkOrderServiceItems(base);
 
   return {
     ...base,
     executor1: executors[0] ?? "",
     executor2: executors[1] ?? "",
     executors,
+    serviceItems,
+    serviceLine: serviceItems.length > 0
+      ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
+      : normalizeText(base?.serviceLine),
     ...resolveCompanySnapshot(company),
     ...resolveLocationSnapshot(location),
   };
@@ -2118,6 +2384,9 @@ export function createWorkOrder(
 
   const selectedContact = selectLocationContact(location, input.contactSlot);
   const timestamp = now();
+  const serviceItems = hasOwn(input, "serviceItems")
+    ? normalizeWorkOrderServiceItemsInput(input.serviceItems, state, [], state.activeOrganizationId || input.organizationId || "")
+    : [];
 
   return hydrateWorkOrderCore({
     id: createId(),
@@ -2139,7 +2408,10 @@ export function createWorkOrder(
     contactName: normalizeText(input.contactName) || selectedContact.name,
     contactPhone: normalizeText(input.contactPhone) || selectedContact.phone,
     contactEmail: normalizeText(input.contactEmail) || selectedContact.email,
-    serviceLine: normalizeText(input.serviceLine),
+    serviceItems,
+    serviceLine: serviceItems.length > 0
+      ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
+      : normalizeText(input.serviceLine),
     department: normalizeText(input.department),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -2178,6 +2450,14 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
   const selectedContact = (locationChanged || hasOwn(patch, "contactSlot"))
     ? selectLocationContact(location, hasOwn(patch, "contactSlot") ? patch.contactSlot : current.contactSlot)
     : null;
+  const nextServiceItems = hasOwn(patch, "serviceItems")
+    ? normalizeWorkOrderServiceItemsInput(
+      patch.serviceItems,
+      state,
+      getWorkOrderServiceItems(current),
+      state.activeOrganizationId || patch.organizationId || current.organizationId || "",
+    )
+    : getWorkOrderServiceItems(current);
 
   const next = hydrateWorkOrderCore({
     ...current,
@@ -2220,7 +2500,12 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
       : selectedContact
         ? selectedContact.email
         : current.contactEmail,
-    serviceLine: hasOwn(patch, "serviceLine") ? normalizeText(patch.serviceLine) : current.serviceLine,
+    serviceItems: nextServiceItems,
+    serviceLine: hasOwn(patch, "serviceItems")
+      ? nextServiceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
+      : hasOwn(patch, "serviceLine")
+        ? normalizeText(patch.serviceLine)
+        : current.serviceLine,
     department: hasOwn(patch, "department") ? normalizeText(patch.department) : current.department,
     updatedAt: now(),
   }, company, location);

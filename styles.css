@@ -7603,6 +7603,304 @@ body.is-work-order-editor-open {
   min-height: 34px;
 }
 
+.work-order-inline-service-picker {
+  min-width: 0;
+}
+
+.work-order-service-picker {
+  position: relative;
+}
+
+.work-order-service-picker-trigger {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #294439;
+  box-shadow: 0 10px 22px rgba(34, 53, 45, 0.06);
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.work-order-service-picker-trigger:hover,
+.work-order-service-picker-trigger:focus-visible {
+  border-color: rgba(32, 102, 79, 0.28);
+  box-shadow: 0 16px 30px rgba(34, 53, 45, 0.1);
+  transform: translateY(-1px);
+}
+
+.work-order-service-picker-stack {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 46%;
+}
+
+.work-order-service-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  background: rgba(247, 250, 248, 0.98);
+  color: #335447;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.work-order-service-picker-chip.is-completed {
+  background: rgba(232, 247, 238, 0.98);
+  color: #2b7a52;
+}
+
+.work-order-service-picker-chip.is-extra {
+  background: rgba(236, 242, 248, 0.98);
+  color: #4f6980;
+}
+
+.work-order-service-picker-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.work-order-service-picker-empty {
+  color: #6f8179;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.work-order-service-picker-menu-portal {
+  display: grid;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 24px));
+  max-height: min(70vh, calc(100vh - 24px));
+  padding: 10px;
+  overflow: hidden;
+}
+
+.work-order-service-picker-search {
+  display: grid;
+  gap: 6px;
+}
+
+.work-order-service-picker-search-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8faff;
+  color: #31405f;
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+.work-order-service-picker-search-input:focus {
+  outline: none;
+  border-color: rgba(85, 111, 178, 0.42);
+  box-shadow: 0 0 0 3px rgba(108, 130, 190, 0.12);
+}
+
+.work-order-service-picker-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-order-service-picker-selection-empty {
+  color: #7f899e;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.work-order-service-picker-selection-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #dde5f1;
+  border-radius: 999px;
+  background: #f6f8fd;
+  color: #405072;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.work-order-service-picker-selection-chip.is-completed {
+  background: rgba(232, 247, 238, 0.98);
+  color: #2b7a52;
+}
+
+.work-order-service-picker-helper {
+  margin: 0;
+  color: #7a849b;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.work-order-service-picker-options {
+  display: grid;
+  gap: 6px;
+  max-height: min(38vh, 252px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+.work-order-service-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.work-order-service-picker-option.is-selected {
+  border-color: rgba(89, 121, 192, 0.28);
+  background: rgba(232, 239, 255, 0.92);
+}
+
+.work-order-service-picker-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+
+.work-order-service-picker-option-copy strong {
+  font-size: 0.86rem;
+  color: #22352d;
+}
+
+.work-order-service-picker-option-copy span {
+  color: #60796f;
+  font-size: 0.74rem;
+}
+
+.work-order-service-picker-option-marker {
+  color: #6c7ca4;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.work-order-service-picker-clear {
+  min-height: 34px;
+}
+
+.work-order-service-selection {
+  display: grid;
+  gap: 10px;
+}
+
+.work-order-service-empty,
+.work-order-service-template-hint {
+  margin: 0;
+}
+
+.work-order-service-empty {
+  color: #6b8075;
+}
+
+.work-order-service-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.work-order-service-item.is-completed {
+  background: rgba(242, 249, 245, 0.98);
+  border-color: rgba(67, 134, 95, 0.16);
+}
+
+.work-order-service-item-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-order-service-item-title-row,
+.work-order-service-item-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.work-order-service-item-title-row strong {
+  font-size: 0.94rem;
+  color: #22352d;
+}
+
+.work-order-service-code-badge,
+.work-order-service-template-badge {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  background: rgba(247, 250, 248, 0.96);
+  color: #335447;
+}
+
+.work-order-service-template-badge.is-muted {
+  opacity: 0.74;
+}
+
+.service-catalog-template-badge.is-muted {
+  opacity: 0.74;
+}
+
+.work-order-service-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-order-service-status-toggle,
+.work-order-service-remove {
+  min-height: 34px;
+  min-width: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  background: rgba(247, 250, 248, 0.98);
+  color: #315346;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.work-order-service-status-toggle.is-completed {
+  background: rgba(232, 247, 238, 0.98);
+  color: #2b7a52;
+}
+
+.work-order-service-remove {
+  padding: 0 10px;
+  min-width: unset;
+  font-size: 0.74rem;
+}
+
 .work-order-calendar-content {
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 12px;
@@ -12326,6 +12624,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-module,
+.service-catalog-module,
 .template-development-module {
   display: grid;
   gap: 18px;
@@ -12334,6 +12633,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-summary-grid,
+.service-catalog-summary-grid,
 .template-development-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -12341,6 +12641,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-stat-card,
+.service-catalog-stat-card,
 .template-development-stat-card {
   border: 1px solid rgba(47, 104, 84, 0.12);
   border-radius: 22px;
@@ -12351,6 +12652,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-stat-label,
+.service-catalog-stat-label,
 .template-development-stat-label {
   font-size: 0.78rem;
   letter-spacing: 0.12em;
@@ -12359,6 +12661,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-stat-value,
+.service-catalog-stat-value,
 .template-development-stat-value {
   font-size: 1.7rem;
   color: #24362e;
@@ -12367,6 +12670,9 @@ body.is-vehicle-reservation-open {
 .legal-framework-toolbar-panel,
 .legal-framework-list-panel,
 .legal-framework-editor-panel,
+.service-catalog-toolbar-panel,
+.service-catalog-list-panel,
+.service-catalog-editor-panel,
 .template-development-toolbar-panel,
 .template-development-list-panel,
 .document-template-editor-panel {
@@ -12378,6 +12684,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-filters,
+.service-catalog-filters,
 .template-development-filters {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
@@ -12385,6 +12692,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-list,
+.service-catalog-list,
 .document-template-list,
 .document-template-custom-fields,
 .document-template-equipment-items,
@@ -12394,6 +12702,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card,
+.service-catalog-card,
 .document-template-card {
   border: 1px solid rgba(47, 104, 84, 0.14);
   border-radius: 24px;
@@ -12408,6 +12717,9 @@ body.is-vehicle-reservation-open {
 .legal-framework-card:hover,
 .legal-framework-card:focus-visible,
 .legal-framework-card.is-active,
+.service-catalog-card:hover,
+.service-catalog-card:focus-visible,
+.service-catalog-card.is-active,
 .document-template-card:hover,
 .document-template-card:focus-visible,
 .document-template-card.is-active {
@@ -12417,6 +12729,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card-head,
+.service-catalog-card-head,
 .document-template-card-head,
 .document-template-item-head,
 .document-template-head-actions {
@@ -12427,6 +12740,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card-heading,
+.service-catalog-card-copy,
 .document-template-card-copy {
   display: grid;
   gap: 4px;
@@ -12434,6 +12748,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card h4,
+.service-catalog-card h4,
 .document-template-card h4 {
   margin: 0;
   font-size: 1.05rem;
@@ -12441,15 +12756,19 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card-meta,
+.service-catalog-card-meta,
 .document-template-card-meta,
 .document-template-card-description,
-.legal-framework-card-note {
+.legal-framework-card-note,
+.service-catalog-card-note,
+.service-catalog-card-updated {
   margin: 0;
   color: #60796f;
   line-height: 1.45;
 }
 
 .legal-framework-card-footer,
+.service-catalog-card-footer,
 .document-template-card-footer {
   display: flex;
   flex-wrap: wrap;
@@ -12460,6 +12779,7 @@ body.is-vehicle-reservation-open {
 
 .legal-framework-card-dates,
 .legal-framework-card-tags,
+.service-catalog-card-templates,
 .document-template-card-badges,
 .document-template-card-chips,
 .document-template-preview-pill-row,
@@ -12470,10 +12790,12 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-status-badge,
+.service-catalog-status-badge,
 .document-template-status-badge,
 .legal-framework-meta-badge,
 .document-template-meta-badge,
 .legal-framework-tag,
+.service-catalog-template-badge,
 .document-template-inline-token {
   border-radius: 999px;
   padding: 6px 12px;
@@ -12484,12 +12806,14 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-status-badge.is-active,
+.service-catalog-status-badge.is-active,
 .document-template-status-badge.is-active {
   background: rgba(232, 247, 238, 0.98);
   color: #2b7a52;
 }
 
 .legal-framework-status-badge.is-inactive,
+.service-catalog-status-badge.is-inactive,
 .document-template-status-badge.is-archived {
   background: rgba(246, 242, 239, 0.98);
   color: #7a6154;
@@ -12506,6 +12830,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-editor-panel.is-modal-open,
+.service-catalog-editor-panel.is-modal-open,
 .document-template-editor-panel.is-modal-open {
   position: fixed;
   top: 18px;
@@ -12521,10 +12846,58 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-editor-body,
+.service-catalog-editor-body,
 .document-template-editor-body {
   min-height: 0;
   overflow: auto;
   padding: 0 18px 20px;
+}
+
+.service-catalog-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.service-catalog-template-block {
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  display: grid;
+  gap: 12px;
+}
+
+.service-catalog-template-list {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.service-catalog-template-option {
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: rgba(247, 250, 248, 0.9);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.service-catalog-template-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.service-catalog-template-option-copy strong {
+  font-size: 0.94rem;
+  color: #22352d;
+}
+
+.service-catalog-template-option-copy span {
+  color: #60796f;
 }
 
 .document-template-form {
@@ -12770,6 +13143,7 @@ body.is-vehicle-reservation-open {
 
 @media (max-width: 1180px) {
   .legal-framework-summary-grid,
+  .service-catalog-summary-grid,
   .template-development-summary-grid,
   .document-template-meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -12778,9 +13152,12 @@ body.is-vehicle-reservation-open {
 
 @media (max-width: 760px) {
   .legal-framework-summary-grid,
+  .service-catalog-summary-grid,
   .template-development-summary-grid,
   .legal-framework-filters,
+  .service-catalog-filters,
   .template-development-filters,
+  .service-catalog-form-grid,
   .document-template-meta-grid,
   .document-template-inline-grid,
   .document-template-preview-meta-grid,
@@ -12789,6 +13166,7 @@ body.is-vehicle-reservation-open {
   }
 
   .legal-framework-editor-panel.is-modal-open,
+  .service-catalog-editor-panel.is-modal-open,
   .document-template-editor-panel.is-modal-open {
     width: calc(100vw - 16px);
     height: calc(100vh - 16px);
@@ -12796,6 +13174,7 @@ body.is-vehicle-reservation-open {
   }
 
   .legal-framework-editor-body,
+  .service-catalog-editor-body,
   .document-template-editor-body {
     padding-inline: 16px;
   }

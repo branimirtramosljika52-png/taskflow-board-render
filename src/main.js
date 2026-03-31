@@ -14,6 +14,7 @@
   OFFER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
+  SERVICE_CATALOG_STATUS_OPTIONS,
   TODO_TASK_STATUS_OPTIONS,
   VEHICLE_RESERVATION_STATUS_OPTIONS,
   VEHICLE_STATUS_OPTIONS,
@@ -30,11 +31,15 @@
   filterLegalFrameworks,
   filterOffers,
   filterReminders,
+  filterServiceCatalogItems,
   filterTodoTasks,
   filterVehicles,
   filterWorkOrders,
   applyDashboardWidgetGridLayout,
+  getWorkOrderCompletedServiceCount,
   getWorkOrderExecutors,
+  getWorkOrderServiceItems,
+  getWorkOrderServiceSummary,
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
   nextOfferNumber,
@@ -48,6 +53,7 @@
   sortDocumentTemplates,
   sortLegalFrameworks,
   sortTodoTasks,
+  sortServiceCatalogItems,
   sortVehicleReservations,
   sortVehicles,
   sortWorkOrders,
@@ -296,6 +302,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Registar zakona, pravilnika i normi koje kasnije koristimo u zapisnicima, ponudama i operativi.",
     chips: ["Laws", "Regulations", "Compliance"],
   },
+  "services-catalog": {
+    kicker: "Organisations",
+    title: "List Of Services",
+    description: "Katalog usluga koje kasnije biramo u radnim nalozima, uz sifre, statuse i povezane zapisnike.",
+    chips: ["Services", "Codes", "Templates"],
+  },
   "template-development": {
     kicker: "Organisations",
     title: "Template Development",
@@ -353,6 +365,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
   vehicles: { group: "organisations", view: "module", module: "vehicles" },
   "legal-framework": { group: "organisations", view: "module", module: "legal-framework" },
+  "list-of-services": { group: "organisations", view: "module", module: "services-catalog" },
   "template-development": { group: "organisations", view: "module", module: "template-development" },
   people: { group: "organisations", view: "management" },
   "safety-authorization": { group: "organisations", view: "module", module: "safety-authorization" },
@@ -394,6 +407,7 @@ const SIDEBAR_ITEM_LABELS = {
   "measurement-equipment": "Measurement Equipment",
   vehicles: "Vehicles",
   "legal-framework": "Legal Framework",
+  "list-of-services": "List Of Services",
   "template-development": "Template Development",
   people: "People",
   "safety-authorization": "Safety Authorization",
@@ -434,6 +448,7 @@ const state = {
   vehicles: [],
   legalFrameworks: [],
   documentTemplates: [],
+  serviceCatalog: [],
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
@@ -443,12 +458,14 @@ const state = {
   activeVehicleId: "",
   activeVehicleReservationId: "",
   activeLegalFrameworkId: "",
+  activeServiceCatalogId: "",
   activeDocumentTemplateId: "",
   companyEditorOpen: false,
   locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
   legalFrameworkEditorOpen: false,
+  serviceCatalogEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
   vehicleScheduleDate: new Date().toISOString().slice(0, 10),
@@ -456,6 +473,10 @@ const state = {
   activeWorkOrderViewMode: "list",
   offerEditorOpen: false,
   legalFrameworkFilters: {
+    query: "",
+    status: "all",
+  },
+  serviceCatalogFilters: {
     query: "",
     status: "all",
   },
@@ -1079,6 +1100,32 @@ const documentTemplatePreview = document.querySelector("#document-template-previ
 const documentTemplateError = document.querySelector("#document-template-error");
 const documentTemplateResetButton = document.querySelector("#document-template-reset");
 const documentTemplateDeleteButton = document.querySelector("#document-template-delete");
+const serviceCatalogModule = document.querySelector("#service-catalog-module");
+const serviceCatalogTotalCount = document.querySelector("#service-catalog-total-count");
+const serviceCatalogActiveCount = document.querySelector("#service-catalog-active-count");
+const serviceCatalogInactiveCount = document.querySelector("#service-catalog-inactive-count");
+const serviceCatalogTemplateCount = document.querySelector("#service-catalog-template-count");
+const serviceCatalogSearchInput = document.querySelector("#service-catalog-search");
+const serviceCatalogFilterStatusInput = document.querySelector("#service-catalog-filter-status");
+const serviceCatalogHelper = document.querySelector("#service-catalog-helper");
+const serviceCatalogList = document.querySelector("#service-catalog-list");
+const serviceCatalogEmpty = document.querySelector("#service-catalog-empty");
+const serviceCatalogOpenFormButton = document.querySelector("#service-catalog-open-form");
+const serviceCatalogEditorBackdrop = document.querySelector("#service-catalog-editor-backdrop");
+const serviceCatalogEditorPanel = document.querySelector("#service-catalog-editor-panel");
+const serviceCatalogEditorCloseButton = document.querySelector("#service-catalog-editor-close");
+const serviceCatalogEditorBody = serviceCatalogEditorPanel?.querySelector(".service-catalog-editor-body");
+const serviceCatalogEditorTitle = document.querySelector("#service-catalog-editor-title");
+const serviceCatalogForm = document.querySelector("#service-catalog-form");
+const serviceCatalogIdInput = document.querySelector("#service-catalog-id");
+const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
+const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
+const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
+const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
+const serviceCatalogNoteInput = document.querySelector("#service-catalog-note");
+const serviceCatalogError = document.querySelector("#service-catalog-error");
+const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
+const serviceCatalogDeleteButton = document.querySelector("#service-catalog-delete");
 
 let offerFormItems = [];
 let documentTemplateFieldDrafts = [];
@@ -1264,6 +1311,14 @@ if (vehicleReservationPanel?.parentElement !== document.body) {
   document.body.append(vehicleReservationPanel);
 }
 
+if (serviceCatalogEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(serviceCatalogEditorBackdrop);
+}
+
+if (serviceCatalogEditorPanel?.parentElement !== document.body) {
+  document.body.append(serviceCatalogEditorPanel);
+}
+
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -1300,6 +1355,15 @@ if (vehicleReservationPanel) {
   vehicleReservationPanel.setAttribute("aria-hidden", "true");
 }
 
+if (serviceCatalogEditorBackdrop) {
+  serviceCatalogEditorBackdrop.hidden = true;
+}
+
+if (serviceCatalogEditorPanel) {
+  serviceCatalogEditorPanel.hidden = true;
+  serviceCatalogEditorPanel.setAttribute("aria-hidden", "true");
+}
+
 const workOrderIdInput = document.querySelector("#work-order-id");
 const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
@@ -1324,6 +1388,10 @@ const workOrderContactEmailInput = document.querySelector("#work-order-contact-e
 const workOrderExecutorsDataInput = document.querySelector("#work-order-executors-data");
 const workOrderExecutorsPicker = document.querySelector("#work-order-executors-picker");
 const workOrderServiceLineInput = document.querySelector("#work-order-service-line");
+const workOrderServiceItemsDataInput = document.querySelector("#work-order-service-items-data");
+const workOrderServicePicker = document.querySelector("#work-order-service-picker");
+const workOrderServiceSelection = document.querySelector("#work-order-service-selection");
+const workOrderServiceTemplateHint = document.querySelector("#work-order-service-template-hint");
 const workOrderDepartmentInput = document.querySelector("#work-order-department");
 const workOrderLinkReferenceInput = document.querySelector("#work-order-link-reference");
 const workOrderWeightInput = document.querySelector("#work-order-weight");
@@ -1881,6 +1949,7 @@ function applySnapshot(payload) {
   state.offers = payload.offers ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
+  state.serviceCatalog = payload.serviceCatalog ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
@@ -1922,6 +1991,11 @@ function applySnapshot(payload) {
     state.legalFrameworkEditorOpen = false;
     syncLegalFrameworkEditorModal();
     resetLegalFrameworkForm();
+  }
+  if (serviceCatalogIdInput?.value && !state.serviceCatalog.some((item) => String(item.id) === String(serviceCatalogIdInput.value))) {
+    state.serviceCatalogEditorOpen = false;
+    syncServiceCatalogEditorModal();
+    resetServiceCatalogForm();
   }
   if (documentTemplateIdInput?.value && !state.documentTemplates.some((item) => String(item.id) === String(documentTemplateIdInput.value))) {
     state.documentTemplateEditorOpen = false;
@@ -2185,6 +2259,74 @@ function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "", 
 
   if (renderPicker) {
     renderWorkOrderEditorExecutorPicker();
+  }
+}
+
+function readWorkOrderServiceSelection() {
+  if (!workOrderServiceItemsDataInput?.value) {
+    return [];
+  }
+
+  try {
+    return getWorkOrderServiceItems({
+      serviceItems: JSON.parse(workOrderServiceItemsDataInput.value),
+    });
+  } catch {
+    return [];
+  }
+}
+
+function getSelectedWorkOrderServiceSummary() {
+  return getWorkOrderServiceSummary({
+    serviceItems: readWorkOrderServiceSelection(),
+    serviceLine: workOrderServiceLineInput?.value || "",
+  });
+}
+
+function buildWorkOrderServiceItemSnapshot(service, current = null) {
+  const linkedTemplateTitles = Array.isArray(service?.linkedTemplateTitles) && service.linkedTemplateTitles.length > 0
+    ? service.linkedTemplateTitles
+    : (service?.linkedTemplateIds ?? [])
+      .map((templateId) => state.documentTemplates.find((item) => String(item.id) === String(templateId))?.title ?? "")
+      .filter(Boolean);
+
+  return {
+    serviceId: String(service?.id ?? current?.serviceId ?? ""),
+    name: String(service?.name ?? current?.name ?? "").trim(),
+    serviceCode: String(service?.serviceCode ?? current?.serviceCode ?? "").trim(),
+    linkedTemplateIds: Array.isArray(service?.linkedTemplateIds)
+      ? service.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
+      : Array.isArray(current?.linkedTemplateIds)
+        ? current.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
+        : [],
+    linkedTemplateTitles: linkedTemplateTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
+    isCompleted: Boolean(current?.isCompleted),
+  };
+}
+
+function writeWorkOrderServiceSelection(items = [], { dispatchEventName = "", renderPicker = true, renderSelection = true } = {}) {
+  const normalized = getWorkOrderServiceItems({
+    serviceItems: Array.isArray(items) ? items : [],
+  });
+
+  if (workOrderServiceItemsDataInput) {
+    workOrderServiceItemsDataInput.value = JSON.stringify(normalized);
+
+    if (dispatchEventName) {
+      workOrderServiceItemsDataInput.dispatchEvent(new Event(dispatchEventName, { bubbles: true }));
+    }
+  }
+
+  if (workOrderServiceLineInput) {
+    workOrderServiceLineInput.value = normalized.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ");
+  }
+
+  if (renderPicker) {
+    renderWorkOrderServicePicker();
+  }
+
+  if (renderSelection) {
+    renderWorkOrderServiceSelection();
   }
 }
 
@@ -3044,6 +3186,7 @@ function renderModuleView() {
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
+  const isServiceCatalogModule = state.activeModuleItem === "list-of-services";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
 
   if (moduleViewKicker) {
@@ -3079,6 +3222,10 @@ function renderModuleView() {
     legalFrameworkModule.hidden = !isLegalFrameworkModule;
   }
 
+  if (serviceCatalogModule) {
+    serviceCatalogModule.hidden = !isServiceCatalogModule;
+  }
+
   if (templateDevelopmentModule) {
     templateDevelopmentModule.hidden = !isTemplateDevelopmentModule;
   }
@@ -3093,6 +3240,10 @@ function renderModuleView() {
 
   if (isLegalFrameworkModule) {
     renderLegalFrameworkModule();
+  }
+
+  if (isServiceCatalogModule) {
+    renderServiceCatalogModule();
   }
 
   if (isTemplateDevelopmentModule) {
@@ -3902,7 +4053,8 @@ function renderWorkOrderEditorSummary() {
   const activeId = String(workOrderIdInput.value || "");
   const persistedItem = state.workOrders.find((item) => String(item.id) === activeId) ?? null;
   const workOrderNumber = persistedItem?.workOrderNumber || "";
-  const serviceLine = String(workOrderServiceLineInput.value ?? "").trim();
+  const selectedServiceItems = readWorkOrderServiceSelection();
+  const serviceLine = getSelectedWorkOrderServiceSummary();
   const department = String(workOrderDepartmentInput.value ?? "").trim();
   const teamLabel = String(workOrderTeamLabelInput.value ?? "").trim();
   const description = String(workOrderDescriptionInput.value ?? "").trim();
@@ -3911,7 +4063,12 @@ function renderWorkOrderEditorSummary() {
   const companyName = company?.name || "";
   const locationName = location?.name || "";
   const compactServiceSummary = [serviceLine, department].filter(Boolean).join(" · ");
-  const serviceSummary = [department, serviceLine].filter(Boolean).join(" · ");
+  const completedServices = getWorkOrderCompletedServiceCount({ serviceItems: selectedServiceItems });
+  const serviceSummary = [
+    department,
+    serviceLine,
+    selectedServiceItems.length > 0 ? `${completedServices}/${selectedServiceItems.length} odrađeno` : "",
+  ].filter(Boolean).join(" · ");
   const contactSummary = [
     getSelectedContactName(),
     String(workOrderContactPhoneInput.value ?? "").trim() || String(workOrderContactEmailInput.value ?? "").trim(),
@@ -4012,7 +4169,7 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorMetaItem(
       "service",
       "Usluga",
-      [department, serviceLine].filter(Boolean).join(" · ") || "Bez usluge",
+      serviceSummary || "Bez usluge",
     ),
     createWorkOrderEditorMetaItem(
       "team",
@@ -4357,12 +4514,470 @@ function renderWorkOrderEditorExecutorPicker() {
   workOrderExecutorsPicker.replaceChildren(wrapper);
 }
 
+function getWorkOrderServiceCatalogOptions(currentItems = []) {
+  const options = [];
+  const seen = new Set();
+
+  currentItems.forEach((item) => {
+    const key = String(item.serviceId || `${item.serviceCode}::${item.name}`).trim();
+    if (!key || seen.has(key)) {
+      return;
+    }
+
+    options.push({
+      id: item.serviceId || key,
+      name: item.name,
+      serviceCode: item.serviceCode,
+      linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+      linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+      status: "inactive",
+      isSnapshot: true,
+    });
+    seen.add(key);
+  });
+
+  sortServiceCatalogItems(state.serviceCatalog ?? []).forEach((item) => {
+    const key = String(item.id || `${item.serviceCode}::${item.name}`).trim();
+    if (!key || seen.has(key)) {
+      return;
+    }
+
+    options.push(item);
+    seen.add(key);
+  });
+
+  return options;
+}
+
+function matchesWorkOrderServiceSearch(option, query = "") {
+  const normalizedQuery = normalizeLooseName(query);
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystack = [
+    option.name,
+    option.serviceCode,
+    ...(option.linkedTemplateTitles ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(normalizedQuery);
+}
+
+function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
+  const selectedItems = getWorkOrderServiceItems({ serviceItems: items });
+  trigger.replaceChildren();
+  trigger.title = selectedItems.length > 0
+    ? selectedItems.map((item) => item.name || item.serviceCode).join(", ")
+    : "Dodaj usluge";
+
+  if (selectedItems.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "work-order-service-picker-empty";
+    empty.textContent = "+ Dodaj usluge";
+    trigger.append(empty);
+    return;
+  }
+
+  const stack = document.createElement("span");
+  stack.className = "work-order-service-picker-stack";
+  selectedItems.slice(0, 3).forEach((item) => {
+    const chip = document.createElement("span");
+    chip.className = `work-order-service-picker-chip${item.isCompleted ? " is-completed" : ""}`;
+    chip.textContent = item.serviceCode || item.name || "Usluga";
+    stack.append(chip);
+  });
+
+  if (selectedItems.length > 3) {
+    const extra = document.createElement("span");
+    extra.className = "work-order-service-picker-chip is-extra";
+    extra.textContent = `+${selectedItems.length - 3}`;
+    stack.append(extra);
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-service-picker-label";
+  label.textContent = selectedItems.map((item) => item.name || item.serviceCode).join(" · ");
+
+  trigger.append(stack, label);
+}
+
+function renderWorkOrderServiceSelection() {
+  if (!workOrderServiceSelection) {
+    return;
+  }
+
+  const selectedItems = readWorkOrderServiceSelection();
+  const legacySummary = String(workOrderServiceLineInput?.value ?? "").trim();
+
+  if (selectedItems.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "work-order-service-empty";
+    empty.textContent = legacySummary ? "Ovaj RN još koristi stari unos usluge." : "Još nema odabranih usluga.";
+
+    if (legacySummary) {
+      const legacy = document.createElement("article");
+      legacy.className = "work-order-service-item";
+
+      const copy = document.createElement("div");
+      copy.className = "work-order-service-item-copy";
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "work-order-service-item-title-row";
+      const title = document.createElement("strong");
+      title.textContent = legacySummary;
+      titleRow.append(title, createBadge("Legacy unos", "work-order-service-code-badge"));
+      copy.append(titleRow);
+
+      legacy.append(copy);
+      workOrderServiceSelection.replaceChildren(legacy, empty);
+    } else {
+      workOrderServiceSelection.replaceChildren(empty);
+    }
+    if (workOrderServiceTemplateHint) {
+      workOrderServiceTemplateHint.textContent = legacySummary
+        ? "Ako odabereš usluge iz kataloga, stari tekst usluge zamijenit će se strukturiranim stavkama."
+        : "Odaberi jednu ili više usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.";
+    }
+    return;
+  }
+
+  const templateNames = Array.from(new Set(
+    selectedItems.flatMap((item) => item.linkedTemplateTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
+  ));
+
+  if (workOrderServiceTemplateHint) {
+    workOrderServiceTemplateHint.textContent = templateNames.length > 0
+      ? `Povezani templatei: ${templateNames.join(" · ")}`
+      : "Odabrane usluge trenutno nemaju povezan template.";
+  }
+
+  workOrderServiceSelection.replaceChildren(...selectedItems.map((item) => {
+    const row = document.createElement("article");
+    row.className = `work-order-service-item${item.isCompleted ? " is-completed" : ""}`;
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-service-item-copy";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "work-order-service-item-title-row";
+    const title = document.createElement("strong");
+    title.textContent = item.name || item.serviceCode || "Usluga";
+    titleRow.append(title);
+
+    if (item.serviceCode) {
+      titleRow.append(createBadge(item.serviceCode, "work-order-service-code-badge"));
+    }
+
+    const templates = document.createElement("div");
+    templates.className = "work-order-service-item-templates";
+    const templateTitles = (item.linkedTemplateTitles ?? []).filter(Boolean);
+
+    if (templateTitles.length > 0) {
+      templateTitles.forEach((templateTitle) => {
+        templates.append(createBadge(templateTitle, "work-order-service-template-badge"));
+      });
+    } else {
+      templates.append(createBadge("Bez templatea", "work-order-service-template-badge is-muted"));
+    }
+
+    copy.append(titleRow, templates);
+
+    const actions = document.createElement("div");
+    actions.className = "work-order-service-item-actions";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = `work-order-service-status-toggle${item.isCompleted ? " is-completed" : ""}`;
+    toggle.textContent = item.isCompleted ? "✓" : "✕";
+    toggle.title = item.isCompleted ? "Označi kao neodrađeno" : "Označi kao odrađeno";
+    toggle.addEventListener("click", () => {
+      const nextItems = selectedItems.map((entry) => (
+        entry.serviceId === item.serviceId
+          ? { ...entry, isCompleted: !entry.isCompleted }
+          : entry
+      ));
+      writeWorkOrderServiceSelection(nextItems, {
+        dispatchEventName: "change",
+      });
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "work-order-service-remove";
+    remove.textContent = "Ukloni";
+    remove.addEventListener("click", () => {
+      const nextItems = selectedItems.filter((entry) => entry.serviceId !== item.serviceId);
+      writeWorkOrderServiceSelection(nextItems, {
+        dispatchEventName: "change",
+      });
+    });
+
+    actions.append(toggle, remove);
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+function renderWorkOrderServicePicker() {
+  if (!workOrderServicePicker) {
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-service-picker";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-service-picker-trigger";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const getCurrentItems = () => readWorkOrderServiceSelection();
+  const setCurrentItems = (items) => {
+    setWorkOrderServicePickerTriggerContent(trigger, items);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(320, Math.round(triggerRect.width + 48))}px`;
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  wrapper._closeMenu = closeMenu;
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    let draftItems = getCurrentItems();
+    let searchQuery = "";
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-service-picker-menu-portal";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", "Izbor usluga");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "work-order-service-picker-search";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-service-picker-search-input";
+    searchInput.placeholder = "Traži po nazivu, šifri ili templateu";
+    searchWrap.append(searchInput);
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-service-picker-selection";
+
+    const helper = document.createElement("p");
+    helper.className = "work-order-service-picker-helper";
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-service-picker-options";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-service-picker-clear";
+    clearButton.textContent = "Očisti";
+
+    const toggleService = (service) => {
+      const normalizedId = String(service.id || "").trim();
+      const existing = draftItems.find((item) => String(item.serviceId) === normalizedId);
+
+      if (existing) {
+        draftItems = draftItems.filter((item) => String(item.serviceId) !== normalizedId);
+        return;
+      }
+
+      draftItems = [
+        ...draftItems,
+        buildWorkOrderServiceItemSnapshot(service),
+      ];
+    };
+
+    const syncMenuState = () => {
+      selection.replaceChildren();
+
+      if (draftItems.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-service-picker-selection-empty";
+        empty.textContent = "Bez odabranih usluga";
+        selection.append(empty);
+      } else {
+        draftItems.forEach((item) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
+          chip.textContent = item.serviceCode || item.name || "Usluga";
+          chip.title = `Makni ${item.name || item.serviceCode}`;
+          chip.addEventListener("click", () => {
+            draftItems = draftItems.filter((entry) => String(entry.serviceId) !== String(item.serviceId));
+            writeWorkOrderServiceSelection(draftItems, {
+              dispatchEventName: "change",
+              renderPicker: false,
+            });
+            draftItems = getCurrentItems();
+            setCurrentItems(draftItems);
+            syncMenuState();
+          });
+          selection.append(chip);
+        });
+      }
+
+      optionsList.replaceChildren();
+      const visibleOptions = getWorkOrderServiceCatalogOptions(draftItems)
+        .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
+
+      if (visibleOptions.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-service-picker-empty";
+        empty.textContent = "Nema usluga za ovaj pojam.";
+        optionsList.append(empty);
+      } else {
+        visibleOptions.forEach((option) => {
+          const isSelected = draftItems.some((item) => String(item.serviceId) === String(option.id));
+          const optionButton = document.createElement("button");
+          optionButton.type = "button";
+          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}`;
+
+          const copy = document.createElement("div");
+          copy.className = "work-order-service-picker-option-copy";
+          const title = document.createElement("strong");
+          title.textContent = option.name || "Usluga";
+          const meta = document.createElement("span");
+          meta.textContent = [
+            option.serviceCode || "",
+            option.status === "inactive" ? "Neaktivna" : "Aktivna",
+            (option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "",
+          ].filter(Boolean).join(" · ");
+          copy.append(title, meta);
+
+          const marker = document.createElement("span");
+          marker.className = "work-order-service-picker-option-marker";
+          marker.textContent = isSelected ? "✓" : "+";
+
+          optionButton.append(copy, marker);
+          optionButton.addEventListener("click", () => {
+            toggleService(option);
+            writeWorkOrderServiceSelection(draftItems, {
+              dispatchEventName: "change",
+              renderPicker: false,
+            });
+            draftItems = getCurrentItems();
+            setCurrentItems(draftItems);
+            syncMenuState();
+          });
+          optionsList.append(optionButton);
+        });
+      }
+
+      helper.textContent = draftItems.length > 0
+        ? `${draftItems.length} odabranih usluga · ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.`
+        : "Odaberi usluge iz kataloga i kasnije ih označavaj kvačicom ili X.";
+      clearButton.disabled = draftItems.length === 0;
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    };
+
+    clearButton.addEventListener("click", () => {
+      draftItems = [];
+      writeWorkOrderServiceSelection([], {
+        dispatchEventName: "change",
+        renderPicker: false,
+      });
+      draftItems = getCurrentItems();
+      setCurrentItems(draftItems);
+      syncMenuState();
+    });
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value || "";
+      syncMenuState();
+    });
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+      }
+    });
+
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    syncMenuState();
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => {
+      positionMenuPortal(menu);
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    });
+  };
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper._menuPortal) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  setCurrentItems(getCurrentItems());
+  wrapper.append(trigger);
+  workOrderServicePicker.replaceChildren(wrapper);
+}
+
 function getCompany(companyId) {
   return state.companies.find((item) => item.id === companyId) ?? null;
 }
 
 function getLocation(locationId) {
   return state.locations.find((item) => item.id === locationId) ?? null;
+}
+
+function getDocumentTemplateById(templateId) {
+  return state.documentTemplates.find((item) => String(item.id) === String(templateId)) ?? null;
 }
 
 function getLocationsForCompany(companyId) {
@@ -7805,6 +8420,10 @@ function scrollDocumentTemplateEditorToTop() {
   documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function scrollServiceCatalogEditorToTop() {
+  serviceCatalogEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
 function syncLegalFrameworkEditorModal() {
   if (state.legalFrameworkEditorOpen && (
     state.activeView !== "module"
@@ -7879,6 +8498,43 @@ function syncDocumentTemplateEditorModal() {
   }
 }
 
+function syncServiceCatalogEditorModal() {
+  if (state.serviceCatalogEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "list-of-services"
+    || !state.user
+  )) {
+    state.serviceCatalogEditorOpen = false;
+  }
+
+  const isOpen = state.serviceCatalogEditorOpen;
+  serviceCatalogEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-service-catalog-editor-open", isOpen);
+
+  if (serviceCatalogEditorPanel) {
+    serviceCatalogEditorPanel.hidden = !isOpen;
+    serviceCatalogEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (serviceCatalogEditorBackdrop) {
+    serviceCatalogEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (serviceCatalogEditorCloseButton) {
+    serviceCatalogEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollServiceCatalogEditorToTop();
+      serviceCatalogEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollServiceCatalogEditorToTop();
+      }, 0);
+    });
+  }
+}
+
 function openLegalFrameworkEditor() {
   state.legalFrameworkEditorOpen = true;
   syncLegalFrameworkEditorModal();
@@ -7915,6 +8571,25 @@ function closeDocumentTemplateEditor({ reset = false } = {}) {
 function dismissDocumentTemplateEditor() {
   closeDocumentTemplateEditor({ reset: true });
   renderDocumentTemplateModule();
+}
+
+function openServiceCatalogEditor() {
+  state.serviceCatalogEditorOpen = true;
+  syncServiceCatalogEditorModal();
+}
+
+function closeServiceCatalogEditor({ reset = false } = {}) {
+  state.serviceCatalogEditorOpen = false;
+  syncServiceCatalogEditorModal();
+
+  if (reset) {
+    resetServiceCatalogForm();
+  }
+}
+
+function dismissServiceCatalogEditor() {
+  closeServiceCatalogEditor({ reset: true });
+  renderServiceCatalogModule();
 }
 
 function escapeHtml(value = "") {
@@ -8921,6 +9596,278 @@ function renderLegalFrameworkModule() {
   }));
 
   legalFrameworkEmpty.hidden = visibleItems.length !== 0;
+}
+
+function buildServiceCatalogPayload() {
+  return {
+    organizationId: state.activeOrganizationId,
+    name: serviceCatalogNameInput?.value || "",
+    serviceCode: serviceCatalogCodeInput?.value || "",
+    status: serviceCatalogStatusInput?.value || "active",
+    linkedTemplateIds: getServiceCatalogTemplateSelectionIds(),
+    note: serviceCatalogNoteInput?.value || "",
+  };
+}
+
+function getServiceCatalogTemplateSelectionIds() {
+  return Array.from(serviceCatalogTemplateList?.querySelectorAll('input[name="service-catalog-template-id"]:checked') ?? [])
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
+function renderServiceCatalogTemplateChecklist(selectedIds = []) {
+  if (!serviceCatalogTemplateList) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const selectedSet = new Set(selectedIds.map((value) => String(value)));
+  const templates = sortDocumentTemplates(state.documentTemplates ?? []);
+
+  if (templates.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Prvo pripremi templatee u Template Development pa ih ovdje poveži s uslugom.";
+    serviceCatalogTemplateList.replaceChildren(empty);
+    return;
+  }
+
+  serviceCatalogTemplateList.replaceChildren(...templates.map((template) => {
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "service-catalog-template-id";
+    checkbox.value = template.id;
+    checkbox.checked = selectedSet.has(String(template.id));
+    checkbox.disabled = !canManageMasterData;
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = template.title || "Template";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getDocumentTemplateTypeLabel(template.documentType),
+      getDocumentTemplateStatusLabel(template.status),
+      template.referenceDocument?.fileName ? "Word ref" : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
+function resetServiceCatalogForm() {
+  if (!serviceCatalogForm) {
+    return;
+  }
+
+  serviceCatalogForm.reset();
+  state.activeServiceCatalogId = "";
+  if (serviceCatalogIdInput) {
+    serviceCatalogIdInput.value = "";
+  }
+  if (serviceCatalogStatusInput) {
+    serviceCatalogStatusInput.value = "active";
+  }
+  if (serviceCatalogError) {
+    serviceCatalogError.textContent = "";
+  }
+  if (serviceCatalogDeleteButton) {
+    serviceCatalogDeleteButton.hidden = true;
+  }
+  if (serviceCatalogEditorTitle) {
+    serviceCatalogEditorTitle.textContent = "Nova usluga";
+  }
+  renderServiceCatalogTemplateChecklist([]);
+}
+
+function hydrateServiceCatalogForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "list-of-services";
+  renderActiveView();
+  renderModuleView();
+  state.activeServiceCatalogId = item.id;
+
+  if (serviceCatalogIdInput) {
+    serviceCatalogIdInput.value = item.id || "";
+  }
+  if (serviceCatalogNameInput) {
+    serviceCatalogNameInput.value = item.name || "";
+  }
+  if (serviceCatalogCodeInput) {
+    serviceCatalogCodeInput.value = item.serviceCode || "";
+  }
+  if (serviceCatalogStatusInput) {
+    serviceCatalogStatusInput.value = item.status || "active";
+  }
+  if (serviceCatalogNoteInput) {
+    serviceCatalogNoteInput.value = item.note || "";
+  }
+  if (serviceCatalogError) {
+    serviceCatalogError.textContent = "";
+  }
+  if (serviceCatalogDeleteButton) {
+    serviceCatalogDeleteButton.hidden = !getCanManageMasterData();
+  }
+  if (serviceCatalogEditorTitle) {
+    serviceCatalogEditorTitle.textContent = `Uredi uslugu · ${item.name || item.serviceCode || "Usluga"}`;
+  }
+
+  renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
+  openServiceCatalogEditor();
+  requestAnimationFrame(() => {
+    serviceCatalogNameInput?.focus({ preventScroll: true });
+  });
+}
+
+function createServiceCatalogStatusBadge(status) {
+  return createBadge(
+    getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, status || "active"),
+    `service-catalog-status-badge is-${slugifyValue(status || "active")}`,
+  );
+}
+
+function renderServiceCatalogModule() {
+  if (!serviceCatalogModule || !serviceCatalogList || !serviceCatalogEmpty) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const filters = {
+    query: serviceCatalogSearchInput?.value?.trim() || state.serviceCatalogFilters.query || "",
+    status: serviceCatalogFilterStatusInput?.value || state.serviceCatalogFilters.status || "all",
+  };
+  state.serviceCatalogFilters = filters;
+
+  const allItems = sortServiceCatalogItems(state.serviceCatalog ?? []);
+  const visibleItems = sortServiceCatalogItems(filterServiceCatalogItems(state.serviceCatalog ?? [], filters));
+
+  if (serviceCatalogOpenFormButton) {
+    serviceCatalogOpenFormButton.hidden = !canManageMasterData;
+  }
+  if (serviceCatalogDeleteButton) {
+    serviceCatalogDeleteButton.hidden = !serviceCatalogIdInput?.value || !canManageMasterData;
+  }
+  if (serviceCatalogTotalCount) {
+    serviceCatalogTotalCount.textContent = String(allItems.length);
+  }
+  if (serviceCatalogActiveCount) {
+    serviceCatalogActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
+  }
+  if (serviceCatalogInactiveCount) {
+    serviceCatalogInactiveCount.textContent = String(allItems.filter((item) => item.status === "inactive").length);
+  }
+  if (serviceCatalogTemplateCount) {
+    serviceCatalogTemplateCount.textContent = String(allItems.filter((item) => (item.linkedTemplateIds ?? []).length > 0).length);
+  }
+  if (serviceCatalogHelper) {
+    serviceCatalogHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} usluga. Ovaj katalog koristimo kod otvaranja RN-a.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} usluga.`;
+  }
+
+  serviceCatalogList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = `service-catalog-card is-${slugifyValue(item.status || "active")}`;
+    if (String(item.id) === String(serviceCatalogIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    if (canManageMasterData) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Uredi uslugu ${item.name || item.serviceCode || ""}`.trim());
+    }
+
+    const head = document.createElement("div");
+    head.className = "service-catalog-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-card-copy";
+
+    const title = document.createElement("h4");
+    title.textContent = item.name || "Bez naziva";
+
+    const meta = document.createElement("p");
+    meta.className = "service-catalog-card-meta";
+    meta.textContent = [
+      item.serviceCode || "",
+      (item.linkedTemplateIds ?? []).length > 0 ? `${item.linkedTemplateIds.length} templatea` : "Bez templatea",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    head.append(createServiceCatalogStatusBadge(item.status), copy);
+
+    const note = document.createElement("p");
+    note.className = "service-catalog-card-note";
+    note.textContent = item.note || "Bez dodatne napomene.";
+
+    const templates = document.createElement("div");
+    templates.className = "service-catalog-card-templates";
+    const templateTitles = (item.linkedTemplateTitles ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+
+    if (templateTitles.length > 0) {
+      templateTitles.forEach((templateTitle) => {
+        templates.append(createBadge(templateTitle, "service-catalog-template-badge"));
+      });
+    } else {
+      templates.append(createBadge("Bez templatea", "service-catalog-template-badge is-muted"));
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "service-catalog-card-footer";
+
+    const updated = document.createElement("span");
+    updated.className = "service-catalog-card-updated";
+    updated.textContent = item.updatedAt
+      ? `Ažurirano ${formatCompactDate(item.updatedAt)}`
+      : "Novo";
+    footer.append(updated);
+
+    const openItem = () => {
+      if (!canManageMasterData) {
+        return;
+      }
+      hydrateServiceCatalogForm(item);
+    };
+
+    if (canManageMasterData) {
+      card.addEventListener("click", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
+        openItem();
+      });
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openItem();
+      });
+    }
+
+    card.append(head, note, templates, footer);
+    return card;
+  }));
+
+  serviceCatalogEmpty.hidden = visibleItems.length !== 0;
+  if (visibleItems.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = canManageMasterData
+      ? "Nema usluga za ove filtere. Dodaj novu uslugu i poveži je s templateom."
+      : "Nema usluga za prikaz u odabranoj organizaciji.";
+    serviceCatalogList.replaceChildren(empty);
+  }
 }
 
 function renderDocumentTemplatePlaceholderPalette() {
@@ -10021,6 +10968,7 @@ function applySelectedLocationDefaults() {
 
 function buildWorkOrderPayload() {
   const executors = readWorkOrderExecutorSelection();
+  const serviceItems = readWorkOrderServiceSelection();
 
   return {
     status: workOrderStatusInput.value,
@@ -10039,7 +10987,11 @@ function buildWorkOrderPayload() {
     executors,
     executor1: executors[0] ?? "",
     executor2: executors[1] ?? "",
-    serviceLine: workOrderServiceLineInput.value,
+    serviceItems,
+    serviceLine: getWorkOrderServiceSummary({
+      serviceItems,
+      serviceLine: workOrderServiceLineInput.value,
+    }),
     department: workOrderDepartmentInput.value,
     linkReference: workOrderLinkReferenceInput.value,
     weight: workOrderWeightInput.value,
@@ -10305,6 +11257,7 @@ function resetWorkOrderForm() {
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
   writeWorkOrderExecutorSelection([]);
+  writeWorkOrderServiceSelection([]);
   resetWorkOrderDocumentsState();
   renderWorkOrderEditorSummary();
   setWorkOrderSaveState("blocked");
@@ -10450,7 +11403,13 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderContactPhoneInput.value = workOrder.contactPhone;
   workOrderContactEmailInput.value = workOrder.contactEmail;
   writeWorkOrderExecutorSelection(getWorkOrderExecutors(workOrder));
-  workOrderServiceLineInput.value = workOrder.serviceLine;
+  const serviceItems = getWorkOrderServiceItems(workOrder);
+  writeWorkOrderServiceSelection(serviceItems);
+  if (serviceItems.length === 0) {
+    workOrderServiceLineInput.value = workOrder.serviceLine;
+    renderWorkOrderServiceSelection();
+    renderWorkOrderServicePicker();
+  }
   workOrderDepartmentInput.value = workOrder.department;
   workOrderLinkReferenceInput.value = workOrder.linkReference;
   workOrderWeightInput.value = workOrder.weight;
@@ -14996,6 +15955,7 @@ function renderActiveView() {
   syncVehicleEditorModal();
   syncVehicleReservationModal();
   syncLegalFrameworkEditorModal();
+  syncServiceCatalogEditorModal();
   syncDocumentTemplateEditorModal();
 }
 
@@ -15011,6 +15971,9 @@ function renderSharedOptions() {
   }
   if (legalFrameworkSearchInput && legalFrameworkSearchInput.value !== state.legalFrameworkFilters.query) {
     legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
+  }
+  if (serviceCatalogSearchInput && serviceCatalogSearchInput.value !== state.serviceCatalogFilters.query) {
+    serviceCatalogSearchInput.value = state.serviceCatalogFilters.query;
   }
   if (documentTemplateSearchInput && documentTemplateSearchInput.value !== state.documentTemplateFilters.query) {
     documentTemplateSearchInput.value = state.documentTemplateFilters.query;
@@ -15060,6 +16023,15 @@ function renderSharedOptions() {
       { value: "all", label: "Svi statusi" },
       ...LEGAL_FRAMEWORK_STATUS_OPTIONS,
     ], state.legalFrameworkFilters.status || "all");
+  }
+  if (serviceCatalogStatusInput) {
+    replaceSelectOptions(serviceCatalogStatusInput, SERVICE_CATALOG_STATUS_OPTIONS, serviceCatalogStatusInput.value || "active");
+  }
+  if (serviceCatalogFilterStatusInput) {
+    replaceSelectOptions(serviceCatalogFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...SERVICE_CATALOG_STATUS_OPTIONS,
+    ], state.serviceCatalogFilters.status || "all");
   }
   if (documentTemplateTypeInput) {
     replaceSelectOptions(documentTemplateTypeInput, DOCUMENT_TEMPLATE_TYPE_OPTIONS, documentTemplateTypeInput.value || "Zapisnik");
@@ -15112,6 +16084,13 @@ function renderSharedOptions() {
   rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
   rebuildDocumentTemplateCompanyOptions(documentTemplateCompanyIdInput?.value || "");
   rebuildDocumentTemplateLocationOptions(documentTemplateLocationIdInput?.value || "");
+  closeOpenWorkOrderStatusMenus();
+  renderWorkOrderEditorExecutorPicker();
+  renderWorkOrderServicePicker();
+  renderWorkOrderServiceSelection();
+  if (state.serviceCatalogEditorOpen) {
+    renderServiceCatalogTemplateChecklist(getServiceCatalogTemplateSelectionIds());
+  }
   syncCompanySelectionPreview(
     workOrderCompanyIdInput?.value || "",
     workOrderCompanyPreview,
@@ -18547,7 +19526,7 @@ function isInteractiveWorkOrderTarget(target) {
 }
 
 function closeOpenWorkOrderStatusMenus(except = null) {
-  document.querySelectorAll(".work-item-status-dropdown.is-open, .work-order-calendar-executor-picker.is-open").forEach((node) => {
+  document.querySelectorAll(".work-item-status-dropdown.is-open, .work-order-calendar-executor-picker.is-open, .work-order-service-picker.is-open").forEach((node) => {
     if (except && node === except) {
       return;
     }
@@ -18558,7 +19537,7 @@ function closeOpenWorkOrderStatusMenus(except = null) {
     }
 
     node.classList.remove("is-open");
-    const trigger = node.querySelector(".work-item-status-trigger, .work-order-calendar-executor-trigger");
+    const trigger = node.querySelector(".work-item-status-trigger, .work-order-calendar-executor-trigger, .work-order-service-picker-trigger");
     trigger?.setAttribute("aria-expanded", "false");
     if (node._menuPortal) {
       node._menuPortal.remove();
@@ -19252,6 +20231,7 @@ function renderCompactWorkOrdersList() {
       const serviceCell = document.createElement("div");
       serviceCell.className = "work-item-cell work-item-cell-group";
       const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
+      const serviceItems = getWorkOrderServiceItems(item);
       if (item.department) {
         const departmentPill = document.createElement("span");
         departmentPill.className = "work-item-department-pill";
@@ -19261,8 +20241,15 @@ function renderCompactWorkOrdersList() {
 
       const serviceLine = document.createElement("div");
       serviceLine.className = "work-item-service-line";
-      serviceLine.textContent = item.serviceLine || "Bez usluge";
+      serviceLine.textContent = getWorkOrderServiceSummary(item) || "Bez usluge";
       serviceCell.append(serviceLine);
+
+      if (serviceItems.length > 0) {
+        const serviceProgress = document.createElement("div");
+        serviceProgress.className = "work-item-service-note";
+        serviceProgress.textContent = `${getWorkOrderCompletedServiceCount(item)}/${serviceItems.length} odrađeno`;
+        serviceCell.append(serviceProgress);
+      }
 
       if (serviceDescription) {
         const serviceNote = document.createElement("div");
@@ -19824,6 +20811,8 @@ bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
 bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
 enhanceWorkOrderEditorChrome();
 renderWorkOrderEditorExecutorPicker();
+renderWorkOrderServicePicker();
+renderWorkOrderServiceSelection();
 renderWorkOrderDocuments();
 
 workOrdersTableWrap.addEventListener("scroll", () => {
@@ -20634,6 +21623,78 @@ legalFrameworkForm?.addEventListener("submit", (event) => {
   });
 });
 
+serviceCatalogSearchInput?.addEventListener("input", () => {
+  state.serviceCatalogFilters.query = serviceCatalogSearchInput.value.trim();
+  renderServiceCatalogModule();
+});
+
+serviceCatalogFilterStatusInput?.addEventListener("change", () => {
+  state.serviceCatalogFilters.status = serviceCatalogFilterStatusInput.value || "all";
+  renderServiceCatalogModule();
+});
+
+serviceCatalogOpenFormButton?.addEventListener("click", () => {
+  resetServiceCatalogForm();
+  renderServiceCatalogModule();
+  openServiceCatalogEditor();
+  requestAnimationFrame(() => {
+    serviceCatalogNameInput?.focus({ preventScroll: true });
+  });
+});
+
+serviceCatalogEditorCloseButton?.addEventListener("click", () => {
+  dismissServiceCatalogEditor();
+});
+
+serviceCatalogEditorBackdrop?.addEventListener("click", () => {
+  dismissServiceCatalogEditor();
+});
+
+serviceCatalogResetButton?.addEventListener("click", () => {
+  resetServiceCatalogForm();
+  renderServiceCatalogModule();
+  openServiceCatalogEditor();
+});
+
+serviceCatalogDeleteButton?.addEventListener("click", () => {
+  const serviceCatalogId = serviceCatalogIdInput?.value || "";
+
+  if (!serviceCatalogId || !window.confirm("Obrisati ovu uslugu?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/service-catalog/${serviceCatalogId}`, {
+    method: "DELETE",
+  }), serviceCatalogError).then((success) => {
+    if (success) {
+      closeServiceCatalogEditor({ reset: true });
+      renderServiceCatalogModule();
+      renderWorkOrderServicePicker();
+      renderWorkOrderServiceSelection();
+    }
+  });
+});
+
+serviceCatalogForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(serviceCatalogIdInput?.value);
+  const path = isEditing ? `/service-catalog/${serviceCatalogIdInput.value}` : "/service-catalog";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildServiceCatalogPayload(),
+  }), serviceCatalogError).then((success) => {
+    if (success) {
+      closeServiceCatalogEditor({ reset: true });
+      renderServiceCatalogModule();
+      renderWorkOrderServicePicker();
+      renderWorkOrderServiceSelection();
+    }
+  });
+});
+
 documentTemplateSearchInput?.addEventListener("input", () => {
   state.documentTemplateFilters.query = documentTemplateSearchInput.value.trim();
   renderDocumentTemplateModule();
@@ -21261,7 +22322,9 @@ document.addEventListener("click", (event) => {
       targetElement?.closest(".work-item-status-dropdown")
       || targetElement?.closest(".work-item-status-menu-portal")
       || targetElement?.closest(".work-order-calendar-executor-picker")
-      || targetElement?.closest(".work-order-calendar-executor-menu-portal"),
+      || targetElement?.closest(".work-order-calendar-executor-menu-portal")
+      || targetElement?.closest(".work-order-service-picker")
+      || targetElement?.closest(".work-order-service-picker-menu-portal"),
     );
 
     if (!clickedStatusMenu) {
@@ -21342,6 +22405,7 @@ document.addEventListener("scroll", (event) => {
     && (
       target.closest(".work-order-calendar-executor-menu-portal")
       || target.closest(".work-item-status-menu-portal")
+      || target.closest(".work-order-service-picker-menu-portal")
       || target.closest(".vehicle-reservation-assignees-dropdown")
     )
   ) {
@@ -21469,6 +22533,7 @@ logoutButton.addEventListener("click", () => {
     state.offers = [];
     state.vehicles = [];
     state.legalFrameworks = [];
+    state.serviceCatalog = [];
     state.documentTemplates = [];
     state.dashboardWidgets = [];
     state.companies = [];
@@ -21479,6 +22544,7 @@ logoutButton.addEventListener("click", () => {
     state.activeTodoTaskId = "";
     state.activeDashboardWidgetId = "";
     state.activeLegalFrameworkId = "";
+    state.activeServiceCatalogId = "";
     state.activeDocumentTemplateId = "";
     closeDashboardBuilder();
     state.measurementSheet.columns = [];
@@ -21498,6 +22564,7 @@ logoutButton.addEventListener("click", () => {
     closeMeasurementSheet();
     resetOfferForm();
     resetLegalFrameworkForm();
+    resetServiceCatalogForm();
     resetDocumentTemplateForm();
     renderAuthState();
     void refreshLoginContent();

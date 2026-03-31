@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260331r" />
+  <link rel="stylesheet" href="/styles.css?v=20260331s" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -276,6 +276,19 @@
                     </svg>
                   </span>
                   <strong>Legal Framework</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="list-of-services">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M5 7h14"></path>
+                      <path d="M5 12h14"></path>
+                      <path d="M5 17h9"></path>
+                      <circle cx="7" cy="7" r="1"></circle>
+                      <circle cx="7" cy="12" r="1"></circle>
+                      <circle cx="7" cy="17" r="1"></circle>
+                    </svg>
+                  </span>
+                  <strong>List Of Services</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="template-development">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -586,6 +599,8 @@
                 <div class="work-order-editor-body" tabindex="-1">
                   <form id="work-order-form" class="entity-form work-order-editor-form">
                     <input id="work-order-id" type="hidden" />
+                    <input id="work-order-service-line" type="hidden" />
+                    <input id="work-order-service-items-data" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
 
                     <section class="work-order-editor-section is-overview">
@@ -741,10 +756,18 @@
                               <input id="work-order-department" type="text" placeholder="Odjel" />
                             </label>
 
-                            <label class="field">
-                              <span>Usluga</span>
-                              <input id="work-order-service-line" type="text" placeholder="Vrsta usluge" />
+                            <label class="field field-span-full work-order-services-field">
+                              <span>Usluge iz kataloga</span>
+                              <div id="work-order-service-picker" class="work-order-inline-service-picker"></div>
                             </label>
+
+                            <div class="field field-span-full work-order-service-selection-field">
+                              <span>Odabrane usluge</span>
+                              <div id="work-order-service-selection" class="work-order-service-selection"></div>
+                              <p id="work-order-service-template-hint" class="helper-copy work-order-service-template-hint">
+                                Odaberi jednu ili više usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.
+                              </p>
+                            </div>
                           </div>
                         </div>
 
@@ -2746,6 +2769,119 @@
               </section>
             </section>
 
+            <section id="service-catalog-module" class="service-catalog-module" hidden>
+              <div class="service-catalog-summary-grid">
+                <article class="service-catalog-stat-card is-total">
+                  <span class="service-catalog-stat-label">Ukupno</span>
+                  <strong id="service-catalog-total-count" class="service-catalog-stat-value">0</strong>
+                </article>
+                <article class="service-catalog-stat-card is-active">
+                  <span class="service-catalog-stat-label">Aktivne</span>
+                  <strong id="service-catalog-active-count" class="service-catalog-stat-value">0</strong>
+                </article>
+                <article class="service-catalog-stat-card is-inactive">
+                  <span class="service-catalog-stat-label">Neaktivne</span>
+                  <strong id="service-catalog-inactive-count" class="service-catalog-stat-value">0</strong>
+                </article>
+                <article class="service-catalog-stat-card is-templates">
+                  <span class="service-catalog-stat-label">S templateima</span>
+                  <strong id="service-catalog-template-count" class="service-catalog-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel service-catalog-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Service catalog</p>
+                    <h3>Popis usluga</h3>
+                  </div>
+                  <button id="service-catalog-open-form" type="button" class="primary-button">+ Nova usluga</button>
+                </div>
+
+                <div class="service-catalog-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, šifra, template..." />
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="service-catalog-filter-status"></select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel service-catalog-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Services</p>
+                    <h3>Katalog usluga</h3>
+                  </div>
+                </div>
+
+                <p id="service-catalog-helper" class="helper-copy module-copy">Ovdje definiras usluge koje se nude i kasnije biraju pri otvaranju radnog naloga.</p>
+                <div id="service-catalog-list" class="service-catalog-list"></div>
+                <p id="service-catalog-empty" class="helper-copy" hidden>Nema usluga za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <div id="service-catalog-editor-backdrop" class="offer-editor-backdrop service-catalog-editor-backdrop" hidden></div>
+              <section id="service-catalog-editor-panel" class="panel service-catalog-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">List of services</p>
+                      <h3 id="service-catalog-editor-title">Nova usluga</h3>
+                    </div>
+                    <button id="service-catalog-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="service-catalog-editor-body" tabindex="-1">
+                  <form id="service-catalog-form" class="entity-form">
+                    <input id="service-catalog-id" type="hidden" />
+
+                    <div class="form-grid service-catalog-form-grid">
+                      <label class="field field-span-full">
+                        <span>Ime usluge</span>
+                        <input id="service-catalog-name" maxlength="180" placeholder="Ispitivanje radne opreme" required />
+                      </label>
+                      <label class="field">
+                        <span>Šifra usluge</span>
+                        <input id="service-catalog-code" maxlength="80" placeholder="IRO-001" required />
+                      </label>
+                      <label class="field">
+                        <span>Aktivnost</span>
+                        <select id="service-catalog-status"></select>
+                      </label>
+                    </div>
+
+                    <section class="service-catalog-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Templates</p>
+                          <h3>Povezani zapisnici</h3>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Označi templatee koji se nude uz ovu uslugu kako bi ih RN editor kasnije mogao prikazati kao preporuku.</p>
+                      <div id="service-catalog-template-list" class="service-catalog-template-list"></div>
+                    </section>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="service-catalog-note" rows="4" placeholder="Kratka interna bilješka o usluzi, opsegu ili posebnostima."></textarea>
+                    </label>
+
+                    <p id="service-catalog-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi uslugu</button>
+                      <button id="service-catalog-reset" type="button" class="ghost-button">Nova usluga</button>
+                      <button id="service-catalog-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
+
             <section id="template-development-module" class="template-development-module" hidden>
               <div class="template-development-summary-grid">
                 <article class="template-development-stat-card is-total">
@@ -3066,6 +3202,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260331r"></script>
+  <script type="module" src="/src/main.js?v=20260331s"></script>
   </body>
 </html>

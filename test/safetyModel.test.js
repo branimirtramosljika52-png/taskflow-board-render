@@ -15,6 +15,7 @@ import {
   createLocation,
   createOffer,
   createReminder,
+  createServiceCatalogItem,
   createTodoTask,
   createTodoTaskComment,
   createVehicle,
@@ -25,6 +26,7 @@ import {
   filterDocumentTemplates,
   filterLegalFrameworks,
   filterOffers,
+  filterServiceCatalogItems,
   filterTodoTasks,
   filterVehicles,
   filterWorkOrders,
@@ -33,6 +35,9 @@ import {
   getDashboardStats,
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
+  getWorkOrderCompletedServiceCount,
+  getWorkOrderServiceItems,
+  getWorkOrderServiceSummary,
   groupWorkOrdersByExecutorSet,
   nextOfferNumber,
   nextWorkOrderNumber,
@@ -42,6 +47,7 @@ import {
   sortDocumentTemplates,
   sortLegalFrameworks,
   sortOffers,
+  sortServiceCatalogItems,
   sortVehicles,
   sortTodoTasks,
   updateVehicleReservation,
@@ -53,6 +59,7 @@ import {
   updateLocation,
   updateOffer,
   updateReminder,
+  updateServiceCatalogItem,
   updateTodoTask,
   updateWorkOrder,
 } from "../src/safetyModel.js";
@@ -99,8 +106,10 @@ function buildState() {
     offers: [],
     vehicles: [],
     legalFrameworks: [],
+    serviceCatalog: [],
     documentTemplates: [],
     dashboardWidgets: [],
+    activeOrganizationId: "org-1",
   };
 }
 
@@ -322,6 +331,70 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(sorted[0].id, "template-1");
 });
 
+test("service catalog keeps linked templates and supports filtering and sorting", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Zapisnik radne opreme",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-1",
+    () => "2026-03-31T08:00:00.000Z",
+  );
+  state.documentTemplates = [template];
+
+  const service = createServiceCatalogItem(
+    {
+      organizationId: "org-1",
+      name: "Ispitivanje radne opreme",
+      serviceCode: "IRO-001",
+      status: "active",
+      linkedTemplateIds: ["template-1"],
+      note: "Redovni pregled",
+    },
+    state,
+    () => "service-1",
+    () => "2026-03-31T08:05:00.000Z",
+  );
+
+  assert.equal(service.linkedTemplateIds.length, 1);
+  assert.equal(service.linkedTemplateTitles[0], "Zapisnik radne opreme");
+
+  const updated = updateServiceCatalogItem(
+    service,
+    {
+      status: "inactive",
+      note: "Privremeno ugašena usluga",
+    },
+    {
+      ...state,
+      serviceCatalog: [service],
+    },
+    () => "2026-03-31T09:00:00.000Z",
+  );
+
+  assert.equal(updated.status, "inactive");
+  assert.equal(updated.note, "Privremeno ugašena usluga");
+
+  const filtered = filterServiceCatalogItems([service, updated], {
+    query: "privremeno",
+    status: "inactive",
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "service-1");
+
+  const sorted = sortServiceCatalogItems([
+    { ...service, id: "service-2", serviceCode: "ZNR-200", name: "Zaštita na radu" },
+    updated,
+  ]);
+  assert.equal(sorted[0].serviceCode, "ZNR-200");
+});
+
 test("createWorkOrder pulls snapshot data from selected company and location", () => {
   const state = buildState();
 
@@ -450,6 +523,81 @@ test("updateWorkOrder can replace executor list with more than two executors", (
   assert.deepEqual(next.executors, ["Ana Kovac", "Iva Novak", "Petra Bencic"]);
   assert.equal(next.executor1, "Ana Kovac");
   assert.equal(next.executor2, "Iva Novak");
+});
+
+test("work orders can store service catalog items with completion state", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Zapisnik panik rasvjete",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-1",
+    () => "2026-03-31T09:00:00.000Z",
+  );
+  state.documentTemplates = [template];
+
+  const service = createServiceCatalogItem(
+    {
+      organizationId: "org-1",
+      name: "Panik rasvjeta",
+      serviceCode: "PR-100",
+      status: "active",
+      linkedTemplateIds: ["template-1"],
+    },
+    state,
+    () => "service-1",
+    () => "2026-03-31T09:05:00.000Z",
+  );
+  state.serviceCatalog = [service];
+
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Radovi na panik rasvjeti",
+      serviceItems: [
+        {
+          serviceId: "service-1",
+          isCompleted: false,
+        },
+      ],
+    },
+    state,
+    () => "work-order-service-1",
+    "RN-00021",
+    () => "2026-03-31T09:10:00.000Z",
+  );
+
+  assert.equal(getWorkOrderServiceItems(workOrder).length, 1);
+  assert.equal(getWorkOrderServiceItems(workOrder)[0].name, "Panik rasvjeta");
+  assert.equal(getWorkOrderServiceSummary(workOrder), "Panik rasvjeta");
+  assert.equal(getWorkOrderCompletedServiceCount(workOrder), 0);
+
+  const updated = updateWorkOrder(
+    workOrder,
+    {
+      serviceItems: [
+        {
+          serviceId: "service-1",
+          isCompleted: true,
+        },
+      ],
+    },
+    {
+      ...state,
+      workOrders: [workOrder],
+    },
+    () => "2026-03-31T10:00:00.000Z",
+  );
+
+  assert.equal(getWorkOrderCompletedServiceCount(updated), 1);
+  assert.equal(getWorkOrderServiceItems(updated)[0].linkedTemplateTitles[0], "Zapisnik panik rasvjete");
 });
 
 test("groupWorkOrdersByExecutorSet merges work orders with the same executor combination", () => {

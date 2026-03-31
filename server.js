@@ -345,6 +345,35 @@ function assertLegalFrameworkIdsPayloadInScope(scopedSnapshot, body = {}) {
   });
 }
 
+function assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body = {}, fieldName = "linkedTemplateIds") {
+  if (!Array.isArray(body[fieldName])) {
+    return;
+  }
+
+  body[fieldName].forEach((id) => {
+    if (!String(id ?? "").trim()) {
+      return;
+    }
+
+    assertInScope(scopedSnapshot.documentTemplates ?? [], id, "Template nije dostupan za odabranu organizaciju.");
+  });
+}
+
+function assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body = {}) {
+  if (!Array.isArray(body.serviceItems)) {
+    return;
+  }
+
+  body.serviceItems.forEach((item) => {
+    const serviceId = String(item?.serviceId ?? item?.id ?? "").trim();
+    if (!serviceId) {
+      return;
+    }
+
+    assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceId, "Usluga nije dostupna za odabranu organizaciju.");
+  });
+}
+
 function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
   if (!body.workOrderId) {
     return;
@@ -618,6 +647,7 @@ async function handleApiRequest(request, response, url) {
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
+    const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
@@ -818,7 +848,11 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createWorkOrder(body, user);
+      assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createWorkOrder({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -906,6 +940,23 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       await domainRepository.createLegalFramework({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/service-catalog") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati uslugama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createServiceCatalogItem({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -1136,7 +1187,11 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], body, user);
+      assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
 
       if (!updated) {
         sendError(response, 404, "Radni nalog nije pronaden.");
@@ -1265,6 +1320,30 @@ async function handleApiRequest(request, response, url) {
 
       if (!updated) {
         sendError(response, 404, "Propis nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (serviceCatalogMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati uslugama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronadena.");
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateServiceCatalogItem(serviceCatalogMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Usluga nije pronadena.");
         return true;
       }
 
@@ -1469,6 +1548,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Propis nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (serviceCatalogMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati usluge.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronadena.");
+      const deleted = await domainRepository.deleteServiceCatalogItem(serviceCatalogMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Usluga nije pronadena.");
         return true;
       }
 

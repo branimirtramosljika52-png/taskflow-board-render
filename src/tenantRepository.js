@@ -602,6 +602,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       })),
       referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
     })),
+    serviceCatalog: (rawSnapshot.serviceCatalog ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+      linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+    })),
     dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && String(item.userId) === String(actor?.id ?? "")
@@ -1040,6 +1047,7 @@ export class MemoryTenantRepository {
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
+    serviceCatalog: [],
     dashboardWidgets: [],
   }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
@@ -1668,6 +1676,7 @@ export class MySqlTenantRepository {
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
+    serviceCatalog: [],
     dashboardWidgets: [],
   }) {
     const connection = await this.pool.getConnection();
@@ -1687,6 +1696,7 @@ export class MySqlTenantRepository {
         vehicles: [],
         legalFrameworks: [],
         documentTemplates: [],
+        serviceCatalog: [],
         dashboardWidgets: [],
       };
 

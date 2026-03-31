@@ -10,6 +10,7 @@ import {
   createLocation,
   createOffer,
   createReminder,
+  createServiceCatalogItem,
   createTodoTask,
   createTodoTaskComment,
   createVehicle,
@@ -18,6 +19,7 @@ import {
   deleteVehicleReservation,
   deriveOfferInitials,
   getWorkOrderExecutors,
+  getWorkOrderServiceItems,
   nextOfferNumber,
   sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
@@ -28,6 +30,7 @@ import {
   updateLocation,
   updateOffer,
   updateReminder,
+  updateServiceCatalogItem,
   updateTodoTask,
   updateVehicle,
   updateVehicleReservation,
@@ -326,6 +329,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   contactPhone: "Kontakt broj",
   contactEmail: "Kontakt email",
   executors: "Izvrsitelji",
+  serviceItems: "Stavke usluge",
   serviceLine: "Usluga",
   department: "Odjel",
   linkReference: "Veza RN",
@@ -353,6 +357,12 @@ function formatWorkOrderActivityValue(fieldKey, value) {
     return getWorkOrderExecutors({ executors: value }).join(", ");
   }
 
+  if (fieldKey === "serviceItems") {
+    return getWorkOrderServiceItems({ serviceItems: value })
+      .map((item) => `${item.isCompleted ? "✓" : "✕"} ${item.name || item.serviceCode}`)
+      .join(", ");
+  }
+
   if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
     return formatDateOnlyDisplay(value);
   }
@@ -370,6 +380,22 @@ function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
     }
 
     return leftValues.every((value, index) => value === rightValues[index]);
+  }
+
+  if (fieldKey === "serviceItems") {
+    const leftItems = getWorkOrderServiceItems({ serviceItems: left });
+    const rightItems = getWorkOrderServiceItems({ serviceItems: right });
+
+    if (leftItems.length !== rightItems.length) {
+      return false;
+    }
+
+    return leftItems.every((item, index) => (
+      String(item.serviceId) === String(rightItems[index]?.serviceId)
+      && String(item.name) === String(rightItems[index]?.name)
+      && String(item.serviceCode) === String(rightItems[index]?.serviceCode)
+      && Boolean(item.isCompleted) === Boolean(rightItems[index]?.isCompleted)
+    ));
   }
 
   if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
@@ -719,6 +745,7 @@ async function fetchSnapshotFromConnection(connection) {
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio
+           , usluge_json
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
   `);
@@ -730,6 +757,16 @@ async function fetchSnapshotFromConnection(connection) {
     const executors = parseJsonArray(row.izvrsitelji_json)
       .map((value) => dbString(value))
       .filter(Boolean);
+    const serviceItems = parseJsonArray(row.usluge_json)
+      .map((item) => ({
+        serviceId: dbString(item.serviceId ?? item.id),
+        name: dbString(item.name),
+        serviceCode: dbString(item.serviceCode),
+        linkedTemplateIds: parseJsonArray(item.linkedTemplateIds).map((value) => dbString(value)).filter(Boolean),
+        linkedTemplateTitles: parseJsonArray(item.linkedTemplateTitles).map((value) => dbString(value)).filter(Boolean),
+        isCompleted: Boolean(item.isCompleted),
+      }))
+      .filter((item) => item.name || item.serviceCode);
 
     return {
       id: String(row.id),
@@ -764,6 +801,7 @@ async function fetchSnapshotFromConnection(connection) {
       contactName: row.kontakt_osoba ?? "",
       contactPhone: row.kontakt_broj ?? "",
       contactEmail: row.kontakt_email ?? "",
+      serviceItems,
       serviceLine: row.usluge ?? "",
       department: row.odjel ?? "",
       createdAt: normalizeTimestamp(row.datum_rn),
@@ -1034,6 +1072,40 @@ async function fetchSnapshotFromConnection(connection) {
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
 
+  const [serviceCatalogRows] = await connection.query(`
+    SELECT id, organization_id, name, service_code, status, linked_template_ids_json, note, created_at, updated_at
+    FROM web_service_catalog
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'inactive' THEN 1
+        ELSE 9
+      END ASC,
+      service_code ASC,
+      name ASC,
+      id DESC
+  `);
+
+  const serviceCatalog = serviceCatalogRows.map((row) => {
+    const templateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const linkedTemplateTitles = templateIds
+      .map((templateId) => documentTemplates.find((item) => String(item.id) === String(templateId))?.title ?? "")
+      .filter(Boolean);
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      name: row.name ?? "",
+      serviceCode: row.service_code ?? "",
+      status: row.status ?? "active",
+      linkedTemplateIds: templateIds,
+      linkedTemplateTitles,
+      note: row.note ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [legalFrameworkRows] = await connection.query(`
     SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
            published_on, effective_from, review_date, status, tags_text, source_url, note,
@@ -1173,6 +1245,7 @@ async function fetchSnapshotFromConnection(connection) {
     vehicles,
     legalFrameworks,
     documentTemplates,
+    serviceCatalog,
     dashboardWidgets,
   };
 }
@@ -1250,6 +1323,7 @@ export class InMemorySafetyRepository {
       vehicles: [],
       legalFrameworks: [],
       documentTemplates: [],
+      serviceCatalog: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -1914,6 +1988,30 @@ export class InMemorySafetyRepository {
     return this.snapshot.legalFrameworks.length !== before;
   }
 
+  async createServiceCatalogItem(input) {
+    const item = createServiceCatalogItem(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.serviceCatalog = [item, ...this.snapshot.serviceCatalog];
+    return item;
+  }
+
+  async updateServiceCatalogItem(id, patch) {
+    const current = this.snapshot.serviceCatalog.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateServiceCatalogItem(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.serviceCatalog = this.snapshot.serviceCatalog.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteServiceCatalogItem(id) {
+    const before = this.snapshot.serviceCatalog.length;
+    this.snapshot.serviceCatalog = this.snapshot.serviceCatalog.filter((item) => item.id !== id);
+    return this.snapshot.serviceCatalog.length !== before;
+  }
+
   async createDocumentTemplate(input, actor = null) {
     const item = createDocumentTemplate({
       ...input,
@@ -1943,6 +2041,16 @@ export class InMemorySafetyRepository {
   async deleteDocumentTemplate(id) {
     const before = this.snapshot.documentTemplates.length;
     this.snapshot.documentTemplates = this.snapshot.documentTemplates.filter((item) => item.id !== id);
+    this.snapshot.serviceCatalog = this.snapshot.serviceCatalog.map((item) => ({
+      ...item,
+      linkedTemplateIds: (item.linkedTemplateIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedTemplateTitles: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? []
+        : [...(item.linkedTemplateTitles ?? [])],
+      updatedAt: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? new Date().toISOString()
+        : item.updatedAt,
+    }));
     return this.snapshot.documentTemplates.length !== before;
   }
 
@@ -2231,6 +2339,21 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_service_catalog (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        name VARCHAR(180) NOT NULL,
+        service_code VARCHAR(80) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        linked_template_ids_json LONGTEXT NULL,
+        note TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_service_catalog_org_code (organization_id, service_code),
+        INDEX idx_web_service_catalog_org_status (organization_id, status)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_dashboard_widgets (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -2255,6 +2378,7 @@ export class MySqlSafetyRepository {
     `);
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
+    await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
@@ -2821,8 +2945,8 @@ export class MySqlSafetyRepository {
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
              izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
-             odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             odjel, koordinate, usluge, usluge_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -2849,6 +2973,7 @@ export class MySqlSafetyRepository {
           draft.department,
           draft.coordinates,
           draft.serviceLine,
+          JSON.stringify(draft.serviceItems ?? []),
           draft.description,
           draft.region,
           draft.invoiceDate,
@@ -2906,7 +3031,7 @@ export class MySqlSafetyRepository {
           SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
               izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
-              odjel = ?, koordinate = ?, usluge = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
+              odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
               tezina = ?, rn_zavrsio = ?
           WHERE id = ?
         `,
@@ -2932,6 +3057,7 @@ export class MySqlSafetyRepository {
           next.department,
           next.coordinates,
           next.serviceLine,
+          JSON.stringify(next.serviceItems ?? []),
           next.description,
           next.region,
           next.invoiceDate,
@@ -3865,6 +3991,97 @@ export class MySqlSafetyRepository {
     }
   }
 
+  async createServiceCatalogItem(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createServiceCatalogItem(input, snapshot, () => "pending-service-catalog", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_service_catalog
+            (organization_id, name, service_code, status, linked_template_ids_json, note)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.name,
+          draft.serviceCode,
+          draft.status,
+          JSON.stringify(draft.linkedTemplateIds ?? []),
+          draft.note,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateServiceCatalogItem(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.serviceCatalog.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateServiceCatalogItem(current, patch, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_service_catalog
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, linked_template_ids_json = ?, note = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.organizationId),
+          next.name,
+          next.serviceCode,
+          next.status,
+          JSON.stringify(next.linkedTemplateIds ?? []),
+          next.note,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteServiceCatalogItem(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_service_catalog WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
   async createLegalFramework(input) {
     const connection = await this.pool.getConnection();
 
@@ -4117,8 +4334,34 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
+
+      const [services] = await connection.query(
+        "SELECT id, linked_template_ids_json FROM web_service_catalog WHERE linked_template_ids_json IS NOT NULL",
+      );
+
+      for (const row of services) {
+        const currentIds = parseJsonArray(row.linked_template_ids_json).map((entry) => dbString(entry));
+        const nextIds = currentIds.filter((entryId) => String(entryId) !== String(id));
+
+        if (nextIds.length !== currentIds.length) {
+          await connection.query(
+            `
+              UPDATE web_service_catalog
+              SET linked_template_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            [JSON.stringify(nextIds), Number(row.id)],
+          );
+        }
+      }
+
       const [result] = await connection.query("DELETE FROM web_document_templates WHERE id = ?", [Number(id)]);
+      await connection.commit();
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
