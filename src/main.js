@@ -62,6 +62,37 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
+const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
+const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
+const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
+  "7z",
+  "bmp",
+  "csv",
+  "doc",
+  "docx",
+  "eml",
+  "gif",
+  "heic",
+  "jpeg",
+  "jpg",
+  "msg",
+  "ods",
+  "odt",
+  "pdf",
+  "png",
+  "rar",
+  "rtf",
+  "svg",
+  "tif",
+  "tiff",
+  "txt",
+  "webp",
+  "xls",
+  "xlsm",
+  "xlsx",
+  "xml",
+  "zip",
+]);
 const CHAT_POLL_INTERVAL_MS = 7_000;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const OFFER_LOCATION_ALL_VALUE = "__all__";
@@ -421,6 +452,13 @@ const state = {
   workOrderActivity: {
     workOrderId: "",
     loading: false,
+    items: [],
+    error: "",
+  },
+  workOrderDocuments: {
+    workOrderId: "",
+    loading: false,
+    uploading: false,
     items: [],
     error: "",
   },
@@ -1047,6 +1085,20 @@ const workOrderActivityEmpty = document.querySelector("#work-order-activity-empt
 const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
 const workOrderActivityError = document.querySelector("#work-order-activity-error");
 const workOrderActivityCount = document.querySelector("#work-order-activity-count");
+const workOrderDocumentDropzone = document.querySelector("#work-order-document-dropzone");
+const workOrderDocumentFileInput = document.querySelector("#work-order-document-file-input");
+const workOrderDocumentList = document.querySelector("#work-order-document-list");
+const workOrderDocumentEmpty = document.querySelector("#work-order-document-empty");
+const workOrderDocumentLoading = document.querySelector("#work-order-document-loading");
+const workOrderDocumentError = document.querySelector("#work-order-document-error");
+const workOrderDocumentCount = document.querySelector("#work-order-document-count");
+const workOrderActivityDropzone = document.querySelector("#work-order-activity-dropzone");
+const workOrderActivityFileInput = document.querySelector("#work-order-activity-file-input");
+const workOrderActivityDocumentList = document.querySelector("#work-order-activity-document-list");
+const workOrderActivityDocumentEmpty = document.querySelector("#work-order-activity-document-empty");
+const workOrderActivityDocumentLoading = document.querySelector("#work-order-activity-document-loading");
+const workOrderActivityDocumentError = document.querySelector("#work-order-activity-document-error");
+const workOrderActivityDocumentCount = document.querySelector("#work-order-activity-document-count");
 
 if (dashboardBuilderPanel?.parentElement !== document.body) {
   document.body.append(dashboardBuilderPanel);
@@ -1707,6 +1759,9 @@ function applySnapshot(payload) {
   if (!state.workOrders.some((item) => String(item.id) === String(state.workOrderMap.selectedWorkOrderId))) {
     state.workOrderMap.selectedWorkOrderId = "";
   }
+  if (state.workOrderDocuments.workOrderId && !state.workOrders.some((item) => String(item.id) === String(state.workOrderDocuments.workOrderId))) {
+    resetWorkOrderDocumentsState();
+  }
   if (!state.todoTasks.some((item) => String(item.id) === String(state.activeTodoTaskId))) {
     state.activeTodoTaskId = state.todoTasks[0]?.id ?? "";
   }
@@ -1898,17 +1953,21 @@ function applyPresenceToAvatar(target, presence = "online") {
   target.dataset.presence = normalizeUserPresence(presence);
 }
 
-function readAvatarFileAsDataUrl(file) {
+function readFileAsDataUrl(file, errorMessage = "Ne mogu ucitati datoteku.") {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       resolve(String(reader.result ?? ""));
     });
     reader.addEventListener("error", () => {
-      reject(new Error("Ne mogu ucitati sliku."));
+      reject(new Error(errorMessage));
     });
     reader.readAsDataURL(file);
   });
+}
+
+function readAvatarFileAsDataUrl(file) {
+  return readFileAsDataUrl(file, "Ne mogu ucitati sliku.");
 }
 
 function normalizeLooseName(value = "") {
@@ -3494,6 +3553,7 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
       workOrderNumberPreview.textContent = `Uredujes ${created.workOrderNumber}`;
       renderWorkOrderEditorSummary();
       void loadWorkOrderActivity(created.id);
+      void loadWorkOrderDocuments(created.id);
     }
   }
 
@@ -6227,20 +6287,24 @@ function renderWorkOrderActivity() {
     if (entry.oldValue || entry.newValue) {
       const diff = document.createElement("div");
       diff.className = "work-order-activity-diff";
+      const hasOldValue = Boolean(entry.oldValue);
+      const hasNewValue = Boolean(entry.newValue);
 
-      if (entry.oldValue) {
+      if (hasOldValue) {
         const previous = document.createElement("span");
         previous.className = "work-order-activity-old";
         previous.textContent = entry.oldValue;
         diff.append(previous);
       }
 
-      const arrow = document.createElement("span");
-      arrow.className = "work-order-activity-arrow";
-      arrow.textContent = "->";
-      diff.append(arrow);
+      if (hasOldValue && hasNewValue) {
+        const arrow = document.createElement("span");
+        arrow.className = "work-order-activity-arrow";
+        arrow.textContent = "->";
+        diff.append(arrow);
+      }
 
-      if (entry.newValue) {
+      if (hasNewValue) {
         const next = document.createElement("span");
         next.className = "work-order-activity-new";
         next.textContent = entry.newValue;
@@ -6298,6 +6362,381 @@ async function loadWorkOrderActivity(workOrderId) {
   }
 
   renderWorkOrderActivity();
+}
+
+function resetWorkOrderDocumentsState() {
+  state.workOrderDocuments = {
+    workOrderId: "",
+    loading: false,
+    uploading: false,
+    items: [],
+    error: "",
+  };
+  renderWorkOrderDocuments();
+}
+
+function getWorkOrderDocumentExtension(fileName = "", fileType = "") {
+  const normalizedName = String(fileName ?? "").trim();
+
+  if (normalizedName.includes(".")) {
+    return normalizedName.split(".").pop().toUpperCase();
+  }
+
+  const normalizedType = String(fileType ?? "").trim().toUpperCase();
+  return normalizedType.includes("/") ? normalizedType.split("/").pop() : (normalizedType || "FILE");
+}
+
+function getWorkOrderDocumentSourceLabel(sourceType = "editor") {
+  return sourceType === "activity" ? "Activity" : "Otvaranje";
+}
+
+function formatFileSize(value) {
+  const size = Number(value);
+
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 KB";
+  }
+
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function createWorkOrderDocumentCard(item, { compact = false } = {}) {
+  const card = document.createElement("article");
+  card.className = compact ? "work-order-document-card is-compact" : "work-order-document-card";
+
+  const badge = document.createElement("span");
+  badge.className = "work-order-document-badge";
+  badge.textContent = getWorkOrderDocumentExtension(item.fileName, item.fileType);
+
+  const body = document.createElement("div");
+  body.className = "work-order-document-card-body";
+
+  const name = document.createElement("strong");
+  name.className = "work-order-document-name";
+  name.textContent = item.fileName || "Dokument";
+  name.title = item.fileName || "Dokument";
+
+  const meta = document.createElement("span");
+  meta.className = "work-order-document-meta";
+  meta.textContent = [
+    formatFileSize(item.fileSize),
+    getWorkOrderDocumentSourceLabel(item.sourceType),
+    formatDateTime(item.createdAt),
+  ].filter(Boolean).join(" · ");
+
+  body.append(name, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-document-actions";
+
+  const link = document.createElement("a");
+  link.className = "ghost-button work-order-document-link";
+  link.href = item.dataUrl || "#";
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.download = item.fileName || "dokument";
+  link.textContent = compact ? "Open" : "Otvori";
+  actions.append(link);
+
+  card.append(badge, body, actions);
+  return card;
+}
+
+function syncWorkOrderDocumentDropzone(dropzone, uploading, defaultTitle, defaultSubtitle) {
+  if (!dropzone) {
+    return;
+  }
+
+  dropzone.disabled = uploading;
+  dropzone.dataset.uploading = uploading ? "true" : "false";
+  const title = dropzone.querySelector(".work-order-document-dropzone-copy strong");
+  const subtitle = dropzone.querySelector(".work-order-document-dropzone-copy span");
+
+  if (title) {
+    title.textContent = uploading ? "Upload u tijeku..." : defaultTitle;
+  }
+
+  if (subtitle) {
+    subtitle.textContent = uploading ? "Datoteke se upravo spremaju na RN." : defaultSubtitle;
+  }
+}
+
+function renderWorkOrderDocuments() {
+  const {
+    workOrderId,
+    loading,
+    uploading,
+    items,
+    error,
+  } = state.workOrderDocuments;
+
+  if (
+    !workOrderDocumentList
+    || !workOrderDocumentEmpty
+    || !workOrderDocumentLoading
+    || !workOrderDocumentError
+    || !workOrderActivityDocumentList
+    || !workOrderActivityDocumentEmpty
+    || !workOrderActivityDocumentLoading
+    || !workOrderActivityDocumentError
+  ) {
+    return;
+  }
+
+  if (workOrderDocumentCount) {
+    workOrderDocumentCount.textContent = String(items.length);
+  }
+
+  if (workOrderActivityDocumentCount) {
+    workOrderActivityDocumentCount.textContent = String(items.length);
+  }
+
+  workOrderDocumentLoading.hidden = !loading;
+  workOrderActivityDocumentLoading.hidden = !loading;
+  workOrderDocumentError.hidden = !error;
+  workOrderActivityDocumentError.hidden = !error;
+  workOrderDocumentError.textContent = error;
+  workOrderActivityDocumentError.textContent = error;
+  workOrderDocumentList.replaceChildren();
+  workOrderActivityDocumentList.replaceChildren();
+
+  syncWorkOrderDocumentDropzone(
+    workOrderDocumentDropzone,
+    uploading,
+    "Dodaj dokumente u RN",
+    "Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni za odabir.",
+  );
+  syncWorkOrderDocumentDropzone(
+    workOrderActivityDropzone,
+    uploading,
+    "Dodaj iz activityja",
+    "Povuci ili klikni za upload dokumenata.",
+  );
+
+  items.forEach((item) => {
+    workOrderDocumentList.append(createWorkOrderDocumentCard(item));
+    workOrderActivityDocumentList.append(createWorkOrderDocumentCard(item, { compact: true }));
+  });
+
+  const editorEmptyMessage = !workOrderId
+    ? "Povuci dokumente ovdje. Ako je RN nov, prvo spremimo osnovne podatke pa dokument vežemo uz njega."
+    : "Jos nema dokumenata za ovaj RN.";
+  const activityEmptyMessage = !workOrderId
+    ? "Dokumenti ce se pojaviti kad RN bude spremljen."
+    : "Jos nema dokumenata u activity prikazu.";
+
+  workOrderDocumentEmpty.textContent = editorEmptyMessage;
+  workOrderActivityDocumentEmpty.textContent = activityEmptyMessage;
+  workOrderDocumentEmpty.hidden = loading || Boolean(error) || items.length > 0;
+  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || items.length > 0;
+}
+
+async function loadWorkOrderDocuments(workOrderId) {
+  if (!workOrderId) {
+    resetWorkOrderDocumentsState();
+    return;
+  }
+
+  state.workOrderDocuments = {
+    workOrderId: String(workOrderId),
+    loading: true,
+    uploading: state.workOrderDocuments.uploading,
+    items: [],
+    error: "",
+  };
+  renderWorkOrderDocuments();
+
+  try {
+    const payload = await apiRequest(`/work-orders/${workOrderId}/documents`);
+
+    if (state.workOrderDocuments.workOrderId !== String(workOrderId)) {
+      return;
+    }
+
+    state.workOrderDocuments = {
+      workOrderId: String(workOrderId),
+      loading: false,
+      uploading: state.workOrderDocuments.uploading,
+      items: payload.items ?? [],
+      error: "",
+    };
+  } catch (error) {
+    if (state.workOrderDocuments.workOrderId !== String(workOrderId)) {
+      return;
+    }
+
+    state.workOrderDocuments = {
+      workOrderId: String(workOrderId),
+      loading: false,
+      uploading: state.workOrderDocuments.uploading,
+      items: [],
+      error: error.message,
+    };
+  }
+
+  renderWorkOrderDocuments();
+}
+
+function isWorkOrderDocumentFileAllowed(file) {
+  const extension = String(file?.name ?? "").trim().includes(".")
+    ? String(file.name).trim().split(".").pop().toLowerCase()
+    : "";
+
+  if (extension && WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS.has(extension)) {
+    return true;
+  }
+
+  const mimeType = String(file?.type ?? "").trim().toLowerCase();
+  return mimeType.startsWith("image/")
+    || mimeType === "application/pdf"
+    || mimeType === "message/rfc822"
+    || mimeType === "application/vnd.ms-outlook"
+    || mimeType === "application/msword"
+    || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    || mimeType === "application/vnd.ms-excel"
+    || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    || mimeType === "text/csv"
+    || mimeType === "text/plain";
+}
+
+async function ensureWorkOrderReadyForDocumentUpload() {
+  const requiresSave = !workOrderIdInput.value || state.workOrderAutoSave.dirty;
+
+  if (!requiresSave) {
+    return String(workOrderIdInput.value || "");
+  }
+
+  const success = await persistWorkOrderAutoSave({ immediate: true });
+
+  if (!success || !workOrderIdInput.value) {
+    state.workOrderDocuments.error = workOrderError.textContent || "Prvo spremi radni nalog prije uploada dokumenata.";
+    renderWorkOrderDocuments();
+    return "";
+  }
+
+  return String(workOrderIdInput.value || "");
+}
+
+async function buildWorkOrderDocumentUploadPayload(files) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!uploadFiles.length) {
+    return [];
+  }
+
+  for (const file of uploadFiles) {
+    if (!isWorkOrderDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podrzan. Dozvoljeno: ${WORK_ORDER_DOCUMENT_ACCEPT_LABEL}`);
+    }
+
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  return Promise.all(uploadFiles.map(async (file) => ({
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`),
+  })));
+}
+
+async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
+  const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!selectedFiles.length || state.workOrderDocuments.uploading) {
+    return;
+  }
+
+  state.workOrderDocuments.error = "";
+  state.workOrderDocuments.uploading = true;
+  renderWorkOrderDocuments();
+
+  try {
+    const workOrderId = await ensureWorkOrderReadyForDocumentUpload();
+
+    if (!workOrderId) {
+      return;
+    }
+
+    const payloadFiles = await buildWorkOrderDocumentUploadPayload(selectedFiles);
+    await apiRequest(`/work-orders/${workOrderId}/documents`, {
+      method: "POST",
+      body: {
+        sourceType,
+        files: payloadFiles,
+      },
+    });
+    workOrderError.textContent = "";
+    await Promise.all([
+      loadWorkOrderDocuments(workOrderId),
+      loadWorkOrderActivity(workOrderId),
+    ]);
+  } catch (error) {
+    state.workOrderDocuments.error = error.message;
+    workOrderError.textContent = error.message;
+  } finally {
+    state.workOrderDocuments.uploading = false;
+    renderWorkOrderDocuments();
+
+    if (workOrderDocumentFileInput) {
+      workOrderDocumentFileInput.value = "";
+    }
+
+    if (workOrderActivityFileInput) {
+      workOrderActivityFileInput.value = "";
+    }
+  }
+}
+
+function bindWorkOrderDocumentDropzone(dropzone, fileInput, sourceType) {
+  if (!dropzone || !fileInput) {
+    return;
+  }
+
+  let dragDepth = 0;
+
+  dropzone.addEventListener("click", () => {
+    if (!state.workOrderDocuments.uploading) {
+      fileInput.click();
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    void handleWorkOrderDocumentSelection(fileInput.files, sourceType);
+  });
+
+  dropzone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    dragDepth += 1;
+    dropzone.classList.add("is-drag-over");
+  });
+
+  dropzone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    dropzone.classList.add("is-drag-over");
+  });
+
+  dropzone.addEventListener("dragleave", (event) => {
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+
+    if (dragDepth === 0) {
+      dropzone.classList.remove("is-drag-over");
+    }
+  });
+
+  dropzone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    dragDepth = 0;
+    dropzone.classList.remove("is-drag-over");
+    void handleWorkOrderDocumentSelection(event.dataTransfer?.files, sourceType);
+  });
 }
 
 function syncWorkOrderEditorModal() {
@@ -7311,6 +7750,7 @@ function resetWorkOrderForm() {
   workOrderRegionInput.value = "";
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
+  resetWorkOrderDocumentsState();
   renderWorkOrderEditorSummary();
   setWorkOrderSaveState("blocked");
 }
@@ -7473,6 +7913,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
 
   if (loadActivity) {
     void loadWorkOrderActivity(workOrder.id);
+    void loadWorkOrderDocuments(workOrder.id);
   }
 }
 
@@ -16753,6 +17194,10 @@ workOrderForm.addEventListener("change", () => {
   renderWorkOrderEditorSummary();
   void persistWorkOrderAutoSave({ immediate: true });
 });
+
+bindWorkOrderDocumentDropzone(workOrderDocumentDropzone, workOrderDocumentFileInput, "editor");
+bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileInput, "activity");
+renderWorkOrderDocuments();
 
 workOrdersTableWrap.addEventListener("scroll", () => {
   if (state.activeWorkOrderViewMode !== "list") {

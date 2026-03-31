@@ -426,6 +426,84 @@ function mapWorkOrderActivityRow(row) {
   };
 }
 
+function normalizeWorkOrderDocumentSource(value) {
+  return value === "activity" ? "activity" : "editor";
+}
+
+function inferWorkOrderDocumentExtension(fileName = "", fileType = "") {
+  const normalizedName = dbString(fileName);
+  const fromName = normalizedName.includes(".")
+    ? normalizedName.split(".").pop().toLowerCase()
+    : "";
+
+  if (fromName) {
+    return fromName.slice(0, 24);
+  }
+
+  const normalizedType = dbString(fileType).toLowerCase();
+  const fromType = normalizedType.includes("/")
+    ? normalizedType.split("/").pop().replace(/[^a-z0-9]+/g, "")
+    : normalizedType.replace(/[^a-z0-9]+/g, "");
+
+  return fromType.slice(0, 24);
+}
+
+function normalizeWorkOrderDocumentInput(input = {}, defaultSourceType = "editor") {
+  const fileName = dbString(input.fileName ?? input.name);
+  const dataUrl = dbString(input.dataUrl);
+
+  if (!fileName) {
+    throw new Error("Naziv dokumenta je obavezan.");
+  }
+
+  if (!dataUrl || !dataUrl.startsWith("data:")) {
+    throw new Error("Dokument nije ispravno ucitan.");
+  }
+
+  const numericSize = Number(input.fileSize ?? input.size);
+  const fileSize = Number.isFinite(numericSize) && numericSize >= 0 ? Math.round(numericSize) : 0;
+  const fileType = dbString(input.fileType ?? input.mimeType).slice(0, 160);
+  const sourceType = normalizeWorkOrderDocumentSource(input.sourceType ?? defaultSourceType);
+
+  return {
+    fileName: fileName.slice(0, 255),
+    fileType,
+    fileExtension: inferWorkOrderDocumentExtension(fileName, fileType),
+    fileSize,
+    dataUrl,
+    sourceType,
+  };
+}
+
+function buildWorkOrderDocumentActivityEntries(documents = []) {
+  return documents.map((document) => ({
+    actionType: "attachment_added",
+    fieldKey: "document",
+    fieldLabel: "Dokument",
+    oldValue: "",
+    newValue: document.fileName,
+    description: `Dodan dokument ${document.fileName}`,
+  }));
+}
+
+function mapWorkOrderDocumentRow(row) {
+  return {
+    id: String(row.id),
+    workOrderId: String(row.work_order_id ?? row.workOrderId ?? ""),
+    actorLabel: row.actor_label ?? row.actorLabel ?? "Safety360",
+    actorUserId: row.actor_user_id === null || row.actor_user_id === undefined
+      ? ""
+      : String(row.actor_user_id),
+    sourceType: normalizeWorkOrderDocumentSource(row.source_type ?? row.sourceType),
+    fileName: row.file_name ?? row.fileName ?? "",
+    fileExtension: row.file_extension ?? row.fileExtension ?? "",
+    fileType: row.file_type ?? row.fileType ?? "",
+    fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
+    dataUrl: row.data_url ?? row.dataUrl ?? "",
+    createdAt: normalizeActivityTimestamp(row.created_at ?? row.createdAt),
+  };
+}
+
 async function insertWorkOrderActivityEntries(connection, workOrderId, actor, entries = []) {
   if (!entries.length) {
     return;
@@ -989,6 +1067,7 @@ export class InMemorySafetyRepository {
       },
     ];
     this.workOrderActivity = new Map();
+    this.workOrderDocuments = new Map();
   }
 
   async init() {
@@ -1190,6 +1269,7 @@ export class InMemorySafetyRepository {
         createdAt: new Date().toISOString(),
       })),
     ]);
+    this.workOrderDocuments.set(String(workOrder.id), []);
     return workOrder;
   }
 
@@ -1226,6 +1306,61 @@ export class InMemorySafetyRepository {
       .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
   }
 
+  async addWorkOrderDocuments(workOrderId, files, actor = null, options = {}) {
+    const workOrder = this.snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+    if (!workOrder) {
+      return [];
+    }
+
+    const timestamp = new Date().toISOString();
+    const actorId = getActivityActorId(actor);
+    const actorLabel = getActivityActorLabel(actor);
+    const normalizedFiles = (Array.isArray(files) ? files : []).map((file) => (
+      normalizeWorkOrderDocumentInput(file, options.sourceType)
+    ));
+    const nextDocuments = normalizedFiles.map((file, index) => ({
+      id: `${workOrderId}-document-${Date.now()}-${index}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      sourceType: file.sourceType,
+      fileName: file.fileName,
+      fileExtension: file.fileExtension,
+      fileType: file.fileType,
+      fileSize: file.fileSize,
+      dataUrl: file.dataUrl,
+      createdAt: timestamp,
+    }));
+
+    const existingDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
+    this.workOrderDocuments.set(String(workOrderId), [...nextDocuments, ...existingDocuments]);
+
+    const existingEntries = this.workOrderActivity.get(String(workOrderId)) ?? [];
+    const activityEntries = buildWorkOrderDocumentActivityEntries(nextDocuments).map((entry, index) => ({
+      id: `${workOrderId}-document-activity-${Date.now()}-${index}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      actionType: entry.actionType,
+      fieldKey: entry.fieldKey,
+      fieldLabel: entry.fieldLabel,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      description: entry.description,
+      createdAt: timestamp,
+    }));
+    this.workOrderActivity.set(String(workOrderId), [...activityEntries, ...existingEntries]);
+
+    return nextDocuments;
+  }
+
+  async getWorkOrderDocuments(id) {
+    return (this.workOrderDocuments.get(String(id)) ?? [])
+      .slice()
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
   async deleteWorkOrder(id) {
     const before = this.snapshot.workOrders.length;
     this.snapshot.workOrders = this.snapshot.workOrders.filter((item) => item.id !== id);
@@ -1251,6 +1386,8 @@ export class InMemorySafetyRepository {
         }
         : item
     ));
+    this.workOrderActivity.delete(String(id));
+    this.workOrderDocuments.delete(String(id));
     return this.snapshot.workOrders.length !== before;
   }
 
@@ -1513,6 +1650,23 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_work_order_activity_logs_work_order (work_order_id),
         INDEX idx_work_order_activity_logs_created (created_at)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_work_order_documents (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        work_order_id INT NOT NULL,
+        actor_user_id INT NULL,
+        actor_label VARCHAR(160) NOT NULL DEFAULT '',
+        source_type VARCHAR(24) NOT NULL DEFAULT 'editor',
+        file_name VARCHAR(255) NOT NULL,
+        file_extension VARCHAR(24) NOT NULL DEFAULT '',
+        file_type VARCHAR(160) NOT NULL DEFAULT '',
+        file_size BIGINT NOT NULL DEFAULT 0,
+        data_url LONGTEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_work_order_documents_work_order (work_order_id),
+        INDEX idx_work_order_documents_created (created_at)
       )
     `);
     await this.pool.query(`
@@ -2382,10 +2536,106 @@ export class MySqlSafetyRepository {
     }
   }
 
+  async addWorkOrderDocuments(workOrderId, files, actor = null, options = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const workOrder = snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+      if (!workOrder) {
+        await connection.rollback();
+        return [];
+      }
+
+      const actorId = getActivityActorId(actor);
+      const actorLabel = getActivityActorLabel(actor);
+      const createdAt = new Date().toISOString();
+      const createdDocuments = [];
+
+      for (const file of Array.isArray(files) ? files : []) {
+        const normalized = normalizeWorkOrderDocumentInput(file, options.sourceType);
+        const [result] = await connection.query(
+          `
+            INSERT INTO web_work_order_documents
+              (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
+               file_type, file_size, data_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            Number(workOrderId),
+            actorId,
+            actorLabel,
+            normalized.sourceType,
+            normalized.fileName,
+            normalized.fileExtension,
+            normalized.fileType,
+            normalized.fileSize,
+            normalized.dataUrl,
+          ],
+        );
+
+        createdDocuments.push({
+          id: String(result.insertId),
+          workOrderId: String(workOrderId),
+          actorLabel,
+          actorUserId: actorId === null ? "" : String(actorId),
+          sourceType: normalized.sourceType,
+          fileName: normalized.fileName,
+          fileExtension: normalized.fileExtension,
+          fileType: normalized.fileType,
+          fileSize: normalized.fileSize,
+          dataUrl: normalized.dataUrl,
+          createdAt,
+        });
+      }
+
+      await insertWorkOrderActivityEntries(
+        connection,
+        workOrderId,
+        actor,
+        buildWorkOrderDocumentActivityEntries(createdDocuments),
+      );
+      await connection.commit();
+
+      return createdDocuments;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getWorkOrderDocuments(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
+                 file_extension, file_type, file_size, data_url, created_at
+          FROM web_work_order_documents
+          WHERE work_order_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT 200
+        `,
+        [Number(id)],
+      );
+
+      return rows.map((row) => mapWorkOrderDocumentRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
   async deleteWorkOrder(id) {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
       await connection.query(
         `
           UPDATE web_reminders
@@ -2402,8 +2652,14 @@ export class MySqlSafetyRepository {
         `,
         [Number(id)],
       );
+      await connection.query("DELETE FROM web_work_order_activity_logs WHERE work_order_id = ?", [Number(id)]);
+      await connection.query("DELETE FROM web_work_order_documents WHERE work_order_id = ?", [Number(id)]);
       const [result] = await connection.query("DELETE FROM radni_nalozi WHERE id = ?", [Number(id)]);
+      await connection.commit();
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

@@ -595,6 +595,7 @@ async function handleApiRequest(request, response, url) {
     const chatConversationMessageMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/messages$/);
     const chatConversationReadMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/read$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
+    const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
     if (request.method === "GET" && url.pathname === "/api/chat/bootstrap") {
@@ -978,6 +979,33 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronaden.");
       const items = await domainRepository.getWorkOrderActivity(workOrderActivityMatch[1]);
       sendJson(response, 200, { items });
+      return true;
+    }
+
+    if (workOrderDocumentsMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronaden.");
+      const items = await domainRepository.getWorkOrderDocuments(workOrderDocumentsMatch[1]);
+      sendJson(response, 200, { items });
+      return true;
+    }
+
+    if (workOrderDocumentsMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dodavati dokumente na radne naloge.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronaden.");
+      const items = await domainRepository.addWorkOrderDocuments(
+        workOrderDocumentsMatch[1],
+        body.files ?? [],
+        user,
+        { sourceType: body.sourceType ?? body.source },
+      );
+      sendJson(response, 201, { items });
       return true;
     }
 

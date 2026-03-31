@@ -4854,7 +4854,8 @@ body.is-work-order-editor-open {
 }
 
 .work-order-editor-section.is-overview,
-.work-order-editor-section.is-client {
+.work-order-editor-section.is-client,
+.work-order-editor-section.is-documents {
   grid-column: 1 / -1;
 }
 
@@ -4966,6 +4967,210 @@ body.is-work-order-editor-open {
   min-height: 164px;
 }
 
+.work-order-document-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef2fb;
+  border: 1px solid #dbe3f2;
+  color: #51617f;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.work-order-document-count.is-compact {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.7rem;
+}
+
+.work-order-document-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-document-dropzone {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px dashed #c6d3ea;
+  background: linear-gradient(180deg, #fbfdff, #f4f8ff);
+  color: #31425d;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.work-order-document-dropzone:hover,
+.work-order-document-dropzone.is-drag-over {
+  border-color: #9db3df;
+  background: linear-gradient(180deg, #f7fbff, #ebf2ff);
+  box-shadow: 0 10px 24px rgba(80, 102, 154, 0.12);
+}
+
+.work-order-document-dropzone:disabled {
+  cursor: wait;
+  opacity: 0.76;
+}
+
+.work-order-document-dropzone.is-compact {
+  padding: 12px 14px;
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.work-order-document-dropzone-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #d8e0ef;
+  color: #44678f;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.work-order-document-dropzone.is-compact .work-order-document-dropzone-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  font-size: 1rem;
+}
+
+.work-order-document-dropzone-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.work-order-document-dropzone-copy strong {
+  color: #223049;
+  font-size: 0.88rem;
+}
+
+.work-order-document-dropzone-copy span {
+  color: #71809d;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.work-order-document-loading,
+.work-order-document-empty {
+  margin: 0;
+  color: #75829c;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.work-order-document-loading.is-compact,
+.work-order-document-empty.is-compact {
+  font-size: 0.76rem;
+}
+
+.work-order-document-error {
+  margin: 0;
+}
+
+.work-order-document-list,
+.work-order-activity-document-list {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.work-order-document-list {
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.work-order-activity-document-list {
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.work-order-document-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid #e4e9f3;
+  background: #ffffff;
+}
+
+.work-order-document-card.is-compact {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.work-order-document-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: #eef3ff;
+  border: 1px solid #d7e1f8;
+  color: #47618a;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.work-order-document-card.is-compact .work-order-document-badge {
+  min-width: 44px;
+  min-height: 34px;
+  border-radius: 12px;
+  font-size: 0.65rem;
+}
+
+.work-order-document-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-document-name {
+  color: #243147;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.work-order-document-meta {
+  color: #7d8ba6;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.work-order-document-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.work-order-document-link {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .work-order-editor-actions {
   position: sticky;
   bottom: 0;
@@ -5071,7 +5276,7 @@ body.is-work-order-editor-open {
 .work-order-activity-panel {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
   align-content: start;
   gap: 12px;
   min-height: 0;
@@ -5097,6 +5302,27 @@ body.is-work-order-editor-open {
   margin: 2px 0 0;
   color: #232a3a;
   font-size: 0.96rem;
+}
+
+.work-order-activity-documents-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid #e6ebf4;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.work-order-activity-documents-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.work-order-activity-documents-head strong {
+  color: #233045;
+  font-size: 0.8rem;
 }
 
 .work-order-activity-count {
@@ -5226,12 +5452,16 @@ body.is-work-order-editor-open {
 }
 
 .work-order-editor-body::-webkit-scrollbar,
-.work-order-activity-list::-webkit-scrollbar {
+.work-order-activity-list::-webkit-scrollbar,
+.work-order-document-list::-webkit-scrollbar,
+.work-order-activity-document-list::-webkit-scrollbar {
   width: 10px;
 }
 
 .work-order-editor-body::-webkit-scrollbar-thumb,
-.work-order-activity-list::-webkit-scrollbar-thumb {
+.work-order-activity-list::-webkit-scrollbar-thumb,
+.work-order-document-list::-webkit-scrollbar-thumb,
+.work-order-activity-document-list::-webkit-scrollbar-thumb {
   background: #d5dae7;
   border-radius: 999px;
   border: 2px solid transparent;
@@ -5239,7 +5469,9 @@ body.is-work-order-editor-open {
 }
 
 .work-order-editor-body::-webkit-scrollbar-track,
-.work-order-activity-list::-webkit-scrollbar-track {
+.work-order-activity-list::-webkit-scrollbar-track,
+.work-order-document-list::-webkit-scrollbar-track,
+.work-order-activity-document-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -8838,6 +9070,16 @@ body.is-work-order-editor-open {
 
   .work-order-editor-hero-copy h2 {
     font-size: 1.2rem;
+  }
+
+  .work-order-document-card,
+  .work-order-document-card.is-compact {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .work-order-document-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .dashboard-signal-grid,

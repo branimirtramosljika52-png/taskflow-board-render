@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260331c" />
+    <link rel="stylesheet" href="/styles.css?v=20260331d" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -775,6 +775,39 @@
                       </div>
                     </section>
 
+                    <section class="work-order-editor-section is-documents">
+                      <div class="work-order-editor-section-head">
+                        <div>
+                          <p class="work-order-editor-section-kicker">Dokumenti</p>
+                          <h3>Prilozi radnog naloga</h3>
+                        </div>
+                        <span id="work-order-document-count" class="work-order-document-count">0</span>
+                      </div>
+
+                      <div class="work-order-document-stack">
+                        <input
+                          id="work-order-document-file-input"
+                          type="file"
+                          multiple
+                          hidden
+                          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml,message/rfc822,application/vnd.ms-outlook,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,application/rtf,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.text"
+                        />
+                        <button id="work-order-document-dropzone" type="button" class="work-order-document-dropzone">
+                          <span class="work-order-document-dropzone-mark" aria-hidden="true">+</span>
+                          <span class="work-order-document-dropzone-copy">
+                            <strong>Dodaj dokumente u RN</strong>
+                            <span>Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni za odabir.</span>
+                          </span>
+                        </button>
+                        <div id="work-order-document-loading" class="work-order-document-loading" hidden>Ucitavanje dokumenata...</div>
+                        <p id="work-order-document-empty" class="work-order-document-empty">
+                          Dokumenti ce se ovdje pojaviti nakon uploada. Ako je RN nov, prvo ga spremimo pa dokument vežemo uz njega.
+                        </p>
+                        <p id="work-order-document-error" class="form-error work-order-document-error" hidden></p>
+                        <div id="work-order-document-list" class="work-order-document-list"></div>
+                      </div>
+                    </section>
+
                     <div class="form-actions work-order-editor-actions">
                       <button id="work-order-open-todo" type="button" class="ghost-button">ToDo</button>
                       <button id="work-order-open-reminder" type="button" class="ghost-button">Reminder</button>
@@ -795,6 +828,33 @@
                   </div>
                   <span id="work-order-activity-count" class="work-order-activity-count">0</span>
                 </div>
+
+                <section class="work-order-activity-documents-panel">
+                  <div class="work-order-activity-documents-head">
+                    <strong>Dokumenti</strong>
+                    <span id="work-order-activity-document-count" class="work-order-document-count is-compact">0</span>
+                  </div>
+                  <input
+                    id="work-order-activity-file-input"
+                    type="file"
+                    multiple
+                    hidden
+                    accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml,message/rfc822,application/vnd.ms-outlook,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,application/rtf,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.text"
+                  />
+                  <button id="work-order-activity-dropzone" type="button" class="work-order-document-dropzone is-compact">
+                    <span class="work-order-document-dropzone-mark" aria-hidden="true">+</span>
+                    <span class="work-order-document-dropzone-copy">
+                      <strong>Dodaj iz activityja</strong>
+                      <span>Povuci ili klikni za upload dokumenata.</span>
+                    </span>
+                  </button>
+                  <div id="work-order-activity-document-loading" class="work-order-document-loading is-compact" hidden>Ucitavanje dokumenata...</div>
+                  <p id="work-order-activity-document-empty" class="work-order-document-empty is-compact">
+                    Ovdje se vide zadnji dokumenti za ovaj RN.
+                  </p>
+                  <p id="work-order-activity-document-error" class="form-error work-order-document-error" hidden></p>
+                  <div id="work-order-activity-document-list" class="work-order-activity-document-list"></div>
+                </section>
 
                 <div id="work-order-activity-loading" class="work-order-activity-loading" hidden>Ucitavanje aktivnosti...</div>
                 <p id="work-order-activity-empty" class="work-order-activity-empty">Otvori radni nalog da vidis promjene i status timeline.</p>
@@ -2659,6 +2719,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260331c"></script>
+    <script type="module" src="/src/main.js?v=20260331d"></script>
   </body>
 </html>
