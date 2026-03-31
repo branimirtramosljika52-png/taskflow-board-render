@@ -79,6 +79,8 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "longtext", label: "Dugi tekst" },
   { value: "date", label: "Datum" },
   { value: "number", label: "Broj" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "toggle", label: "Toggle" },
 ];
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [

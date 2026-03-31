@@ -7832,6 +7832,38 @@ function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemp
   return sortLegalFrameworks(state.legalFrameworks ?? []).filter((item) => selectedIds.has(String(item.id)));
 }
 
+function getDocumentTemplateFieldPreviewValue(field = {}, index = 0) {
+  const explicit = String(field.defaultValue ?? "").trim();
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const label = field.label || `Polje ${index + 1}`;
+
+  if (field.type === "date") {
+    return formatCompactDate(new Date().toISOString());
+  }
+
+  if (field.type === "number") {
+    return "0";
+  }
+
+  if (field.type === "checkbox") {
+    return "Oznaceno";
+  }
+
+  if (field.type === "toggle") {
+    return "Ukljuceno";
+  }
+
+  if (field.type === "longtext") {
+    return `Unesi ${label.toLowerCase()}`;
+  }
+
+  return `[${label}]`;
+}
+
 function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
   const builtInPlaceholders = [
     { token: "{{DOCUMENT_TITLE}}", label: "Naziv dokumenta", value: template.title || "Naziv zapisnika" },
@@ -7851,7 +7883,7 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
   const customFieldPlaceholders = (template.customFields ?? []).map((field, index) => ({
     token: `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`,
     label: field.label || `Polje ${index + 1}`,
-    value: field.defaultValue || `[${field.label || `Polje ${index + 1}`}]`,
+    value: getDocumentTemplateFieldPreviewValue(field, index),
   }));
 
   return [...builtInPlaceholders, ...customFieldPlaceholders];
@@ -7899,29 +7931,6 @@ function formatDocumentTemplateTextHtml(text, context, options = {}) {
   return escapeHtml(resolved).replace(/\n/g, "<br />");
 }
 
-function buildDocumentTemplatePlaceholderAppendix(context) {
-  const rows = context.placeholders.map((entry) => (
-    `<tr><td>${escapeHtml(entry.token)}</td><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.value || "")}</td></tr>`
-  )).join("");
-
-  return `
-    <section class="document-template-preview-section">
-      <h2>Placeholder mapa</h2>
-      <p class="document-template-preview-muted">Ovaj appendix ostaje u Word placeholder exportu da mozes urediti predlozak i vratiti ga nazad.</p>
-      <table class="document-template-preview-table placeholder-table">
-        <thead>
-          <tr>
-            <th>Placeholder</th>
-            <th>Opis</th>
-            <th>Primjer vrijednosti</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </section>
-  `;
-}
-
 function buildDocumentTemplateSectionPreview(section, context, { placeholderMode = false } = {}) {
   const title = formatDocumentTemplateTextHtml(section.title, context, { placeholderMode });
   const body = section.body
@@ -7932,7 +7941,7 @@ function buildDocumentTemplateSectionPreview(section, context, { placeholderMode
     return `
       <section class="document-template-preview-section is-cover">
         <div class="document-template-preview-cover">
-          <p class="document-template-preview-eyebrow">${escapeHtml(context.template.documentType || "Template")}</p>
+          <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(context.template.documentType || "Template")}</p>
           <h1>${title}</h1>
           ${body}
         </div>
@@ -7941,6 +7950,18 @@ function buildDocumentTemplateSectionPreview(section, context, { placeholderMode
   }
 
   if (section.type === "legal_list") {
+    if (placeholderMode) {
+      return `
+        <section class="document-template-preview-section">
+          <h2>${title}</h2>
+          ${body}
+          <div class="document-template-preview-pill-row">
+            <span class="document-template-preview-pill">{{LEGAL_REFERENCES_INLINE}}</span>
+          </div>
+        </section>
+      `;
+    }
+
     const listItems = context.legalFrameworks.length > 0
       ? context.legalFrameworks.map((item) => (
         `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}${item.authority ? ` | ${escapeHtml(item.authority)}` : ""}</li>`
@@ -7957,6 +7978,18 @@ function buildDocumentTemplateSectionPreview(section, context, { placeholderMode
   }
 
   if (section.type === "equipment_list") {
+    if (placeholderMode) {
+      return `
+        <section class="document-template-preview-section">
+          <h2>${title}</h2>
+          ${body}
+          <div class="document-template-preview-pill-row">
+            <span class="document-template-preview-pill">{{EQUIPMENT_SUMMARY}}</span>
+          </div>
+        </section>
+      `;
+    }
+
     const rows = context.equipmentItems.length > 0
       ? context.equipmentItems.map((item) => (
         `<tr><td>${escapeHtml(item.name || "")}</td><td>${escapeHtml(item.code || "")}</td><td>${escapeHtml(String(item.quantity || ""))}</td><td>${escapeHtml(item.note || "")}</td></tr>`
@@ -8032,7 +8065,9 @@ function buildDocumentTemplateSectionPreview(section, context, { placeholderMode
 function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false } = {}) {
   const context = buildDocumentTemplatePreviewContext(template);
   const sections = (template.sections ?? []).map((section) => buildDocumentTemplateSectionPreview(section, context, { placeholderMode })).join("");
-  const selectedLegalBadges = context.legalFrameworks.length > 0
+  const selectedLegalBadges = placeholderMode
+    ? '<span class="document-template-preview-pill">{{LEGAL_REFERENCES_INLINE}}</span>'
+    : context.legalFrameworks.length > 0
     ? context.legalFrameworks.map((item) => `<span class="document-template-preview-pill">${escapeHtml(item.referenceCode || item.title || "Propis")}</span>`).join("")
     : '<span class="document-template-preview-empty">Nema odabranih propisa.</span>';
   const customFieldBadges = (template.customFields ?? []).length > 0
@@ -8040,19 +8075,19 @@ function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraf
       `<span class="document-template-preview-pill">${escapeHtml(`{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`)}</span>`
     )).join("")
     : '<span class="document-template-preview-empty">Nema dodatnih polja.</span>';
-  const appendix = placeholderMode ? buildDocumentTemplatePlaceholderAppendix(context) : "";
+  const appendix = "";
 
   return `
     <article class="document-template-preview-page">
       <header class="document-template-preview-header">
         <div>
-          <p class="document-template-preview-eyebrow">${escapeHtml(template.documentType || "Template")}</p>
-          <h1>${escapeHtml(template.title || "Novi template zapisnika")}</h1>
+          <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
+          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template zapisnika")}</h1>
           <p class="document-template-preview-lead">${escapeHtml(template.description || "Opis templatea i njegove namjene prikazuje se ovdje.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
-          <div><span>Tvrtka</span><strong>${escapeHtml(context.company?.name || "Bez primjerne tvrtke")}</strong></div>
-          <div><span>Lokacija</span><strong>${escapeHtml(context.location?.name || "Bez primjerne lokacije")}</strong></div>
+          <div><span>Tvrtka</span><strong>${placeholderMode ? "{{COMPANY_NAME}}" : escapeHtml(context.company?.name || "Bez primjerne tvrtke")}</strong></div>
+          <div><span>Lokacija</span><strong>${placeholderMode ? "{{LOCATION_NAME}}" : escapeHtml(context.location?.name || "Bez primjerne lokacije")}</strong></div>
           <div><span>Status</span><strong>${escapeHtml(getDocumentTemplateStatusLabel(template.status))}</strong></div>
           <div><span>Export</span><strong>${escapeHtml(sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template"))}.doc</strong></div>
         </div>
@@ -8069,7 +8104,7 @@ function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraf
       ${template.referenceDocument?.fileName ? `
         <section class="document-template-preview-section">
           <h2>Reference Word</h2>
-          <p class="document-template-preview-copy">U builder je povezan referentni dokument <strong>${escapeHtml(template.referenceDocument.fileName)}</strong>. Mozes ga vratiti u alat i kasnije koristiti kao bazni predlozak.</p>
+          <p class="document-template-preview-copy">U builder je povezan referentni dokument <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>. Mozes ga vratiti u alat i kasnije koristiti kao bazni predlozak.</p>
         </section>
       ` : ""}
       ${appendix}
