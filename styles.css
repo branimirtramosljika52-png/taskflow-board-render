@@ -6083,6 +6083,7 @@ body.is-work-order-editor-open {
 .work-order-filter-value-option {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   padding: 9px 10px;
   border: 1px solid #e7eaf3;
@@ -6092,10 +6093,17 @@ body.is-work-order-editor-open {
 
 .work-order-filter-value-option input {
   margin: 0;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
 }
 
 .work-order-filter-value-option span {
+  flex: 1;
   min-width: 0;
+  color: #31405f;
+  font-size: 0.84rem;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
