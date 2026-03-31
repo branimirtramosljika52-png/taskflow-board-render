@@ -7216,7 +7216,7 @@ body.is-work-order-editor-open {
   background: none;
   border: 0;
   color: #141b29;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 900;
   line-height: 1;
   text-transform: uppercase;
@@ -7252,7 +7252,7 @@ body.is-work-order-editor-open {
 .work-order-editor-assignee .executor-avatar-badge {
   right: -1px;
   bottom: -1px;
-  font-size: 0.46rem;
+  font-size: 0.52rem;
 }
 
 .work-order-calendar-cell {
