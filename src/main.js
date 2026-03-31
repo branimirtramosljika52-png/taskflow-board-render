@@ -15911,6 +15911,8 @@ function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-ex
     ? executor.user
     : findUserForExecutor(label);
   const tone = getExecutorTone(label);
+  const initials = getUserInitials(user || { fullName: label });
+  const shouldShowBadge = Boolean(showInitialBadge && initials && !/^bez\b/i.test(label));
   const avatar = document.createElement("span");
   avatar.className = className;
   avatar.title = label;
@@ -15925,10 +15927,10 @@ function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-ex
     image.alt = user.fullName || user.email || label || "Izvrsitelj";
     avatar.append(image);
 
-    if (showInitialBadge) {
+    if (shouldShowBadge) {
       const badge = document.createElement("span");
       badge.className = "executor-avatar-badge";
-      badge.textContent = getUserInitials(user) || getUserInitials({ fullName: label });
+      badge.textContent = initials;
       avatar.append(badge);
     }
 
@@ -15937,6 +15939,14 @@ function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-ex
 
   avatar.classList.add("is-fallback");
   avatar.append(createExecutorAvatarIcon());
+
+  if (shouldShowBadge) {
+    const badge = document.createElement("span");
+    badge.className = "executor-avatar-badge";
+    badge.textContent = initials;
+    avatar.append(badge);
+  }
+
   return avatar;
 }
 
@@ -16155,9 +16165,7 @@ function setWorkOrderCalendarExecutorTriggerContent(trigger, values = []) {
     if (isEditorTrigger) {
       const label = document.createElement("span");
       label.className = "work-order-editor-executor-trigger-label";
-      label.textContent = selectedValues.length === 1
-        ? selectedValues[0]
-        : `${selectedValues.length} odabranih izvrsitelja`;
+      label.textContent = selectedValues.join(" · ");
       trigger.append(label);
     }
     return;
@@ -17047,6 +17055,7 @@ function buildWorkOrderMapPopup(marker) {
 
 function buildWorkOrderLeafletPopup(marker) {
   const workOrder = state.workOrders.find((item) => String(item.id) === String(marker.workOrderId)) ?? marker;
+  const popupWorkOrder = workOrder.id ? workOrder : { ...workOrder, id: marker.workOrderId };
   const popup = document.createElement("article");
   popup.className = "work-order-map-popup-card";
   const companyName = workOrder.companyName || marker.companyName || "Radni nalog";
@@ -17177,16 +17186,18 @@ function buildWorkOrderLeafletPopup(marker) {
     meta.append(priorityWrap);
   }
 
-  const executors = getWorkOrderExecutors(workOrder);
-  if (executors.length > 0) {
-    const executorWrap = document.createElement("div");
-    executorWrap.className = "work-order-map-popup-executors";
-    executors.slice(0, 4).forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
-    if (executors.length > 4) {
-      executorWrap.append(createExecutorOverflowBadge(executors.length - 4));
-    }
-    meta.append(executorWrap);
-  }
+  const executorWrap = document.createElement("div");
+  executorWrap.className = "work-order-map-popup-status work-order-map-popup-executors-control";
+
+  const executorLabel = document.createElement("span");
+  executorLabel.className = "work-order-map-popup-status-label";
+  executorLabel.textContent = "Izvrsitelji";
+
+  const executorPicker = createWorkOrderCalendarExecutorPicker(popupWorkOrder);
+  executorPicker.classList.add("work-order-map-popup-executor-picker");
+
+  executorWrap.append(executorLabel, executorPicker);
+  meta.append(executorWrap);
 
   popup.append(top, title, details, meta);
   return popup;

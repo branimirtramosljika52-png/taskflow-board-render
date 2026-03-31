@@ -5074,6 +5074,7 @@ body.is-work-order-editor-open {
 .work-order-editor-executor-trigger {
   width: 100%;
   min-height: 46px;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: 10px;
   padding: 6px 10px;
@@ -5099,9 +5100,10 @@ body.is-work-order-editor-open {
   font-weight: 700;
   line-height: 1.3;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  padding-top: 3px;
 }
 
 .work-order-editor-executor-trigger-label.is-placeholder {
@@ -8168,6 +8170,15 @@ body.is-work-order-editor-open {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+
+.work-order-map-popup-executors-control {
+  min-width: 188px;
+}
+
+.work-order-map-popup-executor-picker,
+.work-order-map-popup-executor-picker .work-order-calendar-executor-trigger {
+  width: 100%;
 }
 
 .leaflet-work-order-popup strong {
