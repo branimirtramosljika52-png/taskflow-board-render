@@ -494,6 +494,36 @@ function cloneJsonArray(items = []) {
   return JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
 }
 
+function normalizeWorkOrderExecutors(values = [], fallbackValues = []) {
+  const source = [
+    ...(Array.isArray(values) ? values : [values]),
+    ...(Array.isArray(fallbackValues) ? fallbackValues : [fallbackValues]),
+  ];
+
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean),
+  ));
+}
+
+function resolveWorkOrderExecutorsInput(input = {}, current = null) {
+  if (hasOwn(input, "executors")) {
+    return normalizeWorkOrderExecutors(input.executors);
+  }
+
+  if (hasOwn(input, "executor1") || hasOwn(input, "executor2")) {
+    return normalizeWorkOrderExecutors([], [input.executor1, input.executor2]);
+  }
+
+  if (current) {
+    return getWorkOrderExecutors(current);
+  }
+
+  return [];
+}
+
 function slugifyTemplateKey(value, fallback = "FIELD") {
   const normalized = normalizeText(value)
     .normalize("NFD")
@@ -2045,11 +2075,22 @@ function resolveLocationSnapshot(location) {
 }
 
 function hydrateWorkOrderCore(base, company, location) {
+  const executors = hasOwn(base ?? {}, "executors")
+    ? normalizeWorkOrderExecutors(base?.executors)
+    : normalizeWorkOrderExecutors(base?.executors, [base?.executor1, base?.executor2]);
+
   return {
     ...base,
+    executor1: executors[0] ?? "",
+    executor2: executors[1] ?? "",
+    executors,
     ...resolveCompanySnapshot(company),
     ...resolveLocationSnapshot(location),
   };
+}
+
+export function getWorkOrderExecutors(workOrder = {}) {
+  return normalizeWorkOrderExecutors(workOrder?.executors, [workOrder?.executor1, workOrder?.executor2]);
 }
 
 export function createWorkOrder(
@@ -2091,8 +2132,7 @@ export function createWorkOrder(
     description: requireText(input.description, "Opis radnog naloga"),
     linkReference: normalizeText(input.linkReference),
     teamLabel: normalizeText(input.teamLabel),
-    executor1: normalizeText(input.executor1),
-    executor2: normalizeText(input.executor2),
+    executors: resolveWorkOrderExecutorsInput(input),
     priority: normalizePriority(input.priority),
     tagText: normalizeText(input.tagText),
     contactSlot: selectedContact.slot,
@@ -2151,8 +2191,7 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
     description: hasOwn(patch, "description") ? requireText(patch.description, "Opis radnog naloga") : current.description,
     linkReference: hasOwn(patch, "linkReference") ? normalizeText(patch.linkReference) : current.linkReference,
     teamLabel: hasOwn(patch, "teamLabel") ? normalizeText(patch.teamLabel) : current.teamLabel,
-    executor1: hasOwn(patch, "executor1") ? normalizeText(patch.executor1) : current.executor1,
-    executor2: hasOwn(patch, "executor2") ? normalizeText(patch.executor2) : current.executor2,
+    executors: resolveWorkOrderExecutorsInput(patch, current),
     priority: hasOwn(patch, "priority") ? normalizePriority(patch.priority) : current.priority,
     tagText: hasOwn(patch, "tagText") ? normalizeText(patch.tagText) : current.tagText,
     coordinates: hasOwn(patch, "coordinates")
@@ -2782,8 +2821,7 @@ export function filterWorkOrders(
       item.status,
       item.department,
       item.description,
-      item.executor1,
-      item.executor2,
+      ...getWorkOrderExecutors(item),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery)
@@ -2912,7 +2950,7 @@ function getWorkOrderAdvancedFieldValues(item, field) {
     case "region":
       return [normalizeText(item.region)];
     case "executor":
-      return [item.executor1, item.executor2].map((value) => normalizeText(value)).filter(Boolean);
+      return getWorkOrderExecutors(item);
     case "department":
       return [normalizeText(item.department)];
     case "tag":
@@ -3140,9 +3178,7 @@ export function parseCoordinates(value) {
 }
 
 export function getWorkOrderExecutorGroup(workOrder) {
-  const executors = [workOrder?.executor1, workOrder?.executor2]
-    .map((value) => normalizeText(value))
-    .filter(Boolean);
+  const executors = getWorkOrderExecutors(workOrder);
 
   return {
     key: executors.length ? executors.map((value) => value.toLowerCase()).join("||") : "unassigned",
@@ -3308,14 +3344,11 @@ export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue
       const targetGroup = ensureUnscheduledGroup(group);
       targetGroup.items.push(workOrder);
 
-      [workOrder?.executor1, workOrder?.executor2]
-        .map((value) => normalizeText(value))
-        .filter(Boolean)
-        .forEach((executor) => {
-          if (!targetGroup.executors.includes(executor)) {
-            targetGroup.executors.push(executor);
-          }
-        });
+      getWorkOrderExecutors(workOrder).forEach((executor) => {
+        if (!targetGroup.executors.includes(executor)) {
+          targetGroup.executors.push(executor);
+        }
+      });
 
       if (normalizeText(workOrder?.region) && !targetGroup.regions.includes(normalizeText(workOrder.region))) {
         targetGroup.regions.push(normalizeText(workOrder.region));
@@ -3340,14 +3373,11 @@ export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue
     targetGroup.totalCount += 1;
     week.totalCount += 1;
 
-    [workOrder?.executor1, workOrder?.executor2]
-      .map((value) => normalizeText(value))
-      .filter(Boolean)
-      .forEach((executor) => {
-        if (!targetGroup.executors.includes(executor)) {
-          targetGroup.executors.push(executor);
-        }
-      });
+    getWorkOrderExecutors(workOrder).forEach((executor) => {
+      if (!targetGroup.executors.includes(executor)) {
+        targetGroup.executors.push(executor);
+      }
+    });
 
     if (normalizeText(workOrder?.region) && !targetGroup.regions.includes(normalizeText(workOrder.region))) {
       targetGroup.regions.push(normalizeText(workOrder.region));
@@ -4123,7 +4153,7 @@ function getDashboardFilteredSourceItems(snapshot, widget, context = {}, today =
   }
 
   if (filters.executor) {
-    items = items.filter((item) => [item.executor1, item.executor2].some((value) => normalizeText(value) === filters.executor));
+    items = items.filter((item) => getWorkOrderExecutors(item).some((value) => normalizeText(value) === filters.executor));
   }
 
   if (filters.tag) {
@@ -4240,7 +4270,7 @@ function buildDashboardDistributionItems(widget, items) {
 
   if (widget.metricKey === "executor") {
     return countGroupedValues(
-      items.flatMap((item) => [item.executor1, item.executor2].filter((value) => normalizeText(value))),
+      items.flatMap((item) => getWorkOrderExecutors(item)),
       (value) => value,
       {
         fallback: "Bez izvrsitelja",
@@ -4549,7 +4579,7 @@ export function getDashboardInsights(snapshot, today = todayString()) {
   });
 
   const executorLoad = countGroupedValues(
-    activeWorkOrders.flatMap((item) => [item.executor1, item.executor2].filter((value) => normalizeText(value))),
+    activeWorkOrders.flatMap((item) => getWorkOrderExecutors(item)),
     (value) => value,
     {
       fallback: "Bez izvrsitelja",

@@ -349,6 +349,27 @@ test("createWorkOrder pulls snapshot data from selected company and location", (
   assert.equal(workOrder.teamLabel, "");
 });
 
+test("createWorkOrder keeps all selected executors and preserves legacy executor slots", () => {
+  const state = buildState();
+
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Nalog s vise izvrsitelja",
+      executors: ["Ana Kovac", "Marko Horvat", "Iva Novak", "Petra Bencic"],
+    },
+    state,
+    () => "work-order-many-executors",
+    "RN-00011",
+    () => "2026-03-25T09:15:00.000Z",
+  );
+
+  assert.deepEqual(workOrder.executors, ["Ana Kovac", "Marko Horvat", "Iva Novak", "Petra Bencic"]);
+  assert.equal(workOrder.executor1, "Ana Kovac");
+  assert.equal(workOrder.executor2, "Marko Horvat");
+});
+
 test("updateWorkOrder refreshes snapshot fields when location and contact change", () => {
   const state = buildState();
   const baseWorkOrder = createWorkOrder(
@@ -402,17 +423,46 @@ test("updateWorkOrder refreshes snapshot fields when location and contact change
   assert.equal(next.teamLabel, "Tim Jug");
 });
 
+test("updateWorkOrder can replace executor list with more than two executors", () => {
+  const state = buildState();
+  const baseWorkOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Otvoreni nalog",
+      executors: ["Ana Kovac", "Marko Horvat"],
+    },
+    state,
+    () => "work-order-update-executors",
+    "RN-00012",
+    () => "2026-03-25T09:30:00.000Z",
+  );
+
+  const next = updateWorkOrder(
+    baseWorkOrder,
+    {
+      executors: ["Ana Kovac", "Iva Novak", "Petra Bencic"],
+    },
+    state,
+    () => "2026-03-25T10:15:00.000Z",
+  );
+
+  assert.deepEqual(next.executors, ["Ana Kovac", "Iva Novak", "Petra Bencic"]);
+  assert.equal(next.executor1, "Ana Kovac");
+  assert.equal(next.executor2, "Iva Novak");
+});
+
 test("groupWorkOrdersByExecutorSet merges work orders with the same executor combination", () => {
   const items = [
-    { id: "1", workOrderNumber: "RN-001", executor1: "Ana Horvat", executor2: "Marko Kova", dueDate: "2026-03-29" },
-    { id: "2", workOrderNumber: "RN-002", executor1: "Ana Horvat", executor2: "Marko Kova", dueDate: "2026-03-29" },
-    { id: "3", workOrderNumber: "RN-003", executor1: "Petra Juric", executor2: "", dueDate: "2026-03-29" },
+    { id: "1", workOrderNumber: "RN-001", executors: ["Ana Horvat", "Marko Kova", "Iva Novak"], dueDate: "2026-03-29" },
+    { id: "2", workOrderNumber: "RN-002", executors: ["Ana Horvat", "Marko Kova", "Iva Novak"], dueDate: "2026-03-29" },
+    { id: "3", workOrderNumber: "RN-003", executors: ["Petra Juric"], dueDate: "2026-03-29" },
   ];
 
   const groups = groupWorkOrdersByExecutorSet(items);
 
   assert.equal(groups.length, 2);
-  assert.equal(groups[0].label, "Ana Horvat + Marko Kova");
+  assert.equal(groups[0].label, "Ana Horvat + Marko Kova + Iva Novak");
   assert.equal(groups[0].items.length, 2);
   assert.deepEqual(
     groups[0].items.map((item) => item.workOrderNumber),
@@ -549,7 +599,7 @@ test("filterWorkOrders supports advanced AND/OR filters for status, dates, tags 
       description: "Prvi nalog",
       dueDate: "2026-03-24",
       status: "Otvoreni RN",
-      executor1: "Ana Kovac",
+      executors: ["Ana Kovac", "Petra Bencic"],
       region: "Zagreb",
       tagText: "hitno, servis",
     },
@@ -564,7 +614,7 @@ test("filterWorkOrders supports advanced AND/OR filters for status, dates, tags 
       locationId: "location-1",
       description: "Drugi nalog",
       status: "Fakturiran RN",
-      executor1: "Marko Horvat",
+      executors: ["Marko Horvat", "Iva Novak", "Petra Bencic"],
       region: "Split",
       tagText: "servis",
     },
@@ -579,7 +629,7 @@ test("filterWorkOrders supports advanced AND/OR filters for status, dates, tags 
       locationId: "location-1",
       description: "Treći nalog",
       status: "Otvoreni RN",
-      executor2: "Iva Novak",
+      executors: ["Iva Novak"],
       region: "Zagreb",
       tagText: "kontrola",
     },

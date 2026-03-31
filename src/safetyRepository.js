@@ -17,6 +17,7 @@ import {
   createWorkOrder,
   deleteVehicleReservation,
   deriveOfferInitials,
+  getWorkOrderExecutors,
   nextOfferNumber,
   sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
@@ -324,8 +325,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   contactName: "Kontakt osoba",
   contactPhone: "Kontakt broj",
   contactEmail: "Kontakt email",
-  executor1: "Izvrsitelj 1",
-  executor2: "Izvrsitelj 2",
+  executors: "Izvrsitelji",
   serviceLine: "Usluga",
   department: "Odjel",
   linkReference: "Veza RN",
@@ -349,6 +349,10 @@ function formatDateOnlyDisplay(value) {
 }
 
 function formatWorkOrderActivityValue(fieldKey, value) {
+  if (fieldKey === "executors") {
+    return getWorkOrderExecutors({ executors: value }).join(", ");
+  }
+
   if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
     return formatDateOnlyDisplay(value);
   }
@@ -357,6 +361,17 @@ function formatWorkOrderActivityValue(fieldKey, value) {
 }
 
 function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
+  if (fieldKey === "executors") {
+    const leftValues = getWorkOrderExecutors({ executors: left });
+    const rightValues = getWorkOrderExecutors({ executors: right });
+
+    if (leftValues.length !== rightValues.length) {
+      return false;
+    }
+
+    return leftValues.every((value, index) => value === rightValues[index]);
+  }
+
   if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
     return normalizeDateOnly(left) === normalizeDateOnly(right);
   }
@@ -702,7 +717,7 @@ async function fetchSnapshotFromConnection(connection) {
   const [workOrderRows] = await connection.query(`
     SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
-           izvrsitelj_rn2, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
+           izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
@@ -711,6 +726,10 @@ async function fetchSnapshotFromConnection(connection) {
   const workOrders = workOrderRows.map((row) => {
     const company = companiesByOib.get(row.oib ?? "");
     const location = locationsByKey.get(locationCompositeKey(row.oib ?? "", row.lokacija ?? ""));
+
+    const executors = parseJsonArray(row.izvrsitelji_json)
+      .map((value) => dbString(value))
+      .filter(Boolean);
 
     return {
       id: String(row.id),
@@ -732,6 +751,9 @@ async function fetchSnapshotFromConnection(connection) {
       locationName: row.lokacija ?? "",
       linkReference: row.veza_rn ?? "",
       teamLabel: row.tim_rn ?? "",
+      executors: executors.length > 0
+        ? executors
+        : [row.izvrsitelj_rn1 ?? "", row.izvrsitelj_rn2 ?? ""].map((value) => dbString(value)).filter(Boolean),
       executor1: row.izvrsitelj_rn1 ?? "",
       executor2: row.izvrsitelj_rn2 ?? "",
       priority: row.prioritet ?? "Normal",
@@ -2231,7 +2253,8 @@ export class MySqlSafetyRepository {
         INDEX idx_web_dashboard_widgets_order (organization_id, user_id, sort_order)
       )
     `);
-    await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelj_rn2");
+    await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
+    await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
@@ -2797,9 +2820,9 @@ export class MySqlSafetyRepository {
           INSERT INTO radni_nalozi
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
-             izvrsitelj_rn2, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
+             izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
              odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -2816,6 +2839,7 @@ export class MySqlSafetyRepository {
           draft.dueDate,
           draft.executor1,
           draft.executor2,
+          JSON.stringify(draft.executors ?? []),
           draft.teamLabel,
           draft.tagText,
           draft.status,
@@ -2881,7 +2905,7 @@ export class MySqlSafetyRepository {
           UPDATE radni_nalozi
           SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
-              izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
+              izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
               odjel = ?, koordinate = ?, usluge = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
               tezina = ?, rn_zavrsio = ?
           WHERE id = ?
@@ -2900,6 +2924,7 @@ export class MySqlSafetyRepository {
           next.dueDate,
           next.executor1,
           next.executor2,
+          JSON.stringify(next.executors ?? []),
           next.teamLabel,
           next.tagText,
           next.status,

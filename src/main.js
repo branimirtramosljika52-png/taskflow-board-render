@@ -34,6 +34,7 @@
   filterVehicles,
   filterWorkOrders,
   applyDashboardWidgetGridLayout,
+  getWorkOrderExecutors,
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
   nextOfferNumber,
@@ -1320,8 +1321,8 @@ const workOrderRegionInput = document.querySelector("#work-order-region");
 const workOrderContactSlotInput = document.querySelector("#work-order-contact-slot");
 const workOrderContactPhoneInput = document.querySelector("#work-order-contact-phone");
 const workOrderContactEmailInput = document.querySelector("#work-order-contact-email");
-const workOrderExecutor1Input = document.querySelector("#work-order-executor-1");
-const workOrderExecutor2Input = document.querySelector("#work-order-executor-2");
+const workOrderExecutorsDataInput = document.querySelector("#work-order-executors-data");
+const workOrderExecutorsPicker = document.querySelector("#work-order-executors-picker");
 const workOrderServiceLineInput = document.querySelector("#work-order-service-line");
 const workOrderDepartmentInput = document.querySelector("#work-order-department");
 const workOrderLinkReferenceInput = document.querySelector("#work-order-link-reference");
@@ -2139,6 +2140,10 @@ function findUserForExecutor(executorName = "") {
   }) ?? null;
 }
 
+function getUserDisplayLabel(user = {}) {
+  return String(user.fullName || user.email || user.username || "User").trim() || "User";
+}
+
 function getExecutorTone(name = "") {
   const palette = [
     { bg: "#e7efff", fg: "#3a63b8" },
@@ -2151,6 +2156,34 @@ function getExecutorTone(name = "") {
   const normalized = String(name ?? "").trim();
   const hash = [...normalized].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return palette[hash % palette.length];
+}
+
+function readWorkOrderExecutorSelection() {
+  if (!workOrderExecutorsDataInput?.value) {
+    return [];
+  }
+
+  try {
+    return getWorkOrderExecutors({
+      executors: JSON.parse(workOrderExecutorsDataInput.value),
+    });
+  } catch {
+    return [];
+  }
+}
+
+function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "" } = {}) {
+  const normalized = getWorkOrderExecutors({ executors: values });
+
+  if (workOrderExecutorsDataInput) {
+    workOrderExecutorsDataInput.value = JSON.stringify(normalized);
+
+    if (dispatchEventName) {
+      workOrderExecutorsDataInput.dispatchEvent(new Event(dispatchEventName, { bubbles: true }));
+    }
+  }
+
+  renderWorkOrderEditorExecutorPicker();
 }
 
 function getSelectedOptionText(select) {
@@ -3658,8 +3691,7 @@ function enhanceWorkOrderEditorChrome() {
     [workOrderOpenedDateInput, { iconName: "dates", emphasize: true }],
     [workOrderDueDateInput, { iconName: "dates", emphasize: true }],
     [workOrderTeamLabelInput, { iconName: "team" }],
-    [workOrderExecutor1Input, { iconName: "assignees" }],
-    [workOrderExecutor2Input, { iconName: "assignees" }],
+    [workOrderExecutorsPicker, { iconName: "assignees" }],
     [workOrderCompanyIdInput, { iconName: "company", emphasize: true }],
     [workOrderHeadquartersInput, { iconName: "company" }],
     [workOrderCompanyOibInput, { iconName: "number" }],
@@ -3757,8 +3789,7 @@ function findCreatedWorkOrderMatch(previousIds, payload) {
     && String(item.serviceLine || "") === String(payload.serviceLine || "")
     && String(item.department || "") === String(payload.department || "")
     && String(item.teamLabel || "") === String(payload.teamLabel || "")
-    && String(item.executor1 || "") === String(payload.executor1 || "")
-    && String(item.executor2 || "") === String(payload.executor2 || "")
+    && getWorkOrderExecutors(item).join("||") === getWorkOrderExecutors(payload).join("||")
   )) ?? null;
 }
 
@@ -3884,9 +3915,7 @@ function renderWorkOrderEditorSummary() {
     String(workOrderContactPhoneInput.value ?? "").trim() || String(workOrderContactEmailInput.value ?? "").trim(),
   ].filter(Boolean).join(" · ");
   const linkReference = String(workOrderLinkReferenceInput.value ?? "").trim();
-  const executorValues = [workOrderExecutor1Input.value, workOrderExecutor2Input.value]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
+  const executorValues = readWorkOrderExecutorSelection();
 
   workOrderEditorContext.textContent = activeId ? "Uređivanje radnog naloga" : "Otvaranje novog RN";
   workOrderEditorTitle.textContent = activeId ? (workOrderNumber || "Radni nalog") : "Novi radni nalog";
@@ -3999,16 +4028,12 @@ function renderWorkOrderEditorSummary() {
   assigneeWrap.className = "work-order-editor-assignees";
 
   if (executorValues.length > 0) {
-    executorValues.forEach((executor) => {
-      const badge = document.createElement("span");
-      badge.className = "work-order-editor-assignee";
-      badge.title = executor;
-      const tone = getExecutorTone(executor);
-      badge.style.setProperty("--executor-bg", tone.bg);
-      badge.style.setProperty("--executor-fg", tone.fg);
-      badge.textContent = getUserInitials({ fullName: executor });
-      assigneeWrap.append(badge);
+    executorValues.slice(0, 5).forEach((executor) => {
+      assigneeWrap.append(createWorkOrderMiniExecutor(executor, { className: "work-order-editor-assignee" }));
     });
+    if (executorValues.length > 5) {
+      assigneeWrap.append(createExecutorOverflowBadge(executorValues.length - 5, "work-order-editor-assignee"));
+    }
   } else {
     const empty = document.createElement("span");
     empty.className = "work-order-editor-assignees-empty";
@@ -4022,6 +4047,321 @@ function renderWorkOrderEditorSummary() {
   workOrderEditorMeta.replaceChildren(chips, facts);
   workOrderStatusInput.dataset.status = slugifyValue(workOrderStatusInput.value || "Otvoreni RN");
   renderTopbarBreadcrumbs();
+}
+
+function renderWorkOrderEditorExecutorPicker() {
+  if (!workOrderExecutorsPicker) {
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-calendar-executor-picker work-order-editor-executor-picker";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-calendar-executor-trigger work-order-editor-executor-trigger";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const getCurrentValues = () => readWorkOrderExecutorSelection();
+  const setCurrentValues = (values) => {
+    setWorkOrderCalendarExecutorTriggerContent(trigger, values);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(280, Math.round(triggerRect.width))}px`;
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  wrapper._closeMenu = closeMenu;
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    let draftValues = getCurrentValues();
+    let searchQuery = "";
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", "Izbor izvrsitelja");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "work-order-calendar-executor-search";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-calendar-executor-search-input";
+    searchInput.placeholder = "Trazi po imenu ili prezimenu";
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchWrap.append(searchInput);
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-calendar-executor-selection";
+
+    const helper = document.createElement("p");
+    helper.className = "work-order-calendar-executor-helper";
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-calendar-executor-options";
+
+    const footer = document.createElement("div");
+    footer.className = "work-order-calendar-executor-footer";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-calendar-executor-clear";
+    clearButton.textContent = "Ocisti";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "primary-button work-order-calendar-executor-save";
+    saveButton.textContent = "Primijeni";
+
+    const selectionsEqual = (leftValues, rightValues) => {
+      if (leftValues.length !== rightValues.length) {
+        return false;
+      }
+
+      return leftValues.every((value, index) => value === rightValues[index]);
+    };
+
+    const toggleDraftValue = (value) => {
+      const normalizedValue = String(value ?? "").trim();
+      if (!normalizedValue) {
+        return;
+      }
+
+      if (draftValues.includes(normalizedValue)) {
+        draftValues = draftValues.filter((entry) => entry !== normalizedValue);
+        return;
+      }
+
+      draftValues = [...draftValues, normalizedValue];
+    };
+
+    const renderSelection = () => {
+      selection.replaceChildren();
+
+      if (draftValues.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-calendar-executor-selection-empty";
+        empty.textContent = "Bez izvrsitelja";
+        selection.append(empty);
+        return;
+      }
+
+      draftValues.forEach((value) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "work-order-calendar-executor-chip";
+        chip.title = `Makni ${value}`;
+
+        const avatar = createWorkOrderMiniExecutor(value);
+        avatar.removeAttribute("title");
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-chip-label";
+        label.textContent = value;
+
+        const remove = document.createElement("span");
+        remove.className = "work-order-calendar-executor-chip-remove";
+        remove.setAttribute("aria-hidden", "true");
+        remove.textContent = "x";
+
+        chip.append(avatar, label, remove);
+        chip.addEventListener("click", (event) => {
+          event.stopPropagation();
+          draftValues = draftValues.filter((entry) => entry !== value);
+          syncMenuState();
+        });
+
+        selection.append(chip);
+      });
+    };
+
+    const renderOptions = () => {
+      optionsList.replaceChildren();
+
+      const visibleOptions = getWorkOrderExecutorOptions(getCurrentValues())
+        .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
+
+      if (visibleOptions.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-calendar-executor-empty";
+        empty.textContent = "Nema izvrsitelja za ovaj pojam.";
+        optionsList.append(empty);
+        return;
+      }
+
+      visibleOptions.forEach((option) => {
+        const isSelected = draftValues.includes(option.value);
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "work-item-status-option work-order-calendar-executor-option";
+        optionButton.classList.toggle("is-selected", isSelected);
+        optionButton.setAttribute("role", "menuitemcheckbox");
+        optionButton.setAttribute("aria-checked", String(isSelected));
+
+        const avatar = createWorkOrderMiniExecutor(option, {
+          className: "work-order-calendar-executor-option-avatar",
+          showInitialBadge: false,
+        });
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-option-label";
+        label.textContent = option.label;
+
+        const marker = document.createElement("span");
+        marker.className = "work-order-calendar-executor-option-marker";
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = isSelected ? "✓" : "+";
+
+        optionButton.append(avatar, label, marker);
+        optionButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          toggleDraftValue(option.value);
+          syncMenuState();
+          searchInput.focus({ preventScroll: true });
+        });
+
+        optionsList.append(optionButton);
+      });
+    };
+
+    const syncMenuState = () => {
+      renderSelection();
+      renderOptions();
+      helper.textContent = draftValues.length > 0
+        ? `${draftValues.length} odabranih izvrsitelja.`
+        : "Odaberi jednog ili vise izvrsitelja.";
+      clearButton.disabled = draftValues.length === 0;
+      saveButton.disabled = selectionsEqual(draftValues, getCurrentValues());
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    };
+
+    clearButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      draftValues = [];
+      syncMenuState();
+      searchInput.focus({ preventScroll: true });
+    });
+
+    saveButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      const nextValues = [...draftValues];
+      if (selectionsEqual(nextValues, getCurrentValues())) {
+        closeMenu();
+        return;
+      }
+
+      closeMenu();
+      writeWorkOrderExecutorSelection(nextValues, { dispatchEventName: "change" });
+    });
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value || "";
+      renderOptions();
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    });
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      const visibleOptions = getWorkOrderExecutorOptions(getCurrentValues())
+        .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
+
+      if (visibleOptions.length !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      toggleDraftValue(visibleOptions[0].value);
+      syncMenuState();
+    });
+
+    footer.append(clearButton, saveButton);
+    menu.append(searchWrap, selection, helper, optionsList, footer);
+
+    syncMenuState();
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => {
+      positionMenuPortal(menu);
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    });
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  setCurrentValues(getCurrentValues());
+  wrapper.append(trigger);
+  workOrderExecutorsPicker.replaceChildren(wrapper);
 }
 
 function getCompany(companyId) {
@@ -9369,8 +9709,7 @@ function focusWorkOrderComposer(prefill = {}) {
   }
 
   if (Array.isArray(prefill.executors)) {
-    workOrderExecutor1Input.value = prefill.executors[0] ?? "";
-    workOrderExecutor2Input.value = prefill.executors[1] ?? "";
+    writeWorkOrderExecutorSelection(prefill.executors);
   }
 
   if (prefill.status) {
@@ -9688,6 +10027,8 @@ function applySelectedLocationDefaults() {
 }
 
 function buildWorkOrderPayload() {
+  const executors = readWorkOrderExecutorSelection();
+
   return {
     status: workOrderStatusInput.value,
     priority: workOrderPriorityInput.value,
@@ -9702,8 +10043,9 @@ function buildWorkOrderPayload() {
     contactName: getSelectedContactName(),
     contactPhone: workOrderContactPhoneInput.value,
     contactEmail: workOrderContactEmailInput.value,
-    executor1: workOrderExecutor1Input.value,
-    executor2: workOrderExecutor2Input.value,
+    executors,
+    executor1: executors[0] ?? "",
+    executor2: executors[1] ?? "",
     serviceLine: workOrderServiceLineInput.value,
     department: workOrderDepartmentInput.value,
     linkReference: workOrderLinkReferenceInput.value,
@@ -9969,6 +10311,7 @@ function resetWorkOrderForm() {
   workOrderRegionInput.value = "";
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
+  writeWorkOrderExecutorSelection([]);
   resetWorkOrderDocumentsState();
   renderWorkOrderEditorSummary();
   setWorkOrderSaveState("blocked");
@@ -10113,8 +10456,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   rebuildWorkOrderContactOptions(workOrder.contactSlot ?? "", workOrder.contactName);
   workOrderContactPhoneInput.value = workOrder.contactPhone;
   workOrderContactEmailInput.value = workOrder.contactEmail;
-  workOrderExecutor1Input.value = workOrder.executor1;
-  workOrderExecutor2Input.value = workOrder.executor2;
+  writeWorkOrderExecutorSelection(getWorkOrderExecutors(workOrder));
   workOrderServiceLineInput.value = workOrder.serviceLine;
   workOrderDepartmentInput.value = workOrder.department;
   workOrderLinkReferenceInput.value = workOrder.linkReference;
@@ -10276,9 +10618,10 @@ function renderDashboardExecutorList(container, items) {
     const row = document.createElement("div");
     row.className = "dashboard-executor-row";
 
-    const avatar = document.createElement("span");
-    avatar.className = "dashboard-executor-avatar";
-    avatar.textContent = getUserInitials({ fullName: item.label });
+    const avatar = createWorkOrderMiniExecutor(item.label, {
+      className: "dashboard-executor-avatar",
+    });
+    avatar.removeAttribute("title");
 
     const copy = document.createElement("div");
     copy.className = "dashboard-executor-copy";
@@ -10420,7 +10763,7 @@ function getDashboardRegionOptions() {
 
 function getDashboardExecutorOptions() {
   return [...new Set(
-    state.workOrders.flatMap((item) => [item.executor1, item.executor2].map((entry) => String(entry ?? "").trim()).filter(Boolean)),
+    state.workOrders.flatMap((item) => getWorkOrderExecutors(item)),
   )].sort((left, right) => left.localeCompare(right, "hr"));
 }
 
@@ -14902,7 +15245,7 @@ function getWorkOrderFilterValueOptions(fieldValue = "") {
     const labels = new Set(
       [
         ...state.users.map((user) => user.fullName || user.username || user.email || ""),
-        ...state.workOrders.flatMap((item) => [item.executor1, item.executor2]),
+        ...state.workOrders.flatMap((item) => getWorkOrderExecutors(item)),
       ]
         .map((value) => String(value || "").trim())
         .filter(Boolean),
@@ -15551,15 +15894,104 @@ function loadMoreWorkOrders() {
   renderCompactWorkOrdersList();
 }
 
-function createWorkOrderMiniExecutor(executor) {
-  const tone = getExecutorTone(executor);
+function createExecutorAvatarIcon() {
+  const icon = document.createElement("span");
+  icon.className = "executor-avatar-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3.25 13.25a4.75 4.75 0 0 1 9.5 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>';
+  return icon;
+}
+
+function createExecutorOverflowBadge(hiddenCount, className = "work-order-mini-executor") {
+  const badge = document.createElement("span");
+  badge.className = `${className} is-overflow`;
+  badge.textContent = `+${hiddenCount}`;
+  badge.setAttribute("aria-label", `${hiddenCount} dodatnih izvrsitelja`);
+  return badge;
+}
+
+function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-executor", showInitialBadge = true } = {}) {
+  const label = typeof executor === "string"
+    ? executor
+    : String(executor?.label || executor?.value || "").trim();
+  const user = typeof executor === "object" && executor?.user
+    ? executor.user
+    : findUserForExecutor(label);
+  const tone = getExecutorTone(label);
   const avatar = document.createElement("span");
-  avatar.className = "work-order-mini-executor";
-  avatar.title = executor;
+  avatar.className = className;
+  avatar.title = label;
+  avatar.setAttribute("aria-label", label || "Izvrsitelj");
   avatar.style.setProperty("--executor-bg", tone.bg);
   avatar.style.setProperty("--executor-fg", tone.fg);
-  avatar.textContent = getUserInitials({ fullName: executor }) || "?";
+
+  if (user?.avatarDataUrl) {
+    avatar.classList.add("has-image");
+    const image = document.createElement("img");
+    image.src = user.avatarDataUrl;
+    image.alt = user.fullName || user.email || label || "Izvrsitelj";
+    avatar.append(image);
+
+    if (showInitialBadge) {
+      const badge = document.createElement("span");
+      badge.className = "executor-avatar-badge";
+      badge.textContent = getUserInitials(user) || getUserInitials({ fullName: label });
+      avatar.append(badge);
+    }
+
+    return avatar;
+  }
+
+  avatar.classList.add("is-fallback");
+  avatar.append(createExecutorAvatarIcon());
   return avatar;
+}
+
+function normalizeWorkOrderExecutorValues(values = []) {
+  return getWorkOrderExecutors({
+    executors: Array.isArray(values) ? values : [values],
+  });
+}
+
+function getWorkOrderExecutorOptions(currentValues = [], { includeEmpty = false } = {}) {
+  const normalizedCurrentValues = normalizeWorkOrderExecutorValues(currentValues);
+  const options = includeEmpty ? [{ value: "", label: "Bez izvrsitelja", user: null, isEmpty: true }] : [];
+  const seen = new Set(options.map((option) => option.value));
+
+  normalizedCurrentValues.forEach((currentValue) => {
+    if (!currentValue || seen.has(currentValue)) {
+      return;
+    }
+
+    options.push({
+      value: currentValue,
+      label: currentValue,
+      user: findUserForExecutor(currentValue),
+      isSnapshot: true,
+    });
+    seen.add(currentValue);
+  });
+
+  state.users
+    .filter((user) => user?.isActive !== false)
+    .slice()
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+    .forEach((user) => {
+      const label = getUserDisplayLabel(user);
+
+      if (!label || seen.has(label)) {
+        return;
+      }
+
+      options.push({
+        value: label,
+        label,
+        user,
+      });
+      seen.add(label);
+    });
+
+  return options;
 }
 
 function createWorkOrderCalendarCard(workOrder) {
@@ -15595,11 +16027,14 @@ function createWorkOrderCalendarCard(workOrder) {
   footer.className = "work-order-calendar-card-footer";
   footer.append(due);
 
-  const executors = [workOrder.executor1, workOrder.executor2].filter(Boolean);
+  const executors = getWorkOrderExecutors(workOrder);
   if (executors.length > 0) {
     const executorWrap = document.createElement("div");
     executorWrap.className = "work-order-calendar-card-executors";
-    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    executors.slice(0, 3).forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    if (executors.length > 3) {
+      executorWrap.append(createExecutorOverflowBadge(executors.length - 3));
+    }
     footer.append(executorWrap);
   }
 
@@ -15637,38 +16072,6 @@ function createWorkOrderCalendarCard(workOrder) {
   });
 
   return card;
-}
-
-function getWorkOrderExecutorNameOptions(currentValues = [], { includeEmpty = false } = {}) {
-  const labels = Array.from(new Set(
-    state.users
-      .filter((user) => user?.isActive !== false)
-      .map((user) => String(user.fullName || user.email || user.username || "").trim())
-      .filter(Boolean),
-  )).sort((left, right) => left.localeCompare(right, "hr"));
-
-  const normalizedCurrentValues = (Array.isArray(currentValues) ? currentValues : [currentValues])
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
-
-  const options = includeEmpty ? [{ value: "", label: "Bez izvrsitelja" }] : [];
-
-  normalizedCurrentValues.forEach((currentValue) => {
-    if (!currentValue || labels.includes(currentValue) || options.some((option) => option.value === currentValue)) {
-      return;
-    }
-
-    options.push({
-      value: currentValue,
-      label: `${currentValue} (snapshot)`,
-    });
-  });
-
-  labels.forEach((label) => {
-    options.push({ value: label, label });
-  });
-
-  return options;
 }
 
 function bindWorkOrderInlineSelect(select, onChange) {
@@ -15713,11 +16116,7 @@ function createWorkOrderCalendarCardControl(labelText, control) {
 }
 
 function getWorkOrderCalendarExecutorValues(workOrder = {}) {
-  return [workOrder.executor1, workOrder.executor2]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean)
-    .filter((value, index, values) => values.indexOf(value) === index)
-    .slice(0, 2);
+  return getWorkOrderExecutors(workOrder);
 }
 
 function matchesWorkOrderExecutorSearch(option, query = "") {
@@ -15740,10 +16139,8 @@ function matchesWorkOrderExecutorSearch(option, query = "") {
 }
 
 function setWorkOrderCalendarExecutorTriggerContent(trigger, values = []) {
-  const selectedValues = (Array.isArray(values) ? values : [values])
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 2);
+  const selectedValues = normalizeWorkOrderExecutorValues(values);
+  const isEditorTrigger = trigger.classList.contains("work-order-editor-executor-trigger");
 
   trigger.replaceChildren();
   trigger.title = selectedValues.length > 0 ? selectedValues.join(", ") : "Dodaj izvrsitelje";
@@ -15752,12 +16149,36 @@ function setWorkOrderCalendarExecutorTriggerContent(trigger, values = []) {
   if (selectedValues.length > 0) {
     const stack = document.createElement("span");
     stack.className = "work-order-calendar-executor-trigger-stack";
-    selectedValues.forEach((value) => {
+    selectedValues.slice(0, 3).forEach((value) => {
       const avatar = createWorkOrderMiniExecutor(value);
       avatar.removeAttribute("title");
       stack.append(avatar);
     });
+    if (selectedValues.length > 3) {
+      stack.append(createExecutorOverflowBadge(selectedValues.length - 3));
+    }
     trigger.append(stack);
+
+    if (isEditorTrigger) {
+      const label = document.createElement("span");
+      label.className = "work-order-editor-executor-trigger-label";
+      label.textContent = selectedValues.length === 1
+        ? selectedValues[0]
+        : `${selectedValues.length} odabranih izvrsitelja`;
+      trigger.append(label);
+    }
+    return;
+  }
+
+  if (isEditorTrigger) {
+    const icon = createExecutorAvatarIcon();
+    icon.classList.add("is-placeholder");
+
+    const label = document.createElement("span");
+    label.className = "work-order-editor-executor-trigger-label is-placeholder";
+    label.textContent = "Odaberi izvrsitelje";
+
+    trigger.append(icon, label);
     return;
   }
 
@@ -15894,10 +16315,6 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         return;
       }
 
-      if (draftValues.length >= 2) {
-        return;
-      }
-
       draftValues = [...draftValues, normalizedValue];
     };
 
@@ -15944,7 +16361,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const renderOptions = () => {
       optionsList.replaceChildren();
 
-      const visibleOptions = getWorkOrderExecutorNameOptions(getCurrentValues())
+      const visibleOptions = getWorkOrderExecutorOptions(getCurrentValues())
         .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
 
       if (visibleOptions.length === 0) {
@@ -15963,11 +16380,10 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         optionButton.classList.toggle("is-selected", isSelected);
         optionButton.setAttribute("role", "menuitemcheckbox");
         optionButton.setAttribute("aria-checked", String(isSelected));
-        optionButton.disabled = !isSelected && draftValues.length >= 2;
-
-        const avatar = document.createElement("span");
-        avatar.className = "work-order-calendar-executor-option-avatar";
-        avatar.textContent = getUserInitials({ fullName: option.value }) || "?";
+        const avatar = createWorkOrderMiniExecutor(option, {
+          className: "work-order-calendar-executor-option-avatar",
+          showInitialBadge: false,
+        });
 
         const label = document.createElement("span");
         label.className = "work-order-calendar-executor-option-label";
@@ -15993,9 +16409,9 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const syncMenuState = () => {
       renderSelection();
       renderOptions();
-      helper.textContent = draftValues.length >= 2
-        ? "Odabrana su 2 izvrsitelja. Makni jednog za novi odabir."
-        : "Odaberi do 2 izvrsitelja.";
+      helper.textContent = draftValues.length > 0
+        ? `${draftValues.length} odabranih izvrsitelja.`
+        : "Odaberi jednog ili vise izvrsitelja.";
       clearButton.disabled = draftValues.length === 0;
       saveButton.disabled = selectionsEqual(draftValues, getCurrentValues());
       requestAnimationFrame(() => positionMenuPortal(menu));
@@ -16025,6 +16441,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       void runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
         method: "PATCH",
         body: {
+          executors: nextValues,
           executor1: nextValues[0] || "",
           executor2: nextValues[1] || "",
         },
@@ -16038,10 +16455,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         }
 
         const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
-        const updatedValues = getWorkOrderCalendarExecutorValues(updatedItem ?? {
-          executor1: nextValues[0] || "",
-          executor2: nextValues[1] || "",
-        });
+        const updatedValues = getWorkOrderCalendarExecutorValues(updatedItem ?? { executors: nextValues });
 
         setCurrentValues(updatedValues);
         closeMenu();
@@ -16066,7 +16480,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         return;
       }
 
-      const visibleOptions = getWorkOrderExecutorNameOptions(getCurrentValues())
+      const visibleOptions = getWorkOrderExecutorOptions(getCurrentValues())
         .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
 
       if (visibleOptions.length !== 1) {
@@ -16113,46 +16527,6 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
   setCurrentValues(getCurrentValues());
   wrapper.append(trigger);
   return wrapper;
-}
-
-function createWorkOrderCalendarExecutorSelect(workOrder, slotIndex = 1) {
-  const select = document.createElement("select");
-  select.className = "work-item-status-select work-order-calendar-card-select work-order-calendar-card-executor-select";
-  select.dataset.preventRowOpen = "true";
-  select.setAttribute("aria-label", slotIndex === 1 ? "Izvrsitelj 1" : "Izvrsitelj 2");
-  const currentValue = slotIndex === 1 ? (workOrder.executor1 || "") : (workOrder.executor2 || "");
-  replaceSelectOptions(select, getWorkOrderExecutorNameOptions(currentValue, { includeEmpty: true }), currentValue);
-
-  bindWorkOrderInlineSelect(select, () => {
-    const previousValue = currentValue;
-    const nextValue = select.value;
-    const nextExecutor1 = slotIndex === 1 ? nextValue : (workOrder.executor1 || "");
-    const nextExecutor2 = slotIndex === 2 ? nextValue : (workOrder.executor2 || "");
-    select.disabled = true;
-
-    void runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
-      method: "PATCH",
-      body: {
-        executor1: nextExecutor1,
-        executor2: nextExecutor2,
-      },
-    })).then((success) => {
-      const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
-      const refreshedValue = slotIndex === 1 ? (updatedItem?.executor1 || nextValue) : (updatedItem?.executor2 || nextValue);
-
-      if (!success) {
-        replaceSelectOptions(select, getWorkOrderExecutorNameOptions(previousValue), previousValue);
-      } else if (select.isConnected) {
-        replaceSelectOptions(select, getWorkOrderExecutorNameOptions(refreshedValue), refreshedValue);
-      }
-
-      if (select.isConnected) {
-        select.disabled = false;
-      }
-    });
-  });
-
-  return select;
 }
 
 function getWorkOrderCalendarDragPayload(event) {
@@ -16274,15 +16648,12 @@ function buildWorkOrderCalendarDropBody(workOrder, targetDate, laneTarget = null
   const nextDate = targetDate || "";
   const nextExecutors = laneConfig.hasExecutors
     ? laneConfig.executors
-    : [workOrder.executor1 ?? "", workOrder.executor2 ?? ""];
-  const nextExecutor1 = nextExecutors[0] ?? "";
-  const nextExecutor2 = nextExecutors[1] ?? "";
+    : getWorkOrderExecutors(workOrder);
   const nextTeamLabel = laneConfig.hasTeamLabel
     ? laneConfig.teamLabel
     : (workOrder.teamLabel ?? "");
   const sameDate = String(workOrder.dueDate ?? "") === String(nextDate ?? "");
-  const sameExecutors = String(workOrder.executor1 ?? "") === String(nextExecutor1)
-    && String(workOrder.executor2 ?? "") === String(nextExecutor2);
+  const sameExecutors = getWorkOrderExecutors(workOrder).join("||") === normalizeWorkOrderExecutorValues(nextExecutors).join("||");
   const sameTeamLabel = String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? "");
 
   if (sameDate && (!laneConfig.hasExecutors || sameExecutors) && (!laneConfig.hasTeamLabel || sameTeamLabel)) {
@@ -16294,8 +16665,10 @@ function buildWorkOrderCalendarDropBody(workOrder, targetDate, laneTarget = null
   };
 
   if (laneConfig.hasExecutors) {
-    body.executor1 = nextExecutor1;
-    body.executor2 = nextExecutor2;
+    const normalizedExecutors = normalizeWorkOrderExecutorValues(nextExecutors);
+    body.executors = normalizedExecutors;
+    body.executor1 = normalizedExecutors[0] ?? "";
+    body.executor2 = normalizedExecutors[1] ?? "";
   }
 
   if (laneConfig.hasTeamLabel) {
@@ -16552,7 +16925,7 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     const dueDate = String(item?.dueDate ?? "").trim();
     return dueDate && dueDate >= calendar.monthStart && dueDate <= calendar.monthEnd;
   });
-  const unassignedCount = visibleMonthItems.filter((item) => !item.executor1 && !item.executor2).length;
+  const unassignedCount = visibleMonthItems.filter((item) => getWorkOrderExecutors(item).length === 0).length;
   const weekNumbers = calendar.weeks.map((week) => getCalendarIsoWeekNumber(week.weekStart)).filter(Boolean);
   const weekNumberLabel = weekNumbers.length > 0
     ? `Tjedni ${weekNumbers[0]}-${weekNumbers[weekNumbers.length - 1]}`
@@ -16800,11 +17173,14 @@ function buildWorkOrderLeafletPopup(marker) {
     meta.append(priorityWrap);
   }
 
-  const executors = [workOrder.executor1 || marker.executor1, workOrder.executor2 || marker.executor2].filter(Boolean);
+  const executors = getWorkOrderExecutors(workOrder);
   if (executors.length > 0) {
     const executorWrap = document.createElement("div");
     executorWrap.className = "work-order-map-popup-executors";
-    executors.forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    executors.slice(0, 4).forEach((executor) => executorWrap.append(createWorkOrderMiniExecutor(executor)));
+    if (executors.length > 4) {
+      executorWrap.append(createExecutorOverflowBadge(executors.length - 4));
+    }
     meta.append(executorWrap);
   }
 
@@ -18625,20 +19001,13 @@ function renderCompactWorkOrdersList() {
     const wrap = document.createElement("div");
     wrap.className = "work-executor-list";
 
-    executors.forEach((executor) => {
-      const avatar = document.createElement("span");
-      avatar.className = "work-executor-avatar";
-      avatar.title = executor;
-      const tone = getExecutorTone(executor);
-      avatar.style.setProperty("--executor-bg", tone.bg);
-      avatar.style.setProperty("--executor-fg", tone.fg);
-      const initials = document.createElement("span");
-      initials.className = "work-executor-initials";
-      initials.textContent = getUserInitials({ fullName: executor }) || "?";
-      avatar.append(initials);
-
-      wrap.append(avatar);
+    executors.slice(0, 5).forEach((executor) => {
+      wrap.append(createWorkOrderMiniExecutor(executor, { className: "work-executor-avatar" }));
     });
+
+    if (executors.length > 5) {
+      wrap.append(createExecutorOverflowBadge(executors.length - 5, "work-executor-avatar"));
+    }
 
     if (executors.length === 0) {
       const empty = document.createElement("span");
@@ -18779,7 +19148,7 @@ function renderCompactWorkOrdersList() {
         return pill;
       };
 
-      const executorValues = [item.executor1, item.executor2].filter(Boolean);
+      const executorValues = getWorkOrderExecutors(item);
       rowCard.classList.add("is-clickable");
       row.addEventListener("click", (event) => {
         if (isInteractiveWorkOrderTarget(event.target)) {
@@ -19450,6 +19819,7 @@ bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileIn
 bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
 bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
 enhanceWorkOrderEditorChrome();
+renderWorkOrderEditorExecutorPicker();
 renderWorkOrderDocuments();
 
 workOrdersTableWrap.addEventListener("scroll", () => {
