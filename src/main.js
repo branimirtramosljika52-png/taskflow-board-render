@@ -41,6 +41,7 @@
   applyDashboardWidgetGridLayout,
   getWorkOrderCompletedServiceCount,
   getWorkOrderExecutors,
+  normalizeWorkOrderMeasurementSheet,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
   getVehicleAvailabilityStatus,
@@ -4193,6 +4194,19 @@ function queueWorkOrderAutoSave() {
   }, WORK_ORDER_AUTOSAVE_DELAY_MS);
 }
 
+function handleMeasurementSheetMutation({ immediate = false } = {}) {
+  if (!state.workOrderEditorOpen || !state.user) {
+    return;
+  }
+
+  if (immediate) {
+    void persistWorkOrderAutoSave({ immediate: true });
+    return;
+  }
+
+  queueWorkOrderAutoSave();
+}
+
 function renderWorkOrderEditorSummary() {
   if (!workOrderEditorTitle || !workOrderEditorSubtitle || !workOrderEditorMeta || !workOrderEditorCompanySummary) {
     return;
@@ -5197,6 +5211,139 @@ function buildDefaultMeasurementRows(count = DEFAULT_MEASUREMENT_ROW_COUNT) {
   return Array.from({ length: count }, () => createMeasurementRow());
 }
 
+function normalizeMeasurementSheetColumnSnapshotLocal(column = {}, index = 0) {
+  const width = Number(column?.width);
+  return {
+    id: String(column?.id || `measurement-column-${index + 1}`).trim() || `measurement-column-${index + 1}`,
+    label: String(column?.label || `Kolona ${index + 1}`).trim() || `Kolona ${index + 1}`,
+    placeholder: String(column?.placeholder || "").trim(),
+    width: Number.isFinite(width) ? Math.min(640, Math.max(72, Math.round(width))) : 160,
+    computed: typeof column?.computed === "string" && column.computed ? column.computed : null,
+    readonly: Boolean(column?.readonly),
+  };
+}
+
+function normalizeMeasurementSheetRowSnapshotLocal(row = {}, columns = [], index = 0) {
+  const editableColumns = columns.filter((column) => !column.computed);
+  const cells = {};
+  const formats = {};
+
+  editableColumns.forEach((column) => {
+    cells[column.id] = String(row?.cells?.[column.id] ?? "");
+    formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
+  });
+
+  return {
+    id: String(row?.id || `measurement-row-${index + 1}`).trim() || `measurement-row-${index + 1}`,
+    cells,
+    formats,
+  };
+}
+
+function isMeasurementFormatCustomized(format = {}) {
+  const normalized = normalizeMeasurementCellFormat(format);
+  return normalized.type !== "general"
+    || normalized.decimals !== 2
+    || normalized.border.top
+    || normalized.border.right
+    || normalized.border.bottom
+    || normalized.border.left;
+}
+
+function isMeasurementSheetRowMeaningful(row = {}, columns = []) {
+  return columns
+    .filter((column) => !column.computed)
+    .some((column) => (
+      String(row?.cells?.[column.id] ?? "").trim()
+      || isMeasurementFormatCustomized(row?.formats?.[column.id])
+    ));
+}
+
+function isMeasurementSheetStructureCustomized(columns = []) {
+  if (columns.length !== DEFAULT_MEASUREMENT_COLUMNS.length) {
+    return true;
+  }
+
+  return columns.some((column, index) => {
+    const baseline = DEFAULT_MEASUREMENT_COLUMNS[index] ?? {};
+    return String(column.id || "") !== String(baseline.id || "")
+      || String(column.label || "") !== String(baseline.label || "")
+      || String(column.placeholder || "") !== String(baseline.placeholder || "")
+      || Number(column.width || 0) !== Number(baseline.width || 0)
+      || String(column.computed || "") !== String(baseline.computed || "")
+      || Boolean(column.readonly) !== Boolean(baseline.readonly);
+  });
+}
+
+function syncMeasurementSheetCountersFromState() {
+  const columnMax = state.measurementSheet.columns.reduce((maxValue, column) => {
+    const match = String(column?.id || "").match(/^measurement-custom-(\d+)$/);
+    return match ? Math.max(maxValue, Number(match[1])) : maxValue;
+  }, 0);
+  const rowMax = state.measurementSheet.rows.reduce((maxValue, row) => {
+    const match = String(row?.id || "").match(/^measurement-row-(\d+)$/);
+    return match ? Math.max(maxValue, Number(match[1])) : maxValue;
+  }, 0);
+
+  measurementColumnCounter = Math.max(measurementColumnCounter, columnMax);
+  measurementRowCounter = Math.max(measurementRowCounter, rowMax);
+}
+
+function applyMeasurementSheetSnapshot(snapshot = null) {
+  clearScheduledMeasurementSheetRefresh();
+  const normalized = normalizeWorkOrderMeasurementSheet(snapshot);
+  const columns = normalized?.columns?.length
+    ? normalized.columns.map((column, index) => normalizeMeasurementSheetColumnSnapshotLocal(column, index))
+    : buildDefaultMeasurementColumns();
+  const rows = normalized?.rows?.length
+    ? normalized.rows.map((row, index) => normalizeMeasurementSheetRowSnapshotLocal(row, columns, index))
+    : Array.from({ length: DEFAULT_MEASUREMENT_ROW_COUNT }, () => createMeasurementRow());
+
+  state.measurementSheet.columns = columns;
+  state.measurementSheet.rows = rows;
+  state.measurementSheet.resizing = null;
+  state.measurementSheet.activeCell = null;
+  state.measurementSheet.editingCell = null;
+  state.measurementSheet.editorSource = null;
+  state.measurementSheet.formulaReferences = [];
+  state.measurementSheet.selectionAnchor = null;
+  state.measurementSheet.selectedRange = null;
+  state.measurementSheet.selectionDrag = null;
+  state.measurementSheet.fillDrag = null;
+  state.measurementSheet.fillMenu = null;
+  state.measurementSheet.contextMenu = null;
+  syncMeasurementSheetCountersFromState();
+  syncMeasurementSheetHeaderFromWorkOrder();
+
+  if (state.measurementSheet.isOpen) {
+    renderMeasurementSheet();
+  }
+}
+
+function buildMeasurementSheetSnapshot() {
+  ensureMeasurementSheetStructure();
+  const columns = state.measurementSheet.columns.map((column, index) => normalizeMeasurementSheetColumnSnapshotLocal(column, index));
+  const rows = state.measurementSheet.rows.map((row, index) => normalizeMeasurementSheetRowSnapshotLocal(row, columns, index));
+  const lastMeaningfulRowIndex = rows.reduce((lastIndex, row, index) => (
+    isMeasurementSheetRowMeaningful(row, columns) ? index : lastIndex
+  ), -1);
+  const hasMeaningfulRows = lastMeaningfulRowIndex >= 0;
+  const hasCustomStructure = isMeasurementSheetStructureCustomized(columns);
+
+  if (!hasMeaningfulRows && !hasCustomStructure) {
+    return null;
+  }
+
+  const keepRowCount = hasMeaningfulRows
+    ? Math.max(DEFAULT_MEASUREMENT_ROW_COUNT, Math.min(rows.length, lastMeaningfulRowIndex + 4))
+    : DEFAULT_MEASUREMENT_ROW_COUNT;
+
+  return {
+    columns,
+    rows: rows.slice(0, keepRowCount),
+  };
+}
+
 function parseMeasurementNumber(value) {
   const normalized = String(value ?? "").trim().replace(",", ".");
 
@@ -5516,6 +5663,7 @@ function setMeasurementCellRawValue(rowId, columnId, value) {
   }
 
   row.cells[column.id] = value;
+  handleMeasurementSheetMutation();
 }
 
 function applyMeasurementFormatToRange(formatOverrides = {}) {
@@ -5577,6 +5725,7 @@ function applyMeasurementToolbarFormat(overrides = {}) {
   renderMeasurementSelection();
   renderMeasurementActiveCell();
   syncMeasurementToolbar();
+  handleMeasurementSheetMutation();
 }
 
 function getEditableMeasurementColumnIndexes() {
@@ -6799,6 +6948,7 @@ function pasteMeasurementClipboard(text) {
     state.measurementSheet.activeCell.rowId,
     state.measurementSheet.activeCell.columnId,
   );
+  handleMeasurementSheetMutation();
   return true;
 }
 
@@ -6824,6 +6974,8 @@ function clearMeasurementRange(range) {
       row.cells[column.id] = "";
     }
   }
+
+  handleMeasurementSheetMutation();
 }
 
 function syncMeasurementSheetHeaderFromWorkOrder() {
@@ -7210,6 +7362,9 @@ function closeMeasurementSheet() {
   document.body.classList.remove("is-filling-measurement-cells");
   setMeasurementSheetOpen(false);
   syncMeasurementToolbar();
+  if (state.workOrderAutoSave.dirty) {
+    void persistWorkOrderAutoSave({ immediate: true });
+  }
 }
 
 function resetMeasurementSheet() {
@@ -7229,12 +7384,14 @@ function resetMeasurementSheet() {
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
   syncMeasurementToolbar();
+  handleMeasurementSheetMutation();
 }
 
 function addMeasurementColumn() {
   ensureMeasurementSheetStructure();
   appendMeasurementEditableColumn();
   renderMeasurementSheet();
+  handleMeasurementSheetMutation();
 }
 
 function insertMeasurementRowAt(index) {
@@ -7257,6 +7414,7 @@ function insertMeasurementRowAt(index) {
   }
 
   closeMeasurementContextMenu();
+  handleMeasurementSheetMutation();
 }
 
 function insertMeasurementColumnAt(index) {
@@ -7279,6 +7437,7 @@ function insertMeasurementColumnAt(index) {
   }
 
   closeMeasurementContextMenu();
+  handleMeasurementSheetMutation();
 }
 
 function insertMeasurementContextRow(position) {
@@ -7396,6 +7555,7 @@ function applyMeasurementFill(mode, options = {}) {
   };
   state.measurementSheet.fillMenu = null;
   renderMeasurementSheet();
+  handleMeasurementSheetMutation();
 
   if (showMenuAfter) {
     openMeasurementFillMenu(pendingFill, menuX, menuY);
@@ -7426,6 +7586,7 @@ function stopMeasurementColumnResize() {
 
   state.measurementSheet.resizing = null;
   document.body.classList.remove("is-resizing-measurement-column");
+  handleMeasurementSheetMutation();
 }
 
 function updateMeasurementFillTarget(pointerX, pointerY) {
@@ -9644,6 +9805,134 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   };
 }
 
+function getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, stack = new Set()) {
+  const row = sheet?.rows?.[rowIndex];
+  const column = sheet?.columns?.[columnIndex];
+
+  if (!row || !column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return getMeasurementAverageValue(row);
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+
+  if (!isMeasurementFormula(rawValue)) {
+    return normalizeMeasurementLiteralValue(rawValue);
+  }
+
+  const key = `${rowIndex}:${columnIndex}`;
+  if (stack.has(key)) {
+    throw new Error("Circular measurement formula.");
+  }
+
+  stack.add(key);
+  try {
+    return evaluateMeasurementFormula(rawValue, {
+      resolveCellReference(reference) {
+        const resolved = parseMeasurementCellReference(reference);
+
+        if (!resolved) {
+          return "";
+        }
+
+        return getMeasurementSheetPreviewCellRawValue(
+          sheet,
+          resolved.rowIndex,
+          resolved.columnIndex,
+          stack,
+        );
+      },
+    });
+  } finally {
+    stack.delete(key);
+  }
+}
+
+function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
+  const row = sheet?.rows?.[rowIndex];
+  const column = sheet?.columns?.[columnIndex];
+
+  if (!row || !column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return formatMeasurementAverage(row);
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+  const format = row.formats?.[column.id];
+
+  if (!isMeasurementFormula(rawValue)) {
+    return formatMeasurementLiteralDisplayValue(rawValue, format);
+  }
+
+  try {
+    return formatMeasurementComputedDisplayValue(
+      getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set()),
+      format,
+    );
+  } catch {
+    return "#ERR";
+  }
+}
+
+function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
+  const snapshot = normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
+
+  if (!snapshot?.columns?.length) {
+    return null;
+  }
+
+  const lastMeaningfulRowIndex = snapshot.rows.reduce((lastIndex, row, index) => (
+    isMeasurementSheetRowMeaningful(row, snapshot.columns) ? index : lastIndex
+  ), -1);
+  const fallbackRowCount = Math.max(1, Math.min(40, Number(field.rowCount) || 12));
+  const visibleRows = snapshot.rows.slice(0, lastMeaningfulRowIndex >= 0 ? lastMeaningfulRowIndex + 1 : fallbackRowCount);
+
+  return {
+    columns: snapshot.columns,
+    rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
+    sourceLabel: context.sampleWorkOrder?.workOrderNumber
+      ? `Podaci iz RN ${context.sampleWorkOrder.workOrderNumber}`
+      : "Podaci iz povezanog RN-a",
+  };
+}
+
+function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
+  if (!column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return "text-align:right";
+  }
+
+  const format = normalizeMeasurementCellFormat(sheet?.rows?.[rowIndex]?.formats?.[column.id]);
+  const styles = [];
+
+  if (["number", "integer", "percent"].includes(format.type)) {
+    styles.push("text-align:right");
+  }
+  if (format.border.top) {
+    styles.push("border-top:2px solid rgba(47,104,84,0.32)");
+  }
+  if (format.border.right) {
+    styles.push("border-right:2px solid rgba(47,104,84,0.32)");
+  }
+  if (format.border.bottom) {
+    styles.push("border-bottom:2px solid rgba(47,104,84,0.32)");
+  }
+  if (format.border.left) {
+    styles.push("border-left:2px solid rgba(47,104,84,0.32)");
+  }
+
+  return styles.join("; ");
+}
+
 function buildDocumentTemplatePreviewPageMarkup(
   page,
   template,
@@ -9773,14 +10062,30 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   }
 
   if (field.type === "measurement_table") {
-    const columns = (field.columns ?? []).length > 0 ? field.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    const fallbackColumns = (field.columns ?? []).length > 0 ? field.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    const previewTable = placeholderMode ? null : buildMeasurementSheetPreviewTable(field, context);
+    const columns = previewTable?.columns?.length
+      ? previewTable.columns.map((column) => column.label || column.id)
+      : fallbackColumns;
     const rowCount = Math.max(4, Math.min(40, Number(field.rowCount) || 12));
     const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
     const rows = placeholderMode
       ? `<tbody><tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr></tbody>`
-      : Array.from({ length: rowCount }, (_, rowIndex) => (
-        `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
-      )).join("");
+      : previewTable
+        ? previewTable.rows.map((row, rowIndex) => (
+          `<tr>${previewTable.columns.map((column, columnIndex) => {
+            const value = getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex);
+            const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(previewTable, rowIndex, column);
+            const safeValue = value ? escapeHtml(value) : "&nbsp;";
+            return `<td${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ""}>${safeValue}</td>`;
+          }).join("")}</tr>`
+        )).join("")
+        : Array.from({ length: rowCount }, (_, rowIndex) => (
+          `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
+        )).join("");
+    const previewSource = !placeholderMode && previewTable?.sourceLabel
+      ? `<p class="document-template-preview-muted">${escapeHtml(previewTable.sourceLabel)}</p>`
+      : "";
 
     return `
       <section class="document-template-preview-section">
@@ -9792,6 +10097,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <thead><tr>${head}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${previewSource}
         ${helpText}
       </section>
     `;
@@ -12427,6 +12733,7 @@ function buildWorkOrderPayload() {
     executors,
     executor1: executors[0] ?? "",
     executor2: executors[1] ?? "",
+    measurementSheet: buildMeasurementSheetSnapshot(),
     serviceItems,
     serviceLine: getWorkOrderServiceSummary({
       serviceItems,
@@ -12696,6 +13003,7 @@ function resetWorkOrderForm() {
   workOrderRegionInput.value = "";
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
+  applyMeasurementSheetSnapshot(null);
   writeWorkOrderExecutorSelection([]);
   writeWorkOrderServiceSelection([]);
   resetWorkOrderDocumentsState();
@@ -12842,6 +13150,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   rebuildWorkOrderContactOptions(workOrder.contactSlot ?? "", workOrder.contactName);
   workOrderContactPhoneInput.value = workOrder.contactPhone;
   workOrderContactEmailInput.value = workOrder.contactEmail;
+  applyMeasurementSheetSnapshot(workOrder.measurementSheet);
   writeWorkOrderExecutorSelection(getWorkOrderExecutors(workOrder));
   const serviceItems = getWorkOrderServiceItems(workOrder);
   writeWorkOrderServiceSelection(serviceItems);

@@ -540,6 +540,79 @@ test("updateWorkOrder can replace executor list with more than two executors", (
   assert.equal(next.executor2, "Iva Novak");
 });
 
+test("work orders keep measurement sheet snapshots for excel-like reports", () => {
+  const state = buildState();
+  const measurementSheet = {
+    columns: [
+      { id: "point", label: "Mjerno mjesto", placeholder: "Mjerno mjesto", width: 220 },
+      { id: "label", label: "Oznaka", placeholder: "Oznaka", width: 120 },
+      { id: "reading1", label: "Mjerenje 1", placeholder: "0,00", width: 120 },
+      { id: "average", label: "Prosjek", width: 120, computed: "average", readonly: true },
+    ],
+    rows: [
+      {
+        id: "measurement-row-1",
+        cells: {
+          point: "Tipkalo 1",
+          label: "T1",
+          reading1: "12,5",
+        },
+        formats: {
+          point: { type: "text" },
+          label: { type: "text" },
+          reading1: { type: "number", decimals: 1, border: "bottom" },
+        },
+      },
+    ],
+  };
+
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "RN s mjerenjima",
+      measurementSheet,
+    },
+    state,
+    () => "work-order-measurement-sheet",
+    "RN-00013",
+    () => "2026-03-25T10:30:00.000Z",
+  );
+
+  assert.equal(workOrder.measurementSheet.columns.length, 4);
+  assert.equal(workOrder.measurementSheet.rows[0].cells.point, "Tipkalo 1");
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.type, "number");
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.decimals, 1);
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.border.bottom, true);
+
+  const updated = updateWorkOrder(
+    workOrder,
+    {
+      measurementSheet: {
+        columns: measurementSheet.columns,
+        rows: [
+          {
+            id: "measurement-row-1",
+            cells: {
+              point: "Tipkalo 1",
+              label: "T1",
+              reading1: "=10+5",
+            },
+            formats: {
+              reading1: { type: "number", decimals: 2 },
+            },
+          },
+        ],
+      },
+    },
+    state,
+    () => "2026-03-25T10:45:00.000Z",
+  );
+
+  assert.equal(updated.measurementSheet.rows[0].cells.reading1, "=10+5");
+  assert.equal(updated.measurementSheet.rows[0].formats.reading1.decimals, 2);
+});
+
 test("work orders can store service catalog items with completion state", () => {
   const state = buildState();
   const template = createDocumentTemplate(

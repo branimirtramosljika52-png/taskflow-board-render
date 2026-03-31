@@ -581,6 +581,111 @@ function normalizeWorkOrderExecutors(values = [], fallbackValues = []) {
   ));
 }
 
+function normalizeMeasurementSheetBorderSnapshot(border = {}) {
+  if (typeof border === "string") {
+    if (border === "all") {
+      return {
+        top: true,
+        right: true,
+        bottom: true,
+        left: true,
+      };
+    }
+
+    if (["top", "right", "bottom", "left"].includes(border)) {
+      return {
+        top: border === "top",
+        right: border === "right",
+        bottom: border === "bottom",
+        left: border === "left",
+      };
+    }
+
+    return {
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    };
+  }
+
+  return {
+    top: normalizeBoolean(border?.top, false),
+    right: normalizeBoolean(border?.right, false),
+    bottom: normalizeBoolean(border?.bottom, false),
+    left: normalizeBoolean(border?.left, false),
+  };
+}
+
+function normalizeMeasurementSheetCellFormatSnapshot(format = {}) {
+  const type = normalizeText(format?.type).toLowerCase();
+  const decimals = Number.parseInt(format?.decimals, 10);
+
+  return {
+    type: ["general", "number", "integer", "percent", "text"].includes(type) ? type : "general",
+    decimals: Number.isInteger(decimals) ? Math.min(6, Math.max(0, decimals)) : 2,
+    border: normalizeMeasurementSheetBorderSnapshot(format?.border),
+  };
+}
+
+function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
+  const width = Number(input?.width);
+  const computed = normalizeText(input?.computed);
+
+  return {
+    id: normalizeText(input?.id) || `measurement-column-${index + 1}`,
+    label: normalizeText(input?.label) || `Kolona ${index + 1}`,
+    placeholder: normalizeText(input?.placeholder),
+    width: Number.isFinite(width) ? Math.min(640, Math.max(72, Math.round(width))) : 160,
+    computed: computed || null,
+    readonly: normalizeBoolean(input?.readonly, false),
+  };
+}
+
+function normalizeMeasurementSheetRowSnapshot(input = {}, columns = [], index = 0) {
+  const editableColumns = columns.filter((column) => !column.computed);
+  const cells = {};
+  const formats = {};
+
+  editableColumns.forEach((column) => {
+    cells[column.id] = String(input?.cells?.[column.id] ?? "").slice(0, 4000);
+    formats[column.id] = normalizeMeasurementSheetCellFormatSnapshot(input?.formats?.[column.id]);
+  });
+
+  return {
+    id: normalizeText(input?.id) || `measurement-row-${index + 1}`,
+    cells,
+    formats,
+  };
+}
+
+export function normalizeWorkOrderMeasurementSheet(input = null) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+
+  const columns = (Array.isArray(input.columns) ? input.columns : [])
+    .slice(0, 32)
+    .map((column, index) => normalizeMeasurementSheetColumnSnapshot(column, index))
+    .filter((column, index, items) => (
+      column.id
+      && items.findIndex((item) => item.id === column.id) === index
+    ));
+
+  if (columns.length === 0 || columns.every((column) => column.computed)) {
+    return null;
+  }
+
+  const rows = (Array.isArray(input.rows) ? input.rows : [])
+    .slice(0, 600)
+    .map((row, index) => normalizeMeasurementSheetRowSnapshot(row, columns, index));
+
+  return {
+    columns,
+    rows,
+  };
+}
+
 function resolveWorkOrderExecutorsInput(input = {}, current = null) {
   if (hasOwn(input, "executors")) {
     return normalizeWorkOrderExecutors(input.executors);
@@ -2674,12 +2779,14 @@ function hydrateWorkOrderCore(base, company, location) {
   const serviceItems = hasOwn(base ?? {}, "serviceItems")
     ? getWorkOrderServiceItems(base)
     : getWorkOrderServiceItems(base);
+  const measurementSheet = normalizeWorkOrderMeasurementSheet(base?.measurementSheet);
 
   return {
     ...base,
     executor1: executors[0] ?? "",
     executor2: executors[1] ?? "",
     executors,
+    measurementSheet,
     serviceItems,
     serviceLine: serviceItems.length > 0
       ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
@@ -2736,6 +2843,7 @@ export function createWorkOrder(
     linkReference: normalizeText(input.linkReference),
     teamLabel: normalizeText(input.teamLabel),
     executors: resolveWorkOrderExecutorsInput(input),
+    measurementSheet: normalizeWorkOrderMeasurementSheet(input.measurementSheet),
     priority: normalizePriority(input.priority),
     tagText: normalizeText(input.tagText),
     contactSlot: selectedContact.slot,
@@ -2806,6 +2914,9 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
     linkReference: hasOwn(patch, "linkReference") ? normalizeText(patch.linkReference) : current.linkReference,
     teamLabel: hasOwn(patch, "teamLabel") ? normalizeText(patch.teamLabel) : current.teamLabel,
     executors: resolveWorkOrderExecutorsInput(patch, current),
+    measurementSheet: hasOwn(patch, "measurementSheet")
+      ? normalizeWorkOrderMeasurementSheet(patch.measurementSheet)
+      : current.measurementSheet,
     priority: hasOwn(patch, "priority") ? normalizePriority(patch.priority) : current.priority,
     tagText: hasOwn(patch, "tagText") ? normalizeText(patch.tagText) : current.tagText,
     coordinates: hasOwn(patch, "coordinates")

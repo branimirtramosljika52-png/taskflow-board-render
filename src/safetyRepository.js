@@ -20,6 +20,7 @@ import {
   createWorkOrder,
   deleteVehicleReservation,
   deriveOfferInitials,
+  normalizeWorkOrderMeasurementSheet,
   getWorkOrderExecutors,
   getWorkOrderServiceItems,
   nextOfferNumber,
@@ -1216,8 +1217,8 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
-           tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio
-           , usluge_json
+           tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
+           usluge_json, mjerenja_json
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
   `);
@@ -1273,6 +1274,7 @@ async function fetchSnapshotFromConnection(connection) {
       contactName: row.kontakt_osoba ?? "",
       contactPhone: row.kontakt_broj ?? "",
       contactEmail: row.kontakt_email ?? "",
+      measurementSheet: normalizeWorkOrderMeasurementSheet(parseJsonObject(row.mjerenja_json)),
       serviceItems,
       serviceLine: row.usluge ?? "",
       department: row.odjel ?? "",
@@ -3094,6 +3096,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
+    await ensureColumnExists(this.pool, "radni_nalozi", "mjerenja_json", "LONGTEXT NULL AFTER usluge_json");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "firme", "logo_storage_provider", "VARCHAR(32) NULL AFTER logo_data_url");
     await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
@@ -3705,8 +3708,8 @@ export class MySqlSafetyRepository {
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
              izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
-             odjel, koordinate, usluge, usluge_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             odjel, koordinate, usluge, usluge_json, mjerenja_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -3734,6 +3737,7 @@ export class MySqlSafetyRepository {
           draft.coordinates,
           draft.serviceLine,
           JSON.stringify(draft.serviceItems ?? []),
+          draft.measurementSheet ? JSON.stringify(draft.measurementSheet) : null,
           draft.description,
           draft.region,
           draft.invoiceDate,
@@ -3791,7 +3795,7 @@ export class MySqlSafetyRepository {
           SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
               izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
-              odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
+              odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, mjerenja_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
               tezina = ?, rn_zavrsio = ?
           WHERE id = ?
         `,
@@ -3818,6 +3822,7 @@ export class MySqlSafetyRepository {
           next.coordinates,
           next.serviceLine,
           JSON.stringify(next.serviceItems ?? []),
+          next.measurementSheet ? JSON.stringify(next.measurementSheet) : null,
           next.description,
           next.region,
           next.invoiceDate,
