@@ -586,6 +586,22 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         reservedForLabels: [...(reservation.reservedForLabels ?? [])],
       })),
     })),
+    legalFrameworks: (rawSnapshot.legalFrameworks ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({ ...item })),
+    documentTemplates: (rawSnapshot.documentTemplates ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      selectedLegalFrameworkIds: [...(item.selectedLegalFrameworkIds ?? [])],
+      customFields: (item.customFields ?? []).map((field) => ({ ...field })),
+      equipmentItems: (item.equipmentItems ?? []).map((equipment) => ({ ...equipment })),
+      sections: (item.sections ?? []).map((section) => ({
+        ...section,
+        columns: [...(section.columns ?? [])],
+      })),
+      referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
+    })),
     dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && String(item.userId) === String(actor?.id ?? "")
@@ -1022,6 +1038,8 @@ export class MemoryTenantRepository {
     todoTasks: [],
     offers: [],
     vehicles: [],
+    legalFrameworks: [],
+    documentTemplates: [],
     dashboardWidgets: [],
   }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
@@ -1648,6 +1666,8 @@ export class MySqlTenantRepository {
     todoTasks: [],
     offers: [],
     vehicles: [],
+    legalFrameworks: [],
+    documentTemplates: [],
     dashboardWidgets: [],
   }) {
     const connection = await this.pool.getConnection();
@@ -1660,13 +1680,15 @@ export class MySqlTenantRepository {
         : {
           companies: [],
           locations: [],
-          workOrders: [],
-          reminders: [],
-          todoTasks: [],
-          offers: [],
-          vehicles: [],
-          dashboardWidgets: [],
-        };
+        workOrders: [],
+        reminders: [],
+        todoTasks: [],
+        offers: [],
+        vehicles: [],
+        legalFrameworks: [],
+        documentTemplates: [],
+        dashboardWidgets: [],
+      };
 
       return {
         ...context,

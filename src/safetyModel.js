@@ -48,6 +48,39 @@ export const VEHICLE_RESERVATION_STATUS_OPTIONS = [
   { value: "cancelled", label: "Otkazano" },
 ];
 
+export const LEGAL_FRAMEWORK_STATUS_OPTIONS = [
+  { value: "active", label: "Aktivan" },
+  { value: "inactive", label: "Neaktivan" },
+];
+
+export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "active", label: "Aktivan" },
+  { value: "archived", label: "Arhiviran" },
+];
+
+export const DOCUMENT_TEMPLATE_TYPE_OPTIONS = [
+  { value: "Zapisnik", label: "Zapisnik" },
+  { value: "Kontrolni zapisnik", label: "Kontrolni zapisnik" },
+  { value: "Servisni zapisnik", label: "Servisni zapisnik" },
+];
+
+export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [
+  { value: "cover", label: "Naslovnica" },
+  { value: "rich_text", label: "Tekstualni blok" },
+  { value: "legal_list", label: "Popis propisa" },
+  { value: "equipment_list", label: "Popis opreme" },
+  { value: "measurement_table", label: "Excel tablica" },
+  { value: "signatures", label: "Potpisi" },
+];
+
+export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
+  { value: "text", label: "Tekst" },
+  { value: "longtext", label: "Dugi tekst" },
+  { value: "date", label: "Datum" },
+  { value: "number", label: "Broj" },
+];
+
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
   "Flat plan",
   "One-Time",
@@ -187,6 +220,11 @@ const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => op
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
+const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
+const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
+const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
+const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
+const DOCUMENT_TEMPLATE_FIELD_TYPE_SET = new Set(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS.map((option) => option.value));
 const ACTIVE_VEHICLE_RESERVATION_STATUSES = new Set(["reserved", "checked_out"]);
 const OFFER_LOCATION_SCOPE_SET = new Set(["single", "all", "none"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
@@ -226,6 +264,15 @@ const OFFER_STATUS_RANK = {
   sent: 1,
   accepted: 2,
   rejected: 3,
+};
+const LEGAL_FRAMEWORK_STATUS_RANK = {
+  active: 0,
+  inactive: 1,
+};
+const DOCUMENT_TEMPLATE_STATUS_RANK = {
+  active: 0,
+  draft: 1,
+  archived: 2,
 };
 const VEHICLE_STATUS_RANK = {
   reserved: 0,
@@ -361,6 +408,31 @@ function normalizeVehicleReservationStatus(value) {
   return VEHICLE_RESERVATION_STATUS_SET.has(status) ? status : "reserved";
 }
 
+function normalizeLegalFrameworkStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return LEGAL_FRAMEWORK_STATUS_SET.has(status) ? status : "active";
+}
+
+function normalizeDocumentTemplateStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return DOCUMENT_TEMPLATE_STATUS_SET.has(status) ? status : "draft";
+}
+
+function normalizeDocumentTemplateType(value) {
+  const type = normalizeText(value);
+  return DOCUMENT_TEMPLATE_TYPE_SET.has(type) ? type : "Zapisnik";
+}
+
+function normalizeDocumentTemplateSectionType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return DOCUMENT_TEMPLATE_SECTION_TYPE_SET.has(type) ? type : "rich_text";
+}
+
+function normalizeDocumentTemplateFieldType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return DOCUMENT_TEMPLATE_FIELD_TYPE_SET.has(type) ? type : "text";
+}
+
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
@@ -401,6 +473,172 @@ function normalizeOfferTaxRate(value) {
 
 function normalizeOfferDiscountRate(value) {
   return roundCurrencyAmount(Math.min(100, Math.max(0, normalizeFiniteNumber(value, 0))));
+}
+
+function normalizeIdList(values = []) {
+  const source = Array.isArray(values)
+    ? values
+    : [values];
+
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeId(entry))
+      .filter(Boolean),
+  ));
+}
+
+function cloneJsonArray(items = []) {
+  return JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
+}
+
+function slugifyTemplateKey(value, fallback = "FIELD") {
+  const normalized = normalizeText(value)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^A-Za-z0-9]+/gu, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+
+  return (normalized || fallback).slice(0, 48);
+}
+
+function createDefaultDocumentTemplateSections() {
+  return [
+    {
+      type: "cover",
+      title: "Naslovnica",
+      body: "{{DOCUMENT_TYPE}}\n{{COMPANY_NAME}}\n{{LOCATION_NAME}}\nDatum: {{TODAY}}",
+      columns: [],
+      rowCount: 0,
+    },
+    {
+      type: "rich_text",
+      title: "Uvod",
+      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvrsen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
+      columns: [],
+      rowCount: 0,
+    },
+    {
+      type: "legal_list",
+      title: "Primjenjivi propisi",
+      body: "U nastavku je popis propisa i normi na koje se zapisnik poziva.",
+      columns: [],
+      rowCount: 0,
+    },
+    {
+      type: "equipment_list",
+      title: "Obuhvacena oprema",
+      body: "Popis opreme predvidene za pregled i evidenciju.",
+      columns: [],
+      rowCount: 0,
+    },
+    {
+      type: "measurement_table",
+      title: "Mjerenja i evidencija",
+      body: "Tablica za unos rezultata mjerenja ili excel dio zapisnika.",
+      columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+      rowCount: 12,
+    },
+    {
+      type: "signatures",
+      title: "Potpisi",
+      body: "Mjesto za potpis odgovorne osobe i izvodaca radova.",
+      columns: [],
+      rowCount: 0,
+    },
+  ];
+}
+
+function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
+  if (value === null) {
+    return null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return fallback ? { ...fallback } : null;
+  }
+
+  const fileName = normalizeText(value.fileName ?? value.name);
+  const fileType = normalizeText(value.fileType ?? value.mimeType);
+  const dataUrl = normalizeText(value.dataUrl);
+
+  if (!fileName || !dataUrl) {
+    return fallback ? { ...fallback } : null;
+  }
+
+  return {
+    fileName: fileName.slice(0, 255),
+    fileType: fileType.slice(0, 160),
+    dataUrl,
+    updatedAt: normalizeOptionalDateTime(value.updatedAt) ?? isoNow(),
+  };
+}
+
+function normalizeDocumentTemplateFields(fields = []) {
+  const source = Array.isArray(fields) ? fields : [];
+  const seenKeys = new Set();
+
+  return source.map((field, index) => {
+    const label = normalizeText(field?.label) || `Polje ${index + 1}`;
+    let key = slugifyTemplateKey(field?.key || field?.label || `FIELD_${index + 1}`);
+
+    while (seenKeys.has(key)) {
+      key = slugifyTemplateKey(`${key}_${index + 1}`, `FIELD_${index + 1}`);
+    }
+
+    seenKeys.add(key);
+
+    return {
+      id: normalizeText(field?.id) || crypto.randomUUID(),
+      key,
+      label,
+      type: normalizeDocumentTemplateFieldType(field?.type),
+      defaultValue: normalizeText(field?.defaultValue),
+      helpText: normalizeText(field?.helpText),
+    };
+  });
+}
+
+function normalizeDocumentTemplateEquipmentItems(items = []) {
+  const source = Array.isArray(items) ? items : [];
+
+  return source.map((item, index) => ({
+    id: normalizeText(item?.id) || crypto.randomUUID(),
+    name: normalizeText(item?.name) || `Oprema ${index + 1}`,
+    code: normalizeText(item?.code),
+    quantity: roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.quantity, 1))),
+    note: normalizeText(item?.note),
+  }));
+}
+
+function normalizeDocumentTemplateSections(sections = []) {
+  const source = Array.isArray(sections) && sections.length > 0
+    ? sections
+    : createDefaultDocumentTemplateSections();
+
+  return source.map((section, index) => {
+    const type = normalizeDocumentTemplateSectionType(section?.type);
+    const defaultColumns = type === "measurement_table"
+      ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
+      : [];
+    const columns = Array.isArray(section?.columns)
+      ? section.columns.map((entry) => normalizeText(entry)).filter(Boolean)
+      : defaultColumns;
+
+    return {
+      id: normalizeText(section?.id) || crypto.randomUUID(),
+      type,
+      title: normalizeText(section?.title)
+        || DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.find((option) => option.value === type)?.label
+        || `Sekcija ${index + 1}`,
+      body: normalizeText(section?.body),
+      columns: columns.length > 0 ? columns.slice(0, 8) : defaultColumns,
+      rowCount: type === "measurement_table"
+        ? Math.max(4, Math.min(40, Math.round(normalizeFiniteNumber(section?.rowCount, 12))))
+        : 0,
+    };
+  });
 }
 
 export function deriveOfferInitials(value) {
@@ -1509,6 +1747,265 @@ export function updateLocation(current, patch, state, now = isoNow) {
   }
 
   return next;
+}
+
+export function createLegalFramework(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+
+  return {
+    id: createId(),
+    organizationId,
+    title: requireText(input.title, "Naziv propisa"),
+    category: normalizeText(input.category),
+    authority: normalizeText(input.authority),
+    referenceCode: normalizeText(input.referenceCode),
+    versionLabel: normalizeText(input.versionLabel),
+    publishedOn: normalizeOptionalDate(input.publishedOn),
+    effectiveFrom: normalizeOptionalDate(input.effectiveFrom),
+    reviewDate: normalizeOptionalDate(input.reviewDate),
+    status: normalizeLegalFrameworkStatus(input.status),
+    tagsText: normalizeText(input.tagsText),
+    sourceUrl: normalizeText(input.sourceUrl),
+    note: normalizeText(input.note),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateLegalFramework(current, patch, state, now = isoNow) {
+  return {
+    ...current,
+    title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv propisa") : current.title,
+    category: hasOwn(patch, "category") ? normalizeText(patch.category) : current.category,
+    authority: hasOwn(patch, "authority") ? normalizeText(patch.authority) : current.authority,
+    referenceCode: hasOwn(patch, "referenceCode") ? normalizeText(patch.referenceCode) : current.referenceCode,
+    versionLabel: hasOwn(patch, "versionLabel") ? normalizeText(patch.versionLabel) : current.versionLabel,
+    publishedOn: hasOwn(patch, "publishedOn") ? normalizeOptionalDate(patch.publishedOn) : current.publishedOn,
+    effectiveFrom: hasOwn(patch, "effectiveFrom") ? normalizeOptionalDate(patch.effectiveFrom) : current.effectiveFrom,
+    reviewDate: hasOwn(patch, "reviewDate") ? normalizeOptionalDate(patch.reviewDate) : current.reviewDate,
+    status: hasOwn(patch, "status") ? normalizeLegalFrameworkStatus(patch.status) : current.status,
+    tagsText: hasOwn(patch, "tagsText") ? normalizeText(patch.tagsText) : current.tagsText,
+    sourceUrl: hasOwn(patch, "sourceUrl") ? normalizeText(patch.sourceUrl) : current.sourceUrl,
+    note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    updatedAt: now(),
+  };
+}
+
+export function filterLegalFrameworks(
+  items,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.category,
+      item.authority,
+      item.referenceCode,
+      item.versionLabel,
+      item.tagsText,
+      item.note,
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortLegalFrameworks(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftRank = LEGAL_FRAMEWORK_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = LEGAL_FRAMEWORK_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.reviewDate && right.reviewDate && left.reviewDate !== right.reviewDate) {
+      return left.reviewDate.localeCompare(right.reviewDate);
+    }
+
+    if (left.reviewDate && !right.reviewDate) {
+      return -1;
+    }
+
+    if (!left.reviewDate && right.reviewDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function createDocumentTemplate(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  const sampleCompanyId = normalizeId(input.sampleCompanyId);
+  const sampleLocationId = normalizeId(input.sampleLocationId);
+
+  if (sampleCompanyId && !(state.companies ?? []).some((item) => item.id === sampleCompanyId)) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  if (sampleLocationId) {
+    const belongsToCompany = (state.locations ?? []).some((item) => (
+      item.id === sampleLocationId
+      && (!sampleCompanyId || item.companyId === sampleCompanyId)
+    ));
+
+    if (!belongsToCompany) {
+      throw new Error("Odabrana lokacija ne pripada tvrtki.");
+    }
+  }
+
+  const legalFrameworkIds = normalizeIdList(input.selectedLegalFrameworkIds)
+    .filter((entryId) => (state.legalFrameworks ?? []).some((item) => (
+      String(item.id) === String(entryId)
+      && String(item.organizationId) === String(organizationId)
+    )));
+
+  return {
+    id: createId(),
+    organizationId,
+    title: requireText(input.title, "Naziv templatea"),
+    documentType: normalizeDocumentTemplateType(input.documentType),
+    status: normalizeDocumentTemplateStatus(input.status),
+    description: normalizeText(input.description),
+    outputFileName: normalizeText(input.outputFileName) || "zapisnik-template",
+    sampleCompanyId,
+    sampleLocationId,
+    selectedLegalFrameworkIds: legalFrameworkIds,
+    customFields: normalizeDocumentTemplateFields(input.customFields),
+    equipmentItems: normalizeDocumentTemplateEquipmentItems(input.equipmentItems),
+    sections: normalizeDocumentTemplateSections(input.sections),
+    referenceDocument: normalizeDocumentTemplateReferenceDocument(input.referenceDocument),
+    createdByUserId: normalizeText(input.createdByUserId),
+    createdByLabel: normalizeText(input.createdByLabel),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateDocumentTemplate(current, patch, state, now = isoNow) {
+  const sampleCompanyId = hasOwn(patch, "sampleCompanyId")
+    ? normalizeId(patch.sampleCompanyId)
+    : normalizeId(current.sampleCompanyId);
+  const sampleLocationId = hasOwn(patch, "sampleLocationId")
+    ? normalizeId(patch.sampleLocationId)
+    : normalizeId(current.sampleLocationId);
+
+  if (sampleCompanyId && !(state.companies ?? []).some((item) => item.id === sampleCompanyId)) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  if (sampleLocationId) {
+    const belongsToCompany = (state.locations ?? []).some((item) => (
+      item.id === sampleLocationId
+      && (!sampleCompanyId || item.companyId === sampleCompanyId)
+    ));
+
+    if (!belongsToCompany) {
+      throw new Error("Odabrana lokacija ne pripada tvrtki.");
+    }
+  }
+
+  const selectedLegalFrameworkIds = hasOwn(patch, "selectedLegalFrameworkIds")
+    ? normalizeIdList(patch.selectedLegalFrameworkIds).filter((entryId) => (state.legalFrameworks ?? []).some((item) => (
+      String(item.id) === String(entryId)
+      && String(item.organizationId) === String(current.organizationId)
+    )))
+    : normalizeIdList(current.selectedLegalFrameworkIds);
+
+  return {
+    ...current,
+    title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv templatea") : current.title,
+    documentType: hasOwn(patch, "documentType") ? normalizeDocumentTemplateType(patch.documentType) : current.documentType,
+    status: hasOwn(patch, "status") ? normalizeDocumentTemplateStatus(patch.status) : current.status,
+    description: hasOwn(patch, "description") ? normalizeText(patch.description) : current.description,
+    outputFileName: hasOwn(patch, "outputFileName")
+      ? (normalizeText(patch.outputFileName) || current.outputFileName)
+      : current.outputFileName,
+    sampleCompanyId,
+    sampleLocationId,
+    selectedLegalFrameworkIds,
+    customFields: hasOwn(patch, "customFields")
+      ? normalizeDocumentTemplateFields(patch.customFields)
+      : cloneJsonArray(current.customFields),
+    equipmentItems: hasOwn(patch, "equipmentItems")
+      ? normalizeDocumentTemplateEquipmentItems(patch.equipmentItems)
+      : cloneJsonArray(current.equipmentItems),
+    sections: hasOwn(patch, "sections")
+      ? normalizeDocumentTemplateSections(patch.sections)
+      : cloneJsonArray(current.sections),
+    referenceDocument: hasOwn(patch, "referenceDocument")
+      ? normalizeDocumentTemplateReferenceDocument(patch.referenceDocument, current.referenceDocument)
+      : (current.referenceDocument ? { ...current.referenceDocument } : null),
+    createdByUserId: hasOwn(patch, "createdByUserId") ? normalizeText(patch.createdByUserId) : current.createdByUserId,
+    createdByLabel: hasOwn(patch, "createdByLabel") ? normalizeText(patch.createdByLabel) : current.createdByLabel,
+    updatedAt: now(),
+  };
+}
+
+export function filterDocumentTemplates(
+  items,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.documentType,
+      item.description,
+      item.outputFileName,
+      item.createdByLabel,
+      ...(item.customFields ?? []).flatMap((field) => [field.label, field.key, field.defaultValue]),
+      ...(item.equipmentItems ?? []).flatMap((equipment) => [equipment.name, equipment.code, equipment.note]),
+      ...(item.sections ?? []).flatMap((section) => [section.title, section.body, ...(section.columns ?? [])]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortDocumentTemplates(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftRank = DOCUMENT_TEMPLATE_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = DOCUMENT_TEMPLATE_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
 }
 
 function resolveCompanySnapshot(company) {

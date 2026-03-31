@@ -5,6 +5,8 @@ import {
   buildLocationContacts,
   createCompany,
   createDashboardWidget,
+  createDocumentTemplate,
+  createLegalFramework,
   createLocation,
   createOffer,
   createReminder,
@@ -20,6 +22,8 @@ import {
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateDashboardWidget,
+  updateDocumentTemplate,
+  updateLegalFramework,
   updateLocation,
   updateOffer,
   updateReminder,
@@ -1008,6 +1012,107 @@ async function fetchSnapshotFromConnection(connection) {
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
 
+  const [legalFrameworkRows] = await connection.query(`
+    SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
+           published_on, effective_from, review_date, status, tags_text, source_url, note,
+           created_at, updated_at
+    FROM web_legal_frameworks
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'inactive' THEN 1
+        ELSE 9
+      END ASC,
+      review_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const legalFrameworks = legalFrameworkRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: row.title ?? "",
+    category: row.category ?? "",
+    authority: row.authority_name ?? "",
+    referenceCode: row.reference_code ?? "",
+    versionLabel: row.version_label ?? "",
+    publishedOn: normalizeDateOnly(row.published_on),
+    effectiveFrom: normalizeDateOnly(row.effective_from),
+    reviewDate: normalizeDateOnly(row.review_date),
+    status: row.status ?? "active",
+    tagsText: row.tags_text ?? "",
+    sourceUrl: row.source_url ?? "",
+    note: row.note ?? "",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
+  const [documentTemplateRows] = await connection.query(`
+    SELECT id, organization_id, title, document_type, status, description, output_file_name,
+           sample_company_id, sample_location_id, selected_legal_framework_ids_json,
+           custom_fields_json, equipment_items_json, sections_json,
+           reference_document_name, reference_document_type, reference_document_data_url,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_document_templates
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'draft' THEN 1
+        WHEN 'archived' THEN 2
+        ELSE 9
+      END ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const documentTemplates = documentTemplateRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: row.title ?? "",
+    documentType: row.document_type ?? "Zapisnik",
+    status: row.status ?? "draft",
+    description: row.description ?? "",
+    outputFileName: row.output_file_name ?? "",
+    sampleCompanyId: dbString(row.sample_company_id),
+    sampleLocationId: dbString(row.sample_location_id),
+    selectedLegalFrameworkIds: parseJsonArray(row.selected_legal_framework_ids_json).map((entry) => dbString(entry)).filter(Boolean),
+    customFields: parseJsonArray(row.custom_fields_json).map((field) => ({
+      id: dbString(field.id),
+      key: dbString(field.key),
+      label: dbString(field.label),
+      type: dbString(field.type) || "text",
+      defaultValue: dbString(field.defaultValue),
+      helpText: dbString(field.helpText),
+    })),
+    equipmentItems: parseJsonArray(row.equipment_items_json).map((item) => ({
+      id: dbString(item.id),
+      name: dbString(item.name),
+      code: dbString(item.code),
+      quantity: Number(item.quantity ?? 0) || 0,
+      note: dbString(item.note),
+    })),
+    sections: parseJsonArray(row.sections_json).map((section) => ({
+      id: dbString(section.id),
+      type: dbString(section.type) || "rich_text",
+      title: dbString(section.title),
+      body: dbString(section.body),
+      columns: parseJsonArray(section.columns).map((entry) => dbString(entry)).filter(Boolean),
+      rowCount: Number(section.rowCount ?? 0) || 0,
+    })),
+    referenceDocument: dbString(row.reference_document_name) && dbString(row.reference_document_data_url)
+      ? {
+        fileName: row.reference_document_name ?? "",
+        fileType: row.reference_document_type ?? "",
+        dataUrl: row.reference_document_data_url ?? "",
+        updatedAt: normalizeTimestamp(row.updated_at),
+      }
+      : null,
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: row.created_by_label ?? "",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
            size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height,
@@ -1044,6 +1149,8 @@ async function fetchSnapshotFromConnection(connection) {
     todoTasks,
     offers,
     vehicles,
+    legalFrameworks,
+    documentTemplates,
     dashboardWidgets,
   };
 }
@@ -1119,6 +1226,8 @@ export class InMemorySafetyRepository {
       todoTasks: [],
       offers: [],
       vehicles: [],
+      legalFrameworks: [],
+      documentTemplates: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -1229,6 +1338,20 @@ export class InMemorySafetyRepository {
           reservedForUserIds: [...(reservation.reservedForUserIds ?? [])],
           reservedForLabels: [...(reservation.reservedForLabels ?? [])],
         })),
+      })),
+      legalFrameworks: this.snapshot.legalFrameworks.map((item) => ({ ...item })),
+      documentTemplates: this.snapshot.documentTemplates.map((item) => ({
+        ...item,
+        selectedLegalFrameworkIds: [...(item.selectedLegalFrameworkIds ?? [])],
+        customFields: (item.customFields ?? []).map((field) => ({ ...field })),
+        equipmentItems: (item.equipmentItems ?? []).map((equipment) => ({ ...equipment })),
+        sections: (item.sections ?? []).map((section) => ({
+          ...section,
+          columns: [...(section.columns ?? [])],
+        })),
+        referenceDocument: item.referenceDocument
+          ? { ...item.referenceDocument }
+          : null,
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
@@ -1738,6 +1861,69 @@ export class InMemorySafetyRepository {
     return next;
   }
 
+  async createLegalFramework(input) {
+    const item = createLegalFramework(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.legalFrameworks = [item, ...this.snapshot.legalFrameworks];
+    return item;
+  }
+
+  async updateLegalFramework(id, patch) {
+    const current = this.snapshot.legalFrameworks.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateLegalFramework(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.legalFrameworks = this.snapshot.legalFrameworks.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteLegalFramework(id) {
+    const before = this.snapshot.legalFrameworks.length;
+    this.snapshot.legalFrameworks = this.snapshot.legalFrameworks.filter((item) => item.id !== id);
+    this.snapshot.documentTemplates = this.snapshot.documentTemplates.map((item) => ({
+      ...item,
+      selectedLegalFrameworkIds: (item.selectedLegalFrameworkIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      updatedAt: (item.selectedLegalFrameworkIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? new Date().toISOString()
+        : item.updatedAt,
+    }));
+    return this.snapshot.legalFrameworks.length !== before;
+  }
+
+  async createDocumentTemplate(input, actor = null) {
+    const item = createDocumentTemplate({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.documentTemplates = [item, ...this.snapshot.documentTemplates];
+    return item;
+  }
+
+  async updateDocumentTemplate(id, patch, actor = null) {
+    const current = this.snapshot.documentTemplates.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateDocumentTemplate(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.documentTemplates = this.snapshot.documentTemplates.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteDocumentTemplate(id) {
+    const before = this.snapshot.documentTemplates.length;
+    this.snapshot.documentTemplates = this.snapshot.documentTemplates.filter((item) => item.id !== id);
+    return this.snapshot.documentTemplates.length !== before;
+  }
+
   async createDashboardWidget(input) {
     const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
@@ -1971,6 +2157,55 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_vehicles_org_plate (organization_id, plate_number),
         INDEX idx_web_vehicles_org_status (organization_id, status)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_legal_frameworks (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        category VARCHAR(120) NOT NULL DEFAULT '',
+        authority_name VARCHAR(180) NOT NULL DEFAULT '',
+        reference_code VARCHAR(120) NOT NULL DEFAULT '',
+        version_label VARCHAR(80) NOT NULL DEFAULT '',
+        published_on DATE NULL,
+        effective_from DATE NULL,
+        review_date DATE NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        tags_text TEXT NULL,
+        source_url VARCHAR(255) NOT NULL DEFAULT '',
+        note TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_legal_frameworks_org_status (organization_id, status),
+        INDEX idx_web_legal_frameworks_review (review_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_document_templates (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        document_type VARCHAR(120) NOT NULL DEFAULT 'Zapisnik',
+        status VARCHAR(16) NOT NULL DEFAULT 'draft',
+        description TEXT NULL,
+        output_file_name VARCHAR(180) NOT NULL DEFAULT '',
+        sample_company_id INT NULL,
+        sample_location_id INT NULL,
+        selected_legal_framework_ids_json LONGTEXT NULL,
+        custom_fields_json LONGTEXT NULL,
+        equipment_items_json LONGTEXT NULL,
+        sections_json LONGTEXT NULL,
+        reference_document_name VARCHAR(255) NOT NULL DEFAULT '',
+        reference_document_type VARCHAR(160) NOT NULL DEFAULT '',
+        reference_document_data_url LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_document_templates_org_status (organization_id, status),
+        INDEX idx_web_document_templates_company (sample_company_id),
+        INDEX idx_web_document_templates_location (sample_location_id)
       )
     `);
     await this.pool.query(`
@@ -3600,6 +3835,265 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createLegalFramework(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createLegalFramework(input, snapshot, () => "pending-legal-framework", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_legal_frameworks
+            (organization_id, title, category, authority_name, reference_code, version_label,
+             published_on, effective_from, review_date, status, tags_text, source_url, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.category,
+          draft.authority,
+          draft.referenceCode,
+          draft.versionLabel,
+          draft.publishedOn,
+          draft.effectiveFrom,
+          draft.reviewDate,
+          draft.status,
+          draft.tagsText,
+          draft.sourceUrl,
+          draft.note,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateLegalFramework(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.legalFrameworks.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateLegalFramework(current, patch, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_legal_frameworks
+          SET title = ?, category = ?, authority_name = ?, reference_code = ?, version_label = ?,
+              published_on = ?, effective_from = ?, review_date = ?, status = ?, tags_text = ?,
+              source_url = ?, note = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.category,
+          next.authority,
+          next.referenceCode,
+          next.versionLabel,
+          next.publishedOn,
+          next.effectiveFrom,
+          next.reviewDate,
+          next.status,
+          next.tagsText,
+          next.sourceUrl,
+          next.note,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteLegalFramework(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [templates] = await connection.query(
+        "SELECT id, selected_legal_framework_ids_json FROM web_document_templates WHERE selected_legal_framework_ids_json IS NOT NULL",
+      );
+
+      for (const row of templates) {
+        const currentIds = parseJsonArray(row.selected_legal_framework_ids_json).map((entry) => dbString(entry));
+        const nextIds = currentIds.filter((entryId) => String(entryId) !== String(id));
+
+        if (nextIds.length !== currentIds.length) {
+          await connection.query(
+            `
+              UPDATE web_document_templates
+              SET selected_legal_framework_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            [JSON.stringify(nextIds), Number(row.id)],
+          );
+        }
+      }
+
+      const [result] = await connection.query("DELETE FROM web_legal_frameworks WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createDocumentTemplate(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createDocumentTemplate({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending-document-template", () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_document_templates
+            (organization_id, title, document_type, status, description, output_file_name,
+             sample_company_id, sample_location_id, selected_legal_framework_ids_json,
+             custom_fields_json, equipment_items_json, sections_json,
+             reference_document_name, reference_document_type, reference_document_data_url,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.documentType,
+          draft.status,
+          draft.description,
+          draft.outputFileName,
+          parseNullableInteger(draft.sampleCompanyId),
+          parseNullableInteger(draft.sampleLocationId),
+          JSON.stringify(draft.selectedLegalFrameworkIds ?? []),
+          JSON.stringify(draft.customFields ?? []),
+          JSON.stringify(draft.equipmentItems ?? []),
+          JSON.stringify(draft.sections ?? []),
+          draft.referenceDocument?.fileName ?? "",
+          draft.referenceDocument?.fileType ?? "",
+          draft.referenceDocument?.dataUrl ?? null,
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateDocumentTemplate(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.documentTemplates.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateDocumentTemplate(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_document_templates
+          SET title = ?, document_type = ?, status = ?, description = ?, output_file_name = ?,
+              sample_company_id = ?, sample_location_id = ?, selected_legal_framework_ids_json = ?,
+              custom_fields_json = ?, equipment_items_json = ?, sections_json = ?,
+              reference_document_name = ?, reference_document_type = ?, reference_document_data_url = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.documentType,
+          next.status,
+          next.description,
+          next.outputFileName,
+          parseNullableInteger(next.sampleCompanyId),
+          parseNullableInteger(next.sampleLocationId),
+          JSON.stringify(next.selectedLegalFrameworkIds ?? []),
+          JSON.stringify(next.customFields ?? []),
+          JSON.stringify(next.equipmentItems ?? []),
+          JSON.stringify(next.sections ?? []),
+          next.referenceDocument?.fileName ?? "",
+          next.referenceDocument?.fileType ?? "",
+          next.referenceDocument?.dataUrl ?? null,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteDocumentTemplate(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_document_templates WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }

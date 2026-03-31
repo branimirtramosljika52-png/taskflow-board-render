@@ -6,6 +6,11 @@
   DASHBOARD_WIDGET_SIZE_OPTIONS,
   DASHBOARD_WIDGET_SOURCE_OPTIONS,
   DASHBOARD_WIDGET_VISUALIZATION_OPTIONS,
+  DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS,
+  DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS,
+  DOCUMENT_TEMPLATE_STATUS_OPTIONS,
+  DOCUMENT_TEMPLATE_TYPE_OPTIONS,
+  LEGAL_FRAMEWORK_STATUS_OPTIONS,
   OFFER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
@@ -21,6 +26,8 @@
   buildWorkOrderMapMarkers,
   createDashboardWidget,
   deriveOfferInitials,
+  filterDocumentTemplates,
+  filterLegalFrameworks,
   filterOffers,
   filterReminders,
   filterTodoTasks,
@@ -37,6 +44,8 @@
   sortOffers,
   sortReminders,
   sortDashboardWidgets,
+  sortDocumentTemplates,
+  sortLegalFrameworks,
   sortTodoTasks,
   sortVehicleReservations,
   sortVehicles,
@@ -280,6 +289,18 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Pregled vozila, raspolozivosti i povezanih operativnih podataka za organizaciju.",
     chips: ["Fleet", "Availability", "Assignments"],
   },
+  "legal-framework": {
+    kicker: "Organisations",
+    title: "Legal Framework",
+    description: "Registar zakona, pravilnika i normi koje kasnije koristimo u zapisnicima, ponudama i operativi.",
+    chips: ["Laws", "Regulations", "Compliance"],
+  },
+  "template-development": {
+    kicker: "Organisations",
+    title: "Template Development",
+    description: "Builder za Zapisnike s placeholderima, propisima, opremom, previewem i Word exportom.",
+    chips: ["Templates", "Word", "Preview"],
+  },
   "safety-authorization": {
     kicker: "Organisations",
     title: "Safety Authorization",
@@ -330,6 +351,8 @@ const SIDEBAR_ITEM_CONFIG = {
   settings: { group: "home", view: "module", module: "settings" },
   "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
   vehicles: { group: "organisations", view: "module", module: "vehicles" },
+  "legal-framework": { group: "organisations", view: "module", module: "legal-framework" },
+  "template-development": { group: "organisations", view: "module", module: "template-development" },
   people: { group: "organisations", view: "management" },
   "safety-authorization": { group: "organisations", view: "module", module: "safety-authorization" },
   rn: { group: "operations", view: "selfdash", focus: "list" },
@@ -369,6 +392,8 @@ const SIDEBAR_ITEM_LABELS = {
   settings: "Settings",
   "measurement-equipment": "Measurement Equipment",
   vehicles: "Vehicles",
+  "legal-framework": "Legal Framework",
+  "template-development": "Template Development",
   people: "People",
   "safety-authorization": "Safety Authorization",
   rn: "RN",
@@ -406,6 +431,8 @@ const state = {
   todoTasks: [],
   offers: [],
   vehicles: [],
+  legalFrameworks: [],
+  documentTemplates: [],
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
@@ -414,15 +441,27 @@ const state = {
   activeDashboardWidgetId: "",
   activeVehicleId: "",
   activeVehicleReservationId: "",
+  activeLegalFrameworkId: "",
+  activeDocumentTemplateId: "",
   companyEditorOpen: false,
   locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
+  legalFrameworkEditorOpen: false,
+  documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
   vehicleScheduleDate: new Date().toISOString().slice(0, 10),
   vehicleScheduleSelection: null,
   activeWorkOrderViewMode: "list",
   offerEditorOpen: false,
+  legalFrameworkFilters: {
+    query: "",
+    status: "all",
+  },
+  documentTemplateFilters: {
+    query: "",
+    status: "all",
+  },
   workOrderCalendar: {
     weekStart: new Date().toISOString().slice(0, 10),
     displayMode: "week",
@@ -961,8 +1000,92 @@ const offerDiscountRateInput = document.querySelector("#offer-discount-rate");
 const offerError = document.querySelector("#offer-error");
 const offerResetButton = document.querySelector("#offer-reset");
 const offerDeleteButton = document.querySelector("#offer-delete");
+const legalFrameworkModule = document.querySelector("#legal-framework-module");
+const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
+const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
+const legalFrameworkInactiveCount = document.querySelector("#legal-framework-inactive-count");
+const legalFrameworkReviewCount = document.querySelector("#legal-framework-review-count");
+const legalFrameworkSearchInput = document.querySelector("#legal-framework-search");
+const legalFrameworkFilterStatusInput = document.querySelector("#legal-framework-filter-status");
+const legalFrameworkHelper = document.querySelector("#legal-framework-helper");
+const legalFrameworkList = document.querySelector("#legal-framework-list");
+const legalFrameworkEmpty = document.querySelector("#legal-framework-empty");
+const legalFrameworkOpenFormButton = document.querySelector("#legal-framework-open-form");
+const legalFrameworkEditorBackdrop = document.querySelector("#legal-framework-editor-backdrop");
+const legalFrameworkEditorPanel = document.querySelector("#legal-framework-editor-panel");
+const legalFrameworkEditorCloseButton = document.querySelector("#legal-framework-editor-close");
+const legalFrameworkEditorBody = legalFrameworkEditorPanel?.querySelector(".legal-framework-editor-body");
+const legalFrameworkEditorTitle = document.querySelector("#legal-framework-editor-title");
+const legalFrameworkForm = document.querySelector("#legal-framework-form");
+const legalFrameworkIdInput = document.querySelector("#legal-framework-id");
+const legalFrameworkTitleInput = document.querySelector("#legal-framework-title");
+const legalFrameworkCategoryInput = document.querySelector("#legal-framework-category");
+const legalFrameworkStatusInput = document.querySelector("#legal-framework-status");
+const legalFrameworkAuthorityInput = document.querySelector("#legal-framework-authority");
+const legalFrameworkReferenceCodeInput = document.querySelector("#legal-framework-reference-code");
+const legalFrameworkVersionLabelInput = document.querySelector("#legal-framework-version-label");
+const legalFrameworkPublishedOnInput = document.querySelector("#legal-framework-published-on");
+const legalFrameworkEffectiveFromInput = document.querySelector("#legal-framework-effective-from");
+const legalFrameworkReviewDateInput = document.querySelector("#legal-framework-review-date");
+const legalFrameworkSourceUrlInput = document.querySelector("#legal-framework-source-url");
+const legalFrameworkTagsTextInput = document.querySelector("#legal-framework-tags-text");
+const legalFrameworkNoteInput = document.querySelector("#legal-framework-note");
+const legalFrameworkError = document.querySelector("#legal-framework-error");
+const legalFrameworkResetButton = document.querySelector("#legal-framework-reset");
+const legalFrameworkDeleteButton = document.querySelector("#legal-framework-delete");
+const templateDevelopmentModule = document.querySelector("#template-development-module");
+const documentTemplateTotalCount = document.querySelector("#document-template-total-count");
+const documentTemplateActiveCount = document.querySelector("#document-template-active-count");
+const documentTemplateDraftCount = document.querySelector("#document-template-draft-count");
+const documentTemplateReferenceCount = document.querySelector("#document-template-reference-count");
+const documentTemplateSearchInput = document.querySelector("#document-template-search");
+const documentTemplateFilterStatusInput = document.querySelector("#document-template-filter-status");
+const documentTemplateHelper = document.querySelector("#document-template-helper");
+const documentTemplateList = document.querySelector("#document-template-list");
+const documentTemplateEmpty = document.querySelector("#document-template-empty");
+const documentTemplateOpenFormButton = document.querySelector("#document-template-open-form");
+const documentTemplateEditorBackdrop = document.querySelector("#document-template-editor-backdrop");
+const documentTemplateEditorPanel = document.querySelector("#document-template-editor-panel");
+const documentTemplateEditorCloseButton = document.querySelector("#document-template-editor-close");
+const documentTemplateEditorBody = documentTemplateEditorPanel?.querySelector(".document-template-editor-body");
+const documentTemplateEditorTitle = document.querySelector("#document-template-editor-title");
+const documentTemplateOpenPdfPreviewButton = document.querySelector("#document-template-open-pdf-preview");
+const documentTemplateExportPlaceholderButton = document.querySelector("#document-template-export-placeholder");
+const documentTemplateExportPreviewButton = document.querySelector("#document-template-export-preview");
+const documentTemplateForm = document.querySelector("#document-template-form");
+const documentTemplateIdInput = document.querySelector("#document-template-id");
+const documentTemplateTitleInput = document.querySelector("#document-template-title");
+const documentTemplateTypeInput = document.querySelector("#document-template-type");
+const documentTemplateStatusInput = document.querySelector("#document-template-status");
+const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
+const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
+const documentTemplateLocationIdInput = document.querySelector("#document-template-location-id");
+const documentTemplateDescriptionInput = document.querySelector("#document-template-description");
+const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
+const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
+const documentTemplateAddFieldButton = document.querySelector("#document-template-add-field");
+const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
+const documentTemplateEquipmentItems = document.querySelector("#document-template-equipment-items");
+const documentTemplateAddEquipmentButton = document.querySelector("#document-template-add-equipment");
+const documentTemplateSections = document.querySelector("#document-template-sections");
+const documentTemplateAddSectionButton = document.querySelector("#document-template-add-section");
+const documentTemplateReferenceFileInput = document.querySelector("#document-template-reference-file-input");
+const documentTemplateReferenceUploadButton = document.querySelector("#document-template-reference-upload");
+const documentTemplateReferenceDownloadButton = document.querySelector("#document-template-reference-download");
+const documentTemplateReferenceRemoveButton = document.querySelector("#document-template-reference-remove");
+const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
+const documentTemplatePreview = document.querySelector("#document-template-preview");
+const documentTemplateError = document.querySelector("#document-template-error");
+const documentTemplateResetButton = document.querySelector("#document-template-reset");
+const documentTemplateDeleteButton = document.querySelector("#document-template-delete");
 
 let offerFormItems = [];
+let documentTemplateFieldDrafts = [];
+let documentTemplateEquipmentDrafts = [];
+let documentTemplateSectionDrafts = [];
+let activeDocumentTemplateSectionTarget = "";
+let activeDocumentTemplateTextTarget = null;
+let documentTemplateReferenceDraft = null;
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1755,6 +1878,8 @@ function applySnapshot(payload) {
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
   state.vehicles = payload.vehicles ?? [];
+  state.legalFrameworks = payload.legalFrameworks ?? [];
+  state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
@@ -1790,6 +1915,16 @@ function applySnapshot(payload) {
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     resetOfferForm();
+  }
+  if (legalFrameworkIdInput?.value && !state.legalFrameworks.some((item) => String(item.id) === String(legalFrameworkIdInput.value))) {
+    state.legalFrameworkEditorOpen = false;
+    syncLegalFrameworkEditorModal();
+    resetLegalFrameworkForm();
+  }
+  if (documentTemplateIdInput?.value && !state.documentTemplates.some((item) => String(item.id) === String(documentTemplateIdInput.value))) {
+    state.documentTemplateEditorOpen = false;
+    syncDocumentTemplateEditorModal();
+    resetDocumentTemplateForm();
   }
   if (companyIdInput?.value && !state.companies.some((item) => String(item.id) === String(companyIdInput.value))) {
     state.companyEditorOpen = false;
@@ -2872,6 +3007,8 @@ function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
+  const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
+  const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -2902,12 +3039,28 @@ function renderModuleView() {
     offersModule.hidden = !isOffersModule;
   }
 
+  if (legalFrameworkModule) {
+    legalFrameworkModule.hidden = !isLegalFrameworkModule;
+  }
+
+  if (templateDevelopmentModule) {
+    templateDevelopmentModule.hidden = !isTemplateDevelopmentModule;
+  }
+
   if (isVehiclesModule) {
     renderVehiclesModule();
   }
 
   if (isOffersModule) {
     renderOffersModule();
+  }
+
+  if (isLegalFrameworkModule) {
+    renderLegalFrameworkModule();
+  }
+
+  if (isTemplateDevelopmentModule) {
+    renderDocumentTemplateModule();
   }
 }
 
@@ -7140,6 +7293,1680 @@ function dismissLocationEditor() {
   renderLocations();
 }
 
+function scrollLegalFrameworkEditorToTop() {
+  legalFrameworkEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function scrollDocumentTemplateEditorToTop() {
+  documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function syncLegalFrameworkEditorModal() {
+  if (state.legalFrameworkEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "legal-framework"
+    || !state.user
+  )) {
+    state.legalFrameworkEditorOpen = false;
+  }
+
+  const isOpen = state.legalFrameworkEditorOpen;
+  legalFrameworkEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-legal-framework-editor-open", isOpen);
+
+  if (legalFrameworkEditorPanel) {
+    legalFrameworkEditorPanel.hidden = !isOpen;
+    legalFrameworkEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (legalFrameworkEditorBackdrop) {
+    legalFrameworkEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (legalFrameworkEditorCloseButton) {
+    legalFrameworkEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollLegalFrameworkEditorToTop();
+      legalFrameworkEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollLegalFrameworkEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function syncDocumentTemplateEditorModal() {
+  if (state.documentTemplateEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "template-development"
+    || !state.user
+  )) {
+    state.documentTemplateEditorOpen = false;
+  }
+
+  const isOpen = state.documentTemplateEditorOpen;
+  documentTemplateEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-document-template-editor-open", isOpen);
+
+  if (documentTemplateEditorPanel) {
+    documentTemplateEditorPanel.hidden = !isOpen;
+    documentTemplateEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (documentTemplateEditorBackdrop) {
+    documentTemplateEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (documentTemplateEditorCloseButton) {
+    documentTemplateEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollDocumentTemplateEditorToTop();
+      documentTemplateEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollDocumentTemplateEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function openLegalFrameworkEditor() {
+  state.legalFrameworkEditorOpen = true;
+  syncLegalFrameworkEditorModal();
+}
+
+function closeLegalFrameworkEditor({ reset = false } = {}) {
+  state.legalFrameworkEditorOpen = false;
+  syncLegalFrameworkEditorModal();
+
+  if (reset) {
+    resetLegalFrameworkForm();
+  }
+}
+
+function dismissLegalFrameworkEditor() {
+  closeLegalFrameworkEditor({ reset: true });
+  renderLegalFrameworkModule();
+}
+
+function openDocumentTemplateEditor() {
+  state.documentTemplateEditorOpen = true;
+  syncDocumentTemplateEditorModal();
+}
+
+function closeDocumentTemplateEditor({ reset = false } = {}) {
+  state.documentTemplateEditorOpen = false;
+  syncDocumentTemplateEditorModal();
+
+  if (reset) {
+    resetDocumentTemplateForm();
+  }
+}
+
+function dismissDocumentTemplateEditor() {
+  closeDocumentTemplateEditor({ reset: true });
+  renderDocumentTemplateModule();
+}
+
+function escapeHtml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeDocumentTemplateFileName(value = "", fallback = "zapisnik-template") {
+  const slug = slugifyValue(value).replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function triggerBlobDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1_000);
+}
+
+function triggerDataUrlDownload(dataUrl, fileName) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function createWordHtmlBlob(title, bodyHtml) {
+  const html = `<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #24362e; line-height: 1.5; margin: 28px; }
+    h1, h2, h3 { color: #1f4e42; margin-bottom: 12px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; margin-top: 30px; }
+    h3 { font-size: 16px; margin-top: 20px; }
+    p { margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; }
+    th, td { border: 1px solid #cad8d1; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef5f2; }
+    .cover { border: 1px solid #cad8d1; border-radius: 18px; padding: 24px; background: #f7faf8; }
+    .signature-grid { display: table; width: 100%; table-layout: fixed; margin-top: 18px; }
+    .signature-cell { display: table-cell; width: 50%; padding-right: 18px; }
+    .signature-line { margin-top: 46px; border-top: 1px solid #95aea3; padding-top: 8px; }
+    .placeholder-table td:first-child { width: 32%; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>${bodyHtml}</body>
+</html>`;
+
+  return new Blob(["\ufeff", html], {
+    type: "application/msword;charset=utf-8",
+  });
+}
+
+function parseTemplateLooseNumber(value, fallback = 0) {
+  const raw = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getLegalFrameworkStatusLabel(value) {
+  return getOptionLabel(LEGAL_FRAMEWORK_STATUS_OPTIONS, value || "active");
+}
+
+function getDocumentTemplateStatusLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_STATUS_OPTIONS, value || "draft");
+}
+
+function getDocumentTemplateTypeLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_TYPE_OPTIONS, value || "Zapisnik");
+}
+
+function getDocumentTemplateSectionTypeLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS, value || "rich_text");
+}
+
+function getDocumentTemplateFieldTypeLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, value || "text");
+}
+
+function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1") {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return normalized || fallback;
+}
+
+function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
+  const fallbackKey = `FIELD_${index + 1}`;
+  return {
+    id: initial.id || crypto.randomUUID(),
+    label: String(initial.label ?? "").trim(),
+    key: normalizeDocumentTemplateFieldKeyDraft(initial.key || initial.label || fallbackKey, fallbackKey),
+    type: initial.type || "text",
+    defaultValue: String(initial.defaultValue ?? "").trim(),
+    helpText: String(initial.helpText ?? "").trim(),
+  };
+}
+
+function createEmptyDocumentTemplateEquipmentDraft(initial = {}, index = 0) {
+  return {
+    id: initial.id || crypto.randomUUID(),
+    name: String(initial.name ?? "").trim() || `Oprema ${index + 1}`,
+    code: String(initial.code ?? "").trim(),
+    quantity: String(initial.quantity ?? 1).trim(),
+    note: String(initial.note ?? "").trim(),
+  };
+}
+
+function createEmptyDocumentTemplateSectionDraft(initial = {}, index = 0) {
+  const type = initial.type || "rich_text";
+  const defaultColumns = type === "measurement_table"
+    ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
+    : [];
+
+  return {
+    id: initial.id || crypto.randomUUID(),
+    type,
+    title: String(initial.title ?? "").trim() || getDocumentTemplateSectionTypeLabel(type) || `Sekcija ${index + 1}`,
+    body: String(initial.body ?? "").trim(),
+    columns: Array.isArray(initial.columns)
+      ? initial.columns.join(", ")
+      : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
+    rowCount: String(initial.rowCount ?? (type === "measurement_table" ? 12 : 0)).trim(),
+  };
+}
+
+function createDefaultDocumentTemplateSectionDrafts() {
+  return [
+    {
+      type: "cover",
+      title: "Naslovnica",
+      body: "{{DOCUMENT_TYPE}}\n{{COMPANY_NAME}}\n{{LOCATION_NAME}}\nDatum: {{TODAY}}",
+    },
+    {
+      type: "rich_text",
+      title: "Uvod",
+      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvrsen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
+    },
+    {
+      type: "legal_list",
+      title: "Primjenjivi propisi",
+      body: "U nastavku je popis propisa i normi na koje se zapisnik poziva.",
+    },
+    {
+      type: "equipment_list",
+      title: "Obuhvacena oprema",
+      body: "Popis opreme predvidene za pregled i evidenciju.",
+    },
+    {
+      type: "measurement_table",
+      title: "Mjerenja i evidencija",
+      body: "Tablica za unos rezultata mjerenja ili excel dio zapisnika.",
+      columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+      rowCount: 12,
+    },
+    {
+      type: "signatures",
+      title: "Potpisi",
+      body: "Mjesto za potpis odgovorne osobe i izvodaca radova.",
+    },
+  ].map((section, index) => createEmptyDocumentTemplateSectionDraft(section, index));
+}
+
+function setDocumentTemplateFieldDrafts(fields = [], { ensureOne = false } = {}) {
+  const nextDrafts = Array.isArray(fields) ? fields.map((field, index) => createEmptyDocumentTemplateFieldDraft(field, index)) : [];
+  documentTemplateFieldDrafts = nextDrafts.length > 0
+    ? nextDrafts
+    : (ensureOne ? [createEmptyDocumentTemplateFieldDraft({}, 0)] : []);
+}
+
+function setDocumentTemplateEquipmentDrafts(items = [], { ensureOne = false } = {}) {
+  const nextDrafts = Array.isArray(items) ? items.map((item, index) => createEmptyDocumentTemplateEquipmentDraft(item, index)) : [];
+  documentTemplateEquipmentDrafts = nextDrafts.length > 0
+    ? nextDrafts
+    : (ensureOne ? [createEmptyDocumentTemplateEquipmentDraft({}, 0)] : []);
+}
+
+function setDocumentTemplateSectionDrafts(sections = [], { ensureDefault = true } = {}) {
+  if (Array.isArray(sections) && sections.length > 0) {
+    documentTemplateSectionDrafts = sections.map((section, index) => createEmptyDocumentTemplateSectionDraft(section, index));
+    return;
+  }
+
+  documentTemplateSectionDrafts = ensureDefault ? createDefaultDocumentTemplateSectionDrafts() : [];
+}
+
+function rememberDocumentTemplateTextTarget(target, name = "") {
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
+    activeDocumentTemplateTextTarget = null;
+    activeDocumentTemplateSectionTarget = "";
+    return;
+  }
+
+  activeDocumentTemplateTextTarget = target;
+  activeDocumentTemplateSectionTarget = name || target.dataset.templateTarget || target.id || "";
+}
+
+function insertTextIntoDocumentTemplateTarget(text) {
+  const target = activeDocumentTemplateTextTarget;
+
+  if (target && documentTemplateEditorPanel?.contains(target)) {
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(text, start, end, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.focus({ preventScroll: true });
+    return;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(text);
+    if (documentTemplateError) {
+      documentTemplateError.textContent = "Placeholder je kopiran u clipboard.";
+      window.setTimeout(() => {
+        if (documentTemplateError.textContent === "Placeholder je kopiran u clipboard.") {
+          documentTemplateError.textContent = "";
+        }
+      }, 1600);
+    }
+  }
+}
+
+function rebuildDocumentTemplateCompanyOptions(selectedValue = "") {
+  if (!documentTemplateCompanyIdInput) {
+    return;
+  }
+
+  const options = [
+    { value: "", label: "Bez primjerne tvrtke" },
+    ...state.companies
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, "hr"))
+      .map((company) => ({
+        value: company.id,
+        label: `${company.name} (${company.oib || "bez OIB-a"})`,
+      })),
+  ];
+
+  replaceSelectOptions(documentTemplateCompanyIdInput, options, selectedValue || documentTemplateCompanyIdInput.value || "");
+}
+
+function rebuildDocumentTemplateLocationOptions(selectedValue = "") {
+  if (!documentTemplateLocationIdInput) {
+    return;
+  }
+
+  const companyId = documentTemplateCompanyIdInput?.value || "";
+  const matchingLocations = (companyId ? state.locations.filter((item) => item.companyId === companyId) : state.locations)
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+
+  const options = [
+    { value: "", label: "Bez primjerne lokacije" },
+    ...matchingLocations.map((location) => ({
+      value: location.id,
+      label: `${location.name}${location.region ? ` | ${location.region}` : ""}`,
+    })),
+  ];
+
+  replaceSelectOptions(documentTemplateLocationIdInput, options, selectedValue || documentTemplateLocationIdInput.value || "");
+}
+
+function getSelectedDocumentTemplateLegalFrameworkIds() {
+  if (!documentTemplateLegalFrameworkList) {
+    return [];
+  }
+
+  return Array.from(
+    documentTemplateLegalFrameworkList.querySelectorAll('input[name="document-template-legal-framework-id"]:checked'),
+  ).map((input) => String(input.value || "")).filter(Boolean);
+}
+
+function renderDocumentTemplateReferenceMeta() {
+  if (!documentTemplateReferenceMeta) {
+    return;
+  }
+
+  documentTemplateReferenceMeta.replaceChildren();
+
+  if (!documentTemplateReferenceDraft) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy";
+    empty.textContent = "Upload Word predlozak koji ces kasnije urediti i vratiti nazad u builder.";
+    documentTemplateReferenceMeta.append(empty);
+    if (documentTemplateReferenceDownloadButton) {
+      documentTemplateReferenceDownloadButton.hidden = true;
+    }
+    if (documentTemplateReferenceRemoveButton) {
+      documentTemplateReferenceRemoveButton.hidden = true;
+    }
+    return;
+  }
+
+  const title = document.createElement("strong");
+  title.textContent = documentTemplateReferenceDraft.fileName || "reference.doc";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    documentTemplateReferenceDraft.fileType || "datoteka",
+    documentTemplateReferenceDraft.updatedAt ? `Azurirano ${formatDateTime(documentTemplateReferenceDraft.updatedAt)}` : "",
+  ].filter(Boolean).join(" | ");
+  documentTemplateReferenceMeta.append(title, meta);
+
+  if (documentTemplateReferenceDownloadButton) {
+    documentTemplateReferenceDownloadButton.hidden = false;
+  }
+  if (documentTemplateReferenceRemoveButton) {
+    documentTemplateReferenceRemoveButton.hidden = false;
+  }
+}
+
+function setDocumentTemplateReferenceDocument(referenceDocument = null) {
+  documentTemplateReferenceDraft = referenceDocument
+    ? {
+      fileName: String(referenceDocument.fileName || referenceDocument.name || "").trim(),
+      fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "").trim(),
+      dataUrl: String(referenceDocument.dataUrl || "").trim(),
+      updatedAt: String(referenceDocument.updatedAt || new Date().toISOString()).trim(),
+    }
+    : null;
+  renderDocumentTemplateReferenceMeta();
+  renderDocumentTemplatePreviewContent();
+}
+
+function buildDocumentTemplateDraft() {
+  const customFields = documentTemplateFieldDrafts
+    .map((field, index) => ({
+      id: field.id || crypto.randomUUID(),
+      key: normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`),
+      label: String(field.label || "").trim() || `Polje ${index + 1}`,
+      type: field.type || "text",
+      defaultValue: String(field.defaultValue || "").trim(),
+      helpText: String(field.helpText || "").trim(),
+    }))
+    .filter((field) => field.label || field.defaultValue || field.helpText || field.key);
+
+  const equipmentItems = documentTemplateEquipmentDrafts
+    .map((item, index) => ({
+      id: item.id || crypto.randomUUID(),
+      name: String(item.name || "").trim() || `Oprema ${index + 1}`,
+      code: String(item.code || "").trim(),
+      quantity: parseTemplateLooseNumber(item.quantity, 1),
+      note: String(item.note || "").trim(),
+    }))
+    .filter((item) => item.name || item.code || item.note || item.quantity);
+
+  const sections = (documentTemplateSectionDrafts.length > 0 ? documentTemplateSectionDrafts : createDefaultDocumentTemplateSectionDrafts())
+    .map((section, index) => ({
+      id: section.id || crypto.randomUUID(),
+      type: section.type || "rich_text",
+      title: String(section.title || "").trim() || getDocumentTemplateSectionTypeLabel(section.type) || `Sekcija ${index + 1}`,
+      body: String(section.body || "").trim(),
+      columns: String(section.columns || "")
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .slice(0, 8),
+      rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(section.rowCount, 12)))),
+    }))
+    .map((section) => (
+      section.type === "measurement_table"
+        ? {
+          ...section,
+          columns: section.columns.length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+        }
+        : {
+          ...section,
+          columns: [],
+          rowCount: 0,
+        }
+    ));
+
+  return {
+    id: documentTemplateIdInput?.value || "",
+    organizationId: state.activeOrganizationId || "",
+    title: documentTemplateTitleInput?.value || "",
+    documentType: documentTemplateTypeInput?.value || "Zapisnik",
+    status: documentTemplateStatusInput?.value || "draft",
+    outputFileName: documentTemplateOutputFileNameInput?.value || "",
+    sampleCompanyId: documentTemplateCompanyIdInput?.value || "",
+    sampleLocationId: documentTemplateLocationIdInput?.value || "",
+    description: documentTemplateDescriptionInput?.value || "",
+    selectedLegalFrameworkIds: getSelectedDocumentTemplateLegalFrameworkIds(),
+    customFields,
+    equipmentItems,
+    sections,
+    referenceDocument: documentTemplateReferenceDraft ? { ...documentTemplateReferenceDraft } : null,
+    createdByUserId: state.user?.id || "",
+    createdByLabel: state.user?.fullName || state.user?.email || "",
+  };
+}
+
+function buildDocumentTemplatePayload() {
+  return buildDocumentTemplateDraft();
+}
+
+function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemplateDraft()) {
+  const selectedIds = new Set((template.selectedLegalFrameworkIds ?? []).map((value) => String(value)));
+  return sortLegalFrameworks(state.legalFrameworks ?? []).filter((item) => selectedIds.has(String(item.id)));
+}
+
+function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
+  const builtInPlaceholders = [
+    { token: "{{DOCUMENT_TITLE}}", label: "Naziv dokumenta", value: template.title || "Naziv zapisnika" },
+    { token: "{{DOCUMENT_TYPE}}", label: "Tip zapisnika", value: template.documentType || "Zapisnik" },
+    { token: "{{TODAY}}", label: "Danasnji datum", value: formatCompactDate(new Date().toISOString()) },
+    { token: "{{COMPANY_NAME}}", label: "Naziv tvrtke", value: getCompany(template.sampleCompanyId)?.name || "Tvrtka" },
+    { token: "{{COMPANY_OIB}}", label: "OIB tvrtke", value: getCompany(template.sampleCompanyId)?.oib || "12345678901" },
+    { token: "{{COMPANY_HEADQUARTERS}}", label: "Sjediste tvrtke", value: getCompany(template.sampleCompanyId)?.headquarters || "Zagreb" },
+    { token: "{{LOCATION_NAME}}", label: "Naziv lokacije", value: getLocation(template.sampleLocationId)?.name || "Lokacija" },
+    { token: "{{LOCATION_REGION}}", label: "Regija", value: getLocation(template.sampleLocationId)?.region || "Regija" },
+    { token: "{{LOCATION_COORDINATES}}", label: "Koordinate", value: getLocation(template.sampleLocationId)?.coordinates || "45.80, 15.97" },
+    { token: "{{LEGAL_REFERENCES_INLINE}}", label: "Propisi inline", value: getDocumentTemplateSelectedLegalFrameworks(template).map((item) => item.referenceCode || item.title).join(", ") || "NN 71/14" },
+    { token: "{{EQUIPMENT_SUMMARY}}", label: "Saetak opreme", value: (template.equipmentItems ?? []).map((item) => item.name).join(", ") || "Panik rasvjeta, vatrogasni aparat" },
+    { token: "{{REFERENCE_DOCUMENT_NAME}}", label: "Naziv Word reference", value: template.referenceDocument?.fileName || "reference.docx" },
+  ];
+
+  const customFieldPlaceholders = (template.customFields ?? []).map((field, index) => ({
+    token: `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`,
+    label: field.label || `Polje ${index + 1}`,
+    value: field.defaultValue || `[${field.label || `Polje ${index + 1}`}]`,
+  }));
+
+  return [...builtInPlaceholders, ...customFieldPlaceholders];
+}
+
+function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDraft()) {
+  const company = getCompany(template.sampleCompanyId);
+  const location = getLocation(template.sampleLocationId);
+  const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
+  const equipmentItems = template.equipmentItems ?? [];
+  const placeholders = getDocumentTemplatePlaceholderDefinitions(template);
+  const values = Object.fromEntries(
+    placeholders.map((entry) => [
+      String(entry.token).replace(/[{}]/g, ""),
+      entry.value || "",
+    ]),
+  );
+
+  return {
+    template,
+    company,
+    location,
+    legalFrameworks,
+    equipmentItems,
+    placeholders,
+    values,
+  };
+}
+
+function resolveDocumentTemplateText(text, context, { placeholderMode = false } = {}) {
+  const source = String(text ?? "");
+
+  if (placeholderMode) {
+    return source;
+  }
+
+  return source.replace(/{{\s*([A-Z0-9_]+)\s*}}/g, (match, key) => {
+    const resolved = context.values[key];
+    return resolved === undefined || resolved === null || resolved === "" ? match : String(resolved);
+  });
+}
+
+function formatDocumentTemplateTextHtml(text, context, options = {}) {
+  const resolved = resolveDocumentTemplateText(text, context, options);
+  return escapeHtml(resolved).replace(/\n/g, "<br />");
+}
+
+function buildDocumentTemplatePlaceholderAppendix(context) {
+  const rows = context.placeholders.map((entry) => (
+    `<tr><td>${escapeHtml(entry.token)}</td><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.value || "")}</td></tr>`
+  )).join("");
+
+  return `
+    <section class="document-template-preview-section">
+      <h2>Placeholder mapa</h2>
+      <p class="document-template-preview-muted">Ovaj appendix ostaje u Word placeholder exportu da mozes urediti predlozak i vratiti ga nazad.</p>
+      <table class="document-template-preview-table placeholder-table">
+        <thead>
+          <tr>
+            <th>Placeholder</th>
+            <th>Opis</th>
+            <th>Primjer vrijednosti</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function buildDocumentTemplateSectionPreview(section, context, { placeholderMode = false } = {}) {
+  const title = formatDocumentTemplateTextHtml(section.title, context, { placeholderMode });
+  const body = section.body
+    ? `<p class="document-template-preview-copy">${formatDocumentTemplateTextHtml(section.body, context, { placeholderMode })}</p>`
+    : "";
+
+  if (section.type === "cover") {
+    return `
+      <section class="document-template-preview-section is-cover">
+        <div class="document-template-preview-cover">
+          <p class="document-template-preview-eyebrow">${escapeHtml(context.template.documentType || "Template")}</p>
+          <h1>${title}</h1>
+          ${body}
+        </div>
+      </section>
+    `;
+  }
+
+  if (section.type === "legal_list") {
+    const listItems = context.legalFrameworks.length > 0
+      ? context.legalFrameworks.map((item) => (
+        `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}${item.authority ? ` | ${escapeHtml(item.authority)}` : ""}</li>`
+      )).join("")
+      : "<li>Nisu odabrani propisi za ovaj template.</li>";
+
+    return `
+      <section class="document-template-preview-section">
+        <h2>${title}</h2>
+        ${body}
+        <ul class="document-template-preview-list">${listItems}</ul>
+      </section>
+    `;
+  }
+
+  if (section.type === "equipment_list") {
+    const rows = context.equipmentItems.length > 0
+      ? context.equipmentItems.map((item) => (
+        `<tr><td>${escapeHtml(item.name || "")}</td><td>${escapeHtml(item.code || "")}</td><td>${escapeHtml(String(item.quantity || ""))}</td><td>${escapeHtml(item.note || "")}</td></tr>`
+      )).join("")
+      : '<tr><td colspan="4">Nije dodana oprema za ovaj template.</td></tr>';
+
+    return `
+      <section class="document-template-preview-section">
+        <h2>${title}</h2>
+        ${body}
+        <table class="document-template-preview-table">
+          <thead>
+            <tr>
+              <th>Oprema</th>
+              <th>Oznaka</th>
+              <th>Kolicina</th>
+              <th>Napomena</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  if (section.type === "measurement_table") {
+    const columns = (section.columns ?? []).length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+    const rowCount = Math.max(4, Math.min(40, Number(section.rowCount) || 12));
+    const rows = Array.from({ length: rowCount }, (_, index) => (
+      `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(index + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
+    )).join("");
+
+    return `
+      <section class="document-template-preview-section">
+        <h2>${title}</h2>
+        ${body}
+        <table class="document-template-preview-table">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  if (section.type === "signatures") {
+    return `
+      <section class="document-template-preview-section">
+        <h2>${title}</h2>
+        ${body}
+        <div class="document-template-preview-signatures">
+          <div class="document-template-preview-signature">
+            <div class="document-template-preview-signature-line"></div>
+            <span>Odgovorna osoba korisnika</span>
+          </div>
+          <div class="document-template-preview-signature">
+            <div class="document-template-preview-signature-line"></div>
+            <span>Izvodac / servis</span>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="document-template-preview-section">
+      <h2>${title}</h2>
+      ${body}
+    </section>
+  `;
+}
+
+function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false } = {}) {
+  const context = buildDocumentTemplatePreviewContext(template);
+  const sections = (template.sections ?? []).map((section) => buildDocumentTemplateSectionPreview(section, context, { placeholderMode })).join("");
+  const selectedLegalBadges = context.legalFrameworks.length > 0
+    ? context.legalFrameworks.map((item) => `<span class="document-template-preview-pill">${escapeHtml(item.referenceCode || item.title || "Propis")}</span>`).join("")
+    : '<span class="document-template-preview-empty">Nema odabranih propisa.</span>';
+  const customFieldBadges = (template.customFields ?? []).length > 0
+    ? template.customFields.map((field, index) => (
+      `<span class="document-template-preview-pill">${escapeHtml(`{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`)}</span>`
+    )).join("")
+    : '<span class="document-template-preview-empty">Nema dodatnih polja.</span>';
+  const appendix = placeholderMode ? buildDocumentTemplatePlaceholderAppendix(context) : "";
+
+  return `
+    <article class="document-template-preview-page">
+      <header class="document-template-preview-header">
+        <div>
+          <p class="document-template-preview-eyebrow">${escapeHtml(template.documentType || "Template")}</p>
+          <h1>${escapeHtml(template.title || "Novi template zapisnika")}</h1>
+          <p class="document-template-preview-lead">${escapeHtml(template.description || "Opis templatea i njegove namjene prikazuje se ovdje.")}</p>
+        </div>
+        <div class="document-template-preview-meta-grid">
+          <div><span>Tvrtka</span><strong>${escapeHtml(context.company?.name || "Bez primjerne tvrtke")}</strong></div>
+          <div><span>Lokacija</span><strong>${escapeHtml(context.location?.name || "Bez primjerne lokacije")}</strong></div>
+          <div><span>Status</span><strong>${escapeHtml(getDocumentTemplateStatusLabel(template.status))}</strong></div>
+          <div><span>Export</span><strong>${escapeHtml(sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template"))}.doc</strong></div>
+        </div>
+      </header>
+      <section class="document-template-preview-section">
+        <h2>Brzi pregled placeholdera</h2>
+        <div class="document-template-preview-pill-row">${customFieldBadges}</div>
+      </section>
+      <section class="document-template-preview-section">
+        <h2>Primjenjivi propisi</h2>
+        <div class="document-template-preview-pill-row">${selectedLegalBadges}</div>
+      </section>
+      ${sections}
+      ${template.referenceDocument?.fileName ? `
+        <section class="document-template-preview-section">
+          <h2>Reference Word</h2>
+          <p class="document-template-preview-copy">U builder je povezan referentni dokument <strong>${escapeHtml(template.referenceDocument.fileName)}</strong>. Mozes ga vratiti u alat i kasnije koristiti kao bazni predlozak.</p>
+        </section>
+      ` : ""}
+      ${appendix}
+    </article>
+  `;
+}
+
+function renderDocumentTemplatePreviewContent() {
+  if (!documentTemplatePreview) {
+    return;
+  }
+
+  documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(buildDocumentTemplateDraft(), {
+    placeholderMode: false,
+  });
+}
+
+function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
+  const template = buildDocumentTemplateDraft();
+  const previewWindow = window.open("", "_blank", "noopener,noreferrer");
+
+  if (!previewWindow) {
+    if (documentTemplateError) {
+      documentTemplateError.textContent = "Browser je blokirao preview prozor.";
+    }
+    return;
+  }
+
+  const title = template.title || "Template preview";
+  const html = buildDocumentTemplatePreviewMarkup(template, { placeholderMode });
+
+  previewWindow.document.open();
+  previewWindow.document.write(`<!DOCTYPE html>
+  <html lang="hr">
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(title)}</title>
+      <style>
+        body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #eef4f1; color: #24362e; }
+        .toolbar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; gap: 12px; padding: 16px 22px; background: rgba(255,255,255,0.94); border-bottom: 1px solid rgba(47,104,84,0.12); }
+        .toolbar button { border: 1px solid rgba(47,104,84,0.16); border-radius: 999px; background: #fff; color: #255848; padding: 10px 16px; cursor: pointer; }
+        .page-wrap { padding: 28px; display: grid; justify-items: center; }
+        .document-template-preview-page { width: min(920px, 100%); background: #fff; border: 1px solid rgba(47,104,84,0.12); border-radius: 28px; padding: 32px; box-shadow: 0 22px 54px rgba(24, 48, 39, 0.12); }
+        .document-template-preview-header { display: grid; gap: 18px; margin-bottom: 24px; }
+        .document-template-preview-eyebrow { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #557166; }
+        .document-template-preview-header h1 { margin: 0; font-size: 32px; }
+        .document-template-preview-lead { margin: 12px 0 0; color: #60796f; }
+        .document-template-preview-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .document-template-preview-meta-grid div { border: 1px solid rgba(47,104,84,0.12); border-radius: 18px; padding: 12px 14px; background: #f7faf8; display: grid; gap: 4px; }
+        .document-template-preview-meta-grid span { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #557166; }
+        .document-template-preview-section { margin-top: 26px; }
+        .document-template-preview-cover { border: 1px solid rgba(47,104,84,0.12); border-radius: 24px; padding: 24px; background: linear-gradient(180deg, rgba(247,250,248,0.98), rgba(255,255,255,0.98)); }
+        .document-template-preview-copy { color: #42584f; }
+        .document-template-preview-list { padding-left: 20px; }
+        .document-template-preview-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        .document-template-preview-table th, .document-template-preview-table td { border: 1px solid rgba(47,104,84,0.14); padding: 9px 10px; text-align: left; vertical-align: top; }
+        .document-template-preview-table th { background: #f1f7f4; }
+        .document-template-preview-pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .document-template-preview-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(47,104,84,0.14); background: #f7faf8; font-size: 13px; }
+        .document-template-preview-empty { color: #60796f; }
+        .document-template-preview-signatures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+        .document-template-preview-signature { display: grid; gap: 10px; }
+        .document-template-preview-signature-line { height: 52px; border-bottom: 1px solid rgba(47,104,84,0.24); }
+        @media print {
+          body { background: #fff; }
+          .toolbar { display: none; }
+          .page-wrap { padding: 0; }
+          .document-template-preview-page { width: 100%; border: none; border-radius: 0; box-shadow: none; padding: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="toolbar">
+        <strong>${escapeHtml(title)}</strong>
+        <div>
+          <button type="button" onclick="window.print()">Ispis / PDF</button>
+          <button type="button" onclick="window.close()">Zatvori</button>
+        </div>
+      </div>
+      <div class="page-wrap">${html}</div>
+    </body>
+  </html>`);
+  previewWindow.document.close();
+}
+
+function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
+  const template = buildDocumentTemplateDraft();
+  const fileName = `${sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template")}${placeholderMode ? "-placeholder" : "-preview"}.doc`;
+  const html = buildDocumentTemplatePreviewMarkup(template, { placeholderMode });
+  triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
+}
+
+function syncLegalFrameworkEditorChrome() {
+  if (legalFrameworkEditorTitle) {
+    legalFrameworkEditorTitle.textContent = legalFrameworkIdInput?.value
+      ? `Uredi propis | ${legalFrameworkTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novi propis";
+  }
+
+  if (legalFrameworkDeleteButton) {
+    legalFrameworkDeleteButton.hidden = !legalFrameworkIdInput?.value;
+  }
+}
+
+function syncDocumentTemplateEditorChrome() {
+  if (documentTemplateEditorTitle) {
+    documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
+      ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novi template";
+  }
+
+  if (documentTemplateDeleteButton) {
+    documentTemplateDeleteButton.hidden = !documentTemplateIdInput?.value;
+  }
+
+  renderDocumentTemplateReferenceMeta();
+  renderDocumentTemplatePlaceholderPalette();
+  renderDocumentTemplatePreviewContent();
+}
+
+function buildLegalFrameworkPayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    title: legalFrameworkTitleInput?.value || "",
+    category: legalFrameworkCategoryInput?.value || "",
+    status: legalFrameworkStatusInput?.value || "active",
+    authority: legalFrameworkAuthorityInput?.value || "",
+    referenceCode: legalFrameworkReferenceCodeInput?.value || "",
+    versionLabel: legalFrameworkVersionLabelInput?.value || "",
+    publishedOn: legalFrameworkPublishedOnInput?.value || "",
+    effectiveFrom: legalFrameworkEffectiveFromInput?.value || "",
+    reviewDate: legalFrameworkReviewDateInput?.value || "",
+    sourceUrl: legalFrameworkSourceUrlInput?.value || "",
+    tagsText: legalFrameworkTagsTextInput?.value || "",
+    note: legalFrameworkNoteInput?.value || "",
+  };
+}
+
+function resetLegalFrameworkForm() {
+  if (!legalFrameworkForm) {
+    return;
+  }
+
+  legalFrameworkForm.reset();
+  state.activeLegalFrameworkId = "";
+  if (legalFrameworkIdInput) {
+    legalFrameworkIdInput.value = "";
+  }
+  if (legalFrameworkStatusInput) {
+    legalFrameworkStatusInput.value = "active";
+  }
+  if (legalFrameworkError) {
+    legalFrameworkError.textContent = "";
+  }
+  syncLegalFrameworkEditorChrome();
+}
+
+function hydrateLegalFrameworkForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "legal-framework";
+  renderActiveView();
+  renderModuleView();
+  state.activeLegalFrameworkId = item.id;
+  legalFrameworkIdInput.value = item.id || "";
+  legalFrameworkTitleInput.value = item.title || "";
+  legalFrameworkCategoryInput.value = item.category || "";
+  legalFrameworkStatusInput.value = item.status || "active";
+  legalFrameworkAuthorityInput.value = item.authority || "";
+  legalFrameworkReferenceCodeInput.value = item.referenceCode || "";
+  legalFrameworkVersionLabelInput.value = item.versionLabel || "";
+  legalFrameworkPublishedOnInput.value = item.publishedOn || "";
+  legalFrameworkEffectiveFromInput.value = item.effectiveFrom || "";
+  legalFrameworkReviewDateInput.value = item.reviewDate || "";
+  legalFrameworkSourceUrlInput.value = item.sourceUrl || "";
+  legalFrameworkTagsTextInput.value = item.tagsText || "";
+  legalFrameworkNoteInput.value = item.note || "";
+  if (legalFrameworkError) {
+    legalFrameworkError.textContent = "";
+  }
+  syncLegalFrameworkEditorChrome();
+  openLegalFrameworkEditor();
+  requestAnimationFrame(() => {
+    legalFrameworkTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+function createLegalFrameworkStatusBadge(status) {
+  return createBadge(
+    getLegalFrameworkStatusLabel(status),
+    `legal-framework-status-badge is-${slugifyValue(status || "active")}`,
+  );
+}
+
+function isLegalFrameworkReviewSoon(item) {
+  if (!item?.reviewDate) {
+    return false;
+  }
+
+  const reviewDate = parseDateValue(item.reviewDate);
+
+  if (!reviewDate) {
+    return false;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const soon = new Date(now);
+  soon.setDate(soon.getDate() + 45);
+  return reviewDate >= now && reviewDate <= soon;
+}
+
+function renderLegalFrameworkModule() {
+  if (!legalFrameworkModule || !legalFrameworkList || !legalFrameworkEmpty) {
+    return;
+  }
+
+  const filters = {
+    query: legalFrameworkSearchInput?.value?.trim() || state.legalFrameworkFilters.query || "",
+    status: legalFrameworkFilterStatusInput?.value || state.legalFrameworkFilters.status || "all",
+  };
+  state.legalFrameworkFilters = filters;
+
+  const allItems = sortLegalFrameworks(state.legalFrameworks ?? []);
+  const visibleItems = sortLegalFrameworks(filterLegalFrameworks(state.legalFrameworks ?? [], filters));
+
+  if (legalFrameworkTotalCount) {
+    legalFrameworkTotalCount.textContent = String(allItems.length);
+  }
+  if (legalFrameworkActiveCount) {
+    legalFrameworkActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
+  }
+  if (legalFrameworkInactiveCount) {
+    legalFrameworkInactiveCount.textContent = String(allItems.filter((item) => item.status === "inactive").length);
+  }
+  if (legalFrameworkReviewCount) {
+    legalFrameworkReviewCount.textContent = String(allItems.filter((item) => isLegalFrameworkReviewSoon(item)).length);
+  }
+  if (legalFrameworkHelper) {
+    legalFrameworkHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} propisa.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} propisa.`;
+  }
+
+  legalFrameworkList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = `legal-framework-card is-${slugifyValue(item.status || "active")}`;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    if (String(item.id) === String(legalFrameworkIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    const head = document.createElement("div");
+    head.className = "legal-framework-card-head";
+    const heading = document.createElement("div");
+    heading.className = "legal-framework-card-heading";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Bez naziva";
+    const meta = document.createElement("p");
+    meta.className = "legal-framework-card-meta";
+    meta.textContent = [
+      item.category || "Propis",
+      item.referenceCode || "",
+      item.authority || "",
+      item.versionLabel || "",
+    ].filter(Boolean).join(" | ") || "Bez dodatnih oznaka";
+    heading.append(title, meta);
+    head.append(createLegalFrameworkStatusBadge(item.status), heading);
+
+    const note = document.createElement("p");
+    note.className = "legal-framework-card-note";
+    note.textContent = item.note || item.sourceUrl || "Dodaj sazetak obveze, link na izvor ili bitne napomene za zapisnik.";
+
+    const footer = document.createElement("div");
+    footer.className = "legal-framework-card-footer";
+    const dates = document.createElement("div");
+    dates.className = "legal-framework-card-dates";
+    dates.append(
+      createBadge(item.publishedOn ? `Objavljeno ${formatCompactDate(item.publishedOn)}` : "Bez datuma objave", "legal-framework-meta-badge"),
+      createBadge(item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "Bez pocetka primjene", "legal-framework-meta-badge"),
+    );
+    if (item.reviewDate) {
+      dates.append(createBadge(`Review ${formatCompactDate(item.reviewDate)}`, isLegalFrameworkReviewSoon(item) ? "legal-framework-meta-badge is-review" : "legal-framework-meta-badge"));
+    }
+
+    const tags = document.createElement("div");
+    tags.className = "legal-framework-card-tags";
+    const tagEntries = String(item.tagsText || "").split(",").map((entry) => entry.trim()).filter(Boolean).slice(0, 6);
+    if (tagEntries.length > 0) {
+      tags.append(...tagEntries.map((entry) => createBadge(entry, "legal-framework-tag")));
+    } else {
+      tags.append(createBadge("Bez tagova", "legal-framework-tag is-muted"));
+    }
+
+    footer.append(dates, tags);
+    card.append(head, note, footer);
+
+    const openCard = () => {
+      hydrateLegalFrameworkForm(item);
+    };
+    card.addEventListener("click", openCard);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openCard();
+    });
+    return card;
+  }));
+
+  legalFrameworkEmpty.hidden = visibleItems.length !== 0;
+}
+
+function renderDocumentTemplatePlaceholderPalette() {
+  if (!documentTemplatePlaceholderPalette) {
+    return;
+  }
+
+  const definitions = getDocumentTemplatePlaceholderDefinitions(buildDocumentTemplateDraft());
+
+  documentTemplatePlaceholderPalette.replaceChildren(...definitions.map((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "document-template-placeholder-chip";
+    button.title = `${entry.label} | ${entry.value || ""}`.trim();
+
+    const token = document.createElement("strong");
+    token.textContent = entry.token;
+    const label = document.createElement("span");
+    label.textContent = entry.label;
+
+    button.append(token, label);
+    button.addEventListener("click", () => {
+      insertTextIntoDocumentTemplateTarget(entry.token);
+    });
+    return button;
+  }));
+}
+
+function renderDocumentTemplateFieldRows() {
+  if (!documentTemplateCustomFields) {
+    return;
+  }
+
+  if (documentTemplateFieldDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy";
+    empty.textContent = "Dodaj dodatna placeholder polja za napomene, broj zapisnika, mjeritelja i slicno.";
+    documentTemplateCustomFields.replaceChildren(empty);
+    renderDocumentTemplatePlaceholderPalette();
+    renderDocumentTemplatePreviewContent();
+    return;
+  }
+
+  documentTemplateCustomFields.replaceChildren(...documentTemplateFieldDrafts.map((field, index) => {
+    const row = document.createElement("div");
+    row.className = "document-template-item-card";
+
+    const head = document.createElement("div");
+    head.className = "document-template-item-head";
+    const title = document.createElement("strong");
+    title.textContent = `Polje ${index + 1}`;
+    const tokenPreview = document.createElement("span");
+    tokenPreview.className = "document-template-inline-token";
+    tokenPreview.textContent = `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`;
+    head.append(title, tokenPreview);
+
+    const grid = document.createElement("div");
+    grid.className = "form-grid document-template-inline-grid";
+
+    const labelField = document.createElement("label");
+    labelField.className = "field";
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = "Naziv";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.value = field.label || "";
+    labelInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[index].label = event.currentTarget.value;
+      if (!String(documentTemplateFieldDrafts[index].key || "").trim()) {
+        documentTemplateFieldDrafts[index].key = normalizeDocumentTemplateFieldKeyDraft(event.currentTarget.value, `FIELD_${index + 1}`);
+        keyInput.value = documentTemplateFieldDrafts[index].key;
+      }
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplatePreviewContent();
+    });
+    labelInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(labelInput, `field-label:${field.id}`));
+    labelField.append(labelSpan, labelInput);
+
+    const keyField = document.createElement("label");
+    keyField.className = "field";
+    const keySpan = document.createElement("span");
+    keySpan.textContent = "Kljuc";
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.value = field.key || "";
+    keyInput.addEventListener("input", (event) => {
+      const nextValue = normalizeDocumentTemplateFieldKeyDraft(event.currentTarget.value, `FIELD_${index + 1}`);
+      documentTemplateFieldDrafts[index].key = nextValue;
+      keyInput.value = nextValue;
+      tokenPreview.textContent = `{{${nextValue}}}`;
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplatePreviewContent();
+    });
+    keyInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(keyInput, `field-key:${field.id}`));
+    keyField.append(keySpan, keyInput);
+
+    const typeField = document.createElement("label");
+    typeField.className = "field";
+    const typeSpan = document.createElement("span");
+    typeSpan.textContent = "Tip";
+    const typeSelect = document.createElement("select");
+    replaceSelectOptions(typeSelect, DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, field.type || "text");
+    typeSelect.addEventListener("change", () => {
+      documentTemplateFieldDrafts[index].type = typeSelect.value;
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplatePreviewContent();
+    });
+    typeField.append(typeSpan, typeSelect);
+
+    const defaultField = document.createElement("label");
+    defaultField.className = "field field-span-full";
+    const defaultSpan = document.createElement("span");
+    defaultSpan.textContent = "Default vrijednost";
+    const defaultInput = document.createElement("input");
+    defaultInput.type = "text";
+    defaultInput.value = field.defaultValue || "";
+    defaultInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[index].defaultValue = event.currentTarget.value;
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplatePreviewContent();
+    });
+    defaultInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(defaultInput, `field-default:${field.id}`));
+    defaultField.append(defaultSpan, defaultInput);
+
+    const helpField = document.createElement("label");
+    helpField.className = "field field-span-full";
+    const helpSpan = document.createElement("span");
+    helpSpan.textContent = "Helper tekst";
+    const helpInput = document.createElement("input");
+    helpInput.type = "text";
+    helpInput.value = field.helpText || "";
+    helpInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[index].helpText = event.currentTarget.value;
+    });
+    helpInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(helpInput, `field-help:${field.id}`));
+    helpField.append(helpSpan, helpInput);
+
+    grid.append(labelField, keyField, typeField, defaultField, helpField);
+
+    const actions = document.createElement("div");
+    actions.className = "document-template-item-actions";
+    const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
+      documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
+      renderDocumentTemplateFieldRows();
+    });
+    actions.append(removeButton);
+
+    row.append(head, grid, actions);
+    return row;
+  }));
+
+  renderDocumentTemplatePlaceholderPalette();
+  renderDocumentTemplatePreviewContent();
+}
+
+function renderDocumentTemplateEquipmentRows() {
+  if (!documentTemplateEquipmentItems) {
+    return;
+  }
+
+  if (documentTemplateEquipmentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy";
+    empty.textContent = "Dodaj opremu koja ulazi u zapisnik ili ostavi prazno pa ces to unijeti kasnije po dokumentu.";
+    documentTemplateEquipmentItems.replaceChildren(empty);
+    renderDocumentTemplatePreviewContent();
+    return;
+  }
+
+  documentTemplateEquipmentItems.replaceChildren(...documentTemplateEquipmentDrafts.map((item, index) => {
+    const row = document.createElement("div");
+    row.className = "document-template-item-card";
+
+    const head = document.createElement("div");
+    head.className = "document-template-item-head";
+    const title = document.createElement("strong");
+    title.textContent = item.name || `Oprema ${index + 1}`;
+    const meta = document.createElement("span");
+    meta.className = "document-template-inline-token";
+    meta.textContent = `${parseTemplateLooseNumber(item.quantity, 1)} kom`;
+    head.append(title, meta);
+
+    const grid = document.createElement("div");
+    grid.className = "form-grid document-template-inline-grid";
+
+    [
+      { label: "Naziv opreme", key: "name", spanFull: false },
+      { label: "Oznaka", key: "code", spanFull: false },
+      { label: "Kolicina", key: "quantity", spanFull: false },
+      { label: "Napomena", key: "note", spanFull: true },
+    ].forEach((definition) => {
+      const label = document.createElement("label");
+      label.className = definition.spanFull ? "field field-span-full" : "field";
+      const span = document.createElement("span");
+      span.textContent = definition.label;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = item[definition.key] ?? "";
+      input.addEventListener("input", (event) => {
+        documentTemplateEquipmentDrafts[index][definition.key] = event.currentTarget.value;
+        meta.textContent = `${parseTemplateLooseNumber(documentTemplateEquipmentDrafts[index].quantity, 1)} kom`;
+        title.textContent = documentTemplateEquipmentDrafts[index].name || `Oprema ${index + 1}`;
+        renderDocumentTemplatePreviewContent();
+      });
+      input.addEventListener("focus", () => rememberDocumentTemplateTextTarget(input, `equipment:${item.id}:${definition.key}`));
+      label.append(span, input);
+      grid.append(label);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "document-template-item-actions";
+    const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
+      documentTemplateEquipmentDrafts = documentTemplateEquipmentDrafts.filter((entry) => entry.id !== item.id);
+      renderDocumentTemplateEquipmentRows();
+    });
+    actions.append(removeButton);
+
+    row.append(head, grid, actions);
+    return row;
+  }));
+
+  renderDocumentTemplatePreviewContent();
+}
+
+function renderDocumentTemplateSectionRows() {
+  if (!documentTemplateSections) {
+    return;
+  }
+
+  documentTemplateSections.replaceChildren(...documentTemplateSectionDrafts.map((section, index) => {
+    const row = document.createElement("div");
+    row.className = "document-template-item-card";
+
+    const head = document.createElement("div");
+    head.className = "document-template-item-head";
+    const title = document.createElement("strong");
+    title.textContent = section.title || `Sekcija ${index + 1}`;
+    const typeBadge = document.createElement("span");
+    typeBadge.className = "document-template-inline-token";
+    typeBadge.textContent = getDocumentTemplateSectionTypeLabel(section.type);
+    head.append(title, typeBadge);
+
+    const grid = document.createElement("div");
+    grid.className = "form-grid document-template-inline-grid";
+
+    const typeField = document.createElement("label");
+    typeField.className = "field";
+    const typeSpan = document.createElement("span");
+    typeSpan.textContent = "Tip sekcije";
+    const typeSelect = document.createElement("select");
+    replaceSelectOptions(typeSelect, DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS, section.type || "rich_text");
+    typeSelect.addEventListener("change", () => {
+      documentTemplateSectionDrafts[index].type = typeSelect.value;
+      if (!String(documentTemplateSectionDrafts[index].title || "").trim()) {
+        documentTemplateSectionDrafts[index].title = getDocumentTemplateSectionTypeLabel(typeSelect.value);
+      }
+      if (typeSelect.value === "measurement_table" && !String(documentTemplateSectionDrafts[index].columns || "").trim()) {
+        documentTemplateSectionDrafts[index].columns = "Pozicija, Opis, Vrijednost, Granica, Napomena";
+        documentTemplateSectionDrafts[index].rowCount = "12";
+      }
+      renderDocumentTemplateSectionRows();
+      renderDocumentTemplatePreviewContent();
+    });
+    typeField.append(typeSpan, typeSelect);
+
+    const titleField = document.createElement("label");
+    titleField.className = "field";
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = "Naslov";
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.value = section.title || "";
+    titleInput.addEventListener("input", (event) => {
+      documentTemplateSectionDrafts[index].title = event.currentTarget.value;
+      title.textContent = event.currentTarget.value || `Sekcija ${index + 1}`;
+      renderDocumentTemplatePreviewContent();
+    });
+    titleInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(titleInput, `section-title:${section.id}`));
+    titleField.append(titleSpan, titleInput);
+
+    const bodyField = document.createElement("label");
+    bodyField.className = "field field-span-full";
+    const bodySpan = document.createElement("span");
+    bodySpan.textContent = "Sadrzaj";
+    const bodyInput = document.createElement("textarea");
+    bodyInput.rows = 4;
+    bodyInput.value = section.body || "";
+    bodyInput.addEventListener("input", (event) => {
+      documentTemplateSectionDrafts[index].body = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
+    });
+    bodyInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(bodyInput, `section-body:${section.id}`));
+    bodyField.append(bodySpan, bodyInput);
+
+    const columnsField = document.createElement("label");
+    columnsField.className = "field field-span-full";
+    columnsField.hidden = section.type !== "measurement_table";
+    const columnsSpan = document.createElement("span");
+    columnsSpan.textContent = "Stupci tablice";
+    const columnsInput = document.createElement("input");
+    columnsInput.type = "text";
+    columnsInput.placeholder = "Pozicija, Opis, Vrijednost, Granica, Napomena";
+    columnsInput.value = section.columns || "";
+    columnsInput.addEventListener("input", (event) => {
+      documentTemplateSectionDrafts[index].columns = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
+    });
+    columnsInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(columnsInput, `section-columns:${section.id}`));
+    columnsField.append(columnsSpan, columnsInput);
+
+    const rowCountField = document.createElement("label");
+    rowCountField.className = "field";
+    rowCountField.hidden = section.type !== "measurement_table";
+    const rowCountSpan = document.createElement("span");
+    rowCountSpan.textContent = "Broj redaka";
+    const rowCountInput = document.createElement("input");
+    rowCountInput.type = "number";
+    rowCountInput.min = "4";
+    rowCountInput.max = "40";
+    rowCountInput.value = section.rowCount || "12";
+    rowCountInput.addEventListener("input", (event) => {
+      documentTemplateSectionDrafts[index].rowCount = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
+    });
+    rowCountField.append(rowCountSpan, rowCountInput);
+
+    grid.append(typeField, titleField, bodyField, columnsField, rowCountField);
+
+    const actions = document.createElement("div");
+    actions.className = "document-template-item-actions";
+    const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
+      documentTemplateSectionDrafts = documentTemplateSectionDrafts.filter((entry) => entry.id !== section.id);
+      if (documentTemplateSectionDrafts.length === 0) {
+        documentTemplateSectionDrafts = createDefaultDocumentTemplateSectionDrafts();
+      }
+      renderDocumentTemplateSectionRows();
+      renderDocumentTemplatePreviewContent();
+    });
+    actions.append(removeButton);
+
+    row.append(head, grid, actions);
+    return row;
+  }));
+
+  renderDocumentTemplatePreviewContent();
+}
+
+function renderDocumentTemplateLegalFrameworkChecklist() {
+  if (!documentTemplateLegalFrameworkList) {
+    return;
+  }
+
+  const selectedIds = new Set(getSelectedDocumentTemplateLegalFrameworkIds());
+  const items = sortLegalFrameworks(state.legalFrameworks ?? []);
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy";
+    empty.textContent = "Prvo dodaj propise u Legal Framework pa ih ovdje povezi s templateom.";
+    documentTemplateLegalFrameworkList.replaceChildren(empty);
+    return;
+  }
+
+  documentTemplateLegalFrameworkList.replaceChildren(...items.map((item) => {
+    const label = document.createElement("label");
+    label.className = "document-template-legal-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "document-template-legal-framework-id";
+    checkbox.value = String(item.id);
+    checkbox.checked = selectedIds.has(String(item.id));
+    checkbox.addEventListener("change", () => {
+      renderDocumentTemplatePreviewContent();
+      renderDocumentTemplateModule();
+    });
+
+    const copy = document.createElement("span");
+    copy.className = "document-template-legal-option-copy";
+    const title = document.createElement("strong");
+    title.textContent = item.title || "Propis";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      item.referenceCode || "",
+      item.authority || "",
+      getLegalFrameworkStatusLabel(item.status),
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
+function resetDocumentTemplateForm() {
+  if (!documentTemplateForm) {
+    return;
+  }
+
+  documentTemplateForm.reset();
+  state.activeDocumentTemplateId = "";
+  activeDocumentTemplateTextTarget = null;
+  activeDocumentTemplateSectionTarget = "";
+  documentTemplateReferenceDraft = null;
+
+  if (documentTemplateIdInput) {
+    documentTemplateIdInput.value = "";
+  }
+  if (documentTemplateTypeInput) {
+    documentTemplateTypeInput.value = "Zapisnik";
+  }
+  if (documentTemplateStatusInput) {
+    documentTemplateStatusInput.value = "draft";
+  }
+  if (documentTemplateOutputFileNameInput) {
+    documentTemplateOutputFileNameInput.value = "";
+  }
+  if (documentTemplateCompanyIdInput) {
+    documentTemplateCompanyIdInput.value = "";
+  }
+  rebuildDocumentTemplateCompanyOptions("");
+  rebuildDocumentTemplateLocationOptions("");
+  setDocumentTemplateFieldDrafts([], { ensureOne: true });
+  setDocumentTemplateEquipmentDrafts([], { ensureOne: true });
+  setDocumentTemplateSectionDrafts([], { ensureDefault: true });
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplateEquipmentRows();
+  renderDocumentTemplateSectionRows();
+  renderDocumentTemplateLegalFrameworkChecklist();
+  renderDocumentTemplateReferenceMeta();
+  if (documentTemplateError) {
+    documentTemplateError.textContent = "";
+  }
+  syncDocumentTemplateEditorChrome();
+}
+
+function hydrateDocumentTemplateForm(template) {
+  state.activeView = "module";
+  state.activeModuleItem = "template-development";
+  renderActiveView();
+  renderModuleView();
+  state.activeDocumentTemplateId = template.id;
+  documentTemplateIdInput.value = template.id || "";
+  documentTemplateTitleInput.value = template.title || "";
+  documentTemplateTypeInput.value = template.documentType || "Zapisnik";
+  documentTemplateStatusInput.value = template.status || "draft";
+  documentTemplateOutputFileNameInput.value = template.outputFileName || "";
+  rebuildDocumentTemplateCompanyOptions(template.sampleCompanyId || "");
+  documentTemplateCompanyIdInput.value = template.sampleCompanyId || "";
+  rebuildDocumentTemplateLocationOptions(template.sampleLocationId || "");
+  documentTemplateLocationIdInput.value = template.sampleLocationId || "";
+  documentTemplateDescriptionInput.value = template.description || "";
+  setDocumentTemplateFieldDrafts(template.customFields ?? [], { ensureOne: true });
+  setDocumentTemplateEquipmentDrafts(template.equipmentItems ?? [], { ensureOne: true });
+  setDocumentTemplateSectionDrafts(template.sections ?? [], { ensureDefault: true });
+  setDocumentTemplateReferenceDocument(template.referenceDocument ?? null);
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplateEquipmentRows();
+  renderDocumentTemplateSectionRows();
+  renderDocumentTemplateLegalFrameworkChecklist();
+  Array.from(documentTemplateLegalFrameworkList?.querySelectorAll('input[name="document-template-legal-framework-id"]') ?? []).forEach((input) => {
+    input.checked = (template.selectedLegalFrameworkIds ?? []).map(String).includes(String(input.value));
+  });
+  if (documentTemplateError) {
+    documentTemplateError.textContent = "";
+  }
+  syncDocumentTemplateEditorChrome();
+  openDocumentTemplateEditor();
+  requestAnimationFrame(() => {
+    documentTemplateTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+function createDocumentTemplateStatusBadge(status) {
+  return createBadge(
+    getDocumentTemplateStatusLabel(status),
+    `document-template-status-badge is-${slugifyValue(status || "draft")}`,
+  );
+}
+
+function renderDocumentTemplateModule() {
+  if (!templateDevelopmentModule || !documentTemplateList || !documentTemplateEmpty) {
+    return;
+  }
+
+  const filters = {
+    query: documentTemplateSearchInput?.value?.trim() || state.documentTemplateFilters.query || "",
+    status: documentTemplateFilterStatusInput?.value || state.documentTemplateFilters.status || "all",
+  };
+  state.documentTemplateFilters = filters;
+
+  const allItems = sortDocumentTemplates(state.documentTemplates ?? []);
+  const visibleItems = sortDocumentTemplates(filterDocumentTemplates(state.documentTemplates ?? [], filters));
+
+  if (documentTemplateTotalCount) {
+    documentTemplateTotalCount.textContent = String(allItems.length);
+  }
+  if (documentTemplateActiveCount) {
+    documentTemplateActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
+  }
+  if (documentTemplateDraftCount) {
+    documentTemplateDraftCount.textContent = String(allItems.filter((item) => item.status === "draft").length);
+  }
+  if (documentTemplateReferenceCount) {
+    documentTemplateReferenceCount.textContent = String(allItems.filter((item) => item.referenceDocument?.fileName).length);
+  }
+  if (documentTemplateHelper) {
+    documentTemplateHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} templatea.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} templatea.`;
+  }
+
+  documentTemplateList.replaceChildren(...visibleItems.map((template) => {
+    const card = document.createElement("article");
+    card.className = `document-template-card is-${slugifyValue(template.status || "draft")}`;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    if (String(template.id) === String(documentTemplateIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    const head = document.createElement("div");
+    head.className = "document-template-card-head";
+
+    const badges = document.createElement("div");
+    badges.className = "document-template-card-badges";
+    badges.append(
+      createDocumentTemplateStatusBadge(template.status),
+      createBadge(getDocumentTemplateTypeLabel(template.documentType), "document-template-meta-badge"),
+    );
+
+    const copy = document.createElement("div");
+    copy.className = "document-template-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = template.title || "Novi template";
+    const meta = document.createElement("p");
+    meta.className = "document-template-card-meta";
+    meta.textContent = [
+      getCompany(template.sampleCompanyId)?.name || "",
+      getLocation(template.sampleLocationId)?.name || "",
+      template.referenceDocument?.fileName ? "Word ref" : "",
+    ].filter(Boolean).join(" | ") || "Bez primjerne tvrtke i lokacije";
+    copy.append(title, meta);
+    head.append(badges, copy);
+
+    const description = document.createElement("p");
+    description.className = "document-template-card-description";
+    description.textContent = template.description || "Dodaj opis, placeholder polja, propise i sekcije koje ce builder koristiti za generiranje zapisnika.";
+
+    const chips = document.createElement("div");
+    chips.className = "document-template-card-chips";
+    chips.append(
+      createBadge(`${template.customFields?.length || 0} polja`, "document-template-meta-badge"),
+      createBadge(`${template.selectedLegalFrameworkIds?.length || 0} propisa`, "document-template-meta-badge"),
+      createBadge(`${template.equipmentItems?.length || 0} opreme`, "document-template-meta-badge"),
+      createBadge(`${template.sections?.length || 0} sekcija`, "document-template-meta-badge"),
+    );
+
+    const footer = document.createElement("div");
+    footer.className = "document-template-card-footer";
+    const output = document.createElement("span");
+    output.textContent = `${sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template")}.doc`;
+    const updated = document.createElement("span");
+    updated.textContent = template.updatedAt ? `Azurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
+    footer.append(output, updated);
+
+    const openCard = () => {
+      hydrateDocumentTemplateForm(template);
+    };
+
+    card.append(head, description, chips, footer);
+    card.addEventListener("click", openCard);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openCard();
+    });
+    return card;
+  }));
+
+  documentTemplateEmpty.hidden = visibleItems.length !== 0;
+}
+
 function scrollVehicleEditorToTop() {
   vehicleEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
@@ -7380,6 +9207,10 @@ function renderAuthState() {
     syncWorkOrderEditorModal();
     state.offerEditorOpen = false;
     syncOfferEditorModal();
+    state.legalFrameworkEditorOpen = false;
+    syncLegalFrameworkEditorModal();
+    state.documentTemplateEditorOpen = false;
+    syncDocumentTemplateEditorModal();
     state.companyEditorOpen = false;
     syncCompanyEditorModal();
     state.locationEditorOpen = false;
@@ -7391,6 +9222,8 @@ function renderAuthState() {
     resetCompanyForm();
     resetLocationForm();
     resetOfferForm();
+    resetLegalFrameworkForm();
+    resetDocumentTemplateForm();
     resetVehicleForm();
     resetChatState();
   }
@@ -12620,6 +14453,8 @@ function renderActiveView() {
   syncOfferEditorModal();
   syncVehicleEditorModal();
   syncVehicleReservationModal();
+  syncLegalFrameworkEditorModal();
+  syncDocumentTemplateEditorModal();
 }
 
 function renderSharedOptions() {
@@ -12631,6 +14466,12 @@ function renderSharedOptions() {
 
   if (workOrderSearchInput && workOrderSearchInput.value !== state.workOrderFilters.query) {
     workOrderSearchInput.value = state.workOrderFilters.query;
+  }
+  if (legalFrameworkSearchInput && legalFrameworkSearchInput.value !== state.legalFrameworkFilters.query) {
+    legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
+  }
+  if (documentTemplateSearchInput && documentTemplateSearchInput.value !== state.documentTemplateFilters.query) {
+    documentTemplateSearchInput.value = state.documentTemplateFilters.query;
   }
 
   const organizationOptions = state.organizations.map((organization) => ({
@@ -12669,6 +14510,27 @@ function renderSharedOptions() {
     replaceSelectOptions(offerStatusInput, OFFER_STATUS_OPTIONS, offerStatusInput.value || "draft");
     syncOfferStatusTheme();
   }
+  if (legalFrameworkStatusInput) {
+    replaceSelectOptions(legalFrameworkStatusInput, LEGAL_FRAMEWORK_STATUS_OPTIONS, legalFrameworkStatusInput.value || "active");
+  }
+  if (legalFrameworkFilterStatusInput) {
+    replaceSelectOptions(legalFrameworkFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...LEGAL_FRAMEWORK_STATUS_OPTIONS,
+    ], state.legalFrameworkFilters.status || "all");
+  }
+  if (documentTemplateTypeInput) {
+    replaceSelectOptions(documentTemplateTypeInput, DOCUMENT_TEMPLATE_TYPE_OPTIONS, documentTemplateTypeInput.value || "Zapisnik");
+  }
+  if (documentTemplateStatusInput) {
+    replaceSelectOptions(documentTemplateStatusInput, DOCUMENT_TEMPLATE_STATUS_OPTIONS, documentTemplateStatusInput.value || "draft");
+  }
+  if (documentTemplateFilterStatusInput) {
+    replaceSelectOptions(documentTemplateFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...DOCUMENT_TEMPLATE_STATUS_OPTIONS,
+    ], state.documentTemplateFilters.status || "all");
+  }
   if (vehicleStatusInput) {
     replaceSelectOptions(vehicleStatusInput, VEHICLE_STATUS_OPTIONS, vehicleStatusInput.value || "available");
   }
@@ -12706,6 +14568,8 @@ function renderSharedOptions() {
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
   rebuildOfferLocationOptions(offerLocationIdInput?.value || "");
   rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
+  rebuildDocumentTemplateCompanyOptions(documentTemplateCompanyIdInput?.value || "");
+  rebuildDocumentTemplateLocationOptions(documentTemplateLocationIdInput?.value || "");
   syncCompanySelectionPreview(
     workOrderCompanyIdInput?.value || "",
     workOrderCompanyPreview,
@@ -18117,6 +19981,247 @@ offerEditorBackdrop?.addEventListener("click", () => {
   dismissOfferEditor();
 });
 
+legalFrameworkSearchInput?.addEventListener("input", () => {
+  state.legalFrameworkFilters.query = legalFrameworkSearchInput.value.trim();
+  renderLegalFrameworkModule();
+});
+
+legalFrameworkFilterStatusInput?.addEventListener("change", () => {
+  state.legalFrameworkFilters.status = legalFrameworkFilterStatusInput.value || "all";
+  renderLegalFrameworkModule();
+});
+
+legalFrameworkOpenFormButton?.addEventListener("click", () => {
+  resetLegalFrameworkForm();
+  renderLegalFrameworkModule();
+  openLegalFrameworkEditor();
+  requestAnimationFrame(() => {
+    legalFrameworkTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+legalFrameworkEditorCloseButton?.addEventListener("click", () => {
+  dismissLegalFrameworkEditor();
+});
+
+legalFrameworkEditorBackdrop?.addEventListener("click", () => {
+  dismissLegalFrameworkEditor();
+});
+
+legalFrameworkResetButton?.addEventListener("click", () => {
+  resetLegalFrameworkForm();
+  renderLegalFrameworkModule();
+  openLegalFrameworkEditor();
+});
+
+legalFrameworkDeleteButton?.addEventListener("click", () => {
+  const legalFrameworkId = legalFrameworkIdInput?.value || "";
+
+  if (!legalFrameworkId || !window.confirm("Obrisati ovaj propis?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/legal-frameworks/${legalFrameworkId}`, {
+    method: "DELETE",
+  }), legalFrameworkError).then((success) => {
+    if (success) {
+      closeLegalFrameworkEditor({ reset: true });
+      renderLegalFrameworkModule();
+    }
+  });
+});
+
+legalFrameworkForm?.addEventListener("input", () => {
+  syncLegalFrameworkEditorChrome();
+});
+
+legalFrameworkForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(legalFrameworkIdInput?.value);
+  const path = isEditing ? `/legal-frameworks/${legalFrameworkIdInput.value}` : "/legal-frameworks";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildLegalFrameworkPayload(),
+  }), legalFrameworkError).then((success) => {
+    if (success) {
+      closeLegalFrameworkEditor({ reset: true });
+      renderLegalFrameworkModule();
+    }
+  });
+});
+
+documentTemplateSearchInput?.addEventListener("input", () => {
+  state.documentTemplateFilters.query = documentTemplateSearchInput.value.trim();
+  renderDocumentTemplateModule();
+});
+
+documentTemplateFilterStatusInput?.addEventListener("change", () => {
+  state.documentTemplateFilters.status = documentTemplateFilterStatusInput.value || "all";
+  renderDocumentTemplateModule();
+});
+
+documentTemplateOpenFormButton?.addEventListener("click", () => {
+  resetDocumentTemplateForm();
+  renderDocumentTemplateModule();
+  openDocumentTemplateEditor();
+  requestAnimationFrame(() => {
+    documentTemplateTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+documentTemplateEditorCloseButton?.addEventListener("click", () => {
+  dismissDocumentTemplateEditor();
+});
+
+documentTemplateEditorBackdrop?.addEventListener("click", () => {
+  dismissDocumentTemplateEditor();
+});
+
+documentTemplateResetButton?.addEventListener("click", () => {
+  resetDocumentTemplateForm();
+  renderDocumentTemplateModule();
+  openDocumentTemplateEditor();
+});
+
+documentTemplateDeleteButton?.addEventListener("click", () => {
+  const templateId = documentTemplateIdInput?.value || "";
+
+  if (!templateId || !window.confirm("Obrisati ovaj template?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/document-templates/${templateId}`, {
+    method: "DELETE",
+  }), documentTemplateError).then((success) => {
+    if (success) {
+      closeDocumentTemplateEditor({ reset: true });
+      renderDocumentTemplateModule();
+    }
+  });
+});
+
+documentTemplateCompanyIdInput?.addEventListener("change", () => {
+  rebuildDocumentTemplateLocationOptions("");
+  renderDocumentTemplatePreviewContent();
+});
+
+documentTemplateLocationIdInput?.addEventListener("change", () => {
+  renderDocumentTemplatePreviewContent();
+});
+
+documentTemplateAddFieldButton?.addEventListener("click", () => {
+  documentTemplateFieldDrafts = [...documentTemplateFieldDrafts, createEmptyDocumentTemplateFieldDraft({}, documentTemplateFieldDrafts.length)];
+  renderDocumentTemplateFieldRows();
+});
+
+documentTemplateAddEquipmentButton?.addEventListener("click", () => {
+  documentTemplateEquipmentDrafts = [...documentTemplateEquipmentDrafts, createEmptyDocumentTemplateEquipmentDraft({}, documentTemplateEquipmentDrafts.length)];
+  renderDocumentTemplateEquipmentRows();
+});
+
+documentTemplateAddSectionButton?.addEventListener("click", () => {
+  documentTemplateSectionDrafts = [...documentTemplateSectionDrafts, createEmptyDocumentTemplateSectionDraft({}, documentTemplateSectionDrafts.length)];
+  renderDocumentTemplateSectionRows();
+  renderDocumentTemplatePreviewContent();
+});
+
+documentTemplateReferenceUploadButton?.addEventListener("click", () => {
+  documentTemplateReferenceFileInput?.click();
+});
+
+documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
+  if (!documentTemplateReferenceDraft?.dataUrl) {
+    return;
+  }
+
+  triggerDataUrlDownload(
+    documentTemplateReferenceDraft.dataUrl,
+    documentTemplateReferenceDraft.fileName || "template-reference.docx",
+  );
+});
+
+documentTemplateReferenceRemoveButton?.addEventListener("click", () => {
+  setDocumentTemplateReferenceDocument(null);
+});
+
+documentTemplateReferenceFileInput?.addEventListener("change", () => {
+  const file = documentTemplateReferenceFileInput.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  void readFileAsDataUrl(file, "Ne mogu ucitati Word predlozak.")
+    .then((dataUrl) => {
+      setDocumentTemplateReferenceDocument({
+        fileName: file.name,
+        fileType: file.type || "application/octet-stream",
+        dataUrl,
+        updatedAt: new Date().toISOString(),
+      });
+      if (documentTemplateError) {
+        documentTemplateError.textContent = "";
+      }
+    })
+    .catch((error) => {
+      if (documentTemplateError) {
+        documentTemplateError.textContent = error.message;
+      }
+    })
+    .finally(() => {
+      documentTemplateReferenceFileInput.value = "";
+    });
+});
+
+documentTemplateOpenPdfPreviewButton?.addEventListener("click", () => {
+  openDocumentTemplatePreviewWindow({ placeholderMode: false });
+});
+
+documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
+  exportDocumentTemplateWord({ placeholderMode: true });
+});
+
+documentTemplateExportPreviewButton?.addEventListener("click", () => {
+  exportDocumentTemplateWord({ placeholderMode: false });
+});
+
+documentTemplateForm?.addEventListener("focusin", (event) => {
+  const target = event.target;
+
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    rememberDocumentTemplateTextTarget(target);
+  }
+});
+
+documentTemplateForm?.addEventListener("input", () => {
+  syncDocumentTemplateEditorChrome();
+});
+
+documentTemplateForm?.addEventListener("change", () => {
+  syncDocumentTemplateEditorChrome();
+});
+
+documentTemplateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(documentTemplateIdInput?.value);
+  const path = isEditing ? `/document-templates/${documentTemplateIdInput.value}` : "/document-templates";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildDocumentTemplatePayload(),
+  }), documentTemplateError).then((success) => {
+    if (success) {
+      closeDocumentTemplateEditor({ reset: true });
+      renderDocumentTemplateModule();
+    }
+  });
+});
+
 companyLogoButton?.addEventListener("click", () => {
   companyLogoFileInput?.click();
 });
@@ -18781,6 +20886,9 @@ logoutButton.addEventListener("click", () => {
     state.reminders = [];
     state.todoTasks = [];
     state.offers = [];
+    state.vehicles = [];
+    state.legalFrameworks = [];
+    state.documentTemplates = [];
     state.dashboardWidgets = [];
     state.companies = [];
     state.locations = [];
@@ -18789,6 +20897,8 @@ logoutButton.addEventListener("click", () => {
     state.loginContentItems = [];
     state.activeTodoTaskId = "";
     state.activeDashboardWidgetId = "";
+    state.activeLegalFrameworkId = "";
+    state.activeDocumentTemplateId = "";
     closeDashboardBuilder();
     state.measurementSheet.columns = [];
     state.measurementSheet.rows = [];
@@ -18806,6 +20916,8 @@ logoutButton.addEventListener("click", () => {
     loginForm.reset();
     closeMeasurementSheet();
     resetOfferForm();
+    resetLegalFrameworkForm();
+    resetDocumentTemplateForm();
     renderAuthState();
     void refreshLoginContent();
   });
@@ -18989,6 +21101,16 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.documentTemplateEditorOpen) {
+    dismissDocumentTemplateEditor();
+    return;
+  }
+
+  if (event.key === "Escape" && state.legalFrameworkEditorOpen) {
+    dismissLegalFrameworkEditor();
+    return;
+  }
+
   if (event.key === "Escape" && state.locationEditorOpen) {
     dismissLocationEditor();
     return;
@@ -19036,6 +21158,8 @@ resetReminderForm();
 resetTodoForm();
 resetVehicleForm();
 resetOfferForm();
+resetLegalFrameworkForm();
+resetDocumentTemplateForm();
 resetCompanyForm();
 resetLocationForm();
 resetOrganizationForm();

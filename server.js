@@ -315,6 +315,36 @@ function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
   assertInScope(scopedSnapshot.locations, body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
 }
 
+function assertSampleCompanyPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.sampleCompanyId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.companies, body.sampleCompanyId, "Tvrtka nije dostupna za odabrani template.");
+}
+
+function assertSampleLocationPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.sampleLocationId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.locations, body.sampleLocationId, "Lokacija nije dostupna za odabrani template.");
+}
+
+function assertLegalFrameworkIdsPayloadInScope(scopedSnapshot, body = {}) {
+  if (!Array.isArray(body.selectedLegalFrameworkIds)) {
+    return;
+  }
+
+  body.selectedLegalFrameworkIds.forEach((id) => {
+    if (!String(id ?? "").trim()) {
+      return;
+    }
+
+    assertInScope(scopedSnapshot.legalFrameworks ?? [], id, "Propis nije dostupan za odabranu organizaciju.");
+  });
+}
+
 function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
   if (!body.workOrderId) {
     return;
@@ -587,6 +617,8 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+    const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
+    const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
@@ -861,6 +893,41 @@ async function handleApiRequest(request, response, url) {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/legal-frameworks") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati propisima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createLegalFramework({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/document-templates") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati templateima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertSampleCompanyPayloadInScope(scopedSnapshot, body);
+      assertSampleLocationPayloadInScope(scopedSnapshot, body);
+      assertLegalFrameworkIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createDocumentTemplate({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -1182,6 +1249,55 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (legalFrameworkMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati propisima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronaden.");
+      const updated = await domainRepository.updateLegalFramework(legalFrameworkMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Propis nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (documentTemplateMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati templateima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronaden.");
+      assertSampleCompanyPayloadInScope(scopedSnapshot, body);
+      assertSampleLocationPayloadInScope(scopedSnapshot, body);
+      assertLegalFrameworkIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateDocumentTemplate(documentTemplateMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Template nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (vehicleReservationMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati rezervacijama vozila.");
@@ -1334,6 +1450,44 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Vozilo nije pronadeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (legalFrameworkMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati propise.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronaden.");
+      const deleted = await domainRepository.deleteLegalFramework(legalFrameworkMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Propis nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (documentTemplateMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati templatee.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronaden.");
+      const deleted = await domainRepository.deleteDocumentTemplate(documentTemplateMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Template nije pronaden.");
         return true;
       }
 

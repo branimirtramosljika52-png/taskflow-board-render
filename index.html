@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260331e" />
+    <link rel="stylesheet" href="/styles.css?v=20260331f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -266,6 +266,25 @@
                     </svg>
                   </span>
                   <strong>Vehicles</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="legal-framework">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6 4h9l3 3v13H6z"></path>
+                      <path d="M15 4v4h4"></path>
+                      <path d="M9 11h6M9 15h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Legal Framework</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="template-development">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M5 5h14v14H5z"></path>
+                      <path d="M9 9h6M9 13h6M9 17h4"></path>
+                    </svg>
+                  </span>
+                  <strong>Template Development</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="people" id="management-tab" hidden>
                   <span class="tab-button-icon" aria-hidden="true">
@@ -2600,6 +2619,341 @@
                 </section>
               </div>
             </section>
+
+            <section id="legal-framework-module" class="legal-framework-module" hidden>
+              <div class="legal-framework-summary-grid">
+                <article class="legal-framework-stat-card is-total">
+                  <span class="legal-framework-stat-label">Ukupno</span>
+                  <strong id="legal-framework-total-count" class="legal-framework-stat-value">0</strong>
+                </article>
+                <article class="legal-framework-stat-card is-active">
+                  <span class="legal-framework-stat-label">Aktivni</span>
+                  <strong id="legal-framework-active-count" class="legal-framework-stat-value">0</strong>
+                </article>
+                <article class="legal-framework-stat-card is-inactive">
+                  <span class="legal-framework-stat-label">Neaktivni</span>
+                  <strong id="legal-framework-inactive-count" class="legal-framework-stat-value">0</strong>
+                </article>
+                <article class="legal-framework-stat-card is-review">
+                  <span class="legal-framework-stat-label">Review uskoro</span>
+                  <strong id="legal-framework-review-count" class="legal-framework-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel legal-framework-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Compliance</p>
+                    <h3>Zakoni i propisi</h3>
+                  </div>
+                  <button id="legal-framework-open-form" type="button" class="primary-button">+ Novi propis</button>
+                </div>
+
+                <div class="legal-framework-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="legal-framework-search" type="search" placeholder="Naziv, oznaka, tijelo, tag..." />
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="legal-framework-filter-status"></select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel legal-framework-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Registar</p>
+                    <h3>Popis propisa</h3>
+                  </div>
+                </div>
+
+                <p id="legal-framework-helper" class="helper-copy module-copy">Pregled zakona, pravilnika i internih propisa po organizaciji.</p>
+                <div id="legal-framework-list" class="legal-framework-list"></div>
+                <p id="legal-framework-empty" class="helper-copy" hidden>Nema propisa za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <div id="legal-framework-editor-backdrop" class="offer-editor-backdrop legal-framework-editor-backdrop" hidden></div>
+              <section id="legal-framework-editor-panel" class="panel legal-framework-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Legal framework</p>
+                      <h3 id="legal-framework-editor-title">Novi propis</h3>
+                    </div>
+                    <button id="legal-framework-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="legal-framework-editor-body" tabindex="-1">
+                  <form id="legal-framework-form" class="entity-form">
+                    <input id="legal-framework-id" type="hidden" />
+
+                    <div class="form-grid legal-framework-form-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv propisa</span>
+                        <input id="legal-framework-title" maxlength="220" placeholder="Zakon o zastiti na radu..." required />
+                      </label>
+                      <label class="field">
+                        <span>Kategorija</span>
+                        <input id="legal-framework-category" maxlength="120" placeholder="Zakon, pravilnik, norma..." />
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="legal-framework-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Tijelo / autoritet</span>
+                        <input id="legal-framework-authority" maxlength="180" placeholder="NN, Ministarstvo, HZN..." />
+                      </label>
+                      <label class="field">
+                        <span>Oznaka / clanak</span>
+                        <input id="legal-framework-reference-code" maxlength="120" placeholder="NN 71/14, clanak 12..." />
+                      </label>
+                      <label class="field">
+                        <span>Verzija</span>
+                        <input id="legal-framework-version-label" maxlength="80" placeholder="v2026.1" />
+                      </label>
+                      <label class="field">
+                        <span>Objavljeno</span>
+                        <input id="legal-framework-published-on" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Vrijedi od</span>
+                        <input id="legal-framework-effective-from" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Review datum</span>
+                        <input id="legal-framework-review-date" type="date" />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Izvorni link</span>
+                        <input id="legal-framework-source-url" maxlength="255" placeholder="https://..." />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Tagovi</span>
+                        <input id="legal-framework-tags-text" maxlength="255" placeholder="vatrogastvo, zastita na radu, servis..." />
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="legal-framework-note" rows="4" placeholder="Bitne napomene, sazetak obveze, sto se koristi u zapisnicima..."></textarea>
+                    </label>
+
+                    <p id="legal-framework-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi propis</button>
+                      <button id="legal-framework-reset" type="button" class="ghost-button">Novi propis</button>
+                      <button id="legal-framework-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
+
+            <section id="template-development-module" class="template-development-module" hidden>
+              <div class="template-development-summary-grid">
+                <article class="template-development-stat-card is-total">
+                  <span class="template-development-stat-label">Ukupno</span>
+                  <strong id="document-template-total-count" class="template-development-stat-value">0</strong>
+                </article>
+                <article class="template-development-stat-card is-active">
+                  <span class="template-development-stat-label">Aktivni</span>
+                  <strong id="document-template-active-count" class="template-development-stat-value">0</strong>
+                </article>
+                <article class="template-development-stat-card is-draft">
+                  <span class="template-development-stat-label">Skice</span>
+                  <strong id="document-template-draft-count" class="template-development-stat-value">0</strong>
+                </article>
+                <article class="template-development-stat-card is-reference">
+                  <span class="template-development-stat-label">Word reference</span>
+                  <strong id="document-template-reference-count" class="template-development-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel template-development-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Template development</p>
+                    <h3>Builder za Zapisnike</h3>
+                  </div>
+                  <button id="document-template-open-form" type="button" class="primary-button">+ Novi template</button>
+                </div>
+
+                <div class="template-development-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="document-template-search" type="search" placeholder="Naziv, tip, placeholder, oprema..." />
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="document-template-filter-status"></select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel template-development-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Templates</p>
+                    <h3>Popis Zapisnika</h3>
+                  </div>
+                </div>
+
+                <p id="document-template-helper" class="helper-copy module-copy">Slozi placeholdere, povezi propise i opremu, pregledaj rezultat i izvezi Word / PDF preview.</p>
+                <div id="document-template-list" class="document-template-list"></div>
+                <p id="document-template-empty" class="helper-copy" hidden>Nema templatea za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <div id="document-template-editor-backdrop" class="offer-editor-backdrop document-template-editor-backdrop" hidden></div>
+              <section id="document-template-editor-panel" class="panel document-template-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Zapisnik builder</p>
+                      <h3 id="document-template-editor-title">Novi template</h3>
+                    </div>
+                    <div class="document-template-head-actions">
+                      <button id="document-template-open-pdf-preview" type="button" class="ghost-button">PDF preview</button>
+                      <button id="document-template-export-placeholder" type="button" class="ghost-button">Word placeholder</button>
+                      <button id="document-template-export-preview" type="button" class="ghost-button">Word preview</button>
+                      <button id="document-template-editor-close" type="button" class="ghost-button">Zatvori</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="document-template-editor-body" tabindex="-1">
+                  <form id="document-template-form" class="entity-form document-template-form">
+                    <input id="document-template-id" type="hidden" />
+
+                    <div class="form-grid document-template-meta-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv templatea</span>
+                        <input id="document-template-title" maxlength="180" placeholder="Zapisnik redovnog pregleda..." required />
+                      </label>
+                      <label class="field">
+                        <span>Vrsta dokumenta</span>
+                        <select id="document-template-type"></select>
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="document-template-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Naziv izlazne datoteke</span>
+                        <input id="document-template-output-file-name" maxlength="180" placeholder="zapisnik-pregled" />
+                      </label>
+                      <label class="field">
+                        <span>Tvrtka za preview</span>
+                        <select id="document-template-company-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Lokacija za preview</span>
+                        <select id="document-template-location-id"></select>
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Opis i svrha</span>
+                      <textarea id="document-template-description" rows="3" placeholder="Sto template generira, za koji zapisnik, za koju operativu..."></textarea>
+                    </label>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Placeholders</p>
+                          <h3>Dostupna polja</h3>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Klikni placeholder dok si fokusiran na tekstualni blok i ubacit ce se token u template.</p>
+                      <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                    </section>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Custom fields</p>
+                          <h3>Dodatna polja</h3>
+                        </div>
+                        <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj polje</button>
+                      </div>
+                      <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
+                    </section>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Legal framework</p>
+                          <h3>Povezani propisi</h3>
+                        </div>
+                      </div>
+                      <div id="document-template-legal-framework-list" class="document-template-legal-framework-list"></div>
+                    </section>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Equipment</p>
+                          <h3>Oprema i stavke</h3>
+                        </div>
+                        <button id="document-template-add-equipment" type="button" class="ghost-button">+ Dodaj opremu</button>
+                      </div>
+                      <div id="document-template-equipment-items" class="document-template-equipment-items"></div>
+                    </section>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Sections</p>
+                          <h3>Struktura zapisnika</h3>
+                        </div>
+                        <button id="document-template-add-section" type="button" class="ghost-button">+ Dodaj sekciju</button>
+                      </div>
+                      <div id="document-template-sections" class="document-template-sections"></div>
+                    </section>
+
+                    <section class="document-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Word reference</p>
+                          <h3>Vrati uredeni Word</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
+                          <button id="document-template-reference-upload" type="button" class="ghost-button">Upload Word</button>
+                          <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi</button>
+                          <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
+                        </div>
+                      </div>
+                      <div id="document-template-reference-meta" class="document-template-reference-meta">
+                        Nema spremljenog povratnog Word dokumenta.
+                      </div>
+                    </section>
+
+                    <section class="document-template-block document-template-preview-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Preview</p>
+                          <h3>Live pregled zapisnika</h3>
+                        </div>
+                      </div>
+                      <div id="document-template-preview" class="document-template-preview"></div>
+                    </section>
+
+                    <p id="document-template-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi template</button>
+                      <button id="document-template-reset" type="button" class="ghost-button">Novi template</button>
+                      <button id="document-template-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
           </section>
         </section>
         </section>
@@ -2719,6 +3073,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260331e"></script>
+    <script type="module" src="/src/main.js?v=20260331f"></script>
   </body>
 </html>

@@ -49,6 +49,14 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
       { id: "vehicle-1", organizationId: "1", name: "Org A auto", reservations: [] },
       { id: "vehicle-2", organizationId: "2", name: "Org B auto", reservations: [] },
     ],
+    legalFrameworks: [
+      { id: "legal-1", organizationId: "1", title: "Org A zakon" },
+      { id: "legal-2", organizationId: "2", title: "Org B zakon" },
+    ],
+    documentTemplates: [
+      { id: "template-1", organizationId: "1", title: "Org A template", customFields: [], equipmentItems: [], sections: [] },
+      { id: "template-2", organizationId: "2", title: "Org B template", customFields: [], equipmentItems: [], sections: [] },
+    ],
   };
 
   const scoped = await repository.getSnapshot(actor, "2", rawSnapshot);
@@ -62,6 +70,10 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
   assert.equal(scoped.offers[0].id, "offer-2");
   assert.equal(scoped.vehicles.length, 1);
   assert.equal(scoped.vehicles[0].id, "vehicle-2");
+  assert.equal(scoped.legalFrameworks.length, 1);
+  assert.equal(scoped.legalFrameworks[0].id, "legal-2");
+  assert.equal(scoped.documentTemplates.length, 1);
+  assert.equal(scoped.documentTemplates[0].id, "template-2");
 });
 
 test("memory tenant repository lets admins create users only inside their organization", async () => {

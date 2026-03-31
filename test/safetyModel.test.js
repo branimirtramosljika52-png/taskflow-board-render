@@ -10,6 +10,8 @@ import {
   buildLocationContacts,
   createCompany,
   createDashboardWidget,
+  createDocumentTemplate,
+  createLegalFramework,
   createLocation,
   createOffer,
   createReminder,
@@ -20,6 +22,8 @@ import {
   createWorkOrder,
   deriveOfferInitials,
   filterReminders,
+  filterDocumentTemplates,
+  filterLegalFrameworks,
   filterOffers,
   filterTodoTasks,
   filterVehicles,
@@ -35,13 +39,17 @@ import {
   parseCoordinates,
   sortReminders,
   sortDashboardWidgets,
+  sortDocumentTemplates,
+  sortLegalFrameworks,
   sortOffers,
   sortVehicles,
   sortTodoTasks,
   updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
   updateDashboardWidget,
+  updateDocumentTemplate,
   updateCompany,
+  updateLegalFramework,
   updateLocation,
   updateOffer,
   updateReminder,
@@ -90,6 +98,8 @@ function buildState() {
     todoTasks: [],
     offers: [],
     vehicles: [],
+    legalFrameworks: [],
+    documentTemplates: [],
     dashboardWidgets: [],
   };
 }
@@ -177,6 +187,135 @@ test("createLocation requires a real company and keeps names unique per company"
     ),
     /lokacija/i,
   );
+});
+
+test("legal framework create, update, filter and sort work together", () => {
+  const state = buildState();
+  const first = createLegalFramework(
+    {
+      organizationId: "org-1",
+      title: "Zakon o zastiti od pozara",
+      category: "Zakon",
+      status: "active",
+      authority: "NN",
+      referenceCode: "NN 92/10",
+      reviewDate: "2026-04-05",
+      tagsText: "vatra, zastita",
+    },
+    state,
+    () => "legal-1",
+    () => "2026-03-31T09:00:00.000Z",
+  );
+  const second = createLegalFramework(
+    {
+      organizationId: "org-1",
+      title: "Pravilnik o internim pregledima",
+      status: "inactive",
+      authority: "Ministarstvo",
+      referenceCode: "PR-22",
+      reviewDate: "2026-06-10",
+    },
+    state,
+    () => "legal-2",
+    () => "2026-03-31T10:00:00.000Z",
+  );
+
+  const updatedSecond = updateLegalFramework(
+    second,
+    {
+      status: "active",
+      note: "Koristi se za servisne zapisnike.",
+    },
+    state,
+    () => "2026-03-31T11:00:00.000Z",
+  );
+
+  const filtered = filterLegalFrameworks([first, updatedSecond], {
+    query: "servisne",
+    status: "active",
+  });
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "legal-2");
+
+  const sorted = sortLegalFrameworks([updatedSecond, first]);
+  assert.equal(sorted[0].id, "legal-1");
+});
+
+test("document templates keep nested builder data and support filtering", () => {
+  const state = buildState();
+  const legalFramework = createLegalFramework(
+    {
+      organizationId: "org-1",
+      title: "HRN EN 50172",
+      status: "active",
+    },
+    state,
+    () => "legal-1",
+    () => "2026-03-31T09:00:00.000Z",
+  );
+  state.legalFrameworks = [legalFramework];
+
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Zapisnik panik rasvjete",
+      documentType: "Zapisnik",
+      status: "draft",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+      selectedLegalFrameworkIds: ["legal-1"],
+      customFields: [
+        { label: "Mjesto pregleda", key: "mjesto_pregleda", defaultValue: "Stubiste A" },
+      ],
+      equipmentItems: [
+        { name: "Panik rasvjeta", code: "PR-01", quantity: 12, note: "Etaža 1" },
+      ],
+      sections: [
+        { type: "rich_text", title: "Uvod", body: "Pregled sustava {{COMPANY_NAME}}" },
+        { type: "measurement_table", title: "Mjerenja", columns: ["Pozicija", "Vrijednost"], rowCount: 8 },
+      ],
+      referenceDocument: {
+        fileName: "zapisnik-reference.docx",
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        dataUrl: "data:application/octet-stream;base64,AAA",
+      },
+      createdByUserId: "user-1",
+      createdByLabel: "Ana Admin",
+    },
+    state,
+    () => "template-1",
+    () => "2026-03-31T12:00:00.000Z",
+  );
+
+  assert.equal(template.customFields.length, 1);
+  assert.equal(template.equipmentItems.length, 1);
+  assert.equal(template.sections[1].rowCount, 8);
+  assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");
+
+  const updated = updateDocumentTemplate(
+    template,
+    {
+      status: "active",
+      description: "Za redovne preglede i generiranje Word izvjestaja.",
+    },
+    {
+      ...state,
+      documentTemplates: [template],
+    },
+    () => "2026-03-31T13:00:00.000Z",
+  );
+
+  assert.equal(updated.status, "active");
+
+  const filtered = filterDocumentTemplates([updated], {
+    query: "Word izvjestaja",
+    status: "active",
+  });
+  assert.equal(filtered.length, 1);
+
+  const sorted = sortDocumentTemplates([updated]);
+  assert.equal(sorted[0].id, "template-1");
 });
 
 test("createWorkOrder pulls snapshot data from selected company and location", () => {
