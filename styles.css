@@ -4611,7 +4611,7 @@ body.is-work-order-editor-open {
 
 .work-order-editor-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 430px;
   gap: 0;
   height: 100%;
   min-height: 0;
@@ -4938,12 +4938,12 @@ body.is-work-order-editor-open {
   text-transform: uppercase;
 }
 
-.form-grid-work-order-overview {
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+.form-grid-work-order-essentials {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
 .form-grid-client-identity {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .form-grid-client-location,
@@ -4953,7 +4953,7 @@ body.is-work-order-editor-open {
 }
 
 .form-grid-service-main {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .form-grid-notes {
@@ -5028,48 +5028,55 @@ body.is-work-order-editor-open {
   background: #f5f8fc;
 }
 
-.form-grid-work-order-overview > .field:nth-child(-n+4) {
-  grid-column: span 2;
-}
-
-.form-grid-work-order-overview > .field:nth-child(5) {
-  grid-column: span 2;
-}
-
-.form-grid-work-order-overview > .field:nth-child(6),
-.form-grid-work-order-overview > .field:nth-child(7) {
+.form-grid-work-order-essentials > .field:nth-child(-n+4) {
   grid-column: span 3;
 }
 
-.form-grid-client-identity > .field:first-child {
+.form-grid-work-order-essentials > .field:nth-child(5) {
+  grid-column: span 4;
+}
+
+.form-grid-work-order-essentials > .field:nth-child(6),
+.form-grid-work-order-essentials > .field:nth-child(7) {
   grid-column: span 3;
 }
 
-.form-grid-client-identity > .field:not(:first-child) {
+.form-grid-work-order-essentials > .field:nth-child(8) {
   grid-column: span 2;
 }
 
-.form-grid-client-location > .field:first-child,
+.form-grid-work-order-essentials > #work-order-company-preview {
+  grid-column: 1 / -1;
+}
+
+.form-grid-work-order-essentials > .field:nth-child(10) {
+  grid-column: span 3;
+}
+
+.form-grid-work-order-essentials > .field:nth-child(11) {
+  grid-column: span 2;
+}
+
+.form-grid-work-order-essentials > .field:nth-child(12),
+.form-grid-work-order-essentials > .field:nth-child(13) {
+  grid-column: span 3;
+}
+
+.form-grid-work-order-essentials > .field:nth-child(14) {
+  grid-column: span 2;
+}
+
 .form-grid-client-contact > .field:first-child {
   grid-column: span 2;
-}
-
-.form-grid-service-main > .field:first-child {
-  grid-column: span 1;
-}
-
-.form-grid-service-main > .field:nth-child(2),
-.form-grid-service-main > .field:nth-child(3) {
-  grid-column: span 2;
-}
-
-.form-grid-service-main > .field:nth-child(4) {
-  grid-column: span 1;
 }
 
 .form-grid-service-meta > .field:first-child,
 .form-grid-service-meta > .field:nth-child(2) {
   grid-column: span 2;
+}
+
+.work-order-editor-section.is-overview {
+  padding-bottom: 16px;
 }
 
 .work-order-editor-form textarea {
@@ -5479,7 +5486,7 @@ body.is-work-order-editor-open {
   align-content: start;
   gap: 12px;
   min-height: 0;
-  padding: 18px 14px 18px 16px;
+  padding: 18px 18px 18px 20px;
   border-left: 1px solid #edf0f6;
   background: linear-gradient(180deg, rgba(248, 249, 253, 0.95), rgba(244, 246, 251, 0.95));
   overflow: hidden;
@@ -9094,7 +9101,7 @@ body.is-work-order-editor-open {
   .auth-trust-row,
   .form-grid,
   .form-grid-wide,
-  .form-grid-work-order-overview,
+  .form-grid-work-order-essentials,
   .form-grid-client-identity,
   .form-grid-client-location,
   .form-grid-client-contact,
@@ -9107,7 +9114,7 @@ body.is-work-order-editor-open {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .form-grid-work-order-overview > .field,
+  .form-grid-work-order-essentials > .field,
   .form-grid-client-identity > .field,
   .form-grid-client-location > .field,
   .form-grid-client-contact > .field,
@@ -9209,7 +9216,7 @@ body.is-work-order-editor-open {
   .auth-trust-row,
   .form-grid,
   .form-grid-wide,
-  .form-grid-work-order-overview,
+  .form-grid-work-order-essentials,
   .form-grid-client-identity,
   .form-grid-client-location,
   .form-grid-client-contact,
@@ -9222,7 +9229,7 @@ body.is-work-order-editor-open {
     grid-template-columns: 1fr;
   }
 
-  .form-grid-work-order-overview > .field,
+  .form-grid-work-order-essentials > .field,
   .form-grid-client-identity > .field,
   .form-grid-client-location > .field,
   .form-grid-client-contact > .field,
