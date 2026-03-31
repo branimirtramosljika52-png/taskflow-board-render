@@ -71,9 +71,9 @@ export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
 ];
 
 export const DOCUMENT_TEMPLATE_TYPE_OPTIONS = [
+  { value: "Ponuda", label: "Ponuda" },
+  { value: "Radni nalog", label: "Radni nalog" },
   { value: "Zapisnik", label: "Zapisnik" },
-  { value: "Kontrolni zapisnik", label: "Kontrolni zapisnik" },
-  { value: "Servisni zapisnik", label: "Servisni zapisnik" },
 ];
 
 export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [
@@ -92,6 +92,10 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "number", label: "Broj" },
   { value: "checkbox", label: "Checkbox" },
   { value: "toggle", label: "Toggle" },
+  { value: "legal_list", label: "Popis propisa" },
+  { value: "equipment_list", label: "Popis opreme" },
+  { value: "measurement_table", label: "Excel tablica" },
+  { value: "page_break", label: "Nova stranica" },
 ];
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
@@ -446,6 +450,10 @@ function normalizeDocumentTemplateSectionType(value) {
 function normalizeDocumentTemplateFieldType(value) {
   const type = normalizeText(value).toLowerCase();
   return DOCUMENT_TEMPLATE_FIELD_TYPE_SET.has(type) ? type : "text";
+}
+
+function normalizeDocumentTemplateFieldSource(value) {
+  return normalizeText(value).trim().toUpperCase().slice(0, 80);
 }
 
 function normalizeMeasurementEquipmentKind(value) {
@@ -826,6 +834,13 @@ function normalizeDocumentTemplateFields(fields = []) {
   return source.map((field, index) => {
     const label = normalizeText(field?.label) || `Polje ${index + 1}`;
     let key = slugifyTemplateKey(field?.key || field?.label || `FIELD_${index + 1}`);
+    const type = normalizeDocumentTemplateFieldType(field?.type);
+    const columns = Array.isArray(field?.columns)
+      ? field.columns.map((entry) => normalizeText(entry)).filter(Boolean)
+      : String(field?.columns ?? "")
+        .split(/[\n,]/)
+        .map((entry) => normalizeText(entry))
+        .filter(Boolean);
 
     while (seenKeys.has(key)) {
       key = slugifyTemplateKey(`${key}_${index + 1}`, `FIELD_${index + 1}`);
@@ -837,9 +852,16 @@ function normalizeDocumentTemplateFields(fields = []) {
       id: normalizeText(field?.id) || crypto.randomUUID(),
       key,
       label,
-      type: normalizeDocumentTemplateFieldType(field?.type),
+      type,
+      source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
+      columns: type === "measurement_table"
+        ? (columns.length > 0 ? columns.slice(0, 8) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"])
+        : [],
+      rowCount: type === "measurement_table"
+        ? Math.max(4, Math.min(40, Math.round(normalizeFiniteNumber(field?.rowCount, 12))))
+        : 0,
     };
   });
 }
@@ -857,9 +879,7 @@ function normalizeDocumentTemplateEquipmentItems(items = []) {
 }
 
 function normalizeDocumentTemplateSections(sections = []) {
-  const source = Array.isArray(sections) && sections.length > 0
-    ? sections
-    : createDefaultDocumentTemplateSections();
+  const source = Array.isArray(sections) ? sections : [];
 
   return source.map((section, index) => {
     const type = normalizeDocumentTemplateSectionType(section?.type);
@@ -2584,7 +2604,14 @@ export function filterDocumentTemplates(
       item.description,
       item.outputFileName,
       item.createdByLabel,
-      ...(item.customFields ?? []).flatMap((field) => [field.label, field.key, field.defaultValue]),
+      ...(item.customFields ?? []).flatMap((field) => [
+        field.label,
+        field.key,
+        field.defaultValue,
+        field.helpText,
+        field.source,
+        ...(field.columns ?? []),
+      ]),
       ...(item.equipmentItems ?? []).flatMap((equipment) => [equipment.name, equipment.code, equipment.note]),
       ...(item.sections ?? []).flatMap((section) => [section.title, section.body, ...(section.columns ?? [])]),
     ].join(" ").toLowerCase();

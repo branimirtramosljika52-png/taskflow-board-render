@@ -1615,8 +1615,11 @@ async function fetchSnapshotFromConnection(connection) {
       key: dbString(field.key),
       label: dbString(field.label),
       type: dbString(field.type) || "text",
+      source: dbString(field.source ?? field.bindingSource),
       defaultValue: dbString(field.defaultValue),
       helpText: dbString(field.helpText),
+      columns: parseJsonArray(field.columns).map((entry) => dbString(entry)).filter(Boolean),
+      rowCount: Number(field.rowCount ?? 0) || 0,
     })),
     equipmentItems: parseJsonArray(row.equipment_items_json).map((item) => ({
       id: dbString(item.id),

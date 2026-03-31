@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260331v" />
+  <link rel="stylesheet" href="/styles.css?v=20260331w" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3191,7 +3191,7 @@
                   </div>
                 </div>
 
-                <p id="document-template-helper" class="helper-copy module-copy">Slozi placeholdere, povezi propise i opremu, pregledaj rezultat i izvezi Word / PDF preview.</p>
+                <p id="document-template-helper" class="helper-copy module-copy">Slozi blokove i placeholdere, povezi ih s podacima iz baze i koristi Word kao glavni predlozak.</p>
                 <div id="document-template-list" class="document-template-list"></div>
                 <p id="document-template-empty" class="helper-copy" hidden>Nema templatea za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -3230,18 +3230,6 @@
                         <span>Status</span>
                         <select id="document-template-status"></select>
                       </label>
-                      <label class="field">
-                        <span>Naziv izlazne datoteke</span>
-                        <input id="document-template-output-file-name" maxlength="180" placeholder="zapisnik-pregled" />
-                      </label>
-                      <label class="field">
-                        <span>Tvrtka za preview</span>
-                        <select id="document-template-company-id"></select>
-                      </label>
-                      <label class="field">
-                        <span>Lokacija za preview</span>
-                        <select id="document-template-location-id"></select>
-                      </label>
                     </div>
 
                     <label class="field field-span-full">
@@ -3252,63 +3240,35 @@
                     <section class="document-template-block">
                       <div class="section-heading offers-section-heading">
                         <div>
-                          <p class="section-kicker">Placeholders</p>
-                          <h3>Dostupna polja</h3>
+                          <p class="section-kicker">Template layout</p>
+                          <h3>Polja i placeholderi</h3>
+                        </div>
+                        <div class="document-template-layout-actions">
+                          <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj polje</button>
+                          <button id="document-template-add-excel" type="button" class="ghost-button">+ Dodaj Excel</button>
+                          <button id="document-template-add-page-break" type="button" class="ghost-button">+ Nova stranica</button>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Klikni placeholder dok si fokusiran na tekstualni blok i ubacit ce se token u template. Word placeholder izvozi cisti predlozak s tokenima bez primjerene zamjene.</p>
-                      <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
-                    </section>
-
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Custom fields</p>
-                          <h3>Dodatna polja</h3>
-                        </div>
-                        <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj polje</button>
-                      </div>
-                      <p class="helper-copy module-copy">Podrzani tipovi ukljucuju tekst, dugi tekst, datum, broj, checkbox i toggle placeholdere.</p>
+                      <p class="helper-copy module-copy">Prvo odaberi kako se stavka prikazuje u aplikaciji, pa je povezi s poljem iz baze ili posebnim blokom. Word ostaje glavni predlozak, a ovdje definiras placeholder tokene i raspored blokova.</p>
                       <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
                     </section>
 
                     <section class="document-template-block">
                       <div class="section-heading offers-section-heading">
                         <div>
-                          <p class="section-kicker">Legal framework</p>
-                          <h3>Povezani propisi</h3>
+                          <p class="section-kicker">Linked data</p>
+                          <h3>Propisi i oprema</h3>
                         </div>
                       </div>
-                      <div id="document-template-legal-framework-list" class="document-template-legal-framework-list"></div>
-                    </section>
-
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Equipment</p>
-                          <h3>Oprema i stavke</h3>
-                        </div>
-                        <button id="document-template-add-equipment" type="button" class="ghost-button">+ Dodaj opremu</button>
-                      </div>
-                      <div id="document-template-equipment-items" class="document-template-equipment-items"></div>
-                    </section>
-
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Sections</p>
-                          <h3>Struktura zapisnika</h3>
-                        </div>
-                        <button id="document-template-add-section" type="button" class="ghost-button">+ Dodaj sekciju</button>
-                      </div>
-                      <div id="document-template-sections" class="document-template-sections"></div>
+                      <p class="helper-copy module-copy">Propisi povezujes u Legal Framework modulu, a opremu u Measurement Equipment modulu. Ovdje samo ubacujes blok `Popis propisa`, `Popis opreme` ili `Excel tablica` na mjesto gdje ih zelis vidjeti.</p>
+                      <div id="document-template-link-summary" class="document-template-link-summary"></div>
                     </section>
 
                     <section class="document-template-block">
                       <div class="section-heading offers-section-heading">
                         <div>
                           <p class="section-kicker">Word reference</p>
-                          <h3>Vrati uredeni Word</h3>
+                          <h3>Upload uredenog Worda</h3>
                         </div>
                         <div class="document-template-reference-actions">
                           <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
@@ -3462,6 +3422,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260331v"></script>
+    <script type="module" src="/src/main.js?v=20260331w"></script>
   </body>
 </html>

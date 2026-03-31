@@ -285,9 +285,11 @@ test("document templates keep nested builder data and support filtering", () => 
       sampleLocationId: "location-1",
       selectedLegalFrameworkIds: ["legal-1"],
       customFields: [
-        { label: "Mjesto pregleda", key: "mjesto_pregleda", defaultValue: "Stubiste A" },
+        { label: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME" },
+        { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
+        { label: "Excel mjerenja", key: "excel_mjerenja", type: "measurement_table", columns: ["Pozicija", "Vrijednost"], rowCount: 8 },
       ],
       equipmentItems: [
         { name: "Panik rasvjeta", code: "PR-01", quantity: 12, note: "Etaža 1" },
@@ -309,9 +311,12 @@ test("document templates keep nested builder data and support filtering", () => 
     () => "2026-03-31T12:00:00.000Z",
   );
 
-  assert.equal(template.customFields.length, 3);
-  assert.equal(template.customFields[1].type, "checkbox");
-  assert.equal(template.customFields[2].type, "toggle");
+  assert.equal(template.customFields.length, 5);
+  assert.equal(template.customFields[0].source, "COMPANY_NAME");
+  assert.equal(template.customFields[2].type, "checkbox");
+  assert.equal(template.customFields[3].type, "toggle");
+  assert.equal(template.customFields[4].type, "measurement_table");
+  assert.equal(template.customFields[4].rowCount, 8);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");

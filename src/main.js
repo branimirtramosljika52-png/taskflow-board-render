@@ -1104,7 +1104,10 @@ const documentTemplateLocationIdInput = document.querySelector("#document-templa
 const documentTemplateDescriptionInput = document.querySelector("#document-template-description");
 const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
 const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
+const documentTemplateLinkSummary = document.querySelector("#document-template-link-summary");
 const documentTemplateAddFieldButton = document.querySelector("#document-template-add-field");
+const documentTemplateAddExcelButton = document.querySelector("#document-template-add-excel");
+const documentTemplateAddPageBreakButton = document.querySelector("#document-template-add-page-break");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
 const documentTemplateEquipmentItems = document.querySelector("#document-template-equipment-items");
 const documentTemplateAddEquipmentButton = document.querySelector("#document-template-add-equipment");
@@ -8978,8 +8981,49 @@ const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "ostalo", label: "Ostalo" },
 ];
 
+const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
+  { value: "CUSTOM_VALUE", label: "Rucni unos / custom" },
+  { value: "DOCUMENT_TITLE", label: "Template - naziv" },
+  { value: "DOCUMENT_TYPE", label: "Template - vrsta dokumenta" },
+  { value: "TODAY", label: "Danasnji datum" },
+  { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
+  { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
+  { value: "COMPANY_HEADQUARTERS", label: "Tvrtka - sjediste" },
+  { value: "LOCATION_NAME", label: "Lokacija - naziv" },
+  { value: "LOCATION_REGION", label: "Lokacija - regija" },
+  { value: "LOCATION_COORDINATES", label: "Lokacija - koordinate" },
+  { value: "WORK_ORDER_NUMBER", label: "Radni nalog - broj" },
+  { value: "WORK_ORDER_STATUS", label: "Radni nalog - status" },
+  { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
+  { value: "WORK_ORDER_EXECUTORS", label: "Izvrsitelji - puni naziv" },
+  { value: "WORK_ORDER_TEAM", label: "Tim" },
+  { value: "SERVICE_SUMMARY", label: "Usluge" },
+  { value: "CONTACT_NAME", label: "Kontakt - ime" },
+  { value: "CONTACT_PHONE", label: "Kontakt - telefon" },
+  { value: "CONTACT_EMAIL", label: "Kontakt - email" },
+];
+
+const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
+  "legal_list",
+  "equipment_list",
+  "measurement_table",
+  "page_break",
+]);
+
 function getDocumentTemplateFieldTypeLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, value || "text");
+}
+
+function isDocumentTemplateSpecialFieldType(value) {
+  return DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES.has(String(value || "").trim().toLowerCase());
+}
+
+function getDocumentTemplateFieldSourceLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_SOURCE_OPTIONS, String(value || "").trim().toUpperCase() || "CUSTOM_VALUE");
+}
+
+function getDocumentTemplateDefaultFieldSource(type = "text") {
+  return isDocumentTemplateSpecialFieldType(type) ? "" : "CUSTOM_VALUE";
 }
 
 function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1") {
@@ -8996,13 +9040,22 @@ function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1"
 
 function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const fallbackKey = `FIELD_${index + 1}`;
+  const type = initial.type || "text";
+  const defaultColumns = type === "measurement_table"
+    ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
+    : [];
   return {
     id: initial.id || crypto.randomUUID(),
-    label: String(initial.label ?? "").trim(),
+    label: String(initial.label ?? "").trim() || (type === "page_break" ? "Nova stranica" : ""),
     key: normalizeDocumentTemplateFieldKeyDraft(initial.key || initial.label || fallbackKey, fallbackKey),
-    type: initial.type || "text",
+    type,
+    source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
+    columns: Array.isArray(initial.columns)
+      ? initial.columns.join(", ")
+      : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
+    rowCount: String(initial.rowCount ?? (type === "measurement_table" ? 12 : 0)).trim(),
   };
 }
 
@@ -9172,7 +9225,16 @@ function rebuildDocumentTemplateLocationOptions(selectedValue = "") {
 
 function getSelectedDocumentTemplateLegalFrameworkIds() {
   if (!documentTemplateLegalFrameworkList) {
-    return [];
+    const activeTemplateId = String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "");
+    const storedIds = activeTemplateId
+      ? (state.documentTemplates.find((item) => String(item.id) === activeTemplateId)?.selectedLegalFrameworkIds ?? [])
+      : [];
+    const linkedIds = activeTemplateId
+      ? sortLegalFrameworks(state.legalFrameworks ?? [])
+        .filter((item) => (item.linkedTemplateIds ?? []).map(String).includes(activeTemplateId))
+        .map((item) => String(item.id))
+      : [];
+    return Array.from(new Set([...storedIds.map(String), ...linkedIds])).filter(Boolean);
   }
 
   return Array.from(
@@ -9232,52 +9294,98 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
 }
 
 function buildDocumentTemplateDraft() {
+  const activeTemplate = (state.documentTemplates ?? []).find((item) => (
+    String(item.id) === String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "")
+  )) ?? null;
+
   const customFields = documentTemplateFieldDrafts
     .map((field, index) => ({
       id: field.id || crypto.randomUUID(),
       key: normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`),
       label: String(field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
+      source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
-    }))
-    .filter((field) => field.label || field.defaultValue || field.helpText || field.key);
-
-  const equipmentItems = documentTemplateEquipmentDrafts
-    .map((item, index) => ({
-      id: item.id || crypto.randomUUID(),
-      name: String(item.name || "").trim() || `Oprema ${index + 1}`,
-      code: String(item.code || "").trim(),
-      quantity: parseTemplateLooseNumber(item.quantity, 1),
-      note: String(item.note || "").trim(),
-    }))
-    .filter((item) => item.name || item.code || item.note || item.quantity);
-
-  const sections = (documentTemplateSectionDrafts.length > 0 ? documentTemplateSectionDrafts : createDefaultDocumentTemplateSectionDrafts())
-    .map((section, index) => ({
-      id: section.id || crypto.randomUUID(),
-      type: section.type || "rich_text",
-      title: String(section.title || "").trim() || getDocumentTemplateSectionTypeLabel(section.type) || `Sekcija ${index + 1}`,
-      body: String(section.body || "").trim(),
-      columns: String(section.columns || "")
+      columns: String(field.columns || "")
         .split(/[\n,]/)
         .map((entry) => entry.trim())
         .filter(Boolean)
         .slice(0, 8),
-      rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(section.rowCount, 12)))),
+      rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(field.rowCount, 12)))),
     }))
-    .map((section) => (
-      section.type === "measurement_table"
-        ? {
-          ...section,
-          columns: section.columns.length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
-        }
-        : {
-          ...section,
+    .map((field) => {
+      if (field.type === "measurement_table") {
+        return {
+          ...field,
+          source: "",
+          columns: field.columns.length > 0 ? field.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+        };
+      }
+
+      if (isDocumentTemplateSpecialFieldType(field.type)) {
+        return {
+          ...field,
+          source: "",
           columns: [],
           rowCount: 0,
-        }
+        };
+      }
+
+      return {
+        ...field,
+        source: field.source || "CUSTOM_VALUE",
+        columns: [],
+        rowCount: 0,
+      };
+    })
+    .filter((field) => (
+      isDocumentTemplateSpecialFieldType(field.type)
+      || String(field.label || "").trim()
+      || String(field.defaultValue || "").trim()
+      || String(field.helpText || "").trim()
+      || (String(field.source || "").trim().toUpperCase() && String(field.source || "").trim().toUpperCase() !== "CUSTOM_VALUE")
     ));
+
+  const equipmentItems = documentTemplateEquipmentDrafts.length > 0
+    ? documentTemplateEquipmentDrafts
+      .map((item, index) => ({
+        id: item.id || crypto.randomUUID(),
+        name: String(item.name || "").trim() || `Oprema ${index + 1}`,
+        code: String(item.code || "").trim(),
+        quantity: parseTemplateLooseNumber(item.quantity, 1),
+        note: String(item.note || "").trim(),
+      }))
+      .filter((item) => item.name || item.code || item.note || item.quantity)
+    : JSON.parse(JSON.stringify(activeTemplate?.equipmentItems ?? []));
+
+  const sections = documentTemplateSectionDrafts.length > 0
+    ? documentTemplateSectionDrafts
+      .map((section, index) => ({
+        id: section.id || crypto.randomUUID(),
+        type: section.type || "rich_text",
+        title: String(section.title || "").trim() || getDocumentTemplateSectionTypeLabel(section.type) || `Sekcija ${index + 1}`,
+        body: String(section.body || "").trim(),
+        columns: String(section.columns || "")
+          .split(/[\n,]/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .slice(0, 8),
+        rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(section.rowCount, 12)))),
+      }))
+      .map((section) => (
+        section.type === "measurement_table"
+          ? {
+            ...section,
+            columns: section.columns.length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+          }
+          : {
+            ...section,
+            columns: [],
+            rowCount: 0,
+          }
+      ))
+    : JSON.parse(JSON.stringify(activeTemplate?.sections ?? []));
 
   return {
     id: documentTemplateIdInput?.value || "",
@@ -9285,9 +9393,9 @@ function buildDocumentTemplateDraft() {
     title: documentTemplateTitleInput?.value || "",
     documentType: documentTemplateTypeInput?.value || "Zapisnik",
     status: documentTemplateStatusInput?.value || "draft",
-    outputFileName: documentTemplateOutputFileNameInput?.value || "",
-    sampleCompanyId: documentTemplateCompanyIdInput?.value || "",
-    sampleLocationId: documentTemplateLocationIdInput?.value || "",
+    outputFileName: documentTemplateOutputFileNameInput?.value || activeTemplate?.outputFileName || "",
+    sampleCompanyId: documentTemplateCompanyIdInput?.value || activeTemplate?.sampleCompanyId || "",
+    sampleLocationId: documentTemplateLocationIdInput?.value || activeTemplate?.sampleLocationId || "",
     description: documentTemplateDescriptionInput?.value || "",
     selectedLegalFrameworkIds: getSelectedDocumentTemplateLegalFrameworkIds(),
     customFields,
@@ -9305,12 +9413,107 @@ function buildDocumentTemplatePayload() {
 
 function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemplateDraft()) {
   const selectedIds = new Set((template.selectedLegalFrameworkIds ?? []).map((value) => String(value)));
-  return sortLegalFrameworks(state.legalFrameworks ?? []).filter((item) => selectedIds.has(String(item.id)));
+  const templateId = String(template.id || "");
+
+  return sortLegalFrameworks(state.legalFrameworks ?? []).filter((item) => (
+    selectedIds.has(String(item.id))
+    || ((item.linkedTemplateIds ?? []).map(String).includes(templateId))
+  ));
 }
 
-function getDocumentTemplateFieldPreviewValue(field = {}, index = 0) {
-  const explicit = String(field.defaultValue ?? "").trim();
+function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplateDraft()) {
+  const templateId = String(template.id || "");
+  const linkedItems = sortMeasurementEquipmentItems(state.measurementEquipment ?? []).filter((item) => (
+    templateId
+      ? (item.linkedTemplateIds ?? []).map(String).includes(templateId)
+      : false
+  ));
 
+  return linkedItems.length > 0 ? linkedItems : (template.equipmentItems ?? []);
+}
+
+function getDocumentTemplatePreviewSampleWorkOrder(template = buildDocumentTemplateDraft()) {
+  const templateId = String(template.id || "");
+  const sortedWorkOrders = sortWorkOrders(state.workOrders ?? []);
+
+  if (templateId) {
+    const linkedWorkOrder = sortedWorkOrders.find((item) => (
+      (item.serviceItems ?? []).some((service) => (service.linkedTemplateIds ?? []).map(String).includes(templateId))
+    ));
+
+    if (linkedWorkOrder) {
+      return linkedWorkOrder;
+    }
+  }
+
+  return sortedWorkOrders[0] || null;
+}
+
+function getDocumentTemplatePreviewCompany(template = buildDocumentTemplateDraft(), sampleWorkOrder = null) {
+  const companyId = sampleWorkOrder?.companyId || template.sampleCompanyId || state.companies[0]?.id || "";
+  return getCompany(companyId);
+}
+
+function getDocumentTemplatePreviewLocation(template = buildDocumentTemplateDraft(), sampleWorkOrder = null) {
+  const locationId = sampleWorkOrder?.locationId || template.sampleLocationId || state.locations[0]?.id || "";
+  return getLocation(locationId);
+}
+
+function getDocumentTemplateFieldToken(field = {}, index = 0) {
+  return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`;
+}
+
+function getDocumentTemplateSourcePreviewValue(source, context = {}) {
+  const safeSource = String(source || "").trim().toUpperCase();
+  const workOrder = context.sampleWorkOrder;
+  const company = context.company;
+  const location = context.location;
+  const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
+    ? workOrder.executors.join(", ")
+    : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
+  const serviceSummary = (workOrder?.serviceItems ?? [])
+    .map((item) => item.serviceName || item.name || item.serviceCode || "")
+    .filter(Boolean)
+    .join(", ");
+
+  const sourceMap = {
+    CUSTOM_VALUE: "",
+    DOCUMENT_TITLE: context.template?.title || "",
+    DOCUMENT_TYPE: context.template?.documentType || "",
+    TODAY: formatCompactDate(new Date().toISOString()),
+    COMPANY_NAME: company?.name || "",
+    COMPANY_OIB: company?.oib || "",
+    COMPANY_HEADQUARTERS: company?.headquarters || "",
+    LOCATION_NAME: location?.name || "",
+    LOCATION_REGION: location?.region || "",
+    LOCATION_COORDINATES: location?.coordinates || "",
+    WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
+    WORK_ORDER_STATUS: workOrder?.status || "",
+    WORK_ORDER_DUE_DATE: workOrder?.dueDate ? formatCompactDate(workOrder.dueDate) : "",
+    WORK_ORDER_EXECUTORS: executorNames,
+    WORK_ORDER_TEAM: workOrder?.assignedTeam || "",
+    SERVICE_SUMMARY: serviceSummary,
+    CONTACT_NAME: workOrder?.contactNameSnapshot || "",
+    CONTACT_PHONE: workOrder?.contactPhone || "",
+    CONTACT_EMAIL: workOrder?.contactEmail || "",
+  };
+
+  return sourceMap[safeSource] ?? "";
+}
+
+function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
+  const token = getDocumentTemplateFieldToken(field, index);
+
+  if (placeholderMode) {
+    return token;
+  }
+
+  const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
+  if (boundValue) {
+    return boundValue;
+  }
+
+  const explicit = String(field.defaultValue ?? "").trim();
   if (explicit) {
     return explicit;
   }
@@ -9325,12 +9528,8 @@ function getDocumentTemplateFieldPreviewValue(field = {}, index = 0) {
     return "0";
   }
 
-  if (field.type === "checkbox") {
-    return "Oznaceno";
-  }
-
-  if (field.type === "toggle") {
-    return "Ukljuceno";
+  if (field.type === "checkbox" || field.type === "toggle") {
+    return "Da";
   }
 
   if (field.type === "longtext") {
@@ -9341,249 +9540,188 @@ function getDocumentTemplateFieldPreviewValue(field = {}, index = 0) {
 }
 
 function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
-  const builtInPlaceholders = [
-    { token: "{{DOCUMENT_TITLE}}", label: "Naziv dokumenta", value: template.title || "Naziv zapisnika" },
-    { token: "{{DOCUMENT_TYPE}}", label: "Tip zapisnika", value: template.documentType || "Zapisnik" },
-    { token: "{{TODAY}}", label: "Danasnji datum", value: formatCompactDate(new Date().toISOString()) },
-    { token: "{{COMPANY_NAME}}", label: "Naziv tvrtke", value: getCompany(template.sampleCompanyId)?.name || "Tvrtka" },
-    { token: "{{COMPANY_OIB}}", label: "OIB tvrtke", value: getCompany(template.sampleCompanyId)?.oib || "12345678901" },
-    { token: "{{COMPANY_HEADQUARTERS}}", label: "Sjediste tvrtke", value: getCompany(template.sampleCompanyId)?.headquarters || "Zagreb" },
-    { token: "{{LOCATION_NAME}}", label: "Naziv lokacije", value: getLocation(template.sampleLocationId)?.name || "Lokacija" },
-    { token: "{{LOCATION_REGION}}", label: "Regija", value: getLocation(template.sampleLocationId)?.region || "Regija" },
-    { token: "{{LOCATION_COORDINATES}}", label: "Koordinate", value: getLocation(template.sampleLocationId)?.coordinates || "45.80, 15.97" },
-    { token: "{{LEGAL_REFERENCES_INLINE}}", label: "Propisi inline", value: getDocumentTemplateSelectedLegalFrameworks(template).map((item) => item.referenceCode || item.title).join(", ") || "NN 71/14" },
-    { token: "{{EQUIPMENT_SUMMARY}}", label: "Saetak opreme", value: (template.equipmentItems ?? []).map((item) => item.name).join(", ") || "Panik rasvjeta, vatrogasni aparat" },
-    { token: "{{REFERENCE_DOCUMENT_NAME}}", label: "Naziv Word reference", value: template.referenceDocument?.fileName || "reference.docx" },
-  ];
-
-  const customFieldPlaceholders = (template.customFields ?? []).map((field, index) => ({
-    token: `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`,
+  const context = buildDocumentTemplatePreviewContext(template);
+  return (template.customFields ?? []).map((field, index) => ({
+    token: getDocumentTemplateFieldToken(field, index),
     label: field.label || `Polje ${index + 1}`,
-    value: getDocumentTemplateFieldPreviewValue(field, index),
+    value: getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
   }));
-
-  return [...builtInPlaceholders, ...customFieldPlaceholders];
 }
 
 function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDraft()) {
-  const company = getCompany(template.sampleCompanyId);
-  const location = getLocation(template.sampleLocationId);
+  const sampleWorkOrder = getDocumentTemplatePreviewSampleWorkOrder(template);
+  const company = getDocumentTemplatePreviewCompany(template, sampleWorkOrder);
+  const location = getDocumentTemplatePreviewLocation(template, sampleWorkOrder);
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
-  const equipmentItems = template.equipmentItems ?? [];
-  const placeholders = getDocumentTemplatePlaceholderDefinitions(template);
-  const values = Object.fromEntries(
-    placeholders.map((entry) => [
-      String(entry.token).replace(/[{}]/g, ""),
-      entry.value || "",
-    ]),
-  );
+  const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
 
   return {
     template,
+    sampleWorkOrder,
     company,
     location,
     legalFrameworks,
     equipmentItems,
-    placeholders,
-    values,
   };
 }
 
-function resolveDocumentTemplateText(text, context, { placeholderMode = false } = {}) {
-  const source = String(text ?? "");
-
-  if (placeholderMode) {
-    return source;
-  }
-
-  return source.replace(/{{\s*([A-Z0-9_]+)\s*}}/g, (match, key) => {
-    const resolved = context.values[key];
-    return resolved === undefined || resolved === null || resolved === "" ? match : String(resolved);
-  });
-}
-
-function formatDocumentTemplateTextHtml(text, context, options = {}) {
-  const resolved = resolveDocumentTemplateText(text, context, options);
-  return escapeHtml(resolved).replace(/\n/g, "<br />");
-}
-
-function buildDocumentTemplateSectionPreview(section, context, { placeholderMode = false } = {}) {
-  const title = formatDocumentTemplateTextHtml(section.title, context, { placeholderMode });
-  const body = section.body
-    ? `<p class="document-template-preview-copy">${formatDocumentTemplateTextHtml(section.body, context, { placeholderMode })}</p>`
+function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
+  const token = getDocumentTemplateFieldToken(field, index);
+  const title = escapeHtml(field.label || `Polje ${index + 1}`);
+  const helpText = field.helpText
+    ? `<p class="document-template-preview-muted">${escapeHtml(field.helpText)}</p>`
     : "";
 
-  if (section.type === "cover") {
+  if (field.type === "page_break") {
     return `
-      <section class="document-template-preview-section is-cover">
-        <div class="document-template-preview-cover">
-          <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(context.template.documentType || "Template")}</p>
-          <h1>${title}</h1>
-          ${body}
+      <section class="document-template-preview-section is-page-break">
+        <div class="document-template-preview-page-break">
+          <strong>${title}</strong>
+          <span>${placeholderMode ? escapeHtml(token) : "Nova stranica u dokumentu"}</span>
         </div>
       </section>
     `;
   }
 
-  if (section.type === "legal_list") {
-    if (placeholderMode) {
-      return `
-        <section class="document-template-preview-section">
-          <h2>${title}</h2>
-          ${body}
-          <div class="document-template-preview-pill-row">
-            <span class="document-template-preview-pill">{{LEGAL_REFERENCES_INLINE}}</span>
-          </div>
-        </section>
-      `;
-    }
-
-    const listItems = context.legalFrameworks.length > 0
-      ? context.legalFrameworks.map((item) => (
-        `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}${item.authority ? ` | ${escapeHtml(item.authority)}` : ""}</li>`
-      )).join("")
-      : "<li>Nisu odabrani propisi za ovaj template.</li>";
+  if (field.type === "legal_list") {
+    const listHtml = placeholderMode
+      ? `<div class="document-template-preview-pill-row"><span class="document-template-preview-pill">${escapeHtml(token)}</span></div>`
+      : context.legalFrameworks.length > 0
+        ? `<ul class="document-template-preview-list">${context.legalFrameworks.map((item) => (
+          `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}</li>`
+        )).join("")}</ul>`
+        : '<span class="document-template-preview-empty">Nema povezanih propisa za ovaj template.</span>';
 
     return `
       <section class="document-template-preview-section">
-        <h2>${title}</h2>
-        ${body}
-        <ul class="document-template-preview-list">${listItems}</ul>
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
+        </div>
+        ${listHtml}
+        ${helpText}
       </section>
     `;
   }
 
-  if (section.type === "equipment_list") {
-    if (placeholderMode) {
-      return `
-        <section class="document-template-preview-section">
-          <h2>${title}</h2>
-          ${body}
-          <div class="document-template-preview-pill-row">
-            <span class="document-template-preview-pill">{{EQUIPMENT_SUMMARY}}</span>
-          </div>
-        </section>
-      `;
-    }
-
-    const rows = context.equipmentItems.length > 0
-      ? context.equipmentItems.map((item) => (
-        `<tr><td>${escapeHtml(item.name || "")}</td><td>${escapeHtml(item.code || "")}</td><td>${escapeHtml(String(item.quantity || ""))}</td><td>${escapeHtml(item.note || "")}</td></tr>`
-      )).join("")
-      : '<tr><td colspan="4">Nije dodana oprema za ovaj template.</td></tr>';
+  if (field.type === "equipment_list") {
+    const rows = placeholderMode
+      ? `<tbody><tr><td colspan="4">${escapeHtml(token)}</td></tr></tbody>`
+      : context.equipmentItems.length > 0
+        ? context.equipmentItems.map((item) => (
+          `<tr><td>${escapeHtml(item.name || "")}</td><td>${escapeHtml(item.deviceType || item.code || "")}</td><td>${escapeHtml(item.inventoryNumber || "")}</td><td>${escapeHtml(item.note || "")}</td></tr>`
+        )).join("")
+        : '<tr><td colspan="4">Nema povezane opreme za ovaj template.</td></tr>';
 
     return `
       <section class="document-template-preview-section">
-        <h2>${title}</h2>
-        ${body}
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
+        </div>
         <table class="document-template-preview-table">
           <thead>
             <tr>
               <th>Oprema</th>
-              <th>Oznaka</th>
-              <th>Kolicina</th>
+              <th>Tip</th>
+              <th>Inv. broj</th>
               <th>Napomena</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
+        ${helpText}
       </section>
     `;
   }
 
-  if (section.type === "measurement_table") {
-    const columns = (section.columns ?? []).length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+  if (field.type === "measurement_table") {
+    const columns = (field.columns ?? []).length > 0 ? field.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    const rowCount = Math.max(4, Math.min(40, Number(field.rowCount) || 12));
     const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
-    const rowCount = Math.max(4, Math.min(40, Number(section.rowCount) || 12));
-    const rows = Array.from({ length: rowCount }, (_, index) => (
-      `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(index + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
-    )).join("");
+    const rows = placeholderMode
+      ? `<tbody><tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr></tbody>`
+      : Array.from({ length: rowCount }, (_, rowIndex) => (
+        `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
+      )).join("");
 
     return `
       <section class="document-template-preview-section">
-        <h2>${title}</h2>
-        ${body}
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
+        </div>
         <table class="document-template-preview-table">
           <thead><tr>${head}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${helpText}
       </section>
     `;
   }
 
-  if (section.type === "signatures") {
-    return `
-      <section class="document-template-preview-section">
-        <h2>${title}</h2>
-        ${body}
-        <div class="document-template-preview-signatures">
-          <div class="document-template-preview-signature">
-            <div class="document-template-preview-signature-line"></div>
-            <span>Odgovorna osoba korisnika</span>
-          </div>
-          <div class="document-template-preview-signature">
-            <div class="document-template-preview-signature-line"></div>
-            <span>Izvodac / servis</span>
-          </div>
-        </div>
-      </section>
-    `;
-  }
+  const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode });
+  const valueHtml = field.type === "longtext"
+    ? escapeHtml(value).replace(/\n/g, "<br />")
+    : escapeHtml(value);
 
   return `
     <section class="document-template-preview-section">
-      <h2>${title}</h2>
-      ${body}
+      <div class="document-template-preview-field-head">
+        <h2>${title}</h2>
+        <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
+      </div>
+      <div class="document-template-preview-field-value is-${slugifyValue(field.type || "text")}">${valueHtml}</div>
+      <p class="document-template-preview-muted">
+        ${placeholderMode ? escapeHtml(token) : escapeHtml(getDocumentTemplateFieldSourceLabel(field.source || "CUSTOM_VALUE"))}
+      </p>
+      ${helpText}
     </section>
   `;
 }
 
 function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false } = {}) {
   const context = buildDocumentTemplatePreviewContext(template);
-  const sections = (template.sections ?? []).map((section) => buildDocumentTemplateSectionPreview(section, context, { placeholderMode })).join("");
-  const selectedLegalBadges = placeholderMode
-    ? '<span class="document-template-preview-pill">{{LEGAL_REFERENCES_INLINE}}</span>'
-    : context.legalFrameworks.length > 0
-    ? context.legalFrameworks.map((item) => `<span class="document-template-preview-pill">${escapeHtml(item.referenceCode || item.title || "Propis")}</span>`).join("")
-    : '<span class="document-template-preview-empty">Nema odabranih propisa.</span>';
-  const customFieldBadges = (template.customFields ?? []).length > 0
-    ? template.customFields.map((field, index) => (
-      `<span class="document-template-preview-pill">${escapeHtml(`{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`)}</span>`
+  const placeholderChips = (template.customFields ?? []).length > 0
+    ? (template.customFields ?? []).map((field, index) => (
+      `<span class="document-template-preview-pill">${escapeHtml(getDocumentTemplateFieldToken(field, index))}</span>`
     )).join("")
-    : '<span class="document-template-preview-empty">Nema dodatnih polja.</span>';
-  const appendix = "";
+    : '<span class="document-template-preview-empty">Dodaj prvo blokove i placeholdere.</span>';
+  const blocks = (template.customFields ?? []).length > 0
+    ? (template.customFields ?? []).map((field, index) => buildDocumentTemplateFieldPreviewMarkup(field, context, index, { placeholderMode })).join("")
+    : `
+      <section class="document-template-preview-section">
+        <h2>Nema slozenih blokova</h2>
+        <p class="document-template-preview-copy">Dodaj polje, popis propisa, popis opreme, novu stranicu ili Excel tablicu.</p>
+      </section>
+    `;
 
   return `
     <article class="document-template-preview-page">
       <header class="document-template-preview-header">
         <div>
           <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
-          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template zapisnika")}</h1>
-          <p class="document-template-preview-lead">${escapeHtml(template.description || "Opis templatea i njegove namjene prikazuje se ovdje.")}</p>
+          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template")}</h1>
+          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predlozak, a ovdje se definira raspored placeholdera i blokova.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
-          <div><span>Tvrtka</span><strong>${placeholderMode ? "{{COMPANY_NAME}}" : escapeHtml(context.company?.name || "Bez primjerne tvrtke")}</strong></div>
-          <div><span>Lokacija</span><strong>${placeholderMode ? "{{LOCATION_NAME}}" : escapeHtml(context.location?.name || "Bez primjerne lokacije")}</strong></div>
+          <div><span>Vrsta dokumenta</span><strong>${escapeHtml(template.documentType || "Zapisnik")}</strong></div>
           <div><span>Status</span><strong>${escapeHtml(getDocumentTemplateStatusLabel(template.status))}</strong></div>
-          <div><span>Export</span><strong>${escapeHtml(sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template"))}.doc</strong></div>
+          <div><span>Povezani propisi</span><strong>${context.legalFrameworks.length}</strong></div>
+          <div><span>Povezana oprema</span><strong>${context.equipmentItems.length}</strong></div>
         </div>
       </header>
       <section class="document-template-preview-section">
-        <h2>Brzi pregled placeholdera</h2>
-        <div class="document-template-preview-pill-row">${customFieldBadges}</div>
+        <h2>Placeholderi</h2>
+        <div class="document-template-preview-pill-row">${placeholderChips}</div>
       </section>
-      <section class="document-template-preview-section">
-        <h2>Primjenjivi propisi</h2>
-        <div class="document-template-preview-pill-row">${selectedLegalBadges}</div>
-      </section>
-      ${sections}
+      ${blocks}
       ${template.referenceDocument?.fileName ? `
         <section class="document-template-preview-section">
-          <h2>Reference Word</h2>
-          <p class="document-template-preview-copy">U builder je povezan referentni dokument <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>. Mozes ga vratiti u alat i kasnije koristiti kao bazni predlozak.</p>
+          <h2>Word reference</h2>
+          <p class="document-template-preview-copy">Povezani Word predlozak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
         </section>
       ` : ""}
-      ${appendix}
     </article>
   `;
 }
@@ -9632,18 +9770,22 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
         .document-template-preview-meta-grid div { border: 1px solid rgba(47,104,84,0.12); border-radius: 18px; padding: 12px 14px; background: #f7faf8; display: grid; gap: 4px; }
         .document-template-preview-meta-grid span { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #557166; }
         .document-template-preview-section { margin-top: 26px; }
+        .document-template-preview-field-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
         .document-template-preview-cover { border: 1px solid rgba(47,104,84,0.12); border-radius: 24px; padding: 24px; background: linear-gradient(180deg, rgba(247,250,248,0.98), rgba(255,255,255,0.98)); }
         .document-template-preview-copy { color: #42584f; }
         .document-template-preview-list { padding-left: 20px; }
         .document-template-preview-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
         .document-template-preview-table th, .document-template-preview-table td { border: 1px solid rgba(47,104,84,0.14); padding: 9px 10px; text-align: left; vertical-align: top; }
         .document-template-preview-table th { background: #f1f7f4; }
+        .document-template-preview-field-value { border: 1px solid rgba(47,104,84,0.12); border-radius: 18px; padding: 14px 16px; background: #f7faf8; color: #26493d; line-height: 1.55; }
+        .document-template-preview-field-value.is-checkbox, .document-template-preview-field-value.is-toggle { display: inline-flex; align-items: center; width: fit-content; min-width: 96px; justify-content: center; font-weight: 700; }
         .document-template-preview-pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
         .document-template-preview-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(47,104,84,0.14); background: #f7faf8; font-size: 13px; }
         .document-template-preview-empty { color: #60796f; }
         .document-template-preview-signatures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
         .document-template-preview-signature { display: grid; gap: 10px; }
         .document-template-preview-signature-line { height: 52px; border-bottom: 1px solid rgba(47,104,84,0.24); }
+        .document-template-preview-page-break { border: 1px dashed rgba(47,104,84,0.3); border-radius: 18px; padding: 16px; background: rgba(247,250,248,0.88); display: grid; gap: 6px; text-align: center; }
         @media print {
           body { background: #fff; }
           .toolbar { display: none; }
@@ -9668,7 +9810,7 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
 
 function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   const template = buildDocumentTemplateDraft();
-  const fileName = `${sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template")}${placeholderMode ? "-placeholder" : "-preview"}.doc`;
+  const fileName = `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}${placeholderMode ? "-placeholder" : "-preview"}.doc`;
   const html = buildDocumentTemplatePreviewMarkup(template, { placeholderMode });
   triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
 }
@@ -10904,6 +11046,34 @@ function renderDocumentTemplatePlaceholderPalette() {
   }));
 }
 
+function renderDocumentTemplateLinkSummary() {
+  if (!documentTemplateLinkSummary) {
+    return;
+  }
+
+  const template = buildDocumentTemplateDraft();
+  const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
+  const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
+
+  const legalCard = document.createElement("article");
+  legalCard.className = "document-template-link-card";
+  legalCard.innerHTML = `
+    <span>Propisi</span>
+    <strong>${legalFrameworks.length}</strong>
+    <p>${legalFrameworks.length > 0 ? "Povezano kroz Legal Framework modul." : "Jos nema povezanih propisa za ovaj template."}</p>
+  `;
+
+  const equipmentCard = document.createElement("article");
+  equipmentCard.className = "document-template-link-card";
+  equipmentCard.innerHTML = `
+    <span>Oprema</span>
+    <strong>${equipmentItems.length}</strong>
+    <p>${equipmentItems.length > 0 ? "Povezano kroz Measurement Equipment modul." : "Jos nema povezane opreme za ovaj template."}</p>
+  `;
+
+  documentTemplateLinkSummary.replaceChildren(legalCard, equipmentCard);
+}
+
 function renderDocumentTemplateFieldRows() {
   if (!documentTemplateCustomFields) {
     return;
@@ -10912,9 +11082,10 @@ function renderDocumentTemplateFieldRows() {
   if (documentTemplateFieldDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy";
-    empty.textContent = "Dodaj dodatna placeholder polja za napomene, broj zapisnika, mjeritelja i slicno.";
+    empty.textContent = "Dodaj polje, blok propisa, blok opreme, novu stranicu ili Excel tablicu.";
     documentTemplateCustomFields.replaceChildren(empty);
     renderDocumentTemplatePlaceholderPalette();
+    renderDocumentTemplateLinkSummary();
     renderDocumentTemplatePreviewContent();
     return;
   }
@@ -10926,94 +11097,148 @@ function renderDocumentTemplateFieldRows() {
     const head = document.createElement("div");
     head.className = "document-template-item-head";
     const title = document.createElement("strong");
-    title.textContent = `Polje ${index + 1}`;
+    title.textContent = field.label || getDocumentTemplateFieldTypeLabel(field.type) || `Blok ${index + 1}`;
     const tokenPreview = document.createElement("span");
     tokenPreview.className = "document-template-inline-token";
-    tokenPreview.textContent = `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.label, `FIELD_${index + 1}`)}}}`;
+    tokenPreview.textContent = getDocumentTemplateFieldToken(field, index);
     head.append(title, tokenPreview);
 
     const grid = document.createElement("div");
     grid.className = "form-grid document-template-inline-grid";
+    const isSpecialType = isDocumentTemplateSpecialFieldType(field.type);
 
     const labelField = document.createElement("label");
     labelField.className = "field";
     const labelSpan = document.createElement("span");
-    labelSpan.textContent = "Naziv";
+    labelSpan.textContent = "Prikaz u aplikaciji";
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.value = field.label || "";
     labelInput.addEventListener("input", (event) => {
       documentTemplateFieldDrafts[index].label = event.currentTarget.value;
-      if (!String(documentTemplateFieldDrafts[index].key || "").trim()) {
-        documentTemplateFieldDrafts[index].key = normalizeDocumentTemplateFieldKeyDraft(event.currentTarget.value, `FIELD_${index + 1}`);
-        keyInput.value = documentTemplateFieldDrafts[index].key;
-      }
+      documentTemplateFieldDrafts[index].key = normalizeDocumentTemplateFieldKeyDraft(event.currentTarget.value, `FIELD_${index + 1}`);
       renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplateLinkSummary();
       renderDocumentTemplatePreviewContent();
+      title.textContent = event.currentTarget.value || getDocumentTemplateFieldTypeLabel(documentTemplateFieldDrafts[index].type) || `Blok ${index + 1}`;
+      tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[index], index);
     });
     labelInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(labelInput, `field-label:${field.id}`));
     labelField.append(labelSpan, labelInput);
 
-    const keyField = document.createElement("label");
-    keyField.className = "field";
-    const keySpan = document.createElement("span");
-    keySpan.textContent = "Kljuc";
-    const keyInput = document.createElement("input");
-    keyInput.type = "text";
-    keyInput.value = field.key || "";
-    keyInput.addEventListener("input", (event) => {
-      const nextValue = normalizeDocumentTemplateFieldKeyDraft(event.currentTarget.value, `FIELD_${index + 1}`);
-      documentTemplateFieldDrafts[index].key = nextValue;
-      keyInput.value = nextValue;
-      tokenPreview.textContent = `{{${nextValue}}}`;
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplatePreviewContent();
-    });
-    keyInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(keyInput, `field-key:${field.id}`));
-    keyField.append(keySpan, keyInput);
-
     const typeField = document.createElement("label");
     typeField.className = "field";
     const typeSpan = document.createElement("span");
-    typeSpan.textContent = "Tip";
+    typeSpan.textContent = "Prikaz";
     const typeSelect = document.createElement("select");
     replaceSelectOptions(typeSelect, DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, field.type || "text");
     typeSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[index].type = typeSelect.value;
+      documentTemplateFieldDrafts[index].source = getDocumentTemplateDefaultFieldSource(typeSelect.value);
+      if (typeSelect.value === "measurement_table" && !String(documentTemplateFieldDrafts[index].columns || "").trim()) {
+        documentTemplateFieldDrafts[index].columns = "Pozicija, Opis, Vrijednost, Granica, Napomena";
+        documentTemplateFieldDrafts[index].rowCount = "12";
+      }
+      if (typeSelect.value === "page_break" && !String(documentTemplateFieldDrafts[index].label || "").trim()) {
+        documentTemplateFieldDrafts[index].label = "Nova stranica";
+      }
+      if (!isDocumentTemplateSpecialFieldType(typeSelect.value) && !String(documentTemplateFieldDrafts[index].source || "").trim()) {
+        documentTemplateFieldDrafts[index].source = "CUSTOM_VALUE";
+      }
+      renderDocumentTemplateFieldRows();
       renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplateLinkSummary();
       renderDocumentTemplatePreviewContent();
     });
     typeField.append(typeSpan, typeSelect);
 
+    const sourceField = document.createElement("label");
+    sourceField.className = "field";
+    sourceField.hidden = isSpecialType;
+    const sourceSpan = document.createElement("span");
+    sourceSpan.textContent = "Polje iz baze";
+    const sourceSelect = document.createElement("select");
+    sourceSelect.className = "document-template-source-select";
+    replaceSelectOptions(sourceSelect, DOCUMENT_TEMPLATE_SOURCE_OPTIONS, field.source || getDocumentTemplateDefaultFieldSource(field.type));
+    sourceSelect.addEventListener("change", () => {
+      documentTemplateFieldDrafts[index].source = sourceSelect.value || "CUSTOM_VALUE";
+      renderDocumentTemplatePreviewContent();
+    });
+    sourceField.append(sourceSpan, sourceSelect);
+
     const defaultField = document.createElement("label");
-    defaultField.className = "field field-span-full";
+    defaultField.className = "field";
     const defaultSpan = document.createElement("span");
-    defaultSpan.textContent = "Default vrijednost";
+    defaultSpan.textContent = isSpecialType ? "Napomena uz blok" : "Fallback tekst";
     const defaultInput = document.createElement("input");
     defaultInput.type = "text";
     defaultInput.value = field.defaultValue || "";
     defaultInput.addEventListener("input", (event) => {
       documentTemplateFieldDrafts[index].defaultValue = event.currentTarget.value;
       renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplateLinkSummary();
       renderDocumentTemplatePreviewContent();
     });
     defaultInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(defaultInput, `field-default:${field.id}`));
     defaultField.append(defaultSpan, defaultInput);
 
+    const columnsField = document.createElement("label");
+    columnsField.className = "field field-span-full";
+    columnsField.hidden = field.type !== "measurement_table";
+    const columnsSpan = document.createElement("span");
+    columnsSpan.textContent = "Stupci Excel tablice";
+    const columnsInput = document.createElement("input");
+    columnsInput.type = "text";
+    columnsInput.placeholder = "Pozicija, Opis, Vrijednost, Granica, Napomena";
+    columnsInput.value = field.columns || "";
+    columnsInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[index].columns = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
+    });
+    columnsField.append(columnsSpan, columnsInput);
+
+    const rowCountField = document.createElement("label");
+    rowCountField.className = "field";
+    rowCountField.hidden = field.type !== "measurement_table";
+    const rowCountSpan = document.createElement("span");
+    rowCountSpan.textContent = "Broj redaka";
+    const rowCountInput = document.createElement("input");
+    rowCountInput.type = "number";
+    rowCountInput.min = "4";
+    rowCountInput.max = "40";
+    rowCountInput.value = field.rowCount || "12";
+    rowCountInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[index].rowCount = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
+    });
+    rowCountField.append(rowCountSpan, rowCountInput);
+
     const helpField = document.createElement("label");
     helpField.className = "field field-span-full";
     const helpSpan = document.createElement("span");
-    helpSpan.textContent = "Helper tekst";
+    helpSpan.textContent = "Dodatna napomena";
     const helpInput = document.createElement("input");
     helpInput.type = "text";
     helpInput.value = field.helpText || "";
     helpInput.addEventListener("input", (event) => {
       documentTemplateFieldDrafts[index].helpText = event.currentTarget.value;
+      renderDocumentTemplatePreviewContent();
     });
     helpInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(helpInput, `field-help:${field.id}`));
     helpField.append(helpSpan, helpInput);
 
-    grid.append(labelField, keyField, typeField, defaultField, helpField);
+    const sourceHint = document.createElement("p");
+    sourceHint.className = "helper-copy document-template-field-hint";
+    sourceHint.hidden = !isSpecialType;
+    sourceHint.textContent = field.type === "legal_list"
+      ? "Propisi se biraju u Legal Framework modulu, ovdje samo odredujes gdje se blok prikazuje."
+      : field.type === "equipment_list"
+        ? "Oprema se bira u Measurement Equipment modulu, ovdje samo odredujes mjesto prikaza."
+        : field.type === "measurement_table"
+          ? "Ovaj blok oznacava gdje ide Excel tablica iz modula Mjerenja."
+          : "Ovaj blok pravi prijelom na novu stranicu u dokumentu.";
+
+    grid.append(labelField, typeField, sourceField, defaultField, columnsField, rowCountField, helpField);
 
     const actions = document.createElement("div");
     actions.className = "document-template-item-actions";
@@ -11023,11 +11248,12 @@ function renderDocumentTemplateFieldRows() {
     });
     actions.append(removeButton);
 
-    row.append(head, grid, actions);
+    row.append(head, grid, sourceHint, actions);
     return row;
   }));
 
   renderDocumentTemplatePlaceholderPalette();
+  renderDocumentTemplateLinkSummary();
   renderDocumentTemplatePreviewContent();
 }
 
@@ -11299,8 +11525,8 @@ function resetDocumentTemplateForm() {
   rebuildDocumentTemplateCompanyOptions("");
   rebuildDocumentTemplateLocationOptions("");
   setDocumentTemplateFieldDrafts([], { ensureOne: true });
-  setDocumentTemplateEquipmentDrafts([], { ensureOne: true });
-  setDocumentTemplateSectionDrafts([], { ensureDefault: true });
+  setDocumentTemplateEquipmentDrafts([], { ensureOne: false });
+  setDocumentTemplateSectionDrafts([], { ensureDefault: false });
   renderDocumentTemplateFieldRows();
   renderDocumentTemplateEquipmentRows();
   renderDocumentTemplateSectionRows();
@@ -11318,19 +11544,35 @@ function hydrateDocumentTemplateForm(template) {
   renderActiveView();
   renderModuleView();
   state.activeDocumentTemplateId = template.id;
-  documentTemplateIdInput.value = template.id || "";
-  documentTemplateTitleInput.value = template.title || "";
-  documentTemplateTypeInput.value = template.documentType || "Zapisnik";
-  documentTemplateStatusInput.value = template.status || "draft";
-  documentTemplateOutputFileNameInput.value = template.outputFileName || "";
+  if (documentTemplateIdInput) {
+    documentTemplateIdInput.value = template.id || "";
+  }
+  if (documentTemplateTitleInput) {
+    documentTemplateTitleInput.value = template.title || "";
+  }
+  if (documentTemplateTypeInput) {
+    documentTemplateTypeInput.value = template.documentType || "Zapisnik";
+  }
+  if (documentTemplateStatusInput) {
+    documentTemplateStatusInput.value = template.status || "draft";
+  }
+  if (documentTemplateOutputFileNameInput) {
+    documentTemplateOutputFileNameInput.value = template.outputFileName || "";
+  }
   rebuildDocumentTemplateCompanyOptions(template.sampleCompanyId || "");
-  documentTemplateCompanyIdInput.value = template.sampleCompanyId || "";
+  if (documentTemplateCompanyIdInput) {
+    documentTemplateCompanyIdInput.value = template.sampleCompanyId || "";
+  }
   rebuildDocumentTemplateLocationOptions(template.sampleLocationId || "");
-  documentTemplateLocationIdInput.value = template.sampleLocationId || "";
-  documentTemplateDescriptionInput.value = template.description || "";
+  if (documentTemplateLocationIdInput) {
+    documentTemplateLocationIdInput.value = template.sampleLocationId || "";
+  }
+  if (documentTemplateDescriptionInput) {
+    documentTemplateDescriptionInput.value = template.description || "";
+  }
   setDocumentTemplateFieldDrafts(template.customFields ?? [], { ensureOne: true });
-  setDocumentTemplateEquipmentDrafts(template.equipmentItems ?? [], { ensureOne: true });
-  setDocumentTemplateSectionDrafts(template.sections ?? [], { ensureDefault: true });
+  setDocumentTemplateEquipmentDrafts(template.equipmentItems ?? [], { ensureOne: false });
+  setDocumentTemplateSectionDrafts(template.sections ?? [], { ensureDefault: false });
   setDocumentTemplateReferenceDocument(template.referenceDocument ?? null);
   renderDocumentTemplateFieldRows();
   renderDocumentTemplateEquipmentRows();
@@ -11411,33 +11653,35 @@ function renderDocumentTemplateModule() {
     copy.className = "document-template-card-copy";
     const title = document.createElement("h4");
     title.textContent = template.title || "Novi template";
+    const linkedLegalCount = getDocumentTemplateSelectedLegalFrameworks(template).length;
+    const linkedEquipmentCount = getDocumentTemplateLinkedEquipmentItems(template).length;
     const meta = document.createElement("p");
     meta.className = "document-template-card-meta";
     meta.textContent = [
-      getCompany(template.sampleCompanyId)?.name || "",
-      getLocation(template.sampleLocationId)?.name || "",
+      `${template.customFields?.length || 0} blokova`,
+      linkedLegalCount > 0 ? `${linkedLegalCount} propisa` : "",
+      linkedEquipmentCount > 0 ? `${linkedEquipmentCount} opreme` : "",
       template.referenceDocument?.fileName ? "Word ref" : "",
-    ].filter(Boolean).join(" | ") || "Bez primjerne tvrtke i lokacije";
+    ].filter(Boolean).join(" | ") || "Word predlozak i placeholderi";
     copy.append(title, meta);
     head.append(badges, copy);
 
     const description = document.createElement("p");
     description.className = "document-template-card-description";
-    description.textContent = template.description || "Dodaj opis, placeholder polja, propise i sekcije koje ce builder koristiti za generiranje zapisnika.";
+    description.textContent = template.description || "Word ostaje glavni predlozak, a ovdje slazes blokove, placeholdere i povezane izvore podataka.";
 
     const chips = document.createElement("div");
     chips.className = "document-template-card-chips";
     chips.append(
-      createBadge(`${template.customFields?.length || 0} polja`, "document-template-meta-badge"),
-      createBadge(`${template.selectedLegalFrameworkIds?.length || 0} propisa`, "document-template-meta-badge"),
-      createBadge(`${template.equipmentItems?.length || 0} opreme`, "document-template-meta-badge"),
-      createBadge(`${template.sections?.length || 0} sekcija`, "document-template-meta-badge"),
+      createBadge(`${template.customFields?.length || 0} blokova`, "document-template-meta-badge"),
+      createBadge(`${linkedLegalCount} propisa`, "document-template-meta-badge"),
+      createBadge(`${linkedEquipmentCount} opreme`, "document-template-meta-badge"),
     );
 
     const footer = document.createElement("div");
     footer.className = "document-template-card-footer";
     const output = document.createElement("span");
-    output.textContent = `${sanitizeDocumentTemplateFileName(template.outputFileName || template.title || "zapisnik-template")}.doc`;
+    output.textContent = template.referenceDocument?.fileName ? "Word reference dodan" : "Bez Word reference";
     const updated = document.createElement("span");
     updated.textContent = template.updatedAt ? `Azurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
     footer.append(output, updated);
@@ -22945,6 +23189,36 @@ documentTemplateLocationIdInput?.addEventListener("change", () => {
 
 documentTemplateAddFieldButton?.addEventListener("click", () => {
   documentTemplateFieldDrafts = [...documentTemplateFieldDrafts, createEmptyDocumentTemplateFieldDraft({}, documentTemplateFieldDrafts.length)];
+  renderDocumentTemplateFieldRows();
+});
+
+documentTemplateAddExcelButton?.addEventListener("click", () => {
+  documentTemplateFieldDrafts = [
+    ...documentTemplateFieldDrafts,
+    createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Excel tablica",
+        type: "measurement_table",
+        columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+        rowCount: 12,
+      },
+      documentTemplateFieldDrafts.length,
+    ),
+  ];
+  renderDocumentTemplateFieldRows();
+});
+
+documentTemplateAddPageBreakButton?.addEventListener("click", () => {
+  documentTemplateFieldDrafts = [
+    ...documentTemplateFieldDrafts,
+    createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Nova stranica",
+        type: "page_break",
+      },
+      documentTemplateFieldDrafts.length,
+    ),
+  ];
   renderDocumentTemplateFieldRows();
 });
 
