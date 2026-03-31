@@ -459,6 +459,7 @@ const state = {
     workOrderId: "",
     loading: false,
     uploading: false,
+    busyId: "",
     items: [],
     error: "",
   },
@@ -1067,7 +1068,9 @@ const todoCommentError = document.querySelector("#todo-comment-error");
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
 const workOrderEditorCloseButton = document.querySelector("#work-order-editor-close");
+const workOrderEditorMain = workOrderEditorPanel?.querySelector(".work-order-editor-main");
 const workOrderEditorBody = workOrderEditorPanel?.querySelector(".work-order-editor-body");
+const workOrderActivityPanel = workOrderEditorPanel?.querySelector(".work-order-activity-panel");
 const workOrderEditorContext = document.querySelector("#work-order-editor-context");
 const workOrderEditorTitle = document.querySelector("#work-order-editor-title");
 const workOrderEditorSubtitle = document.querySelector("#work-order-editor-subtitle");
@@ -6369,6 +6372,7 @@ function resetWorkOrderDocumentsState() {
     workOrderId: "",
     loading: false,
     uploading: false,
+    busyId: "",
     items: [],
     error: "",
   };
@@ -6407,6 +6411,7 @@ function formatFileSize(value) {
 function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const card = document.createElement("article");
   card.className = compact ? "work-order-document-card is-compact" : "work-order-document-card";
+  const isBusy = state.workOrderDocuments.busyId === String(item.id);
 
   const badge = document.createElement("span");
   badge.className = "work-order-document-badge";
@@ -6415,10 +6420,19 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const body = document.createElement("div");
   body.className = "work-order-document-card-body";
 
-  const name = document.createElement("strong");
-  name.className = "work-order-document-name";
-  name.textContent = item.fileName || "Dokument";
-  name.title = item.fileName || "Dokument";
+  const nameInput = document.createElement("input");
+  nameInput.className = "work-order-document-name-input";
+  nameInput.type = "text";
+  nameInput.value = item.fileName || "";
+  nameInput.placeholder = "Naziv dokumenta";
+  nameInput.disabled = isBusy;
+
+  const descriptionInput = document.createElement("textarea");
+  descriptionInput.className = "work-order-document-description-input";
+  descriptionInput.rows = compact ? 2 : 3;
+  descriptionInput.value = item.description || "";
+  descriptionInput.placeholder = "Opis dokumenta";
+  descriptionInput.disabled = isBusy;
 
   const meta = document.createElement("span");
   meta.className = "work-order-document-meta";
@@ -6428,10 +6442,22 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
     formatDateTime(item.createdAt),
   ].filter(Boolean).join(" · ");
 
-  body.append(name, meta);
+  body.append(nameInput, descriptionInput, meta);
 
   const actions = document.createElement("div");
   actions.className = "work-order-document-actions";
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "ghost-button work-order-document-button";
+  saveButton.textContent = isBusy ? "Spremam..." : "Spremi";
+  saveButton.disabled = isBusy;
+  saveButton.addEventListener("click", () => {
+    void saveWorkOrderDocument(item.id, {
+      fileName: nameInput.value,
+      description: descriptionInput.value,
+    });
+  });
 
   const link = document.createElement("a");
   link.className = "ghost-button work-order-document-link";
@@ -6439,8 +6465,19 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   link.target = "_blank";
   link.rel = "noreferrer";
   link.download = item.fileName || "dokument";
-  link.textContent = compact ? "Open" : "Otvori";
-  actions.append(link);
+  link.textContent = "Otvori";
+  link.setAttribute("aria-disabled", String(isBusy));
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "ghost-button work-order-document-button is-danger";
+  deleteButton.textContent = isBusy ? "..." : "Makni";
+  deleteButton.disabled = isBusy;
+  deleteButton.addEventListener("click", () => {
+    void deleteWorkOrderDocument(item.id, item.fileName);
+  });
+
+  actions.append(saveButton, link, deleteButton);
 
   card.append(badge, body, actions);
   return card;
@@ -6508,13 +6545,13 @@ function renderWorkOrderDocuments() {
     workOrderDocumentDropzone,
     uploading,
     "Dodaj dokumente u RN",
-    "Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni za odabir.",
+    "Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni. Drag and drop radi i bilo gdje u lijevom dijelu prozora.",
   );
   syncWorkOrderDocumentDropzone(
     workOrderActivityDropzone,
     uploading,
     "Dodaj iz activityja",
-    "Povuci ili klikni za upload dokumenata.",
+    "Povuci ili klikni za upload. Drag and drop radi i bilo gdje u desnom activity dijelu.",
   );
 
   items.forEach((item) => {
@@ -6545,6 +6582,7 @@ async function loadWorkOrderDocuments(workOrderId) {
     workOrderId: String(workOrderId),
     loading: true,
     uploading: state.workOrderDocuments.uploading,
+    busyId: state.workOrderDocuments.busyId,
     items: [],
     error: "",
   };
@@ -6561,6 +6599,7 @@ async function loadWorkOrderDocuments(workOrderId) {
       workOrderId: String(workOrderId),
       loading: false,
       uploading: state.workOrderDocuments.uploading,
+      busyId: state.workOrderDocuments.busyId,
       items: payload.items ?? [],
       error: "",
     };
@@ -6573,6 +6612,7 @@ async function loadWorkOrderDocuments(workOrderId) {
       workOrderId: String(workOrderId),
       loading: false,
       uploading: state.workOrderDocuments.uploading,
+      busyId: state.workOrderDocuments.busyId,
       items: [],
       error: error.message,
     };
@@ -6648,8 +6688,10 @@ async function buildWorkOrderDocumentUploadPayload(files) {
 
 async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
   const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  workOrderEditorMain?.classList.remove("is-document-panel-active");
+  workOrderActivityPanel?.classList.remove("is-document-panel-active");
 
-  if (!selectedFiles.length || state.workOrderDocuments.uploading) {
+  if (!selectedFiles.length || state.workOrderDocuments.uploading || state.workOrderDocuments.busyId) {
     return;
   }
 
@@ -6694,6 +6736,76 @@ async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
   }
 }
 
+async function saveWorkOrderDocument(documentId, patch = {}) {
+  const workOrderId = state.workOrderDocuments.workOrderId || workOrderIdInput.value;
+
+  if (!workOrderId || state.workOrderDocuments.busyId) {
+    return;
+  }
+
+  state.workOrderDocuments.busyId = String(documentId);
+  state.workOrderDocuments.error = "";
+  renderWorkOrderDocuments();
+
+  try {
+    await apiRequest(`/work-orders/${workOrderId}/documents/${documentId}`, {
+      method: "PATCH",
+      body: {
+        fileName: String(patch.fileName ?? "").trim(),
+        description: String(patch.description ?? "").trim(),
+      },
+    });
+    workOrderError.textContent = "";
+    await Promise.all([
+      loadWorkOrderDocuments(workOrderId),
+      loadWorkOrderActivity(workOrderId),
+    ]);
+  } catch (error) {
+    state.workOrderDocuments.error = error.message;
+    workOrderError.textContent = error.message;
+  } finally {
+    state.workOrderDocuments.busyId = "";
+    renderWorkOrderDocuments();
+  }
+}
+
+async function deleteWorkOrderDocument(documentId, fileName = "") {
+  const workOrderId = state.workOrderDocuments.workOrderId || workOrderIdInput.value;
+
+  if (!workOrderId || state.workOrderDocuments.busyId) {
+    return;
+  }
+
+  if (!window.confirm(`Maknuti dokument ${fileName || "bez naziva"}?`)) {
+    return;
+  }
+
+  state.workOrderDocuments.busyId = String(documentId);
+  state.workOrderDocuments.error = "";
+  renderWorkOrderDocuments();
+
+  try {
+    await apiRequest(`/work-orders/${workOrderId}/documents/${documentId}`, {
+      method: "DELETE",
+    });
+    workOrderError.textContent = "";
+    await Promise.all([
+      loadWorkOrderDocuments(workOrderId),
+      loadWorkOrderActivity(workOrderId),
+    ]);
+  } catch (error) {
+    state.workOrderDocuments.error = error.message;
+    workOrderError.textContent = error.message;
+  } finally {
+    state.workOrderDocuments.busyId = "";
+    renderWorkOrderDocuments();
+  }
+}
+
+function isFileDragEvent(event) {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
 function bindWorkOrderDocumentDropzone(dropzone, fileInput, sourceType) {
   if (!dropzone || !fileInput) {
     return;
@@ -6712,18 +6824,30 @@ function bindWorkOrderDocumentDropzone(dropzone, fileInput, sourceType) {
   });
 
   dropzone.addEventListener("dragenter", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
     event.preventDefault();
+    event.stopPropagation();
     dragDepth += 1;
     dropzone.classList.add("is-drag-over");
   });
 
   dropzone.addEventListener("dragover", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
     event.preventDefault();
+    event.stopPropagation();
     dropzone.classList.add("is-drag-over");
   });
 
   dropzone.addEventListener("dragleave", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
     event.preventDefault();
+    event.stopPropagation();
     dragDepth = Math.max(0, dragDepth - 1);
 
     if (dragDepth === 0) {
@@ -6732,9 +6856,65 @@ function bindWorkOrderDocumentDropzone(dropzone, fileInput, sourceType) {
   });
 
   dropzone.addEventListener("drop", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
     event.preventDefault();
+    event.stopPropagation();
     dragDepth = 0;
     dropzone.classList.remove("is-drag-over");
+    void handleWorkOrderDocumentSelection(event.dataTransfer?.files, sourceType);
+  });
+}
+
+function bindWorkOrderDocumentPanelTarget(target, sourceType) {
+  if (!target) {
+    return;
+  }
+
+  let dragDepth = 0;
+
+  target.addEventListener("dragenter", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth += 1;
+    target.classList.add("is-document-panel-active");
+  });
+
+  target.addEventListener("dragover", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    target.classList.add("is-document-panel-active");
+  });
+
+  target.addEventListener("dragleave", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+
+    if (dragDepth === 0) {
+      target.classList.remove("is-document-panel-active");
+    }
+  });
+
+  target.addEventListener("drop", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth = 0;
+    target.classList.remove("is-document-panel-active");
     void handleWorkOrderDocumentSelection(event.dataTransfer?.files, sourceType);
   });
 }
@@ -17197,6 +17377,8 @@ workOrderForm.addEventListener("change", () => {
 
 bindWorkOrderDocumentDropzone(workOrderDocumentDropzone, workOrderDocumentFileInput, "editor");
 bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileInput, "activity");
+bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
+bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
 renderWorkOrderDocuments();
 
 workOrdersTableWrap.addEventListener("scroll", () => {

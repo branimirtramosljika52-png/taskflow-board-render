@@ -4627,6 +4627,13 @@ body.is-work-order-editor-open {
   overflow: hidden;
 }
 
+.work-order-editor-main.is-document-panel-active {
+  background:
+    linear-gradient(180deg, rgba(236, 245, 255, 0.94), rgba(247, 249, 253, 0.98)),
+    linear-gradient(180deg, #fcfdff, #f7f9fd);
+  box-shadow: inset 0 0 0 2px rgba(110, 147, 215, 0.34);
+}
+
 .work-order-editor-fixed-head {
   display: grid;
   gap: 10px;
@@ -5105,7 +5112,7 @@ body.is-work-order-editor-open {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   padding: 12px;
   border-radius: 16px;
   border: 1px solid #e4e9f3;
@@ -5148,6 +5155,34 @@ body.is-work-order-editor-open {
   gap: 4px;
 }
 
+.work-order-document-name-input,
+.work-order-document-description-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #dbe3f0;
+  background: #f6f9fe;
+  color: #243147;
+}
+
+.work-order-document-name-input {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.work-order-document-description-input {
+  min-height: 74px;
+  padding: 10px 12px;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.work-order-document-card.is-compact .work-order-document-description-input {
+  min-height: 60px;
+}
+
 .work-order-document-name {
   color: #243147;
   font-size: 0.84rem;
@@ -5164,11 +5199,26 @@ body.is-work-order-editor-open {
 .work-order-document-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.work-order-document-link {
+.work-order-document-link,
+.work-order-document-button {
   min-height: 34px;
   padding: 0 12px;
+}
+
+.work-order-document-link[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.work-order-document-button.is-danger {
+  color: #8b4150;
+  border-color: #e8c9d0;
+  background: #fff6f8;
 }
 
 .work-order-editor-actions {
@@ -5284,6 +5334,13 @@ body.is-work-order-editor-open {
   border-left: 1px solid #edf0f6;
   background: linear-gradient(180deg, rgba(248, 249, 253, 0.95), rgba(244, 246, 251, 0.95));
   overflow: hidden;
+}
+
+.work-order-activity-panel.is-document-panel-active {
+  background:
+    linear-gradient(180deg, rgba(240, 247, 255, 0.95), rgba(244, 246, 251, 0.98)),
+    linear-gradient(180deg, rgba(248, 249, 253, 0.95), rgba(244, 246, 251, 0.95));
+  box-shadow: inset 0 0 0 2px rgba(110, 147, 215, 0.3);
 }
 
 .work-order-activity-head {

@@ -469,10 +469,32 @@ function normalizeWorkOrderDocumentInput(input = {}, defaultSourceType = "editor
     fileName: fileName.slice(0, 255),
     fileType,
     fileExtension: inferWorkOrderDocumentExtension(fileName, fileType),
+    description: dbString(input.description),
     fileSize,
     dataUrl,
     sourceType,
   };
+}
+
+function normalizeWorkOrderDocumentPatch(input = {}) {
+  const patch = {};
+
+  if (Object.prototype.hasOwnProperty.call(input, "fileName") || Object.prototype.hasOwnProperty.call(input, "name")) {
+    const fileName = dbString(input.fileName ?? input.name);
+
+    if (!fileName) {
+      throw new Error("Naziv dokumenta je obavezan.");
+    }
+
+    patch.fileName = fileName.slice(0, 255);
+    patch.fileExtension = inferWorkOrderDocumentExtension(patch.fileName, input.fileType ?? input.mimeType ?? "");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "description")) {
+    patch.description = dbString(input.description);
+  }
+
+  return patch;
 }
 
 function buildWorkOrderDocumentActivityEntries(documents = []) {
@@ -484,6 +506,47 @@ function buildWorkOrderDocumentActivityEntries(documents = []) {
     newValue: document.fileName,
     description: `Dodan dokument ${document.fileName}`,
   }));
+}
+
+function buildWorkOrderDocumentUpdatedActivityEntries(current, next) {
+  const entries = [];
+
+  if (dbString(current.fileName) !== dbString(next.fileName)) {
+    entries.push({
+      actionType: "attachment_updated",
+      fieldKey: "document",
+      fieldLabel: "Dokument",
+      oldValue: current.fileName,
+      newValue: next.fileName,
+      description: `Naziv dokumenta azuriran u ${next.fileName}`,
+    });
+  }
+
+  if (dbString(current.description) !== dbString(next.description)) {
+    entries.push({
+      actionType: "attachment_updated",
+      fieldKey: "document_description",
+      fieldLabel: "Opis dokumenta",
+      oldValue: current.description,
+      newValue: next.description,
+      description: next.description
+        ? `Opis dokumenta azuriran za ${next.fileName}`
+        : `Opis dokumenta uklonjen za ${next.fileName}`,
+    });
+  }
+
+  return entries;
+}
+
+function buildWorkOrderDocumentDeletedActivityEntries(document) {
+  return [{
+    actionType: "attachment_deleted",
+    fieldKey: "document",
+    fieldLabel: "Dokument",
+    oldValue: document.fileName,
+    newValue: "",
+    description: `Maknut dokument ${document.fileName}`,
+  }];
 }
 
 function mapWorkOrderDocumentRow(row) {
@@ -498,9 +561,11 @@ function mapWorkOrderDocumentRow(row) {
     fileName: row.file_name ?? row.fileName ?? "",
     fileExtension: row.file_extension ?? row.fileExtension ?? "",
     fileType: row.file_type ?? row.fileType ?? "",
+    description: row.file_description ?? row.description ?? "",
     fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
     dataUrl: row.data_url ?? row.dataUrl ?? "",
     createdAt: normalizeActivityTimestamp(row.created_at ?? row.createdAt),
+    updatedAt: normalizeActivityTimestamp(row.updated_at ?? row.updatedAt ?? row.created_at ?? row.createdAt),
   };
 }
 
@@ -1328,9 +1393,11 @@ export class InMemorySafetyRepository {
       fileName: file.fileName,
       fileExtension: file.fileExtension,
       fileType: file.fileType,
+      description: file.description,
       fileSize: file.fileSize,
       dataUrl: file.dataUrl,
       createdAt: timestamp,
+      updatedAt: timestamp,
     }));
 
     const existingDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
@@ -1359,6 +1426,88 @@ export class InMemorySafetyRepository {
     return (this.workOrderDocuments.get(String(id)) ?? [])
       .slice()
       .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
+  async updateWorkOrderDocument(workOrderId, documentId, patch, actor = null) {
+    const currentDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
+    const current = currentDocuments.find((item) => String(item.id) === String(documentId));
+
+    if (!current) {
+      return null;
+    }
+
+    const normalizedPatch = normalizeWorkOrderDocumentPatch(patch);
+    const next = {
+      ...current,
+      fileName: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName") ? normalizedPatch.fileName : current.fileName,
+      fileExtension: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName")
+        ? (normalizedPatch.fileExtension || current.fileExtension)
+        : current.fileExtension,
+      description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.workOrderDocuments.set(
+      String(workOrderId),
+      currentDocuments.map((item) => (String(item.id) === String(documentId) ? next : item)),
+    );
+
+    const existingEntries = this.workOrderActivity.get(String(workOrderId)) ?? [];
+    const actorId = getActivityActorId(actor);
+    const actorLabel = getActivityActorLabel(actor);
+    const activityEntries = buildWorkOrderDocumentUpdatedActivityEntries(current, next).map((entry, index) => ({
+      id: `${workOrderId}-document-update-${Date.now()}-${index}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      actionType: entry.actionType,
+      fieldKey: entry.fieldKey,
+      fieldLabel: entry.fieldLabel,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      description: entry.description,
+      createdAt: next.updatedAt,
+    }));
+
+    if (activityEntries.length) {
+      this.workOrderActivity.set(String(workOrderId), [...activityEntries, ...existingEntries]);
+    }
+
+    return next;
+  }
+
+  async deleteWorkOrderDocument(workOrderId, documentId, actor = null) {
+    const currentDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
+    const current = currentDocuments.find((item) => String(item.id) === String(documentId));
+
+    if (!current) {
+      return false;
+    }
+
+    this.workOrderDocuments.set(
+      String(workOrderId),
+      currentDocuments.filter((item) => String(item.id) !== String(documentId)),
+    );
+
+    const existingEntries = this.workOrderActivity.get(String(workOrderId)) ?? [];
+    const actorId = getActivityActorId(actor);
+    const actorLabel = getActivityActorLabel(actor);
+    const activityEntries = buildWorkOrderDocumentDeletedActivityEntries(current).map((entry, index) => ({
+      id: `${workOrderId}-document-delete-${Date.now()}-${index}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      actionType: entry.actionType,
+      fieldKey: entry.fieldKey,
+      fieldLabel: entry.fieldLabel,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      description: entry.description,
+      createdAt: new Date().toISOString(),
+    }));
+    this.workOrderActivity.set(String(workOrderId), [...activityEntries, ...existingEntries]);
+
+    return true;
   }
 
   async deleteWorkOrder(id) {
@@ -1662,13 +1811,22 @@ export class MySqlSafetyRepository {
         file_name VARCHAR(255) NOT NULL,
         file_extension VARCHAR(24) NOT NULL DEFAULT '',
         file_type VARCHAR(160) NOT NULL DEFAULT '',
+        file_description TEXT NULL,
         file_size BIGINT NOT NULL DEFAULT 0,
         data_url LONGTEXT NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_work_order_documents_work_order (work_order_id),
         INDEX idx_work_order_documents_created (created_at)
       )
     `);
+    await ensureColumnExists(this.pool, "web_work_order_documents", "file_description", "TEXT NULL AFTER file_type");
+    await ensureColumnExists(
+      this.pool,
+      "web_work_order_documents",
+      "updated_at",
+      "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
+    );
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_location_contacts (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2561,8 +2719,8 @@ export class MySqlSafetyRepository {
           `
             INSERT INTO web_work_order_documents
               (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
-               file_type, file_size, data_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               file_type, file_description, file_size, data_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             Number(workOrderId),
@@ -2572,6 +2730,7 @@ export class MySqlSafetyRepository {
             normalized.fileName,
             normalized.fileExtension,
             normalized.fileType,
+            normalized.description,
             normalized.fileSize,
             normalized.dataUrl,
           ],
@@ -2586,9 +2745,11 @@ export class MySqlSafetyRepository {
           fileName: normalized.fileName,
           fileExtension: normalized.fileExtension,
           fileType: normalized.fileType,
+          description: normalized.description,
           fileSize: normalized.fileSize,
           dataUrl: normalized.dataUrl,
           createdAt,
+          updatedAt: createdAt,
         });
       }
 
@@ -2616,7 +2777,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_size, data_url, created_at
+                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ?
           ORDER BY created_at DESC, id DESC
@@ -2626,6 +2787,116 @@ export class MySqlSafetyRepository {
       );
 
       return rows.map((row) => mapWorkOrderDocumentRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateWorkOrderDocument(workOrderId, documentId, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
+                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
+          FROM web_work_order_documents
+          WHERE work_order_id = ? AND id = ?
+          LIMIT 1
+        `,
+        [Number(workOrderId), Number(documentId)],
+      );
+      const current = rows[0] ? mapWorkOrderDocumentRow(rows[0]) : null;
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const normalizedPatch = normalizeWorkOrderDocumentPatch(patch);
+      const next = {
+        ...current,
+        fileName: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName") ? normalizedPatch.fileName : current.fileName,
+        fileExtension: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName")
+          ? (normalizedPatch.fileExtension || current.fileExtension)
+          : current.fileExtension,
+        description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await connection.query(
+        `
+          UPDATE web_work_order_documents
+          SET file_name = ?, file_extension = ?, file_description = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE work_order_id = ? AND id = ?
+        `,
+        [
+          next.fileName,
+          next.fileExtension,
+          next.description,
+          Number(workOrderId),
+          Number(documentId),
+        ],
+      );
+
+      await insertWorkOrderActivityEntries(
+        connection,
+        workOrderId,
+        actor,
+        buildWorkOrderDocumentUpdatedActivityEntries(current, next),
+      );
+      await connection.commit();
+
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteWorkOrderDocument(workOrderId, documentId, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
+                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
+          FROM web_work_order_documents
+          WHERE work_order_id = ? AND id = ?
+          LIMIT 1
+        `,
+        [Number(workOrderId), Number(documentId)],
+      );
+      const current = rows[0] ? mapWorkOrderDocumentRow(rows[0]) : null;
+
+      if (!current) {
+        await connection.rollback();
+        return false;
+      }
+
+      await connection.query(
+        "DELETE FROM web_work_order_documents WHERE work_order_id = ? AND id = ?",
+        [Number(workOrderId), Number(documentId)],
+      );
+      await insertWorkOrderActivityEntries(
+        connection,
+        workOrderId,
+        actor,
+        buildWorkOrderDocumentDeletedActivityEntries(current),
+      );
+      await connection.commit();
+
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

@@ -596,6 +596,7 @@ async function handleApiRequest(request, response, url) {
     const chatConversationReadMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/read$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
+    const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
     if (request.method === "GET" && url.pathname === "/api/chat/bootstrap") {
@@ -1006,6 +1007,54 @@ async function handleApiRequest(request, response, url) {
         { sourceType: body.sourceType ?? body.source },
       );
       sendJson(response, 201, { items });
+      return true;
+    }
+
+    if (workOrderDocumentMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo uredjivati dokumente na radnim nalozima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronaden.");
+      const item = await domainRepository.updateWorkOrderDocument(
+        workOrderDocumentMatch[1],
+        workOrderDocumentMatch[2],
+        body,
+        user,
+      );
+
+      if (!item) {
+        sendError(response, 404, "Dokument nije pronaden.");
+        return true;
+      }
+
+      sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (workOrderDocumentMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati dokumente na radnim nalozima.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronaden.");
+      const deleted = await domainRepository.deleteWorkOrderDocument(
+        workOrderDocumentMatch[1],
+        workOrderDocumentMatch[2],
+        user,
+      );
+
+      if (!deleted) {
+        sendError(response, 404, "Dokument nije pronaden.");
+        return true;
+      }
+
+      sendJson(response, 200, { ok: true });
       return true;
     }
 
