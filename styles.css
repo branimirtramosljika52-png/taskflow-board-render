@@ -4636,8 +4636,8 @@ body.is-work-order-editor-open {
 
 .work-order-editor-fixed-head {
   display: grid;
-  gap: 10px;
-  padding: 18px 20px 10px;
+  gap: 0;
+  padding: 18px 20px 0;
   background: linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(247, 249, 253, 0.96));
   border-bottom: 1px solid rgba(232, 236, 245, 0.9);
 }
@@ -4646,7 +4646,7 @@ body.is-work-order-editor-open {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 6px 20px 20px;
+  padding: 14px 20px 20px;
   display: grid;
   align-content: start;
   gap: 14px;
@@ -4695,7 +4695,7 @@ body.is-work-order-editor-open {
 }
 
 .work-order-editor-hero {
-  display: grid;
+  display: none;
   grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
   align-items: start;
   gap: 16px;
@@ -9306,11 +9306,11 @@ body.is-work-order-editor-open {
   }
 
   .work-order-editor-fixed-head {
-    padding: 18px 16px 10px;
+    padding: 18px 16px 0;
   }
 
   .work-order-editor-body {
-    padding: 6px 16px 22px;
+    padding: 14px 16px 22px;
   }
 
   .work-order-editor-form {
