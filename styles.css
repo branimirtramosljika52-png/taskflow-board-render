@@ -9094,7 +9094,8 @@ body.is-work-order-editor-open {
 }
 
 .work-executor-list {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -9102,22 +9103,6 @@ body.is-work-order-editor-open {
   width: 36px;
   height: 36px;
   font-size: 0.74rem;
-}
-
-.work-executor-chip {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.work-executor-name {
-  color: #2c3448;
-  font-size: 0.8rem;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .work-executor-initials {

@@ -19010,20 +19010,15 @@ function renderCompactWorkOrdersList() {
       return wrap;
     }
 
-    executors.forEach((executor) => {
-      const chip = document.createElement("div");
-      chip.className = "work-executor-chip";
-
+    executors.slice(0, 5).forEach((executor) => {
       const avatar = createWorkOrderMiniExecutor(executor, { className: "work-executor-avatar" });
       avatar.removeAttribute("title");
-
-      const name = document.createElement("span");
-      name.className = "work-executor-name";
-      name.textContent = executor;
-
-      chip.append(avatar, name);
-      wrap.append(chip);
+      wrap.append(avatar);
     });
+
+    if (executors.length > 5) {
+      wrap.append(createExecutorOverflowBadge(executors.length - 5, "work-executor-avatar"));
+    }
 
     return wrap;
   };
