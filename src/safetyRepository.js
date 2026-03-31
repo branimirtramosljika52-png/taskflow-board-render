@@ -42,6 +42,12 @@ import {
   hashStoredToken,
   verifyPassword,
 } from "./webAuth.js";
+import {
+  buildObjectStoragePublicUrl,
+  deleteObjectFromStorage,
+  getObjectStorageConfig,
+  uploadDataUrlToObjectStorage,
+} from "./objectStorage.js";
 
 function normalizeTimestamp(value) {
   if (!value) {
@@ -233,6 +239,73 @@ function parseJsonArray(value, fallback = []) {
     return Array.isArray(parsed) ? parsed : [...fallback];
   } catch {
     return [...fallback];
+  }
+}
+
+function isDataUrlLike(value = "") {
+  return dbString(value).startsWith("data:");
+}
+
+function mapStoredDocumentLocation({
+  dataUrl = "",
+  storageProvider = "",
+  storageBucket = "",
+  storageKey = "",
+  storageUrl = "",
+} = {}) {
+  const normalizedStorageUrl = dbString(storageUrl);
+  const normalizedStorageKey = dbString(storageKey);
+  const normalizedStorageBucket = dbString(storageBucket);
+  const normalizedStorageProvider = dbString(storageProvider);
+  const normalizedDataUrl = dbString(dataUrl);
+
+  return {
+    dataUrl: normalizedStorageUrl || normalizedDataUrl,
+    storageProvider: normalizedStorageProvider,
+    storageBucket: normalizedStorageBucket,
+    storageKey: normalizedStorageKey,
+    storageUrl: normalizedStorageUrl || (
+      normalizedStorageProvider && normalizedStorageKey
+        ? buildObjectStoragePublicUrl(normalizedStorageKey, {
+          ...getObjectStorageConfig(),
+          bucket: normalizedStorageBucket || getObjectStorageConfig().bucket,
+        })
+        : ""
+    ),
+  };
+}
+
+async function persistInlineDocumentToObjectStorage({
+  keyPrefix = "",
+  fileName = "",
+  fileType = "",
+  dataUrl = "",
+} = {}) {
+  if (!isDataUrlLike(dataUrl)) {
+    return null;
+  }
+
+  return uploadDataUrlToObjectStorage({
+    keyPrefix,
+    fileName,
+    fileType,
+    dataUrl,
+    cacheControl: "public, max-age=31536000, immutable",
+  });
+}
+
+async function cleanupStoredObjects(items = []) {
+  const uniqueKeys = new Set();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = dbString(item?.storageKey ?? item?.key);
+
+    if (!key || uniqueKeys.has(key)) {
+      continue;
+    }
+
+    uniqueKeys.add(key);
+    await deleteObjectFromStorage(item);
   }
 }
 
@@ -594,7 +667,87 @@ function buildWorkOrderDocumentDeletedActivityEntries(document) {
   }];
 }
 
+async function prepareStoredWorkOrderDocument(normalizedDocument, workOrderId) {
+  const uploaded = await persistInlineDocumentToObjectStorage({
+    keyPrefix: `work-orders/${dbString(workOrderId)}/${normalizeWorkOrderDocumentSource(normalizedDocument.sourceType)}`,
+    fileName: normalizedDocument.fileName,
+    fileType: normalizedDocument.fileType,
+    dataUrl: normalizedDocument.dataUrl,
+  });
+
+  return {
+    ...normalizedDocument,
+    dataUrl: uploaded?.storageUrl || normalizedDocument.dataUrl,
+    storageProvider: uploaded?.storageProvider ?? "",
+    storageBucket: uploaded?.storageBucket ?? "",
+    storageKey: uploaded?.storageKey ?? "",
+    storageUrl: uploaded?.storageUrl ?? "",
+    inlineDataUrl: uploaded?.storageUrl ? "" : normalizedDocument.dataUrl,
+  };
+}
+
+async function prepareStoredReferenceDocument(referenceDocument, {
+  organizationId = "",
+  currentReferenceDocument = null,
+} = {}) {
+  if (!referenceDocument) {
+    return {
+      nextReferenceDocument: null,
+      staleReferenceDocument: currentReferenceDocument?.storageKey ? currentReferenceDocument : null,
+    };
+  }
+
+  const normalizedCurrentUrl = dbString(currentReferenceDocument?.dataUrl);
+  const normalizedNextUrl = dbString(referenceDocument.dataUrl);
+  const matchesCurrent = currentReferenceDocument
+    && dbString(currentReferenceDocument.fileName) === dbString(referenceDocument.fileName)
+    && dbString(currentReferenceDocument.fileType) === dbString(referenceDocument.fileType)
+    && normalizedCurrentUrl === normalizedNextUrl;
+
+  if (matchesCurrent) {
+    return {
+      nextReferenceDocument: {
+        ...referenceDocument,
+        storageProvider: currentReferenceDocument.storageProvider ?? "",
+        storageBucket: currentReferenceDocument.storageBucket ?? "",
+        storageKey: currentReferenceDocument.storageKey ?? "",
+        storageUrl: currentReferenceDocument.storageUrl ?? "",
+        inlineDataUrl: currentReferenceDocument.storageKey ? "" : normalizedNextUrl,
+      },
+      staleReferenceDocument: null,
+    };
+  }
+
+  const uploaded = await persistInlineDocumentToObjectStorage({
+    keyPrefix: `document-templates/${dbString(organizationId) || "shared"}/reference`,
+    fileName: referenceDocument.fileName,
+    fileType: referenceDocument.fileType,
+    dataUrl: normalizedNextUrl,
+  });
+
+  return {
+    nextReferenceDocument: {
+      ...referenceDocument,
+      dataUrl: uploaded?.storageUrl || normalizedNextUrl,
+      storageProvider: uploaded?.storageProvider ?? "",
+      storageBucket: uploaded?.storageBucket ?? "",
+      storageKey: uploaded?.storageKey ?? "",
+      storageUrl: uploaded?.storageUrl ?? "",
+      inlineDataUrl: uploaded?.storageUrl ? "" : normalizedNextUrl,
+    },
+    staleReferenceDocument: currentReferenceDocument?.storageKey ? currentReferenceDocument : null,
+  };
+}
+
 function mapWorkOrderDocumentRow(row) {
+  const storedDocument = mapStoredDocumentLocation({
+    dataUrl: row.data_url ?? row.dataUrl ?? "",
+    storageProvider: row.storage_provider ?? row.storageProvider ?? "",
+    storageBucket: row.storage_bucket ?? row.storageBucket ?? "",
+    storageKey: row.storage_key ?? row.storageKey ?? "",
+    storageUrl: row.storage_url ?? row.storageUrl ?? "",
+  });
+
   return {
     id: String(row.id),
     workOrderId: String(row.work_order_id ?? row.workOrderId ?? ""),
@@ -608,7 +761,11 @@ function mapWorkOrderDocumentRow(row) {
     fileType: row.file_type ?? row.fileType ?? "",
     description: row.file_description ?? row.description ?? "",
     fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
-    dataUrl: row.data_url ?? row.dataUrl ?? "",
+    dataUrl: storedDocument.dataUrl,
+    storageProvider: storedDocument.storageProvider,
+    storageBucket: storedDocument.storageBucket,
+    storageKey: storedDocument.storageKey,
+    storageUrl: storedDocument.storageUrl,
     createdAt: normalizeActivityTimestamp(row.created_at ?? row.createdAt),
     updatedAt: normalizeActivityTimestamp(row.updated_at ?? row.updatedAt ?? row.created_at ?? row.createdAt),
   };
@@ -1146,6 +1303,8 @@ async function fetchSnapshotFromConnection(connection) {
            sample_company_id, sample_location_id, selected_legal_framework_ids_json,
            custom_fields_json, equipment_items_json, sections_json,
            reference_document_name, reference_document_type, reference_document_data_url,
+           reference_document_storage_provider, reference_document_storage_bucket,
+           reference_document_storage_key, reference_document_url,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_document_templates
     ORDER BY
@@ -1193,14 +1352,28 @@ async function fetchSnapshotFromConnection(connection) {
       columns: parseJsonArray(section.columns).map((entry) => dbString(entry)).filter(Boolean),
       rowCount: Number(section.rowCount ?? 0) || 0,
     })),
-    referenceDocument: dbString(row.reference_document_name) && dbString(row.reference_document_data_url)
-      ? {
-        fileName: row.reference_document_name ?? "",
-        fileType: row.reference_document_type ?? "",
+    referenceDocument: (() => {
+      const storedReference = mapStoredDocumentLocation({
         dataUrl: row.reference_document_data_url ?? "",
-        updatedAt: normalizeTimestamp(row.updated_at),
-      }
-      : null,
+        storageProvider: row.reference_document_storage_provider ?? "",
+        storageBucket: row.reference_document_storage_bucket ?? "",
+        storageKey: row.reference_document_storage_key ?? "",
+        storageUrl: row.reference_document_url ?? "",
+      });
+
+      return dbString(row.reference_document_name) && dbString(storedReference.dataUrl)
+        ? {
+          fileName: row.reference_document_name ?? "",
+          fileType: row.reference_document_type ?? "",
+          dataUrl: storedReference.dataUrl,
+          storageProvider: storedReference.storageProvider,
+          storageBucket: storedReference.storageBucket,
+          storageKey: storedReference.storageKey,
+          storageUrl: storedReference.storageUrl,
+          updatedAt: normalizeTimestamp(row.updated_at),
+        }
+        : null;
+    })(),
     createdByUserId: dbString(row.created_by_user_id),
     createdByLabel: row.created_by_label ?? "",
     createdAt: normalizeTimestamp(row.created_at),
@@ -1313,6 +1486,10 @@ async function allocateWorkOrderNumber(connection, year) {
 export class InMemorySafetyRepository {
   constructor() {
     this.kind = "memory";
+    this.objectStorage = {
+      ...getObjectStorageConfig(),
+      enabled: false,
+    };
     this.snapshot = {
       companies: [],
       locations: [],
@@ -2082,6 +2259,7 @@ export class InMemorySafetyRepository {
 export class MySqlSafetyRepository {
   constructor(connectionString) {
     this.kind = "mysql";
+    this.objectStorage = getObjectStorageConfig();
     this.pool = mysql.createPool(parseMySqlConnectionString(connectionString));
   }
 
@@ -2130,6 +2308,10 @@ export class MySqlSafetyRepository {
         file_description TEXT NULL,
         file_size BIGINT NOT NULL DEFAULT 0,
         data_url LONGTEXT NOT NULL,
+        storage_provider VARCHAR(32) NULL,
+        storage_bucket VARCHAR(128) NULL,
+        storage_key VARCHAR(512) NULL,
+        storage_url TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_work_order_documents_work_order (work_order_id),
@@ -2137,6 +2319,10 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureColumnExists(this.pool, "web_work_order_documents", "file_description", "TEXT NULL AFTER file_type");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "storage_provider", "VARCHAR(32) NULL AFTER data_url");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "storage_bucket", "VARCHAR(128) NULL AFTER storage_provider");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "storage_key", "VARCHAR(512) NULL AFTER storage_bucket");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "storage_url", "TEXT NULL AFTER storage_key");
     await ensureColumnExists(
       this.pool,
       "web_work_order_documents",
@@ -2329,6 +2515,10 @@ export class MySqlSafetyRepository {
         reference_document_name VARCHAR(255) NOT NULL DEFAULT '',
         reference_document_type VARCHAR(160) NOT NULL DEFAULT '',
         reference_document_data_url LONGTEXT NULL,
+        reference_document_storage_provider VARCHAR(32) NULL,
+        reference_document_storage_bucket VARCHAR(128) NULL,
+        reference_document_storage_key VARCHAR(512) NULL,
+        reference_document_url TEXT NULL,
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2380,6 +2570,10 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
+    await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_provider", "VARCHAR(32) NULL AFTER reference_document_data_url");
+    await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_bucket", "VARCHAR(128) NULL AFTER reference_document_storage_provider");
+    await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
+    await ensureColumnExists(this.pool, "web_document_templates", "reference_document_url", "TEXT NULL AFTER reference_document_storage_key");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
@@ -3101,24 +3295,30 @@ export class MySqlSafetyRepository {
 
       for (const file of Array.isArray(files) ? files : []) {
         const normalized = normalizeWorkOrderDocumentInput(file, options.sourceType);
+        const storedDocument = await prepareStoredWorkOrderDocument(normalized, workOrderId);
         const [result] = await connection.query(
           `
             INSERT INTO web_work_order_documents
               (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
-               file_type, file_description, file_size, data_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               file_type, file_description, file_size, data_url,
+               storage_provider, storage_bucket, storage_key, storage_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             Number(workOrderId),
             actorId,
             actorLabel,
-            normalized.sourceType,
-            normalized.fileName,
-            normalized.fileExtension,
-            normalized.fileType,
-            normalized.description,
-            normalized.fileSize,
-            normalized.dataUrl,
+            storedDocument.sourceType,
+            storedDocument.fileName,
+            storedDocument.fileExtension,
+            storedDocument.fileType,
+            storedDocument.description,
+            storedDocument.fileSize,
+            storedDocument.inlineDataUrl,
+            storedDocument.storageProvider,
+            storedDocument.storageBucket,
+            storedDocument.storageKey,
+            storedDocument.storageUrl,
           ],
         );
 
@@ -3127,13 +3327,17 @@ export class MySqlSafetyRepository {
           workOrderId: String(workOrderId),
           actorLabel,
           actorUserId: actorId === null ? "" : String(actorId),
-          sourceType: normalized.sourceType,
-          fileName: normalized.fileName,
-          fileExtension: normalized.fileExtension,
-          fileType: normalized.fileType,
-          description: normalized.description,
-          fileSize: normalized.fileSize,
-          dataUrl: normalized.dataUrl,
+          sourceType: storedDocument.sourceType,
+          fileName: storedDocument.fileName,
+          fileExtension: storedDocument.fileExtension,
+          fileType: storedDocument.fileType,
+          description: storedDocument.description,
+          fileSize: storedDocument.fileSize,
+          dataUrl: storedDocument.dataUrl,
+          storageProvider: storedDocument.storageProvider,
+          storageBucket: storedDocument.storageBucket,
+          storageKey: storedDocument.storageKey,
+          storageUrl: storedDocument.storageUrl,
           createdAt,
           updatedAt: createdAt,
         });
@@ -3163,7 +3367,9 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
+                 file_extension, file_type, file_description, file_size, data_url,
+                 storage_provider, storage_bucket, storage_key, storage_url,
+                 created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ?
           ORDER BY created_at DESC, id DESC
@@ -3187,7 +3393,9 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
+                 file_extension, file_type, file_description, file_size, data_url,
+                 storage_provider, storage_bucket, storage_key, storage_url,
+                 created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ? AND id = ?
           LIMIT 1
@@ -3246,6 +3454,7 @@ export class MySqlSafetyRepository {
 
   async deleteWorkOrderDocument(workOrderId, documentId, actor = null) {
     const connection = await this.pool.getConnection();
+    let removedDocument = null;
 
     try {
       await connection.beginTransaction();
@@ -3253,7 +3462,9 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url, created_at, updated_at
+                 file_extension, file_type, file_description, file_size, data_url,
+                 storage_provider, storage_bucket, storage_key, storage_url,
+                 created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ? AND id = ?
           LIMIT 1
@@ -3267,6 +3478,8 @@ export class MySqlSafetyRepository {
         return false;
       }
 
+      removedDocument = current;
+
       await connection.query(
         "DELETE FROM web_work_order_documents WHERE work_order_id = ? AND id = ?",
         [Number(workOrderId), Number(documentId)],
@@ -3278,6 +3491,7 @@ export class MySqlSafetyRepository {
         buildWorkOrderDocumentDeletedActivityEntries(current),
       );
       await connection.commit();
+      await cleanupStoredObjects([removedDocument]);
 
       return true;
     } catch (error) {
@@ -3290,9 +3504,19 @@ export class MySqlSafetyRepository {
 
   async deleteWorkOrder(id) {
     const connection = await this.pool.getConnection();
+    let storedDocuments = [];
 
     try {
       await connection.beginTransaction();
+      const [documentRows] = await connection.query(
+        `
+          SELECT storage_provider, storage_bucket, storage_key, storage_url
+          FROM web_work_order_documents
+          WHERE work_order_id = ?
+        `,
+        [Number(id)],
+      );
+      storedDocuments = documentRows.map((row) => mapWorkOrderDocumentRow(row));
       await connection.query(
         `
           UPDATE web_reminders
@@ -3313,6 +3537,7 @@ export class MySqlSafetyRepository {
       await connection.query("DELETE FROM web_work_order_documents WHERE work_order_id = ?", [Number(id)]);
       const [result] = await connection.query("DELETE FROM radni_nalozi WHERE id = ?", [Number(id)]);
       await connection.commit();
+      await cleanupStoredObjects(storedDocuments);
       return result.affectedRows > 0;
     } catch (error) {
       await connection.rollback();
@@ -4227,6 +4452,10 @@ export class MySqlSafetyRepository {
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
         createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
       }, snapshot, () => "pending-document-template", () => new Date().toISOString());
+      const preparedReference = await prepareStoredReferenceDocument(draft.referenceDocument, {
+        organizationId: draft.organizationId,
+      });
+      const persistedReference = preparedReference.nextReferenceDocument;
 
       const [result] = await connection.query(
         `
@@ -4235,8 +4464,10 @@ export class MySqlSafetyRepository {
              sample_company_id, sample_location_id, selected_legal_framework_ids_json,
              custom_fields_json, equipment_items_json, sections_json,
              reference_document_name, reference_document_type, reference_document_data_url,
+             reference_document_storage_provider, reference_document_storage_bucket,
+             reference_document_storage_key, reference_document_url,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -4251,9 +4482,13 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.customFields ?? []),
           JSON.stringify(draft.equipmentItems ?? []),
           JSON.stringify(draft.sections ?? []),
-          draft.referenceDocument?.fileName ?? "",
-          draft.referenceDocument?.fileType ?? "",
-          draft.referenceDocument?.dataUrl ?? null,
+          persistedReference?.fileName ?? "",
+          persistedReference?.fileType ?? "",
+          persistedReference?.inlineDataUrl ?? null,
+          persistedReference?.storageProvider ?? "",
+          persistedReference?.storageBucket ?? "",
+          persistedReference?.storageKey ?? "",
+          persistedReference?.storageUrl ?? null,
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
         ],
@@ -4263,6 +4498,12 @@ export class MySqlSafetyRepository {
       return {
         ...draft,
         id: String(result.insertId),
+        referenceDocument: persistedReference
+          ? {
+            ...persistedReference,
+            updatedAt: persistedReference.updatedAt || draft.updatedAt,
+          }
+          : null,
       };
     } catch (error) {
       await connection.rollback();
@@ -4291,6 +4532,11 @@ export class MySqlSafetyRepository {
         createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
         createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
       }, snapshot, () => new Date().toISOString());
+      const preparedReference = await prepareStoredReferenceDocument(next.referenceDocument, {
+        organizationId: next.organizationId,
+        currentReferenceDocument: current.referenceDocument,
+      });
+      const persistedReference = preparedReference.nextReferenceDocument;
 
       await connection.query(
         `
@@ -4298,7 +4544,9 @@ export class MySqlSafetyRepository {
           SET title = ?, document_type = ?, status = ?, description = ?, output_file_name = ?,
               sample_company_id = ?, sample_location_id = ?, selected_legal_framework_ids_json = ?,
               custom_fields_json = ?, equipment_items_json = ?, sections_json = ?,
-              reference_document_name = ?, reference_document_type = ?, reference_document_data_url = ?
+              reference_document_name = ?, reference_document_type = ?, reference_document_data_url = ?,
+              reference_document_storage_provider = ?, reference_document_storage_bucket = ?,
+              reference_document_storage_key = ?, reference_document_url = ?
           WHERE id = ?
         `,
         [
@@ -4313,15 +4561,28 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.customFields ?? []),
           JSON.stringify(next.equipmentItems ?? []),
           JSON.stringify(next.sections ?? []),
-          next.referenceDocument?.fileName ?? "",
-          next.referenceDocument?.fileType ?? "",
-          next.referenceDocument?.dataUrl ?? null,
+          persistedReference?.fileName ?? "",
+          persistedReference?.fileType ?? "",
+          persistedReference?.inlineDataUrl ?? null,
+          persistedReference?.storageProvider ?? "",
+          persistedReference?.storageBucket ?? "",
+          persistedReference?.storageKey ?? "",
+          persistedReference?.storageUrl ?? null,
           Number(id),
         ],
       );
 
       await connection.commit();
-      return next;
+      await cleanupStoredObjects([preparedReference.staleReferenceDocument].filter(Boolean));
+      return {
+        ...next,
+        referenceDocument: persistedReference
+          ? {
+            ...persistedReference,
+            updatedAt: persistedReference.updatedAt || next.updatedAt,
+          }
+          : null,
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -4332,9 +4593,12 @@ export class MySqlSafetyRepository {
 
   async deleteDocumentTemplate(id) {
     const connection = await this.pool.getConnection();
+    let currentReferenceDocument = null;
 
     try {
       await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      currentReferenceDocument = snapshot.documentTemplates.find((item) => item.id === id)?.referenceDocument ?? null;
 
       const [services] = await connection.query(
         "SELECT id, linked_template_ids_json FROM web_service_catalog WHERE linked_template_ids_json IS NOT NULL",
@@ -4358,6 +4622,7 @@ export class MySqlSafetyRepository {
 
       const [result] = await connection.query("DELETE FROM web_document_templates WHERE id = ?", [Number(id)]);
       await connection.commit();
+      await cleanupStoredObjects([currentReferenceDocument].filter(Boolean));
       return result.affectedRows > 0;
     } catch (error) {
       await connection.rollback();

@@ -524,7 +524,16 @@ async function handleEntityMutation(response, user, request, handler, statusCode
 async function handleApiRequest(request, response, url) {
   try {
     if (request.method === "GET" && url.pathname === "/api/health") {
-      sendJson(response, 200, { ok: true, storage: domainRepository.kind });
+      sendJson(response, 200, {
+        ok: true,
+        storage: domainRepository.kind,
+        objectStorage: {
+          enabled: Boolean(domainRepository.objectStorage?.enabled),
+          provider: domainRepository.objectStorage?.provider ?? "",
+          bucket: domainRepository.objectStorage?.bucket ?? "",
+          region: domainRepository.objectStorage?.region ?? "",
+        },
+      });
       return true;
     }
 
