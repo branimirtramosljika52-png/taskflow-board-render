@@ -2172,7 +2172,7 @@ function readWorkOrderExecutorSelection() {
   }
 }
 
-function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "" } = {}) {
+function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "", renderPicker = true } = {}) {
   const normalized = getWorkOrderExecutors({ executors: values });
 
   if (workOrderExecutorsDataInput) {
@@ -2183,7 +2183,9 @@ function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "" }
     }
   }
 
-  renderWorkOrderEditorExecutorPicker();
+  if (renderPicker) {
+    renderWorkOrderEditorExecutorPicker();
+  }
 }
 
 function getSelectedOptionText(select) {
@@ -4142,18 +4144,10 @@ function renderWorkOrderEditorExecutorPicker() {
     const optionsList = document.createElement("div");
     optionsList.className = "work-order-calendar-executor-options";
 
-    const footer = document.createElement("div");
-    footer.className = "work-order-calendar-executor-footer";
-
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
     clearButton.textContent = "Ocisti";
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "primary-button work-order-calendar-executor-save";
-    saveButton.textContent = "Primijeni";
 
     const selectionsEqual = (leftValues, rightValues) => {
       if (leftValues.length !== rightValues.length) {
@@ -4175,6 +4169,25 @@ function renderWorkOrderEditorExecutorPicker() {
       }
 
       draftValues = [...draftValues, normalizedValue];
+    };
+
+    const applyDraftValues = (nextValues, { focusSearch = true } = {}) => {
+      const normalized = normalizeWorkOrderExecutorValues(nextValues);
+      draftValues = normalized;
+
+      if (!selectionsEqual(normalized, getCurrentValues())) {
+        writeWorkOrderExecutorSelection(normalized, {
+          dispatchEventName: "change",
+          renderPicker: false,
+        });
+      }
+
+      setCurrentValues(normalized);
+      syncMenuState();
+
+      if (focusSearch) {
+        searchInput.focus({ preventScroll: true });
+      }
     };
 
     const renderSelection = () => {
@@ -4209,8 +4222,7 @@ function renderWorkOrderEditorExecutorPicker() {
         chip.append(avatar, label, remove);
         chip.addEventListener("click", (event) => {
           event.stopPropagation();
-          draftValues = draftValues.filter((entry) => entry !== value);
-          syncMenuState();
+          applyDraftValues(draftValues.filter((entry) => entry !== value));
         });
 
         selection.append(chip);
@@ -4242,7 +4254,6 @@ function renderWorkOrderEditorExecutorPicker() {
 
         const avatar = createWorkOrderMiniExecutor(option, {
           className: "work-order-calendar-executor-option-avatar",
-          showInitialBadge: false,
         });
 
         const label = document.createElement("span");
@@ -4258,8 +4269,7 @@ function renderWorkOrderEditorExecutorPicker() {
         optionButton.addEventListener("click", (event) => {
           event.stopPropagation();
           toggleDraftValue(option.value);
-          syncMenuState();
-          searchInput.focus({ preventScroll: true });
+          applyDraftValues(draftValues);
         });
 
         optionsList.append(optionButton);
@@ -4273,28 +4283,12 @@ function renderWorkOrderEditorExecutorPicker() {
         ? `${draftValues.length} odabranih izvrsitelja.`
         : "Odaberi jednog ili vise izvrsitelja.";
       clearButton.disabled = draftValues.length === 0;
-      saveButton.disabled = selectionsEqual(draftValues, getCurrentValues());
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
 
     clearButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      draftValues = [];
-      syncMenuState();
-      searchInput.focus({ preventScroll: true });
-    });
-
-    saveButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-
-      const nextValues = [...draftValues];
-      if (selectionsEqual(nextValues, getCurrentValues())) {
-        closeMenu();
-        return;
-      }
-
-      closeMenu();
-      writeWorkOrderExecutorSelection(nextValues, { dispatchEventName: "change" });
+      applyDraftValues([]);
     });
 
     searchInput.addEventListener("input", () => {
@@ -4324,11 +4318,10 @@ function renderWorkOrderEditorExecutorPicker() {
 
       event.preventDefault();
       toggleDraftValue(visibleOptions[0].value);
-      syncMenuState();
+      applyDraftValues(draftValues);
     });
 
-    footer.append(clearButton, saveButton);
-    menu.append(searchWrap, selection, helper, optionsList, footer);
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
 
     syncMenuState();
 
@@ -16283,18 +16276,11 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const optionsList = document.createElement("div");
     optionsList.className = "work-order-calendar-executor-options";
 
-    const footer = document.createElement("div");
-    footer.className = "work-order-calendar-executor-footer";
-
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
     clearButton.textContent = "Ocisti";
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "primary-button work-order-calendar-executor-save";
-    saveButton.textContent = "Spremi";
+    let menuPending = false;
 
     const selectionsEqual = (leftValues, rightValues) => {
       if (leftValues.length !== rightValues.length) {
@@ -16316,6 +16302,60 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       }
 
       draftValues = [...draftValues, normalizedValue];
+    };
+
+    const setMenuPending = (isPending) => {
+      menuPending = Boolean(isPending);
+      setPendingState(menuPending);
+      searchInput.disabled = menuPending;
+      syncMenuState();
+    };
+
+    const applyDraftValues = async (nextValues, { focusSearch = true } = {}) => {
+      const normalized = normalizeWorkOrderExecutorValues(nextValues);
+      draftValues = normalized;
+
+      if (selectionsEqual(normalized, getCurrentValues())) {
+        syncMenuState();
+        if (focusSearch) {
+          searchInput.focus({ preventScroll: true });
+        }
+        return;
+      }
+
+      setMenuPending(true);
+      const success = await runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
+        method: "PATCH",
+        body: {
+          executors: normalized,
+          executor1: normalized[0] || "",
+          executor2: normalized[1] || "",
+        },
+      }));
+
+      setMenuPending(false);
+
+      if (!success) {
+        draftValues = getCurrentValues();
+        syncMenuState();
+        if (focusSearch) {
+          searchInput.focus({ preventScroll: true });
+        }
+        return;
+      }
+
+      const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
+      const updatedValues = getWorkOrderCalendarExecutorValues(updatedItem ?? { executors: normalized });
+      workOrder.executors = updatedValues;
+      workOrder.executor1 = updatedValues[0] ?? "";
+      workOrder.executor2 = updatedValues[1] ?? "";
+      draftValues = updatedValues;
+      setCurrentValues(updatedValues);
+      syncMenuState();
+
+      if (focusSearch) {
+        searchInput.focus({ preventScroll: true });
+      }
     };
 
     const renderSelection = () => {
@@ -16350,8 +16390,10 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         chip.append(avatar, label, remove);
         chip.addEventListener("click", (event) => {
           event.stopPropagation();
-          draftValues = draftValues.filter((entry) => entry !== value);
-          syncMenuState();
+          if (menuPending) {
+            return;
+          }
+          void applyDraftValues(draftValues.filter((entry) => entry !== value));
         });
 
         selection.append(chip);
@@ -16382,7 +16424,6 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         optionButton.setAttribute("aria-checked", String(isSelected));
         const avatar = createWorkOrderMiniExecutor(option, {
           className: "work-order-calendar-executor-option-avatar",
-          showInitialBadge: false,
         });
 
         const label = document.createElement("span");
@@ -16397,9 +16438,11 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
         optionButton.append(avatar, label, marker);
         optionButton.addEventListener("click", (event) => {
           event.stopPropagation();
+          if (menuPending) {
+            return;
+          }
           toggleDraftValue(option.value);
-          syncMenuState();
-          searchInput.focus({ preventScroll: true });
+          void applyDraftValues(draftValues);
         });
 
         optionsList.append(optionButton);
@@ -16412,54 +16455,16 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       helper.textContent = draftValues.length > 0
         ? `${draftValues.length} odabranih izvrsitelja.`
         : "Odaberi jednog ili vise izvrsitelja.";
-      clearButton.disabled = draftValues.length === 0;
-      saveButton.disabled = selectionsEqual(draftValues, getCurrentValues());
+      clearButton.disabled = menuPending || draftValues.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
 
     clearButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      draftValues = [];
-      syncMenuState();
-      searchInput.focus({ preventScroll: true });
-    });
-
-    saveButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-
-      const nextValues = [...draftValues];
-      if (selectionsEqual(nextValues, getCurrentValues())) {
-        closeMenu();
+      if (menuPending) {
         return;
       }
-
-      setPendingState(true);
-      searchInput.disabled = true;
-      clearButton.disabled = true;
-      saveButton.disabled = true;
-
-      void runMutation(() => apiRequest(`/work-orders/${workOrder.id}`, {
-        method: "PATCH",
-        body: {
-          executors: nextValues,
-          executor1: nextValues[0] || "",
-          executor2: nextValues[1] || "",
-        },
-      })).then((success) => {
-        setPendingState(false);
-
-        if (!success) {
-          searchInput.disabled = false;
-          syncMenuState();
-          return;
-        }
-
-        const updatedItem = state.workOrders.find((entry) => String(entry.id) === String(workOrder.id));
-        const updatedValues = getWorkOrderCalendarExecutorValues(updatedItem ?? { executors: nextValues });
-
-        setCurrentValues(updatedValues);
-        closeMenu();
-      });
+      void applyDraftValues([]);
     });
 
     searchInput.addEventListener("input", () => {
@@ -16489,11 +16494,10 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
 
       event.preventDefault();
       toggleDraftValue(visibleOptions[0].value);
-      syncMenuState();
+      void applyDraftValues(draftValues);
     });
 
-    footer.append(clearButton, saveButton);
-    menu.append(searchWrap, selection, helper, optionsList, footer);
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
 
     syncMenuState();
 
@@ -18983,38 +18987,32 @@ function renderCompactWorkOrdersList() {
   const body = document.createElement("div");
   body.className = "work-group-body";
 
-  const getExecutorTone = (name) => {
-    const palette = [
-      { bg: "#e7efff", fg: "#3a63b8" },
-      { bg: "#f6e7ff", fg: "#8a47b8" },
-      { bg: "#e8f8ef", fg: "#2b7a52" },
-      { bg: "#fff0de", fg: "#a15a18" },
-      { bg: "#ffe4ea", fg: "#b23f6a" },
-      { bg: "#ecebff", fg: "#5446c9" },
-    ];
-    const normalized = String(name ?? "").trim();
-    const hash = [...normalized].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    return palette[hash % palette.length];
-  };
-
   const createExecutorDots = (executors) => {
     const wrap = document.createElement("div");
     wrap.className = "work-executor-list";
-
-    executors.slice(0, 5).forEach((executor) => {
-      wrap.append(createWorkOrderMiniExecutor(executor, { className: "work-executor-avatar" }));
-    });
-
-    if (executors.length > 5) {
-      wrap.append(createExecutorOverflowBadge(executors.length - 5, "work-executor-avatar"));
-    }
 
     if (executors.length === 0) {
       const empty = document.createElement("span");
       empty.className = "work-executor-empty";
       empty.textContent = "—";
       wrap.append(empty);
+      return wrap;
     }
+
+    executors.forEach((executor) => {
+      const chip = document.createElement("div");
+      chip.className = "work-executor-chip";
+
+      const avatar = createWorkOrderMiniExecutor(executor, { className: "work-executor-avatar" });
+      avatar.removeAttribute("title");
+
+      const name = document.createElement("span");
+      name.className = "work-executor-name";
+      name.textContent = executor;
+
+      chip.append(avatar, name);
+      wrap.append(chip);
+    });
 
     return wrap;
   };

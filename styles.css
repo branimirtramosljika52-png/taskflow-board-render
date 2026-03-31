@@ -7137,7 +7137,7 @@ body.is-work-order-editor-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--executor-bg, #eef1f5);
@@ -7175,6 +7175,7 @@ body.is-work-order-editor-open {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: inherit;
 }
 
 .work-order-mini-executor .executor-avatar-icon,
@@ -7206,23 +7207,24 @@ body.is-work-order-editor-open {
 .dashboard-executor-avatar .executor-avatar-badge,
 .work-order-calendar-executor-option-avatar .executor-avatar-badge {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
+  right: -7px;
+  bottom: -4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.92);
   background: rgba(255, 255, 255, 0.94);
   color: #29324a;
-  font-size: 0.42rem;
+  font-size: 0.5rem;
   font-weight: 900;
   line-height: 1;
   text-transform: uppercase;
   box-shadow: 0 2px 6px rgba(55, 63, 87, 0.18);
+  z-index: 2;
 }
 
 .work-order-mini-executor.is-overflow,
@@ -7248,10 +7250,12 @@ body.is-work-order-editor-open {
 }
 
 .work-order-editor-assignee .executor-avatar-badge {
-  min-width: 12px;
-  height: 12px;
+  right: -5px;
+  bottom: -3px;
+  min-width: 14px;
+  height: 14px;
   padding: 0 3px;
-  font-size: 0.38rem;
+  font-size: 0.4rem;
 }
 
 .work-order-calendar-cell {
@@ -8548,9 +8552,9 @@ body.is-work-order-editor-open {
       minmax(220px, 1.02fr)
       minmax(195px, 0.9fr)
       minmax(255px, 1.2fr)
-      minmax(110px, 0.52fr);
+      minmax(220px, 0.95fr);
   column-gap: 14px;
-  min-width: 1240px;
+  min-width: 1360px;
 }
 
 .work-group-columns {
@@ -9084,8 +9088,7 @@ body.is-work-order-editor-open {
 }
 
 .work-executor-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
 }
 
@@ -9093,6 +9096,22 @@ body.is-work-order-editor-open {
   width: 36px;
   height: 36px;
   font-size: 0.74rem;
+}
+
+.work-executor-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.work-executor-name {
+  color: #2c3448;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .work-executor-initials {
