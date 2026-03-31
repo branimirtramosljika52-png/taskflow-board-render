@@ -8,8 +8,10 @@ import {
   createDocumentTemplate,
   createLegalFramework,
   createLocation,
+  createMeasurementEquipmentItem,
   createOffer,
   createReminder,
+  createSafetyAuthorization,
   createServiceCatalogItem,
   createTodoTask,
   createTodoTaskComment,
@@ -28,8 +30,10 @@ import {
   updateDocumentTemplate,
   updateLegalFramework,
   updateLocation,
+  updateMeasurementEquipmentItem,
   updateOffer,
   updateReminder,
+  updateSafetyAuthorization,
   updateServiceCatalogItem,
   updateTodoTask,
   updateVehicle,
@@ -855,6 +859,185 @@ async function prepareStoredReferenceDocument(referenceDocument, {
   };
 }
 
+function mapStoredAttachmentDocument(document = {}) {
+  const storedDocument = mapStoredDocumentLocation({
+    dataUrl: document.dataUrl ?? document.url ?? "",
+    storageProvider: document.storageProvider ?? "",
+    storageBucket: document.storageBucket ?? "",
+    storageKey: document.storageKey ?? "",
+    storageUrl: document.storageUrl ?? document.url ?? "",
+  });
+
+  return {
+    id: dbString(document.id),
+    fileName: dbString(document.fileName ?? document.name),
+    fileType: dbString(document.fileType ?? document.mimeType),
+    fileSize: Number(document.fileSize ?? document.size ?? 0) || 0,
+    description: dbString(document.description),
+    dataUrl: storedDocument.dataUrl,
+    storageProvider: storedDocument.storageProvider,
+    storageBucket: storedDocument.storageBucket,
+    storageKey: storedDocument.storageKey,
+    storageUrl: storedDocument.storageUrl,
+    createdAt: normalizeTimestamp(document.createdAt),
+    updatedAt: normalizeTimestamp(document.updatedAt),
+  };
+}
+
+async function prepareStoredAttachmentDocuments(documents = [], {
+  keyPrefix = "",
+  currentDocuments = [],
+} = {}) {
+  const currentById = new Map(
+    (currentDocuments ?? [])
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.id)
+      .map((document) => [String(document.id), document]),
+  );
+  const nextDocuments = [];
+  const retainedIds = new Set();
+  const staleDocuments = [];
+
+  for (const rawDocument of Array.isArray(documents) ? documents : []) {
+    const document = mapStoredAttachmentDocument(rawDocument);
+
+    if (!document.fileName || !document.dataUrl) {
+      continue;
+    }
+
+    const currentDocument = document.id ? currentById.get(String(document.id)) : null;
+    if (currentDocument?.id) {
+      retainedIds.add(String(currentDocument.id));
+    }
+
+    const currentUrl = dbString(currentDocument?.dataUrl);
+    const nextUrl = dbString(document.dataUrl);
+    const matchesCurrent = currentDocument
+      && dbString(currentDocument.fileName) === document.fileName
+      && dbString(currentDocument.fileType) === document.fileType
+      && currentUrl === nextUrl;
+
+    if (matchesCurrent) {
+      nextDocuments.push({
+        ...document,
+        storageProvider: currentDocument.storageProvider ?? "",
+        storageBucket: currentDocument.storageBucket ?? "",
+        storageKey: currentDocument.storageKey ?? "",
+        storageUrl: currentDocument.storageUrl ?? "",
+        dataUrl: currentDocument.dataUrl || document.dataUrl,
+        createdAt: document.createdAt || currentDocument.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      continue;
+    }
+
+    const uploaded = await persistInlineDocumentToObjectStorage({
+      keyPrefix,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      dataUrl: document.dataUrl,
+    });
+
+    nextDocuments.push({
+      ...document,
+      dataUrl: uploaded?.storageUrl || document.dataUrl,
+      storageProvider: uploaded?.storageProvider ?? document.storageProvider ?? "",
+      storageBucket: uploaded?.storageBucket ?? document.storageBucket ?? "",
+      storageKey: uploaded?.storageKey ?? document.storageKey ?? "",
+      storageUrl: uploaded?.storageUrl ?? document.storageUrl ?? document.dataUrl,
+      createdAt: document.createdAt || currentDocument?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (currentDocument?.storageKey) {
+      staleDocuments.push(currentDocument);
+    }
+  }
+
+  for (const currentDocument of currentById.values()) {
+    if (!retainedIds.has(String(currentDocument.id)) && currentDocument.storageKey) {
+      staleDocuments.push(currentDocument);
+    }
+  }
+
+  return {
+    nextDocuments,
+    staleDocuments,
+  };
+}
+
+function buildLegalFrameworkLinkedTemplateIds(snapshot, legalFrameworkId) {
+  return (snapshot.documentTemplates ?? [])
+    .filter((template) => (template.selectedLegalFrameworkIds ?? []).some((entryId) => String(entryId) === String(legalFrameworkId)))
+    .map((template) => String(template.id))
+    .filter(Boolean);
+}
+
+function syncLegalFrameworkTemplatesInSnapshot(snapshot, legalFrameworkId, linkedTemplateIds = [], nowValue = new Date().toISOString()) {
+  const selectedTemplateIds = new Set((linkedTemplateIds ?? []).map((value) => String(value)).filter(Boolean));
+
+  snapshot.documentTemplates = (snapshot.documentTemplates ?? []).map((template) => {
+    const currentIds = Array.isArray(template.selectedLegalFrameworkIds)
+      ? template.selectedLegalFrameworkIds.map((value) => String(value)).filter(Boolean)
+      : [];
+    const hasLegalFramework = currentIds.some((entryId) => String(entryId) === String(legalFrameworkId));
+    const shouldHaveLegalFramework = selectedTemplateIds.has(String(template.id));
+
+    if (hasLegalFramework === shouldHaveLegalFramework) {
+      return template;
+    }
+
+    const nextIds = shouldHaveLegalFramework
+      ? [...currentIds, String(legalFrameworkId)]
+      : currentIds.filter((entryId) => String(entryId) !== String(legalFrameworkId));
+
+    return {
+      ...template,
+      selectedLegalFrameworkIds: Array.from(new Set(nextIds)),
+      updatedAt: nowValue,
+    };
+  });
+}
+
+async function syncLegalFrameworkTemplatesInDatabase(connection, {
+  organizationId = "",
+  legalFrameworkId = "",
+  linkedTemplateIds = [],
+} = {}) {
+  const selectedTemplateIds = new Set((linkedTemplateIds ?? []).map((value) => String(value)).filter(Boolean));
+  const [rows] = await connection.query(
+    `
+      SELECT id, selected_legal_framework_ids_json
+      FROM web_document_templates
+      WHERE organization_id = ?
+    `,
+    [Number(organizationId)],
+  );
+
+  for (const row of rows) {
+    const currentIds = parseJsonArray(row.selected_legal_framework_ids_json).map((entry) => dbString(entry)).filter(Boolean);
+    const hasLegalFramework = currentIds.some((entryId) => String(entryId) === String(legalFrameworkId));
+    const shouldHaveLegalFramework = selectedTemplateIds.has(String(row.id));
+
+    if (hasLegalFramework === shouldHaveLegalFramework) {
+      continue;
+    }
+
+    const nextIds = shouldHaveLegalFramework
+      ? [...currentIds, String(legalFrameworkId)]
+      : currentIds.filter((entryId) => String(entryId) !== String(legalFrameworkId));
+
+    await connection.query(
+      `
+        UPDATE web_document_templates
+        SET selected_legal_framework_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      [JSON.stringify(Array.from(new Set(nextIds))), Number(row.id)],
+    );
+  }
+}
+
 function mapWorkOrderDocumentRow(row) {
   const storedDocument = mapStoredDocumentLocation({
     dataUrl: row.data_url ?? row.dataUrl ?? "",
@@ -1360,40 +1543,6 @@ async function fetchSnapshotFromConnection(connection) {
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
 
-  const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, linked_template_ids_json, note, created_at, updated_at
-    FROM web_service_catalog
-    ORDER BY
-      CASE status
-        WHEN 'active' THEN 0
-        WHEN 'inactive' THEN 1
-        ELSE 9
-      END ASC,
-      service_code ASC,
-      name ASC,
-      id DESC
-  `);
-
-  const serviceCatalog = serviceCatalogRows.map((row) => {
-    const templateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
-    const linkedTemplateTitles = templateIds
-      .map((templateId) => documentTemplates.find((item) => String(item.id) === String(templateId))?.title ?? "")
-      .filter(Boolean);
-
-    return {
-      id: String(row.id),
-      organizationId: dbString(row.organization_id),
-      name: row.name ?? "",
-      serviceCode: row.service_code ?? "",
-      status: row.status ?? "active",
-      linkedTemplateIds: templateIds,
-      linkedTemplateTitles,
-      note: row.note ?? "",
-      createdAt: normalizeTimestamp(row.created_at),
-      updatedAt: normalizeTimestamp(row.updated_at),
-    };
-  });
-
   const [legalFrameworkRows] = await connection.query(`
     SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
            published_on, effective_from, review_date, status, tags_text, source_url, note,
@@ -1511,6 +1660,114 @@ async function fetchSnapshotFromConnection(connection) {
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
 
+  const documentTemplatesById = new Map(
+    documentTemplates.map((template) => [String(template.id), template]),
+  );
+
+  const [serviceCatalogRows] = await connection.query(`
+    SELECT id, organization_id, name, service_code, status, linked_template_ids_json, note, created_at, updated_at
+    FROM web_service_catalog
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'inactive' THEN 1
+        ELSE 9
+      END ASC,
+      service_code ASC,
+      name ASC,
+      id DESC
+  `);
+
+  const serviceCatalog = serviceCatalogRows.map((row) => {
+    const templateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const linkedTemplateTitles = templateIds
+      .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+      .filter(Boolean);
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      name: row.name ?? "",
+      serviceCode: row.service_code ?? "",
+      status: row.status ?? "active",
+      linkedTemplateIds: templateIds,
+      linkedTemplateTitles,
+      note: row.note ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
+  const [measurementEquipmentRows] = await connection.query(`
+    SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, inventory_number,
+           requires_calibration, calibration_date, calibration_period, valid_until, note,
+           linked_template_ids_json, documents_json, created_at, updated_at
+    FROM web_measurement_equipment
+    ORDER BY
+      valid_until ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const measurementEquipment = measurementEquipmentRows.map((row) => {
+    const linkedTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const linkedTemplateTitles = linkedTemplateIds
+      .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+      .filter(Boolean);
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      name: row.name ?? "",
+      equipmentKind: row.equipment_kind ?? "measurement",
+      manufacturer: row.manufacturer ?? "",
+      deviceType: row.device_type ?? "",
+      inventoryNumber: row.inventory_number ?? "",
+      requiresCalibration: Boolean(Number(row.requires_calibration ?? 0)),
+      calibrationDate: normalizeDateOnly(row.calibration_date),
+      calibrationPeriod: row.calibration_period ?? "",
+      validUntil: normalizeDateOnly(row.valid_until),
+      note: row.note ?? "",
+      linkedTemplateIds,
+      linkedTemplateTitles,
+      documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
+  const [safetyAuthorizationRows] = await connection.query(`
+    SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, note,
+           linked_template_ids_json, documents_json, created_at, updated_at
+    FROM web_safety_authorizations
+    ORDER BY
+      valid_until ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const safetyAuthorizations = safetyAuthorizationRows.map((row) => {
+    const linkedTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const linkedTemplateTitles = linkedTemplateIds
+      .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+      .filter(Boolean);
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      title: row.title ?? "",
+      scope: row.authorization_scope ?? "",
+      issuedOn: normalizeDateOnly(row.issued_on),
+      validUntil: normalizeDateOnly(row.valid_until),
+      note: row.note ?? "",
+      linkedTemplateIds,
+      linkedTemplateTitles,
+      documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
            size_key, limit_count, sort_order, grid_column, grid_row, grid_width, grid_height,
@@ -1550,6 +1807,8 @@ async function fetchSnapshotFromConnection(connection) {
     legalFrameworks,
     documentTemplates,
     serviceCatalog,
+    measurementEquipment,
+    safetyAuthorizations,
     dashboardWidgets,
   };
 }
@@ -1632,6 +1891,8 @@ export class InMemorySafetyRepository {
       legalFrameworks: [],
       documentTemplates: [],
       serviceCatalog: [],
+      measurementEquipment: [],
+      safetyAuthorizations: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -1756,6 +2017,23 @@ export class InMemorySafetyRepository {
         referenceDocument: item.referenceDocument
           ? { ...item.referenceDocument }
           : null,
+      })),
+      serviceCatalog: this.snapshot.serviceCatalog.map((item) => ({
+        ...item,
+        linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+        linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+      })),
+      measurementEquipment: this.snapshot.measurementEquipment.map((item) => ({
+        ...item,
+        linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+        linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
+        ...item,
+        linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+        linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
@@ -2266,8 +2544,10 @@ export class InMemorySafetyRepository {
   }
 
   async createLegalFramework(input) {
-    const item = createLegalFramework(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    const timestamp = new Date().toISOString();
+    const item = createLegalFramework(input, this.snapshot, () => crypto.randomUUID(), () => timestamp);
     this.snapshot.legalFrameworks = [item, ...this.snapshot.legalFrameworks];
+    syncLegalFrameworkTemplatesInSnapshot(this.snapshot, item.id, input.linkedTemplateIds ?? [], timestamp);
     return item;
   }
 
@@ -2278,8 +2558,12 @@ export class InMemorySafetyRepository {
       return null;
     }
 
-    const next = updateLegalFramework(current, patch, this.snapshot, () => new Date().toISOString());
+    const timestamp = new Date().toISOString();
+    const next = updateLegalFramework(current, patch, this.snapshot, () => timestamp);
     this.snapshot.legalFrameworks = this.snapshot.legalFrameworks.map((item) => (item.id === id ? next : item));
+    if (Object.prototype.hasOwnProperty.call(patch, "linkedTemplateIds")) {
+      syncLegalFrameworkTemplatesInSnapshot(this.snapshot, id, patch.linkedTemplateIds ?? [], timestamp);
+    }
     return next;
   }
 
@@ -2320,6 +2604,54 @@ export class InMemorySafetyRepository {
     return this.snapshot.serviceCatalog.length !== before;
   }
 
+  async createMeasurementEquipmentItem(input) {
+    const item = createMeasurementEquipmentItem(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.measurementEquipment = [item, ...this.snapshot.measurementEquipment];
+    return item;
+  }
+
+  async updateMeasurementEquipmentItem(id, patch) {
+    const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateMeasurementEquipmentItem(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.measurementEquipment = this.snapshot.measurementEquipment.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteMeasurementEquipmentItem(id) {
+    const before = this.snapshot.measurementEquipment.length;
+    this.snapshot.measurementEquipment = this.snapshot.measurementEquipment.filter((item) => item.id !== id);
+    return this.snapshot.measurementEquipment.length !== before;
+  }
+
+  async createSafetyAuthorization(input) {
+    const item = createSafetyAuthorization(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.safetyAuthorizations = [item, ...this.snapshot.safetyAuthorizations];
+    return item;
+  }
+
+  async updateSafetyAuthorization(id, patch) {
+    const current = this.snapshot.safetyAuthorizations.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateSafetyAuthorization(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.safetyAuthorizations = this.snapshot.safetyAuthorizations.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteSafetyAuthorization(id) {
+    const before = this.snapshot.safetyAuthorizations.length;
+    this.snapshot.safetyAuthorizations = this.snapshot.safetyAuthorizations.filter((item) => item.id !== id);
+    return this.snapshot.safetyAuthorizations.length !== before;
+  }
+
   async createDocumentTemplate(input, actor = null) {
     const item = createDocumentTemplate({
       ...input,
@@ -2350,6 +2682,26 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.documentTemplates.length;
     this.snapshot.documentTemplates = this.snapshot.documentTemplates.filter((item) => item.id !== id);
     this.snapshot.serviceCatalog = this.snapshot.serviceCatalog.map((item) => ({
+      ...item,
+      linkedTemplateIds: (item.linkedTemplateIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedTemplateTitles: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? []
+        : [...(item.linkedTemplateTitles ?? [])],
+      updatedAt: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? new Date().toISOString()
+        : item.updatedAt,
+    }));
+    this.snapshot.measurementEquipment = this.snapshot.measurementEquipment.map((item) => ({
+      ...item,
+      linkedTemplateIds: (item.linkedTemplateIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedTemplateTitles: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? []
+        : [...(item.linkedTemplateTitles ?? [])],
+      updatedAt: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? new Date().toISOString()
+        : item.updatedAt,
+    }));
+    this.snapshot.safetyAuthorizations = this.snapshot.safetyAuthorizations.map((item) => ({
       ...item,
       linkedTemplateIds: (item.linkedTemplateIds ?? []).filter((entryId) => String(entryId) !== String(id)),
       linkedTemplateTitles: (item.linkedTemplateIds ?? []).some((entryId) => String(entryId) === String(id))
@@ -2626,6 +2978,44 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_legal_frameworks_org_status (organization_id, status),
         INDEX idx_web_legal_frameworks_review (review_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_measurement_equipment (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        name VARCHAR(180) NOT NULL,
+        equipment_kind VARCHAR(24) NOT NULL DEFAULT 'measurement',
+        manufacturer VARCHAR(160) NOT NULL DEFAULT '',
+        device_type VARCHAR(160) NOT NULL DEFAULT '',
+        inventory_number VARCHAR(80) NOT NULL DEFAULT '',
+        requires_calibration TINYINT(1) NOT NULL DEFAULT 0,
+        calibration_date DATE NULL,
+        calibration_period VARCHAR(80) NOT NULL DEFAULT '',
+        valid_until DATE NULL,
+        note TEXT NULL,
+        linked_template_ids_json LONGTEXT NULL,
+        documents_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_measurement_equipment_org_valid (organization_id, valid_until),
+        INDEX idx_web_measurement_equipment_inventory (organization_id, inventory_number)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_safety_authorizations (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        authorization_scope VARCHAR(220) NOT NULL DEFAULT '',
+        issued_on DATE NULL,
+        valid_until DATE NULL,
+        note TEXT NULL,
+        linked_template_ids_json LONGTEXT NULL,
+        documents_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_safety_authorizations_org_valid (organization_id, valid_until)
       )
     `);
     await this.pool.query(`
@@ -4479,6 +4869,252 @@ export class MySqlSafetyRepository {
     }
   }
 
+  async createMeasurementEquipmentItem(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createMeasurementEquipmentItem(input, snapshot, () => "pending-measurement-equipment", () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents, {
+        keyPrefix: `measurement-equipment/${dbString(draft.organizationId) || "shared"}`,
+      });
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_measurement_equipment
+            (organization_id, name, equipment_kind, manufacturer, device_type, inventory_number,
+             requires_calibration, calibration_date, calibration_period, valid_until, note,
+             linked_template_ids_json, documents_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.name,
+          draft.equipmentKind,
+          draft.manufacturer,
+          draft.deviceType,
+          draft.inventoryNumber,
+          draft.requiresCalibration ? 1 : 0,
+          draft.calibrationDate,
+          draft.calibrationPeriod,
+          draft.validUntil,
+          draft.note,
+          JSON.stringify(draft.linkedTemplateIds ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateMeasurementEquipmentItem(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.measurementEquipment.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateMeasurementEquipmentItem(current, patch, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents, {
+        keyPrefix: `measurement-equipment/${dbString(next.organizationId) || "shared"}`,
+        currentDocuments: current.documents,
+      });
+
+      await connection.query(
+        `
+          UPDATE web_measurement_equipment
+          SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, inventory_number = ?,
+              requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
+              note = ?, linked_template_ids_json = ?, documents_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.name,
+          next.equipmentKind,
+          next.manufacturer,
+          next.deviceType,
+          next.inventoryNumber,
+          next.requiresCalibration ? 1 : 0,
+          next.calibrationDate,
+          next.calibrationPeriod,
+          next.validUntil,
+          next.note,
+          JSON.stringify(next.linkedTemplateIds ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(preparedDocuments.staleDocuments ?? []);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteMeasurementEquipmentItem(id) {
+    const connection = await this.pool.getConnection();
+    let currentDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      currentDocuments = snapshot.measurementEquipment.find((item) => item.id === id)?.documents ?? [];
+      const [result] = await connection.query("DELETE FROM web_measurement_equipment WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(currentDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createSafetyAuthorization(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createSafetyAuthorization(input, snapshot, () => "pending-safety-authorization", () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents, {
+        keyPrefix: `safety-authorizations/${dbString(draft.organizationId) || "shared"}`,
+      });
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_safety_authorizations
+            (organization_id, title, authorization_scope, issued_on, valid_until, note,
+             linked_template_ids_json, documents_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.scope,
+          draft.issuedOn,
+          draft.validUntil,
+          draft.note,
+          JSON.stringify(draft.linkedTemplateIds ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateSafetyAuthorization(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.safetyAuthorizations.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateSafetyAuthorization(current, patch, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents, {
+        keyPrefix: `safety-authorizations/${dbString(next.organizationId) || "shared"}`,
+        currentDocuments: current.documents,
+      });
+
+      await connection.query(
+        `
+          UPDATE web_safety_authorizations
+          SET title = ?, authorization_scope = ?, issued_on = ?, valid_until = ?,
+              note = ?, linked_template_ids_json = ?, documents_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.scope,
+          next.issuedOn,
+          next.validUntil,
+          next.note,
+          JSON.stringify(next.linkedTemplateIds ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(preparedDocuments.staleDocuments ?? []);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteSafetyAuthorization(id) {
+    const connection = await this.pool.getConnection();
+    let currentDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      currentDocuments = snapshot.safetyAuthorizations.find((item) => item.id === id)?.documents ?? [];
+      const [result] = await connection.query("DELETE FROM web_safety_authorizations WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(currentDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async createLegalFramework(input) {
     const connection = await this.pool.getConnection();
 
@@ -4486,7 +5122,8 @@ export class MySqlSafetyRepository {
       await connection.beginTransaction();
 
       const snapshot = await fetchSnapshotFromConnection(connection);
-      const draft = createLegalFramework(input, snapshot, () => "pending-legal-framework", () => new Date().toISOString());
+      const timestamp = new Date().toISOString();
+      const draft = createLegalFramework(input, snapshot, () => "pending-legal-framework", () => timestamp);
       const [result] = await connection.query(
         `
           INSERT INTO web_legal_frameworks
@@ -4510,6 +5147,12 @@ export class MySqlSafetyRepository {
           draft.note,
         ],
       );
+
+      await syncLegalFrameworkTemplatesInDatabase(connection, {
+        organizationId: draft.organizationId,
+        legalFrameworkId: String(result.insertId),
+        linkedTemplateIds: input.linkedTemplateIds ?? [],
+      });
 
       await connection.commit();
       return {
@@ -4538,7 +5181,8 @@ export class MySqlSafetyRepository {
         return null;
       }
 
-      const next = updateLegalFramework(current, patch, snapshot, () => new Date().toISOString());
+      const timestamp = new Date().toISOString();
+      const next = updateLegalFramework(current, patch, snapshot, () => timestamp);
 
       await connection.query(
         `
@@ -4564,6 +5208,14 @@ export class MySqlSafetyRepository {
           Number(id),
         ],
       );
+
+      if (Object.prototype.hasOwnProperty.call(patch, "linkedTemplateIds")) {
+        await syncLegalFrameworkTemplatesInDatabase(connection, {
+          organizationId: next.organizationId,
+          legalFrameworkId: id,
+          linkedTemplateIds: patch.linkedTemplateIds ?? [],
+        });
+      }
 
       await connection.commit();
       return next;
@@ -4784,6 +5436,46 @@ export class MySqlSafetyRepository {
           await connection.query(
             `
               UPDATE web_service_catalog
+              SET linked_template_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            [JSON.stringify(nextIds), Number(row.id)],
+          );
+        }
+      }
+
+      const [equipmentRows] = await connection.query(
+        "SELECT id, linked_template_ids_json FROM web_measurement_equipment WHERE linked_template_ids_json IS NOT NULL",
+      );
+
+      for (const row of equipmentRows) {
+        const currentIds = parseJsonArray(row.linked_template_ids_json).map((entry) => dbString(entry));
+        const nextIds = currentIds.filter((entryId) => String(entryId) !== String(id));
+
+        if (nextIds.length !== currentIds.length) {
+          await connection.query(
+            `
+              UPDATE web_measurement_equipment
+              SET linked_template_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            [JSON.stringify(nextIds), Number(row.id)],
+          );
+        }
+      }
+
+      const [authorizationRows] = await connection.query(
+        "SELECT id, linked_template_ids_json FROM web_safety_authorizations WHERE linked_template_ids_json IS NOT NULL",
+      );
+
+      for (const row of authorizationRows) {
+        const currentIds = parseJsonArray(row.linked_template_ids_json).map((entry) => dbString(entry));
+        const nextIds = currentIds.filter((entryId) => String(entryId) !== String(id));
+
+        if (nextIds.length !== currentIds.length) {
+          await connection.query(
+            `
+              UPDATE web_safety_authorizations
               SET linked_template_ids_json = ?, updated_at = CURRENT_TIMESTAMP
               WHERE id = ?
             `,

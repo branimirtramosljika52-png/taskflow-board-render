@@ -11,6 +11,7 @@
   DOCUMENT_TEMPLATE_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
   LEGAL_FRAMEWORK_STATUS_OPTIONS,
+  MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
   OFFER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
@@ -29,8 +30,10 @@
   deriveOfferInitials,
   filterDocumentTemplates,
   filterLegalFrameworks,
+  filterMeasurementEquipmentItems,
   filterOffers,
   filterReminders,
+  filterSafetyAuthorizations,
   filterServiceCatalogItems,
   filterTodoTasks,
   filterVehicles,
@@ -52,7 +55,9 @@
   sortDashboardWidgets,
   sortDocumentTemplates,
   sortLegalFrameworks,
+  sortMeasurementEquipmentItems,
   sortTodoTasks,
+  sortSafetyAuthorizations,
   sortServiceCatalogItems,
   sortVehicleReservations,
   sortVehicles,
@@ -449,6 +454,8 @@ const state = {
   legalFrameworks: [],
   documentTemplates: [],
   serviceCatalog: [],
+  measurementEquipment: [],
+  safetyAuthorizations: [],
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
@@ -459,6 +466,8 @@ const state = {
   activeVehicleReservationId: "",
   activeLegalFrameworkId: "",
   activeServiceCatalogId: "",
+  activeMeasurementEquipmentId: "",
+  activeSafetyAuthorizationId: "",
   activeDocumentTemplateId: "",
   companyEditorOpen: false,
   locationEditorOpen: false,
@@ -466,6 +475,8 @@ const state = {
   vehicleReservationEditorOpen: false,
   legalFrameworkEditorOpen: false,
   serviceCatalogEditorOpen: false,
+  measurementEquipmentEditorOpen: false,
+  safetyAuthorizationEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
   vehicleScheduleDate: new Date().toISOString().slice(0, 10),
@@ -479,6 +490,13 @@ const state = {
   serviceCatalogFilters: {
     query: "",
     status: "all",
+  },
+  measurementEquipmentFilters: {
+    query: "",
+    kind: "all",
+  },
+  safetyAuthorizationFilters: {
+    query: "",
   },
   documentTemplateFilters: {
     query: "",
@@ -1051,6 +1069,7 @@ const legalFrameworkEffectiveFromInput = document.querySelector("#legal-framewor
 const legalFrameworkReviewDateInput = document.querySelector("#legal-framework-review-date");
 const legalFrameworkSourceUrlInput = document.querySelector("#legal-framework-source-url");
 const legalFrameworkTagsTextInput = document.querySelector("#legal-framework-tags-text");
+const legalFrameworkTemplateList = document.querySelector("#legal-framework-template-list");
 const legalFrameworkNoteInput = document.querySelector("#legal-framework-note");
 const legalFrameworkError = document.querySelector("#legal-framework-error");
 const legalFrameworkResetButton = document.querySelector("#legal-framework-reset");
@@ -1126,6 +1145,66 @@ const serviceCatalogNoteInput = document.querySelector("#service-catalog-note");
 const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
 const serviceCatalogDeleteButton = document.querySelector("#service-catalog-delete");
+const measurementEquipmentModule = document.querySelector("#measurement-equipment-module");
+const measurementEquipmentTotalCount = document.querySelector("#measurement-equipment-total-count");
+const measurementEquipmentCalibrationCount = document.querySelector("#measurement-equipment-calibration-count");
+const measurementEquipmentExpiringCount = document.querySelector("#measurement-equipment-expiring-count");
+const measurementEquipmentFilesCount = document.querySelector("#measurement-equipment-files-count");
+const measurementEquipmentSearchInput = document.querySelector("#measurement-equipment-search");
+const measurementEquipmentFilterKindInput = document.querySelector("#measurement-equipment-filter-kind");
+const measurementEquipmentHelper = document.querySelector("#measurement-equipment-helper");
+const measurementEquipmentList = document.querySelector("#measurement-equipment-list");
+const measurementEquipmentEmpty = document.querySelector("#measurement-equipment-empty");
+const measurementEquipmentOpenFormButton = document.querySelector("#measurement-equipment-open-form");
+const measurementEquipmentEditorBackdrop = document.querySelector("#measurement-equipment-editor-backdrop");
+const measurementEquipmentEditorPanel = document.querySelector("#measurement-equipment-editor-panel");
+const measurementEquipmentEditorCloseButton = document.querySelector("#measurement-equipment-editor-close");
+const measurementEquipmentEditorBody = measurementEquipmentEditorPanel?.querySelector(".measurement-equipment-editor-body");
+const measurementEquipmentEditorTitle = document.querySelector("#measurement-equipment-editor-title");
+const measurementEquipmentForm = document.querySelector("#measurement-equipment-form");
+const measurementEquipmentIdInput = document.querySelector("#measurement-equipment-id");
+const measurementEquipmentNameInput = document.querySelector("#measurement-equipment-name");
+const measurementEquipmentKindInput = document.querySelector("#measurement-equipment-kind");
+const measurementEquipmentManufacturerInput = document.querySelector("#measurement-equipment-manufacturer");
+const measurementEquipmentTypeInput = document.querySelector("#measurement-equipment-type");
+const measurementEquipmentInventoryNumberInput = document.querySelector("#measurement-equipment-inventory-number");
+const measurementEquipmentRequiresCalibrationInput = document.querySelector("#measurement-equipment-requires-calibration");
+const measurementEquipmentCalibrationDateInput = document.querySelector("#measurement-equipment-calibration-date");
+const measurementEquipmentCalibrationPeriodInput = document.querySelector("#measurement-equipment-calibration-period");
+const measurementEquipmentValidUntilInput = document.querySelector("#measurement-equipment-valid-until");
+const measurementEquipmentTemplateList = document.querySelector("#measurement-equipment-template-list");
+const measurementEquipmentDocumentsInput = document.querySelector("#measurement-equipment-documents-input");
+const measurementEquipmentDocumentsUploadButton = document.querySelector("#measurement-equipment-documents-upload");
+const measurementEquipmentDocumentsList = document.querySelector("#measurement-equipment-documents-list");
+const measurementEquipmentNoteInput = document.querySelector("#measurement-equipment-note");
+const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
+const measurementEquipmentResetButton = document.querySelector("#measurement-equipment-reset");
+const measurementEquipmentDeleteButton = document.querySelector("#measurement-equipment-delete");
+const safetyAuthorizationModule = document.querySelector("#safety-authorization-module");
+const safetyAuthorizationTotalCount = document.querySelector("#safety-authorization-total-count");
+const safetyAuthorizationActiveCount = document.querySelector("#safety-authorization-active-count");
+const safetyAuthorizationExpiringCount = document.querySelector("#safety-authorization-expiring-count");
+const safetyAuthorizationSearchInput = document.querySelector("#safety-authorization-search");
+const safetyAuthorizationHelper = document.querySelector("#safety-authorization-helper");
+const safetyAuthorizationList = document.querySelector("#safety-authorization-list");
+const safetyAuthorizationEmpty = document.querySelector("#safety-authorization-empty");
+const safetyAuthorizationOpenFormButton = document.querySelector("#safety-authorization-open-form");
+const safetyAuthorizationEditorBackdrop = document.querySelector("#safety-authorization-editor-backdrop");
+const safetyAuthorizationEditorPanel = document.querySelector("#safety-authorization-editor-panel");
+const safetyAuthorizationEditorCloseButton = document.querySelector("#safety-authorization-editor-close");
+const safetyAuthorizationEditorBody = safetyAuthorizationEditorPanel?.querySelector(".safety-authorization-editor-body");
+const safetyAuthorizationEditorTitle = document.querySelector("#safety-authorization-editor-title");
+const safetyAuthorizationForm = document.querySelector("#safety-authorization-form");
+const safetyAuthorizationIdInput = document.querySelector("#safety-authorization-id");
+const safetyAuthorizationTitleInput = document.querySelector("#safety-authorization-title");
+const safetyAuthorizationScopeInput = document.querySelector("#safety-authorization-scope");
+const safetyAuthorizationIssuedOnInput = document.querySelector("#safety-authorization-issued-on");
+const safetyAuthorizationValidUntilInput = document.querySelector("#safety-authorization-valid-until");
+const safetyAuthorizationTemplateList = document.querySelector("#safety-authorization-template-list");
+const safetyAuthorizationNoteInput = document.querySelector("#safety-authorization-note");
+const safetyAuthorizationError = document.querySelector("#safety-authorization-error");
+const safetyAuthorizationResetButton = document.querySelector("#safety-authorization-reset");
+const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
 
 let offerFormItems = [];
 let documentTemplateFieldDrafts = [];
@@ -1134,6 +1213,7 @@ let documentTemplateSectionDrafts = [];
 let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
+let measurementEquipmentDocumentDrafts = [];
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1319,6 +1399,22 @@ if (serviceCatalogEditorPanel?.parentElement !== document.body) {
   document.body.append(serviceCatalogEditorPanel);
 }
 
+if (measurementEquipmentEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentEditorBackdrop);
+}
+
+if (measurementEquipmentEditorPanel?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentEditorPanel);
+}
+
+if (safetyAuthorizationEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(safetyAuthorizationEditorBackdrop);
+}
+
+if (safetyAuthorizationEditorPanel?.parentElement !== document.body) {
+  document.body.append(safetyAuthorizationEditorPanel);
+}
+
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -1362,6 +1458,24 @@ if (serviceCatalogEditorBackdrop) {
 if (serviceCatalogEditorPanel) {
   serviceCatalogEditorPanel.hidden = true;
   serviceCatalogEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (measurementEquipmentEditorBackdrop) {
+  measurementEquipmentEditorBackdrop.hidden = true;
+}
+
+if (measurementEquipmentEditorPanel) {
+  measurementEquipmentEditorPanel.hidden = true;
+  measurementEquipmentEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (safetyAuthorizationEditorBackdrop) {
+  safetyAuthorizationEditorBackdrop.hidden = true;
+}
+
+if (safetyAuthorizationEditorPanel) {
+  safetyAuthorizationEditorPanel.hidden = true;
+  safetyAuthorizationEditorPanel.setAttribute("aria-hidden", "true");
 }
 
 const workOrderIdInput = document.querySelector("#work-order-id");
@@ -1950,6 +2064,8 @@ function applySnapshot(payload) {
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
   state.serviceCatalog = payload.serviceCatalog ?? [];
+  state.measurementEquipment = payload.measurementEquipment ?? [];
+  state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
@@ -1996,6 +2112,16 @@ function applySnapshot(payload) {
     state.serviceCatalogEditorOpen = false;
     syncServiceCatalogEditorModal();
     resetServiceCatalogForm();
+  }
+  if (measurementEquipmentIdInput?.value && !state.measurementEquipment.some((item) => String(item.id) === String(measurementEquipmentIdInput.value))) {
+    state.measurementEquipmentEditorOpen = false;
+    syncMeasurementEquipmentEditorModal();
+    resetMeasurementEquipmentForm();
+  }
+  if (safetyAuthorizationIdInput?.value && !state.safetyAuthorizations.some((item) => String(item.id) === String(safetyAuthorizationIdInput.value))) {
+    state.safetyAuthorizationEditorOpen = false;
+    syncSafetyAuthorizationEditorModal();
+    resetSafetyAuthorizationForm();
   }
   if (documentTemplateIdInput?.value && !state.documentTemplates.some((item) => String(item.id) === String(documentTemplateIdInput.value))) {
     state.documentTemplateEditorOpen = false;
@@ -3185,8 +3311,10 @@ function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
+  const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
+  const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
 
   if (moduleViewKicker) {
@@ -3214,6 +3342,10 @@ function renderModuleView() {
     vehiclesModule.hidden = !isVehiclesModule;
   }
 
+  if (measurementEquipmentModule) {
+    measurementEquipmentModule.hidden = !isMeasurementEquipmentModule;
+  }
+
   if (offersModule) {
     offersModule.hidden = !isOffersModule;
   }
@@ -3226,12 +3358,20 @@ function renderModuleView() {
     serviceCatalogModule.hidden = !isServiceCatalogModule;
   }
 
+  if (safetyAuthorizationModule) {
+    safetyAuthorizationModule.hidden = !isSafetyAuthorizationModule;
+  }
+
   if (templateDevelopmentModule) {
     templateDevelopmentModule.hidden = !isTemplateDevelopmentModule;
   }
 
   if (isVehiclesModule) {
     renderVehiclesModule();
+  }
+
+  if (isMeasurementEquipmentModule) {
+    renderMeasurementEquipmentModule();
   }
 
   if (isOffersModule) {
@@ -3244,6 +3384,10 @@ function renderModuleView() {
 
   if (isServiceCatalogModule) {
     renderServiceCatalogModule();
+  }
+
+  if (isSafetyAuthorizationModule) {
+    renderSafetyAuthorizationModule();
   }
 
   if (isTemplateDevelopmentModule) {
@@ -7447,6 +7591,28 @@ function createCompanyIdentityCell(company) {
   return cell;
 }
 
+function createUserIdentityCell(user) {
+  const cell = document.createElement("td");
+  const stack = document.createElement("div");
+  stack.className = "people-list-cell";
+
+  const avatar = document.createElement("span");
+  avatar.className = "people-list-avatar";
+  renderAvatar(avatar, user);
+
+  const copy = document.createElement("div");
+  copy.className = "people-list-copy";
+  copy.append(
+    createListLine(user.fullName || user.email || "User", "list-primary"),
+    createListLine(user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account", "list-secondary"),
+    createListLine((user.organizations ?? []).map((organization) => organization.name).join(", ") || "Bez organizacije", "list-tertiary"),
+  );
+
+  stack.append(avatar, copy);
+  cell.append(stack);
+  return cell;
+}
+
 function createBadgeCell(badge, subtitle = "", tertiary = "") {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
@@ -8424,6 +8590,14 @@ function scrollServiceCatalogEditorToTop() {
   serviceCatalogEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function scrollMeasurementEquipmentEditorToTop() {
+  measurementEquipmentEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function scrollSafetyAuthorizationEditorToTop() {
+  safetyAuthorizationEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
 function syncLegalFrameworkEditorModal() {
   if (state.legalFrameworkEditorOpen && (
     state.activeView !== "module"
@@ -8535,6 +8709,80 @@ function syncServiceCatalogEditorModal() {
   }
 }
 
+function syncMeasurementEquipmentEditorModal() {
+  if (state.measurementEquipmentEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "measurement-equipment"
+    || !state.user
+  )) {
+    state.measurementEquipmentEditorOpen = false;
+  }
+
+  const isOpen = state.measurementEquipmentEditorOpen;
+  measurementEquipmentEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-measurement-equipment-editor-open", isOpen);
+
+  if (measurementEquipmentEditorPanel) {
+    measurementEquipmentEditorPanel.hidden = !isOpen;
+    measurementEquipmentEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (measurementEquipmentEditorBackdrop) {
+    measurementEquipmentEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (measurementEquipmentEditorCloseButton) {
+    measurementEquipmentEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollMeasurementEquipmentEditorToTop();
+      measurementEquipmentEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollMeasurementEquipmentEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function syncSafetyAuthorizationEditorModal() {
+  if (state.safetyAuthorizationEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "safety-authorization"
+    || !state.user
+  )) {
+    state.safetyAuthorizationEditorOpen = false;
+  }
+
+  const isOpen = state.safetyAuthorizationEditorOpen;
+  safetyAuthorizationEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-safety-authorization-editor-open", isOpen);
+
+  if (safetyAuthorizationEditorPanel) {
+    safetyAuthorizationEditorPanel.hidden = !isOpen;
+    safetyAuthorizationEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (safetyAuthorizationEditorBackdrop) {
+    safetyAuthorizationEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (safetyAuthorizationEditorCloseButton) {
+    safetyAuthorizationEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollSafetyAuthorizationEditorToTop();
+      safetyAuthorizationEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollSafetyAuthorizationEditorToTop();
+      }, 0);
+    });
+  }
+}
+
 function openLegalFrameworkEditor() {
   state.legalFrameworkEditorOpen = true;
   syncLegalFrameworkEditorModal();
@@ -8590,6 +8838,44 @@ function closeServiceCatalogEditor({ reset = false } = {}) {
 function dismissServiceCatalogEditor() {
   closeServiceCatalogEditor({ reset: true });
   renderServiceCatalogModule();
+}
+
+function openMeasurementEquipmentEditor() {
+  state.measurementEquipmentEditorOpen = true;
+  syncMeasurementEquipmentEditorModal();
+}
+
+function closeMeasurementEquipmentEditor({ reset = false } = {}) {
+  state.measurementEquipmentEditorOpen = false;
+  syncMeasurementEquipmentEditorModal();
+
+  if (reset) {
+    resetMeasurementEquipmentForm();
+  }
+}
+
+function dismissMeasurementEquipmentEditor() {
+  closeMeasurementEquipmentEditor({ reset: true });
+  renderMeasurementEquipmentModule();
+}
+
+function openSafetyAuthorizationEditor() {
+  state.safetyAuthorizationEditorOpen = true;
+  syncSafetyAuthorizationEditorModal();
+}
+
+function closeSafetyAuthorizationEditor({ reset = false } = {}) {
+  state.safetyAuthorizationEditorOpen = false;
+  syncSafetyAuthorizationEditorModal();
+
+  if (reset) {
+    resetSafetyAuthorizationForm();
+  }
+}
+
+function dismissSafetyAuthorizationEditor() {
+  closeSafetyAuthorizationEditor({ reset: true });
+  renderSafetyAuthorizationModule();
 }
 
 function escapeHtml(value = "") {
@@ -9376,6 +9662,198 @@ function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
 }
 
+function getCheckedValues(container, inputName) {
+  return Array.from(container?.querySelectorAll(`input[name="${inputName}"]:checked`) ?? [])
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
+function getTemplateTitlesByIds(ids = []) {
+  return (ids ?? [])
+    .map((templateId) => state.documentTemplates.find((item) => String(item.id) === String(templateId))?.title ?? "")
+    .filter(Boolean);
+}
+
+function getLegalFrameworkLinkedTemplateIds(item = {}) {
+  if (Array.isArray(item?.linkedTemplateIds) && item.linkedTemplateIds.length > 0) {
+    return item.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean);
+  }
+
+  if (!item?.id) {
+    return [];
+  }
+
+  return sortDocumentTemplates(state.documentTemplates ?? [])
+    .filter((template) => (template.selectedLegalFrameworkIds ?? []).some((entryId) => String(entryId) === String(item.id)))
+    .map((template) => String(template.id))
+    .filter(Boolean);
+}
+
+function getLegalFrameworkLinkedTemplateTitles(item = {}) {
+  if (Array.isArray(item?.linkedTemplateTitles) && item.linkedTemplateTitles.length > 0) {
+    return item.linkedTemplateTitles.map((value) => String(value ?? "").trim()).filter(Boolean);
+  }
+
+  return getTemplateTitlesByIds(getLegalFrameworkLinkedTemplateIds(item));
+}
+
+function renderTemplateSelectionChecklist(
+  container,
+  {
+    selectedIds = [],
+    inputName = "linked-template-id",
+    emptyText = "Prvo dodaj templatee u Template Development.",
+  } = {},
+) {
+  if (!container) {
+    return;
+  }
+
+  const selectedSet = new Set((selectedIds ?? []).map((value) => String(value)));
+  const templates = sortDocumentTemplates(state.documentTemplates ?? []);
+
+  if (templates.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = emptyText;
+    container.replaceChildren(empty);
+    return;
+  }
+
+  container.replaceChildren(...templates.map((template) => {
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = inputName;
+    checkbox.value = String(template.id);
+    checkbox.checked = selectedSet.has(String(template.id));
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = template.title || "Template";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getDocumentTemplateTypeLabel(template.documentType),
+      getDocumentTemplateStatusLabel(template.status),
+      template.referenceDocument?.fileName ? "Word ref" : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
+function createModuleAttachmentDraft(document = {}) {
+  return {
+    id: String(document.id || crypto.randomUUID()),
+    fileName: String(document.fileName || "").trim(),
+    fileType: String(document.fileType || "").trim(),
+    fileSize: Number(document.fileSize || 0) || 0,
+    description: String(document.description || "").trim(),
+    dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
+    storageProvider: String(document.storageProvider || "").trim(),
+    storageBucket: String(document.storageBucket || "").trim(),
+    storageKey: String(document.storageKey || "").trim(),
+    storageUrl: String(document.storageUrl || document.dataUrl || "").trim(),
+    createdAt: String(document.createdAt || new Date().toISOString()),
+    updatedAt: String(document.updatedAt || document.createdAt || new Date().toISOString()),
+  };
+}
+
+function setMeasurementEquipmentDocumentDrafts(items = []) {
+  measurementEquipmentDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((item) => item.fileName && item.dataUrl);
+}
+
+function triggerModuleAttachmentDownload(fileDocument) {
+  const href = String(fileDocument?.storageUrl || fileDocument?.dataUrl || "").trim();
+
+  if (!href) {
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = String(fileDocument?.fileName || "dokument").trim() || "dokument";
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function renderMeasurementEquipmentDocuments() {
+  if (!measurementEquipmentDocumentsList) {
+    return;
+  }
+
+  if (measurementEquipmentDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema dodanih datoteka za ovaj uredaj.";
+    measurementEquipmentDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  measurementEquipmentDocumentsList.replaceChildren(...measurementEquipmentDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName;
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      entry.fileType || "",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDate(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    if (entry.description) {
+      const description = document.createElement("p");
+      description.className = "module-attachment-description";
+      description.textContent = entry.description;
+      copy.append(description);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+
+    const openButton = createActionButton("Preuzmi", "card-button", () => {
+      triggerModuleAttachmentDownload(entry);
+    });
+    const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+      measurementEquipmentDocumentDrafts = measurementEquipmentDocumentDrafts.filter((item) => item.id !== entry.id);
+      renderMeasurementEquipmentDocuments();
+    });
+
+    actions.append(openButton, removeButton);
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueMeasurementEquipmentDocuments(files) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  measurementEquipmentDocumentDrafts = [
+    ...measurementEquipmentDocumentDrafts,
+    ...uploads.map((file) => createModuleAttachmentDraft(file)),
+  ];
+  renderMeasurementEquipmentDocuments();
+}
+
 function syncLegalFrameworkEditorChrome() {
   if (legalFrameworkEditorTitle) {
     legalFrameworkEditorTitle.textContent = legalFrameworkIdInput?.value
@@ -9418,6 +9896,7 @@ function buildLegalFrameworkPayload() {
     reviewDate: legalFrameworkReviewDateInput?.value || "",
     sourceUrl: legalFrameworkSourceUrlInput?.value || "",
     tagsText: legalFrameworkTagsTextInput?.value || "",
+    linkedTemplateIds: getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"),
     note: legalFrameworkNoteInput?.value || "",
   };
 }
@@ -9438,7 +9917,16 @@ function resetLegalFrameworkForm() {
   if (legalFrameworkError) {
     legalFrameworkError.textContent = "";
   }
+  renderLegalFrameworkTemplateChecklist([]);
   syncLegalFrameworkEditorChrome();
+}
+
+function renderLegalFrameworkTemplateChecklist(selectedIds = []) {
+  renderTemplateSelectionChecklist(legalFrameworkTemplateList, {
+    selectedIds,
+    inputName: "legal-framework-template-id",
+    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s propisom.",
+  });
 }
 
 function hydrateLegalFrameworkForm(item) {
@@ -9460,6 +9948,7 @@ function hydrateLegalFrameworkForm(item) {
   legalFrameworkSourceUrlInput.value = item.sourceUrl || "";
   legalFrameworkTagsTextInput.value = item.tagsText || "";
   legalFrameworkNoteInput.value = item.note || "";
+  renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedTemplateIds(item));
   if (legalFrameworkError) {
     legalFrameworkError.textContent = "";
   }
@@ -9545,11 +10034,10 @@ function renderLegalFrameworkModule() {
     const meta = document.createElement("p");
     meta.className = "legal-framework-card-meta";
     meta.textContent = [
-      item.category || "Propis",
-      item.referenceCode || "",
-      item.authority || "",
-      item.versionLabel || "",
-    ].filter(Boolean).join(" | ") || "Bez dodatnih oznaka";
+      item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "",
+      item.reviewDate ? `Review ${formatCompactDate(item.reviewDate)}` : "",
+      item.sourceUrl ? "Ima izvorni link" : "",
+    ].filter(Boolean).join(" | ") || "Bez dodatnih rokova i poveznica";
     heading.append(title, meta);
     head.append(createLegalFrameworkStatusBadge(item.status), heading);
 
@@ -9561,21 +10049,18 @@ function renderLegalFrameworkModule() {
     footer.className = "legal-framework-card-footer";
     const dates = document.createElement("div");
     dates.className = "legal-framework-card-dates";
-    dates.append(
-      createBadge(item.publishedOn ? `Objavljeno ${formatCompactDate(item.publishedOn)}` : "Bez datuma objave", "legal-framework-meta-badge"),
-      createBadge(item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "Bez pocetka primjene", "legal-framework-meta-badge"),
-    );
+    dates.append(createBadge(item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "Bez pocetka primjene", "legal-framework-meta-badge"));
     if (item.reviewDate) {
       dates.append(createBadge(`Review ${formatCompactDate(item.reviewDate)}`, isLegalFrameworkReviewSoon(item) ? "legal-framework-meta-badge is-review" : "legal-framework-meta-badge"));
     }
 
     const tags = document.createElement("div");
     tags.className = "legal-framework-card-tags";
-    const tagEntries = String(item.tagsText || "").split(",").map((entry) => entry.trim()).filter(Boolean).slice(0, 6);
-    if (tagEntries.length > 0) {
-      tags.append(...tagEntries.map((entry) => createBadge(entry, "legal-framework-tag")));
+    const linkedTemplateTitles = getLegalFrameworkLinkedTemplateTitles(item);
+    if (linkedTemplateTitles.length > 0) {
+      tags.append(...linkedTemplateTitles.slice(0, 5).map((entry) => createBadge(entry, "legal-framework-tag")));
     } else {
-      tags.append(createBadge("Bez tagova", "legal-framework-tag is-muted"));
+      tags.append(createBadge("Bez zapisnika", "legal-framework-tag is-muted"));
     }
 
     footer.append(dates, tags);
@@ -9768,7 +10253,7 @@ function renderServiceCatalogModule() {
   }
   if (serviceCatalogHelper) {
     serviceCatalogHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} usluga. Ovaj katalog koristimo kod otvaranja RN-a.`
+      ? `Prikazano ${visibleItems.length} usluga.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} usluga.`;
   }
 
@@ -9791,35 +10276,35 @@ function renderServiceCatalogModule() {
     const copy = document.createElement("div");
     copy.className = "service-catalog-card-copy";
 
+    const templateTitles = (item.linkedTemplateTitles ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+
     const title = document.createElement("h4");
     title.textContent = item.name || "Bez naziva";
 
     const meta = document.createElement("p");
     meta.className = "service-catalog-card-meta";
     meta.textContent = [
-      item.serviceCode || "",
-      (item.linkedTemplateIds ?? []).length > 0 ? `${item.linkedTemplateIds.length} templatea` : "Bez templatea",
-    ].filter(Boolean).join(" | ");
+      item.serviceCode || "Bez sifre",
+      templateTitles.length > 0 ? `${templateTitles.length} zapisnika` : "Bez zapisnika",
+    ].join(" | ");
 
     copy.append(title, meta);
-    head.append(createServiceCatalogStatusBadge(item.status), copy);
-
-    const note = document.createElement("p");
-    note.className = "service-catalog-card-note";
-    note.textContent = item.note || "Bez dodatne napomene.";
+    head.append(copy, createServiceCatalogStatusBadge(item.status));
 
     const templates = document.createElement("div");
     templates.className = "service-catalog-card-templates";
-    const templateTitles = (item.linkedTemplateTitles ?? [])
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean);
 
     if (templateTitles.length > 0) {
-      templateTitles.forEach((templateTitle) => {
+      templateTitles.slice(0, 3).forEach((templateTitle) => {
         templates.append(createBadge(templateTitle, "service-catalog-template-badge"));
       });
+      if (templateTitles.length > 3) {
+        templates.append(createBadge(`+${templateTitles.length - 3}`, "service-catalog-template-badge is-muted"));
+      }
     } else {
-      templates.append(createBadge("Bez templatea", "service-catalog-template-badge is-muted"));
+      templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
     }
 
     const footer = document.createElement("div");
@@ -9828,7 +10313,7 @@ function renderServiceCatalogModule() {
     const updated = document.createElement("span");
     updated.className = "service-catalog-card-updated";
     updated.textContent = item.updatedAt
-      ? `Ažurirano ${formatCompactDate(item.updatedAt)}`
+      ? `Azurirano ${formatCompactDate(item.updatedAt)}`
       : "Novo";
     footer.append(updated);
 
@@ -9855,7 +10340,14 @@ function renderServiceCatalogModule() {
       });
     }
 
-    card.append(head, note, templates, footer);
+    card.append(head, templates);
+    if (item.note) {
+      const note = document.createElement("p");
+      note.className = "service-catalog-card-note";
+      note.textContent = item.note;
+      card.append(note);
+    }
+    card.append(footer);
     return card;
   }));
 
@@ -9867,6 +10359,455 @@ function renderServiceCatalogModule() {
       ? "Nema usluga za ove filtere. Dodaj novu uslugu i poveži je s templateom."
       : "Nema usluga za prikaz u odabranoj organizaciji.";
     serviceCatalogList.replaceChildren(empty);
+  }
+}
+
+function isUpcomingIsoDate(value, windowDays = 45) {
+  if (!value) {
+    return false;
+  }
+
+  const date = parseDateValue(value);
+
+  if (!date) {
+    return false;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const soon = new Date(now);
+  soon.setDate(soon.getDate() + windowDays);
+  return date >= now && date <= soon;
+}
+
+function getMeasurementEquipmentTemplateSelectionIds() {
+  return getCheckedValues(measurementEquipmentTemplateList, "measurement-equipment-template-id");
+}
+
+function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
+  renderTemplateSelectionChecklist(measurementEquipmentTemplateList, {
+    selectedIds,
+    inputName: "measurement-equipment-template-id",
+    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s opremom.",
+  });
+}
+
+function buildMeasurementEquipmentPayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    name: measurementEquipmentNameInput?.value || "",
+    equipmentKind: measurementEquipmentKindInput?.value || "measurement",
+    manufacturer: measurementEquipmentManufacturerInput?.value || "",
+    deviceType: measurementEquipmentTypeInput?.value || "",
+    inventoryNumber: measurementEquipmentInventoryNumberInput?.value || "",
+    requiresCalibration: measurementEquipmentRequiresCalibrationInput?.value === "true",
+    calibrationDate: measurementEquipmentCalibrationDateInput?.value || "",
+    calibrationPeriod: measurementEquipmentCalibrationPeriodInput?.value || "",
+    validUntil: measurementEquipmentValidUntilInput?.value || "",
+    linkedTemplateIds: getMeasurementEquipmentTemplateSelectionIds(),
+    documents: measurementEquipmentDocumentDrafts.map((item) => ({ ...item })),
+    note: measurementEquipmentNoteInput?.value || "",
+  };
+}
+
+function syncMeasurementEquipmentEditorChrome() {
+  if (measurementEquipmentEditorTitle) {
+    measurementEquipmentEditorTitle.textContent = measurementEquipmentIdInput?.value
+      ? `Uredi opremu | ${measurementEquipmentNameInput?.value?.trim() || "Bez naziva"}`
+      : "Nova oprema";
+  }
+
+  if (measurementEquipmentDeleteButton) {
+    measurementEquipmentDeleteButton.hidden = !measurementEquipmentIdInput?.value;
+  }
+}
+
+function resetMeasurementEquipmentForm() {
+  if (!measurementEquipmentForm) {
+    return;
+  }
+
+  measurementEquipmentForm.reset();
+  state.activeMeasurementEquipmentId = "";
+  if (measurementEquipmentIdInput) {
+    measurementEquipmentIdInput.value = "";
+  }
+  if (measurementEquipmentKindInput) {
+    measurementEquipmentKindInput.value = "measurement";
+  }
+  if (measurementEquipmentRequiresCalibrationInput) {
+    measurementEquipmentRequiresCalibrationInput.value = "true";
+  }
+  if (measurementEquipmentError) {
+    measurementEquipmentError.textContent = "";
+  }
+  setMeasurementEquipmentDocumentDrafts([]);
+  renderMeasurementEquipmentDocuments();
+  renderMeasurementEquipmentTemplateChecklist([]);
+  syncMeasurementEquipmentEditorChrome();
+}
+
+function hydrateMeasurementEquipmentForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "measurement-equipment";
+  renderActiveView();
+  renderModuleView();
+  state.activeMeasurementEquipmentId = item.id;
+  measurementEquipmentIdInput.value = item.id || "";
+  measurementEquipmentNameInput.value = item.name || "";
+  measurementEquipmentKindInput.value = item.equipmentKind || "measurement";
+  measurementEquipmentManufacturerInput.value = item.manufacturer || "";
+  measurementEquipmentTypeInput.value = item.deviceType || "";
+  measurementEquipmentInventoryNumberInput.value = item.inventoryNumber || "";
+  measurementEquipmentRequiresCalibrationInput.value = item.requiresCalibration ? "true" : "false";
+  measurementEquipmentCalibrationDateInput.value = item.calibrationDate || "";
+  measurementEquipmentCalibrationPeriodInput.value = item.calibrationPeriod || "";
+  measurementEquipmentValidUntilInput.value = item.validUntil || "";
+  measurementEquipmentNoteInput.value = item.note || "";
+  if (measurementEquipmentError) {
+    measurementEquipmentError.textContent = "";
+  }
+  setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
+  renderMeasurementEquipmentDocuments();
+  renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
+  syncMeasurementEquipmentEditorChrome();
+  openMeasurementEquipmentEditor();
+  requestAnimationFrame(() => {
+    measurementEquipmentNameInput?.focus({ preventScroll: true });
+  });
+}
+
+function renderMeasurementEquipmentModule() {
+  if (!measurementEquipmentModule || !measurementEquipmentList || !measurementEquipmentEmpty) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const filters = {
+    query: measurementEquipmentSearchInput?.value?.trim() || state.measurementEquipmentFilters.query || "",
+    kind: measurementEquipmentFilterKindInput?.value || state.measurementEquipmentFilters.kind || "all",
+  };
+  state.measurementEquipmentFilters = filters;
+
+  const allItems = sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
+  const visibleItems = sortMeasurementEquipmentItems(filterMeasurementEquipmentItems(
+    (state.measurementEquipment ?? []).filter((item) => filters.kind === "all" || item.equipmentKind === filters.kind),
+    { query: filters.query },
+  ));
+
+  if (measurementEquipmentOpenFormButton) {
+    measurementEquipmentOpenFormButton.hidden = !canManageMasterData;
+  }
+  if (measurementEquipmentDeleteButton) {
+    measurementEquipmentDeleteButton.hidden = !measurementEquipmentIdInput?.value || !canManageMasterData;
+  }
+  if (measurementEquipmentTotalCount) {
+    measurementEquipmentTotalCount.textContent = String(allItems.length);
+  }
+  if (measurementEquipmentCalibrationCount) {
+    measurementEquipmentCalibrationCount.textContent = String(allItems.filter((item) => item.requiresCalibration).length);
+  }
+  if (measurementEquipmentExpiringCount) {
+    measurementEquipmentExpiringCount.textContent = String(allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length);
+  }
+  if (measurementEquipmentFilesCount) {
+    measurementEquipmentFilesCount.textContent = String(allItems.filter((item) => (item.documents ?? []).length > 0).length);
+  }
+  if (measurementEquipmentHelper) {
+    measurementEquipmentHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} stavki opreme.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} stavki opreme.`;
+  }
+
+  measurementEquipmentList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = `measurement-equipment-card is-${slugifyValue(item.equipmentKind || "measurement")}`;
+    if (String(item.id) === String(measurementEquipmentIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    if (canManageMasterData) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
+
+    const head = document.createElement("div");
+    head.className = "measurement-equipment-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "measurement-equipment-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = item.name || "Bez naziva";
+    const meta = document.createElement("p");
+    meta.className = "measurement-equipment-card-meta";
+    meta.textContent = [
+      item.manufacturer || "",
+      item.deviceType || "",
+      item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+    ].filter(Boolean).join(" | ") || "Bez dodatnih podataka";
+    copy.append(title, meta);
+
+    const badges = document.createElement("div");
+    badges.className = "measurement-equipment-card-badges";
+    badges.append(
+      createBadge(getOptionLabel(MEASUREMENT_EQUIPMENT_KIND_OPTIONS, item.equipmentKind || "measurement"), "document-template-meta-badge"),
+      createBadge(item.requiresCalibration ? "Umjerava se" : "Bez umjeravanja", item.requiresCalibration ? "document-template-status-badge is-active" : "document-template-status-badge is-archived"),
+    );
+    head.append(copy, badges);
+
+    const footer = document.createElement("div");
+    footer.className = "measurement-equipment-card-footer";
+
+    const dates = document.createElement("div");
+    dates.className = "measurement-equipment-card-chips";
+    dates.append(
+      createBadge(item.calibrationDate ? `Umj. ${formatCompactDate(item.calibrationDate)}` : "Bez datuma umj.", "measurement-equipment-chip"),
+      createBadge(item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Bez roka", isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"),
+    );
+    if (item.calibrationPeriod) {
+      dates.append(createBadge(item.calibrationPeriod, "measurement-equipment-chip"));
+    }
+
+    const templates = document.createElement("div");
+    templates.className = "measurement-equipment-card-chips";
+    if ((item.linkedTemplateTitles ?? []).length > 0) {
+      (item.linkedTemplateTitles ?? []).slice(0, 4).forEach((entry) => {
+        templates.append(createBadge(entry, "service-catalog-template-badge"));
+      });
+    } else {
+      templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
+    }
+
+    const note = document.createElement("p");
+    note.className = "measurement-equipment-card-note";
+    note.textContent = item.note || ((item.documents ?? []).length > 0
+      ? `${item.documents.length} datotek${item.documents.length === 1 ? "a" : "e"} spremljeno`
+      : "Bez dodatne napomene.");
+
+    footer.append(dates, templates);
+    card.append(head, note, footer);
+
+    const openItem = () => {
+      if (!canManageMasterData) {
+        return;
+      }
+      hydrateMeasurementEquipmentForm(item);
+    };
+
+    if (canManageMasterData) {
+      card.addEventListener("click", openItem);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openItem();
+      });
+    }
+
+    return card;
+  }));
+
+  measurementEquipmentEmpty.hidden = visibleItems.length !== 0;
+  if (visibleItems.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = canManageMasterData
+      ? "Nema opreme za ove filtere. Dodaj prvu stavku opreme i povezi je sa zapisnicima."
+      : "Nema opreme za prikaz u odabranoj organizaciji.";
+    measurementEquipmentList.replaceChildren(empty);
+  }
+}
+
+function getSafetyAuthorizationTemplateSelectionIds() {
+  return getCheckedValues(safetyAuthorizationTemplateList, "safety-authorization-template-id");
+}
+
+function renderSafetyAuthorizationTemplateChecklist(selectedIds = []) {
+  renderTemplateSelectionChecklist(safetyAuthorizationTemplateList, {
+    selectedIds,
+    inputName: "safety-authorization-template-id",
+    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s ovlastenjem.",
+  });
+}
+
+function buildSafetyAuthorizationPayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    title: safetyAuthorizationTitleInput?.value || "",
+    scope: safetyAuthorizationScopeInput?.value || "",
+    issuedOn: safetyAuthorizationIssuedOnInput?.value || "",
+    validUntil: safetyAuthorizationValidUntilInput?.value || "",
+    linkedTemplateIds: getSafetyAuthorizationTemplateSelectionIds(),
+    note: safetyAuthorizationNoteInput?.value || "",
+  };
+}
+
+function syncSafetyAuthorizationEditorChrome() {
+  if (safetyAuthorizationEditorTitle) {
+    safetyAuthorizationEditorTitle.textContent = safetyAuthorizationIdInput?.value
+      ? `Uredi ovlastenje | ${safetyAuthorizationTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novo ovlastenje";
+  }
+
+  if (safetyAuthorizationDeleteButton) {
+    safetyAuthorizationDeleteButton.hidden = !safetyAuthorizationIdInput?.value;
+  }
+}
+
+function resetSafetyAuthorizationForm() {
+  if (!safetyAuthorizationForm) {
+    return;
+  }
+
+  safetyAuthorizationForm.reset();
+  state.activeSafetyAuthorizationId = "";
+  if (safetyAuthorizationIdInput) {
+    safetyAuthorizationIdInput.value = "";
+  }
+  if (safetyAuthorizationError) {
+    safetyAuthorizationError.textContent = "";
+  }
+  renderSafetyAuthorizationTemplateChecklist([]);
+  syncSafetyAuthorizationEditorChrome();
+}
+
+function hydrateSafetyAuthorizationForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "safety-authorization";
+  renderActiveView();
+  renderModuleView();
+  state.activeSafetyAuthorizationId = item.id;
+  safetyAuthorizationIdInput.value = item.id || "";
+  safetyAuthorizationTitleInput.value = item.title || "";
+  safetyAuthorizationScopeInput.value = item.scope || "";
+  safetyAuthorizationIssuedOnInput.value = item.issuedOn || "";
+  safetyAuthorizationValidUntilInput.value = item.validUntil || "";
+  safetyAuthorizationNoteInput.value = item.note || "";
+  if (safetyAuthorizationError) {
+    safetyAuthorizationError.textContent = "";
+  }
+  renderSafetyAuthorizationTemplateChecklist(item.linkedTemplateIds ?? []);
+  syncSafetyAuthorizationEditorChrome();
+  openSafetyAuthorizationEditor();
+  requestAnimationFrame(() => {
+    safetyAuthorizationTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+function renderSafetyAuthorizationModule() {
+  if (!safetyAuthorizationModule || !safetyAuthorizationList || !safetyAuthorizationEmpty) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const filters = {
+    query: safetyAuthorizationSearchInput?.value?.trim() || state.safetyAuthorizationFilters.query || "",
+  };
+  state.safetyAuthorizationFilters = filters;
+
+  const allItems = sortSafetyAuthorizations(state.safetyAuthorizations ?? []);
+  const visibleItems = sortSafetyAuthorizations(filterSafetyAuthorizations(state.safetyAuthorizations ?? [], filters));
+  const activeItems = allItems.filter((item) => !item.validUntil || !parseDateValue(item.validUntil) || parseDateValue(item.validUntil) >= new Date(new Date().setHours(0, 0, 0, 0)));
+
+  if (safetyAuthorizationOpenFormButton) {
+    safetyAuthorizationOpenFormButton.hidden = !canManageMasterData;
+  }
+  if (safetyAuthorizationDeleteButton) {
+    safetyAuthorizationDeleteButton.hidden = !safetyAuthorizationIdInput?.value || !canManageMasterData;
+  }
+  if (safetyAuthorizationTotalCount) {
+    safetyAuthorizationTotalCount.textContent = String(allItems.length);
+  }
+  if (safetyAuthorizationActiveCount) {
+    safetyAuthorizationActiveCount.textContent = String(activeItems.length);
+  }
+  if (safetyAuthorizationExpiringCount) {
+    safetyAuthorizationExpiringCount.textContent = String(allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length);
+  }
+  if (safetyAuthorizationHelper) {
+    safetyAuthorizationHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} ovlastenja. Ovdje povezujes ih sa zapisnicima.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} ovlastenja.`;
+  }
+
+  safetyAuthorizationList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = "safety-authorization-card";
+    if (String(item.id) === String(safetyAuthorizationIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    if (canManageMasterData) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
+
+    const head = document.createElement("div");
+    head.className = "safety-authorization-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "safety-authorization-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Bez naziva";
+    const meta = document.createElement("p");
+    meta.className = "safety-authorization-card-meta";
+    meta.textContent = item.scope || "Bez definiranog opsega";
+    copy.append(title, meta);
+
+    const dates = document.createElement("div");
+    dates.className = "safety-authorization-card-chips";
+    if (item.issuedOn) {
+      dates.append(createBadge(`Izdano ${formatCompactDate(item.issuedOn)}`, "measurement-equipment-chip"));
+    }
+    dates.append(createBadge(item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Bez roka", isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"));
+    head.append(copy, dates);
+
+    const templates = document.createElement("div");
+    templates.className = "safety-authorization-card-chips";
+    if ((item.linkedTemplateTitles ?? []).length > 0) {
+      (item.linkedTemplateTitles ?? []).slice(0, 4).forEach((entry) => {
+        templates.append(createBadge(entry, "service-catalog-template-badge"));
+      });
+    } else {
+      templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
+    }
+
+    const note = document.createElement("p");
+    note.className = "safety-authorization-card-note";
+    note.textContent = item.note || "Bez dodatne napomene.";
+
+    card.append(head, templates, note);
+
+    const openItem = () => {
+      if (!canManageMasterData) {
+        return;
+      }
+      hydrateSafetyAuthorizationForm(item);
+    };
+
+    if (canManageMasterData) {
+      card.addEventListener("click", openItem);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openItem();
+      });
+    }
+
+    return card;
+  }));
+
+  safetyAuthorizationEmpty.hidden = visibleItems.length !== 0;
+  if (visibleItems.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = canManageMasterData
+      ? "Nema ovlastenja za ove filtere. Dodaj prvo ovlastenje i povezi ga sa zapisnicima."
+      : "Nema ovlastenja za prikaz u odabranoj organizaciji.";
+    safetyAuthorizationList.replaceChildren(empty);
   }
 }
 
@@ -15956,6 +16897,8 @@ function renderActiveView() {
   syncVehicleReservationModal();
   syncLegalFrameworkEditorModal();
   syncServiceCatalogEditorModal();
+  syncMeasurementEquipmentEditorModal();
+  syncSafetyAuthorizationEditorModal();
   syncDocumentTemplateEditorModal();
 }
 
@@ -15974,6 +16917,12 @@ function renderSharedOptions() {
   }
   if (serviceCatalogSearchInput && serviceCatalogSearchInput.value !== state.serviceCatalogFilters.query) {
     serviceCatalogSearchInput.value = state.serviceCatalogFilters.query;
+  }
+  if (measurementEquipmentSearchInput && measurementEquipmentSearchInput.value !== state.measurementEquipmentFilters.query) {
+    measurementEquipmentSearchInput.value = state.measurementEquipmentFilters.query;
+  }
+  if (safetyAuthorizationSearchInput && safetyAuthorizationSearchInput.value !== state.safetyAuthorizationFilters.query) {
+    safetyAuthorizationSearchInput.value = state.safetyAuthorizationFilters.query;
   }
   if (documentTemplateSearchInput && documentTemplateSearchInput.value !== state.documentTemplateFilters.query) {
     documentTemplateSearchInput.value = state.documentTemplateFilters.query;
@@ -16033,6 +16982,15 @@ function renderSharedOptions() {
       ...SERVICE_CATALOG_STATUS_OPTIONS,
     ], state.serviceCatalogFilters.status || "all");
   }
+  if (measurementEquipmentKindInput) {
+    replaceSelectOptions(measurementEquipmentKindInput, MEASUREMENT_EQUIPMENT_KIND_OPTIONS, measurementEquipmentKindInput.value || "measurement");
+  }
+  if (measurementEquipmentFilterKindInput) {
+    replaceSelectOptions(measurementEquipmentFilterKindInput, [
+      { value: "all", label: "Sva oprema" },
+      ...MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
+    ], state.measurementEquipmentFilters.kind || "all");
+  }
   if (documentTemplateTypeInput) {
     replaceSelectOptions(documentTemplateTypeInput, DOCUMENT_TEMPLATE_TYPE_OPTIONS, documentTemplateTypeInput.value || "Zapisnik");
   }
@@ -16090,6 +17048,19 @@ function renderSharedOptions() {
   renderWorkOrderServiceSelection();
   if (state.serviceCatalogEditorOpen) {
     renderServiceCatalogTemplateChecklist(getServiceCatalogTemplateSelectionIds());
+  }
+  if (state.legalFrameworkEditorOpen) {
+    renderLegalFrameworkTemplateChecklist(getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"));
+  }
+  if (state.measurementEquipmentEditorOpen) {
+    renderMeasurementEquipmentTemplateChecklist(getMeasurementEquipmentTemplateSelectionIds());
+    renderMeasurementEquipmentDocuments();
+  }
+  if (state.safetyAuthorizationEditorOpen) {
+    renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationTemplateSelectionIds());
+  }
+  if (measurementEquipmentDocumentsInput) {
+    measurementEquipmentDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
   syncCompanySelectionPreview(
     workOrderCompanyIdInput?.value || "",
@@ -20440,11 +21411,7 @@ function renderUsers() {
     }
 
     row.append(
-      createStackCell({
-        title: user.fullName || user.email,
-        subtitle: user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
-        tertiary: (user.organizations ?? []).map((organization) => organization.name).join(", "),
-      }),
+      createUserIdentityCell(user),
       createStackCell({
         title: user.email,
         subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Jos bez prijave",
@@ -21623,6 +22590,94 @@ legalFrameworkForm?.addEventListener("submit", (event) => {
   });
 });
 
+measurementEquipmentSearchInput?.addEventListener("input", () => {
+  state.measurementEquipmentFilters.query = measurementEquipmentSearchInput.value.trim();
+  renderMeasurementEquipmentModule();
+});
+
+measurementEquipmentFilterKindInput?.addEventListener("change", () => {
+  state.measurementEquipmentFilters.kind = measurementEquipmentFilterKindInput.value || "all";
+  renderMeasurementEquipmentModule();
+});
+
+measurementEquipmentOpenFormButton?.addEventListener("click", () => {
+  resetMeasurementEquipmentForm();
+  renderMeasurementEquipmentModule();
+  openMeasurementEquipmentEditor();
+  requestAnimationFrame(() => {
+    measurementEquipmentNameInput?.focus({ preventScroll: true });
+  });
+});
+
+measurementEquipmentEditorCloseButton?.addEventListener("click", () => {
+  dismissMeasurementEquipmentEditor();
+});
+
+measurementEquipmentEditorBackdrop?.addEventListener("click", () => {
+  dismissMeasurementEquipmentEditor();
+});
+
+measurementEquipmentResetButton?.addEventListener("click", () => {
+  resetMeasurementEquipmentForm();
+  renderMeasurementEquipmentModule();
+  openMeasurementEquipmentEditor();
+});
+
+measurementEquipmentDeleteButton?.addEventListener("click", () => {
+  const equipmentId = measurementEquipmentIdInput?.value || "";
+
+  if (!equipmentId || !window.confirm("Obrisati ovu stavku opreme?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/measurement-equipment/${equipmentId}`, {
+    method: "DELETE",
+  }), measurementEquipmentError).then((success) => {
+    if (success) {
+      closeMeasurementEquipmentEditor({ reset: true });
+      renderMeasurementEquipmentModule();
+    }
+  });
+});
+
+measurementEquipmentForm?.addEventListener("input", () => {
+  syncMeasurementEquipmentEditorChrome();
+});
+
+measurementEquipmentDocumentsUploadButton?.addEventListener("click", () => {
+  measurementEquipmentDocumentsInput?.click();
+});
+
+measurementEquipmentDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(measurementEquipmentDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueMeasurementEquipmentDocuments(files), measurementEquipmentError).then(() => {
+    measurementEquipmentDocumentsInput.value = "";
+  });
+});
+
+measurementEquipmentForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(measurementEquipmentIdInput?.value);
+  const path = isEditing ? `/measurement-equipment/${measurementEquipmentIdInput.value}` : "/measurement-equipment";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildMeasurementEquipmentPayload(),
+  }), measurementEquipmentError).then((success) => {
+    if (success) {
+      closeMeasurementEquipmentEditor({ reset: true });
+      renderMeasurementEquipmentModule();
+    }
+  });
+});
+
 serviceCatalogSearchInput?.addEventListener("input", () => {
   state.serviceCatalogFilters.query = serviceCatalogSearchInput.value.trim();
   renderServiceCatalogModule();
@@ -21691,6 +22746,73 @@ serviceCatalogForm?.addEventListener("submit", (event) => {
       renderServiceCatalogModule();
       renderWorkOrderServicePicker();
       renderWorkOrderServiceSelection();
+    }
+  });
+});
+
+safetyAuthorizationSearchInput?.addEventListener("input", () => {
+  state.safetyAuthorizationFilters.query = safetyAuthorizationSearchInput.value.trim();
+  renderSafetyAuthorizationModule();
+});
+
+safetyAuthorizationOpenFormButton?.addEventListener("click", () => {
+  resetSafetyAuthorizationForm();
+  renderSafetyAuthorizationModule();
+  openSafetyAuthorizationEditor();
+  requestAnimationFrame(() => {
+    safetyAuthorizationTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+safetyAuthorizationEditorCloseButton?.addEventListener("click", () => {
+  dismissSafetyAuthorizationEditor();
+});
+
+safetyAuthorizationEditorBackdrop?.addEventListener("click", () => {
+  dismissSafetyAuthorizationEditor();
+});
+
+safetyAuthorizationResetButton?.addEventListener("click", () => {
+  resetSafetyAuthorizationForm();
+  renderSafetyAuthorizationModule();
+  openSafetyAuthorizationEditor();
+});
+
+safetyAuthorizationDeleteButton?.addEventListener("click", () => {
+  const authorizationId = safetyAuthorizationIdInput?.value || "";
+
+  if (!authorizationId || !window.confirm("Obrisati ovo ovlastenje?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/safety-authorizations/${authorizationId}`, {
+    method: "DELETE",
+  }), safetyAuthorizationError).then((success) => {
+    if (success) {
+      closeSafetyAuthorizationEditor({ reset: true });
+      renderSafetyAuthorizationModule();
+    }
+  });
+});
+
+safetyAuthorizationForm?.addEventListener("input", () => {
+  syncSafetyAuthorizationEditorChrome();
+});
+
+safetyAuthorizationForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(safetyAuthorizationIdInput?.value);
+  const path = isEditing ? `/safety-authorizations/${safetyAuthorizationIdInput.value}` : "/safety-authorizations";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildSafetyAuthorizationPayload(),
+  }), safetyAuthorizationError).then((success) => {
+    if (success) {
+      closeSafetyAuthorizationEditor({ reset: true });
+      renderSafetyAuthorizationModule();
     }
   });
 });
@@ -22534,6 +23656,8 @@ logoutButton.addEventListener("click", () => {
     state.vehicles = [];
     state.legalFrameworks = [];
     state.serviceCatalog = [];
+    state.measurementEquipment = [];
+    state.safetyAuthorizations = [];
     state.documentTemplates = [];
     state.dashboardWidgets = [];
     state.companies = [];
@@ -22545,6 +23669,8 @@ logoutButton.addEventListener("click", () => {
     state.activeDashboardWidgetId = "";
     state.activeLegalFrameworkId = "";
     state.activeServiceCatalogId = "";
+    state.activeMeasurementEquipmentId = "";
+    state.activeSafetyAuthorizationId = "";
     state.activeDocumentTemplateId = "";
     closeDashboardBuilder();
     state.measurementSheet.columns = [];
@@ -22565,6 +23691,8 @@ logoutButton.addEventListener("click", () => {
     resetOfferForm();
     resetLegalFrameworkForm();
     resetServiceCatalogForm();
+    resetMeasurementEquipmentForm();
+    resetSafetyAuthorizationForm();
     resetDocumentTemplateForm();
     renderAuthState();
     void refreshLoginContent();

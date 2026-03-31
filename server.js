@@ -657,6 +657,8 @@ async function handleApiRequest(request, response, url) {
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
+    const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
+    const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
@@ -948,7 +950,25 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body, "linkedTemplateIds");
       await domainRepository.createLegalFramework({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/measurement-equipment") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati mjernom opremom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createMeasurementEquipmentItem({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -966,6 +986,23 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       await domainRepository.createServiceCatalogItem({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/safety-authorizations") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ovlastenjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createSafetyAuthorization({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -1322,6 +1359,7 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronaden.");
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body, "linkedTemplateIds");
       const updated = await domainRepository.updateLegalFramework(legalFrameworkMatch[1], {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
@@ -1329,6 +1367,30 @@ async function handleApiRequest(request, response, url) {
 
       if (!updated) {
         sendError(response, 404, "Propis nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (measurementEquipmentMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati mjernom opremom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uredaj nije pronaden.");
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateMeasurementEquipmentItem(measurementEquipmentMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Uredaj nije pronaden.");
         return true;
       }
 
@@ -1353,6 +1415,30 @@ async function handleApiRequest(request, response, url) {
 
       if (!updated) {
         sendError(response, 404, "Usluga nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (safetyAuthorizationMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ovlastenjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlastenje nije pronadeno.");
+      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateSafetyAuthorization(safetyAuthorizationMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Ovlastenje nije pronadeno.");
         return true;
       }
 
@@ -1564,6 +1650,25 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (measurementEquipmentMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati mjernu opremu.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uredaj nije pronaden.");
+      const deleted = await domainRepository.deleteMeasurementEquipmentItem(measurementEquipmentMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Uredaj nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (serviceCatalogMatch && request.method === "DELETE") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo brisati usluge.");
@@ -1576,6 +1681,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Usluga nije pronadena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (safetyAuthorizationMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati ovlastenja.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlastenje nije pronadeno.");
+      const deleted = await domainRepository.deleteSafetyAuthorization(safetyAuthorizationMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Ovlastenje nije pronadeno.");
         return true;
       }
 

@@ -13,8 +13,10 @@ import {
   createDocumentTemplate,
   createLegalFramework,
   createLocation,
+  createMeasurementEquipmentItem,
   createOffer,
   createReminder,
+  createSafetyAuthorization,
   createServiceCatalogItem,
   createTodoTask,
   createTodoTaskComment,
@@ -25,7 +27,9 @@ import {
   filterReminders,
   filterDocumentTemplates,
   filterLegalFrameworks,
+  filterMeasurementEquipmentItems,
   filterOffers,
+  filterSafetyAuthorizations,
   filterServiceCatalogItems,
   filterTodoTasks,
   filterVehicles,
@@ -46,7 +50,9 @@ import {
   sortDashboardWidgets,
   sortDocumentTemplates,
   sortLegalFrameworks,
+  sortMeasurementEquipmentItems,
   sortOffers,
+  sortSafetyAuthorizations,
   sortServiceCatalogItems,
   sortVehicles,
   sortTodoTasks,
@@ -57,8 +63,10 @@ import {
   updateCompany,
   updateLegalFramework,
   updateLocation,
+  updateMeasurementEquipmentItem,
   updateOffer,
   updateReminder,
+  updateSafetyAuthorization,
   updateServiceCatalogItem,
   updateTodoTask,
   updateWorkOrder,
@@ -107,6 +115,8 @@ function buildState() {
     vehicles: [],
     legalFrameworks: [],
     serviceCatalog: [],
+    measurementEquipment: [],
+    safetyAuthorizations: [],
     documentTemplates: [],
     dashboardWidgets: [],
     activeOrganizationId: "org-1",
@@ -1864,4 +1874,184 @@ test("buildWorkOrderMapMarkers returns only work orders with valid coordinates",
   assert.equal(map.markers[0].workOrderNumber, "RN-1");
   assert.ok(map.markers[0].x >= 0 && map.markers[0].x <= 100);
   assert.ok(map.markers[0].y >= 0 && map.markers[0].y <= 100);
+});
+
+test("measurement equipment supports templates, documents, filters and sorting", () => {
+  const state = buildState();
+  const templateA = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Zapisnik A",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-a",
+    () => "2026-03-31T08:00:00.000Z",
+  );
+  const templateB = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Zapisnik B",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-b",
+    () => "2026-03-31T08:05:00.000Z",
+  );
+  state.documentTemplates = [templateA, templateB];
+
+  const first = createMeasurementEquipmentItem(
+    {
+      organizationId: "org-1",
+      name: "Fluke 1664",
+      equipmentKind: "measurement",
+      manufacturer: "Fluke",
+      deviceType: "Tester",
+      inventoryNumber: "INV-001",
+      requiresCalibration: true,
+      calibrationDate: "2026-03-01",
+      calibrationPeriod: "12 mjeseci",
+      validUntil: "2026-12-31",
+      linkedTemplateIds: ["template-a"],
+      documents: [
+        {
+          fileName: "umjernica.pdf",
+          fileType: "application/pdf",
+          fileSize: 1024,
+          description: "Aktivna umjernica",
+          dataUrl: "data:application/pdf;base64,AAA",
+        },
+      ],
+    },
+    state,
+    () => "equipment-1",
+    () => "2026-03-31T08:10:00.000Z",
+  );
+
+  state.measurementEquipment = [first];
+
+  const second = createMeasurementEquipmentItem(
+    {
+      organizationId: "org-1",
+      name: "Sonel PAT",
+      equipmentKind: "testing",
+      manufacturer: "Sonel",
+      deviceType: "PAT tester",
+      inventoryNumber: "INV-002",
+      validUntil: "2026-08-01",
+      linkedTemplateIds: ["template-b"],
+    },
+    state,
+    () => "equipment-2",
+    () => "2026-03-31T08:15:00.000Z",
+  );
+
+  const updatedSecond = updateMeasurementEquipmentItem(
+    second,
+    {
+      note: "Koristi se za redovni pregled.",
+      linkedTemplateIds: ["template-b"],
+      documents: [
+        {
+          fileName: "karton.jpg",
+          fileType: "image/jpeg",
+          fileSize: 2048,
+          description: "Karton uredaja",
+          dataUrl: "data:image/jpeg;base64,BBB",
+        },
+      ],
+    },
+    {
+      ...state,
+      measurementEquipment: [first, second],
+    },
+    () => "2026-03-31T09:00:00.000Z",
+  );
+
+  assert.deepEqual(first.linkedTemplateTitles, ["Zapisnik A"]);
+  assert.equal(first.documents.length, 1);
+  assert.equal(updatedSecond.linkedTemplateTitles[0], "Zapisnik B");
+  assert.equal(updatedSecond.documents[0].fileName, "karton.jpg");
+
+  const filtered = filterMeasurementEquipmentItems([first, updatedSecond], {
+    query: "zapisnik b",
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "equipment-2");
+
+  const sorted = sortMeasurementEquipmentItems([first, updatedSecond]);
+  assert.equal(sorted[0].id, "equipment-2");
+});
+
+test("safety authorizations support template links, filters and sorting", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Servisni zapisnik",
+      documentType: "Servisni zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-auth",
+    () => "2026-03-31T10:00:00.000Z",
+  );
+  state.documentTemplates = [template];
+
+  const first = createSafetyAuthorization(
+    {
+      organizationId: "org-1",
+      title: "Ovlastenje za ispitivanje",
+      scope: "NN 1/2026",
+      issuedOn: "2026-01-15",
+      validUntil: "2026-06-01",
+      linkedTemplateIds: ["template-auth"],
+    },
+    state,
+    () => "auth-1",
+    () => "2026-03-31T10:05:00.000Z",
+  );
+
+  const second = createSafetyAuthorization(
+    {
+      organizationId: "org-1",
+      title: "Ovlastenje za servis",
+      scope: "Servis i pregled",
+      issuedOn: "2026-02-01",
+      validUntil: "",
+    },
+    state,
+    () => "auth-2",
+    () => "2026-03-31T10:10:00.000Z",
+  );
+
+  const updatedSecond = updateSafetyAuthorization(
+    second,
+    {
+      note: "Vrijedi za internu ekipu.",
+      linkedTemplateIds: ["template-auth"],
+    },
+    state,
+    () => "2026-03-31T10:30:00.000Z",
+  );
+
+  assert.deepEqual(first.linkedTemplateTitles, ["Servisni zapisnik"]);
+  assert.deepEqual(updatedSecond.linkedTemplateTitles, ["Servisni zapisnik"]);
+
+  const filtered = filterSafetyAuthorizations([first, updatedSecond], {
+    query: "internu ekipu",
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "auth-2");
+
+  const sorted = sortSafetyAuthorizations([updatedSecond, first]);
+  assert.equal(sorted[0].id, "auth-1");
 });

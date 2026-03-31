@@ -58,6 +58,12 @@ export const SERVICE_CATALOG_STATUS_OPTIONS = [
   { value: "inactive", label: "Neaktivna" },
 ];
 
+export const MEASUREMENT_EQUIPMENT_KIND_OPTIONS = [
+  { value: "measurement", label: "Mjerna oprema" },
+  { value: "testing", label: "Ispitna oprema" },
+  { value: "combined", label: "Mjerna + ispitna" },
+];
+
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -229,6 +235,7 @@ const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
 const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((option) => option.value));
+const MEASUREMENT_EQUIPMENT_KIND_SET = new Set(MEASUREMENT_EQUIPMENT_KIND_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
@@ -441,6 +448,11 @@ function normalizeDocumentTemplateFieldType(value) {
   return DOCUMENT_TEMPLATE_FIELD_TYPE_SET.has(type) ? type : "text";
 }
 
+function normalizeMeasurementEquipmentKind(value) {
+  const type = normalizeText(value).toLowerCase();
+  return MEASUREMENT_EQUIPMENT_KIND_SET.has(type) ? type : "measurement";
+}
+
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
@@ -498,6 +510,52 @@ function normalizeIdList(values = []) {
 
 function cloneJsonArray(items = []) {
   return JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
+}
+
+function normalizeLinkedTemplateSnapshot(state, templateIds = [], fallbackTitles = []) {
+  return deriveServiceTemplateSnapshot(state, templateIds, fallbackTitles);
+}
+
+function normalizeAttachmentDocuments(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return items.map((item) => {
+    const fileName = normalizeText(item?.fileName ?? item?.name);
+    const dataUrl = normalizeText(item?.dataUrl ?? item?.url ?? item?.storageUrl);
+
+    if (!fileName || !dataUrl) {
+      return null;
+    }
+
+    const id = normalizeId(item?.id) || crypto.randomUUID();
+    const dedupeKey = `${normalizeText(item?.storageKey)}::${fileName}::${dataUrl}`;
+
+    if (seen.has(dedupeKey)) {
+      return null;
+    }
+
+    seen.add(dedupeKey);
+
+    const numericSize = Number(item?.fileSize ?? item?.size);
+    return {
+      id,
+      fileName: fileName.slice(0, 255),
+      fileType: normalizeText(item?.fileType ?? item?.mimeType).slice(0, 160),
+      fileSize: Number.isFinite(numericSize) && numericSize >= 0 ? Math.round(numericSize) : 0,
+      description: normalizeText(item?.description),
+      dataUrl,
+      storageProvider: normalizeText(item?.storageProvider).slice(0, 32),
+      storageBucket: normalizeText(item?.storageBucket).slice(0, 128),
+      storageKey: normalizeText(item?.storageKey).slice(0, 512),
+      storageUrl: normalizeText(item?.storageUrl ?? item?.url),
+      createdAt: normalizeOptionalDateTime(item?.createdAt) ?? isoNow(),
+      updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? isoNow(),
+    };
+  }).filter(Boolean);
 }
 
 function normalizeWorkOrderExecutors(values = [], fallbackValues = []) {
@@ -2135,6 +2193,250 @@ export function sortLegalFrameworks(items) {
     }
 
     if (!left.reviewDate && right.reviewDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function createMeasurementEquipmentItem(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  const inventoryNumber = normalizeText(input.inventoryNumber);
+  const templateSnapshot = normalizeLinkedTemplateSnapshot(
+    state,
+    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+  );
+
+  if (
+    inventoryNumber
+    && (state.measurementEquipment ?? []).some((item) => (
+      String(item.organizationId) === String(organizationId)
+      && normalizeText(item.inventoryNumber).toLowerCase() === inventoryNumber.toLowerCase()
+    ))
+  ) {
+    throw new Error("Uređaj s tim inventarnim brojem već postoji.");
+  }
+
+  return {
+    id: createId(),
+    organizationId,
+    name: requireText(input.name, "Ime opreme"),
+    equipmentKind: normalizeMeasurementEquipmentKind(input.equipmentKind),
+    manufacturer: normalizeText(input.manufacturer),
+    deviceType: normalizeText(input.deviceType ?? input.type),
+    inventoryNumber,
+    requiresCalibration: normalizeBoolean(input.requiresCalibration, false),
+    calibrationDate: normalizeOptionalDate(input.calibrationDate),
+    calibrationPeriod: normalizeText(input.calibrationPeriod),
+    validUntil: normalizeOptionalDate(input.validUntil),
+    note: normalizeText(input.note),
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    documents: normalizeAttachmentDocuments(input.documents),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateMeasurementEquipmentItem(current, patch, state, now = isoNow) {
+  const inventoryNumber = hasOwn(patch, "inventoryNumber")
+    ? normalizeText(patch.inventoryNumber)
+    : current.inventoryNumber;
+  const organizationId = hasOwn(patch, "organizationId")
+    ? requireText(patch.organizationId, "Organizacija")
+    : current.organizationId;
+  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
+    ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+    : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+
+  if (
+    inventoryNumber
+    && (state.measurementEquipment ?? []).some((item) => (
+      String(item.id) !== String(current.id)
+      && String(item.organizationId) === String(organizationId)
+      && normalizeText(item.inventoryNumber).toLowerCase() === inventoryNumber.toLowerCase()
+    ))
+  ) {
+    throw new Error("Uređaj s tim inventarnim brojem već postoji.");
+  }
+
+  return {
+    ...current,
+    organizationId,
+    name: hasOwn(patch, "name") ? requireText(patch.name, "Ime opreme") : current.name,
+    equipmentKind: hasOwn(patch, "equipmentKind")
+      ? normalizeMeasurementEquipmentKind(patch.equipmentKind)
+      : current.equipmentKind,
+    manufacturer: hasOwn(patch, "manufacturer") ? normalizeText(patch.manufacturer) : current.manufacturer,
+    deviceType: hasOwn(patch, "deviceType") || hasOwn(patch, "type")
+      ? normalizeText(patch.deviceType ?? patch.type)
+      : current.deviceType,
+    inventoryNumber,
+    requiresCalibration: hasOwn(patch, "requiresCalibration")
+      ? normalizeBoolean(patch.requiresCalibration, false)
+      : current.requiresCalibration,
+    calibrationDate: hasOwn(patch, "calibrationDate")
+      ? normalizeOptionalDate(patch.calibrationDate)
+      : current.calibrationDate,
+    calibrationPeriod: hasOwn(patch, "calibrationPeriod")
+      ? normalizeText(patch.calibrationPeriod)
+      : current.calibrationPeriod,
+    validUntil: hasOwn(patch, "validUntil")
+      ? normalizeOptionalDate(patch.validUntil)
+      : current.validUntil,
+    note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    documents: hasOwn(patch, "documents")
+      ? normalizeAttachmentDocuments(patch.documents)
+      : normalizeAttachmentDocuments(current.documents),
+    updatedAt: now(),
+  };
+}
+
+export function filterMeasurementEquipmentItems(
+  items,
+  { query = "" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.name,
+      item.manufacturer,
+      item.deviceType,
+      item.inventoryNumber,
+      item.note,
+      item.calibrationPeriod,
+      ...(item.linkedTemplateTitles ?? []),
+      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortMeasurementEquipmentItems(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    if (left.validUntil && right.validUntil && left.validUntil !== right.validUntil) {
+      return left.validUntil.localeCompare(right.validUntil);
+    }
+
+    if (left.validUntil && !right.validUntil) {
+      return -1;
+    }
+
+    if (!left.validUntil && right.validUntil) {
+      return 1;
+    }
+
+    return `${left.name} ${left.inventoryNumber}`.localeCompare(`${right.name} ${right.inventoryNumber}`, "hr");
+  });
+}
+
+export function createSafetyAuthorization(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const templateSnapshot = normalizeLinkedTemplateSnapshot(
+    state,
+    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+  );
+
+  return {
+    id: createId(),
+    organizationId: requireText(input.organizationId, "Organizacija"),
+    title: requireText(input.title, "Ime ovlaštenja"),
+    scope: normalizeText(input.scope ?? input.authorizationScope),
+    issuedOn: normalizeOptionalDate(input.issuedOn ?? input.issuedAt),
+    validUntil: normalizeOptionalDate(input.validUntil),
+    note: normalizeText(input.note),
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    documents: normalizeAttachmentDocuments(input.documents),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateSafetyAuthorization(current, patch, state, now = isoNow) {
+  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
+    ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+    : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : current.organizationId,
+    title: hasOwn(patch, "title") ? requireText(patch.title, "Ime ovlaštenja") : current.title,
+    scope: hasOwn(patch, "scope") || hasOwn(patch, "authorizationScope")
+      ? normalizeText(patch.scope ?? patch.authorizationScope)
+      : current.scope,
+    issuedOn: hasOwn(patch, "issuedOn") || hasOwn(patch, "issuedAt")
+      ? normalizeOptionalDate(patch.issuedOn ?? patch.issuedAt)
+      : current.issuedOn,
+    validUntil: hasOwn(patch, "validUntil")
+      ? normalizeOptionalDate(patch.validUntil)
+      : current.validUntil,
+    note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    documents: hasOwn(patch, "documents")
+      ? normalizeAttachmentDocuments(patch.documents)
+      : normalizeAttachmentDocuments(current.documents),
+    updatedAt: now(),
+  };
+}
+
+export function filterSafetyAuthorizations(
+  items,
+  { query = "" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.scope,
+      item.note,
+      ...(item.linkedTemplateTitles ?? []),
+      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortSafetyAuthorizations(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    if (left.validUntil && right.validUntil && left.validUntil !== right.validUntil) {
+      return left.validUntil.localeCompare(right.validUntil);
+    }
+
+    if (left.validUntil && !right.validUntil) {
+      return -1;
+    }
+
+    if (!left.validUntil && right.validUntil) {
       return 1;
     }
 

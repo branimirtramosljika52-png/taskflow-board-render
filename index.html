@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260331t" />
+  <link rel="stylesheet" href="/styles.css?v=20260331u" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -671,7 +671,7 @@
                         </label>
 
                         <label class="field work-order-executors-field">
-                          <span>Izvrsitelji</span>
+                          <span>Izvršitelji</span>
                           <input id="work-order-executors-data" type="hidden" />
                           <div id="work-order-executors-picker" class="work-order-inline-executor-picker"></div>
                         </label>
@@ -2478,7 +2478,7 @@
                   <div class="offers-status-legend" aria-label="Statusi ponuda">
                     <span class="offer-status-badge is-draft">Skica</span>
                     <span class="offer-status-badge is-sent">Poslano</span>
-                    <span class="offer-status-badge is-accepted">Prihvaceno</span>
+                    <span class="offer-status-badge is-accepted">Prihvaćeno</span>
                     <span class="offer-status-badge is-rejected">Odbijeno</span>
                   </div>
 
@@ -2627,7 +2627,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi ponudu</button>
                       <button id="offer-reset" type="button" class="ghost-button">Nova ponuda</button>
-                      <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                      <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
                     </div>
                     </form>
                   </div>
@@ -2667,7 +2667,7 @@
                 <div class="legal-framework-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="legal-framework-search" type="search" placeholder="Naziv, oznaka, tijelo, tag..." />
+                    <input id="legal-framework-search" type="search" placeholder="Naziv propisa, zapisnik, tag..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
@@ -2710,29 +2710,14 @@
                         <span>Naziv propisa</span>
                         <input id="legal-framework-title" maxlength="220" placeholder="Zakon o zastiti na radu..." required />
                       </label>
-                      <label class="field">
-                        <span>Kategorija</span>
-                        <input id="legal-framework-category" maxlength="120" placeholder="Zakon, pravilnik, norma..." />
-                      </label>
+                      <input id="legal-framework-category" type="hidden" />
+                      <input id="legal-framework-authority" type="hidden" />
+                      <input id="legal-framework-reference-code" type="hidden" />
+                      <input id="legal-framework-version-label" type="hidden" />
+                      <input id="legal-framework-published-on" type="hidden" />
                       <label class="field">
                         <span>Status</span>
                         <select id="legal-framework-status"></select>
-                      </label>
-                      <label class="field">
-                        <span>Tijelo / autoritet</span>
-                        <input id="legal-framework-authority" maxlength="180" placeholder="NN, Ministarstvo, HZN..." />
-                      </label>
-                      <label class="field">
-                        <span>Oznaka / clanak</span>
-                        <input id="legal-framework-reference-code" maxlength="120" placeholder="NN 71/14, clanak 12..." />
-                      </label>
-                      <label class="field">
-                        <span>Verzija</span>
-                        <input id="legal-framework-version-label" maxlength="80" placeholder="v2026.1" />
-                      </label>
-                      <label class="field">
-                        <span>Objavljeno</span>
-                        <input id="legal-framework-published-on" type="date" />
                       </label>
                       <label class="field">
                         <span>Vrijedi od</span>
@@ -2756,6 +2741,17 @@
                       <span>Napomena</span>
                       <textarea id="legal-framework-note" rows="4" placeholder="Bitne napomene, sazetak obveze, sto se koristi u zapisnicima..."></textarea>
                     </label>
+
+                    <section class="service-catalog-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Templates</p>
+                          <h3>Zapisnici u kojima se koristi</h3>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Oznaci zapisnike u koje ovaj propis ide kako bi se automatski pojavljivao u builderu.</p>
+                      <div id="legal-framework-template-list" class="service-catalog-template-list"></div>
+                    </section>
 
                     <p id="legal-framework-error" class="form-error" aria-live="polite"></p>
 
@@ -2801,7 +2797,7 @@
                 <div class="service-catalog-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, šifra, template..." />
+                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, sifra, zapisnik..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
@@ -2818,7 +2814,7 @@
                   </div>
                 </div>
 
-                <p id="service-catalog-helper" class="helper-copy module-copy">Ovdje definiras usluge koje se nude i kasnije biraju pri otvaranju radnog naloga.</p>
+                <p id="service-catalog-helper" class="helper-copy module-copy">Katalog usluga koje se kasnije biraju pri otvaranju radnog naloga.</p>
                 <div id="service-catalog-list" class="service-catalog-list"></div>
                 <p id="service-catalog-empty" class="helper-copy" hidden>Nema usluga za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -2845,7 +2841,7 @@
                         <input id="service-catalog-name" maxlength="180" placeholder="Ispitivanje radne opreme" required />
                       </label>
                       <label class="field">
-                        <span>Šifra usluge</span>
+                        <span>Sifra usluge</span>
                         <input id="service-catalog-code" maxlength="80" placeholder="IRO-001" required />
                       </label>
                       <label class="field">
@@ -2861,13 +2857,13 @@
                           <h3>Povezani zapisnici</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Označi templatee koji se nude uz ovu uslugu kako bi ih RN editor kasnije mogao prikazati kao preporuku.</p>
+                      <p class="helper-copy module-copy">Oznaci zapisnike koji se nude uz ovu uslugu kako bi ih RN editor kasnije mogao prikazati kao preporuku.</p>
                       <div id="service-catalog-template-list" class="service-catalog-template-list"></div>
                     </section>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="service-catalog-note" rows="4" placeholder="Kratka interna bilješka o usluzi, opsegu ili posebnostima."></textarea>
+                      <textarea id="service-catalog-note" rows="3" placeholder="Kratka interna biljeska o usluzi, opsegu ili posebnostima."></textarea>
                     </label>
 
                     <p id="service-catalog-error" class="form-error" aria-live="polite"></p>
@@ -2875,7 +2871,271 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi uslugu</button>
                       <button id="service-catalog-reset" type="button" class="ghost-button">Nova usluga</button>
-                      <button id="service-catalog-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                      <button id="service-catalog-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
+
+            <section id="measurement-equipment-module" class="measurement-equipment-module" hidden>
+              <div class="measurement-equipment-summary-grid">
+                <article class="measurement-equipment-stat-card is-total">
+                  <span class="measurement-equipment-stat-label">Ukupno</span>
+                  <strong id="measurement-equipment-total-count" class="measurement-equipment-stat-value">0</strong>
+                </article>
+                <article class="measurement-equipment-stat-card is-calibration">
+                  <span class="measurement-equipment-stat-label">Umjerava se</span>
+                  <strong id="measurement-equipment-calibration-count" class="measurement-equipment-stat-value">0</strong>
+                </article>
+                <article class="measurement-equipment-stat-card is-expiring">
+                  <span class="measurement-equipment-stat-label">Istjece uskoro</span>
+                  <strong id="measurement-equipment-expiring-count" class="measurement-equipment-stat-value">0</strong>
+                </article>
+                <article class="measurement-equipment-stat-card is-files">
+                  <span class="measurement-equipment-stat-label">S dokumentima</span>
+                  <strong id="measurement-equipment-files-count" class="measurement-equipment-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel measurement-equipment-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Equipment</p>
+                    <h3>Mjerna i ispitna oprema</h3>
+                  </div>
+                  <button id="measurement-equipment-open-form" type="button" class="primary-button">+ Nova oprema</button>
+                </div>
+
+                <div class="measurement-equipment-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="measurement-equipment-search" type="search" placeholder="Ime, proizvodac, tip, inv. broj..." />
+                  </label>
+                  <label class="field">
+                    <span>Vrsta</span>
+                    <select id="measurement-equipment-filter-kind"></select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel measurement-equipment-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Register</p>
+                    <h3>Popis opreme</h3>
+                  </div>
+                </div>
+
+                <p id="measurement-equipment-helper" class="helper-copy module-copy">Evidencija mjerne i ispitne opreme, rokova umjeravanja i dokumentacije.</p>
+                <div id="measurement-equipment-list" class="measurement-equipment-list"></div>
+                <p id="measurement-equipment-empty" class="helper-copy" hidden>Nema opreme za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <div id="measurement-equipment-editor-backdrop" class="offer-editor-backdrop measurement-equipment-editor-backdrop" hidden></div>
+              <section id="measurement-equipment-editor-panel" class="panel measurement-equipment-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Measurement equipment</p>
+                      <h3 id="measurement-equipment-editor-title">Nova oprema</h3>
+                    </div>
+                    <button id="measurement-equipment-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="measurement-equipment-editor-body" tabindex="-1">
+                  <form id="measurement-equipment-form" class="entity-form measurement-equipment-form">
+                    <input id="measurement-equipment-id" type="hidden" />
+
+                    <div class="form-grid measurement-equipment-form-grid">
+                      <label class="field field-span-full">
+                        <span>Ime opreme</span>
+                        <input id="measurement-equipment-name" maxlength="180" placeholder="Mjerni instrument, uredaj..." required />
+                      </label>
+                      <label class="field">
+                        <span>Vrsta</span>
+                        <select id="measurement-equipment-kind"></select>
+                      </label>
+                      <label class="field">
+                        <span>Proizvodac</span>
+                        <input id="measurement-equipment-manufacturer" maxlength="160" placeholder="Fluke, Sonel..." />
+                      </label>
+                      <label class="field">
+                        <span>Tip / model</span>
+                        <input id="measurement-equipment-type" maxlength="160" placeholder="Model, tip, serija..." />
+                      </label>
+                      <label class="field">
+                        <span>Inv. broj</span>
+                        <input id="measurement-equipment-inventory-number" maxlength="80" placeholder="INV-001" />
+                      </label>
+                      <label class="field">
+                        <span>Umjerava se</span>
+                        <select id="measurement-equipment-requires-calibration">
+                          <option value="true">Da</option>
+                          <option value="false">Ne</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Datum umjeravanja</span>
+                        <input id="measurement-equipment-calibration-date" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Periodika umjeravanja</span>
+                        <input id="measurement-equipment-calibration-period" maxlength="80" placeholder="12 mjeseci" />
+                      </label>
+                      <label class="field">
+                        <span>Vrijedi do</span>
+                        <input id="measurement-equipment-valid-until" type="date" />
+                      </label>
+                    </div>
+
+                    <section class="service-catalog-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Templates</p>
+                          <h3>Koristi se u zapisnicima</h3>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Oznaci zapisnike u kojima se ova oprema koristi ili navodi.</p>
+                      <div id="measurement-equipment-template-list" class="service-catalog-template-list"></div>
+                    </section>
+
+                    <section class="service-catalog-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Documents</p>
+                          <h3>Datoteke uredaja</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="measurement-equipment-documents-input" type="file" multiple hidden />
+                          <button id="measurement-equipment-documents-upload" type="button" class="ghost-button">Dodaj datoteke</button>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Dodaj racun, umjernicu, karton uredaja i slike. Datoteke se spremaju u Spaces.</p>
+                      <div id="measurement-equipment-documents-list" class="module-attachment-list"></div>
+                    </section>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="measurement-equipment-note" rows="4" placeholder="Interna napomena, stanje uredaja, lokacija, posebnosti..."></textarea>
+                    </label>
+
+                    <p id="measurement-equipment-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi opremu</button>
+                      <button id="measurement-equipment-reset" type="button" class="ghost-button">Nova oprema</button>
+                      <button id="measurement-equipment-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
+
+            <section id="safety-authorization-module" class="safety-authorization-module" hidden>
+              <div class="safety-authorization-summary-grid">
+                <article class="safety-authorization-stat-card is-total">
+                  <span class="safety-authorization-stat-label">Ukupno</span>
+                  <strong id="safety-authorization-total-count" class="safety-authorization-stat-value">0</strong>
+                </article>
+                <article class="safety-authorization-stat-card is-active">
+                  <span class="safety-authorization-stat-label">Vazeca</span>
+                  <strong id="safety-authorization-active-count" class="safety-authorization-stat-value">0</strong>
+                </article>
+                <article class="safety-authorization-stat-card is-expiring">
+                  <span class="safety-authorization-stat-label">Istjece uskoro</span>
+                  <strong id="safety-authorization-expiring-count" class="safety-authorization-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel safety-authorization-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Authorizations</p>
+                    <h3>Ovlastenja</h3>
+                  </div>
+                  <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novo ovlastenje</button>
+                </div>
+
+                <div class="safety-authorization-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="safety-authorization-search" type="search" placeholder="Naziv ovlastenja, opseg, zapisnik..." />
+                  </label>
+                </div>
+              </section>
+
+              <section class="panel safety-authorization-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Register</p>
+                    <h3>Popis ovlastenja</h3>
+                  </div>
+                </div>
+
+                <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ovlastenja, rokova i zapisnika u kojima se spominju.</p>
+                <div id="safety-authorization-list" class="safety-authorization-list"></div>
+                <p id="safety-authorization-empty" class="helper-copy" hidden>Nema ovlastenja za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <div id="safety-authorization-editor-backdrop" class="offer-editor-backdrop safety-authorization-editor-backdrop" hidden></div>
+              <section id="safety-authorization-editor-panel" class="panel safety-authorization-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Safety authorization</p>
+                      <h3 id="safety-authorization-editor-title">Novo ovlastenje</h3>
+                    </div>
+                    <button id="safety-authorization-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="safety-authorization-editor-body" tabindex="-1">
+                  <form id="safety-authorization-form" class="entity-form safety-authorization-form">
+                    <input id="safety-authorization-id" type="hidden" />
+
+                    <div class="form-grid safety-authorization-form-grid">
+                      <label class="field field-span-full">
+                        <span>Ime ovlastenja</span>
+                        <input id="safety-authorization-title" maxlength="180" placeholder="Ovlastenje za..." required />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Pod ovlastenje / opseg</span>
+                        <input id="safety-authorization-scope" maxlength="220" placeholder="Sto pokriva ovo ovlastenje" />
+                      </label>
+                      <label class="field">
+                        <span>Datum izdavanja</span>
+                        <input id="safety-authorization-issued-on" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Vrijedi do</span>
+                        <input id="safety-authorization-valid-until" type="date" />
+                      </label>
+                    </div>
+
+                    <section class="service-catalog-template-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Templates</p>
+                          <h3>Pojavljuje se u zapisnicima</h3>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Oznaci zapisnike u kojima ovo ovlastenje treba biti navedeno.</p>
+                      <div id="safety-authorization-template-list" class="service-catalog-template-list"></div>
+                    </section>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="safety-authorization-note" rows="4" placeholder="Napomena, broj rjesenja, dodatni detalji..."></textarea>
+                    </label>
+
+                    <p id="safety-authorization-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi ovlastenje</button>
+                      <button id="safety-authorization-reset" type="button" class="ghost-button">Novo ovlastenje</button>
+                      <button id="safety-authorization-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
                     </div>
                   </form>
                 </div>
@@ -3202,6 +3462,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260331t"></script>
+    <script type="module" src="/src/main.js?v=20260331u"></script>
   </body>
 </html>
