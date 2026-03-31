@@ -22,6 +22,12 @@ import {
   verifyPassword,
 } from "./webAuth.js";
 import { resolveSignupNotifyRecipients, sendMail } from "./mailer.js";
+import {
+  buildObjectStoragePublicUrl,
+  deleteObjectFromStorage,
+  getObjectStorageConfig,
+  uploadDataUrlToObjectStorage,
+} from "./objectStorage.js";
 
 const DEFAULT_ORGANIZATION_NAME = "Default Organization";
 const SIGNUP_STATUS_PENDING = "pending";
@@ -77,6 +83,176 @@ function normalizeTimestamp(value) {
 
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function isDataUrlLike(value = "") {
+  return dbString(value).startsWith("data:");
+}
+
+function mapStoredAssetLocation({
+  dataUrl = "",
+  storageProvider = "",
+  storageBucket = "",
+  storageKey = "",
+  storageUrl = "",
+} = {}) {
+  const normalizedStorageUrl = dbString(storageUrl);
+  const normalizedStorageKey = dbString(storageKey);
+  const normalizedStorageBucket = dbString(storageBucket);
+  const normalizedStorageProvider = dbString(storageProvider);
+  const normalizedDataUrl = dbString(dataUrl);
+  const storageConfig = getObjectStorageConfig();
+
+  return {
+    dataUrl: normalizedStorageUrl || normalizedDataUrl,
+    storageProvider: normalizedStorageProvider,
+    storageBucket: normalizedStorageBucket,
+    storageKey: normalizedStorageKey,
+    storageUrl: normalizedStorageUrl || (
+      normalizedStorageProvider && normalizedStorageKey
+        ? buildObjectStoragePublicUrl(normalizedStorageKey, {
+          ...storageConfig,
+          bucket: normalizedStorageBucket || storageConfig.bucket,
+        })
+        : ""
+    ),
+  };
+}
+
+function mapUserAvatarStorage(row = {}) {
+  return mapStoredAssetLocation({
+    dataUrl: row.avatar_data_url ?? row.avatarDataUrl,
+    storageProvider: row.avatar_storage_provider ?? row.avatarStorageProvider,
+    storageBucket: row.avatar_storage_bucket ?? row.avatarStorageBucket,
+    storageKey: row.avatar_storage_key ?? row.avatarStorageKey,
+    storageUrl: row.avatar_storage_url ?? row.avatarStorageUrl,
+  });
+}
+
+async function persistInlineAvatarToObjectStorage({
+  userId = "",
+  fullName = "",
+  avatarDataUrl = "",
+} = {}) {
+  if (!isDataUrlLike(avatarDataUrl)) {
+    return null;
+  }
+
+  return uploadDataUrlToObjectStorage({
+    keyPrefix: `users/${dbString(userId) || "pending"}/avatar`,
+    fileName: dbString(fullName) || "avatar",
+    dataUrl: avatarDataUrl,
+    cacheControl: "public, max-age=31536000, immutable",
+  });
+}
+
+async function cleanupStoredAssets(items = []) {
+  const uniqueKeys = new Set();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = dbString(item?.storageKey ?? item?.key);
+
+    if (!key || uniqueKeys.has(key)) {
+      continue;
+    }
+
+    uniqueKeys.add(key);
+    await deleteObjectFromStorage(item);
+  }
+}
+
+async function prepareStoredUserAvatar({
+  currentUser = {},
+  userId = "",
+  fullName = "",
+  avatarDataUrl = "",
+} = {}) {
+  const currentStoredAvatar = mapUserAvatarStorage(currentUser);
+  const nextAvatarDataUrl = dbString(avatarDataUrl);
+
+  if (!nextAvatarDataUrl) {
+    return {
+      storedAvatar: mapStoredAssetLocation(),
+      previousStoredAvatar: currentStoredAvatar.storageKey ? currentStoredAvatar : null,
+    };
+  }
+
+  if (!isDataUrlLike(nextAvatarDataUrl)) {
+    if (nextAvatarDataUrl === currentStoredAvatar.dataUrl) {
+      return {
+        storedAvatar: currentStoredAvatar,
+        previousStoredAvatar: null,
+      };
+    }
+
+    return {
+      storedAvatar: mapStoredAssetLocation({ dataUrl: nextAvatarDataUrl }),
+      previousStoredAvatar: currentStoredAvatar.storageKey ? currentStoredAvatar : null,
+    };
+  }
+
+  const uploaded = await persistInlineAvatarToObjectStorage({
+    userId,
+    fullName,
+    avatarDataUrl: nextAvatarDataUrl,
+  });
+
+  return {
+    storedAvatar: mapStoredAssetLocation({
+      dataUrl: uploaded?.storageUrl || nextAvatarDataUrl,
+      storageProvider: uploaded?.storageProvider,
+      storageBucket: uploaded?.storageBucket,
+      storageKey: uploaded?.storageKey,
+      storageUrl: uploaded?.storageUrl,
+    }),
+    previousStoredAvatar: currentStoredAvatar.storageKey ? currentStoredAvatar : null,
+  };
+}
+
+async function migrateInlineAvatarsToObjectStorage(connection) {
+  if (!getObjectStorageConfig().enabled) {
+    return;
+  }
+
+  const [rows] = await connection.query(`
+    SELECT id, first_name, last_name, avatar_data_url
+    FROM app_users
+    WHERE avatar_data_url IS NOT NULL
+      AND avatar_data_url LIKE 'data:%'
+  `);
+
+  for (const row of rows) {
+    const uploaded = await persistInlineAvatarToObjectStorage({
+      userId: row.id,
+      fullName: [row.first_name ?? "", row.last_name ?? ""].filter(Boolean).join(" "),
+      avatarDataUrl: row.avatar_data_url,
+    });
+
+    if (!uploaded?.storageUrl) {
+      continue;
+    }
+
+    await connection.query(
+      `
+        UPDATE app_users
+        SET avatar_data_url = ?,
+            avatar_storage_provider = ?,
+            avatar_storage_bucket = ?,
+            avatar_storage_key = ?,
+            avatar_storage_url = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      [
+        uploaded.storageUrl,
+        uploaded.storageProvider,
+        uploaded.storageBucket,
+        uploaded.storageKey,
+        uploaded.storageUrl,
+        Number(row.id),
+      ],
+    );
+  }
 }
 
 function parseMySqlConnectionString(connectionString) {
@@ -143,6 +319,7 @@ function sanitizeUser(row) {
   const lastName = row.last_name ?? "";
   const primaryOrganizationId = row.organization_id ? String(row.organization_id) : "";
   const organizationIds = mergePrimaryOrganization(primaryOrganizationId, row.organization_ids_csv);
+  const storedAvatar = mapUserAvatarStorage(row);
 
   return {
     id: String(row.id),
@@ -158,7 +335,11 @@ function sanitizeUser(row) {
     role: normalizeRole(row.role ?? row.razina_prava ?? ROLE_USER),
     isActive: row.is_active === undefined ? true : Boolean(Number(row.is_active)),
     legacyUsername: row.legacy_username ?? row.korisnicko_ime ?? "",
-    avatarDataUrl: row.avatar_data_url ?? "",
+    avatarDataUrl: storedAvatar.dataUrl,
+    avatarStorageProvider: storedAvatar.storageProvider,
+    avatarStorageBucket: storedAvatar.storageBucket,
+    avatarStorageKey: storedAvatar.storageKey,
+    avatarStorageUrl: storedAvatar.storageUrl,
     lastLoginAt: normalizeTimestamp(row.last_login_at),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -340,6 +521,10 @@ async function ensureSchema(connection) {
       first_name VARCHAR(120) NOT NULL DEFAULT '',
       last_name VARCHAR(160) NOT NULL DEFAULT '',
       avatar_data_url LONGTEXT NULL,
+      avatar_storage_provider VARCHAR(32) NULL,
+      avatar_storage_bucket VARCHAR(128) NULL,
+      avatar_storage_key VARCHAR(512) NULL,
+      avatar_storage_url TEXT NULL,
       email VARCHAR(255) NOT NULL,
       legacy_username VARCHAR(100) NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -438,6 +623,30 @@ async function ensureSchema(connection) {
     "avatar_data_url",
     "LONGTEXT NULL AFTER last_name",
   );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_storage_provider",
+    "VARCHAR(32) NULL AFTER avatar_data_url",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_storage_bucket",
+    "VARCHAR(128) NULL AFTER avatar_storage_provider",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_storage_key",
+    "VARCHAR(512) NULL AFTER avatar_storage_bucket",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_storage_url",
+    "TEXT NULL AFTER avatar_storage_key",
+  );
 
   await ensureColumn(
     connection,
@@ -487,6 +696,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
     SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+           u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
            o.name AS organization_name
     FROM app_users u
@@ -1414,6 +1624,7 @@ export class MemoryTenantRepository {
 export class MySqlTenantRepository {
   constructor(connectionString) {
     this.kind = "mysql";
+    this.objectStorage = getObjectStorageConfig();
     this.pool = mysql.createPool(parseMySqlConnectionString(connectionString));
   }
 
@@ -1424,6 +1635,7 @@ export class MySqlTenantRepository {
       await connection.query("SELECT 1");
       await ensureSchema(connection);
       await seedDefaultData(connection);
+      await migrateInlineAvatarsToObjectStorage(connection);
     } finally {
       connection.release();
     }
@@ -1481,6 +1693,7 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
           FROM app_users u
@@ -1511,6 +1724,7 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.email, u.legacy_username,
                  u.password_hash, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name, o.status AS organization_status
@@ -1597,6 +1811,7 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+                 u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.email, u.legacy_username,
                  u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
@@ -1828,18 +2043,30 @@ export class MySqlTenantRepository {
       }
 
       const passwordHash = await createPasswordHash(normalized.password);
+      const preparedAvatar = await prepareStoredUserAvatar({
+        userId: normalized.email || normalized.legacyUsername || "new-user",
+        fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+        avatarDataUrl: normalized.avatarDataUrl,
+      });
+
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url,
+             avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
+             email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
           serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
           normalized.firstName,
           normalized.lastName,
-          normalized.avatarDataUrl || null,
+          preparedAvatar.storedAvatar.dataUrl || null,
+          preparedAvatar.storedAvatar.storageProvider || null,
+          preparedAvatar.storedAvatar.storageBucket || null,
+          preparedAvatar.storedAvatar.storageKey || null,
+          preparedAvatar.storedAvatar.storageUrl || null,
           normalized.email,
           normalized.legacyUsername || null,
           passwordHash,
@@ -1893,12 +2120,23 @@ export class MySqlTenantRepository {
         throw createHttpError(400, "Odabrana organizacija ne postoji.");
       }
 
+      const preparedAvatar = await prepareStoredUserAvatar({
+        currentUser: current,
+        userId: current.id,
+        fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+        avatarDataUrl: normalized.avatarDataUrl,
+      });
+
       const updateFields = [
         "organization_id = ?",
         "organization_ids_csv = ?",
         "first_name = ?",
         "last_name = ?",
         "avatar_data_url = ?",
+        "avatar_storage_provider = ?",
+        "avatar_storage_bucket = ?",
+        "avatar_storage_key = ?",
+        "avatar_storage_url = ?",
         "email = ?",
         "legacy_username = ?",
         "role = ?",
@@ -1909,7 +2147,11 @@ export class MySqlTenantRepository {
         serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
         normalized.firstName,
         normalized.lastName,
-        normalized.avatarDataUrl || current.avatar_data_url || null,
+        preparedAvatar.storedAvatar.dataUrl || null,
+        preparedAvatar.storedAvatar.storageProvider || null,
+        preparedAvatar.storedAvatar.storageBucket || null,
+        preparedAvatar.storedAvatar.storageKey || null,
+        preparedAvatar.storedAvatar.storageUrl || null,
         normalized.email,
         normalized.legacyUsername || null,
         normalized.role,
@@ -1923,6 +2165,7 @@ export class MySqlTenantRepository {
 
       params.push(Number(userId));
       await connection.query(`UPDATE app_users SET ${updateFields.join(", ")} WHERE id = ?`, params);
+      await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
 
       return this.getUserById(userId);
     } catch (error) {
@@ -1936,14 +2179,46 @@ export class MySqlTenantRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, first_name, last_name, avatar_data_url,
+                 avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url
+          FROM app_users
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(actor?.id)],
+      );
+      const current = rows[0];
+
+      if (!current) {
+        return null;
+      }
+
+      const preparedAvatar = await prepareStoredUserAvatar({
+        currentUser: current,
+        userId: current.id,
+        fullName: [current.first_name ?? "", current.last_name ?? ""].filter(Boolean).join(" "),
+        avatarDataUrl,
+      });
+
       const [result] = await connection.query(
         `
           UPDATE app_users
-          SET avatar_data_url = ?, updated_at = CURRENT_TIMESTAMP
+          SET avatar_data_url = ?,
+              avatar_storage_provider = ?,
+              avatar_storage_bucket = ?,
+              avatar_storage_key = ?,
+              avatar_storage_url = ?,
+              updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `,
         [
-          dbString(avatarDataUrl) || null,
+          preparedAvatar.storedAvatar.dataUrl || null,
+          preparedAvatar.storedAvatar.storageProvider || null,
+          preparedAvatar.storedAvatar.storageBucket || null,
+          preparedAvatar.storedAvatar.storageKey || null,
+          preparedAvatar.storedAvatar.storageUrl || null,
           Number(actor?.id),
         ],
       );
@@ -1952,6 +2227,7 @@ export class MySqlTenantRepository {
         return null;
       }
 
+      await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
       return this.getUserById(actor.id);
     } finally {
       connection.release();

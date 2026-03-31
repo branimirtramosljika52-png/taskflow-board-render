@@ -309,6 +309,122 @@ async function cleanupStoredObjects(items = []) {
   }
 }
 
+async function persistInlineCompanyLogoToObjectStorage({
+  companyId = "",
+  companyName = "",
+  logoDataUrl = "",
+} = {}) {
+  if (!isDataUrlLike(logoDataUrl)) {
+    return null;
+  }
+
+  return uploadDataUrlToObjectStorage({
+    keyPrefix: `companies/${dbString(companyId) || "pending"}/logo`,
+    fileName: dbString(companyName) || "company-logo",
+    dataUrl: logoDataUrl,
+    cacheControl: "public, max-age=31536000, immutable",
+  });
+}
+
+async function prepareStoredCompanyLogo({
+  currentCompany = {},
+  companyId = "",
+  companyName = "",
+  logoDataUrl = "",
+} = {}) {
+  const currentStoredLogo = mapStoredDocumentLocation({
+    dataUrl: currentCompany.logoDataUrl ?? currentCompany.logo_data_url,
+    storageProvider: currentCompany.logoStorageProvider ?? currentCompany.logo_storage_provider,
+    storageBucket: currentCompany.logoStorageBucket ?? currentCompany.logo_storage_bucket,
+    storageKey: currentCompany.logoStorageKey ?? currentCompany.logo_storage_key,
+    storageUrl: currentCompany.logoStorageUrl ?? currentCompany.logo_storage_url,
+  });
+  const nextLogoDataUrl = dbString(logoDataUrl);
+
+  if (!nextLogoDataUrl) {
+    return {
+      storedLogo: mapStoredDocumentLocation(),
+      previousStoredLogo: currentStoredLogo.storageKey ? currentStoredLogo : null,
+    };
+  }
+
+  if (!isDataUrlLike(nextLogoDataUrl)) {
+    if (nextLogoDataUrl === currentStoredLogo.dataUrl) {
+      return {
+        storedLogo: currentStoredLogo,
+        previousStoredLogo: null,
+      };
+    }
+
+    return {
+      storedLogo: mapStoredDocumentLocation({ dataUrl: nextLogoDataUrl }),
+      previousStoredLogo: currentStoredLogo.storageKey ? currentStoredLogo : null,
+    };
+  }
+
+  const uploaded = await persistInlineCompanyLogoToObjectStorage({
+    companyId,
+    companyName,
+    logoDataUrl: nextLogoDataUrl,
+  });
+
+  return {
+    storedLogo: mapStoredDocumentLocation({
+      dataUrl: uploaded?.storageUrl || nextLogoDataUrl,
+      storageProvider: uploaded?.storageProvider,
+      storageBucket: uploaded?.storageBucket,
+      storageKey: uploaded?.storageKey,
+      storageUrl: uploaded?.storageUrl,
+    }),
+    previousStoredLogo: currentStoredLogo.storageKey ? currentStoredLogo : null,
+  };
+}
+
+async function migrateInlineCompanyLogosToObjectStorage(pool) {
+  if (!getObjectStorageConfig().enabled) {
+    return;
+  }
+
+  const [rows] = await pool.query(`
+    SELECT id, naziv_tvrtke, logo_data_url
+    FROM firme
+    WHERE logo_data_url IS NOT NULL
+      AND logo_data_url LIKE 'data:%'
+  `);
+
+  for (const row of rows) {
+    const uploaded = await persistInlineCompanyLogoToObjectStorage({
+      companyId: row.id,
+      companyName: row.naziv_tvrtke,
+      logoDataUrl: row.logo_data_url,
+    });
+
+    if (!uploaded?.storageUrl) {
+      continue;
+    }
+
+    await pool.query(
+      `
+        UPDATE firme
+        SET logo_data_url = ?,
+            logo_storage_provider = ?,
+            logo_storage_bucket = ?,
+            logo_storage_key = ?,
+            logo_storage_url = ?
+        WHERE id = ?
+      `,
+      [
+        uploaded.storageUrl,
+        uploaded.storageProvider,
+        uploaded.storageBucket,
+        uploaded.storageKey,
+        uploaded.storageUrl,
+        Number(row.id),
+      ],
+    );
+  }
+}
+
 function locationCompositeKey(oib, name) {
   return `${dbString(oib)}::${dbString(name).toLowerCase()}`;
 }
@@ -816,29 +932,44 @@ async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
     SELECT id, naziv_tvrtke, sjediste, oib, vrsta_ugovora, broj_ugovora, periodika,
            aktivno, predstavnik_korisnika, kontakt_broj, kontakt_email, napomena,
-           logo_data_url, datum_izmjene, izmjenu_unio
+           logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
+           datum_izmjene, izmjenu_unio
     FROM firme
     ORDER BY naziv_tvrtke ASC
   `);
 
-  const companies = companyRows.map((row) => ({
-    id: String(row.id),
-    name: row.naziv_tvrtke,
-    logoDataUrl: row.logo_data_url ?? "",
-    headquarters: row.sjediste ?? "",
-    oib: row.oib ?? "",
-    contractType: row.vrsta_ugovora ?? "",
-    contractNumber: row.broj_ugovora ?? "",
-    period: row.periodika ?? "",
-    isActive: normalizeActiveValue(row.aktivno),
-    representative: row.predstavnik_korisnika ?? "",
-    contactPhone: row.kontakt_broj ?? "",
-    contactEmail: row.kontakt_email ?? "",
-    note: row.napomena ?? "",
-    createdAt: normalizeTimestamp(row.datum_izmjene),
-    updatedAt: normalizeTimestamp(row.datum_izmjene),
-    updatedBy: row.izmjenu_unio ?? "",
-  }));
+  const companies = companyRows.map((row) => {
+    const storedLogo = mapStoredDocumentLocation({
+      dataUrl: row.logo_data_url ?? "",
+      storageProvider: row.logo_storage_provider ?? "",
+      storageBucket: row.logo_storage_bucket ?? "",
+      storageKey: row.logo_storage_key ?? "",
+      storageUrl: row.logo_storage_url ?? "",
+    });
+
+    return {
+      id: String(row.id),
+      name: row.naziv_tvrtke,
+      logoDataUrl: storedLogo.dataUrl,
+      logoStorageProvider: storedLogo.storageProvider,
+      logoStorageBucket: storedLogo.storageBucket,
+      logoStorageKey: storedLogo.storageKey,
+      logoStorageUrl: storedLogo.storageUrl,
+      headquarters: row.sjediste ?? "",
+      oib: row.oib ?? "",
+      contractType: row.vrsta_ugovora ?? "",
+      contractNumber: row.broj_ugovora ?? "",
+      period: row.periodika ?? "",
+      isActive: normalizeActiveValue(row.aktivno),
+      representative: row.predstavnik_korisnika ?? "",
+      contactPhone: row.kontakt_broj ?? "",
+      contactEmail: row.kontakt_email ?? "",
+      note: row.napomena ?? "",
+      createdAt: normalizeTimestamp(row.datum_izmjene),
+      updatedAt: normalizeTimestamp(row.datum_izmjene),
+      updatedBy: row.izmjenu_unio ?? "",
+    };
+  });
 
   const companiesByOib = new Map(companies.map((company) => [company.oib, company]));
 
@@ -2570,6 +2701,10 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
+    await ensureColumnExists(this.pool, "firme", "logo_storage_provider", "VARCHAR(32) NULL AFTER logo_data_url");
+    await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
+    await ensureColumnExists(this.pool, "firme", "logo_storage_key", "VARCHAR(512) NULL AFTER logo_storage_bucket");
+    await ensureColumnExists(this.pool, "firme", "logo_storage_url", "TEXT NULL AFTER logo_storage_key");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_provider", "VARCHAR(32) NULL AFTER reference_document_data_url");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_bucket", "VARCHAR(128) NULL AFTER reference_document_storage_provider");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
@@ -2599,6 +2734,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_width", "INT NOT NULL DEFAULT 4");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_height", "INT NOT NULL DEFAULT 3");
     await backfillDashboardWidgetLayouts(this.pool);
+    await migrateInlineCompanyLogosToObjectStorage(this.pool);
   }
 
   async close() {
@@ -2767,13 +2903,20 @@ export class MySqlSafetyRepository {
     try {
       const snapshot = await fetchSnapshotFromConnection(connection);
       const company = createCompany(input, snapshot.companies);
+      const preparedLogo = await prepareStoredCompanyLogo({
+        companyId: company.oib || company.name || "new-company",
+        companyName: company.name,
+        logoDataUrl: company.logoDataUrl,
+      });
 
       const [result] = await connection.query(
         `
           INSERT INTO firme
             (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, vrsta_ugovora,
-             broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email, logo_data_url, datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+             broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
+             logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
+             datum_izmjene, izmjenu_unio)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -2787,7 +2930,11 @@ export class MySqlSafetyRepository {
           activeLabel(company.isActive),
           company.contactPhone,
           company.contactEmail,
-          company.logoDataUrl,
+          preparedLogo.storedLogo.dataUrl || null,
+          preparedLogo.storedLogo.storageProvider || null,
+          preparedLogo.storedLogo.storageBucket || null,
+          preparedLogo.storedLogo.storageKey || null,
+          preparedLogo.storedLogo.storageUrl || null,
           "SelfDash Web",
         ],
       );
@@ -2795,6 +2942,11 @@ export class MySqlSafetyRepository {
       return {
         ...company,
         id: String(result.insertId),
+        logoDataUrl: preparedLogo.storedLogo.dataUrl,
+        logoStorageProvider: preparedLogo.storedLogo.storageProvider,
+        logoStorageBucket: preparedLogo.storedLogo.storageBucket,
+        logoStorageKey: preparedLogo.storedLogo.storageKey,
+        logoStorageUrl: preparedLogo.storedLogo.storageUrl,
       };
     } finally {
       connection.release();
@@ -2816,13 +2968,20 @@ export class MySqlSafetyRepository {
       }
 
       const next = updateCompany(current, patch, snapshot.companies);
+      const preparedLogo = await prepareStoredCompanyLogo({
+        currentCompany: current,
+        companyId: current.id,
+        companyName: next.name,
+        logoDataUrl: next.logoDataUrl,
+      });
 
       await connection.query(
         `
           UPDATE firme
           SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
               vrsta_ugovora = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
-              kontakt_email = ?, logo_data_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
+              kontakt_email = ?, logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
+              logo_storage_key = ?, logo_storage_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
           WHERE id = ?
         `,
         [
@@ -2837,7 +2996,11 @@ export class MySqlSafetyRepository {
           activeLabel(next.isActive),
           next.contactPhone,
           next.contactEmail,
-          next.logoDataUrl,
+          preparedLogo.storedLogo.dataUrl || null,
+          preparedLogo.storedLogo.storageProvider || null,
+          preparedLogo.storedLogo.storageBucket || null,
+          preparedLogo.storedLogo.storageKey || null,
+          preparedLogo.storedLogo.storageUrl || null,
           "SelfDash Web",
           Number(id),
         ],
@@ -2878,7 +3041,15 @@ export class MySqlSafetyRepository {
       }
 
       await connection.commit();
-      return next;
+      await cleanupStoredObjects(preparedLogo.previousStoredLogo ? [preparedLogo.previousStoredLogo] : []);
+      return {
+        ...next,
+        logoDataUrl: preparedLogo.storedLogo.dataUrl,
+        logoStorageProvider: preparedLogo.storedLogo.storageProvider,
+        logoStorageBucket: preparedLogo.storedLogo.storageBucket,
+        logoStorageKey: preparedLogo.storedLogo.storageKey,
+        logoStorageUrl: preparedLogo.storedLogo.storageUrl,
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -2924,6 +3095,7 @@ export class MySqlSafetyRepository {
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
+      await cleanupStoredObjects(current.logoStorageKey ? [current] : []);
       return result.affectedRows > 0;
     } finally {
       connection.release();
