@@ -3527,19 +3527,35 @@ function getWorkOrderViewModeLabel(mode = state.activeWorkOrderViewMode) {
   return WORK_ORDER_VIEW_MODES.find((item) => item.value === mode)?.label ?? "List";
 }
 
-function createWorkOrderEditorMetaIcon(iconName) {
-  const icon = document.createElement("span");
-  icon.className = `work-order-editor-meta-icon is-${iconName}`;
-
+function getWorkOrderIconMarkup(iconName) {
   const icons = {
     company: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5h11M4 13.5V4.75c0-.41.34-.75.75-.75h3.5c.41 0 .75.34.75.75V13.5M10 13.5V2.75c0-.41.34-.75.75-.75h1.5c.41 0 .75.34.75.75V13.5M6 6.5h1M6 8.75h1M11.25 5.25h.5M11.25 7.5h.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     location: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s4-3.63 4-7.2A4 4 0 1 0 4 6.8C4 10.37 8 14 8 14Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/><circle cx="8" cy="6.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
     dates: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.75V1.5M12 2.75V1.5M2.75 5.25h10.5M3.75 3.5h8.5a1 1 0 0 1 1 1v7.75a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     service: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M3 8h10M3 11.5h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/></svg>',
     assignees: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.25 6.25a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM10.75 7.25a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5ZM2.75 12.75a2.5 2.5 0 0 1 5 0M8.75 12.75a2 2 0 0 1 4 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    status: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.25 8.25 6.2 11.2 12.75 4.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>',
+    priority: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 13.5V2.5M4 3h7l-1.6 2.55L11 8H4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    number: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3.25h8M4 7.25h8M4 11.25h8M6 1.75l-1 12.5M11 1.75l-1 12.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1"/></svg>',
+    contact: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.75 6.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5ZM2.75 12.75a3 3 0 0 1 6 0M10.25 4.25h3M10.25 7.25h3M10.25 10.25h2.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    team: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 4.75h4.5v3.5h-4.5zM8.75 4.75h4.5v3.5h-4.5zM5.75 9.75h4.5v3.5h-4.5z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    tags: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.75h-3.5a.75.75 0 0 0-.75.75V7l5.25 5.25a1 1 0 0 0 1.41 0l3.84-3.84a1 1 0 0 0 0-1.41L8 2.75ZM5 5.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    billing: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h8v11l-2-1-2 1-2-1-2 1v-11ZM5.5 5h5M5.5 7.5h5M5.5 10h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    notes: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.25 2.75h9.5v10.5h-9.5zM5 5.25h6M5 7.75h6M5 10.25h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    todo: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3.25h8v9.5H4zM5.25 8l1.5 1.5 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    reminder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5a1.5 1.5 0 0 0 1.45-1.1M4.5 11.25h7l-.8-1.6V6.75a2.7 2.7 0 1 0-5.4 0v2.9l-.8 1.6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    measurement: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25h10.5v9.5H2.75zM2.75 6.25h10.5M6 3.25v9.5M9.5 3.25v9.5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.1"/></svg>',
+    reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 7.75a4.5 4.5 0 1 0 1.32-3.18L3 6.25M3 2.75v3.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
   };
 
-  icon.innerHTML = icons[iconName] ?? icons.service;
+  return icons[iconName] ?? icons.service;
+}
+
+function createWorkOrderEditorMetaIcon(iconName) {
+  const icon = document.createElement("span");
+  icon.className = `work-order-editor-meta-icon is-${iconName}`;
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
   return icon;
 }
 
@@ -3567,6 +3583,107 @@ function createWorkOrderEditorMetaItem(iconName, label, value, contentNode = nul
 
   item.append(createWorkOrderEditorMetaIcon(iconName), body);
   return item;
+}
+
+function createWorkOrderFieldIcon(iconName) {
+  const icon = document.createElement("span");
+  icon.className = `work-order-field-icon is-${iconName}`;
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+  return icon;
+}
+
+function createWorkOrderActionIcon(iconName) {
+  const icon = document.createElement("span");
+  icon.className = `work-order-action-icon is-${iconName}`;
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+  return icon;
+}
+
+function decorateWorkOrderFieldLabel(input, {
+  iconName = "service",
+  emphasize = false,
+} = {}) {
+  if (!(input instanceof HTMLElement)) {
+    return;
+  }
+
+  const field = input.closest(".field");
+  const heading = field?.querySelector(":scope > span");
+
+  if (!field || !heading) {
+    return;
+  }
+
+  const originalLabel = heading.dataset.originalLabel || heading.textContent.trim();
+  heading.dataset.originalLabel = originalLabel;
+  heading.className = "work-order-field-heading";
+
+  if (!heading.dataset.decorated) {
+    const label = document.createElement("span");
+    label.className = "work-order-field-label";
+    label.textContent = originalLabel;
+    heading.replaceChildren(createWorkOrderFieldIcon(iconName), label);
+    heading.dataset.decorated = "true";
+  }
+
+  field.classList.toggle("is-primary-field", emphasize);
+}
+
+function decorateWorkOrderActionButton(button, iconName) {
+  if (!(button instanceof HTMLButtonElement) || button.dataset.decorated === "true") {
+    return;
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-action-label";
+  label.textContent = button.textContent.trim();
+  button.replaceChildren(createWorkOrderActionIcon(iconName), label);
+  button.dataset.decorated = "true";
+}
+
+function createWorkOrderEditorInfoChip(label, modifier = "neutral") {
+  const chip = document.createElement("span");
+  chip.className = `work-order-editor-tag-chip is-${modifier}`;
+  chip.textContent = label;
+  return chip;
+}
+
+function enhanceWorkOrderEditorChrome() {
+  [
+    [workOrderStatusInput, { iconName: "status", emphasize: true }],
+    [workOrderPriorityInput, { iconName: "priority", emphasize: true }],
+    [workOrderOpenedDateInput, { iconName: "dates", emphasize: true }],
+    [workOrderDueDateInput, { iconName: "dates", emphasize: true }],
+    [workOrderTeamLabelInput, { iconName: "team" }],
+    [workOrderExecutor1Input, { iconName: "assignees" }],
+    [workOrderExecutor2Input, { iconName: "assignees" }],
+    [workOrderCompanyIdInput, { iconName: "company", emphasize: true }],
+    [workOrderHeadquartersInput, { iconName: "company" }],
+    [workOrderCompanyOibInput, { iconName: "number" }],
+    [workOrderContractTypeInput, { iconName: "service" }],
+    [workOrderLocationIdInput, { iconName: "location", emphasize: true }],
+    [workOrderCoordinatesInput, { iconName: "location" }],
+    [workOrderRegionInput, { iconName: "location" }],
+    [workOrderContactSlotInput, { iconName: "contact" }],
+    [workOrderContactPhoneInput, { iconName: "contact" }],
+    [workOrderContactEmailInput, { iconName: "contact" }],
+    [workOrderDepartmentInput, { iconName: "service" }],
+    [workOrderServiceLineInput, { iconName: "service", emphasize: true }],
+    [workOrderLinkReferenceInput, { iconName: "number" }],
+    [workOrderTagTextInput, { iconName: "tags" }],
+    [workOrderWeightInput, { iconName: "number" }],
+    [workOrderCompletedByInput, { iconName: "assignees" }],
+    [workOrderInvoiceDateInput, { iconName: "billing" }],
+    [workOrderDescriptionInput, { iconName: "notes", emphasize: true }],
+    [workOrderInvoiceNoteInput, { iconName: "billing" }],
+  ].forEach(([input, config]) => decorateWorkOrderFieldLabel(input, config));
+
+  decorateWorkOrderActionButton(workOrderOpenTodoButton, "todo");
+  decorateWorkOrderActionButton(workOrderOpenReminderButton, "reminder");
+  decorateWorkOrderActionButton(measurementSheetOpenButton, "measurement");
+  decorateWorkOrderActionButton(workOrderResetButton, "reset");
 }
 
 function scrollWorkOrderEditorToTop() {
@@ -3699,14 +3816,13 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
   state.workOrderAutoSave.lastSavedAt = new Date().toISOString();
 
   if (isEditing) {
-    workOrderNumberPreview.textContent = `Uredujes ${state.workOrders.find((item) => String(item.id) === String(editingId))?.workOrderNumber || editingId}`;
+    renderWorkOrderEditorSummary();
     void loadWorkOrderActivity(editingId);
   } else {
     const created = findCreatedWorkOrderMatch(previousIds, payload);
 
     if (created) {
       workOrderIdInput.value = created.id;
-      workOrderNumberPreview.textContent = `Uredujes ${created.workOrderNumber}`;
       renderWorkOrderEditorSummary();
       void loadWorkOrderActivity(created.id);
       void loadWorkOrderDocuments(created.id);
@@ -3756,23 +3872,32 @@ function renderWorkOrderEditorSummary() {
   const department = String(workOrderDepartmentInput.value ?? "").trim();
   const teamLabel = String(workOrderTeamLabelInput.value ?? "").trim();
   const description = String(workOrderDescriptionInput.value ?? "").trim();
-  const companyName = "";
-  const locationName = "";
-  const compactServiceSummary = [department, serviceLine].filter(Boolean).join(" · ");
+  const company = getCompany(workOrderCompanyIdInput.value);
+  const location = getLocation(workOrderLocationIdInput.value);
+  const companyName = company?.name || "";
+  const locationName = location?.name || "";
+  const compactServiceSummary = [serviceLine, department].filter(Boolean).join(" · ");
   const serviceSummary = [department, serviceLine].filter(Boolean).join(" · ");
+  const contactSummary = [
+    getSelectedContactName(),
+    String(workOrderContactPhoneInput.value ?? "").trim() || String(workOrderContactEmailInput.value ?? "").trim(),
+  ].filter(Boolean).join(" · ");
+  const linkReference = String(workOrderLinkReferenceInput.value ?? "").trim();
   const executorValues = [workOrderExecutor1Input.value, workOrderExecutor2Input.value]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
 
   workOrderEditorContext.textContent = activeId ? "Uređivanje radnog naloga" : "Otvaranje novog RN";
-  workOrderEditorTitle.textContent = workOrderNumber || "Novi radni nalog";
-  workOrderEditorSubtitle.textContent = description
-    || [serviceLine, department, companyName, locationName].filter(Boolean).join(" · ")
-    || "Odaberi klijenta, lokaciju i unesi detalje radnog naloga.";
-
+  workOrderEditorTitle.textContent = activeId ? (workOrderNumber || "Radni nalog") : "Novi radni nalog";
   workOrderEditorSubtitle.textContent = description
     || compactServiceSummary
+    || [companyName, locationName].filter(Boolean).join(" · ")
     || "Promjene se spremaju automatski.";
+
+  if (workOrderNumberPreview) {
+    workOrderNumberPreview.dataset.mode = workOrderNumber ? "assigned" : "pending";
+    workOrderNumberPreview.textContent = workOrderNumber ? `RN ${workOrderNumber}` : "Broj nakon spremanja";
+  }
 
   const statusBadge = createBadge(
     getSelectedOptionText(workOrderStatusInput) || workOrderStatusInput.value || "Otvoreni RN",
@@ -3790,23 +3915,44 @@ function renderWorkOrderEditorSummary() {
   chips.className = "work-order-editor-chip-row";
   chips.append(statusBadge, priorityBadge);
 
+  if (companyName) {
+    chips.append(createWorkOrderEditorInfoChip(companyName, "neutral"));
+  }
+
+  if (locationName) {
+    chips.append(createWorkOrderEditorInfoChip(locationName, "neutral"));
+  }
+
   if (workOrderTagTextInput.value.trim()) {
-    const tagChip = document.createElement("span");
-    tagChip.className = "work-order-editor-tag-chip";
-    tagChip.textContent = workOrderTagTextInput.value.trim();
-    chips.append(tagChip);
+    chips.append(createWorkOrderEditorInfoChip(workOrderTagTextInput.value.trim(), "accent"));
   }
 
   if (teamLabel) {
-    const teamChip = document.createElement("span");
-    teamChip.className = "work-order-editor-tag-chip";
-    teamChip.textContent = teamLabel;
-    chips.append(teamChip);
+    chips.append(createWorkOrderEditorInfoChip(teamLabel, "accent"));
+  }
+
+  if (linkReference) {
+    chips.append(createWorkOrderEditorInfoChip(linkReference, "soft"));
   }
 
   const facts = document.createElement("div");
   facts.className = "work-order-editor-facts";
   facts.append(
+    createWorkOrderEditorMetaItem(
+      "number",
+      "Broj RN",
+      workOrderNumber || "Dodjeljuje se nakon spremanja",
+    ),
+    createWorkOrderEditorMetaItem(
+      "company",
+      "Tvrtka",
+      companyName || "Odaberi tvrtku",
+    ),
+    createWorkOrderEditorMetaItem(
+      "location",
+      "Lokacija",
+      locationName || "Odaberi lokaciju",
+    ),
     createWorkOrderEditorMetaItem(
       "dates",
       "Datumi",
@@ -3818,9 +3964,14 @@ function renderWorkOrderEditorSummary() {
       [department, serviceLine].filter(Boolean).join(" · ") || "Bez usluge",
     ),
     createWorkOrderEditorMetaItem(
-      "service",
+      "team",
       "Tim",
       teamLabel || "Bez tima",
+    ),
+    createWorkOrderEditorMetaItem(
+      "contact",
+      "Kontakt",
+      contactSummary || "Bez kontakta",
     ),
   );
 
@@ -19278,6 +19429,7 @@ bindWorkOrderDocumentDropzone(workOrderDocumentDropzone, workOrderDocumentFileIn
 bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileInput, "activity");
 bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
 bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
+enhanceWorkOrderEditorChrome();
 renderWorkOrderDocuments();
 
 workOrdersTableWrap.addEventListener("scroll", () => {
