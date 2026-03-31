@@ -873,6 +873,7 @@ function mapStoredAttachmentDocument(document = {}) {
     fileName: dbString(document.fileName ?? document.name),
     fileType: dbString(document.fileType ?? document.mimeType),
     fileSize: Number(document.fileSize ?? document.size ?? 0) || 0,
+    documentCategory: dbString(document.documentCategory ?? document.category),
     description: dbString(document.description),
     dataUrl: storedDocument.dataUrl,
     storageProvider: storedDocument.storageProvider,

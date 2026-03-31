@@ -1924,6 +1924,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
           fileName: "umjernica.pdf",
           fileType: "application/pdf",
           fileSize: 1024,
+          documentCategory: "umjernica",
           description: "Aktivna umjernica",
           dataUrl: "data:application/pdf;base64,AAA",
         },
@@ -1962,6 +1963,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
           fileName: "karton.jpg",
           fileType: "image/jpeg",
           fileSize: 2048,
+          documentCategory: "karton_uredaja",
           description: "Karton uredaja",
           dataUrl: "data:image/jpeg;base64,BBB",
         },
@@ -1976,8 +1978,10 @@ test("measurement equipment supports templates, documents, filters and sorting",
 
   assert.deepEqual(first.linkedTemplateTitles, ["Zapisnik A"]);
   assert.equal(first.documents.length, 1);
+  assert.equal(first.documents[0].documentCategory, "umjernica");
   assert.equal(updatedSecond.linkedTemplateTitles[0], "Zapisnik B");
   assert.equal(updatedSecond.documents[0].fileName, "karton.jpg");
+  assert.equal(updatedSecond.documents[0].documentCategory, "karton_uredaja");
 
   const filtered = filterMeasurementEquipmentItems([first, updatedSecond], {
     query: "zapisnik b",

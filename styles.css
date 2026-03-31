@@ -13048,7 +13048,12 @@ body.is-vehicle-reservation-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
+  align-items: start;
+}
+
+.module-attachment-row.is-unclassified {
+  border-color: rgba(214, 113, 62, 0.32);
+  box-shadow: 0 0 0 1px rgba(214, 113, 62, 0.08);
 }
 
 .module-attachment-copy {
@@ -13070,6 +13075,33 @@ body.is-vehicle-reservation-open {
 .module-attachment-description {
   color: #60796f;
   font-size: 0.84rem;
+}
+
+.module-attachment-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.module-attachment-field {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+}
+
+.module-attachment-field-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #60796f;
+}
+
+.module-attachment-category-select {
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(47, 104, 84, 0.18);
+  background: #ffffff;
 }
 
 .module-attachment-actions {

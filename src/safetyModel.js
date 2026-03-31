@@ -546,6 +546,7 @@ function normalizeAttachmentDocuments(items = []) {
       fileName: fileName.slice(0, 255),
       fileType: normalizeText(item?.fileType ?? item?.mimeType).slice(0, 160),
       fileSize: Number.isFinite(numericSize) && numericSize >= 0 ? Math.round(numericSize) : 0,
+      documentCategory: normalizeText(item?.documentCategory ?? item?.category).slice(0, 64),
       description: normalizeText(item?.description),
       dataUrl,
       storageProvider: normalizeText(item?.storageProvider).slice(0, 32),
@@ -2320,7 +2321,11 @@ export function filterMeasurementEquipmentItems(
       item.note,
       item.calibrationPeriod,
       ...(item.linkedTemplateTitles ?? []),
-      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
+      ...(item.documents ?? []).flatMap((document) => [
+        document.fileName,
+        document.description,
+        document.documentCategory,
+      ]),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);

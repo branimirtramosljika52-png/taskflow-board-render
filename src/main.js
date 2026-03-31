@@ -8967,6 +8967,17 @@ function getDocumentTemplateSectionTypeLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS, value || "rich_text");
 }
 
+const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
+  { value: "", label: "Odaberi vrstu dokumenta" },
+  { value: "racun", label: "Racun" },
+  { value: "umjernica", label: "Umjernica" },
+  { value: "karton_uredaja", label: "Karton uredaja" },
+  { value: "slika_uredaja", label: "Slika uredaja" },
+  { value: "servisni_zapis", label: "Servisni zapis" },
+  { value: "upute", label: "Upute / dokumentacija" },
+  { value: "ostalo", label: "Ostalo" },
+];
+
 function getDocumentTemplateFieldTypeLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, value || "text");
 }
@@ -9755,6 +9766,7 @@ function createModuleAttachmentDraft(document = {}) {
     fileName: String(document.fileName || "").trim(),
     fileType: String(document.fileType || "").trim(),
     fileSize: Number(document.fileSize || 0) || 0,
+    documentCategory: String(document.documentCategory || document.category || "").trim(),
     description: String(document.description || "").trim(),
     dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
     storageProvider: String(document.storageProvider || "").trim(),
@@ -9770,6 +9782,31 @@ function setMeasurementEquipmentDocumentDrafts(items = []) {
   measurementEquipmentDocumentDrafts = (Array.isArray(items) ? items : [])
     .map((item) => createModuleAttachmentDraft(item))
     .filter((item) => item.fileName && item.dataUrl);
+}
+
+function updateMeasurementEquipmentDocumentDraft(documentId, patch = {}) {
+  measurementEquipmentDocumentDrafts = measurementEquipmentDocumentDrafts.map((item) => (
+    item.id === documentId
+      ? {
+        ...item,
+        ...patch,
+      }
+      : item
+  ));
+}
+
+function focusMeasurementEquipmentDocumentCategory(documentId = "") {
+  if (!documentId || !measurementEquipmentDocumentsList) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const target = Array.from(
+      measurementEquipmentDocumentsList.querySelectorAll(".module-attachment-category-select"),
+    ).find((input) => input.dataset.documentId === String(documentId));
+
+    target?.focus({ preventScroll: false });
+  });
 }
 
 function triggerModuleAttachmentDownload(fileDocument) {
@@ -9805,6 +9842,7 @@ function renderMeasurementEquipmentDocuments() {
   measurementEquipmentDocumentsList.replaceChildren(...measurementEquipmentDocumentDrafts.map((entry) => {
     const row = document.createElement("article");
     row.className = "module-attachment-row";
+    row.classList.toggle("is-unclassified", !entry.documentCategory);
 
     const copy = document.createElement("div");
     copy.className = "module-attachment-copy";
@@ -9820,6 +9858,33 @@ function renderMeasurementEquipmentDocuments() {
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
+
+    const fieldWrap = document.createElement("div");
+    fieldWrap.className = "module-attachment-fields";
+
+    const categoryField = document.createElement("label");
+    categoryField.className = "module-attachment-field";
+
+    const categoryLabel = document.createElement("span");
+    categoryLabel.className = "module-attachment-field-label";
+    categoryLabel.textContent = "Sto je ovo?";
+
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "module-attachment-category-select";
+    categorySelect.dataset.documentId = entry.id;
+    replaceSelectOptions(
+      categorySelect,
+      MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
+      entry.documentCategory || "",
+    );
+    categorySelect.addEventListener("change", () => {
+      const nextValue = categorySelect.value || "";
+      updateMeasurementEquipmentDocumentDraft(entry.id, { documentCategory: nextValue });
+      row.classList.toggle("is-unclassified", !nextValue);
+    });
+    categoryField.append(categoryLabel, categorySelect);
+    fieldWrap.append(categoryField);
+    copy.append(fieldWrap);
 
     if (entry.description) {
       const description = document.createElement("p");
@@ -9847,11 +9912,13 @@ function renderMeasurementEquipmentDocuments() {
 
 async function queueMeasurementEquipmentDocuments(files) {
   const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
   measurementEquipmentDocumentDrafts = [
     ...measurementEquipmentDocumentDrafts,
-    ...uploads.map((file) => createModuleAttachmentDraft(file)),
+    ...nextDocuments,
   ];
   renderMeasurementEquipmentDocuments();
+  focusMeasurementEquipmentDocumentCategory(nextDocuments[0]?.id || "");
 }
 
 function syncLegalFrameworkEditorChrome() {
