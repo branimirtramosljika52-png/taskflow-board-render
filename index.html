@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260331i" />
+    <link rel="stylesheet" href="/styles.css?v=20260331j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -576,6 +576,7 @@
                   <section class="work-order-editor-hero">
                     <div class="work-order-editor-hero-copy">
                       <h2 id="work-order-editor-title">Novi radni nalog</h2>
+                      <div id="work-order-editor-company-summary" class="work-order-editor-company-summary"></div>
                       <p id="work-order-editor-subtitle" class="work-order-editor-subtitle">Odaberi klijenta, lokaciju i unesi detalje radnog naloga.</p>
                     </div>
                     <div id="work-order-editor-meta" class="work-order-editor-meta"></div>
@@ -668,7 +669,17 @@
                           <span>Tagovi</span>
                           <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
                         </label>
+
+                        <label class="field">
+                          <span>Regija</span>
+                          <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
+                        </label>
                       </div>
+
+                      <label class="field field-span-full work-order-inline-note">
+                        <span>Napomena</span>
+                        <textarea id="work-order-description" rows="3" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
+                      </label>
                     </section>
 
                     <section class="work-order-editor-section is-client">
@@ -691,11 +702,6 @@
                             <label class="field">
                               <span>Koordinate</span>
                               <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
-                            </label>
-
-                            <label class="field">
-                              <span>Regija</span>
-                              <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
                             </label>
                           </div>
                         </div>
@@ -772,16 +778,11 @@
                       <div class="work-order-editor-section-head">
                         <div>
                           <p class="work-order-editor-section-kicker">Biljeske</p>
-                          <h3>Opis i napomene</h3>
+                          <h3>Interna napomena i faktura</h3>
                         </div>
                       </div>
 
                       <div class="form-grid form-grid-notes">
-                        <label class="field field-span-full">
-                          <span>Opis radnog naloga</span>
-                          <textarea id="work-order-description" rows="5" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
-                        </label>
-
                         <label class="field field-span-full">
                           <span>Napomena / faktura</span>
                           <textarea id="work-order-invoice-note" rows="5" placeholder="Napomena za RN ili fakturu."></textarea>
@@ -3069,6 +3070,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260331i"></script>
+    <script type="module" src="/src/main.js?v=20260331j"></script>
   </body>
 </html>

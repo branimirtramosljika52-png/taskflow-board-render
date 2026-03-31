@@ -1196,6 +1196,7 @@ const workOrderEditorBody = workOrderEditorPanel?.querySelector(".work-order-edi
 const workOrderActivityPanel = workOrderEditorPanel?.querySelector(".work-order-activity-panel");
 const workOrderEditorContext = document.querySelector("#work-order-editor-context");
 const workOrderEditorTitle = document.querySelector("#work-order-editor-title");
+const workOrderEditorCompanySummary = document.querySelector("#work-order-editor-company-summary");
 const workOrderEditorSubtitle = document.querySelector("#work-order-editor-subtitle");
 const workOrderEditorMeta = document.querySelector("#work-order-editor-meta");
 const workOrderForm = document.querySelector("#work-order-form");
@@ -3861,7 +3862,7 @@ function queueWorkOrderAutoSave() {
 }
 
 function renderWorkOrderEditorSummary() {
-  if (!workOrderEditorTitle || !workOrderEditorSubtitle || !workOrderEditorMeta) {
+  if (!workOrderEditorTitle || !workOrderEditorSubtitle || !workOrderEditorMeta || !workOrderEditorCompanySummary) {
     return;
   }
 
@@ -3894,6 +3895,38 @@ function renderWorkOrderEditorSummary() {
     || [companyName, locationName].filter(Boolean).join(" · ")
     || "Promjene se spremaju automatski.";
 
+  const companySummaryNodes = [];
+
+  if (companyName) {
+    const companyLine = document.createElement("strong");
+    companyLine.className = "work-order-editor-company-primary";
+    companyLine.textContent = companyName;
+    companySummaryNodes.push(companyLine);
+  }
+
+  if (workOrderHeadquartersInput.value.trim()) {
+    const headquartersLine = document.createElement("span");
+    headquartersLine.className = "work-order-editor-company-line";
+    headquartersLine.textContent = `Sjedište · ${workOrderHeadquartersInput.value.trim()}`;
+    companySummaryNodes.push(headquartersLine);
+  }
+
+  if (workOrderCompanyOibInput.value.trim()) {
+    const oibLine = document.createElement("span");
+    oibLine.className = "work-order-editor-company-line";
+    oibLine.textContent = `OIB · ${workOrderCompanyOibInput.value.trim()}`;
+    companySummaryNodes.push(oibLine);
+  }
+
+  if (companySummaryNodes.length === 0) {
+    const placeholderLine = document.createElement("span");
+    placeholderLine.className = "work-order-editor-company-line is-placeholder";
+    placeholderLine.textContent = "Odaberi tvrtku, sjediste i OIB ce se prikazati ovdje.";
+    companySummaryNodes.push(placeholderLine);
+  }
+
+  workOrderEditorCompanySummary.replaceChildren(...companySummaryNodes);
+
   if (workOrderNumberPreview) {
     workOrderNumberPreview.dataset.mode = workOrderNumber ? "assigned" : "pending";
     workOrderNumberPreview.textContent = workOrderNumber ? `RN ${workOrderNumber}` : "Broj nakon spremanja";
@@ -3915,14 +3948,6 @@ function renderWorkOrderEditorSummary() {
   chips.className = "work-order-editor-chip-row";
   chips.append(statusBadge, priorityBadge);
 
-  if (companyName) {
-    chips.append(createWorkOrderEditorInfoChip(companyName, "neutral"));
-  }
-
-  if (locationName) {
-    chips.append(createWorkOrderEditorInfoChip(locationName, "neutral"));
-  }
-
   if (workOrderTagTextInput.value.trim()) {
     chips.append(createWorkOrderEditorInfoChip(workOrderTagTextInput.value.trim(), "accent"));
   }
@@ -3942,11 +3967,6 @@ function renderWorkOrderEditorSummary() {
       "number",
       "Broj RN",
       workOrderNumber || "Dodjeljuje se nakon spremanja",
-    ),
-    createWorkOrderEditorMetaItem(
-      "company",
-      "Tvrtka",
-      companyName || "Odaberi tvrtku",
     ),
     createWorkOrderEditorMetaItem(
       "location",
