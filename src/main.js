@@ -404,6 +404,7 @@ const state = {
   },
   workOrderFilters: {
     builderOpen: false,
+    presetToolsOpen: false,
     query: "",
     activePresetId: "",
     savedPresets: [],
@@ -673,6 +674,7 @@ function loadWorkOrderFilterPreferences(force = false) {
 
   state.workOrderFilters.storageScope = nextScope;
   state.workOrderFilters.builderOpen = false;
+  state.workOrderFilters.presetToolsOpen = false;
   state.workOrderFilters.savedPresets = savedPresets;
   state.workOrderFilters.activePresetId = activePresetId;
   state.workOrderFilters.query = String(storedState.query || "").trim();
@@ -12542,6 +12544,47 @@ function renderWorkOrderFilterBuilder() {
   description.textContent = "Dodaj više pravila, slaži AND / OR grupe i spremi preset za listu, kalendar i kartu.";
   copy.append(title, description);
 
+  const headControls = document.createElement("div");
+  headControls.className = "work-order-filter-builder-controls";
+
+  const toolsToggle = document.createElement("button");
+  toolsToggle.type = "button";
+  toolsToggle.className = "ghost-button work-order-filter-builder-icon";
+  toolsToggle.setAttribute(
+    "aria-label",
+    state.workOrderFilters.presetToolsOpen ? "Sakrij spremljene filtere" : "Prikaži spremljene filtere",
+  );
+  toolsToggle.setAttribute("aria-expanded", state.workOrderFilters.presetToolsOpen ? "true" : "false");
+  toolsToggle.classList.toggle("is-active", state.workOrderFilters.presetToolsOpen);
+  toolsToggle.innerHTML = `
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 4.25h10M3 8h10M3 11.75h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path>
+    </svg>
+  `;
+  toolsToggle.addEventListener("click", () => {
+    state.workOrderFilters.presetToolsOpen = !state.workOrderFilters.presetToolsOpen;
+    renderWorkOrderFilterBuilder();
+  });
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button work-order-filter-builder-icon";
+  closeButton.setAttribute("aria-label", "Zatvori filtere");
+  closeButton.innerHTML = `
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.25 4.25l7.5 7.5M11.75 4.25l-7.5 7.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path>
+    </svg>
+  `;
+  closeButton.addEventListener("click", () => {
+    state.workOrderFilters.builderOpen = false;
+    state.workOrderFilters.presetToolsOpen = false;
+    renderWorkOrderFilterSummary();
+    renderWorkOrderFilterBuilder();
+  });
+
+  headControls.append(toolsToggle, closeButton);
+  head.append(copy, headControls);
+
   const headActions = document.createElement("div");
   headActions.className = "work-order-filter-builder-actions";
 
@@ -12610,15 +12653,7 @@ function renderWorkOrderFilterBuilder() {
   });
   deleteButton.dataset.workOrderFilterPresetDelete = "true";
   deleteButton.disabled = !state.workOrderFilters.activePresetId;
-
-  const closeButton = createActionButton("Zatvori", "ghost-button", () => {
-    state.workOrderFilters.builderOpen = false;
-    renderWorkOrderFilterSummary();
-    renderWorkOrderFilterBuilder();
-  });
-
-  headActions.append(savedSelect, saveButton, deleteButton, closeButton);
-  head.append(copy, headActions);
+  headActions.append(savedSelect, saveButton, deleteButton);
 
   const groupList = document.createElement("div");
   groupList.className = "work-order-filter-group-list";
@@ -12786,8 +12821,11 @@ function renderWorkOrderFilterBuilder() {
   );
 
   footer.append(helper, footerActions);
-
-  workOrderFilterBuilder.append(head, groupList, footer);
+  workOrderFilterBuilder.append(head);
+  if (state.workOrderFilters.presetToolsOpen) {
+    workOrderFilterBuilder.append(headActions);
+  }
+  workOrderFilterBuilder.append(groupList, footer);
 }
 
 function getFilteredWorkOrders() {
@@ -16735,6 +16773,9 @@ workOrderSearchInput?.addEventListener("input", () => {
 });
 workOrderFilterToggle?.addEventListener("click", () => {
   state.workOrderFilters.builderOpen = !state.workOrderFilters.builderOpen;
+  if (!state.workOrderFilters.builderOpen) {
+    state.workOrderFilters.presetToolsOpen = false;
+  }
   renderWorkOrderFilterSummary();
   renderWorkOrderFilterBuilder();
 });
@@ -17113,6 +17154,7 @@ document.addEventListener("keydown", (event) => {
 
   event.preventDefault();
   state.workOrderFilters.builderOpen = false;
+  state.workOrderFilters.presetToolsOpen = false;
   renderWorkOrderFilterSummary();
   renderWorkOrderFilterBuilder();
 });
@@ -17919,6 +17961,7 @@ document.addEventListener("click", (event) => {
     && !targetElement?.closest(".work-order-filter-shell")
   ) {
     state.workOrderFilters.builderOpen = false;
+    state.workOrderFilters.presetToolsOpen = false;
     renderWorkOrderFilterSummary();
     renderWorkOrderFilterBuilder();
   }

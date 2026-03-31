@@ -5909,12 +5909,46 @@ body.is-work-order-editor-open {
   font-size: 0.82rem;
 }
 
+.work-order-filter-builder-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.work-order-filter-builder-icon {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+}
+
+.work-order-filter-builder-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.work-order-filter-builder-icon.is-active {
+  border-color: rgba(217, 72, 149, 0.24);
+  background: linear-gradient(180deg, #fff2fb, #fff8fc);
+  color: #a33670;
+}
+
 .work-order-filter-builder-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid #ececf4;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff, #fbfbff);
 }
 
 .work-order-filter-builder-actions select {
@@ -10903,6 +10937,10 @@ body.is-work-order-editor-open {
   .work-order-filter-group-head,
   .work-order-filter-footer {
     align-items: stretch;
+  }
+
+  .work-order-filter-builder-controls {
+    margin-left: 0;
   }
 
   .work-order-filter-builder-actions,
