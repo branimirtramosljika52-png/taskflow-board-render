@@ -1213,6 +1213,7 @@ let offerFormItems = [];
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
 let documentTemplateSectionDrafts = [];
+let activeDocumentTemplateSheetIndex = 0;
 let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
@@ -9147,6 +9148,84 @@ function setDocumentTemplateSectionDrafts(sections = [], { ensureDefault = true 
   documentTemplateSectionDrafts = ensureDefault ? createDefaultDocumentTemplateSectionDrafts() : [];
 }
 
+function buildDocumentTemplateSheetGroups(fields = documentTemplateFieldDrafts) {
+  const source = Array.isArray(fields) ? fields : [];
+  const pages = [{
+    index: 0,
+    id: "sheet-1",
+    title: "Stranica 1",
+    breakField: null,
+    breakIndex: -1,
+    fields: [],
+  }];
+  let currentPage = pages[0];
+
+  source.forEach((field, index) => {
+    if (field?.type === "page_break") {
+      const nextIndex = pages.length;
+      currentPage = {
+        index: nextIndex,
+        id: String(field.id || `sheet-${nextIndex + 1}`),
+        title: String(field.label || "").trim() || `Stranica ${nextIndex + 1}`,
+        breakField: field,
+        breakIndex: index,
+        fields: [],
+      };
+      pages.push(currentPage);
+      return;
+    }
+
+    currentPage.fields.push({
+      field,
+      index,
+    });
+  });
+
+  return pages.map((page, index) => ({
+    ...page,
+    index,
+    title: String(page.title || "").trim() || `Stranica ${index + 1}`,
+  }));
+}
+
+function clampDocumentTemplateSheetIndex(pages = buildDocumentTemplateSheetGroups()) {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    activeDocumentTemplateSheetIndex = 0;
+    return 0;
+  }
+
+  activeDocumentTemplateSheetIndex = Math.max(0, Math.min(activeDocumentTemplateSheetIndex, pages.length - 1));
+  return activeDocumentTemplateSheetIndex;
+}
+
+function getDocumentTemplateSheetInsertIndex(pageIndex = activeDocumentTemplateSheetIndex) {
+  const pages = buildDocumentTemplateSheetGroups();
+  const safePageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
+  const nextPage = pages[safePageIndex + 1];
+  return Number.isInteger(nextPage?.breakIndex) ? nextPage.breakIndex : documentTemplateFieldDrafts.length;
+}
+
+function insertDocumentTemplateFieldDraft(draft, { pageIndex = activeDocumentTemplateSheetIndex } = {}) {
+  const insertIndex = getDocumentTemplateSheetInsertIndex(pageIndex);
+  documentTemplateFieldDrafts = [
+    ...documentTemplateFieldDrafts.slice(0, insertIndex),
+    draft,
+    ...documentTemplateFieldDrafts.slice(insertIndex),
+  ];
+}
+
+function removeDocumentTemplateSheet(pageIndex) {
+  const pages = buildDocumentTemplateSheetGroups();
+  const targetPage = pages[pageIndex];
+
+  if (!targetPage?.breakField?.id) {
+    return;
+  }
+
+  documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((field) => field.id !== targetPage.breakField.id);
+  activeDocumentTemplateSheetIndex = Math.max(0, Math.min(pageIndex - 1, buildDocumentTemplateSheetGroups().length - 1));
+}
+
 function rememberDocumentTemplateTextTarget(target, name = "") {
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
     activeDocumentTemplateTextTarget = null;
@@ -9565,6 +9644,64 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   };
 }
 
+function buildDocumentTemplatePreviewPageMarkup(
+  page,
+  template,
+  context,
+  {
+    placeholderMode = false,
+    pageIndex = 0,
+    pageCount = 1,
+  } = {},
+) {
+  const pageTitle = escapeHtml(page?.title || `Stranica ${pageIndex + 1}`);
+  const pagePlaceholderChips = (page?.fields ?? []).length > 0
+    ? (page.fields ?? []).map(({ field, index }) => (
+      `<span class="document-template-preview-pill">${escapeHtml(getDocumentTemplateFieldToken(field, index))}</span>`
+    )).join("")
+    : '<span class="document-template-preview-empty">Na ovoj stranici jos nema placeholdera.</span>';
+  const blocks = (page?.fields ?? []).length > 0
+    ? (page.fields ?? []).map(({ field, index }) => buildDocumentTemplateFieldPreviewMarkup(field, context, index, { placeholderMode })).join("")
+    : `
+      <section class="document-template-preview-section">
+        <h2>Prazna stranica</h2>
+        <p class="document-template-preview-copy">Dodaj blokove u aktivnu stranicu da odmah vidis raspored i preview.</p>
+      </section>
+    `;
+
+  return `
+    <article class="document-template-preview-page" data-template-sheet-page="${pageIndex}">
+      <header class="document-template-preview-header">
+        <div>
+          <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
+          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template")}</h1>
+          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predlozak, a ovdje se definira raspored placeholdera i blokova.")}</p>
+        </div>
+        <div class="document-template-preview-meta-grid">
+          <div><span>Stranica</span><strong>${pageTitle}</strong></div>
+          <div><span>Blokova</span><strong>${(page?.fields ?? []).length}</strong></div>
+          <div><span>Povezani propisi</span><strong>${context.legalFrameworks.length}</strong></div>
+          <div><span>Povezana oprema</span><strong>${context.equipmentItems.length}</strong></div>
+        </div>
+      </header>
+      <section class="document-template-preview-section">
+        <div class="document-template-preview-field-head">
+          <h2>Placeholderi</h2>
+          ${pageCount > 1 ? `<span class="document-template-inline-token">${pageTitle}</span>` : ""}
+        </div>
+        <div class="document-template-preview-pill-row">${pagePlaceholderChips}</div>
+      </section>
+      ${blocks}
+      ${template.referenceDocument?.fileName ? `
+        <section class="document-template-preview-section">
+          <h2>Word reference</h2>
+          <p class="document-template-preview-copy">Povezani Word predlozak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
+        </section>
+      ` : ""}
+    </article>
+  `;
+}
+
 function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
   const token = getDocumentTemplateFieldToken(field, index);
   const title = escapeHtml(field.label || `Polje ${index + 1}`);
@@ -9680,49 +9817,42 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   `;
 }
 
-function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false } = {}) {
+function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false, sheetTabs = false } = {}) {
   const context = buildDocumentTemplatePreviewContext(template);
-  const placeholderChips = (template.customFields ?? []).length > 0
-    ? (template.customFields ?? []).map((field, index) => (
-      `<span class="document-template-preview-pill">${escapeHtml(getDocumentTemplateFieldToken(field, index))}</span>`
-    )).join("")
-    : '<span class="document-template-preview-empty">Dodaj prvo blokove i placeholdere.</span>';
-  const blocks = (template.customFields ?? []).length > 0
-    ? (template.customFields ?? []).map((field, index) => buildDocumentTemplateFieldPreviewMarkup(field, context, index, { placeholderMode })).join("")
-    : `
-      <section class="document-template-preview-section">
-        <h2>Nema slozenih blokova</h2>
-        <p class="document-template-preview-copy">Dodaj polje, popis propisa, popis opreme, novu stranicu ili Excel tablicu.</p>
-      </section>
-    `;
+  const pages = buildDocumentTemplateSheetGroups(template.customFields ?? []);
+  const safePageIndex = Math.max(0, Math.min(activeDocumentTemplateSheetIndex, pages.length - 1));
+  const pageMarkup = pages.map((page, pageIndex) => buildDocumentTemplatePreviewPageMarkup(
+    page,
+    template,
+    context,
+    {
+      placeholderMode,
+      pageIndex,
+      pageCount: pages.length,
+    },
+  ));
+
+  if (placeholderMode || !sheetTabs) {
+    return pageMarkup.join("");
+  }
+
+  const tabs = pages.map((page, index) => `
+    <button
+      type="button"
+      class="document-template-sheet-tab ${index === safePageIndex ? "is-active" : ""}"
+      data-template-sheet-tab="${index}"
+      data-template-sheet-context="preview"
+    >
+      <strong>${escapeHtml(page.title)}</strong>
+      <span>${(page.fields ?? []).length} bloka</span>
+    </button>
+  `).join("");
 
   return `
-    <article class="document-template-preview-page">
-      <header class="document-template-preview-header">
-        <div>
-          <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
-          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template")}</h1>
-          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predlozak, a ovdje se definira raspored placeholdera i blokova.")}</p>
-        </div>
-        <div class="document-template-preview-meta-grid">
-          <div><span>Vrsta dokumenta</span><strong>${escapeHtml(template.documentType || "Zapisnik")}</strong></div>
-          <div><span>Status</span><strong>${escapeHtml(getDocumentTemplateStatusLabel(template.status))}</strong></div>
-          <div><span>Povezani propisi</span><strong>${context.legalFrameworks.length}</strong></div>
-          <div><span>Povezana oprema</span><strong>${context.equipmentItems.length}</strong></div>
-        </div>
-      </header>
-      <section class="document-template-preview-section">
-        <h2>Placeholderi</h2>
-        <div class="document-template-preview-pill-row">${placeholderChips}</div>
-      </section>
-      ${blocks}
-      ${template.referenceDocument?.fileName ? `
-        <section class="document-template-preview-section">
-          <h2>Word reference</h2>
-          <p class="document-template-preview-copy">Povezani Word predlozak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
-        </section>
-      ` : ""}
-    </article>
+    <div class="document-template-preview-shell">
+      <div class="document-template-sheet-tabs is-preview">${tabs}</div>
+      ${pageMarkup[safePageIndex] || ""}
+    </div>
   `;
 }
 
@@ -9731,8 +9861,10 @@ function renderDocumentTemplatePreviewContent() {
     return;
   }
 
+  clampDocumentTemplateSheetIndex();
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(buildDocumentTemplateDraft(), {
     placeholderMode: false,
+    sheetTabs: true,
   });
 }
 
@@ -9762,6 +9894,7 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
         .toolbar button { border: 1px solid rgba(47,104,84,0.16); border-radius: 999px; background: #fff; color: #255848; padding: 10px 16px; cursor: pointer; }
         .page-wrap { padding: 28px; display: grid; justify-items: center; }
         .document-template-preview-page { width: min(920px, 100%); background: #fff; border: 1px solid rgba(47,104,84,0.12); border-radius: 28px; padding: 32px; box-shadow: 0 22px 54px rgba(24, 48, 39, 0.12); }
+        .document-template-preview-page + .document-template-preview-page { margin-top: 24px; page-break-before: always; }
         .document-template-preview-header { display: grid; gap: 18px; margin-bottom: 24px; }
         .document-template-preview-eyebrow { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #557166; }
         .document-template-preview-header h1 { margin: 0; font-size: 32px; }
@@ -11079,18 +11212,68 @@ function renderDocumentTemplateFieldRows() {
     return;
   }
 
-  if (documentTemplateFieldDrafts.length === 0) {
+  const pages = buildDocumentTemplateSheetGroups();
+  const safePageIndex = clampDocumentTemplateSheetIndex(pages);
+  const activePage = pages[safePageIndex] ?? pages[0];
+  const shell = document.createElement("div");
+  shell.className = "document-template-sheet-shell";
+
+  const tabs = document.createElement("div");
+  tabs.className = "document-template-sheet-tabs";
+  pages.forEach((page, index) => {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = `document-template-sheet-tab ${index === safePageIndex ? "is-active" : ""}`;
+    tab.dataset.templateSheetTab = String(index);
+
+    const title = document.createElement("strong");
+    title.textContent = page.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${page.fields.length} blok${page.fields.length === 1 ? "" : (page.fields.length < 5 ? "a" : "ova")}`;
+
+    tab.append(title, meta);
+    tab.addEventListener("click", () => {
+      activeDocumentTemplateSheetIndex = index;
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePreviewContent();
+    });
+
+    if (index > 0 && page.breakField?.id) {
+      const removeTabButton = document.createElement("button");
+      removeTabButton.type = "button";
+      removeTabButton.className = "document-template-sheet-tab-remove";
+      removeTabButton.setAttribute("aria-label", `Makni ${page.title}`);
+      removeTabButton.textContent = "×";
+      removeTabButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeDocumentTemplateSheet(index);
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      tab.append(removeTabButton);
+    }
+
+    tabs.append(tab);
+  });
+
+  const activeMeta = document.createElement("div");
+  activeMeta.className = "document-template-sheet-meta";
+  activeMeta.innerHTML = `
+    <strong>${activePage?.title || "Stranica 1"}</strong>
+    <span>${(activePage?.fields ?? []).length} bloka na aktivnoj stranici</span>
+  `;
+
+  const pageBody = document.createElement("div");
+  pageBody.className = "document-template-sheet-panel";
+
+  if (!activePage || activePage.fields.length === 0) {
     const empty = document.createElement("p");
-    empty.className = "helper-copy";
-    empty.textContent = "Dodaj polje, blok propisa, blok opreme, novu stranicu ili Excel tablicu.";
-    documentTemplateCustomFields.replaceChildren(empty);
-    renderDocumentTemplatePlaceholderPalette();
-    renderDocumentTemplateLinkSummary();
-    renderDocumentTemplatePreviewContent();
-    return;
+    empty.className = "helper-copy document-template-sheet-empty";
+    empty.textContent = "Ova stranica je prazna. Dodaj polje, Excel tablicu ili novi blok pa ces odmah dobiti live preview.";
+    pageBody.append(empty);
   }
 
-  documentTemplateCustomFields.replaceChildren(...documentTemplateFieldDrafts.map((field, index) => {
+  activePage?.fields.forEach(({ field, index }) => {
     const row = document.createElement("div");
     row.className = "document-template-item-card";
 
@@ -11242,15 +11425,18 @@ function renderDocumentTemplateFieldRows() {
 
     const actions = document.createElement("div");
     actions.className = "document-template-item-actions";
-    const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
+      const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
       renderDocumentTemplateFieldRows();
     });
     actions.append(removeButton);
 
     row.append(head, grid, sourceHint, actions);
-    return row;
-  }));
+    pageBody.append(row);
+  });
+
+  shell.append(tabs, activeMeta, pageBody);
+  documentTemplateCustomFields.replaceChildren(shell);
 
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
@@ -11503,6 +11689,7 @@ function resetDocumentTemplateForm() {
 
   documentTemplateForm.reset();
   state.activeDocumentTemplateId = "";
+  activeDocumentTemplateSheetIndex = 0;
   activeDocumentTemplateTextTarget = null;
   activeDocumentTemplateSectionTarget = "";
   documentTemplateReferenceDraft = null;
@@ -11544,6 +11731,7 @@ function hydrateDocumentTemplateForm(template) {
   renderActiveView();
   renderModuleView();
   state.activeDocumentTemplateId = template.id;
+  activeDocumentTemplateSheetIndex = 0;
   if (documentTemplateIdInput) {
     documentTemplateIdInput.value = template.id || "";
   }
@@ -23188,13 +23376,15 @@ documentTemplateLocationIdInput?.addEventListener("change", () => {
 });
 
 documentTemplateAddFieldButton?.addEventListener("click", () => {
-  documentTemplateFieldDrafts = [...documentTemplateFieldDrafts, createEmptyDocumentTemplateFieldDraft({}, documentTemplateFieldDrafts.length)];
+  insertDocumentTemplateFieldDraft(
+    createEmptyDocumentTemplateFieldDraft({}, documentTemplateFieldDrafts.length),
+    { pageIndex: activeDocumentTemplateSheetIndex },
+  );
   renderDocumentTemplateFieldRows();
 });
 
 documentTemplateAddExcelButton?.addEventListener("click", () => {
-  documentTemplateFieldDrafts = [
-    ...documentTemplateFieldDrafts,
+  insertDocumentTemplateFieldDraft(
     createEmptyDocumentTemplateFieldDraft(
       {
         label: "Excel tablica",
@@ -23204,22 +23394,38 @@ documentTemplateAddExcelButton?.addEventListener("click", () => {
       },
       documentTemplateFieldDrafts.length,
     ),
-  ];
+    { pageIndex: activeDocumentTemplateSheetIndex },
+  );
   renderDocumentTemplateFieldRows();
 });
 
 documentTemplateAddPageBreakButton?.addEventListener("click", () => {
-  documentTemplateFieldDrafts = [
-    ...documentTemplateFieldDrafts,
+  const nextPageIndex = activeDocumentTemplateSheetIndex + 1;
+  insertDocumentTemplateFieldDraft(
     createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Nova stranica",
+        label: `Stranica ${nextPageIndex + 1}`,
         type: "page_break",
       },
       documentTemplateFieldDrafts.length,
     ),
-  ];
+    { pageIndex: activeDocumentTemplateSheetIndex },
+  );
+  activeDocumentTemplateSheetIndex = nextPageIndex;
   renderDocumentTemplateFieldRows();
+});
+
+documentTemplatePreview?.addEventListener("click", (event) => {
+  const tabButton = event.target.closest("[data-template-sheet-tab]");
+
+  if (!(tabButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const nextIndex = Number.parseInt(tabButton.dataset.templateSheetTab || "0", 10);
+  activeDocumentTemplateSheetIndex = Number.isFinite(nextIndex) ? Math.max(0, nextIndex) : 0;
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplatePreviewContent();
 });
 
 documentTemplateAddEquipmentButton?.addEventListener("click", () => {
