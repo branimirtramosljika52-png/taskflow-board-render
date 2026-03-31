@@ -659,6 +659,56 @@ function normalizeMeasurementSheetRowSnapshot(input = {}, columns = [], index = 
   };
 }
 
+function normalizeMeasurementSheetMergeSnapshot(input = {}, rowIds = new Set(), columnIds = new Set()) {
+  const rowId = normalizeText(input?.rowId);
+  const columnId = normalizeText(input?.columnId);
+  const rowSpan = Number.parseInt(input?.rowSpan, 10);
+  const colSpan = Number.parseInt(input?.colSpan, 10);
+
+  if (!rowId || !columnId || !rowIds.has(rowId) || !columnIds.has(columnId)) {
+    return null;
+  }
+
+  const normalizedRowSpan = Number.isInteger(rowSpan) ? Math.max(1, Math.min(200, rowSpan)) : 1;
+  const normalizedColSpan = Number.isInteger(colSpan) ? Math.max(1, Math.min(32, colSpan)) : 1;
+
+  if (normalizedRowSpan <= 1 && normalizedColSpan <= 1) {
+    return null;
+  }
+
+  return {
+    rowId,
+    columnId,
+    rowSpan: normalizedRowSpan,
+    colSpan: normalizedColSpan,
+  };
+}
+
+function buildLegacyTemplateMeasurementSheet(columnsInput = [], rowCountInput = 12) {
+  const defaultColumns = ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+  const labels = (Array.isArray(columnsInput) ? columnsInput : [])
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean)
+    .slice(0, 16);
+  const columnLabels = labels.length > 0 ? labels : defaultColumns;
+  const columns = columnLabels.map((label, index) => normalizeMeasurementSheetColumnSnapshot({
+    id: `measurement-column-${index + 1}`,
+    label,
+    placeholder: label,
+    width: index === 0 ? 220 : 160,
+  }, index));
+  const rowCount = Math.max(4, Math.min(120, Math.round(normalizeFiniteNumber(rowCountInput, 12))));
+  const rows = Array.from({ length: rowCount }, (_, index) => normalizeMeasurementSheetRowSnapshot({
+    id: `measurement-row-${index + 1}`,
+  }, columns, index));
+
+  return {
+    columns,
+    rows,
+    merges: [],
+  };
+}
+
 export function normalizeWorkOrderMeasurementSheet(input = null) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return null;
@@ -679,10 +729,17 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
   const rows = (Array.isArray(input.rows) ? input.rows : [])
     .slice(0, 600)
     .map((row, index) => normalizeMeasurementSheetRowSnapshot(row, columns, index));
+  const rowIds = new Set(rows.map((row) => row.id));
+  const columnIds = new Set(columns.filter((column) => !column.computed).map((column) => column.id));
+  const merges = (Array.isArray(input.merges) ? input.merges : [])
+    .slice(0, 200)
+    .map((merge) => normalizeMeasurementSheetMergeSnapshot(merge, rowIds, columnIds))
+    .filter(Boolean);
 
   return {
     columns,
     rows,
+    merges,
   };
 }
 
@@ -946,6 +1003,11 @@ function normalizeDocumentTemplateFields(fields = []) {
         .split(/[\n,]/)
         .map((entry) => normalizeText(entry))
         .filter(Boolean);
+    const legacyRowCount = Math.max(4, Math.min(120, Math.round(normalizeFiniteNumber(field?.rowCount, 12))));
+    const normalizedSheet = type === "measurement_table"
+      ? (normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet)
+        ?? buildLegacyTemplateMeasurementSheet(columns, legacyRowCount))
+      : null;
 
     while (seenKeys.has(key)) {
       key = slugifyTemplateKey(`${key}_${index + 1}`, `FIELD_${index + 1}`);
@@ -962,11 +1024,13 @@ function normalizeDocumentTemplateFields(fields = []) {
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
       columns: type === "measurement_table"
-        ? (columns.length > 0 ? columns.slice(0, 8) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"])
+        ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)
+          ?? (columns.length > 0 ? columns.slice(0, 16) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]))
         : [],
       rowCount: type === "measurement_table"
-        ? Math.max(4, Math.min(40, Math.round(normalizeFiniteNumber(field?.rowCount, 12))))
+        ? legacyRowCount
         : 0,
+      sheet: normalizedSheet,
     };
   });
 }
@@ -994,6 +1058,11 @@ function normalizeDocumentTemplateSections(sections = []) {
     const columns = Array.isArray(section?.columns)
       ? section.columns.map((entry) => normalizeText(entry)).filter(Boolean)
       : defaultColumns;
+    const legacyRowCount = Math.max(4, Math.min(120, Math.round(normalizeFiniteNumber(section?.rowCount, 12))));
+    const normalizedSheet = type === "measurement_table"
+      ? (normalizeWorkOrderMeasurementSheet(section?.sheet ?? section?.measurementSheet)
+        ?? buildLegacyTemplateMeasurementSheet(columns, legacyRowCount))
+      : null;
 
     return {
       id: normalizeText(section?.id) || crypto.randomUUID(),
@@ -1002,10 +1071,14 @@ function normalizeDocumentTemplateSections(sections = []) {
         || DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.find((option) => option.value === type)?.label
         || `Sekcija ${index + 1}`,
       body: normalizeText(section?.body),
-      columns: columns.length > 0 ? columns.slice(0, 8) : defaultColumns,
+      columns: type === "measurement_table"
+        ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)
+          ?? (columns.length > 0 ? columns.slice(0, 16) : defaultColumns))
+        : (columns.length > 0 ? columns.slice(0, 16) : defaultColumns),
       rowCount: type === "measurement_table"
-        ? Math.max(4, Math.min(40, Math.round(normalizeFiniteNumber(section?.rowCount, 12))))
+        ? legacyRowCount
         : 0,
+      sheet: normalizedSheet,
     };
   });
 }

@@ -289,7 +289,43 @@ test("document templates keep nested builder data and support filtering", () => 
         { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
-        { label: "Excel mjerenja", key: "excel_mjerenja", type: "measurement_table", columns: ["Pozicija", "Vrijednost"], rowCount: 8 },
+        {
+          label: "Excel mjerenja",
+          key: "excel_mjerenja",
+          type: "measurement_table",
+          columns: ["Pozicija", "Vrijednost"],
+          rowCount: 8,
+          sheet: {
+            columns: [
+              { id: "measurement-column-1", label: "Pozicija", placeholder: "Pozicija", width: 220 },
+              { id: "measurement-column-2", label: "Vrijednost", placeholder: "Vrijednost", width: 160 },
+            ],
+            rows: [
+              {
+                id: "measurement-row-1",
+                cells: {
+                  "measurement-column-1": "Panik rasvjeta 1",
+                  "measurement-column-2": "OK",
+                },
+              },
+              {
+                id: "measurement-row-2",
+                cells: {
+                  "measurement-column-1": "",
+                  "measurement-column-2": "",
+                },
+              },
+            ],
+            merges: [
+              {
+                rowId: "measurement-row-1",
+                columnId: "measurement-column-1",
+                rowSpan: 1,
+                colSpan: 2,
+              },
+            ],
+          },
+        },
       ],
       equipmentItems: [
         { name: "Panik rasvjeta", code: "PR-01", quantity: 12, note: "Etaža 1" },
@@ -317,6 +353,9 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[3].type, "toggle");
   assert.equal(template.customFields[4].type, "measurement_table");
   assert.equal(template.customFields[4].rowCount, 8);
+  assert.equal(template.customFields[4].sheet?.columns.length, 2);
+  assert.equal(template.customFields[4].sheet?.rows[0]?.cells["measurement-column-1"], "Panik rasvjeta 1");
+  assert.equal(template.customFields[4].sheet?.merges[0]?.colSpan, 2);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");

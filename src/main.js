@@ -561,6 +561,7 @@ const state = {
     isOpen: false,
     columns: [],
     rows: [],
+    merges: [],
     resizing: null,
     activeCell: null,
     editingCell: null,
@@ -572,6 +573,8 @@ const state = {
     fillDrag: null,
     fillMenu: null,
     contextMenu: null,
+    ownerKind: "work_order",
+    ownerFieldId: "",
   },
   dashboardBuilder: {
     open: false,
@@ -1541,6 +1544,8 @@ const measurementFormulaInput = document.querySelector("#measurement-formula-inp
 const measurementFormatTypeInput = document.querySelector("#measurement-format-type");
 const measurementFormatDecimalsInput = document.querySelector("#measurement-format-decimals");
 const measurementFormatBorderInput = document.querySelector("#measurement-format-border");
+const measurementMergeButton = document.querySelector("#measurement-merge");
+const measurementUnmergeButton = document.querySelector("#measurement-unmerge");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
 const measurementSheetGridWrap = document.querySelector(".measurement-sheet-grid-wrap");
 const measurementSheetColgroup = document.querySelector("#measurement-sheet-colgroup");
@@ -4194,7 +4199,51 @@ function queueWorkOrderAutoSave() {
   }, WORK_ORDER_AUTOSAVE_DELAY_MS);
 }
 
+function getMeasurementSheetOwnerFieldIndex() {
+  if (state.measurementSheet.ownerKind !== "template_field" || !state.measurementSheet.ownerFieldId) {
+    return -1;
+  }
+
+  return documentTemplateFieldDrafts.findIndex((field) => String(field.id) === String(state.measurementSheet.ownerFieldId));
+}
+
+function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = {}) {
+  const fieldIndex = getMeasurementSheetOwnerFieldIndex();
+
+  if (fieldIndex < 0) {
+    return;
+  }
+
+  const currentField = documentTemplateFieldDrafts[fieldIndex];
+  const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
+    ?? buildTemplateMeasurementSheetFromLegacyConfig(currentField);
+  const sheet = ensureDocumentTemplateMeasurementFieldSheet({
+    ...currentField,
+    sheet: snapshot,
+  });
+
+  documentTemplateFieldDrafts[fieldIndex] = {
+    ...currentField,
+    type: "measurement_table",
+    sheet,
+    columns: sheet.columns.map((column) => column.label).join(", "),
+    rowCount: String(Math.max(DEFAULT_MEASUREMENT_ROW_COUNT, sheet.rows.length || DEFAULT_MEASUREMENT_ROW_COUNT)),
+  };
+
+  renderDocumentTemplatePreviewContent();
+  syncDocumentTemplateEditorChrome();
+
+  if (rerenderFieldRows) {
+    renderDocumentTemplateFieldRows();
+  }
+}
+
 function handleMeasurementSheetMutation({ immediate = false } = {}) {
+  if (state.measurementSheet.ownerKind === "template_field") {
+    persistMeasurementSheetToTemplateField();
+    return;
+  }
+
   if (!state.workOrderEditorOpen || !state.user) {
     return;
   }
@@ -5240,6 +5289,69 @@ function normalizeMeasurementSheetRowSnapshotLocal(row = {}, columns = [], index
   };
 }
 
+function normalizeMeasurementSheetMergeSnapshotLocal(merge = {}, rows = [], columns = []) {
+  const rowId = String(merge?.rowId || "").trim();
+  const columnId = String(merge?.columnId || "").trim();
+  const rowSpan = Number.parseInt(merge?.rowSpan, 10);
+  const colSpan = Number.parseInt(merge?.colSpan, 10);
+  const rowIds = new Set(rows.map((row) => row.id));
+  const columnIds = new Set(columns.filter((column) => !column.computed).map((column) => column.id));
+
+  if (!rowId || !columnId || !rowIds.has(rowId) || !columnIds.has(columnId)) {
+    return null;
+  }
+
+  const normalizedRowSpan = Number.isInteger(rowSpan) ? Math.max(1, Math.min(200, rowSpan)) : 1;
+  const normalizedColSpan = Number.isInteger(colSpan) ? Math.max(1, Math.min(32, colSpan)) : 1;
+
+  if (normalizedRowSpan <= 1 && normalizedColSpan <= 1) {
+    return null;
+  }
+
+  return {
+    rowId,
+    columnId,
+    rowSpan: normalizedRowSpan,
+    colSpan: normalizedColSpan,
+  };
+}
+
+function buildTemplateMeasurementSheetFromLegacyConfig(field = {}) {
+  const rawColumns = Array.isArray(field?.columns)
+    ? field.columns
+    : String(field?.columns ?? "")
+      .split(/[\n,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  const columns = (rawColumns.length > 0 ? rawColumns : DEFAULT_MEASUREMENT_COLUMNS.map((column) => column.label))
+    .slice(0, 16)
+    .map((label, index) => normalizeMeasurementSheetColumnSnapshotLocal({
+      id: `measurement-column-${index + 1}`,
+      label,
+      placeholder: label,
+      width: index === 0 ? 220 : 160,
+    }, index));
+  const rowCount = Math.max(4, Math.min(120, Math.round(Number(field?.rowCount) || 12)));
+  const rows = Array.from({ length: rowCount }, (_, index) => normalizeMeasurementSheetRowSnapshotLocal({
+    id: `measurement-row-${index + 1}`,
+  }, columns, index));
+
+  return {
+    columns,
+    rows,
+    merges: [],
+  };
+}
+
+function ensureDocumentTemplateMeasurementFieldSheet(field = {}) {
+  if (field?.type !== "measurement_table") {
+    return null;
+  }
+
+  return normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet)
+    ?? buildTemplateMeasurementSheetFromLegacyConfig(field);
+}
+
 function isMeasurementFormatCustomized(format = {}) {
   const normalized = normalizeMeasurementCellFormat(format);
   return normalized.type !== "general"
@@ -5289,6 +5401,25 @@ function syncMeasurementSheetCountersFromState() {
   measurementRowCounter = Math.max(measurementRowCounter, rowMax);
 }
 
+function getMeasurementSheetTemplateSummary(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+
+  if (!normalized?.columns?.length) {
+    return "Prazan Excel blok";
+  }
+
+  const populatedRows = normalized.rows.reduce((count, row) => (
+    isMeasurementSheetRowMeaningful(row, normalized.columns) ? count + 1 : count
+  ), 0);
+  const mergeCount = Array.isArray(normalized.merges) ? normalized.merges.length : 0;
+
+  return [
+    `${normalized.columns.length} kolona`,
+    populatedRows > 0 ? `${populatedRows} popunjenih redova` : "spreman za unos",
+    mergeCount > 0 ? `${mergeCount} merge` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 function applyMeasurementSheetSnapshot(snapshot = null) {
   clearScheduledMeasurementSheetRefresh();
   const normalized = normalizeWorkOrderMeasurementSheet(snapshot);
@@ -5298,9 +5429,13 @@ function applyMeasurementSheetSnapshot(snapshot = null) {
   const rows = normalized?.rows?.length
     ? normalized.rows.map((row, index) => normalizeMeasurementSheetRowSnapshotLocal(row, columns, index))
     : Array.from({ length: DEFAULT_MEASUREMENT_ROW_COUNT }, () => createMeasurementRow());
+  const merges = (normalized?.merges ?? [])
+    .map((merge) => normalizeMeasurementSheetMergeSnapshotLocal(merge, rows, columns))
+    .filter(Boolean);
 
   state.measurementSheet.columns = columns;
   state.measurementSheet.rows = rows;
+  state.measurementSheet.merges = merges;
   state.measurementSheet.resizing = null;
   state.measurementSheet.activeCell = null;
   state.measurementSheet.editingCell = null;
@@ -5320,27 +5455,31 @@ function applyMeasurementSheetSnapshot(snapshot = null) {
   }
 }
 
-function buildMeasurementSheetSnapshot() {
+function buildMeasurementSheetSnapshot({ includeBlankStructure = false } = {}) {
   ensureMeasurementSheetStructure();
   const columns = state.measurementSheet.columns.map((column, index) => normalizeMeasurementSheetColumnSnapshotLocal(column, index));
   const rows = state.measurementSheet.rows.map((row, index) => normalizeMeasurementSheetRowSnapshotLocal(row, columns, index));
+  const merges = (state.measurementSheet.merges ?? [])
+    .map((merge) => normalizeMeasurementSheetMergeSnapshotLocal(merge, rows, columns))
+    .filter(Boolean);
   const lastMeaningfulRowIndex = rows.reduce((lastIndex, row, index) => (
     isMeasurementSheetRowMeaningful(row, columns) ? index : lastIndex
   ), -1);
   const hasMeaningfulRows = lastMeaningfulRowIndex >= 0;
   const hasCustomStructure = isMeasurementSheetStructureCustomized(columns);
 
-  if (!hasMeaningfulRows && !hasCustomStructure) {
+  if (!includeBlankStructure && !hasMeaningfulRows && !hasCustomStructure && merges.length === 0) {
     return null;
   }
 
   const keepRowCount = hasMeaningfulRows
     ? Math.max(DEFAULT_MEASUREMENT_ROW_COUNT, Math.min(rows.length, lastMeaningfulRowIndex + 4))
-    : DEFAULT_MEASUREMENT_ROW_COUNT;
+    : Math.max(DEFAULT_MEASUREMENT_ROW_COUNT, Math.min(rows.length || DEFAULT_MEASUREMENT_ROW_COUNT, 40));
 
   return {
     columns,
     rows: rows.slice(0, keepRowCount),
+    merges,
   };
 }
 
@@ -5467,6 +5606,13 @@ function ensureMeasurementSheetStructure() {
     state.measurementSheet.rows = buildDefaultMeasurementRows();
   }
 
+  state.measurementSheet.merges = (state.measurementSheet.merges ?? [])
+    .map((merge) => normalizeMeasurementSheetMergeSnapshotLocal(
+      merge,
+      state.measurementSheet.rows,
+      state.measurementSheet.columns,
+    ))
+    .filter(Boolean);
   ensureMeasurementMinimumRows(MIN_VISIBLE_MEASUREMENT_ROWS);
 }
 
@@ -5506,6 +5652,172 @@ function getMeasurementSelectedRange() {
   }
 
   return createMeasurementSelectionRange(rowIndex, columnIndex, rowIndex, columnIndex);
+}
+
+function getMeasurementMergeDescriptor(merge = {}) {
+  const anchorRowIndex = getMeasurementRowIndex(merge.rowId);
+  const anchorColumnIndex = getMeasurementColumnIndex(merge.columnId);
+
+  if (anchorRowIndex < 0 || anchorColumnIndex < 0) {
+    return null;
+  }
+
+  const maxRowSpan = Math.max(1, Math.min(Number(merge.rowSpan) || 1, state.measurementSheet.rows.length - anchorRowIndex));
+  const maxColSpan = Math.max(1, Math.min(Number(merge.colSpan) || 1, state.measurementSheet.columns.length - anchorColumnIndex));
+
+  if (maxRowSpan <= 1 && maxColSpan <= 1) {
+    return null;
+  }
+
+  return {
+    rowId: merge.rowId,
+    columnId: merge.columnId,
+    rowSpan: maxRowSpan,
+    colSpan: maxColSpan,
+    anchorRowIndex,
+    anchorColumnIndex,
+    endRowIndex: anchorRowIndex + maxRowSpan - 1,
+    endColumnIndex: anchorColumnIndex + maxColSpan - 1,
+  };
+}
+
+function getMeasurementMergeDescriptors() {
+  return (state.measurementSheet.merges ?? [])
+    .map((merge) => getMeasurementMergeDescriptor(merge))
+    .filter(Boolean);
+}
+
+function getMeasurementMergeAtPosition(rowIndex, columnIndex) {
+  return getMeasurementMergeDescriptors().find((merge) => (
+    rowIndex >= merge.anchorRowIndex
+    && rowIndex <= merge.endRowIndex
+    && columnIndex >= merge.anchorColumnIndex
+    && columnIndex <= merge.endColumnIndex
+  )) ?? null;
+}
+
+function rangesIntersect(left, right) {
+  return left.startRowIndex <= right.endRowIndex
+    && left.endRowIndex >= right.startRowIndex
+    && left.startColumnIndex <= right.endColumnIndex
+    && left.endColumnIndex >= right.startColumnIndex;
+}
+
+function getMeasurementMergedSelectionDescriptor(range = getMeasurementSelectedRange()) {
+  if (!range) {
+    return null;
+  }
+
+  return getMeasurementMergeDescriptors().find((merge) => rangesIntersect(range, {
+    startRowIndex: merge.anchorRowIndex,
+    endRowIndex: merge.endRowIndex,
+    startColumnIndex: merge.anchorColumnIndex,
+    endColumnIndex: merge.endColumnIndex,
+  })) ?? null;
+}
+
+function canMergeMeasurementSelection(range = getMeasurementSelectedRange()) {
+  if (!range) {
+    return false;
+  }
+
+  if (range.startRowIndex === range.endRowIndex && range.startColumnIndex === range.endColumnIndex) {
+    return false;
+  }
+
+  for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
+    if (state.measurementSheet.columns[columnIndex]?.computed) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function mergeMeasurementSelection() {
+  const range = getMeasurementSelectedRange();
+
+  if (!canMergeMeasurementSelection(range)) {
+    return;
+  }
+
+  unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
+  const anchorRow = state.measurementSheet.rows[range.startRowIndex];
+  const anchorColumn = state.measurementSheet.columns[range.startColumnIndex];
+
+  if (!anchorRow || !anchorColumn) {
+    return;
+  }
+
+  for (let rowIndex = range.startRowIndex; rowIndex <= range.endRowIndex; rowIndex += 1) {
+    const row = state.measurementSheet.rows[rowIndex];
+
+    if (!row?.cells) {
+      continue;
+    }
+
+    for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
+      if (rowIndex === range.startRowIndex && columnIndex === range.startColumnIndex) {
+        continue;
+      }
+
+      const column = state.measurementSheet.columns[columnIndex];
+
+      if (!column || column.computed) {
+        continue;
+      }
+
+      row.cells[column.id] = "";
+      row.formats = row.formats ?? {};
+      row.formats[column.id] = normalizeMeasurementCellFormat();
+    }
+  }
+
+  state.measurementSheet.merges = [
+    ...(state.measurementSheet.merges ?? []),
+    {
+      rowId: anchorRow.id,
+      columnId: anchorColumn.id,
+      rowSpan: range.endRowIndex - range.startRowIndex + 1,
+      colSpan: range.endColumnIndex - range.startColumnIndex + 1,
+    },
+  ];
+  renderMeasurementSheet();
+  handleMeasurementSheetMutation();
+}
+
+function unmergeMeasurementSelection({ preserveSelection = false, suppressPersistence = false } = {}) {
+  const range = getMeasurementSelectedRange();
+
+  if (!range) {
+    return;
+  }
+
+  const merges = getMeasurementMergeDescriptors();
+  const toRemove = merges.filter((merge) => rangesIntersect(range, {
+    startRowIndex: merge.anchorRowIndex,
+    endRowIndex: merge.endRowIndex,
+    startColumnIndex: merge.anchorColumnIndex,
+    endColumnIndex: merge.endColumnIndex,
+  }));
+
+  if (toRemove.length === 0) {
+    return;
+  }
+
+  const removedKeys = new Set(toRemove.map((merge) => `${merge.rowId}:${merge.columnId}`));
+  state.measurementSheet.merges = (state.measurementSheet.merges ?? []).filter((merge) => (
+    !removedKeys.has(`${merge.rowId}:${merge.columnId}`)
+  ));
+
+  if (!preserveSelection) {
+    renderMeasurementSheet();
+  } else {
+    renderMeasurementSelection();
+  }
+  if (!suppressPersistence) {
+    handleMeasurementSheetMutation();
+  }
 }
 
 function getMeasurementCellElement(rowId, columnId) {
@@ -5795,6 +6107,14 @@ function syncMeasurementToolbar() {
   if (measurementFormatBorderInput) {
     measurementFormatBorderInput.value = getMeasurementBorderPreset(activeFormat.border);
     measurementFormatBorderInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  if (measurementMergeButton) {
+    measurementMergeButton.disabled = !canMergeMeasurementSelection();
+  }
+
+  if (measurementUnmergeButton) {
+    measurementUnmergeButton.disabled = !getMeasurementMergedSelectionDescriptor();
   }
 }
 
@@ -6979,6 +7299,29 @@ function clearMeasurementRange(range) {
 }
 
 function syncMeasurementSheetHeaderFromWorkOrder() {
+  if (state.measurementSheet.ownerKind === "template_field") {
+    const fieldIndex = getMeasurementSheetOwnerFieldIndex();
+    const field = fieldIndex >= 0 ? documentTemplateFieldDrafts[fieldIndex] : null;
+
+    if (measurementCompanyInput) {
+      measurementCompanyInput.value = documentTemplateTitleInput?.value || "Template Excel";
+    }
+
+    if (measurementHeadquartersInput) {
+      measurementHeadquartersInput.value = field?.label || "Excel tablica";
+    }
+
+    if (measurementLocationInput) {
+      measurementLocationInput.value = getMeasurementSheetTemplateSummary(field?.sheet);
+    }
+
+    if (measurementDateInput) {
+      measurementDateInput.value = todayString();
+    }
+
+    return;
+  }
+
   const company = getCompany(workOrderCompanyIdInput.value);
   const location = getLocation(workOrderLocationIdInput.value);
 
@@ -6999,12 +7342,56 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
   }
 }
 
+function openTemplateMeasurementSheet(fieldId) {
+  const fieldIndex = documentTemplateFieldDrafts.findIndex((field) => String(field.id) === String(fieldId));
+
+  if (fieldIndex < 0) {
+    return;
+  }
+
+  state.measurementSheet.ownerKind = "template_field";
+  state.measurementSheet.ownerFieldId = String(fieldId);
+  documentTemplateFieldDrafts[fieldIndex].sheet = ensureDocumentTemplateMeasurementFieldSheet(documentTemplateFieldDrafts[fieldIndex]);
+  applyMeasurementSheetSnapshot(documentTemplateFieldDrafts[fieldIndex].sheet);
+  syncMeasurementSheetHeaderFromWorkOrder();
+  renderMeasurementSheet();
+
+  if (!state.measurementSheet.activeCell) {
+    const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+
+    if (firstColumnIndex >= 0 && state.measurementSheet.rows[0]) {
+      setMeasurementSelectionByIndex(0, firstColumnIndex);
+    }
+  }
+
+  setMeasurementSheetOpen(true);
+  syncMeasurementToolbar();
+}
+
 function renderMeasurementSheet() {
   ensureMeasurementSheetStructure();
 
   if (!measurementSheetBody || !measurementSheetHead || !measurementSheetColgroup) {
     return;
   }
+
+  const mergeDescriptors = getMeasurementMergeDescriptors();
+  const mergeAnchorMap = new Map();
+  const coveredCells = new Set();
+
+  mergeDescriptors.forEach((merge) => {
+    mergeAnchorMap.set(`${merge.anchorRowIndex}:${merge.anchorColumnIndex}`, merge);
+
+    for (let rowIndex = merge.anchorRowIndex; rowIndex <= merge.endRowIndex; rowIndex += 1) {
+      for (let columnIndex = merge.anchorColumnIndex; columnIndex <= merge.endColumnIndex; columnIndex += 1) {
+        if (rowIndex === merge.anchorRowIndex && columnIndex === merge.anchorColumnIndex) {
+          continue;
+        }
+
+        coveredCells.add(`${rowIndex}:${columnIndex}`);
+      }
+    }
+  });
 
   const colgroupFragment = document.createDocumentFragment();
   const cornerCol = document.createElement("col");
@@ -7133,9 +7520,22 @@ function renderMeasurementSheet() {
     tr.append(indexCell);
 
     state.measurementSheet.columns.forEach((column) => {
+      const columnIndex = getMeasurementColumnIndex(column.id);
+
+      if (coveredCells.has(`${index}:${columnIndex}`)) {
+        return;
+      }
+
       const td = document.createElement("td");
       td.dataset.rowId = row.id;
       td.dataset.columnId = column.id;
+      const merge = mergeAnchorMap.get(`${index}:${columnIndex}`);
+
+      if (merge) {
+        td.rowSpan = merge.rowSpan;
+        td.colSpan = merge.colSpan;
+        td.classList.add("is-merged-cell");
+      }
 
       if (column.computed === "average") {
         td.className = "measurement-cell-average";
@@ -7206,6 +7606,9 @@ function renderMeasurementSheet() {
       const input = document.createElement("input");
       input.type = "text";
       input.className = "measurement-cell-input";
+      if (merge) {
+        input.classList.add("is-merged-input");
+      }
       input.value = getMeasurementCellInputDisplayValue(index, getMeasurementColumnIndex(column.id));
       input.placeholder = column.placeholder || column.label;
       input.dataset.rowId = row.id;
@@ -7336,6 +7739,8 @@ function setMeasurementSheetOpen(isOpen) {
 }
 
 function openMeasurementSheet() {
+  state.measurementSheet.ownerKind = "work_order";
+  state.measurementSheet.ownerFieldId = "";
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
   if (!state.measurementSheet.activeCell) {
@@ -7350,6 +7755,14 @@ function openMeasurementSheet() {
 }
 
 function closeMeasurementSheet() {
+  if (state.measurementSheet.editingCell) {
+    commitMeasurementEditMode();
+  }
+
+  if (state.measurementSheet.ownerKind === "template_field") {
+    persistMeasurementSheetToTemplateField({ rerenderFieldRows: true });
+  }
+
   clearScheduledMeasurementSheetRefresh();
   state.measurementSheet.selectionDrag = null;
   state.measurementSheet.fillMenu = null;
@@ -7362,15 +7775,18 @@ function closeMeasurementSheet() {
   document.body.classList.remove("is-filling-measurement-cells");
   setMeasurementSheetOpen(false);
   syncMeasurementToolbar();
-  if (state.workOrderAutoSave.dirty) {
+  if (state.measurementSheet.ownerKind === "work_order" && state.workOrderAutoSave.dirty) {
     void persistWorkOrderAutoSave({ immediate: true });
   }
+  state.measurementSheet.ownerKind = "work_order";
+  state.measurementSheet.ownerFieldId = "";
 }
 
 function resetMeasurementSheet() {
   clearScheduledMeasurementSheetRefresh();
   state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
+  state.measurementSheet.merges = [];
   state.measurementSheet.resizing = null;
   state.measurementSheet.activeCell = null;
   state.measurementSheet.editingCell = null;
@@ -7394,6 +7810,34 @@ function addMeasurementColumn() {
   handleMeasurementSheetMutation();
 }
 
+function expandMeasurementMergesForInsertedRow(insertionIndex) {
+  getMeasurementMergeDescriptors().forEach((merge) => {
+    if (insertionIndex > merge.anchorRowIndex && insertionIndex <= merge.endRowIndex) {
+      const target = (state.measurementSheet.merges ?? []).find((item) => (
+        item.rowId === merge.rowId && item.columnId === merge.columnId
+      ));
+
+      if (target) {
+        target.rowSpan += 1;
+      }
+    }
+  });
+}
+
+function expandMeasurementMergesForInsertedColumn(insertionIndex) {
+  getMeasurementMergeDescriptors().forEach((merge) => {
+    if (insertionIndex > merge.anchorColumnIndex && insertionIndex <= merge.endColumnIndex) {
+      const target = (state.measurementSheet.merges ?? []).find((item) => (
+        item.rowId === merge.rowId && item.columnId === merge.columnId
+      ));
+
+      if (target) {
+        target.colSpan += 1;
+      }
+    }
+  });
+}
+
 function insertMeasurementRowAt(index) {
   ensureMeasurementSheetStructure();
   const insertionIndex = Math.max(0, Math.min(index, state.measurementSheet.rows.length));
@@ -7402,6 +7846,7 @@ function insertMeasurementRowAt(index) {
   const scrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
 
   state.measurementSheet.rows.splice(insertionIndex, 0, createMeasurementRow());
+  expandMeasurementMergesForInsertedRow(insertionIndex);
   renderMeasurementSheet();
 
   if (measurementSheetGridWrap) {
@@ -7424,6 +7869,7 @@ function insertMeasurementColumnAt(index) {
   const scrollTop = measurementSheetGridWrap?.scrollTop ?? 0;
   const scrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
   const nextColumnIndex = insertMeasurementEditableColumnAt(insertionIndex);
+  expandMeasurementMergesForInsertedColumn(insertionIndex);
 
   renderMeasurementSheet();
 
@@ -9206,6 +9652,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const defaultColumns = type === "measurement_table"
     ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
     : [];
+  const sheet = type === "measurement_table"
+    ? ensureDocumentTemplateMeasurementFieldSheet(initial)
+    : null;
   return {
     id: initial.id || crypto.randomUUID(),
     label: String(initial.label ?? "").trim() || (type === "page_break" ? "Nova stranica" : ""),
@@ -9218,6 +9667,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
       ? initial.columns.join(", ")
       : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
     rowCount: String(initial.rowCount ?? (type === "measurement_table" ? 12 : 0)).trim(),
+    sheet,
   };
 }
 
@@ -9236,6 +9686,9 @@ function createEmptyDocumentTemplateSectionDraft(initial = {}, index = 0) {
   const defaultColumns = type === "measurement_table"
     ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
     : [];
+  const sheet = type === "measurement_table"
+    ? ensureDocumentTemplateMeasurementFieldSheet(initial)
+    : null;
 
   return {
     id: initial.id || crypto.randomUUID(),
@@ -9246,6 +9699,7 @@ function createEmptyDocumentTemplateSectionDraft(initial = {}, index = 0) {
       ? initial.columns.join(", ")
       : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
     rowCount: String(initial.rowCount ?? (type === "measurement_table" ? 12 : 0)).trim(),
+    sheet,
   };
 }
 
@@ -9551,15 +10005,21 @@ function buildDocumentTemplateDraft() {
         .split(/[\n,]/)
         .map((entry) => entry.trim())
         .filter(Boolean)
-        .slice(0, 8),
-      rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(field.rowCount, 12)))),
+        .slice(0, 16),
+      rowCount: Math.max(4, Math.min(120, Math.round(parseTemplateLooseNumber(field.rowCount, 12)))),
+      sheet: field.type === "measurement_table"
+        ? (field.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(field))
+        : null,
     }))
     .map((field) => {
       if (field.type === "measurement_table") {
+        const sheet = ensureDocumentTemplateMeasurementFieldSheet(field);
         return {
           ...field,
           source: "",
-          columns: field.columns.length > 0 ? field.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+          columns: sheet.columns.map((column) => column.label),
+          rowCount: sheet.rows.length,
+          sheet,
         };
       }
 
@@ -9569,6 +10029,7 @@ function buildDocumentTemplateDraft() {
           source: "",
           columns: [],
           rowCount: 0,
+          sheet: null,
         };
       }
 
@@ -9577,6 +10038,7 @@ function buildDocumentTemplateDraft() {
         source: field.source || "CUSTOM_VALUE",
         columns: [],
         rowCount: 0,
+        sheet: null,
       };
     })
     .filter((field) => (
@@ -9610,19 +10072,25 @@ function buildDocumentTemplateDraft() {
           .split(/[\n,]/)
           .map((entry) => entry.trim())
           .filter(Boolean)
-          .slice(0, 8),
-        rowCount: Math.max(4, Math.min(40, Math.round(parseTemplateLooseNumber(section.rowCount, 12)))),
+          .slice(0, 16),
+        rowCount: Math.max(4, Math.min(120, Math.round(parseTemplateLooseNumber(section.rowCount, 12)))),
+        sheet: section.type === "measurement_table"
+          ? (section.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(section))
+          : null,
       }))
       .map((section) => (
         section.type === "measurement_table"
           ? {
             ...section,
-            columns: section.columns.length > 0 ? section.columns : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+            columns: ensureDocumentTemplateMeasurementFieldSheet(section).columns.map((column) => column.label),
+            rowCount: ensureDocumentTemplateMeasurementFieldSheet(section).rows.length,
+            sheet: ensureDocumentTemplateMeasurementFieldSheet(section),
           }
           : {
             ...section,
             columns: [],
             rowCount: 0,
+            sheet: null,
           }
       ))
     : JSON.parse(JSON.stringify(activeTemplate?.sections ?? []));
@@ -9881,7 +10349,8 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
 }
 
 function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
-  const snapshot = normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
+  const fieldSnapshot = normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet);
+  const snapshot = fieldSnapshot || normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
 
   if (!snapshot?.columns?.length) {
     return null;
@@ -9896,9 +10365,12 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
   return {
     columns: snapshot.columns,
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
-    sourceLabel: context.sampleWorkOrder?.workOrderNumber
+    merges: (snapshot.merges ?? []).map((merge) => ({ ...merge })),
+    sourceLabel: fieldSnapshot
+      ? "Podaci iz template Excel bloka"
+      : (context.sampleWorkOrder?.workOrderNumber
       ? `Podaci iz RN ${context.sampleWorkOrder.workOrderNumber}`
-      : "Podaci iz povezanog RN-a",
+      : "Podaci iz povezanog RN-a"),
   };
 }
 
@@ -9931,6 +10403,48 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
   }
 
   return styles.join("; ");
+}
+
+function buildMeasurementSheetPreviewMergeMaps(sheet = null) {
+  const anchors = new Map();
+  const covered = new Set();
+  const merges = normalizeWorkOrderMeasurementSheet(sheet)?.merges ?? [];
+
+  merges.forEach((merge) => {
+    const anchorRowIndex = sheet?.rows?.findIndex?.((row) => row.id === merge.rowId) ?? -1;
+    const anchorColumnIndex = sheet?.columns?.findIndex?.((column) => column.id === merge.columnId) ?? -1;
+
+    if (anchorRowIndex < 0 || anchorColumnIndex < 0) {
+      return;
+    }
+
+    const rowSpan = Math.max(1, Math.min(Number(merge.rowSpan) || 1, sheet.rows.length - anchorRowIndex));
+    const colSpan = Math.max(1, Math.min(Number(merge.colSpan) || 1, sheet.columns.length - anchorColumnIndex));
+
+    if (rowSpan <= 1 && colSpan <= 1) {
+      return;
+    }
+
+    anchors.set(`${anchorRowIndex}:${anchorColumnIndex}`, {
+      rowSpan,
+      colSpan,
+    });
+
+    for (let rowIndex = anchorRowIndex; rowIndex < anchorRowIndex + rowSpan; rowIndex += 1) {
+      for (let columnIndex = anchorColumnIndex; columnIndex < anchorColumnIndex + colSpan; columnIndex += 1) {
+        if (rowIndex === anchorRowIndex && columnIndex === anchorColumnIndex) {
+          continue;
+        }
+
+        covered.add(`${rowIndex}:${columnIndex}`);
+      }
+    }
+  });
+
+  return {
+    anchors,
+    covered,
+  };
 }
 
 function buildDocumentTemplatePreviewPageMarkup(
@@ -10069,17 +10583,26 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : fallbackColumns;
     const rowCount = Math.max(4, Math.min(40, Number(field.rowCount) || 12));
     const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+    const previewMerges = previewTable ? buildMeasurementSheetPreviewMergeMaps(previewTable) : null;
     const rows = placeholderMode
       ? `<tbody><tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr></tbody>`
       : previewTable
-        ? previewTable.rows.map((row, rowIndex) => (
-          `<tr>${previewTable.columns.map((column, columnIndex) => {
+        ? previewTable.rows.map((row, rowIndex) => {
+          const cells = previewTable.columns.map((column, columnIndex) => {
+            if (previewMerges?.covered.has(`${rowIndex}:${columnIndex}`)) {
+              return "";
+            }
+
+            const merge = previewMerges?.anchors.get(`${rowIndex}:${columnIndex}`) ?? null;
             const value = getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex);
             const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(previewTable, rowIndex, column);
             const safeValue = value ? escapeHtml(value) : "&nbsp;";
-            return `<td${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ""}>${safeValue}</td>`;
-          }).join("")}</tr>`
-        )).join("")
+            const rowSpanAttr = merge?.rowSpan > 1 ? ` rowspan="${merge.rowSpan}"` : "";
+            const colSpanAttr = merge?.colSpan > 1 ? ` colspan="${merge.colSpan}"` : "";
+            return `<td${rowSpanAttr}${colSpanAttr}${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ""}>${safeValue}</td>`;
+          }).join("");
+          return `<tr>${cells}</tr>`;
+        }).join("")
         : Array.from({ length: rowCount }, (_, rowIndex) => (
           `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
         )).join("");
@@ -11624,9 +12147,12 @@ function renderDocumentTemplateFieldRows() {
     typeSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[index].type = typeSelect.value;
       documentTemplateFieldDrafts[index].source = getDocumentTemplateDefaultFieldSource(typeSelect.value);
-      if (typeSelect.value === "measurement_table" && !String(documentTemplateFieldDrafts[index].columns || "").trim()) {
-        documentTemplateFieldDrafts[index].columns = "Pozicija, Opis, Vrijednost, Granica, Napomena";
-        documentTemplateFieldDrafts[index].rowCount = "12";
+      if (typeSelect.value === "measurement_table") {
+        documentTemplateFieldDrafts[index].sheet = ensureDocumentTemplateMeasurementFieldSheet(documentTemplateFieldDrafts[index]);
+        documentTemplateFieldDrafts[index].columns = documentTemplateFieldDrafts[index].sheet.columns.map((column) => column.label).join(", ");
+        documentTemplateFieldDrafts[index].rowCount = String(documentTemplateFieldDrafts[index].sheet.rows.length || DEFAULT_MEASUREMENT_ROW_COUNT);
+      } else {
+        documentTemplateFieldDrafts[index].sheet = null;
       }
       if (typeSelect.value === "page_break" && !String(documentTemplateFieldDrafts[index].label || "").trim()) {
         documentTemplateFieldDrafts[index].label = "Nova stranica";
@@ -11675,32 +12201,22 @@ function renderDocumentTemplateFieldRows() {
     columnsField.className = "field field-span-full";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
-    columnsSpan.textContent = "Stupci Excel tablice";
-    const columnsInput = document.createElement("input");
-    columnsInput.type = "text";
-    columnsInput.placeholder = "Pozicija, Opis, Vrijednost, Granica, Napomena";
-    columnsInput.value = field.columns || "";
-    columnsInput.addEventListener("input", (event) => {
-      documentTemplateFieldDrafts[index].columns = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
+    columnsSpan.textContent = "Excel blok";
+    const excelMeta = document.createElement("div");
+    excelMeta.className = "document-template-excel-meta";
+    const excelSummary = document.createElement("strong");
+    excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
+    const excelHint = document.createElement("span");
+    excelHint.textContent = "Otvori blok, radi kao Excel u aplikaciji i isti raspored ide u preview/PDF.";
+    const excelOpenButton = document.createElement("button");
+    excelOpenButton.type = "button";
+    excelOpenButton.className = "ghost-button";
+    excelOpenButton.textContent = "Otvori i uredi Excel";
+    excelOpenButton.addEventListener("click", () => {
+      openTemplateMeasurementSheet(field.id);
     });
-    columnsField.append(columnsSpan, columnsInput);
-
-    const rowCountField = document.createElement("label");
-    rowCountField.className = "field";
-    rowCountField.hidden = field.type !== "measurement_table";
-    const rowCountSpan = document.createElement("span");
-    rowCountSpan.textContent = "Broj redaka";
-    const rowCountInput = document.createElement("input");
-    rowCountInput.type = "number";
-    rowCountInput.min = "4";
-    rowCountInput.max = "40";
-    rowCountInput.value = field.rowCount || "12";
-    rowCountInput.addEventListener("input", (event) => {
-      documentTemplateFieldDrafts[index].rowCount = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
-    });
-    rowCountField.append(rowCountSpan, rowCountInput);
+    excelMeta.append(excelSummary, excelHint, excelOpenButton);
+    columnsField.append(columnsSpan, excelMeta);
 
     const helpField = document.createElement("label");
     helpField.className = "field field-span-full";
@@ -11724,10 +12240,10 @@ function renderDocumentTemplateFieldRows() {
       : field.type === "equipment_list"
         ? "Oprema se bira u Measurement Equipment modulu, ovdje samo odredujes mjesto prikaza."
         : field.type === "measurement_table"
-          ? "Ovaj blok oznacava gdje ide Excel tablica iz modula Mjerenja."
+          ? "Ovaj blok ima vlastiti Excel editor unutar templatea i isti taj raspored ide u preview/PDF."
           : "Ovaj blok pravi prijelom na novu stranicu u dokumentu.";
 
-    grid.append(labelField, typeField, sourceField, defaultField, columnsField, rowCountField, helpField);
+    grid.append(labelField, typeField, sourceField, defaultField, columnsField, helpField);
 
     const actions = document.createElement("div");
     actions.className = "document-template-item-actions";
@@ -22786,9 +23302,16 @@ measurementSheetBackdrop?.addEventListener("click", closeMeasurementSheet);
 measurementSheetAddRowButton?.addEventListener("click", () => {
   state.measurementSheet.rows.push(createMeasurementRow());
   renderMeasurementSheet();
+  handleMeasurementSheetMutation();
 });
 measurementSheetAddColumnButton?.addEventListener("click", addMeasurementColumn);
 measurementSheetResetButton?.addEventListener("click", resetMeasurementSheet);
+measurementMergeButton?.addEventListener("click", () => {
+  mergeMeasurementSelection();
+});
+measurementUnmergeButton?.addEventListener("click", () => {
+  unmergeMeasurementSelection();
+});
 measurementContextAddRowAboveButton?.addEventListener("click", () => {
   insertMeasurementContextRow("above");
 });
@@ -23693,13 +24216,18 @@ documentTemplateAddFieldButton?.addEventListener("click", () => {
 });
 
 documentTemplateAddExcelButton?.addEventListener("click", () => {
+  const sheet = buildTemplateMeasurementSheetFromLegacyConfig({
+    columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+    rowCount: 12,
+  });
   insertDocumentTemplateFieldDraft(
     createEmptyDocumentTemplateFieldDraft(
       {
         label: "Excel tablica",
         type: "measurement_table",
-        columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
-        rowCount: 12,
+        columns: sheet.columns.map((column) => column.label),
+        rowCount: sheet.rows.length,
+        sheet,
       },
       documentTemplateFieldDrafts.length,
     ),

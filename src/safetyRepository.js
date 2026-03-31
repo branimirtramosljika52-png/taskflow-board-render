@@ -1622,6 +1622,7 @@ async function fetchSnapshotFromConnection(connection) {
       helpText: dbString(field.helpText),
       columns: parseJsonArray(field.columns).map((entry) => dbString(entry)).filter(Boolean),
       rowCount: Number(field.rowCount ?? 0) || 0,
+      sheet: normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet),
     })),
     equipmentItems: parseJsonArray(row.equipment_items_json).map((item) => ({
       id: dbString(item.id),
@@ -1637,6 +1638,7 @@ async function fetchSnapshotFromConnection(connection) {
       body: dbString(section.body),
       columns: parseJsonArray(section.columns).map((entry) => dbString(entry)).filter(Boolean),
       rowCount: Number(section.rowCount ?? 0) || 0,
+      sheet: normalizeWorkOrderMeasurementSheet(section.sheet ?? section.measurementSheet),
     })),
     referenceDocument: (() => {
       const storedReference = mapStoredDocumentLocation({
