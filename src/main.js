@@ -13575,6 +13575,11 @@ function renderAuthState() {
     chatDock.hidden = !authenticated;
   }
   document.body.classList.toggle("is-auth-mode", !authenticated);
+  document.body.classList.toggle("is-auth-ready", !authenticated);
+
+  if (authenticated) {
+    document.body.classList.remove("is-auth-leaving");
+  }
 
   if (!authenticated) {
     state.workOrderEditorOpen = false;
@@ -26563,6 +26568,7 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
 loginForm.addEventListener("submit", () => {
   loginError.textContent = "";
   loginForm.classList.add("is-submitting");
+  document.body.classList.add("is-auth-leaving");
 });
 
 logoutButton.addEventListener("click", () => {
