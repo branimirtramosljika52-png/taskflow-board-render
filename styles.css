@@ -6428,7 +6428,7 @@ body.is-work-order-editor-open {
   text-transform: uppercase;
 }
 
-.work-order-bulk-field select,
+.work-order-bulk-choice-trigger,
 .work-order-bulk-field input,
 .work-order-bulk-executor-trigger {
   min-height: 44px;
@@ -6437,14 +6437,48 @@ body.is-work-order-editor-open {
   background: rgba(255, 255, 255, 0.06);
   color: #f6f8fb;
   box-shadow: none;
+  color-scheme: dark;
 }
 
-.work-order-bulk-field select,
+.work-order-bulk-choice-trigger,
 .work-order-bulk-field input {
   padding: 10px 12px;
 }
 
-.work-order-bulk-field select:disabled,
+.work-order-bulk-choice-trigger {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 38px;
+  justify-content: flex-start;
+  border-radius: 14px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(247, 248, 251, 0.72) 50%),
+    linear-gradient(135deg, rgba(247, 248, 251, 0.72) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 13px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  color: #f7f8fb;
+}
+
+.work-order-bulk-choice-dropdown {
+  width: 100%;
+}
+
+.work-order-bulk-choice-trigger .work-order-bulk-action-label {
+  min-width: 0;
+  color: #f7f8fb;
+}
+
+.work-order-bulk-choice-trigger.is-mixed .work-order-bulk-action-label,
+.work-order-bulk-choice-trigger[data-option-value="empty"] .work-order-bulk-action-label {
+  color: rgba(236, 239, 247, 0.82);
+}
+
+.work-order-bulk-choice-trigger:disabled,
 .work-order-bulk-field input:disabled,
 .work-order-bulk-action-button:disabled,
 .work-order-bulk-executor-trigger:disabled {
@@ -6513,6 +6547,91 @@ body.is-work-order-editor-open {
   min-width: 0;
   font-size: 0.86rem;
   font-weight: 700;
+}
+
+.work-order-bulk-executor-menu-portal {
+  background: rgba(18, 20, 25, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 56px rgba(5, 8, 14, 0.42);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-search-input {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-search-input::placeholder {
+  color: rgba(236, 239, 247, 0.58);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-search-input:focus {
+  border-color: rgba(122, 199, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(108, 178, 255, 0.16);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-helper,
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-empty,
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-selection-empty {
+  color: rgba(236, 239, 247, 0.72);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #f7f8fb;
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-option {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-option.is-selected {
+  border-color: rgba(122, 199, 255, 0.35);
+  background: rgba(74, 198, 236, 0.16);
+}
+
+.work-order-bulk-executor-menu-portal .work-order-calendar-executor-option-marker {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.work-order-bulk-executor-menu-portal .ghost-button.work-order-calendar-executor-clear {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+}
+
+.work-order-bulk-choice-menu-portal {
+  background: rgba(18, 20, 25, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 56px rgba(5, 8, 14, 0.42);
+  gap: 8px;
+}
+
+.work-order-bulk-choice-option {
+  min-height: 38px;
+  padding: 0 12px;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f7f8fb;
+  border-radius: 12px;
+}
+
+.work-order-bulk-choice-option:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.work-order-bulk-choice-option.is-selected {
+  background: linear-gradient(135deg, rgba(74, 198, 236, 0.18), rgba(223, 71, 211, 0.18));
+  border-color: rgba(159, 146, 255, 0.34);
+  color: #ffffff;
 }
 
 .work-orders-scroll-shell.has-bulk-bar {
