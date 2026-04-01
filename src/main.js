@@ -5290,6 +5290,71 @@ function getDocumentTemplateById(templateId) {
   return state.documentTemplates.find((item) => String(item.id) === String(templateId)) ?? null;
 }
 
+function getServiceCatalogItemForWorkOrderService(service = {}) {
+  const normalizedServiceId = String(service?.serviceId ?? service?.id ?? "").trim();
+  if (normalizedServiceId) {
+    const byId = state.serviceCatalog.find((item) => String(item.id) === normalizedServiceId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  const normalizedCode = normalizeLooseName(service?.serviceCode ?? "");
+  const normalizedName = normalizeLooseName(service?.name ?? "");
+
+  if (!normalizedCode && !normalizedName) {
+    return null;
+  }
+
+  return state.serviceCatalog.find((item) => {
+    const itemCode = normalizeLooseName(item?.serviceCode ?? "");
+    const itemName = normalizeLooseName(item?.name ?? "");
+
+    if (normalizedCode && itemCode === normalizedCode) {
+      return true;
+    }
+
+    if (normalizedName && itemName === normalizedName) {
+      return true;
+    }
+
+    return normalizedCode && normalizedName && itemCode === normalizedCode && itemName === normalizedName;
+  }) ?? null;
+}
+
+function getResolvedWorkOrderServiceTemplateTitles(service = {}) {
+  const titleSet = new Set(
+    (Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+  const resolvedTemplateIds = new Set(
+    (Array.isArray(service?.linkedTemplateIds) ? service.linkedTemplateIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+  const linkedServiceCatalogItem = getServiceCatalogItemForWorkOrderService(service);
+
+  (Array.isArray(linkedServiceCatalogItem?.linkedTemplateIds) ? linkedServiceCatalogItem.linkedTemplateIds : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .forEach((value) => resolvedTemplateIds.add(value));
+
+  (Array.isArray(linkedServiceCatalogItem?.linkedTemplateTitles) ? linkedServiceCatalogItem.linkedTemplateTitles : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .forEach((value) => titleSet.add(value));
+
+  resolvedTemplateIds.forEach((templateId) => {
+    const template = getDocumentTemplateById(templateId);
+    if (template?.title) {
+      titleSet.add(String(template.title).trim());
+    }
+  });
+
+  return [...titleSet];
+}
+
 function getLocationsForCompany(companyId) {
   return state.locations
     .filter((item) => item.companyId === companyId)
@@ -23573,13 +23638,22 @@ function getWorkOrderServiceTemplateIds(service = {}) {
       .map((value) => String(value ?? "").trim())
       .filter(Boolean),
   );
+  const linkedServiceCatalogItem = getServiceCatalogItemForWorkOrderService(service);
+
+  (Array.isArray(linkedServiceCatalogItem?.linkedTemplateIds) ? linkedServiceCatalogItem.linkedTemplateIds : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .forEach((value) => resolvedIds.add(value));
 
   if (resolvedIds.size > 0) {
     return [...resolvedIds];
   }
 
   const titleSet = new Set(
-    (Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : [])
+    [
+      ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
+      ...(Array.isArray(linkedServiceCatalogItem?.linkedTemplateTitles) ? linkedServiceCatalogItem.linkedTemplateTitles : []),
+    ]
       .map((value) => String(value ?? "").trim().toLowerCase())
       .filter(Boolean),
   );
@@ -23718,7 +23792,7 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
   workOrderDocumentWizardWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
     const serviceItems = getWorkOrderServiceItems(workOrder);
     const linkedTemplateTitles = Array.from(new Set(
-      serviceItems.flatMap((item) => item.linkedTemplateTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
+      serviceItems.flatMap((item) => getResolvedWorkOrderServiceTemplateTitles(item)).map((value) => String(value ?? "").trim()).filter(Boolean),
     ));
     const override = getWorkOrderDocumentWizardOverride(workOrder.id);
 
