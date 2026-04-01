@@ -1100,6 +1100,7 @@ const documentTemplateEditorTitle = document.querySelector("#document-template-e
 const documentTemplateOpenPdfPreviewButton = document.querySelector("#document-template-open-pdf-preview");
 const documentTemplateExportPlaceholderButton = document.querySelector("#document-template-export-placeholder");
 const documentTemplateExportPreviewButton = document.querySelector("#document-template-export-preview");
+const documentTemplateSaveButton = document.querySelector("#document-template-save");
 const documentTemplateForm = document.querySelector("#document-template-form");
 const documentTemplateIdInput = document.querySelector("#document-template-id");
 const documentTemplateTitleInput = document.querySelector("#document-template-title");
@@ -10081,14 +10082,12 @@ function insertTextIntoDocumentTemplateTarget(text) {
 
   if (navigator.clipboard?.writeText) {
     void navigator.clipboard.writeText(text);
-    if (documentTemplateError) {
-      documentTemplateError.textContent = "Placeholder je kopiran u clipboard.";
-      window.setTimeout(() => {
-        if (documentTemplateError.textContent === "Placeholder je kopiran u clipboard.") {
-          documentTemplateError.textContent = "";
-        }
-      }, 1600);
-    }
+    setDocumentTemplateMessage("Placeholder je kopiran u clipboard.", { type: "success" });
+    window.setTimeout(() => {
+      if (documentTemplateError?.textContent === "Placeholder je kopiran u clipboard.") {
+        setDocumentTemplateMessage("");
+      }
+    }, 1600);
   }
 }
 
@@ -10310,7 +10309,7 @@ function buildDocumentTemplateDraft() {
             sheet: null,
           }
       ))
-    : JSON.parse(JSON.stringify(activeTemplate?.sections ?? []));
+    : [];
 
   return {
     id: documentTemplateIdInput?.value || "",
@@ -10318,9 +10317,9 @@ function buildDocumentTemplateDraft() {
     title: documentTemplateTitleInput?.value || "",
     documentType: documentTemplateTypeInput?.value || "Zapisnik",
     status: documentTemplateStatusInput?.value || "draft",
-    outputFileName: documentTemplateOutputFileNameInput?.value || activeTemplate?.outputFileName || "",
-    sampleCompanyId: documentTemplateCompanyIdInput?.value || activeTemplate?.sampleCompanyId || "",
-    sampleLocationId: documentTemplateLocationIdInput?.value || activeTemplate?.sampleLocationId || "",
+    outputFileName: documentTemplateOutputFileNameInput?.value || "",
+    sampleCompanyId: documentTemplateCompanyIdInput?.value || "",
+    sampleLocationId: documentTemplateLocationIdInput?.value || "",
     description: documentTemplateDescriptionInput?.value || "",
     selectedLegalFrameworkIds: getSelectedDocumentTemplateLegalFrameworkIds(),
     customFields,
@@ -10334,6 +10333,89 @@ function buildDocumentTemplateDraft() {
 
 function buildDocumentTemplatePayload() {
   return buildDocumentTemplateDraft();
+}
+
+function setDocumentTemplateMessage(message = "", { type = "error" } = {}) {
+  if (!documentTemplateError) {
+    return;
+  }
+
+  documentTemplateError.textContent = String(message || "");
+  documentTemplateError.classList.toggle("is-success", type === "success" && Boolean(message));
+}
+
+function scrollDocumentTemplateMessageIntoView() {
+  documentTemplateError?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function resolveSavedDocumentTemplate({ currentId = "", title = "" } = {}) {
+  if (currentId) {
+    return (state.documentTemplates ?? []).find((item) => String(item.id) === String(currentId)) ?? null;
+  }
+
+  const normalizedTitle = String(title || "").trim().toLowerCase();
+  if (!normalizedTitle) {
+    return sortDocumentTemplates(state.documentTemplates ?? [])[0] ?? null;
+  }
+
+  return sortDocumentTemplates(state.documentTemplates ?? []).find((item) => (
+    String(item.title || "").trim().toLowerCase() === normalizedTitle
+  )) ?? null;
+}
+
+function saveDocumentTemplate() {
+  if (!documentTemplateForm) {
+    return;
+  }
+
+  if (state.measurementSheet.ownerKind === "template_field") {
+    if (state.measurementSheet.editingCell) {
+      commitMeasurementEditMode();
+    }
+    persistMeasurementSheetToTemplateField({ rerenderFieldRows: true });
+  }
+
+  if (!documentTemplateForm.reportValidity()) {
+    setDocumentTemplateMessage("Provjeri obavezna polja templatea prije spremanja.");
+    scrollDocumentTemplateMessageIntoView();
+    return;
+  }
+
+  const isEditing = Boolean(documentTemplateIdInput?.value);
+  const path = isEditing ? `/document-templates/${documentTemplateIdInput.value}` : "/document-templates";
+  const method = isEditing ? "PATCH" : "POST";
+  const currentId = String(documentTemplateIdInput?.value || "");
+  const currentTitle = String(documentTemplateTitleInput?.value || "").trim();
+
+  setDocumentTemplateMessage("");
+
+  if (documentTemplateSaveButton instanceof HTMLButtonElement) {
+    documentTemplateSaveButton.disabled = true;
+  }
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildDocumentTemplatePayload(),
+  }), documentTemplateError).then((success) => {
+    if (!success) {
+      scrollDocumentTemplateMessageIntoView();
+      return;
+    }
+
+    renderDocumentTemplateModule();
+    const savedTemplate = resolveSavedDocumentTemplate({ currentId, title: currentTitle });
+    if (savedTemplate) {
+      hydrateDocumentTemplateForm(savedTemplate);
+    } else {
+      syncDocumentTemplateEditorChrome();
+    }
+    setDocumentTemplateMessage("Template spremljen.", { type: "success" });
+    documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  }).finally(() => {
+    if (documentTemplateSaveButton instanceof HTMLButtonElement) {
+      documentTemplateSaveButton.disabled = false;
+    }
+  });
 }
 
 function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemplateDraft()) {
@@ -10919,9 +11001,7 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
   const previewWindow = window.open("", "_blank", "noopener,noreferrer");
 
   if (!previewWindow) {
-    if (documentTemplateError) {
-      documentTemplateError.textContent = "Browser je blokirao preview prozor.";
-    }
+    setDocumentTemplateMessage("Browser je blokirao preview prozor.");
     return;
   }
 
@@ -12900,9 +12980,7 @@ function resetDocumentTemplateForm() {
   renderDocumentTemplateSectionRows();
   renderDocumentTemplateLegalFrameworkChecklist();
   renderDocumentTemplateReferenceMeta();
-  if (documentTemplateError) {
-    documentTemplateError.textContent = "";
-  }
+  setDocumentTemplateMessage("");
   syncDocumentTemplateEditorChrome();
 }
 
@@ -12950,9 +13028,7 @@ function hydrateDocumentTemplateForm(template) {
   Array.from(documentTemplateLegalFrameworkList?.querySelectorAll('input[name="document-template-legal-framework-id"]') ?? []).forEach((input) => {
     input.checked = (template.selectedLegalFrameworkIds ?? []).map(String).includes(String(input.value));
   });
-  if (documentTemplateError) {
-    documentTemplateError.textContent = "";
-  }
+  setDocumentTemplateMessage("");
   syncDocumentTemplateEditorChrome();
   openDocumentTemplateEditor();
   requestAnimationFrame(() => {
@@ -24664,14 +24740,10 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
         dataUrl,
         updatedAt: new Date().toISOString(),
       });
-      if (documentTemplateError) {
-        documentTemplateError.textContent = "";
-      }
+      setDocumentTemplateMessage("");
     })
     .catch((error) => {
-      if (documentTemplateError) {
-        documentTemplateError.textContent = error.message;
-      }
+      setDocumentTemplateMessage(error.message);
     })
     .finally(() => {
       documentTemplateReferenceFileInput.value = "";
@@ -24699,29 +24771,26 @@ documentTemplateForm?.addEventListener("focusin", (event) => {
 });
 
 documentTemplateForm?.addEventListener("input", () => {
+  if (documentTemplateError?.classList.contains("is-success")) {
+    setDocumentTemplateMessage("");
+  }
   syncDocumentTemplateEditorChrome();
 });
 
 documentTemplateForm?.addEventListener("change", () => {
+  if (documentTemplateError?.classList.contains("is-success")) {
+    setDocumentTemplateMessage("");
+  }
   syncDocumentTemplateEditorChrome();
 });
 
 documentTemplateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  saveDocumentTemplate();
+});
 
-  const isEditing = Boolean(documentTemplateIdInput?.value);
-  const path = isEditing ? `/document-templates/${documentTemplateIdInput.value}` : "/document-templates";
-  const method = isEditing ? "PATCH" : "POST";
-
-  void runMutation(() => apiRequest(path, {
-    method,
-    body: buildDocumentTemplatePayload(),
-  }), documentTemplateError).then((success) => {
-    if (success) {
-      closeDocumentTemplateEditor({ reset: true });
-      renderDocumentTemplateModule();
-    }
-  });
+documentTemplateSaveButton?.addEventListener("click", () => {
+  saveDocumentTemplate();
 });
 
 companyLogoButton?.addEventListener("click", () => {

@@ -4348,6 +4348,10 @@ button:hover {
   color: var(--danger);
 }
 
+.form-error.is-success {
+  color: #2f684f;
+}
+
 .filter-row {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
@@ -13228,24 +13232,18 @@ body.is-vehicle-reservation-open {
 
 .document-template-builder-shell {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
   min-height: calc(100vh - 360px);
 }
 
 .document-template-builder-sidebar,
-.document-template-builder-main,
-.document-template-builder-inspector {
+.document-template-builder-main {
   display: grid;
   gap: 14px;
   min-width: 0;
   align-content: start;
-}
-
-.document-template-builder-inspector {
-  position: sticky;
-  top: 12px;
 }
 
 .document-template-toolbox {
@@ -13607,6 +13605,10 @@ body.is-vehicle-reservation-open {
   gap: 8px;
 }
 
+.document-template-reference-actions > button {
+  flex: 1 1 160px;
+}
+
 .document-template-reference-meta {
   display: grid;
   gap: 4px;
@@ -13833,10 +13835,6 @@ body.is-vehicle-reservation-open {
   .document-template-preview-meta-grid,
   .document-template-preview-signatures {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .document-template-builder-inspector {
-    position: static;
   }
 
   .document-template-sheet-meta {
