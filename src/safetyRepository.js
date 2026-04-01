@@ -5303,7 +5303,7 @@ export class MySqlSafetyRepository {
              reference_document_storage_provider, reference_document_storage_bucket,
              reference_document_storage_key, reference_document_url,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
