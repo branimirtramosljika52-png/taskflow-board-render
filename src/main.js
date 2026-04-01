@@ -3416,6 +3416,7 @@ function renderModuleView() {
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
+  const moduleHeading = moduleViewKicker?.closest(".section-heading");
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -3425,12 +3426,20 @@ function renderModuleView() {
     moduleViewTitle.textContent = moduleDefinition.title;
   }
 
+  if (moduleHeading) {
+    moduleHeading.hidden = isTemplateDevelopmentModule;
+  }
+
   if (moduleViewDescription) {
-    moduleViewDescription.textContent = moduleDefinition.description;
+    const shouldShowDescription = !isTemplateDevelopmentModule && Boolean(moduleDefinition.description);
+    moduleViewDescription.hidden = !shouldShowDescription;
+    moduleViewDescription.textContent = shouldShowDescription ? moduleDefinition.description : "";
   }
 
   if (moduleViewChips) {
-    moduleViewChips.replaceChildren(...(moduleDefinition.chips ?? []).map((chip) => {
+    const chipValues = isTemplateDevelopmentModule ? [] : (moduleDefinition.chips ?? []);
+    moduleViewChips.hidden = chipValues.length === 0;
+    moduleViewChips.replaceChildren(...chipValues.map((chip) => {
       const chipElement = document.createElement("span");
       chipElement.className = "module-chip";
       chipElement.textContent = chip;
@@ -9642,6 +9651,7 @@ function createWordHtmlBlob(title, bodyHtml) {
     .signature-cell { display: table-cell; width: 50%; padding-right: 18px; }
     .signature-line { margin-top: 46px; border-top: 1px solid #95aea3; padding-top: 8px; }
     .placeholder-table td:first-child { width: 32%; font-family: Consolas, monospace; }
+    .placeholder-page p { margin: 0 0 12px; font-family: Consolas, "Courier New", monospace; color: #24362e; }
   </style>
 </head>
 <body>${bodyHtml}</body>
@@ -11089,6 +11099,23 @@ function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraf
   `;
 }
 
+function buildDocumentTemplatePlaceholderWordMarkup(template = buildDocumentTemplateDraft()) {
+  const pages = buildDocumentTemplateSheetGroups(template.customFields ?? []);
+
+  return pages.map((page) => {
+    const tokens = (page.fields ?? [])
+      .map(({ field, index }) => getDocumentTemplateFieldToken(field, index))
+      .filter(Boolean);
+
+    if (tokens.length === 0) {
+      return '<div class="placeholder-page"></div>';
+    }
+
+    const body = tokens.map((token) => `<p>${escapeHtml(token)}</p>`).join("");
+    return `<div class="placeholder-page">${body}</div>`;
+  }).join('<div style="page-break-after: always;"></div>');
+}
+
 function renderDocumentTemplatePreviewContent() {
   if (!documentTemplatePreview) {
     return;
@@ -11174,8 +11201,8 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
 
 function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   const template = buildDocumentTemplateDraft();
-  const fileName = `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}${placeholderMode ? "-placeholder" : "-preview"}.doc`;
-  const html = buildDocumentTemplatePreviewMarkup(template, { placeholderMode });
+  const fileName = `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`;
+  const html = buildDocumentTemplatePlaceholderWordMarkup(template);
   triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
 }
 
@@ -12734,38 +12761,6 @@ function renderDocumentTemplateFieldRows() {
     wordLabelInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(wordLabelInput, `field-word-label:${field.id}`));
     wordLabelField.append(wordLabelSpan, wordLabelInput);
 
-    const typeField = document.createElement("label");
-    typeField.className = "field";
-    const typeSpan = document.createElement("span");
-    typeSpan.textContent = "Prikaz";
-    const typeSelect = document.createElement("select");
-    replaceSelectOptions(typeSelect, DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, field.type || "text");
-    typeSelect.addEventListener("change", () => {
-      documentTemplateFieldDrafts[draftIndex].type = typeSelect.value;
-      documentTemplateFieldDrafts[draftIndex].source = getDocumentTemplateDefaultFieldSource(typeSelect.value);
-      if (typeSelect.value === "measurement_table") {
-        documentTemplateFieldDrafts[draftIndex].sheet = ensureDocumentTemplateMeasurementFieldSheet(documentTemplateFieldDrafts[draftIndex]);
-        documentTemplateFieldDrafts[draftIndex].columns = documentTemplateFieldDrafts[draftIndex].sheet.columns.map((column) => column.label).join(", ");
-        documentTemplateFieldDrafts[draftIndex].rowCount = String(documentTemplateFieldDrafts[draftIndex].sheet.rows.length || DEFAULT_MEASUREMENT_ROW_COUNT);
-      } else {
-        documentTemplateFieldDrafts[draftIndex].sheet = null;
-      }
-      if (typeSelect.value === "page_break" && !String(documentTemplateFieldDrafts[draftIndex].label || "").trim()) {
-        documentTemplateFieldDrafts[draftIndex].label = "Nova stranica";
-      }
-      if (typeSelect.value === "page_break" && !String(documentTemplateFieldDrafts[draftIndex].wordLabel || "").trim()) {
-        documentTemplateFieldDrafts[draftIndex].wordLabel = documentTemplateFieldDrafts[draftIndex].label || "Nova stranica";
-      }
-      if (!isDocumentTemplateSpecialFieldType(typeSelect.value) && !String(documentTemplateFieldDrafts[draftIndex].source || "").trim()) {
-        documentTemplateFieldDrafts[draftIndex].source = "CUSTOM_VALUE";
-      }
-      renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplateLinkSummary();
-      renderDocumentTemplatePreviewContent();
-    });
-    typeField.append(typeSpan, typeSelect);
-
     const sourceField = document.createElement("label");
     sourceField.className = "field";
     sourceField.hidden = isSpecialType;
@@ -12780,24 +12775,15 @@ function renderDocumentTemplateFieldRows() {
     });
     sourceField.append(sourceSpan, sourceSelect);
 
-    const defaultField = document.createElement("label");
-    defaultField.className = "field";
-    const defaultSpan = document.createElement("span");
-    defaultSpan.textContent = isSpecialType ? "Napomena uz blok" : "Fallback tekst";
-    const defaultInput = document.createElement("input");
-    defaultInput.type = "text";
-    defaultInput.value = field.defaultValue || "";
-    defaultInput.addEventListener("input", (event) => {
-      documentTemplateFieldDrafts[draftIndex].defaultValue = event.currentTarget.value;
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplateLinkSummary();
-      renderDocumentTemplatePreviewContent();
-    });
-    defaultInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(defaultInput, `field-default:${field.id}`));
-    defaultField.append(defaultSpan, defaultInput);
+    const specialInfoField = document.createElement("label");
+    specialInfoField.className = "field document-template-inline-special-field";
+    specialInfoField.hidden = !isSpecialType;
+    const specialInfoSpan = document.createElement("span");
+    specialInfoSpan.textContent = "Veza";
+    specialInfoField.append(specialInfoSpan);
 
     const columnsField = document.createElement("label");
-    columnsField.className = "field field-span-full";
+    columnsField.className = "field document-template-inline-excel-field";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
     columnsSpan.textContent = "Excel blok";
@@ -12815,43 +12801,45 @@ function renderDocumentTemplateFieldRows() {
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
 
-    const helpField = document.createElement("label");
-    helpField.className = "field field-span-full";
-    const helpSpan = document.createElement("span");
-    helpSpan.textContent = "Dodatna napomena";
-    const helpInput = document.createElement("input");
-    helpInput.type = "text";
-    helpInput.value = field.helpText || "";
-    helpInput.addEventListener("input", (event) => {
-      documentTemplateFieldDrafts[draftIndex].helpText = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
-    });
-    helpInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(helpInput, `field-help:${field.id}`));
-    helpField.append(helpSpan, helpInput);
-
-    const sourceHint = document.createElement("p");
-    sourceHint.className = "helper-copy document-template-field-hint";
-    sourceHint.hidden = !isSpecialType;
-    sourceHint.textContent = field.type === "legal_list"
-      ? "Propisi se biraju u Legal Framework modulu, ovdje samo odredujes gdje se blok prikazuje."
-      : field.type === "equipment_list"
-        ? "Oprema se bira u Measurement Equipment modulu, ovdje samo odredujes mjesto prikaza."
-        : field.type === "measurement_table"
-          ? "Ovaj blok ima vlastiti Excel editor unutar templatea i isti taj raspored ide u preview/PDF."
-          : "Ovaj blok pravi prijelom na novu stranicu u dokumentu.";
-
-    grid.append(labelField, wordLabelField, typeField, sourceField, defaultField, columnsField, helpField);
-
-    const actions = document.createElement("div");
-    actions.className = "document-template-item-actions";
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();
       documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
       renderDocumentTemplateFieldRows();
     });
-    actions.append(removeButton);
+    removeButton.classList.add("document-template-item-remove");
 
-    row.append(head, grid, sourceHint, actions);
+    if (field.type === "measurement_table") {
+      specialInfoField.hidden = true;
+    } else if (field.type === "legal_list") {
+      const specialInfoValue = document.createElement("div");
+      specialInfoValue.className = "document-template-inline-special-value";
+      specialInfoValue.textContent = "Povlači povezane pravilnike iz Legal Framework modula.";
+      specialInfoField.append(specialInfoValue);
+    } else if (field.type === "equipment_list") {
+      const specialInfoValue = document.createElement("div");
+      specialInfoValue.className = "document-template-inline-special-value";
+      specialInfoValue.textContent = "Povlači povezanu mjernu i ispitnu opremu.";
+      specialInfoField.append(specialInfoValue);
+    } else if (field.type === "page_break") {
+      const specialInfoValue = document.createElement("div");
+      specialInfoValue.className = "document-template-inline-special-value";
+      specialInfoValue.textContent = "Ovaj blok otvara novi sheet / novu stranicu dokumenta.";
+      specialInfoField.append(specialInfoValue);
+    } else {
+      specialInfoField.hidden = true;
+    }
+
+    grid.append(labelField, wordLabelField);
+    if (field.type === "measurement_table") {
+      grid.append(columnsField);
+    } else if (isSpecialType) {
+      grid.append(specialInfoField);
+    } else {
+      grid.append(sourceField);
+    }
+
+    head.append(removeButton);
+    row.append(head, grid);
     pageBody.append(row);
   });
 
@@ -26667,7 +26655,7 @@ documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
 });
 
 documentTemplateExportPreviewButton?.addEventListener("click", () => {
-  exportDocumentTemplateWord({ placeholderMode: false });
+  exportDocumentTemplateWord({ placeholderMode: true });
 });
 
 documentTemplateForm?.addEventListener("focusin", (event) => {
