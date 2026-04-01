@@ -6346,6 +6346,179 @@ body.is-work-order-editor-open {
   font-weight: 800;
 }
 
+.work-order-bulk-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  width: min(1240px, calc(100vw - 52px));
+  transform: translateX(-50%);
+  z-index: 180;
+  pointer-events: none;
+}
+
+.work-order-bulk-bar-shell {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: rgba(18, 20, 25, 0.96);
+  color: #f7f8fb;
+  box-shadow: 0 24px 60px rgba(10, 12, 18, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.work-order-bulk-count-group {
+  min-width: 180px;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-bulk-count-label {
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.work-order-bulk-feedback {
+  color: rgba(236, 239, 247, 0.82);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.work-order-bulk-feedback[data-tone="success"] {
+  color: #8de2b7;
+}
+
+.work-order-bulk-feedback[data-tone="error"] {
+  color: #ff9fa3;
+}
+
+.work-order-bulk-feedback[data-tone="pending"] {
+  color: #ffd98f;
+}
+
+.work-order-bulk-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: 1;
+}
+
+.work-order-bulk-field,
+.work-order-bulk-picker-slot {
+  min-width: 132px;
+}
+
+.work-order-bulk-field {
+  display: grid;
+  gap: 5px;
+}
+
+.work-order-bulk-field > span {
+  color: rgba(229, 233, 244, 0.72);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-bulk-field select,
+.work-order-bulk-field input,
+.work-order-bulk-executor-trigger {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f6f8fb;
+  box-shadow: none;
+}
+
+.work-order-bulk-field select,
+.work-order-bulk-field input {
+  padding: 10px 12px;
+}
+
+.work-order-bulk-field select:disabled,
+.work-order-bulk-field input:disabled,
+.work-order-bulk-action-button:disabled,
+.work-order-bulk-executor-trigger:disabled {
+  opacity: 0.56;
+  cursor: wait;
+}
+
+.work-order-bulk-field input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.9;
+}
+
+.work-order-bulk-action-button {
+  min-height: 44px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.work-order-bulk-action-button.is-primary {
+  background: linear-gradient(135deg, rgba(74, 198, 236, 0.96), rgba(223, 71, 211, 0.96));
+  border-color: transparent;
+  color: #fff;
+}
+
+.work-order-bulk-executor-picker {
+  min-width: 196px;
+}
+
+.work-order-bulk-executor-trigger {
+  width: 100%;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  color: #f7f8fb;
+}
+
+.work-order-bulk-action-icon {
+  flex: 0 0 auto;
+}
+
+.work-order-bulk-executor-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+
+.work-order-bulk-executor-avatar {
+  width: 24px;
+  height: 24px;
+}
+
+.work-order-bulk-action-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.work-orders-scroll-shell.has-bulk-bar {
+  padding-bottom: 114px;
+}
+
 .workspace-view-chips {
   display: flex;
   flex-wrap: wrap;
@@ -9201,6 +9374,19 @@ body.is-work-order-editor-open {
   justify-items: center;
 }
 
+.work-group-column-select .work-group-column-title,
+.work-group-column-select .work-group-column-subtitle {
+  opacity: 0.45;
+  transition: opacity 140ms ease;
+}
+
+.work-orders-scroll-shell:hover .work-group-column-select .work-group-column-title,
+.work-orders-scroll-shell:hover .work-group-column-select .work-group-column-subtitle,
+.work-orders-scroll-shell.is-selection-active .work-group-column-select .work-group-column-title,
+.work-orders-scroll-shell.is-selection-active .work-group-column-select .work-group-column-subtitle {
+  opacity: 1;
+}
+
 .work-group-column-title {
   color: #2d3346;
   font-size: 0.72rem;
@@ -9280,11 +9466,25 @@ body.is-work-order-editor-open {
   background: linear-gradient(180deg, #ffffff, #f7f9fc);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
   cursor: pointer;
+  opacity: 0;
+  transform: translateY(2px) scale(0.92);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 160ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .work-order-row-select.master {
   width: 38px;
   height: 38px;
+}
+
+.work-orders-scroll-shell:hover .work-group-column-select .work-order-row-select.master,
+.work-orders-scroll-shell.is-selection-active .work-group-column-select .work-order-row-select.master,
+.work-item-card:hover .work-order-row-select,
+.work-item-card:focus-within .work-order-row-select,
+.work-item-card.is-selected .work-order-row-select {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
 .work-order-row-select input {
@@ -9296,6 +9496,25 @@ body.is-work-order-editor-open {
 
 .work-item-select-cell {
   padding-top: 2px;
+}
+
+.work-item-card.is-selected .work-item-row {
+  background: linear-gradient(180deg, rgba(250, 247, 255, 0.98), rgba(245, 248, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(208, 196, 255, 0.7);
+}
+
+@media (hover: none) {
+  .work-order-row-select,
+  .work-orders-scroll-shell .work-group-column-select .work-order-row-select.master {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .work-group-column-select .work-group-column-title,
+  .work-group-column-select .work-group-column-subtitle {
+    opacity: 1;
+  }
 }
 
 .work-item-basic-stack {

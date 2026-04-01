@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260401h" />
+  <link rel="stylesheet" href="/styles.css?v=20260401i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1108,6 +1108,42 @@
             <section id="work-order-list-view" class="work-order-mode-view">
               <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
                 <div id="work-orders-body" class="work-orders-groups"></div>
+              </div>
+            </section>
+
+            <section id="work-order-bulk-bar" class="work-order-bulk-bar" hidden>
+              <div class="work-order-bulk-bar-shell">
+                <div class="work-order-bulk-count-group">
+                  <strong id="work-order-bulk-count-label" class="work-order-bulk-count-label">0 RN odabrano</strong>
+                  <span id="work-order-bulk-feedback" class="work-order-bulk-feedback" hidden></span>
+                </div>
+
+                <div class="work-order-bulk-actions-row">
+                  <label class="work-order-bulk-field">
+                    <span>Status</span>
+                    <select id="work-order-bulk-status"></select>
+                  </label>
+
+                  <label class="work-order-bulk-field">
+                    <span>Prioritet</span>
+                    <select id="work-order-bulk-priority"></select>
+                  </label>
+
+                  <label class="work-order-bulk-field">
+                    <span>Rok</span>
+                    <input id="work-order-bulk-due-date" type="date" />
+                  </label>
+
+                  <div id="work-order-bulk-executors-picker" class="work-order-bulk-picker-slot"></div>
+
+                  <button id="work-order-bulk-open-documents" type="button" class="work-order-bulk-action-button is-primary">
+                    Izrada zapisnika
+                  </button>
+
+                  <button id="work-order-bulk-clear" type="button" class="work-order-bulk-action-button">
+                    Očisti
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -3584,6 +3620,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260401h"></script>
+    <script type="module" src="/src/main.js?v=20260401i"></script>
   </body>
 </html>

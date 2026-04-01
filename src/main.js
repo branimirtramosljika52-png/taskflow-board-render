@@ -539,6 +539,11 @@ const state = {
     },
     overrides: {},
   },
+  workOrderBatch: {
+    pending: false,
+    message: "",
+    tone: "",
+  },
   documentTemplateRuntime: {
     source: "",
     workOrderIds: [],
@@ -1377,6 +1382,15 @@ const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderOpenDocumentsButton = document.querySelector("#work-order-open-documents");
 const workOrderOpenDocumentsCount = document.querySelector("#work-order-open-documents-count");
 const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
+const workOrderBulkBar = document.querySelector("#work-order-bulk-bar");
+const workOrderBulkCountLabel = document.querySelector("#work-order-bulk-count-label");
+const workOrderBulkFeedback = document.querySelector("#work-order-bulk-feedback");
+const workOrderBulkStatusInput = document.querySelector("#work-order-bulk-status");
+const workOrderBulkPriorityInput = document.querySelector("#work-order-bulk-priority");
+const workOrderBulkDueDateInput = document.querySelector("#work-order-bulk-due-date");
+const workOrderBulkExecutorsPicker = document.querySelector("#work-order-bulk-executors-picker");
+const workOrderBulkOpenDocumentsButton = document.querySelector("#work-order-bulk-open-documents");
+const workOrderBulkClearButton = document.querySelector("#work-order-bulk-clear");
 const workOrderOpenReminderButton = document.querySelector("#work-order-open-reminder");
 const workOrderOpenTodoButton = document.querySelector("#work-order-open-todo");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
@@ -22485,17 +22499,579 @@ function getAllSelectedWorkOrdersForDocumentWizard() {
   return sortWorkOrders((state.workOrders ?? []).filter((item) => selectedIdSet.has(String(item.id))));
 }
 
+function formatWorkOrderSelectionCountLabel(count = 0) {
+  if (count === 1) {
+    return "1 RN odabran";
+  }
+
+  return `${count} RN odabrana`;
+}
+
+function getSharedWorkOrderBatchValue(items = [], resolver = (value) => value) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      value: "",
+      mixed: false,
+    };
+  }
+
+  const values = items.map((item) => String(resolver(item) ?? "").trim());
+  const firstValue = values[0];
+  const mixed = values.some((value) => value !== firstValue);
+
+  return {
+    value: mixed ? "" : firstValue,
+    mixed,
+  };
+}
+
+function getSharedWorkOrderBatchExecutors(items = []) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      values: [],
+      mixed: false,
+    };
+  }
+
+  const executorSets = items.map((item) => normalizeWorkOrderExecutorValues(getWorkOrderExecutors(item)));
+  const firstKey = executorSets[0].join("||");
+  const mixed = executorSets.some((values) => values.join("||") !== firstKey);
+
+  return {
+    values: mixed ? [] : executorSets[0],
+    mixed,
+  };
+}
+
+async function applyWorkOrderBatchUpdate(bodyOrBuilder, { successMessage = "" } = {}) {
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+
+  if (selectedWorkOrders.length === 0) {
+    return false;
+  }
+
+  state.workOrderBatch.pending = true;
+  state.workOrderBatch.message = "Spremam promjene...";
+  state.workOrderBatch.tone = "pending";
+  renderWorkOrderBatchBar();
+
+  try {
+    let hasChanges = false;
+
+    for (const workOrder of selectedWorkOrders) {
+      const body = typeof bodyOrBuilder === "function"
+        ? bodyOrBuilder(workOrder)
+        : bodyOrBuilder;
+
+      if (!body || Object.keys(body).length === 0) {
+        continue;
+      }
+
+      hasChanges = true;
+      await apiRequest(`/work-orders/${workOrder.id}`, {
+        method: "PATCH",
+        body,
+      });
+    }
+
+    if (hasChanges) {
+      await refreshSnapshot();
+    }
+
+    state.workOrderBatch.message = successMessage || `Ažurirano ${formatWorkOrderSelectionCountLabel(selectedWorkOrders.length).toLowerCase()}.`;
+    state.workOrderBatch.tone = "success";
+    return true;
+  } catch (error) {
+    if (error.statusCode === 401) {
+      state.user = null;
+      renderAuthState();
+      setSyncError("");
+      return false;
+    }
+
+    state.workOrderBatch.message = error.message || "Batch promjena nije uspjela.";
+    state.workOrderBatch.tone = "error";
+    setSyncError(error.message || "Batch promjena nije uspjela.");
+    return false;
+  } finally {
+    state.workOrderBatch.pending = false;
+    renderWorkOrderBatchBar();
+  }
+}
+
+function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = false } = {}) {
+  if (!(trigger instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const normalizedValues = normalizeWorkOrderExecutorValues(values);
+  trigger.replaceChildren();
+  trigger.title = mixed
+    ? "Izvršitelji imaju različite vrijednosti"
+    : normalizedValues.length > 0
+      ? normalizedValues.join(", ")
+      : "Postavi izvršitelje";
+  trigger.setAttribute("aria-label", trigger.title);
+
+  const icon = createWorkOrderActionIcon("assignees");
+  icon.classList.add("work-order-bulk-action-icon");
+  trigger.append(icon);
+
+  if (normalizedValues.length > 0) {
+    const stack = document.createElement("span");
+    stack.className = "work-order-bulk-executor-stack";
+    normalizedValues.slice(0, 2).forEach((value) => {
+      const avatar = createWorkOrderMiniExecutor(value, {
+        className: "work-order-mini-executor work-order-bulk-executor-avatar",
+      });
+      avatar.removeAttribute("title");
+      stack.append(avatar);
+    });
+
+    if (normalizedValues.length > 2) {
+      stack.append(createExecutorOverflowBadge(normalizedValues.length - 2, "work-order-bulk-executor-avatar"));
+    }
+
+    trigger.append(stack);
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-bulk-action-label";
+  if (mixed) {
+    label.textContent = "Izvršitelji";
+  } else if (normalizedValues.length === 1) {
+    label.textContent = "1 izvršitelj";
+  } else if (normalizedValues.length > 1) {
+    label.textContent = `${normalizedValues.length} izvršitelja`;
+  } else {
+    label.textContent = "Izvršitelji";
+  }
+  trigger.append(label);
+}
+
+function createWorkOrderBatchExecutorPicker(selectedWorkOrders = []) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-calendar-executor-picker work-order-bulk-executor-picker";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-calendar-executor-trigger work-order-bulk-executor-trigger";
+  trigger.dataset.preventRowOpen = "true";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const getCurrentState = () => getSharedWorkOrderBatchExecutors(getAllSelectedWorkOrdersForDocumentWizard());
+  const setPendingState = (isPending) => {
+    wrapper.classList.toggle("is-pending", isPending);
+    trigger.disabled = isPending || state.workOrderBatch.pending;
+  };
+  const setCurrentValues = (values, { mixed = false } = {}) => {
+    setWorkOrderBulkExecutorTriggerContent(trigger, values, { mixed });
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.top - menuRect.height - 10;
+
+    if (top < 12) {
+      top = triggerRect.bottom + 10;
+    }
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(280, Math.round(triggerRect.width + 60))}px`;
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  wrapper._closeMenu = closeMenu;
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    const sharedState = getCurrentState();
+    let draftValues = [...sharedState.values];
+    let mixedSelection = sharedState.mixed;
+    let searchQuery = "";
+    let menuPending = false;
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", "Batch izbor izvrsitelja");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "work-order-calendar-executor-search";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-calendar-executor-search-input";
+    searchInput.placeholder = "Traži po imenu ili prezimenu";
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchWrap.append(searchInput);
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-calendar-executor-selection";
+
+    const helper = document.createElement("p");
+    helper.className = "work-order-calendar-executor-helper";
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-calendar-executor-options";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-calendar-executor-clear";
+    clearButton.textContent = "Očisti";
+
+    const toggleDraftValue = (value) => {
+      const normalizedValue = String(value ?? "").trim();
+      if (!normalizedValue) {
+        return;
+      }
+
+      if (draftValues.includes(normalizedValue)) {
+        draftValues = draftValues.filter((entry) => entry !== normalizedValue);
+        return;
+      }
+
+      draftValues = [...draftValues, normalizedValue];
+    };
+
+    const setMenuPending = (isPending) => {
+      menuPending = Boolean(isPending);
+      setPendingState(menuPending);
+      searchInput.disabled = menuPending;
+      syncMenuState();
+    };
+
+    const applyDraftValues = async (nextValues, { focusSearch = true } = {}) => {
+      const normalized = normalizeWorkOrderExecutorValues(nextValues);
+      draftValues = normalized;
+      mixedSelection = false;
+      setMenuPending(true);
+
+      const success = await applyWorkOrderBatchUpdate({
+        executors: normalized,
+        executor1: normalized[0] || "",
+        executor2: normalized[1] || "",
+      }, {
+        successMessage: `Izvršitelji ažurirani na ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`,
+      });
+
+      setMenuPending(false);
+
+      if (!success) {
+        const currentState = getCurrentState();
+        draftValues = [...currentState.values];
+        mixedSelection = currentState.mixed;
+        syncMenuState();
+        if (focusSearch) {
+          searchInput.focus({ preventScroll: true });
+        }
+        return;
+      }
+
+      setCurrentValues(normalized, { mixed: false });
+      syncMenuState();
+
+      if (focusSearch) {
+        searchInput.focus({ preventScroll: true });
+      }
+    };
+
+    const renderSelection = () => {
+      selection.replaceChildren();
+
+      if (mixedSelection && draftValues.length === 0) {
+        const mixed = document.createElement("span");
+        mixed.className = "work-order-calendar-executor-selection-empty";
+        mixed.textContent = "Odaberi novi set izvršitelja za sve odabrane RN-ove";
+        selection.append(mixed);
+        return;
+      }
+
+      if (draftValues.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-calendar-executor-selection-empty";
+        empty.textContent = "Bez izvršitelja";
+        selection.append(empty);
+        return;
+      }
+
+      draftValues.forEach((value) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "work-order-calendar-executor-chip";
+        chip.title = `Makni ${value}`;
+
+        const avatar = createWorkOrderMiniExecutor(value);
+        avatar.removeAttribute("title");
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-chip-label";
+        label.textContent = value;
+
+        const remove = document.createElement("span");
+        remove.className = "work-order-calendar-executor-chip-remove";
+        remove.setAttribute("aria-hidden", "true");
+        remove.textContent = "x";
+
+        chip.append(avatar, label, remove);
+        chip.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (menuPending) {
+            return;
+          }
+          void applyDraftValues(draftValues.filter((entry) => entry !== value));
+        });
+
+        selection.append(chip);
+      });
+    };
+
+    const renderOptions = () => {
+      optionsList.replaceChildren();
+
+      const visibleOptions = getWorkOrderExecutorOptions(draftValues)
+        .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
+
+      if (visibleOptions.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-calendar-executor-empty";
+        empty.textContent = "Nema izvršitelja za ovaj pojam.";
+        optionsList.append(empty);
+        return;
+      }
+
+      visibleOptions.forEach((option) => {
+        const isSelected = draftValues.includes(option.value);
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "work-item-status-option work-order-calendar-executor-option";
+        optionButton.classList.toggle("is-selected", isSelected);
+        optionButton.setAttribute("role", "menuitemcheckbox");
+        optionButton.setAttribute("aria-checked", String(isSelected));
+
+        const avatar = createWorkOrderMiniExecutor(option, {
+          className: "work-order-calendar-executor-option-avatar",
+        });
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-option-label";
+        label.textContent = option.label;
+
+        const marker = document.createElement("span");
+        marker.className = "work-order-calendar-executor-option-marker";
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = isSelected ? "✓" : "+";
+
+        optionButton.append(avatar, label, marker);
+        optionButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (menuPending) {
+            return;
+          }
+          toggleDraftValue(option.value);
+          void applyDraftValues(draftValues);
+        });
+
+        optionsList.append(optionButton);
+      });
+    };
+
+    const syncMenuState = () => {
+      renderSelection();
+      renderOptions();
+      helper.textContent = mixedSelection && draftValues.length === 0
+        ? "Odaberi nove izvršitelje i primijeni ih na sve odabrane RN-ove."
+        : draftValues.length > 0
+          ? `${draftValues.length} odabranih izvršitelja za batch promjenu.`
+          : "Odaberi jednog ili više izvršitelja.";
+      clearButton.disabled = menuPending || draftValues.length === 0;
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    };
+
+    clearButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (menuPending) {
+        return;
+      }
+      void applyDraftValues([]);
+    });
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value || "";
+      renderOptions();
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    });
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      const visibleOptions = getWorkOrderExecutorOptions(draftValues)
+        .filter((option) => matchesWorkOrderExecutorSearch(option, searchQuery));
+
+      if (visibleOptions.length !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      toggleDraftValue(visibleOptions[0].value);
+      void applyDraftValues(draftValues);
+    });
+
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    syncMenuState();
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => {
+      positionMenuPortal(menu);
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    });
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  const sharedState = getSharedWorkOrderBatchExecutors(selectedWorkOrders);
+  setCurrentValues(sharedState.values, { mixed: sharedState.mixed });
+  setPendingState(state.workOrderBatch.pending);
+  wrapper.append(trigger);
+  return wrapper;
+}
+
+function renderWorkOrderBatchBar() {
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const selectedCount = selectedWorkOrders.length;
+  const isVisible = state.activeWorkOrderViewMode === "list" && selectedCount >= 2;
+
+  if (workOrderBulkBar) {
+    workOrderBulkBar.hidden = !isVisible;
+  }
+
+  if (!isVisible) {
+    return;
+  }
+
+  const sharedStatus = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.status || "Otvoreni RN");
+  const sharedPriority = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.priority || "Normal");
+  const sharedDueDate = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.dueDate || "");
+
+  if (workOrderBulkCountLabel) {
+    workOrderBulkCountLabel.textContent = formatWorkOrderSelectionCountLabel(selectedCount);
+  }
+
+  if (workOrderBulkStatusInput) {
+    replaceSelectOptions(workOrderBulkStatusInput, [
+      { value: "", label: "Status" },
+      ...WORK_ORDER_STATUS_OPTIONS,
+    ], sharedStatus.mixed ? "" : sharedStatus.value);
+    workOrderBulkStatusInput.disabled = state.workOrderBatch.pending;
+  }
+
+  if (workOrderBulkPriorityInput) {
+    replaceSelectOptions(workOrderBulkPriorityInput, [
+      { value: "", label: "Prioritet" },
+      ...PRIORITY_OPTIONS,
+    ], sharedPriority.mixed ? "" : sharedPriority.value);
+    workOrderBulkPriorityInput.disabled = state.workOrderBatch.pending;
+  }
+
+  if (workOrderBulkDueDateInput) {
+    workOrderBulkDueDateInput.value = sharedDueDate.mixed ? "" : sharedDueDate.value;
+    workOrderBulkDueDateInput.disabled = state.workOrderBatch.pending;
+    workOrderBulkDueDateInput.title = sharedDueDate.mixed ? "Odabrani RN-ovi imaju različite rokove" : "Postavi rok";
+  }
+
+  if (workOrderBulkExecutorsPicker) {
+    workOrderBulkExecutorsPicker.replaceChildren(createWorkOrderBatchExecutorPicker(selectedWorkOrders));
+  }
+
+  if (workOrderBulkOpenDocumentsButton) {
+    workOrderBulkOpenDocumentsButton.disabled = state.workOrderBatch.pending;
+    decorateWorkOrderActionButton(workOrderBulkOpenDocumentsButton, "document");
+  }
+
+  if (workOrderBulkClearButton) {
+    workOrderBulkClearButton.disabled = state.workOrderBatch.pending;
+    decorateWorkOrderActionButton(workOrderBulkClearButton, "reset");
+  }
+
+  if (workOrderBulkFeedback) {
+    const message = String(state.workOrderBatch.message || "").trim();
+    workOrderBulkFeedback.hidden = !message;
+    workOrderBulkFeedback.textContent = message;
+    workOrderBulkFeedback.dataset.tone = state.workOrderBatch.tone || "";
+  }
+}
+
 function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
   const selectedCount = state.workOrderDocumentWizard.selectedIds.size;
   const isListMode = state.activeWorkOrderViewMode === "list";
+  const showBatchBar = isListMode && selectedCount >= 2;
 
   if (workOrderOpenDocumentsButton) {
     workOrderOpenDocumentsButton.disabled = selectedCount === 0;
-    workOrderOpenDocumentsButton.hidden = !isListMode;
+    workOrderOpenDocumentsButton.hidden = !isListMode || showBatchBar;
   }
 
   if (workOrderBatchClearButton) {
-    workOrderBatchClearButton.hidden = !isListMode || selectedCount === 0;
+    workOrderBatchClearButton.hidden = !isListMode || selectedCount === 0 || showBatchBar;
   }
 
   if (workOrderOpenDocumentsCount) {
@@ -22510,6 +23086,11 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
     workOrdersHelper.hidden = false;
   }
 
+  if (workOrdersTableWrap) {
+    workOrdersTableWrap.classList.toggle("is-selection-active", selectedCount > 0);
+    workOrdersTableWrap.classList.toggle("has-bulk-bar", showBatchBar);
+  }
+
   if (visibleItems && workOrdersBody) {
     const visibleIdSet = new Set(visibleItems.map((item) => String(item.id)));
     const selectedVisibleCount = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
@@ -22520,12 +23101,17 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
       masterCheckbox.dataset.visibleCount = String(visibleIdSet.size);
     }
   }
+
+  renderWorkOrderBatchBar();
 }
 
 function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.selectedIds = new Set();
   state.workOrderDocumentWizard.overrides = {};
   state.workOrderDocumentWizard.step = "details";
+  state.workOrderBatch.pending = false;
+  state.workOrderBatch.message = "";
+  state.workOrderBatch.tone = "";
   state.workOrderDocumentWizard.common = {
     inspectionDate: new Date().toISOString().slice(0, 10),
     issuedDate: new Date().toISOString().slice(0, 10),
@@ -22557,6 +23143,8 @@ function toggleWorkOrderDocumentSelection(workOrderId, forceValue = null) {
   }
 
   state.workOrderDocumentWizard.selectedIds = nextSelected;
+  state.workOrderBatch.message = "";
+  state.workOrderBatch.tone = "";
 
   if (!shouldSelect) {
     delete state.workOrderDocumentWizard.overrides?.[normalizedId];
@@ -22589,6 +23177,8 @@ function setVisibleWorkOrderDocumentSelection(selectAll = false) {
   });
 
   state.workOrderDocumentWizard.selectedIds = nextSelected;
+  state.workOrderBatch.message = "";
+  state.workOrderBatch.tone = "";
 
   if (state.workOrderDocumentWizard.selectedIds.size === 0) {
     state.workOrderDocumentWizard.step = "details";
@@ -23752,6 +24342,7 @@ function renderCompactWorkOrdersList() {
   visibleItems.forEach((item) => {
       const rowCard = document.createElement("section");
       rowCard.className = "work-item-card";
+      rowCard.classList.toggle("is-selected", state.workOrderDocumentWizard.selectedIds.has(String(item.id)));
       rowCard.tabIndex = 0;
       rowCard.setAttribute("role", "button");
       rowCard.setAttribute("aria-label", `Otvori radni nalog ${item.workOrderNumber || item.companyName || ""}`.trim());
@@ -24622,6 +25213,44 @@ workOrderOpenDocumentsButton?.addEventListener("click", () => {
 });
 workOrderBatchClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
+});
+workOrderBulkOpenDocumentsButton?.addEventListener("click", () => {
+  openWorkOrderDocumentWizard();
+});
+workOrderBulkClearButton?.addEventListener("click", () => {
+  clearWorkOrderDocumentSelection();
+});
+workOrderBulkStatusInput?.addEventListener("change", () => {
+  const nextValue = String(workOrderBulkStatusInput.value || "").trim();
+  if (!nextValue || state.workOrderBatch.pending) {
+    return;
+  }
+
+  void applyWorkOrderBatchUpdate({ status: nextValue }, {
+    successMessage: `Status je postavljen na "${nextValue}" za ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`,
+  });
+});
+workOrderBulkPriorityInput?.addEventListener("change", () => {
+  const nextValue = String(workOrderBulkPriorityInput.value || "").trim();
+  if (!nextValue || state.workOrderBatch.pending) {
+    return;
+  }
+
+  void applyWorkOrderBatchUpdate({ priority: nextValue }, {
+    successMessage: `Prioritet je ažuriran za ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`,
+  });
+});
+workOrderBulkDueDateInput?.addEventListener("change", () => {
+  if (state.workOrderBatch.pending) {
+    return;
+  }
+
+  const nextValue = String(workOrderBulkDueDateInput.value || "").trim();
+  void applyWorkOrderBatchUpdate({ dueDate: nextValue }, {
+    successMessage: nextValue
+      ? `Rok je ažuriran za ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`
+      : `Rok je uklonjen s ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`,
+  });
 });
 workOrderDocumentWizardCloseButton?.addEventListener("click", () => {
   closeWorkOrderDocumentWizard();
