@@ -13298,13 +13298,26 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-item-card {
+  position: relative;
   border: 1px solid rgba(47, 104, 84, 0.14);
   border-radius: 18px;
-  padding: 12px;
+  padding: 10px 12px;
   background: linear-gradient(180deg, rgba(250, 252, 251, 0.98), rgba(245, 249, 247, 0.98));
   display: grid;
-  gap: 10px;
+  gap: 8px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  box-shadow: 0 8px 18px rgba(29, 60, 47, 0.05);
+}
+
+.document-template-item-card::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(47, 104, 84, 0.9), rgba(108, 153, 132, 0.78));
 }
 
 .document-template-item-card.is-dragging {
@@ -13382,7 +13395,7 @@ body.is-vehicle-reservation-open {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px dashed rgba(47, 104, 84, 0.16);
   border-radius: 16px;
   background: rgba(248, 251, 249, 0.96);
@@ -13433,24 +13446,28 @@ body.is-vehicle-reservation-open {
 .document-template-item-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: start;
+  padding: 0 0 8px 2px;
+  border-bottom: 1px solid rgba(47, 104, 84, 0.08);
 }
 
 .document-template-item-head-copy {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
 .document-template-item-head-copy strong {
   color: #22352d;
+  font-size: 0.98rem;
+  line-height: 1.2;
 }
 
 .document-template-drag-handle {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
   border-radius: 12px;
   border: 1px solid rgba(47, 104, 84, 0.14);
   background: rgba(255, 255, 255, 0.96);
@@ -13469,6 +13486,21 @@ body.is-vehicle-reservation-open {
   font-size: 1rem;
   line-height: 1;
   letter-spacing: -0.1em;
+}
+
+.document-template-item-card .document-template-inline-token {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  letter-spacing: 0.02em;
+  border-color: rgba(47, 104, 84, 0.22);
+  background: rgba(234, 243, 239, 0.98);
+  color: #2d5a49;
+  overflow-wrap: anywhere;
 }
 
 .document-template-excel-meta {
@@ -13540,6 +13572,38 @@ body.is-vehicle-reservation-open {
 .document-template-item-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: -2px;
+}
+
+.document-template-inline-grid {
+  gap: 8px 10px;
+}
+
+.document-template-item-card .field {
+  gap: 5px;
+}
+
+.document-template-item-card .field span {
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #60796f;
+}
+
+.document-template-item-card input,
+.document-template-item-card select,
+.document-template-item-card textarea {
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.document-template-item-card textarea {
+  min-height: 84px;
+}
+
+.document-template-item-card .card-button {
+  padding: 8px 14px;
+  min-height: 40px;
 }
 
 .document-template-placeholder-chip {
