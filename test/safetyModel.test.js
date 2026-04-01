@@ -285,7 +285,7 @@ test("document templates keep nested builder data and support filtering", () => 
       sampleLocationId: "location-1",
       selectedLegalFrameworkIds: ["legal-1"],
       customFields: [
-        { label: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME" },
+        { label: "Tvrtka u aplikaciji", wordLabel: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME" },
         { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
@@ -349,6 +349,7 @@ test("document templates keep nested builder data and support filtering", () => 
 
   assert.equal(template.customFields.length, 5);
   assert.equal(template.customFields[0].source, "COMPANY_NAME");
+  assert.equal(template.customFields[0].wordLabel, "Tvrtka");
   assert.equal(template.customFields[2].type, "checkbox");
   assert.equal(template.customFields[3].type, "toggle");
   assert.equal(template.customFields[4].type, "measurement_table");
@@ -376,10 +377,16 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(updated.status, "active");
 
   const filtered = filterDocumentTemplates([updated], {
-    query: "Word izvjestaja",
+    query: "Tvrtka u aplikaciji",
     status: "active",
   });
   assert.equal(filtered.length, 1);
+
+  const filteredByWordLabel = filterDocumentTemplates([updated], {
+    query: "Tvrtka",
+    status: "active",
+  });
+  assert.equal(filteredByWordLabel.length, 1);
 
   const sorted = sortDocumentTemplates([updated]);
   assert.equal(sorted[0].id, "template-1");

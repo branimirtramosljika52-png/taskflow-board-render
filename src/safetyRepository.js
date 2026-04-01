@@ -1616,6 +1616,7 @@ async function fetchSnapshotFromConnection(connection) {
       id: dbString(field.id),
       key: dbString(field.key),
       label: dbString(field.label),
+      wordLabel: dbString(field.wordLabel),
       type: dbString(field.type) || "text",
       source: dbString(field.source ?? field.bindingSource),
       defaultValue: dbString(field.defaultValue),

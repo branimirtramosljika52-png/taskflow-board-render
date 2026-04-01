@@ -995,7 +995,8 @@ function normalizeDocumentTemplateFields(fields = []) {
 
   return source.map((field, index) => {
     const label = normalizeText(field?.label) || `Polje ${index + 1}`;
-    let key = slugifyTemplateKey(field?.key || field?.label || `FIELD_${index + 1}`);
+    const wordLabel = normalizeText(field?.wordLabel) || label;
+    let key = slugifyTemplateKey(field?.key || field?.wordLabel || field?.label || `FIELD_${index + 1}`);
     const type = normalizeDocumentTemplateFieldType(field?.type);
     const columns = Array.isArray(field?.columns)
       ? field.columns.map((entry) => normalizeText(entry)).filter(Boolean)
@@ -1019,6 +1020,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       id: normalizeText(field?.id) || crypto.randomUUID(),
       key,
       label,
+      wordLabel,
       type,
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       defaultValue: normalizeText(field?.defaultValue),
@@ -2784,6 +2786,7 @@ export function filterDocumentTemplates(
       item.createdByLabel,
       ...(item.customFields ?? []).flatMap((field) => [
         field.label,
+        field.wordLabel,
         field.key,
         field.defaultValue,
         field.helpText,
