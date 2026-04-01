@@ -527,6 +527,30 @@ const state = {
     popupWorkOrderId: "",
     markerSignature: "",
   },
+  workOrderDocumentWizard: {
+    open: false,
+    step: "details",
+    selectedIds: new Set(),
+    common: {
+      inspectionDate: new Date().toISOString().slice(0, 10),
+      issuedDate: new Date().toISOString().slice(0, 10),
+      issuedPlace: "",
+      note: "",
+    },
+    overrides: {},
+  },
+  documentTemplateRuntime: {
+    source: "",
+    workOrderIds: [],
+    activeWorkOrderId: "",
+    common: {
+      inspectionDate: "",
+      issuedDate: "",
+      issuedPlace: "",
+      note: "",
+    },
+    overrides: {},
+  },
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
   workOrderActivity: {
@@ -1106,6 +1130,11 @@ const documentTemplateIdInput = document.querySelector("#document-template-id");
 const documentTemplateTitleInput = document.querySelector("#document-template-title");
 const documentTemplateTypeInput = document.querySelector("#document-template-type");
 const documentTemplateStatusInput = document.querySelector("#document-template-status");
+const documentTemplateRuntimeContext = document.querySelector("#document-template-runtime-context");
+const documentTemplateRuntimeHelper = document.querySelector("#document-template-runtime-helper");
+const documentTemplateRuntimeWorkOrders = document.querySelector("#document-template-runtime-work-orders");
+const documentTemplateRuntimeCommon = document.querySelector("#document-template-runtime-common");
+const documentTemplateRuntimeClearButton = document.querySelector("#document-template-runtime-clear");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
 const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
 const documentTemplateLocationIdInput = document.querySelector("#document-template-location-id");
@@ -1345,6 +1374,9 @@ const workOrderForm = document.querySelector("#work-order-form");
 const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
+const workOrderOpenDocumentsButton = document.querySelector("#work-order-open-documents");
+const workOrderOpenDocumentsCount = document.querySelector("#work-order-open-documents-count");
+const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
 const workOrderOpenReminderButton = document.querySelector("#work-order-open-reminder");
 const workOrderOpenTodoButton = document.querySelector("#work-order-open-todo");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
@@ -1429,6 +1461,14 @@ if (safetyAuthorizationEditorPanel?.parentElement !== document.body) {
   document.body.append(safetyAuthorizationEditorPanel);
 }
 
+if (workOrderDocumentWizardBackdrop?.parentElement !== document.body) {
+  document.body.append(workOrderDocumentWizardBackdrop);
+}
+
+if (workOrderDocumentWizardPanel?.parentElement !== document.body) {
+  document.body.append(workOrderDocumentWizardPanel);
+}
+
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -1490,6 +1530,15 @@ if (safetyAuthorizationEditorBackdrop) {
 if (safetyAuthorizationEditorPanel) {
   safetyAuthorizationEditorPanel.hidden = true;
   safetyAuthorizationEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (workOrderDocumentWizardBackdrop) {
+  workOrderDocumentWizardBackdrop.hidden = true;
+}
+
+if (workOrderDocumentWizardPanel) {
+  workOrderDocumentWizardPanel.hidden = true;
+  workOrderDocumentWizardPanel.setAttribute("aria-hidden", "true");
 }
 
 const workOrderIdInput = document.querySelector("#work-order-id");
@@ -1570,6 +1619,25 @@ const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
 const workOrdersLoadState = document.querySelector("#work-orders-load-state");
 const workOrdersHelper = document.querySelector("#work-orders-helper");
+const workOrderDocumentWizardBackdrop = document.querySelector("#work-order-document-wizard-backdrop");
+const workOrderDocumentWizardPanel = document.querySelector("#work-order-document-wizard-panel");
+const workOrderDocumentWizardCloseButton = document.querySelector("#work-order-document-wizard-close");
+const workOrderDocumentWizardHelper = document.querySelector("#work-order-document-wizard-helper");
+const workOrderDocumentWizardStepDetailsButton = document.querySelector("#work-order-document-wizard-step-details");
+const workOrderDocumentWizardStepTemplatesButton = document.querySelector("#work-order-document-wizard-step-templates");
+const workOrderDocumentWizardDetailsPanel = document.querySelector("#work-order-document-wizard-details");
+const workOrderDocumentWizardTemplatesPanel = document.querySelector("#work-order-document-wizard-templates");
+const workOrderDocumentWizardSelectionSummary = document.querySelector("#work-order-document-wizard-selection-summary");
+const workOrderDocumentWizardWorkOrders = document.querySelector("#work-order-document-wizard-work-orders");
+const workOrderDocumentWizardTemplateSummary = document.querySelector("#work-order-document-wizard-template-summary");
+const workOrderDocumentWizardTemplateList = document.querySelector("#work-order-document-wizard-template-list");
+const workOrderDocumentWizardPrevButton = document.querySelector("#work-order-document-wizard-prev");
+const workOrderDocumentWizardNextButton = document.querySelector("#work-order-document-wizard-next");
+const workOrderDocumentWizardError = document.querySelector("#work-order-document-wizard-error");
+const workOrderDocumentCommonInspectionDateInput = document.querySelector("#work-order-document-common-inspection-date");
+const workOrderDocumentCommonIssuedDateInput = document.querySelector("#work-order-document-common-issued-date");
+const workOrderDocumentCommonIssuedPlaceInput = document.querySelector("#work-order-document-common-issued-place");
+const workOrderDocumentCommonNoteInput = document.querySelector("#work-order-document-common-note");
 const workspaceViewChips = Array.from(document.querySelectorAll("[data-jump-view]"));
 const workOrderModeButtons = Array.from(document.querySelectorAll("[data-work-order-mode]"));
 const workOrderListView = document.querySelector("#work-order-list-view");
@@ -2087,6 +2155,8 @@ function applySnapshot(payload) {
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
   );
+  pruneWorkOrderDocumentWizardState();
+  pruneDocumentTemplateRuntimeContext();
   if (!state.workOrders.some((item) => String(item.id) === String(state.workOrderMap.selectedWorkOrderId))) {
     state.workOrderMap.selectedWorkOrderId = "";
   }
@@ -9615,6 +9685,10 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_NUMBER", label: "Radni nalog - broj" },
   { value: "WORK_ORDER_STATUS", label: "Radni nalog - status" },
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
+  { value: "WORK_ORDER_INSPECTION_DATE", label: "Dokument - datum ispitivanja" },
+  { value: "WORK_ORDER_ISSUED_DATE", label: "Dokument - datum izdavanja" },
+  { value: "WORK_ORDER_ISSUED_PLACE", label: "Dokument - mjesto izdavanja" },
+  { value: "WORK_ORDER_DOCUMENT_NOTE", label: "Dokument - napomena" },
   { value: "WORK_ORDER_EXECUTORS", label: "Izvrsitelji - puni naziv" },
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
@@ -10405,7 +10479,9 @@ function saveDocumentTemplate() {
     renderDocumentTemplateModule();
     const savedTemplate = resolveSavedDocumentTemplate({ currentId, title: currentTitle });
     if (savedTemplate) {
-      hydrateDocumentTemplateForm(savedTemplate);
+      hydrateDocumentTemplateForm(savedTemplate, {
+        preserveRuntimeContext: hasDocumentTemplateRuntimeContext(),
+      });
     } else {
       syncDocumentTemplateEditorChrome();
     }
@@ -10440,6 +10516,11 @@ function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplat
 }
 
 function getDocumentTemplatePreviewSampleWorkOrder(template = buildDocumentTemplateDraft()) {
+  const runtimeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  if (runtimeWorkOrder) {
+    return runtimeWorkOrder;
+  }
+
   const templateId = String(template.id || "");
   const sortedWorkOrders = sortWorkOrders(state.workOrders ?? []);
 
@@ -10475,6 +10556,10 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
+  const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
+  const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
+  const runtimeIssuedPlace = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "";
+  const runtimeNote = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "note") : "";
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
     ? workOrder.executors.join(", ")
     : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
@@ -10497,6 +10582,10 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
     WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
     WORK_ORDER_STATUS: workOrder?.status || "",
     WORK_ORDER_DUE_DATE: workOrder?.dueDate ? formatCompactDate(workOrder.dueDate) : "",
+    WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate ? formatCompactDate(runtimeInspectionDate) : "",
+    WORK_ORDER_ISSUED_DATE: runtimeIssuedDate ? formatCompactDate(runtimeIssuedDate) : "",
+    WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace,
+    WORK_ORDER_DOCUMENT_NOTE: runtimeNote,
     WORK_ORDER_EXECUTORS: executorNames,
     WORK_ORDER_TEAM: workOrder?.assignedTeam || "",
     SERVICE_SUMMARY: serviceSummary,
@@ -10561,10 +10650,12 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   const location = getDocumentTemplatePreviewLocation(template, sampleWorkOrder);
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
   const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
+  const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
 
   return {
     template,
     sampleWorkOrder,
+    runtimeWorkOrders,
     company,
     location,
     legalFrameworks,
@@ -11334,6 +11425,100 @@ function syncLegalFrameworkEditorChrome() {
   }
 }
 
+function renderDocumentTemplateRuntimeContext() {
+  if (!documentTemplateRuntimeContext || !documentTemplateRuntimeWorkOrders || !documentTemplateRuntimeCommon) {
+    return;
+  }
+
+  const hasContext = hasDocumentTemplateRuntimeContext();
+  documentTemplateRuntimeContext.hidden = !hasContext;
+
+  if (!hasContext) {
+    documentTemplateRuntimeWorkOrders.replaceChildren();
+    documentTemplateRuntimeCommon.replaceChildren();
+    return;
+  }
+
+  const workOrders = getDocumentTemplateRuntimeWorkOrders();
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+
+  if (documentTemplateRuntimeHelper) {
+    documentTemplateRuntimeHelper.textContent = workOrders.length > 1
+      ? "Template trenutno cita zajednicke podatke iz batch odabira. Klikom na RN mijenjas aktivni preview i Word export."
+      : "Template trenutno cita podatke iz odabranog RN-a i zajednickih dokument podataka.";
+  }
+
+  documentTemplateRuntimeWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "document-template-runtime-chip";
+    button.classList.toggle("is-active", String(workOrder.id) === String(activeWorkOrder?.id || ""));
+    button.addEventListener("click", () => {
+      state.documentTemplateRuntime.activeWorkOrderId = String(workOrder.id);
+      renderDocumentTemplateRuntimeContext();
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplatePreviewContent();
+    });
+
+    const title = document.createElement("strong");
+    title.textContent = workOrder.workOrderNumber || "Bez broja RN";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      workOrder.companyName || "Bez tvrtke",
+      getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate")
+        ? `Ispitivanje ${formatCompactDate(getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate"))}`
+        : "",
+    ].filter(Boolean).join(" · ");
+
+    button.append(title, meta);
+    return button;
+  }));
+
+  const commonBadges = [
+    {
+      label: "Datum ispitivanja",
+      value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectionDate") : "",
+    },
+    {
+      label: "Datum izdavanja",
+      value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "issuedDate") : "",
+    },
+    {
+      label: "Mjesto izdavanja",
+      value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "issuedPlace") : "",
+    },
+    {
+      label: "Napomena",
+      value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "note") : "",
+    },
+  ].filter((entry) => String(entry.value || "").trim());
+
+  if (commonBadges.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema dodatnih zajednickih podataka. Template i dalje koristi podatke iz samog RN-a.";
+    documentTemplateRuntimeCommon.replaceChildren(empty);
+    return;
+  }
+
+  documentTemplateRuntimeCommon.replaceChildren(...commonBadges.map((entry) => {
+    const badge = document.createElement("div");
+    badge.className = "document-template-runtime-badge";
+
+    const label = document.createElement("span");
+    label.textContent = entry.label;
+
+    const value = document.createElement("strong");
+    value.textContent = entry.label.toLowerCase().includes("datum")
+      ? formatCompactDate(entry.value)
+      : entry.value;
+
+    badge.append(label, value);
+    return badge;
+  }));
+}
+
 function syncDocumentTemplateEditorChrome() {
   if (documentTemplateEditorTitle) {
     documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
@@ -11345,6 +11530,7 @@ function syncDocumentTemplateEditorChrome() {
     documentTemplateDeleteButton.hidden = !documentTemplateIdInput?.value;
   }
 
+  renderDocumentTemplateRuntimeContext();
   renderDocumentTemplateReferenceMeta();
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplatePreviewContent();
@@ -12954,6 +13140,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateSectionTarget = "";
   documentTemplateReferenceDraft = null;
   clearDocumentTemplateFieldDragState();
+  clearDocumentTemplateRuntimeContext({ render: false });
 
   if (documentTemplateIdInput) {
     documentTemplateIdInput.value = "";
@@ -12984,13 +13171,16 @@ function resetDocumentTemplateForm() {
   syncDocumentTemplateEditorChrome();
 }
 
-function hydrateDocumentTemplateForm(template) {
+function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false } = {}) {
   state.activeView = "module";
   state.activeModuleItem = "template-development";
   renderActiveView();
   renderModuleView();
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
+  if (!preserveRuntimeContext) {
+    clearDocumentTemplateRuntimeContext({ render: false });
+  }
   if (documentTemplateIdInput) {
     documentTemplateIdInput.value = template.id || "";
   }
@@ -21962,6 +22152,8 @@ function renderWorkOrderWorkspace() {
     workOrdersLoadState.hidden = state.activeWorkOrderViewMode !== "list";
   }
 
+  updateWorkOrderDocumentSelectionChrome();
+
   if (state.activeWorkOrderViewMode === "list") {
     renderCompactWorkOrdersList();
   } else if (state.activeWorkOrderViewMode === "calendar") {
@@ -22255,6 +22447,787 @@ function isInteractiveWorkOrderTarget(target) {
   return Boolean(target.closest(
     "select, button, input, textarea, a, [data-prevent-row-open='true']",
   ));
+}
+
+function normalizeWorkOrderDocumentWizardStep(step = "") {
+  return step === "templates" ? "templates" : "details";
+}
+
+function pruneWorkOrderDocumentWizardState() {
+  const existingIds = new Set((state.workOrders ?? []).map((item) => String(item.id)));
+  state.workOrderDocumentWizard.selectedIds = new Set(
+    [...(state.workOrderDocumentWizard.selectedIds ?? [])].filter((id) => existingIds.has(String(id))),
+  );
+  state.workOrderDocumentWizard.overrides = Object.fromEntries(
+    Object.entries(state.workOrderDocumentWizard.overrides ?? {}).filter(([id]) => existingIds.has(String(id))),
+  );
+
+  if (state.workOrderDocumentWizard.selectedIds.size === 0) {
+    state.workOrderDocumentWizard.step = "details";
+    state.workOrderDocumentWizard.open = false;
+  }
+}
+
+function getSelectedWorkOrdersForDocumentWizard() {
+  const selectedIds = state.workOrderDocumentWizard.selectedIds ?? new Set();
+  const selectedIdSet = new Set([...selectedIds].map((value) => String(value)));
+  return getFilteredWorkOrders().filter((item) => selectedIdSet.has(String(item.id)));
+}
+
+function getAllSelectedWorkOrdersForDocumentWizard() {
+  const selectedIds = state.workOrderDocumentWizard.selectedIds ?? new Set();
+  const selectedIdSet = new Set([...selectedIds].map((value) => String(value)));
+  return sortWorkOrders((state.workOrders ?? []).filter((item) => selectedIdSet.has(String(item.id))));
+}
+
+function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
+  const selectedCount = state.workOrderDocumentWizard.selectedIds.size;
+  const isListMode = state.activeWorkOrderViewMode === "list";
+
+  if (workOrderOpenDocumentsButton) {
+    workOrderOpenDocumentsButton.disabled = selectedCount === 0;
+    workOrderOpenDocumentsButton.hidden = !isListMode;
+  }
+
+  if (workOrderBatchClearButton) {
+    workOrderBatchClearButton.hidden = !isListMode || selectedCount === 0;
+  }
+
+  if (workOrderOpenDocumentsCount) {
+    workOrderOpenDocumentsCount.textContent = String(selectedCount);
+    workOrderOpenDocumentsCount.hidden = selectedCount === 0;
+  }
+
+  if (workOrdersHelper && isListMode) {
+    const currentText = workOrdersHelper.dataset.baseText || workOrdersHelper.textContent || "";
+    const selectionText = selectedCount > 0 ? `${selectedCount} odabrano za zapisnike.` : "";
+    workOrdersHelper.textContent = [currentText, selectionText].filter(Boolean).join(" ");
+    workOrdersHelper.hidden = false;
+  }
+
+  if (visibleItems && workOrdersBody) {
+    const visibleIdSet = new Set(visibleItems.map((item) => String(item.id)));
+    const selectedVisibleCount = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
+    const masterCheckbox = workOrdersBody.querySelector("[data-work-order-select-all]");
+    if (masterCheckbox instanceof HTMLInputElement) {
+      masterCheckbox.checked = visibleItems.length > 0 && selectedVisibleCount === visibleItems.length;
+      masterCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleItems.length;
+      masterCheckbox.dataset.visibleCount = String(visibleIdSet.size);
+    }
+  }
+}
+
+function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
+  state.workOrderDocumentWizard.selectedIds = new Set();
+  state.workOrderDocumentWizard.overrides = {};
+  state.workOrderDocumentWizard.step = "details";
+  state.workOrderDocumentWizard.common = {
+    inspectionDate: new Date().toISOString().slice(0, 10),
+    issuedDate: new Date().toISOString().slice(0, 10),
+    issuedPlace: "",
+    note: "",
+  };
+
+  if (closeWizard) {
+    state.workOrderDocumentWizard.open = false;
+  }
+
+  renderWorkOrderWorkspace();
+  syncWorkOrderDocumentWizardModal();
+}
+
+function toggleWorkOrderDocumentSelection(workOrderId, forceValue = null) {
+  const normalizedId = String(workOrderId || "");
+  if (!normalizedId) {
+    return;
+  }
+
+  const nextSelected = new Set(state.workOrderDocumentWizard.selectedIds ?? []);
+  const shouldSelect = forceValue === null ? !nextSelected.has(normalizedId) : Boolean(forceValue);
+
+  if (shouldSelect) {
+    nextSelected.add(normalizedId);
+  } else {
+    nextSelected.delete(normalizedId);
+  }
+
+  state.workOrderDocumentWizard.selectedIds = nextSelected;
+
+  if (!shouldSelect) {
+    delete state.workOrderDocumentWizard.overrides?.[normalizedId];
+  }
+
+  if (state.workOrderDocumentWizard.selectedIds.size === 0) {
+    state.workOrderDocumentWizard.step = "details";
+    state.workOrderDocumentWizard.open = false;
+  }
+
+  renderWorkOrderWorkspace();
+  if (state.workOrderDocumentWizard.open) {
+    renderWorkOrderDocumentWizard();
+  }
+  syncWorkOrderDocumentWizardModal();
+}
+
+function setVisibleWorkOrderDocumentSelection(selectAll = false) {
+  const visibleItems = getFilteredWorkOrders().slice(0, state.workOrderRenderLimit);
+  const nextSelected = new Set(state.workOrderDocumentWizard.selectedIds ?? []);
+
+  visibleItems.forEach((item) => {
+    const normalizedId = String(item.id);
+    if (selectAll) {
+      nextSelected.add(normalizedId);
+    } else {
+      nextSelected.delete(normalizedId);
+      delete state.workOrderDocumentWizard.overrides?.[normalizedId];
+    }
+  });
+
+  state.workOrderDocumentWizard.selectedIds = nextSelected;
+
+  if (state.workOrderDocumentWizard.selectedIds.size === 0) {
+    state.workOrderDocumentWizard.step = "details";
+    state.workOrderDocumentWizard.open = false;
+  }
+
+  renderWorkOrderWorkspace();
+  if (state.workOrderDocumentWizard.open) {
+    renderWorkOrderDocumentWizard();
+  }
+  syncWorkOrderDocumentWizardModal();
+}
+
+function syncWorkOrderDocumentWizardCommonInputs() {
+  if (workOrderDocumentCommonInspectionDateInput) {
+    workOrderDocumentCommonInspectionDateInput.value = state.workOrderDocumentWizard.common.inspectionDate || "";
+  }
+  if (workOrderDocumentCommonIssuedDateInput) {
+    workOrderDocumentCommonIssuedDateInput.value = state.workOrderDocumentWizard.common.issuedDate || "";
+  }
+  if (workOrderDocumentCommonIssuedPlaceInput) {
+    workOrderDocumentCommonIssuedPlaceInput.value = state.workOrderDocumentWizard.common.issuedPlace || "";
+  }
+  if (workOrderDocumentCommonNoteInput) {
+    workOrderDocumentCommonNoteInput.value = state.workOrderDocumentWizard.common.note || "";
+  }
+}
+
+function syncWorkOrderDocumentWizardModal() {
+  const isOpen = Boolean(state.workOrderDocumentWizard.open && state.workOrderDocumentWizard.selectedIds.size > 0);
+
+  if (workOrderDocumentWizardBackdrop) {
+    workOrderDocumentWizardBackdrop.hidden = !isOpen;
+  }
+  if (workOrderDocumentWizardPanel) {
+    workOrderDocumentWizardPanel.hidden = !isOpen;
+    workOrderDocumentWizardPanel.setAttribute("aria-hidden", String(!isOpen));
+    workOrderDocumentWizardPanel.classList.toggle("is-open", isOpen);
+  }
+}
+
+function setWorkOrderDocumentWizardStep(step = "details", { render = true } = {}) {
+  state.workOrderDocumentWizard.step = normalizeWorkOrderDocumentWizardStep(step);
+  if (render) {
+    renderWorkOrderDocumentWizard();
+  }
+}
+
+function openWorkOrderDocumentWizard() {
+  if (state.workOrderDocumentWizard.selectedIds.size === 0) {
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "Odaberi barem jedan RN u listi.";
+    }
+    return;
+  }
+
+  state.workOrderDocumentWizard.open = true;
+  state.workOrderDocumentWizard.step = normalizeWorkOrderDocumentWizardStep(state.workOrderDocumentWizard.step);
+  if (workOrderDocumentWizardError) {
+    workOrderDocumentWizardError.textContent = "";
+  }
+  renderWorkOrderDocumentWizard();
+  syncWorkOrderDocumentWizardModal();
+  requestAnimationFrame(() => {
+    workOrderDocumentCommonInspectionDateInput?.focus({ preventScroll: true });
+  });
+}
+
+function closeWorkOrderDocumentWizard() {
+  state.workOrderDocumentWizard.open = false;
+  state.workOrderDocumentWizard.step = "details";
+  syncWorkOrderDocumentWizardModal();
+}
+
+function getWorkOrderDocumentWizardOverride(workOrderId = "") {
+  return state.workOrderDocumentWizard.overrides?.[String(workOrderId)] ?? {};
+}
+
+function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
+  const normalizedId = String(workOrderId || "");
+  if (!normalizedId) {
+    return;
+  }
+
+  const current = getWorkOrderDocumentWizardOverride(normalizedId);
+  const next = {
+    inspectionDate: String(patch.inspectionDate ?? current.inspectionDate ?? "").trim(),
+    issuedDate: String(patch.issuedDate ?? current.issuedDate ?? "").trim(),
+    issuedPlace: String(patch.issuedPlace ?? current.issuedPlace ?? "").trim(),
+    note: String(patch.note ?? current.note ?? "").trim(),
+  };
+
+  if (!next.inspectionDate && !next.issuedDate && !next.issuedPlace && !next.note) {
+    delete state.workOrderDocumentWizard.overrides[normalizedId];
+    return;
+  }
+
+  state.workOrderDocumentWizard.overrides[normalizedId] = next;
+}
+
+function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
+  const override = getWorkOrderDocumentWizardOverride(workOrderId);
+  const overrideValue = String(override?.[fieldName] ?? "").trim();
+  if (overrideValue) {
+    return overrideValue;
+  }
+  return String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
+}
+
+function hasDocumentTemplateRuntimeContext() {
+  return state.documentTemplateRuntime.source === "wizard"
+    && Array.isArray(state.documentTemplateRuntime.workOrderIds)
+    && state.documentTemplateRuntime.workOrderIds.length > 0;
+}
+
+function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
+  state.documentTemplateRuntime = {
+    source: "",
+    workOrderIds: [],
+    activeWorkOrderId: "",
+    common: {
+      inspectionDate: "",
+      issuedDate: "",
+      issuedPlace: "",
+      note: "",
+    },
+    overrides: {},
+  };
+
+  if (render) {
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplatePlaceholderPalette();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
+function pruneDocumentTemplateRuntimeContext() {
+  if (!hasDocumentTemplateRuntimeContext()) {
+    return;
+  }
+
+  const validIds = (state.documentTemplateRuntime.workOrderIds ?? [])
+    .map((value) => String(value ?? "").trim())
+    .filter((value) => state.workOrders.some((item) => String(item.id) === value));
+
+  if (validIds.length === 0) {
+    clearDocumentTemplateRuntimeContext({ render: false });
+    return;
+  }
+
+  state.documentTemplateRuntime.workOrderIds = validIds;
+  if (!validIds.includes(String(state.documentTemplateRuntime.activeWorkOrderId || "").trim())) {
+    state.documentTemplateRuntime.activeWorkOrderId = validIds[0];
+  }
+
+  const nextOverrides = {};
+  validIds.forEach((id) => {
+    if (state.documentTemplateRuntime.overrides?.[id]) {
+      nextOverrides[id] = { ...state.documentTemplateRuntime.overrides[id] };
+    }
+  });
+  state.documentTemplateRuntime.overrides = nextOverrides;
+}
+
+function getDocumentTemplateRuntimeWorkOrders() {
+  if (!hasDocumentTemplateRuntimeContext()) {
+    return [];
+  }
+
+  const selectedIds = new Set(
+    (state.documentTemplateRuntime.workOrderIds ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+
+  return sortWorkOrders((state.workOrders ?? []).filter((item) => selectedIds.has(String(item.id))));
+}
+
+function getDocumentTemplateRuntimeActiveWorkOrder() {
+  const workOrders = getDocumentTemplateRuntimeWorkOrders();
+
+  if (workOrders.length === 0) {
+    return null;
+  }
+
+  const activeId = String(state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  return workOrders.find((item) => String(item.id) === activeId) ?? workOrders[0] ?? null;
+}
+
+function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
+  const normalizedId = String(workOrderId || "").trim();
+  const current = normalizedId ? state.documentTemplateRuntime.overrides?.[normalizedId] ?? {} : {};
+  const overrideValue = String(current?.[fieldName] ?? "").trim();
+
+  if (overrideValue) {
+    return overrideValue;
+  }
+
+  return String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
+}
+
+function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const ids = workOrders
+    .map((item) => String(item?.id ?? "").trim())
+    .filter(Boolean);
+
+  state.documentTemplateRuntime = {
+    source: ids.length > 0 ? "wizard" : "",
+    workOrderIds: ids,
+    activeWorkOrderId: ids[0] || "",
+    common: {
+      inspectionDate: String(state.workOrderDocumentWizard.common?.inspectionDate ?? "").trim(),
+      issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
+      issuedPlace: String(state.workOrderDocumentWizard.common?.issuedPlace ?? "").trim(),
+      note: String(state.workOrderDocumentWizard.common?.note ?? "").trim(),
+    },
+    overrides: { ...(state.workOrderDocumentWizard.overrides ?? {}) },
+  };
+}
+
+function getWorkOrderServiceTemplateIds(service = {}) {
+  const resolvedIds = new Set(
+    (Array.isArray(service?.linkedTemplateIds) ? service.linkedTemplateIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+
+  if (resolvedIds.size > 0) {
+    return [...resolvedIds];
+  }
+
+  const titleSet = new Set(
+    (Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : [])
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  if (titleSet.size === 0) {
+    return [];
+  }
+
+  (state.documentTemplates ?? []).forEach((template) => {
+    const normalizedTitle = String(template?.title ?? "").trim().toLowerCase();
+    if (normalizedTitle && titleSet.has(normalizedTitle)) {
+      resolvedIds.add(String(template.id));
+    }
+  });
+
+  return [...resolvedIds];
+}
+
+function getWorkOrderDocumentTemplateRecommendations(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const recommendationMap = new Map();
+  const unmatchedWorkOrders = [];
+
+  workOrders.forEach((workOrder) => {
+    const serviceItems = getWorkOrderServiceItems(workOrder);
+    let hasTemplate = false;
+
+    serviceItems.forEach((service) => {
+      const resolvedTemplateIds = getWorkOrderServiceTemplateIds(service);
+      if (resolvedTemplateIds.length === 0) {
+        return;
+      }
+
+      hasTemplate = true;
+
+      resolvedTemplateIds.forEach((templateId) => {
+        const template = getDocumentTemplateById(templateId);
+        if (!template) {
+          return;
+        }
+
+        const existing = recommendationMap.get(String(template.id)) ?? {
+          template,
+          workOrders: [],
+          serviceLabels: new Set(),
+        };
+
+        if (!existing.workOrders.some((item) => String(item.id) === String(workOrder.id))) {
+          existing.workOrders.push(workOrder);
+        }
+
+        const serviceLabel = service.name || service.serviceCode || "";
+        if (serviceLabel) {
+          existing.serviceLabels.add(serviceLabel);
+        }
+
+        recommendationMap.set(String(template.id), existing);
+      });
+    });
+
+    if (!hasTemplate) {
+      unmatchedWorkOrders.push(workOrder);
+    }
+  });
+
+  const recommendations = [...recommendationMap.values()]
+    .map((item) => ({
+      template: item.template,
+      workOrders: sortWorkOrders(item.workOrders),
+      serviceLabels: [...item.serviceLabels].sort((left, right) => left.localeCompare(right, "hr")),
+    }))
+    .sort((left, right) => String(left.template.title || "").localeCompare(String(right.template.title || ""), "hr"));
+
+  return {
+    recommendations,
+    unmatchedWorkOrders,
+  };
+}
+
+function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
+  if (!workOrderDocumentWizardSelectionSummary) {
+    return;
+  }
+
+  const summaryCards = [
+    {
+      label: "Odabrani RN",
+      value: String(workOrders.length),
+      meta: workOrders.length === 1 ? "Jedan radni nalog" : "Gruppni odabir iz liste RN",
+    },
+    {
+      label: "Tvrtke",
+      value: String(new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size),
+      meta: "Nasljeduje se iz odabranih RN-ova",
+    },
+    {
+      label: "Template veze",
+      value: String(getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length),
+      meta: "Povlaci se iz usluga na RN-u",
+    },
+  ];
+
+  workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryCards.map((card) => {
+    const article = document.createElement("article");
+    article.className = "work-order-document-summary-card";
+
+    const label = document.createElement("span");
+    label.className = "work-order-document-summary-label";
+    label.textContent = card.label;
+
+    const value = document.createElement("strong");
+    value.className = "work-order-document-summary-value";
+    value.textContent = card.value;
+
+    const meta = document.createElement("span");
+    meta.className = "work-order-document-summary-meta";
+    meta.textContent = card.meta;
+
+    article.append(label, value, meta);
+    return article;
+  }));
+}
+
+function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
+  if (!workOrderDocumentWizardWorkOrders) {
+    return;
+  }
+
+  if (workOrders.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Odaberi RN-ove u listi pa zatim otvori zapisnike.";
+    workOrderDocumentWizardWorkOrders.replaceChildren(empty);
+    return;
+  }
+
+  workOrderDocumentWizardWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
+    const serviceItems = getWorkOrderServiceItems(workOrder);
+    const linkedTemplateTitles = Array.from(new Set(
+      serviceItems.flatMap((item) => item.linkedTemplateTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
+    ));
+    const override = getWorkOrderDocumentWizardOverride(workOrder.id);
+
+    const card = document.createElement("article");
+    card.className = "work-order-document-selection-card";
+
+    const head = document.createElement("div");
+    head.className = "work-order-document-selection-head";
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-document-selection-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = workOrder.workOrderNumber || "Bez broja";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      workOrder.companyName || "Bez tvrtke",
+      workOrder.locationName || "Bez lokacije",
+      getWorkOrderServiceSummary(workOrder) || "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    head.append(copy);
+
+    const chips = document.createElement("div");
+    chips.className = "work-order-document-selection-chips";
+    chips.append(
+      createBadge(workOrder.region || "Bez regije", "document-template-meta-badge"),
+      createBadge(workOrder.status || "Otvoreni RN", statusBadgeClass(workOrder.status)),
+    );
+    linkedTemplateTitles.slice(0, 3).forEach((entry) => {
+      chips.append(createBadge(entry, "document-template-meta-badge"));
+    });
+    if (linkedTemplateTitles.length > 3) {
+      chips.append(createBadge(`+${linkedTemplateTitles.length - 3}`, "document-template-meta-badge"));
+    }
+    head.append(chips);
+
+    const grid = document.createElement("div");
+    grid.className = "form-grid work-order-document-selection-grid";
+
+    const createOverrideField = ({ label, type = "text", fieldName, placeholder = "", rows = 0 }) => {
+      const field = document.createElement("label");
+      field.className = rows ? "field field-span-full" : "field";
+
+      const labelNode = document.createElement("span");
+      labelNode.textContent = label;
+
+      const input = rows
+        ? document.createElement("textarea")
+        : document.createElement("input");
+
+      if (input instanceof HTMLInputElement) {
+        input.type = type;
+      } else {
+        input.rows = rows;
+      }
+
+      input.value = override?.[fieldName] || "";
+      input.placeholder = placeholder;
+      input.dataset.batchField = fieldName;
+      input.dataset.batchWorkOrderId = String(workOrder.id);
+
+      field.append(labelNode, input);
+      return field;
+    };
+
+    grid.append(
+      createOverrideField({
+        label: "Datum ispitivanja",
+        type: "date",
+        fieldName: "inspectionDate",
+        placeholder: state.workOrderDocumentWizard.common.inspectionDate || "",
+      }),
+      createOverrideField({
+        label: "Datum izdavanja",
+        type: "date",
+        fieldName: "issuedDate",
+        placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
+      }),
+      createOverrideField({
+        label: "Mjesto izdavanja",
+        type: "text",
+        fieldName: "issuedPlace",
+        placeholder: state.workOrderDocumentWizard.common.issuedPlace || "Koristi zajednicko mjesto",
+      }),
+      createOverrideField({
+        label: "Napomena za ovaj RN",
+        fieldName: "note",
+        placeholder: state.workOrderDocumentWizard.common.note || "Koristi zajednicku napomenu",
+        rows: 2,
+      }),
+    );
+
+    const footer = document.createElement("div");
+    footer.className = "work-order-document-selection-footer";
+
+    const helper = document.createElement("span");
+    helper.textContent = "Prazno polje automatski koristi zajednicku vrijednost iz vrha.";
+
+    const resetButton = document.createElement("button");
+    resetButton.type = "button";
+    resetButton.className = "ghost-button";
+    resetButton.textContent = "Vrati na zajednicko";
+    resetButton.addEventListener("click", () => {
+      delete state.workOrderDocumentWizard.overrides[String(workOrder.id)];
+      renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+    });
+
+    footer.append(helper, resetButton);
+    card.append(head, grid, footer);
+    return card;
+  }));
+}
+
+function openDocumentTemplateFromWizard(templateId = "", workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const template = getDocumentTemplateById(templateId);
+  if (!template) {
+    return;
+  }
+
+  setDocumentTemplateRuntimeFromWizard(workOrders);
+  closeWorkOrderDocumentWizard();
+  hydrateDocumentTemplateForm(template, { preserveRuntimeContext: true });
+}
+
+function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
+  if (!workOrderDocumentWizardTemplateSummary || !workOrderDocumentWizardTemplateList) {
+    return;
+  }
+
+  const { recommendations, unmatchedWorkOrders } = getWorkOrderDocumentTemplateRecommendations(workOrders);
+  const selectedTemplateCount = recommendations.length;
+
+  workOrderDocumentWizardTemplateSummary.replaceChildren();
+  const summary = document.createElement("div");
+  summary.className = "work-order-document-template-summary-card";
+  summary.innerHTML = `
+    <strong>${selectedTemplateCount} templatea</strong>
+    <span>${selectedTemplateCount > 0 ? "Pronadeni su iz usluga na odabranim RN-ovima." : "Na odabranim RN-ovima jos nema povezanih templatea."}</span>
+  `;
+  workOrderDocumentWizardTemplateSummary.append(summary);
+
+  if (unmatchedWorkOrders.length > 0) {
+    const warning = document.createElement("div");
+    warning.className = "work-order-document-template-summary-card is-warning";
+    warning.innerHTML = `
+      <strong>${unmatchedWorkOrders.length} RN bez template veze</strong>
+      <span>Povezi template u Organisation > List Of Services da bi se ovdje automatski pojavio.</span>
+    `;
+    workOrderDocumentWizardTemplateSummary.append(warning);
+  }
+
+  if (recommendations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Za odabrane RN-ove jos nema povezanih templatea. Povezi ih na usluzi pa ce se ovdje pojaviti po tipu zapisnika (SPR, TZIN...).";
+    workOrderDocumentWizardTemplateList.replaceChildren(empty);
+    return;
+  }
+
+  workOrderDocumentWizardTemplateList.replaceChildren(...recommendations.map((entry) => {
+    const card = document.createElement("article");
+    card.className = "work-order-document-template-card";
+
+    const head = document.createElement("div");
+    head.className = "work-order-document-template-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-document-template-card-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.template.title || "Template";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getDocumentTemplateTypeLabel(entry.template.documentType),
+      `${entry.workOrders.length} RN`,
+      entry.template.referenceDocument?.fileName ? "Word ref" : "Bez Worda",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const badges = document.createElement("div");
+    badges.className = "work-order-document-template-card-badges";
+    badges.append(
+      createDocumentTemplateStatusBadge(entry.template.status),
+      createBadge(getDocumentTemplateTypeLabel(entry.template.documentType), "document-template-meta-badge"),
+    );
+
+    head.append(copy, badges);
+
+    const services = document.createElement("div");
+    services.className = "work-order-document-template-card-tags";
+    if (entry.serviceLabels.length > 0) {
+      entry.serviceLabels.forEach((label) => {
+        services.append(createBadge(label, "document-template-meta-badge"));
+      });
+    }
+
+    const workOrderList = document.createElement("div");
+    workOrderList.className = "work-order-document-template-card-work-orders";
+    entry.workOrders.forEach((workOrder) => {
+      const chip = document.createElement("span");
+      chip.className = "work-order-document-template-work-order-chip";
+      chip.textContent = [
+        workOrder.workOrderNumber || "Bez broja",
+        getWorkOrderDocumentWizardSourceValue(workOrder.id, "inspectionDate")
+          ? `Ispitivanje ${formatCompactDate(getWorkOrderDocumentWizardSourceValue(workOrder.id, "inspectionDate"))}`
+          : "",
+      ].filter(Boolean).join(" · ");
+      workOrderList.append(chip);
+    });
+
+    const footer = document.createElement("div");
+    footer.className = "work-order-document-template-card-footer";
+
+    const note = document.createElement("span");
+    note.textContent = entry.template.description || "Template je povezan preko odabrane usluge.";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "ghost-button";
+    openButton.textContent = "Otvori template";
+    openButton.addEventListener("click", () => {
+      openDocumentTemplateFromWizard(entry.template.id, entry.workOrders);
+    });
+
+    footer.append(note, openButton);
+    card.append(head, services, workOrderList, footer);
+    return card;
+  }));
+}
+
+function renderWorkOrderDocumentWizard() {
+  const workOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  syncWorkOrderDocumentWizardCommonInputs();
+
+  if (workOrderDocumentWizardHelper) {
+    workOrderDocumentWizardHelper.textContent = workOrders.length > 1
+      ? "Zajednicki podaci vrijede za sve odabrane RN-ove, a na pojedinom retku ih mozes rucno prepraviti."
+      : "Za odabrani RN mozes upisati zajednicke podatke i odmah otvoriti povezane templatee.";
+  }
+
+  if (workOrderDocumentWizardStepDetailsButton) {
+    const isActive = state.workOrderDocumentWizard.step === "details";
+    workOrderDocumentWizardStepDetailsButton.classList.toggle("is-active", isActive);
+    workOrderDocumentWizardStepDetailsButton.setAttribute("aria-selected", isActive ? "true" : "false");
+  }
+  if (workOrderDocumentWizardStepTemplatesButton) {
+    const isActive = state.workOrderDocumentWizard.step === "templates";
+    workOrderDocumentWizardStepTemplatesButton.classList.toggle("is-active", isActive);
+    workOrderDocumentWizardStepTemplatesButton.setAttribute("aria-selected", isActive ? "true" : "false");
+  }
+  if (workOrderDocumentWizardDetailsPanel) {
+    workOrderDocumentWizardDetailsPanel.hidden = state.workOrderDocumentWizard.step !== "details";
+  }
+  if (workOrderDocumentWizardTemplatesPanel) {
+    workOrderDocumentWizardTemplatesPanel.hidden = state.workOrderDocumentWizard.step !== "templates";
+  }
+  if (workOrderDocumentWizardPrevButton) {
+    workOrderDocumentWizardPrevButton.hidden = state.workOrderDocumentWizard.step === "details";
+  }
+  if (workOrderDocumentWizardNextButton) {
+    workOrderDocumentWizardNextButton.textContent = "Na zapisnike";
+    workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
+  }
+
+  renderWorkOrderDocumentWizardSelectionSummary(workOrders);
+  renderWorkOrderDocumentWizardWorkOrders(workOrders);
+  renderWorkOrderDocumentWizardTemplates(workOrders);
 }
 
 function closeOpenWorkOrderStatusMenus(except = null) {
@@ -22685,6 +23658,7 @@ function renderCompactWorkOrdersList() {
 
   if (workOrdersHelper) {
     workOrdersHelper.textContent = "";
+    workOrdersHelper.dataset.baseText = "";
     workOrdersHelper.hidden = true;
   }
 
@@ -22693,6 +23667,42 @@ function renderCompactWorkOrdersList() {
 
   const columns = document.createElement("div");
   columns.className = "work-group-columns";
+
+  const selectionColumn = document.createElement("div");
+  selectionColumn.className = "work-group-column work-group-column-select";
+  selectionColumn.dataset.preventRowOpen = "true";
+
+  const selectionTitle = document.createElement("strong");
+  selectionTitle.className = "work-group-column-title";
+  selectionTitle.textContent = "Odabir";
+
+  const selectionControl = document.createElement("label");
+  selectionControl.className = "work-order-row-select master";
+  selectionControl.dataset.preventRowOpen = "true";
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    selectionControl.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  const selectionInput = document.createElement("input");
+  selectionInput.type = "checkbox";
+  selectionInput.setAttribute("aria-label", "Oznaci sve prikazane RN-ove");
+  selectionInput.dataset.workOrderSelectAll = "true";
+  const selectedVisibleCount = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
+  selectionInput.checked = visibleItems.length > 0 && selectedVisibleCount === visibleItems.length;
+  selectionInput.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleItems.length;
+  selectionInput.addEventListener("change", () => {
+    setVisibleWorkOrderDocumentSelection(selectionInput.checked);
+  });
+
+  const selectionMeta = document.createElement("span");
+  selectionMeta.className = "work-group-column-subtitle";
+  selectionMeta.textContent = selectedVisibleCount > 0 ? `${selectedVisibleCount}/${visibleItems.length}` : "Prikazano";
+
+  selectionControl.append(selectionInput);
+  selectionColumn.append(selectionTitle, selectionControl, selectionMeta);
+  columns.append(selectionColumn);
 
   ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvrsitelji"].forEach((label) => {
     const cell = document.createElement("div");
@@ -22885,6 +23895,30 @@ function renderCompactWorkOrdersList() {
         }
       });
 
+      const selectionCell = document.createElement("div");
+      selectionCell.className = "work-item-cell work-item-select-cell";
+      selectionCell.dataset.preventRowOpen = "true";
+      ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+        selectionCell.addEventListener(eventName, (event) => {
+          event.stopPropagation();
+        });
+      });
+
+      const selectionToggle = document.createElement("label");
+      selectionToggle.className = "work-order-row-select";
+      selectionToggle.dataset.preventRowOpen = "true";
+
+      const selectionCheckbox = document.createElement("input");
+      selectionCheckbox.type = "checkbox";
+      selectionCheckbox.checked = state.workOrderDocumentWizard.selectedIds.has(String(item.id));
+      selectionCheckbox.setAttribute("aria-label", `Oznaci RN ${item.workOrderNumber || item.companyName || ""}`.trim());
+      selectionCheckbox.addEventListener("change", () => {
+        toggleWorkOrderDocumentSelection(item.id, selectionCheckbox.checked);
+      });
+
+      selectionToggle.append(selectionCheckbox);
+      selectionCell.append(selectionToggle);
+
       const basicCell = document.createElement("div");
       basicCell.className = "work-item-cell work-item-cell-group";
 
@@ -23007,7 +24041,7 @@ function renderCompactWorkOrdersList() {
       executorsCell.className = "work-item-cell work-item-cell-group work-item-executors-cell";
       executorsCell.append(createExecutorDots(executorValues));
 
-      row.append(basicCell, clientCell, locationCell, contactCell, serviceCell, executorsCell);
+      row.append(selectionCell, basicCell, clientCell, locationCell, contactCell, serviceCell, executorsCell);
       rowCard.append(row);
       body.append(rowCard);
   });
@@ -23020,6 +24054,7 @@ function renderCompactWorkOrdersList() {
   if (filtered.length === 0) {
     workOrdersLoadState.hidden = true;
     workOrdersLoadState.textContent = "";
+    updateWorkOrderDocumentSelectionChrome({ visibleItems });
     return;
   }
 
@@ -23027,6 +24062,10 @@ function renderCompactWorkOrdersList() {
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
     ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
     : `Prikazano svih ${filtered.length} RN.`;
+  if (workOrdersHelper) {
+    workOrdersHelper.dataset.baseText = workOrdersLoadState.textContent;
+  }
+  updateWorkOrderDocumentSelectionChrome({ visibleItems });
 }
 
 function renderCompanies() {
@@ -23572,6 +24611,79 @@ workOrderSearchInput?.addEventListener("input", () => {
   state.workOrderFilters.query = workOrderSearchInput.value.trim();
   setWorkOrderFilterActivePreset("");
   syncWorkOrderFilterResults();
+});
+workOrderOpenDocumentsButton?.addEventListener("click", () => {
+  openWorkOrderDocumentWizard();
+});
+workOrderBatchClearButton?.addEventListener("click", () => {
+  clearWorkOrderDocumentSelection();
+});
+workOrderDocumentWizardCloseButton?.addEventListener("click", () => {
+  closeWorkOrderDocumentWizard();
+});
+workOrderDocumentWizardBackdrop?.addEventListener("click", () => {
+  closeWorkOrderDocumentWizard();
+});
+workOrderDocumentWizardStepDetailsButton?.addEventListener("click", () => {
+  setWorkOrderDocumentWizardStep("details");
+});
+workOrderDocumentWizardStepTemplatesButton?.addEventListener("click", () => {
+  setWorkOrderDocumentWizardStep("templates");
+});
+workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
+  setWorkOrderDocumentWizardStep("details");
+});
+workOrderDocumentWizardNextButton?.addEventListener("click", () => {
+  setWorkOrderDocumentWizardStep(
+    state.workOrderDocumentWizard.step === "details" ? "templates" : "details",
+  );
+});
+[
+  [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
+  [workOrderDocumentCommonIssuedDateInput, "issuedDate"],
+  [workOrderDocumentCommonIssuedPlaceInput, "issuedPlace"],
+  [workOrderDocumentCommonNoteInput, "note"],
+].forEach(([input, fieldName]) => {
+  input?.addEventListener("input", () => {
+    state.workOrderDocumentWizard.common[fieldName] = input.value || "";
+  });
+  input?.addEventListener("change", () => {
+    state.workOrderDocumentWizard.common[fieldName] = input.value || "";
+    if (state.workOrderDocumentWizard.step === "templates") {
+      renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+    }
+  });
+});
+workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const workOrderId = target.dataset.batchWorkOrderId || "";
+  const fieldName = target.dataset.batchField || "";
+  if (!workOrderId || !fieldName) {
+    return;
+  }
+  setWorkOrderDocumentWizardOverride(workOrderId, {
+    [fieldName]: target.value || "",
+  });
+});
+workOrderDocumentWizardWorkOrders?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const workOrderId = target.dataset.batchWorkOrderId || "";
+  const fieldName = target.dataset.batchField || "";
+  if (!workOrderId || !fieldName) {
+    return;
+  }
+  setWorkOrderDocumentWizardOverride(workOrderId, {
+    [fieldName]: target.value || "",
+  });
+  if (state.workOrderDocumentWizard.step === "templates") {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
 });
 workOrderFilterToggle?.addEventListener("click", () => {
   state.workOrderFilters.builderOpen = !state.workOrderFilters.builderOpen;
@@ -24631,6 +25743,10 @@ documentTemplateResetButton?.addEventListener("click", () => {
   openDocumentTemplateEditor();
 });
 
+documentTemplateRuntimeClearButton?.addEventListener("click", () => {
+  clearDocumentTemplateRuntimeContext();
+});
+
 documentTemplateDeleteButton?.addEventListener("click", () => {
   const templateId = documentTemplateIdInput?.value || "";
 
@@ -25684,6 +26800,11 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.workOrderDocumentWizard.open) {
+    closeWorkOrderDocumentWizard();
+    return;
+  }
+
   if (event.key === "Escape" && state.documentTemplateEditorOpen) {
     dismissDocumentTemplateEditor();
     return;

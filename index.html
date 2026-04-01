@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260401e" />
+  <link rel="stylesheet" href="/styles.css?v=20260401f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1065,6 +1065,11 @@
                 <h2>Lista RN</h2>
               </div>
               <div class="workspace-list-actions">
+                <button id="work-order-batch-clear" type="button" class="ghost-button" hidden>Ocisti odabir</button>
+                <button id="work-order-open-documents" type="button" class="ghost-button work-order-batch-launch" disabled>
+                  Zapisnici
+                  <span id="work-order-open-documents-count" class="work-order-batch-count" hidden>0</span>
+                </button>
                 <button id="work-order-open-form" type="button" class="primary-button workspace-add-button">+ RN</button>
               </div>
             </div>
@@ -1162,6 +1167,88 @@
             <p id="work-orders-load-state" class="load-state" hidden></p>
           </section>
         </section>
+
+        <button
+          id="work-order-document-wizard-backdrop"
+          type="button"
+          class="work-order-document-wizard-backdrop"
+          aria-label="Zatvori zapisnike"
+          hidden
+        ></button>
+        <aside
+          id="work-order-document-wizard-panel"
+          class="work-order-document-wizard-panel"
+          aria-label="Batch zapisnici"
+          aria-hidden="true"
+          hidden
+        >
+          <div class="work-order-document-wizard-head">
+            <div class="work-order-document-wizard-head-copy">
+              <p class="section-kicker">Batch zapisnici</p>
+              <h2>Radni nalozi i templatei</h2>
+              <p id="work-order-document-wizard-helper" class="helper-copy">
+                Odaberi zajednicke podatke, po potrebi ih prepravi za pojedini RN, pa zatim otvori odgovarajuce templatee.
+              </p>
+            </div>
+            <div class="work-order-document-wizard-head-actions">
+              <button id="work-order-document-wizard-close" type="button" class="ghost-button">Zatvori</button>
+            </div>
+          </div>
+
+          <div class="work-order-document-wizard-steps" role="tablist" aria-label="Koraci zapisnika">
+            <button id="work-order-document-wizard-step-details" type="button" class="work-order-document-wizard-step is-active" data-batch-step="details" aria-selected="true">
+              <strong>1</strong>
+              <span>Osnovni podaci</span>
+            </button>
+            <button id="work-order-document-wizard-step-templates" type="button" class="work-order-document-wizard-step" data-batch-step="templates" aria-selected="false">
+              <strong>2</strong>
+              <span>Zapisnici</span>
+            </button>
+          </div>
+
+          <div class="work-order-document-wizard-body">
+            <section class="work-order-document-wizard-block">
+              <div class="work-order-document-wizard-block-head">
+                <strong>Zajednicki podaci</strong>
+                <span>Vrijede za sve odabrane RN-ove dok ne uneses override na pojedinom retku.</span>
+              </div>
+              <div class="form-grid work-order-document-wizard-common-grid">
+                <label class="field">
+                  <span>Datum ispitivanja</span>
+                  <input id="work-order-document-common-inspection-date" type="date" />
+                </label>
+                <label class="field">
+                  <span>Datum izdavanja</span>
+                  <input id="work-order-document-common-issued-date" type="date" />
+                </label>
+                <label class="field">
+                  <span>Mjesto izdavanja</span>
+                  <input id="work-order-document-common-issued-place" type="text" placeholder="npr. Zagreb" />
+                </label>
+                <label class="field field-span-full">
+                  <span>Napomena</span>
+                  <textarea id="work-order-document-common-note" rows="2" placeholder="Interna napomena za ovu grupu zapisnika..."></textarea>
+                </label>
+              </div>
+            </section>
+
+            <section id="work-order-document-wizard-details" class="work-order-document-wizard-step-panel">
+              <div id="work-order-document-wizard-selection-summary" class="work-order-document-wizard-selection-summary"></div>
+              <div id="work-order-document-wizard-work-orders" class="work-order-document-wizard-work-orders"></div>
+            </section>
+
+            <section id="work-order-document-wizard-templates" class="work-order-document-wizard-step-panel" hidden>
+              <div id="work-order-document-wizard-template-summary" class="work-order-document-wizard-template-summary"></div>
+              <div id="work-order-document-wizard-template-list" class="work-order-document-wizard-template-list"></div>
+            </section>
+          </div>
+
+          <div class="work-order-document-wizard-footer">
+            <button id="work-order-document-wizard-prev" type="button" class="ghost-button">Nazad</button>
+            <button id="work-order-document-wizard-next" type="button" class="primary-button">Na zapisnike</button>
+          </div>
+          <p id="work-order-document-wizard-error" class="form-error" aria-live="polite"></p>
+        </aside>
 
         <section id="measurement-sheet-modal" class="measurement-sheet-modal" hidden>
           <button id="measurement-sheet-backdrop" type="button" class="measurement-sheet-backdrop" aria-label="Zatvori mjerenja"></button>
@@ -3235,6 +3322,19 @@
                       </label>
                     </div>
 
+                    <section id="document-template-runtime-context" class="document-template-runtime-context" hidden>
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">RN context</p>
+                          <h3>Podaci za generiranje</h3>
+                        </div>
+                        <button id="document-template-runtime-clear" type="button" class="ghost-button">Makni context</button>
+                      </div>
+                      <p id="document-template-runtime-helper" class="helper-copy module-copy">Odabran je jedan ili vise RN-ova iz liste i ovaj template sada cita njihove podatke.</p>
+                      <div id="document-template-runtime-work-orders" class="document-template-runtime-work-orders"></div>
+                      <div id="document-template-runtime-common" class="document-template-runtime-common"></div>
+                    </section>
+
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
                         <section class="document-template-block">
@@ -3484,6 +3584,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260401e"></script>
+    <script type="module" src="/src/main.js?v=20260401f"></script>
   </body>
 </html>
