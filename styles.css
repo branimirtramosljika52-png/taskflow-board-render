@@ -12841,6 +12841,20 @@ body.is-vehicle-reservation-open {
   gap: 8px;
 }
 
+.document-template-workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.document-template-workspace-head-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .legal-framework-card-heading,
 .service-catalog-card-copy,
 .measurement-equipment-card-copy,
@@ -12975,6 +12989,18 @@ body.is-vehicle-reservation-open {
   min-height: 0;
   overflow: auto;
   padding: 0 18px 20px;
+}
+
+.document-template-editor-panel.is-workspace-open {
+  width: 100%;
+  min-height: calc(100vh - 190px);
+  padding: 18px;
+  overflow: hidden;
+}
+
+.document-template-editor-panel.is-workspace-open .document-template-editor-body {
+  padding: 0;
+  overflow: visible;
 }
 
 .service-catalog-form-grid {
@@ -13191,12 +13217,72 @@ body.is-vehicle-reservation-open {
 .document-template-form {
   display: grid;
   gap: 14px;
+  min-height: 0;
 }
 
 .document-template-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.document-template-builder-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 360px);
+  gap: 14px;
+  align-items: start;
+  min-height: calc(100vh - 360px);
+}
+
+.document-template-builder-sidebar,
+.document-template-builder-main,
+.document-template-builder-inspector {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+
+.document-template-builder-inspector {
+  position: sticky;
+  top: 12px;
+}
+
+.document-template-toolbox {
+  display: grid;
+  gap: 10px;
+}
+
+.document-template-tool-button {
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(250, 252, 251, 0.98), rgba(245, 249, 247, 0.98));
+  color: #26493d;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.document-template-tool-button:hover,
+.document-template-tool-button:focus-visible {
+  border-color: rgba(47, 104, 84, 0.28);
+  box-shadow: 0 10px 22px rgba(29, 60, 47, 0.08);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.document-template-tool-button strong {
+  font-size: 0.95rem;
+  color: #22352d;
+}
+
+.document-template-tool-button span {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #60796f;
 }
 
 .document-template-block {
@@ -13720,7 +13806,8 @@ body.is-vehicle-reservation-open {
   .measurement-equipment-summary-grid,
   .safety-authorization-summary-grid,
   .template-development-summary-grid,
-  .document-template-meta-grid {
+  .document-template-meta-grid,
+  .document-template-builder-shell {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -13740,11 +13827,16 @@ body.is-vehicle-reservation-open {
   .measurement-equipment-form-grid,
   .safety-authorization-form-grid,
   .document-template-meta-grid,
+  .document-template-builder-shell,
   .document-template-inline-grid,
   .document-template-link-summary,
   .document-template-preview-meta-grid,
   .document-template-preview-signatures {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-builder-inspector {
+    position: static;
   }
 
   .document-template-sheet-meta {

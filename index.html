@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260401b" />
+  <link rel="stylesheet" href="/styles.css?v=20260401c" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3203,24 +3203,23 @@
 
               <div id="document-template-editor-backdrop" class="offer-editor-backdrop document-template-editor-backdrop" hidden></div>
               <section id="document-template-editor-panel" class="panel document-template-editor-panel" hidden>
-                <div class="offers-editor-fixed-head">
-                  <div class="section-heading offers-section-heading">
-                    <div>
-                      <p class="section-kicker">Zapisnik builder</p>
-                      <h3 id="document-template-editor-title">Novi template</h3>
-                    </div>
-                    <div class="document-template-head-actions">
-                      <button id="document-template-open-pdf-preview" type="button" class="ghost-button">PDF preview</button>
-                      <button id="document-template-export-placeholder" type="button" class="ghost-button">Word placeholder</button>
-                      <button id="document-template-export-preview" type="button" class="ghost-button">Word preview</button>
-                      <button id="document-template-editor-close" type="button" class="ghost-button">Zatvori</button>
-                    </div>
-                  </div>
-                </div>
-
                 <div class="document-template-editor-body" tabindex="-1">
                   <form id="document-template-form" class="entity-form document-template-form">
                     <input id="document-template-id" type="hidden" />
+
+                    <div class="document-template-workspace-head">
+                      <div class="document-template-workspace-head-copy">
+                        <p class="section-kicker">Zapisnik builder</p>
+                        <h3 id="document-template-editor-title">Novi template</h3>
+                      </div>
+                      <div class="document-template-head-actions">
+                        <button id="document-template-open-pdf-preview" type="button" class="ghost-button">PDF preview</button>
+                        <button id="document-template-export-placeholder" type="button" class="ghost-button">Word placeholder</button>
+                        <button id="document-template-export-preview" type="button" class="ghost-button">Word preview</button>
+                        <button type="submit" class="primary-button">Spremi template</button>
+                        <button id="document-template-editor-close" type="button" class="ghost-button">Zatvori</button>
+                      </div>
+                    </div>
 
                     <div class="form-grid document-template-meta-grid">
                       <label class="field field-span-full">
@@ -3237,70 +3236,133 @@
                       </label>
                     </div>
 
-                    <label class="field field-span-full">
-                      <span>Opis i svrha</span>
-                      <textarea id="document-template-description" rows="3" placeholder="Sto template generira, za koji zapisnik, za koju operativu..."></textarea>
-                    </label>
+                    <div class="document-template-builder-shell">
+                      <aside class="document-template-builder-sidebar">
+                        <section class="document-template-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Alatna traka</p>
+                              <h3>Ubaci u stranicu</h3>
+                            </div>
+                          </div>
+                          <p class="helper-copy module-copy">Klik na alat i blok ide na aktivni sheet redom. Excel odmah otvara tablicu za uredivanje.</p>
+                          <div id="document-template-toolbox" class="document-template-toolbox">
+                            <button type="button" class="document-template-tool-button" data-template-tool="text">
+                              <strong>Tekst polje</strong>
+                              <span>Rucni unos ili vezano polje iz baze</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="longtext">
+                              <strong>Dugacak tekst</strong>
+                              <span>Napomena, opis, uvod ili zakljucak</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="date">
+                              <strong>Datum</strong>
+                              <span>Za datum pregleda, izdavanja ili vrijedi do</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="checkbox">
+                              <strong>Kvacica</strong>
+                              <span>Da / Ne oznaka</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="toggle">
+                              <strong>Toggle</strong>
+                              <span>Vizualni status ili potvrda</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="legal_list">
+                              <strong>Ubaci pravilnike</strong>
+                              <span>Povuce povezane propise iz Legal Framework modula</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="equipment_list">
+                              <strong>Ubaci mjernu opremu</strong>
+                              <span>Povuce povezanu opremu iz Measurement Equipment modula</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="measurement_table">
+                              <strong>Ubaci Excel</strong>
+                              <span>Odmah otvara excel-like tablicu za taj blok</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="page_break">
+                              <strong>Novi sheet</strong>
+                              <span>Dodaje novu stranicu u dokumentu</span>
+                            </button>
+                          </div>
+                        </section>
 
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Template layout</p>
-                          <h3>Polja i placeholderi</h3>
-                        </div>
-                        <div class="document-template-layout-actions">
-                          <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj blok</button>
-                          <button id="document-template-add-excel" type="button" class="ghost-button">+ Dodaj Excel</button>
-                          <button id="document-template-add-page-break" type="button" class="ghost-button">+ Novi sheet</button>
-                        </div>
-                      </div>
-                      <p class="helper-copy module-copy">Radi po sheetovima kao u Excelu: odaberi aktivnu stranicu, dodaj blok i povezi ga s poljem iz baze ili posebnim blokom. Word ostaje glavni predlozak, a ovdje definiras placeholder tokene i live raspored.</p>
-                      <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
-                    </section>
+                        <section class="document-template-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Word reference</p>
+                              <h3>Upload uredenog Worda</h3>
+                            </div>
+                          </div>
+                          <div class="document-template-reference-actions">
+                            <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
+                            <button id="document-template-reference-upload" type="button" class="ghost-button">Upload Word</button>
+                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi</button>
+                            <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
+                          </div>
+                          <div id="document-template-reference-meta" class="document-template-reference-meta">
+                            Nema spremljenog povratnog Word dokumenta.
+                          </div>
+                        </section>
+                      </aside>
 
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Linked data</p>
-                          <h3>Propisi i oprema</h3>
-                        </div>
-                      </div>
-                      <p class="helper-copy module-copy">Propisi povezujes u Legal Framework modulu, a opremu u Measurement Equipment modulu. Ovdje samo ubacujes blok `Popis propisa`, `Popis opreme` ili `Excel tablica` na mjesto gdje ih zelis vidjeti.</p>
-                      <div id="document-template-link-summary" class="document-template-link-summary"></div>
-                    </section>
+                      <section class="document-template-builder-main">
+                        <section class="document-template-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Canvas</p>
+                              <h3>Stranice i blokovi</h3>
+                            </div>
+                            <div class="document-template-layout-actions">
+                              <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj blok</button>
+                              <button id="document-template-add-excel" type="button" class="ghost-button">+ Dodaj Excel</button>
+                              <button id="document-template-add-page-break" type="button" class="ghost-button">+ Novi sheet</button>
+                            </div>
+                          </div>
+                          <label class="field field-span-full">
+                            <span>Opis i svrha</span>
+                            <textarea id="document-template-description" rows="3" placeholder="Sto template generira, za koji zapisnik, za koju operativu..."></textarea>
+                          </label>
+                          <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
+                        </section>
+                      </section>
 
-                    <section class="document-template-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Word reference</p>
-                          <h3>Upload uredenog Worda</h3>
-                        </div>
-                        <div class="document-template-reference-actions">
-                          <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
-                          <button id="document-template-reference-upload" type="button" class="ghost-button">Upload Word</button>
-                          <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi</button>
-                          <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
-                        </div>
-                      </div>
-                      <div id="document-template-reference-meta" class="document-template-reference-meta">
-                        Nema spremljenog povratnog Word dokumenta.
-                      </div>
-                    </section>
+                      <aside class="document-template-builder-inspector">
+                        <section class="document-template-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Placeholderi</p>
+                              <h3>Word tokeni</h3>
+                            </div>
+                          </div>
+                          <p class="helper-copy module-copy">Klik na token za brzo umetanje u aktivno tekstualno polje.</p>
+                          <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                        </section>
 
-                    <section class="document-template-block document-template-preview-block">
-                      <div class="section-heading offers-section-heading">
-                        <div>
-                          <p class="section-kicker">Preview</p>
-                          <h3>Live pregled zapisnika</h3>
-                        </div>
-                      </div>
-                      <div id="document-template-preview" class="document-template-preview"></div>
-                    </section>
+                        <section class="document-template-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Povezano</p>
+                              <h3>Propisi i oprema</h3>
+                            </div>
+                          </div>
+                          <div id="document-template-link-summary" class="document-template-link-summary"></div>
+                        </section>
+
+                        <section class="document-template-block document-template-preview-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Preview</p>
+                              <h3>Live pregled zapisnika</h3>
+                            </div>
+                          </div>
+                          <div id="document-template-preview" class="document-template-preview"></div>
+                        </section>
+                      </aside>
+                    </div>
 
                     <p id="document-template-error" class="form-error" aria-live="polite"></p>
 
                     <div class="form-actions">
-                      <button type="submit" class="primary-button">Spremi template</button>
                       <button id="document-template-reset" type="button" class="ghost-button">Novi template</button>
                       <button id="document-template-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
                     </div>
@@ -3427,6 +3489,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260401b"></script>
+    <script type="module" src="/src/main.js?v=20260401c"></script>
   </body>
 </html>

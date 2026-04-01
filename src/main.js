@@ -1088,6 +1088,9 @@ const documentTemplateFilterStatusInput = document.querySelector("#document-temp
 const documentTemplateHelper = document.querySelector("#document-template-helper");
 const documentTemplateList = document.querySelector("#document-template-list");
 const documentTemplateEmpty = document.querySelector("#document-template-empty");
+const templateDevelopmentSummaryGrid = templateDevelopmentModule?.querySelector(".template-development-summary-grid");
+const templateDevelopmentToolbarPanel = templateDevelopmentModule?.querySelector(".template-development-toolbar-panel");
+const templateDevelopmentListPanel = templateDevelopmentModule?.querySelector(".template-development-list-panel");
 const documentTemplateOpenFormButton = document.querySelector("#document-template-open-form");
 const documentTemplateEditorBackdrop = document.querySelector("#document-template-editor-backdrop");
 const documentTemplateEditorPanel = document.querySelector("#document-template-editor-panel");
@@ -1109,6 +1112,7 @@ const documentTemplateDescriptionInput = document.querySelector("#document-templ
 const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
 const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
 const documentTemplateLinkSummary = document.querySelector("#document-template-link-summary");
+const documentTemplateToolbox = document.querySelector("#document-template-toolbox");
 const documentTemplateAddFieldButton = document.querySelector("#document-template-add-field");
 const documentTemplateAddExcelButton = document.querySelector("#document-template-add-excel");
 const documentTemplateAddPageBreakButton = document.querySelector("#document-template-add-page-break");
@@ -9257,8 +9261,8 @@ function syncDocumentTemplateEditorModal() {
   }
 
   const isOpen = state.documentTemplateEditorOpen;
-  documentTemplateEditorPanel?.classList.toggle("is-modal-open", isOpen);
-  document.body.classList.toggle("is-document-template-editor-open", isOpen);
+  documentTemplateEditorPanel?.classList.toggle("is-workspace-open", isOpen);
+  templateDevelopmentModule?.classList.toggle("is-editor-open", isOpen);
 
   if (documentTemplateEditorPanel) {
     documentTemplateEditorPanel.hidden = !isOpen;
@@ -9266,11 +9270,17 @@ function syncDocumentTemplateEditorModal() {
   }
 
   if (documentTemplateEditorBackdrop) {
-    documentTemplateEditorBackdrop.hidden = !isOpen;
+    documentTemplateEditorBackdrop.hidden = true;
   }
 
-  if (documentTemplateEditorCloseButton) {
-    documentTemplateEditorCloseButton.hidden = !isOpen;
+  if (templateDevelopmentSummaryGrid) {
+    templateDevelopmentSummaryGrid.hidden = isOpen;
+  }
+  if (templateDevelopmentToolbarPanel) {
+    templateDevelopmentToolbarPanel.hidden = isOpen;
+  }
+  if (templateDevelopmentListPanel) {
+    templateDevelopmentListPanel.hidden = isOpen;
   }
 
   if (isOpen) {
@@ -9633,6 +9643,133 @@ function getDocumentTemplateFieldSourceLabel(value) {
 
 function getDocumentTemplateDefaultFieldSource(type = "text") {
   return isDocumentTemplateSpecialFieldType(type) ? "" : "CUSTOM_VALUE";
+}
+
+function buildDocumentTemplateToolFieldDraft(tool = "text") {
+  const safeTool = String(tool || "text").trim().toLowerCase();
+  const baseIndex = documentTemplateFieldDrafts.length;
+
+  if (safeTool === "measurement_table") {
+    const sheet = buildTemplateMeasurementSheetFromLegacyConfig({
+      columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+      rowCount: 12,
+    });
+
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Excel tablica",
+        wordLabel: "Excel tablica",
+        type: "measurement_table",
+        columns: sheet.columns.map((column) => column.label),
+        rowCount: sheet.rows.length,
+        sheet,
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "legal_list") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Propisi",
+        wordLabel: "Propisi",
+        type: "legal_list",
+        helpText: "Povezani pravilnici i propisi iz Legal Framework modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "equipment_list") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Mjerna oprema",
+        wordLabel: "Mjerna oprema",
+        type: "equipment_list",
+        helpText: "Povezana mjerna i ispitna oprema iz Measurement Equipment modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  const presets = {
+    text: {
+      label: "Tekst polje",
+      wordLabel: "Tekst polje",
+      type: "text",
+    },
+    longtext: {
+      label: "Dugacak tekst",
+      wordLabel: "Dugacak tekst",
+      type: "longtext",
+    },
+    date: {
+      label: "Datum",
+      wordLabel: "Datum",
+      type: "date",
+      source: "TODAY",
+    },
+    checkbox: {
+      label: "Kvacica",
+      wordLabel: "Kvacica",
+      type: "checkbox",
+    },
+    toggle: {
+      label: "Toggle",
+      wordLabel: "Toggle",
+      type: "toggle",
+    },
+    number: {
+      label: "Broj",
+      wordLabel: "Broj",
+      type: "number",
+    },
+  };
+
+  return createEmptyDocumentTemplateFieldDraft(
+    presets[safeTool] ?? presets.text,
+    baseIndex,
+  );
+}
+
+function addDocumentTemplateBuilderBlock(tool = "text") {
+  const safeTool = String(tool || "text").trim().toLowerCase();
+
+  if (safeTool === "page_break") {
+    const nextPageIndex = activeDocumentTemplateSheetIndex + 1;
+    insertDocumentTemplateFieldDraft(
+      createEmptyDocumentTemplateFieldDraft(
+        {
+          label: `Stranica ${nextPageIndex + 1}`,
+          wordLabel: `Stranica ${nextPageIndex + 1}`,
+          type: "page_break",
+        },
+        documentTemplateFieldDrafts.length,
+      ),
+      { pageIndex: activeDocumentTemplateSheetIndex },
+    );
+    activeDocumentTemplateSheetIndex = nextPageIndex;
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+    return;
+  }
+
+  const fieldDraft = buildDocumentTemplateToolFieldDraft(safeTool);
+  insertDocumentTemplateFieldDraft(
+    fieldDraft,
+    { pageIndex: activeDocumentTemplateSheetIndex },
+  );
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplatePlaceholderPalette();
+  renderDocumentTemplateLinkSummary();
+  renderDocumentTemplatePreviewContent();
+
+  if (safeTool === "measurement_table") {
+    openTemplateMeasurementSheet(fieldDraft.id);
+    return;
+  }
+
+  focusDocumentTemplateFieldLabel(fieldDraft.id);
 }
 
 function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1") {
@@ -12736,6 +12873,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateTextTarget = null;
   activeDocumentTemplateSectionTarget = "";
   documentTemplateReferenceDraft = null;
+  clearDocumentTemplateFieldDragState();
 
   if (documentTemplateIdInput) {
     documentTemplateIdInput.value = "";
@@ -12833,6 +12971,8 @@ function renderDocumentTemplateModule() {
   if (!templateDevelopmentModule || !documentTemplateList || !documentTemplateEmpty) {
     return;
   }
+
+  syncDocumentTemplateEditorModal();
 
   const filters = {
     query: documentTemplateSearchInput?.value?.trim() || state.documentTemplateFilters.query || "",
@@ -24442,52 +24582,28 @@ documentTemplateLocationIdInput?.addEventListener("change", () => {
 });
 
 documentTemplateAddFieldButton?.addEventListener("click", () => {
-  const fieldDraft = createEmptyDocumentTemplateFieldDraft({}, documentTemplateFieldDrafts.length);
-  insertDocumentTemplateFieldDraft(
-    fieldDraft,
-    { pageIndex: activeDocumentTemplateSheetIndex },
-  );
-  renderDocumentTemplateFieldRows();
-  focusDocumentTemplateFieldLabel(fieldDraft.id);
+  addDocumentTemplateBuilderBlock("text");
 });
 
 documentTemplateAddExcelButton?.addEventListener("click", () => {
-  const sheet = buildTemplateMeasurementSheetFromLegacyConfig({
-    columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
-    rowCount: 12,
-  });
-  const excelFieldDraft = createEmptyDocumentTemplateFieldDraft(
-    {
-      label: "Excel tablica",
-      type: "measurement_table",
-      columns: sheet.columns.map((column) => column.label),
-      rowCount: sheet.rows.length,
-      sheet,
-    },
-    documentTemplateFieldDrafts.length,
-  );
-  insertDocumentTemplateFieldDraft(
-    excelFieldDraft,
-    { pageIndex: activeDocumentTemplateSheetIndex },
-  );
-  renderDocumentTemplateFieldRows();
-  openTemplateMeasurementSheet(excelFieldDraft.id);
+  addDocumentTemplateBuilderBlock("measurement_table");
 });
 
 documentTemplateAddPageBreakButton?.addEventListener("click", () => {
-  const nextPageIndex = activeDocumentTemplateSheetIndex + 1;
-  insertDocumentTemplateFieldDraft(
-    createEmptyDocumentTemplateFieldDraft(
-      {
-        label: `Stranica ${nextPageIndex + 1}`,
-        type: "page_break",
-      },
-      documentTemplateFieldDrafts.length,
-    ),
-    { pageIndex: activeDocumentTemplateSheetIndex },
-  );
-  activeDocumentTemplateSheetIndex = nextPageIndex;
-  renderDocumentTemplateFieldRows();
+  addDocumentTemplateBuilderBlock("page_break");
+});
+
+documentTemplateToolbox?.addEventListener("click", (event) => {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-template-tool]")
+    : null;
+
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const tool = button.dataset.templateTool || "text";
+  addDocumentTemplateBuilderBlock(tool);
 });
 
 documentTemplatePreview?.addEventListener("click", (event) => {
