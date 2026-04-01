@@ -13316,14 +13316,17 @@ body.is-vehicle-reservation-open {
 
 .document-template-excel-meta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
   min-width: 0;
+  width: 100%;
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px dashed rgba(47, 104, 84, 0.18);
   background: rgba(248, 251, 249, 0.96);
+  text-align: left;
+  cursor: pointer;
 }
 
 .document-template-excel-meta strong {
@@ -13332,17 +13335,17 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-excel-meta span {
-  grid-column: 1 / 2;
   color: #60796f;
   font-size: 0.84rem;
   line-height: 1.45;
 }
 
-.document-template-excel-meta .ghost-button {
-  grid-column: 2 / 3;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  white-space: nowrap;
+.document-template-excel-meta:hover,
+.document-template-excel-meta:focus-visible {
+  border-color: rgba(47, 104, 84, 0.28);
+  background: rgba(243, 249, 246, 0.98);
+  box-shadow: 0 0 0 3px rgba(47, 104, 84, 0.08);
+  outline: none;
 }
 
 .document-template-link-summary {
@@ -13678,16 +13681,6 @@ body.is-vehicle-reservation-open {
 
   .document-template-excel-meta {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .document-template-excel-meta span,
-  .document-template-excel-meta .ghost-button {
-    grid-column: 1 / -1;
-  }
-
-  .document-template-excel-meta .ghost-button {
-    justify-self: start;
-    grid-row: auto;
   }
 
   .legal-framework-editor-panel.is-modal-open,

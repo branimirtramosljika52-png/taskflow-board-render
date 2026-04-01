@@ -12202,20 +12202,18 @@ function renderDocumentTemplateFieldRows() {
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
     columnsSpan.textContent = "Excel blok";
-    const excelMeta = document.createElement("div");
+    const excelMeta = document.createElement("button");
+    excelMeta.type = "button";
     excelMeta.className = "document-template-excel-meta";
+    excelMeta.setAttribute("aria-label", `Otvori Excel blok ${field.label || `Polje ${index + 1}`}`);
+    excelMeta.addEventListener("click", () => {
+      openTemplateMeasurementSheet(field.id);
+    });
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
-    excelHint.textContent = "Otvori blok, radi kao Excel u aplikaciji i isti raspored ide u preview/PDF.";
-    const excelOpenButton = document.createElement("button");
-    excelOpenButton.type = "button";
-    excelOpenButton.className = "ghost-button";
-    excelOpenButton.textContent = "Otvori i uredi Excel";
-    excelOpenButton.addEventListener("click", () => {
-      openTemplateMeasurementSheet(field.id);
-    });
-    excelMeta.append(excelSummary, excelHint, excelOpenButton);
+    excelHint.textContent = "Klik na blok otvara live Excel i isti raspored ide u preview/PDF.";
+    excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
 
     const helpField = document.createElement("label");
@@ -22300,6 +22298,9 @@ function renderCompactWorkOrdersList() {
   visibleItems.forEach((item) => {
       const rowCard = document.createElement("section");
       rowCard.className = "work-item-card";
+      rowCard.tabIndex = 0;
+      rowCard.setAttribute("role", "button");
+      rowCard.setAttribute("aria-label", `Otvori radni nalog ${item.workOrderNumber || item.companyName || ""}`.trim());
 
       const row = document.createElement("article");
       row.className = "work-item-row";
@@ -22428,11 +22429,21 @@ function renderCompactWorkOrdersList() {
 
       const executorValues = getWorkOrderExecutors(item);
       rowCard.classList.add("is-clickable");
-      row.addEventListener("click", (event) => {
+      const openWorkOrderFromRow = (event) => {
         if (isInteractiveWorkOrderTarget(event.target)) {
           return;
         }
         hydrateWorkOrderForm(item);
+      };
+      rowCard.addEventListener("click", openWorkOrderFromRow);
+      rowCard.addEventListener("keydown", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          hydrateWorkOrderForm(item);
+        }
       });
 
       const basicCell = document.createElement("div");
@@ -24220,20 +24231,22 @@ documentTemplateAddExcelButton?.addEventListener("click", () => {
     columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
     rowCount: 12,
   });
+  const excelFieldDraft = createEmptyDocumentTemplateFieldDraft(
+    {
+      label: "Excel tablica",
+      type: "measurement_table",
+      columns: sheet.columns.map((column) => column.label),
+      rowCount: sheet.rows.length,
+      sheet,
+    },
+    documentTemplateFieldDrafts.length,
+  );
   insertDocumentTemplateFieldDraft(
-    createEmptyDocumentTemplateFieldDraft(
-      {
-        label: "Excel tablica",
-        type: "measurement_table",
-        columns: sheet.columns.map((column) => column.label),
-        rowCount: sheet.rows.length,
-        sheet,
-      },
-      documentTemplateFieldDrafts.length,
-    ),
+    excelFieldDraft,
     { pageIndex: activeDocumentTemplateSheetIndex },
   );
   renderDocumentTemplateFieldRows();
+  openTemplateMeasurementSheet(excelFieldDraft.id);
 });
 
 documentTemplateAddPageBreakButton?.addEventListener("click", () => {
