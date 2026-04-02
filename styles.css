@@ -9640,7 +9640,7 @@ body.is-work-order-document-wizard-open {
 .work-item-row {
   display: grid;
   grid-template-columns:
-      58px
+      48px
       minmax(132px, 0.62fr)
       minmax(220px, 1.06fr)
       minmax(220px, 1.02fr)
@@ -9648,7 +9648,7 @@ body.is-work-order-document-wizard-open {
       minmax(255px, 1.2fr)
       minmax(220px, 0.95fr);
   column-gap: 14px;
-  min-width: 1432px;
+  min-width: 1422px;
 }
 
 .work-group-columns {
