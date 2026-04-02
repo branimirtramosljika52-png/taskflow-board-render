@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260401m" />
+  <link rel="stylesheet" href="/styles.css?v=20260402a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1221,9 +1221,9 @@
           <div class="work-order-document-wizard-head">
             <div class="work-order-document-wizard-head-copy">
               <p class="section-kicker">Batch zapisnici</p>
-              <h2>Radni nalozi i templatei</h2>
+              <h2>Izrada zapisnika</h2>
               <p id="work-order-document-wizard-helper" class="helper-copy">
-                Odaberi zajednicke podatke, po potrebi ih prepravi za pojedini RN, pa zatim otvori odgovarajuce templatee.
+                Gore postavi zajednicke podatke za sve, a dolje po RN-u prepravi samo ono sto odskace.
               </p>
             </div>
             <div class="work-order-document-wizard-head-actions">
@@ -1238,16 +1238,27 @@
             </button>
             <button id="work-order-document-wizard-step-templates" type="button" class="work-order-document-wizard-step" data-batch-step="templates" aria-selected="false">
               <strong>2</strong>
-              <span>Zapisnici</span>
+              <span>Automatski zapisnici</span>
             </button>
           </div>
 
           <div class="work-order-document-wizard-body">
-            <section class="work-order-document-wizard-block">
+            <section id="work-order-document-wizard-common" class="work-order-document-wizard-block">
               <div class="work-order-document-wizard-block-head">
-                <strong>Zajednicki podaci</strong>
+                <div class="work-order-document-wizard-common-head">
+                  <strong>Zajednicki podaci</strong>
+                  <span id="work-order-document-wizard-common-summary" class="work-order-document-wizard-common-summary"></span>
+                </div>
+                <button
+                  id="work-order-document-wizard-common-toggle"
+                  type="button"
+                  class="ghost-button work-order-document-wizard-common-toggle"
+                  aria-expanded="true"
+                >
+                  Sakrij
+                </button>
               </div>
-              <div class="form-grid work-order-document-wizard-common-grid">
+              <div id="work-order-document-wizard-common-body" class="form-grid work-order-document-wizard-common-grid">
                 <label class="field">
                   <span>Datum ispitivanja</span>
                   <input id="work-order-document-common-inspection-date" type="date" />
@@ -1260,7 +1271,7 @@
                   <span>Mjesto izdavanja</span>
                   <input id="work-order-document-common-issued-place" type="text" placeholder="npr. Zagreb" />
                 </label>
-                <label class="field field-span-full">
+                <label class="field">
                   <span>Napomena</span>
                   <textarea id="work-order-document-common-note" rows="2" placeholder="Interna napomena za ovu grupu zapisnika..."></textarea>
                 </label>
@@ -3590,6 +3601,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260401m"></script>
+    <script type="module" src="/src/main.js?v=20260402a"></script>
   </body>
 </html>

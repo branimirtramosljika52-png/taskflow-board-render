@@ -531,6 +531,7 @@ const state = {
     open: false,
     step: "details",
     selectedIds: new Set(),
+    commonCollapsed: false,
     common: {
       inspectionDate: new Date().toISOString().slice(0, 10),
       issuedDate: new Date().toISOString().slice(0, 10),
@@ -1420,6 +1421,10 @@ const workOrderDocumentWizardCloseButton = document.querySelector("#work-order-d
 const workOrderDocumentWizardHelper = document.querySelector("#work-order-document-wizard-helper");
 const workOrderDocumentWizardStepDetailsButton = document.querySelector("#work-order-document-wizard-step-details");
 const workOrderDocumentWizardStepTemplatesButton = document.querySelector("#work-order-document-wizard-step-templates");
+const workOrderDocumentWizardCommonSection = document.querySelector("#work-order-document-wizard-common");
+const workOrderDocumentWizardCommonBody = document.querySelector("#work-order-document-wizard-common-body");
+const workOrderDocumentWizardCommonSummary = document.querySelector("#work-order-document-wizard-common-summary");
+const workOrderDocumentWizardCommonToggleButton = document.querySelector("#work-order-document-wizard-common-toggle");
 const workOrderDocumentWizardDetailsPanel = document.querySelector("#work-order-document-wizard-details");
 const workOrderDocumentWizardTemplatesPanel = document.querySelector("#work-order-document-wizard-templates");
 const workOrderDocumentWizardSelectionSummary = document.querySelector("#work-order-document-wizard-selection-summary");
@@ -23342,6 +23347,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.selectedIds = new Set();
   state.workOrderDocumentWizard.overrides = {};
   state.workOrderDocumentWizard.step = "details";
+  state.workOrderDocumentWizard.commonCollapsed = false;
   state.workOrderBatch.pending = false;
   state.workOrderBatch.message = "";
   state.workOrderBatch.tone = "";
@@ -23440,6 +23446,40 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   }
 }
 
+function getWorkOrderDocumentWizardCommonSummaryParts() {
+  return [
+    state.workOrderDocumentWizard.common.inspectionDate
+      ? `Ispitivanje ${formatCompactDate(state.workOrderDocumentWizard.common.inspectionDate)}`
+      : "",
+    state.workOrderDocumentWizard.common.issuedDate
+      ? `Izdavanje ${formatCompactDate(state.workOrderDocumentWizard.common.issuedDate)}`
+      : "",
+    String(state.workOrderDocumentWizard.common.issuedPlace || "").trim(),
+    String(state.workOrderDocumentWizard.common.note || "").trim() ? "Napomena unesena" : "",
+  ].filter(Boolean);
+}
+
+function renderWorkOrderDocumentWizardCommonSection() {
+  const isCollapsed = Boolean(state.workOrderDocumentWizard.commonCollapsed);
+  const summaryParts = getWorkOrderDocumentWizardCommonSummaryParts();
+
+  if (workOrderDocumentWizardCommonSection) {
+    workOrderDocumentWizardCommonSection.classList.toggle("is-collapsed", isCollapsed);
+  }
+  if (workOrderDocumentWizardCommonBody) {
+    workOrderDocumentWizardCommonBody.hidden = isCollapsed;
+  }
+  if (workOrderDocumentWizardCommonSummary) {
+    workOrderDocumentWizardCommonSummary.textContent = summaryParts.length > 0
+      ? summaryParts.join(" · ")
+      : "Vrijedi za sve odabrane RN-ove.";
+  }
+  if (workOrderDocumentWizardCommonToggleButton) {
+    workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži" : "Sakrij";
+    workOrderDocumentWizardCommonToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+  }
+}
+
 function syncWorkOrderDocumentWizardModal() {
   const isOpen = Boolean(state.workOrderDocumentWizard.open && state.workOrderDocumentWizard.selectedIds.size > 0);
 
@@ -23476,6 +23516,10 @@ function openWorkOrderDocumentWizard() {
   renderWorkOrderDocumentWizard();
   syncWorkOrderDocumentWizardModal();
   requestAnimationFrame(() => {
+    if (state.workOrderDocumentWizard.commonCollapsed) {
+      workOrderDocumentWizardCommonToggleButton?.focus({ preventScroll: true });
+      return;
+    }
     workOrderDocumentCommonInspectionDateInput?.focus({ preventScroll: true });
   });
 }
@@ -23737,43 +23781,139 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
     return;
   }
 
-  const summaryCards = [
-    {
-      label: "Odabrani RN",
-      value: String(workOrders.length),
-      meta: workOrders.length === 1 ? "Jedan radni nalog" : "Gruppni odabir iz liste RN",
-    },
-    {
-      label: "Tvrtke",
-      value: String(new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size),
-      meta: "Nasljeduje se iz odabranih RN-ova",
-    },
-    {
-      label: "Template veze",
-      value: String(getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length),
-      meta: "Povlaci se iz usluga na RN-u",
-    },
+  const companyCount = new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size;
+  const templateCount = getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length;
+  const summaryPills = [
+    `${workOrders.length} RN`,
+    `${companyCount} tvrtki`,
+    `${templateCount} zapisnika`,
   ];
 
-  workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryCards.map((card) => {
-    const article = document.createElement("article");
-    article.className = "work-order-document-summary-card";
-
-    const label = document.createElement("span");
-    label.className = "work-order-document-summary-label";
-    label.textContent = card.label;
-
-    const value = document.createElement("strong");
-    value.className = "work-order-document-summary-value";
-    value.textContent = card.value;
-
-    const meta = document.createElement("span");
-    meta.className = "work-order-document-summary-meta";
-    meta.textContent = card.meta;
-
-    article.append(label, value, meta);
-    return article;
+  workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryPills.map((text) => {
+    const pill = document.createElement("span");
+    pill.className = "work-order-document-summary-pill";
+    pill.textContent = text;
+    return pill;
   }));
+}
+
+function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
+  const serviceItems = getWorkOrderServiceItems(workOrder);
+  const linkedTemplateTitles = Array.from(new Set(
+    serviceItems.flatMap((item) => getResolvedWorkOrderServiceTemplateTitles(item)).map((value) => String(value ?? "").trim()).filter(Boolean),
+  ));
+  const override = getWorkOrderDocumentWizardOverride(workOrder.id);
+
+  const card = document.createElement("article");
+  card.className = "work-order-document-selection-card";
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-selection-head";
+
+  const copy = document.createElement("div");
+  copy.className = "work-order-document-selection-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = workOrder.workOrderNumber || "Bez broja";
+
+  const meta = document.createElement("span");
+  meta.textContent = [
+    workOrder.companyName || "Bez tvrtke",
+    workOrder.locationName || "Bez lokacije",
+    getWorkOrderServiceSummary(workOrder) || "",
+  ].filter(Boolean).join(" | ");
+
+  copy.append(title, meta);
+  head.append(copy);
+
+  const chips = document.createElement("div");
+  chips.className = "work-order-document-selection-chips";
+  chips.append(
+    createBadge(workOrder.region || "Bez regije", "document-template-meta-badge"),
+    createBadge(workOrder.status || "Otvoreni RN", statusBadgeClass(workOrder.status)),
+  );
+  linkedTemplateTitles.slice(0, 2).forEach((entry) => {
+    chips.append(createBadge(entry, "document-template-meta-badge"));
+  });
+  if (linkedTemplateTitles.length > 2) {
+    chips.append(createBadge(`+${linkedTemplateTitles.length - 2}`, "document-template-meta-badge"));
+  }
+  head.append(chips);
+
+  const grid = document.createElement("div");
+  grid.className = "form-grid work-order-document-selection-grid";
+
+  const createOverrideField = ({ label, type = "text", fieldName, placeholder = "", rows = 0 }) => {
+    const field = document.createElement("label");
+    field.className = rows ? "field field-span-full" : "field";
+
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+
+    const input = rows
+      ? document.createElement("textarea")
+      : document.createElement("input");
+
+    if (input instanceof HTMLInputElement) {
+      input.type = type;
+    } else {
+      input.rows = rows;
+    }
+
+    input.value = override?.[fieldName] || "";
+    input.placeholder = placeholder;
+    input.dataset.batchField = fieldName;
+    input.dataset.batchWorkOrderId = String(workOrder.id);
+
+    field.append(labelNode, input);
+    return field;
+  };
+
+  grid.append(
+    createOverrideField({
+      label: "Datum ispitivanja",
+      type: "date",
+      fieldName: "inspectionDate",
+      placeholder: state.workOrderDocumentWizard.common.inspectionDate || "",
+    }),
+    createOverrideField({
+      label: "Datum izdavanja",
+      type: "date",
+      fieldName: "issuedDate",
+      placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
+    }),
+    createOverrideField({
+      label: "Mjesto izdavanja",
+      type: "text",
+      fieldName: "issuedPlace",
+      placeholder: state.workOrderDocumentWizard.common.issuedPlace || "Koristi zajednicko mjesto",
+    }),
+    createOverrideField({
+      label: "Napomena za ovaj RN",
+      fieldName: "note",
+      placeholder: state.workOrderDocumentWizard.common.note || "Koristi zajednicku napomenu",
+      rows: 2,
+    }),
+  );
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-document-selection-footer";
+
+  const helper = document.createElement("span");
+  helper.textContent = "Prazno polje koristi zajednicku vrijednost iz vrha.";
+
+  const resetButton = document.createElement("button");
+  resetButton.type = "button";
+  resetButton.className = "ghost-button";
+  resetButton.textContent = "Vrati na zajednicko";
+  resetButton.addEventListener("click", () => {
+    delete state.workOrderDocumentWizard.overrides[String(workOrder.id)];
+    renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+  });
+
+  footer.append(helper, resetButton);
+  card.append(head, grid, footer);
+  return card;
 }
 
 function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
@@ -23781,6 +23921,8 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
     return;
   }
 
+  workOrderDocumentWizardWorkOrders.classList.remove("is-carousel");
+  delete workOrderDocumentWizardWorkOrders.dataset.layout;
   if (workOrders.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
@@ -23789,124 +23931,54 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
     return;
   }
 
-  workOrderDocumentWizardWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
-    const serviceItems = getWorkOrderServiceItems(workOrder);
-    const linkedTemplateTitles = Array.from(new Set(
-      serviceItems.flatMap((item) => getResolvedWorkOrderServiceTemplateTitles(item)).map((value) => String(value ?? "").trim()).filter(Boolean),
-    ));
-    const override = getWorkOrderDocumentWizardOverride(workOrder.id);
+  const cards = workOrders.map((workOrder) => buildWorkOrderDocumentWizardSelectionCard(workOrder));
 
-    const card = document.createElement("article");
-    card.className = "work-order-document-selection-card";
+  if (workOrders.length <= 3) {
+    const layout = workOrders.length === 1 ? "single" : workOrders.length === 2 ? "double" : "triple";
+    workOrderDocumentWizardWorkOrders.dataset.layout = layout;
+    workOrderDocumentWizardWorkOrders.replaceChildren(...cards);
+    return;
+  }
 
-    const head = document.createElement("div");
-    head.className = "work-order-document-selection-head";
+  workOrderDocumentWizardWorkOrders.dataset.layout = "carousel";
+  workOrderDocumentWizardWorkOrders.classList.add("is-carousel");
 
-    const copy = document.createElement("div");
-    copy.className = "work-order-document-selection-copy";
+  const shell = document.createElement("div");
+  shell.className = "work-order-document-carousel-shell";
 
-    const title = document.createElement("strong");
-    title.textContent = workOrder.workOrderNumber || "Bez broja";
+  const prevButton = document.createElement("button");
+  prevButton.type = "button";
+  prevButton.className = "ghost-button work-order-document-carousel-nav is-prev";
+  prevButton.setAttribute("aria-label", "Prethodni radni nalozi");
+  prevButton.textContent = "←";
 
-    const meta = document.createElement("span");
-    meta.textContent = [
-      workOrder.companyName || "Bez tvrtke",
-      workOrder.locationName || "Bez lokacije",
-      getWorkOrderServiceSummary(workOrder) || "",
-    ].filter(Boolean).join(" | ");
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "ghost-button work-order-document-carousel-nav is-next";
+  nextButton.setAttribute("aria-label", "Sljedeci radni nalozi");
+  nextButton.textContent = "→";
 
-    copy.append(title, meta);
-    head.append(copy);
+  const track = document.createElement("div");
+  track.className = "work-order-document-carousel-track";
+  track.append(...cards);
 
-    const chips = document.createElement("div");
-    chips.className = "work-order-document-selection-chips";
-    chips.append(
-      createBadge(workOrder.region || "Bez regije", "document-template-meta-badge"),
-      createBadge(workOrder.status || "Otvoreni RN", statusBadgeClass(workOrder.status)),
-    );
-    linkedTemplateTitles.slice(0, 3).forEach((entry) => {
-      chips.append(createBadge(entry, "document-template-meta-badge"));
-    });
-    if (linkedTemplateTitles.length > 3) {
-      chips.append(createBadge(`+${linkedTemplateTitles.length - 3}`, "document-template-meta-badge"));
-    }
-    head.append(chips);
+  const syncNavButtons = () => {
+    const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+    prevButton.disabled = track.scrollLeft <= 4;
+    nextButton.disabled = track.scrollLeft >= maxScrollLeft - 4;
+  };
 
-    const grid = document.createElement("div");
-    grid.className = "form-grid work-order-document-selection-grid";
+  prevButton.addEventListener("click", () => {
+    track.scrollBy({ left: -Math.max(track.clientWidth * 0.92, 320), behavior: "smooth" });
+  });
+  nextButton.addEventListener("click", () => {
+    track.scrollBy({ left: Math.max(track.clientWidth * 0.92, 320), behavior: "smooth" });
+  });
+  track.addEventListener("scroll", syncNavButtons, { passive: true });
 
-    const createOverrideField = ({ label, type = "text", fieldName, placeholder = "", rows = 0 }) => {
-      const field = document.createElement("label");
-      field.className = rows ? "field field-span-full" : "field";
-
-      const labelNode = document.createElement("span");
-      labelNode.textContent = label;
-
-      const input = rows
-        ? document.createElement("textarea")
-        : document.createElement("input");
-
-      if (input instanceof HTMLInputElement) {
-        input.type = type;
-      } else {
-        input.rows = rows;
-      }
-
-      input.value = override?.[fieldName] || "";
-      input.placeholder = placeholder;
-      input.dataset.batchField = fieldName;
-      input.dataset.batchWorkOrderId = String(workOrder.id);
-
-      field.append(labelNode, input);
-      return field;
-    };
-
-    grid.append(
-      createOverrideField({
-        label: "Datum ispitivanja",
-        type: "date",
-        fieldName: "inspectionDate",
-        placeholder: state.workOrderDocumentWizard.common.inspectionDate || "",
-      }),
-      createOverrideField({
-        label: "Datum izdavanja",
-        type: "date",
-        fieldName: "issuedDate",
-        placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
-      }),
-      createOverrideField({
-        label: "Mjesto izdavanja",
-        type: "text",
-        fieldName: "issuedPlace",
-        placeholder: state.workOrderDocumentWizard.common.issuedPlace || "Koristi zajednicko mjesto",
-      }),
-      createOverrideField({
-        label: "Napomena za ovaj RN",
-        fieldName: "note",
-        placeholder: state.workOrderDocumentWizard.common.note || "Koristi zajednicku napomenu",
-        rows: 2,
-      }),
-    );
-
-    const footer = document.createElement("div");
-    footer.className = "work-order-document-selection-footer";
-
-    const helper = document.createElement("span");
-    helper.textContent = "Prazno polje automatski koristi zajednicku vrijednost iz vrha.";
-
-    const resetButton = document.createElement("button");
-    resetButton.type = "button";
-    resetButton.className = "ghost-button";
-    resetButton.textContent = "Vrati na zajednicko";
-    resetButton.addEventListener("click", () => {
-      delete state.workOrderDocumentWizard.overrides[String(workOrder.id)];
-      renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
-    });
-
-    footer.append(helper, resetButton);
-    card.append(head, grid, footer);
-    return card;
-  }));
+  shell.append(prevButton, track, nextButton);
+  workOrderDocumentWizardWorkOrders.replaceChildren(shell);
+  requestAnimationFrame(syncNavButtons);
 }
 
 function openDocumentTemplateFromWizard(templateId = "", workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
@@ -24012,12 +24084,12 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     footer.className = "work-order-document-template-card-footer";
 
     const note = document.createElement("span");
-    note.textContent = entry.template.description || "Template je povezan preko odabrane usluge.";
+    note.textContent = entry.template.description || "Zapisnik je automatski povezan preko odabrane usluge.";
 
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "ghost-button";
-    openButton.textContent = "Otvori template";
+    openButton.textContent = "Otvori zapisnik";
     openButton.addEventListener("click", () => {
       openDocumentTemplateFromWizard(entry.template.id, entry.workOrders);
     });
@@ -24030,10 +24102,14 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
 
 function renderWorkOrderDocumentWizard() {
   const workOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const { recommendations } = getWorkOrderDocumentTemplateRecommendations(workOrders);
   syncWorkOrderDocumentWizardCommonInputs();
+  renderWorkOrderDocumentWizardCommonSection();
 
   if (workOrderDocumentWizardHelper) {
-    workOrderDocumentWizardHelper.textContent = "";
+    workOrderDocumentWizardHelper.textContent = workOrders.length > 1
+      ? "Zajednicki podaci vrijede za sve, a po pojedinom RN-u prepravi samo ono sto odskace."
+      : "Postavi zajednicke podatke pa ih po potrebi prepravi samo za ovaj RN.";
   }
 
   if (workOrderDocumentWizardStepDetailsButton) {
@@ -24056,7 +24132,7 @@ function renderWorkOrderDocumentWizard() {
     workOrderDocumentWizardPrevButton.hidden = state.workOrderDocumentWizard.step === "details";
   }
   if (workOrderDocumentWizardNextButton) {
-    workOrderDocumentWizardNextButton.textContent = "Na zapisnike";
+    workOrderDocumentWizardNextButton.textContent = recommendations.length === 1 ? "Otvori zapisnik" : "Na zapisnike";
     workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
   }
 
@@ -25484,13 +25560,28 @@ workOrderDocumentWizardStepDetailsButton?.addEventListener("click", () => {
 workOrderDocumentWizardStepTemplatesButton?.addEventListener("click", () => {
   setWorkOrderDocumentWizardStep("templates");
 });
+workOrderDocumentWizardCommonToggleButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonCollapsed = !state.workOrderDocumentWizard.commonCollapsed;
+  renderWorkOrderDocumentWizardCommonSection();
+});
 workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
   setWorkOrderDocumentWizardStep("details");
 });
 workOrderDocumentWizardNextButton?.addEventListener("click", () => {
-  setWorkOrderDocumentWizardStep(
-    state.workOrderDocumentWizard.step === "details" ? "templates" : "details",
-  );
+  if (state.workOrderDocumentWizard.step !== "details") {
+    setWorkOrderDocumentWizardStep("details");
+    return;
+  }
+
+  const workOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const { recommendations } = getWorkOrderDocumentTemplateRecommendations(workOrders);
+
+  if (recommendations.length === 1) {
+    openDocumentTemplateFromWizard(recommendations[0].template.id, recommendations[0].workOrders);
+    return;
+  }
+
+  setWorkOrderDocumentWizardStep("templates");
 });
 [
   [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
@@ -25500,9 +25591,16 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
 ].forEach(([input, fieldName]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
+    renderWorkOrderDocumentWizardCommonSection();
+    renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+    if (state.workOrderDocumentWizard.step === "templates") {
+      renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+    }
   });
   input?.addEventListener("change", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
+    renderWorkOrderDocumentWizardCommonSection();
+    renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
     if (state.workOrderDocumentWizard.step === "templates") {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
     }
