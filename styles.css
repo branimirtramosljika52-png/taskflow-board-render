@@ -7090,10 +7090,10 @@ body.is-work-order-editor-open {
 .work-order-document-wizard-panel {
   position: fixed;
   z-index: 59;
-  inset: 10px;
-  left: auto;
-  width: auto;
-  max-height: none;
+  top: 14px;
+  left: 50%;
+  width: min(1680px, calc(100vw - 40px));
+  max-height: calc(100dvh - 28px);
   height: auto;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
@@ -7103,14 +7103,14 @@ body.is-work-order-editor-open {
   border-radius: 30px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.98));
   box-shadow: 0 24px 64px rgba(31, 42, 71, 0.22);
-  transform: translateY(10px);
+  transform: translateX(-50%) translateY(10px);
   opacity: 0;
   transition: opacity 160ms ease, transform 160ms ease;
   min-width: 0;
 }
 
 .work-order-document-wizard-panel.is-open {
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
   opacity: 1;
 }
 
@@ -14800,9 +14800,10 @@ body.is-document-template-editor-open {
   }
 
   .work-order-document-wizard-panel {
-    inset: 8px;
-    width: auto;
-    max-height: none;
+    width: calc(100vw - 16px);
+    left: 50%;
+    top: 8px;
+    max-height: calc(100dvh - 16px);
     padding: 16px;
     border-radius: 22px;
   }
