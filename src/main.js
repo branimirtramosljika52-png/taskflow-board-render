@@ -1511,14 +1511,6 @@ if (workOrderDocumentWizardPanel?.parentElement !== document.body) {
   document.body.append(workOrderDocumentWizardPanel);
 }
 
-if (userEditorBackdrop?.parentElement !== document.body) {
-  document.body.append(userEditorBackdrop);
-}
-
-if (userEditorPanel?.parentElement !== document.body) {
-  document.body.append(userEditorPanel);
-}
-
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -1544,15 +1536,6 @@ if (vehicleEditorBackdrop) {
 if (vehicleEditorPanel) {
   vehicleEditorPanel.hidden = true;
   vehicleEditorPanel.setAttribute("aria-hidden", "true");
-}
-
-if (userEditorBackdrop) {
-  userEditorBackdrop.hidden = true;
-}
-
-if (userEditorPanel) {
-  userEditorPanel.hidden = true;
-  userEditorPanel.setAttribute("aria-hidden", "true");
 }
 
 if (vehicleReservationBackdrop) {
@@ -1839,6 +1822,24 @@ const loginContentResetButton = document.querySelector("#login-content-reset");
 const loginContentBody = document.querySelector("#login-content-body");
 const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
+
+if (userEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(userEditorBackdrop);
+}
+
+if (userEditorPanel?.parentElement !== document.body) {
+  document.body.append(userEditorPanel);
+}
+
+if (userEditorBackdrop) {
+  userEditorBackdrop.hidden = true;
+}
+
+if (userEditorPanel) {
+  userEditorPanel.hidden = true;
+  userEditorPanel.setAttribute("aria-hidden", "true");
+}
+
 let userMenuOpen = false;
 let locationFormContacts = [];
 let companyEditorScrollLockY = 0;
