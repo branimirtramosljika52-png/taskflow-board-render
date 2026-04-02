@@ -7352,8 +7352,8 @@ body.is-work-order-document-wizard-open {
   display: inline-flex;
   align-items: stretch;
   gap: 8px;
-  width: max-content;
-  max-width: min(100%, 960px);
+  width: fit-content;
+  max-width: 100%;
   overflow-x: auto;
   padding: 10px 12px;
   border-radius: 20px;
@@ -7375,7 +7375,9 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-template-dock-item {
   flex: 0 0 auto;
-  min-width: 108px;
+  width: var(--dock-item-width, 108px);
+  min-width: var(--dock-item-width, 108px);
+  max-width: var(--dock-item-width, 108px);
   padding: 0;
   display: grid;
   gap: 4px;

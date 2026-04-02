@@ -24055,11 +24055,17 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
 
   const shell = document.createElement("div");
   shell.className = "work-order-document-template-dock-shell";
+  const dockCount = pairs.length;
+  const itemWidth = dockCount <= 2 ? 102 : dockCount === 3 ? 110 : dockCount <= 5 ? 116 : 122;
+  const desiredShellWidth = Math.min(960, (dockCount * itemWidth) + (Math.max(0, dockCount - 1) * 8) + 24);
+  shell.style.width = `${desiredShellWidth}px`;
+  shell.style.setProperty("--dock-item-width", `${itemWidth}px`);
 
   pairs.forEach(({ template, workOrder }) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "work-order-document-template-dock-item";
+    button.style.width = `${itemWidth}px`;
     button.title = `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`;
     button.setAttribute("aria-label", `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`);
     button.addEventListener("click", () => {
