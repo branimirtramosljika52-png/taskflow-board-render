@@ -4207,6 +4207,14 @@ button.dashboard-widget-list-row {
   gap: 16px;
 }
 
+.entity-form.is-editing {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(204, 71, 230, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(252, 246, 255, 0.96));
+  box-shadow: 0 18px 40px rgba(204, 71, 230, 0.08);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -11185,6 +11193,14 @@ body.is-work-order-document-wizard-open {
   background: #fcfdfb;
 }
 
+.list-row.is-clickable td {
+  cursor: pointer;
+}
+
+.list-row.is-clickable:focus-visible td {
+  background: rgba(204, 71, 230, 0.08);
+}
+
 .data-table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -11325,6 +11341,12 @@ body.is-work-order-document-wizard-open {
   min-height: 38px;
   padding: 9px 12px;
   border-radius: 12px;
+}
+
+.list-meta-pill.is-accent {
+  color: #7e2cf0;
+  background: rgba(126, 44, 240, 0.12);
+  border-color: rgba(126, 44, 240, 0.22);
 }
 
 .helper-copy {
@@ -14111,6 +14133,10 @@ body.is-document-template-editor-open {
 .user-electrical-qualification-block {
   display: grid;
   gap: 12px;
+}
+
+.user-electrical-qualification-block .section-kicker {
+  color: #cc47e6;
 }
 
 .safety-authorization-form-grid {

@@ -1790,6 +1790,7 @@ const userElectricalEBrojInput = document.querySelector("#user-electrical-e-broj
 const userElectricalDocumentsInput = document.querySelector("#user-electrical-documents-input");
 const userElectricalDocumentsUploadButton = document.querySelector("#user-electrical-documents-upload");
 const userElectricalDocumentsList = document.querySelector("#user-electrical-documents-list");
+const userSubmitButton = document.querySelector("#user-submit");
 const userResetButton = document.querySelector("#user-reset");
 const usersBody = document.querySelector("#users-body");
 const managementViewKicker = document.querySelector("#management-view-kicker");
@@ -8412,25 +8413,31 @@ function createUserIdentityCell(user) {
 
 function createUserElectricalCell(user) {
   const qualification = getUserElectricalQualification(user);
-  const roles = [];
+  const statusMeta = [];
 
-  if (qualification.canInspect) {
-    roles.push("Ispitivac");
-  }
+  statusMeta.push({
+    label: qualification.canInspect ? "Ispitivanje: da" : "Ispitivanje: ne",
+    className: qualification.canInspect ? "is-success" : "is-muted",
+  });
+
   if (qualification.canAuthorize) {
-    roles.push("Nositelj");
+    statusMeta.push({
+      label: "Nositelj",
+      className: "is-accent",
+    });
   }
 
   return createStackCell({
-    title: roles.length > 0 ? roles.join(" | ") : "Bez elektro ovlasti",
+    title: qualification.canInspect ? "Ispitivanje panik rasvjete" : "Nije dodijeljeno",
     subtitle: [
       qualification.classCode ? `Klasa ${qualification.classCode}` : "",
       qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
       qualification.eBroj ? `E ${qualification.eBroj}` : "",
-    ].filter(Boolean).join(" | ") || "Elektro dio nije dodijeljen",
+    ].filter(Boolean).join(" | ") || "Bez dodijeljenih podataka",
     tertiary: qualification.documents.length > 0
       ? `${qualification.documents.length} dokument${qualification.documents.length === 1 ? "" : "a"}`
       : "",
+    meta: statusMeta,
   });
 }
 
@@ -9817,7 +9824,7 @@ const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
-  { value: "elektro", label: "Elektro" },
+      { value: "elektro", label: "Panik rasvjeta" },
 ];
 
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
@@ -9922,10 +9929,10 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     return createEmptyDocumentTemplateFieldDraft(
       {
         label: "Potpis ispitivaca",
-        wordLabel: "Potpis ispitivaca elektro",
+        wordLabel: "Potpis ispitivaca panik rasvjete",
         type: "inspector_signature",
         signatureArea: "elektro",
-        helpText: "Potpis elektro ispitivaca iz People modula.",
+        helpText: "Potpis ispitivaca panik rasvjete iz People modula.",
       },
       baseIndex,
     );
@@ -9935,10 +9942,10 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     return createEmptyDocumentTemplateFieldDraft(
       {
         label: "Potpis nositelja",
-        wordLabel: "Potpis nositelja elektro",
+        wordLabel: "Potpis nositelja panik rasvjete",
         type: "authorization_holder_signature",
         signatureArea: "elektro",
-        helpText: "Potpis elektro nositelja ovlastenja iz People modula.",
+        helpText: "Potpis nositelja ovlastenja za panik rasvjetu iz People modula.",
       },
       baseIndex,
     );
@@ -10754,6 +10761,11 @@ function resolveQualifiedWorkOrderUser(workOrder = {}, capability = "inspect", s
   return matchedExecutor || eligibleUsers[0] || null;
 }
 
+function getSignatureAreaLabel(signatureArea = "elektro") {
+  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  return normalizedArea === "elektro" ? "panik rasvjeta" : normalizedArea;
+}
+
 function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
@@ -10807,6 +10819,7 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
 function getDocumentTemplateSignaturePreviewValue(field = {}, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const signatureArea = String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  const signatureAreaLabel = getSignatureAreaLabel(signatureArea);
   const capability = field.type === "authorization_holder_signature" ? "authorize" : "inspect";
   const matchedUser = resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
 
@@ -10815,8 +10828,8 @@ function getDocumentTemplateSignaturePreviewValue(field = {}, context = {}) {
   }
 
   return capability === "authorize"
-    ? `Nositelj ovlastenja (${signatureArea})`
-    : `Ispitivac (${signatureArea})`;
+    ? `Nositelj ovlastenja (${signatureAreaLabel})`
+    : `Ispitivac (${signatureAreaLabel})`;
 }
 
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
@@ -11586,7 +11599,7 @@ function renderUserElectricalDocuments() {
   if (userElectricalDocumentDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema dodanih elektro dokumenata za ovog korisnika.";
+    empty.textContent = "Nema dodanih dokumenata panik rasvjete za ovog korisnika.";
     userElectricalDocumentsList.replaceChildren(empty);
     return;
   }
@@ -14500,6 +14513,28 @@ function buildUserPayload() {
   };
 }
 
+function syncUserEditorChrome(editing = false, user = null) {
+  if (userPanelKicker) {
+    userPanelKicker.textContent = editing ? "People" : (getIsSuperAdmin() ? "Admin assignment" : "Organization team");
+  }
+
+  if (userPanelTitle) {
+    userPanelTitle.textContent = editing
+      ? `Uredi korisnika · ${user?.fullName || user?.email || "User"}`
+      : (getIsSuperAdmin() ? "Admins & users" : "Users");
+  }
+
+  if (userSubmitButton) {
+    userSubmitButton.textContent = editing ? "Spremi promjene" : "Spremi korisnika";
+  }
+
+  if (userResetButton) {
+    userResetButton.textContent = editing ? "Odustani" : "Reset";
+  }
+
+  userForm?.classList.toggle("is-editing", editing);
+}
+
 function buildLoginContentPayload() {
   return {
     accentLabel: loginContentAccentInput.value,
@@ -14601,6 +14636,7 @@ function resetUserForm() {
   }
   setUserElectricalDocumentDrafts([]);
   renderUserElectricalDocuments();
+  syncUserEditorChrome(false);
 }
 
 function resetLoginContentForm() {
@@ -14769,6 +14805,11 @@ function hydrateUserForm(user) {
   renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
   renderAvatar(userAvatarPreview, user);
   userError.textContent = "";
+  syncUserEditorChrome(true, user);
+  requestAnimationFrame(() => {
+    userForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+    userFirstNameInput?.focus({ preventScroll: true });
+  });
 }
 
 function hydrateLoginContentForm(item) {
@@ -25598,8 +25639,28 @@ function renderUsers() {
     row.className = "list-row";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
+    const canEditUser = canManageRenderedUser(user);
 
-    if (canManageRenderedUser(user)) {
+    if (canEditUser) {
+      row.classList.add("is-clickable");
+      row.tabIndex = 0;
+      row.addEventListener("click", (event) => {
+        if (event.target.closest("button, a, input, select, textarea")) {
+          return;
+        }
+
+        hydrateUserForm(user);
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.target !== row) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          hydrateUserForm(user);
+        }
+      });
       actionsCell.append(
         createActionButton("Uredi", "card-button", () => hydrateUserForm(user)),
       );
@@ -25799,6 +25860,10 @@ function renderManagement() {
         ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
         : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
     }
+  }
+
+  if (!userIdInput.value) {
+    syncUserEditorChrome(false);
   }
 
   renderUsers();
