@@ -2348,6 +2348,40 @@ body.is-location-editor-open {
   z-index: 129;
 }
 
+.user-editor-panel {
+  position: relative;
+}
+
+.user-editor-panel.is-drop-target::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 28px;
+  border: 2px dashed rgba(214, 76, 185, 0.78);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.user-editor-panel.is-drop-target::after {
+  content: "Pusti dokumente korisnika ovdje";
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d54dc0, #6a5df3);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: 0 18px 32px rgba(111, 77, 213, 0.28);
+}
+
 .company-editor-backdrop {
   z-index: 128;
 }
@@ -14149,9 +14183,19 @@ body.is-document-template-editor-open {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.user-documents-block {
+  display: grid;
+  gap: 10px;
+}
+
 .user-electrical-qualification-block {
   display: grid;
   gap: 10px;
+  border-color: rgba(214, 76, 185, 0.26);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 245, 255, 0.98)),
+    linear-gradient(135deg, rgba(213, 77, 192, 0.1), rgba(106, 93, 243, 0.08));
+  box-shadow: 0 22px 44px rgba(133, 78, 178, 0.08);
 }
 
 .user-electrical-qualification-block .section-heading {
@@ -14161,6 +14205,10 @@ body.is-document-template-editor-open {
 .user-electrical-qualification-block h3 {
   margin: 0;
   font-size: 1rem;
+}
+
+.user-electrical-qualification-block .section-kicker {
+  color: #c03aa7;
 }
 
 .user-editor-panel .module-attachment-list {

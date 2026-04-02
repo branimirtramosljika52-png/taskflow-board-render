@@ -210,6 +210,24 @@ function mapUserElectricalQualification(row = {}) {
   };
 }
 
+function mapUserDocuments(row = {}) {
+  const hasDedicatedDocuments = (
+    (row.user_documents_json !== undefined && row.user_documents_json !== null && String(row.user_documents_json).trim() !== "")
+    || (row.userDocuments !== undefined && row.userDocuments !== null)
+  );
+  const mappedDocuments = parseJsonArray(
+    row.user_documents_json ?? row.userDocuments,
+  )
+    .map((document) => mapStoredAttachmentDocument(document))
+    .filter((document) => document.fileName && document.dataUrl);
+
+  if (mappedDocuments.length > 0 || hasDedicatedDocuments) {
+    return mappedDocuments;
+  }
+
+  return mapUserElectricalQualification(row).documents;
+}
+
 async function persistInlineAvatarToObjectStorage({
   userId = "",
   fullName = "",
@@ -241,6 +259,25 @@ async function persistInlineUserElectricalDocumentToObjectStorage({
   return uploadDataUrlToObjectStorage({
     keyPrefix: `users/${dbString(userId) || dbString(fallbackKey) || "pending"}/electrical`,
     fileName: dbString(fileName) || "elektro-dokument",
+    fileType: dbString(fileType),
+    dataUrl,
+  });
+}
+
+async function persistInlineUserDocumentToObjectStorage({
+  userId = "",
+  fallbackKey = "",
+  fileName = "",
+  fileType = "",
+  dataUrl = "",
+} = {}) {
+  if (!isDataUrlLike(dataUrl)) {
+    return null;
+  }
+
+  return uploadDataUrlToObjectStorage({
+    keyPrefix: `users/${dbString(userId) || dbString(fallbackKey) || "pending"}/documents`,
+    fileName: dbString(fileName) || "user-dokument",
     fileType: dbString(fileType),
     dataUrl,
   });
@@ -345,6 +382,90 @@ async function prepareStoredUserElectricalDocuments(documents = [], {
   };
 }
 
+async function prepareStoredUserDocuments(documents = [], {
+  userId = "",
+  fallbackKey = "",
+  currentDocuments = [],
+} = {}) {
+  const currentById = new Map(
+    (currentDocuments ?? [])
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.id)
+      .map((document) => [String(document.id), document]),
+  );
+  const nextDocuments = [];
+  const retainedIds = new Set();
+  const staleDocuments = [];
+
+  for (const rawDocument of Array.isArray(documents) ? documents : []) {
+    const document = mapStoredAttachmentDocument(rawDocument);
+
+    if (!document.fileName || !document.dataUrl) {
+      continue;
+    }
+
+    const currentDocument = document.id ? currentById.get(String(document.id)) : null;
+    if (currentDocument?.id) {
+      retainedIds.add(String(currentDocument.id));
+    }
+
+    const currentUrl = dbString(currentDocument?.dataUrl);
+    const nextUrl = dbString(document.dataUrl);
+    const matchesCurrent = currentDocument
+      && dbString(currentDocument.fileName) === document.fileName
+      && dbString(currentDocument.fileType) === document.fileType
+      && currentUrl === nextUrl;
+
+    if (matchesCurrent) {
+      nextDocuments.push({
+        ...document,
+        storageProvider: currentDocument.storageProvider ?? "",
+        storageBucket: currentDocument.storageBucket ?? "",
+        storageKey: currentDocument.storageKey ?? "",
+        storageUrl: currentDocument.storageUrl ?? "",
+        dataUrl: currentDocument.dataUrl || document.dataUrl,
+        createdAt: document.createdAt || currentDocument.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      continue;
+    }
+
+    const uploaded = await persistInlineUserDocumentToObjectStorage({
+      userId,
+      fallbackKey,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      dataUrl: document.dataUrl,
+    });
+
+    nextDocuments.push({
+      ...document,
+      dataUrl: uploaded?.storageUrl || document.dataUrl,
+      storageProvider: uploaded?.storageProvider ?? document.storageProvider ?? "",
+      storageBucket: uploaded?.storageBucket ?? document.storageBucket ?? "",
+      storageKey: uploaded?.storageKey ?? document.storageKey ?? "",
+      storageUrl: uploaded?.storageUrl ?? document.storageUrl ?? document.dataUrl,
+      createdAt: document.createdAt || currentDocument?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (currentDocument?.storageKey) {
+      staleDocuments.push(currentDocument);
+    }
+  }
+
+  for (const currentDocument of currentById.values()) {
+    if (!retainedIds.has(String(currentDocument.id)) && currentDocument.storageKey) {
+      staleDocuments.push(currentDocument);
+    }
+  }
+
+  return {
+    nextDocuments,
+    staleDocuments,
+  };
+}
+
 function normalizeUserElectricalQualification(input = {}, fallback = {}) {
   const source = {
     discipline: "elektro",
@@ -369,6 +490,16 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && document.dataUrl),
   };
+}
+
+function normalizeUserDocuments(input = [], fallback = []) {
+  const source = Array.isArray(input)
+    ? input
+    : parseJsonArray(input, Array.isArray(fallback) ? fallback : parseJsonArray(fallback));
+
+  return source
+    .map((document) => mapStoredAttachmentDocument(document))
+    .filter((document) => document.fileName && document.dataUrl);
 }
 
 async function prepareStoredUserAvatar({
@@ -531,6 +662,7 @@ function sanitizeUser(row) {
   const organizationIds = mergePrimaryOrganization(primaryOrganizationId, row.organization_ids_csv);
   const storedAvatar = mapUserAvatarStorage(row);
   const electricalQualification = mapUserElectricalQualification(row);
+  const userDocuments = mapUserDocuments(row);
 
   return {
     id: String(row.id),
@@ -551,6 +683,7 @@ function sanitizeUser(row) {
     avatarStorageBucket: storedAvatar.storageBucket,
     avatarStorageKey: storedAvatar.storageKey,
     avatarStorageUrl: storedAvatar.storageUrl,
+    documents: userDocuments,
     electricalQualification,
     lastLoginAt: normalizeTimestamp(row.last_login_at),
     createdAt: normalizeTimestamp(row.created_at),
@@ -625,6 +758,10 @@ function normalizeUserInput(input = {}) {
     input.electricalQualification,
     input.electricalQualification ?? input.electrical_qualification_json ?? {},
   );
+  const documents = normalizeUserDocuments(
+    input.documents,
+    input.documents ?? input.user_documents_json ?? input.userDocuments ?? [],
+  );
 
   return {
     firstName: dbString(input.firstName),
@@ -637,6 +774,7 @@ function normalizeUserInput(input = {}) {
     organizationIds: mergePrimaryOrganization(primaryOrganizationId, organizationIds),
     legacyUsername: dbString(input.legacyUsername),
     avatarDataUrl: dbString(input.avatarDataUrl),
+    documents,
     electricalQualification,
   };
 }
@@ -743,6 +881,7 @@ async function ensureSchema(connection) {
       avatar_storage_key VARCHAR(512) NULL,
       avatar_storage_url TEXT NULL,
       electrical_qualification_json LONGTEXT NULL,
+      user_documents_json LONGTEXT NULL,
       email VARCHAR(255) NOT NULL,
       legacy_username VARCHAR(100) NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -871,6 +1010,12 @@ async function ensureSchema(connection) {
     "electrical_qualification_json",
     "LONGTEXT NULL AFTER avatar_storage_url",
   );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "user_documents_json",
+    "LONGTEXT NULL AFTER electrical_qualification_json",
+  );
 
   await ensureColumn(
     connection,
@@ -921,7 +1066,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const [rows] = await connection.query(`
     SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
-           u.electrical_qualification_json,
+           u.electrical_qualification_json, u.user_documents_json,
            u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
            o.name AS organization_name
     FROM app_users u
@@ -1610,6 +1755,7 @@ export class MemoryTenantRepository {
       role: normalized.role,
       isActive: normalized.isActive,
       avatarDataUrl: normalized.avatarDataUrl,
+      documents: normalizeUserDocuments(normalized.documents),
       electricalQualification: normalizeUserElectricalQualification(normalized.electricalQualification),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1654,6 +1800,7 @@ export class MemoryTenantRepository {
     current.role = normalized.role;
     current.isActive = normalized.isActive;
     current.avatarDataUrl = normalized.avatarDataUrl || current.avatarDataUrl;
+    current.documents = normalizeUserDocuments(normalized.documents, current.documents);
     current.electricalQualification = normalizeUserElectricalQualification(
       normalized.electricalQualification,
       current.electricalQualification,
@@ -1942,7 +2089,7 @@ export class MySqlTenantRepository {
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
-                 u.electrical_qualification_json,
+                 u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
           FROM app_users u
@@ -1974,7 +2121,7 @@ export class MySqlTenantRepository {
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
-                 u.electrical_qualification_json,
+                 u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
                  u.password_hash, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name, o.status AS organization_status
@@ -2062,7 +2209,7 @@ export class MySqlTenantRepository {
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
-                 u.electrical_qualification_json,
+                 u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
                  u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
@@ -2282,7 +2429,7 @@ export class MySqlTenantRepository {
     const normalized = normalizeUserInput(input);
     const targetOrganizationId = normalized.organizationId || actor?.organizationId;
     let preparedAvatar = null;
-    let preparedElectricalDocuments = {
+    let preparedUserDocuments = {
       nextDocuments: [],
       staleDocuments: [],
     };
@@ -2308,15 +2455,15 @@ export class MySqlTenantRepository {
         fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
         avatarDataUrl: normalized.avatarDataUrl,
       });
-      preparedElectricalDocuments = await prepareStoredUserElectricalDocuments(
-        normalized.electricalQualification.documents,
+      preparedUserDocuments = await prepareStoredUserDocuments(
+        normalized.documents,
         {
           fallbackKey: normalized.email || normalized.legacyUsername || "new-user",
         },
       );
       const electricalQualification = {
         ...normalized.electricalQualification,
-        documents: preparedElectricalDocuments.nextDocuments,
+        documents: [],
       };
 
       const [result] = await connection.query(
@@ -2324,8 +2471,8 @@ export class MySqlTenantRepository {
           INSERT INTO app_users
             (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
-             electrical_qualification_json, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
@@ -2338,6 +2485,7 @@ export class MySqlTenantRepository {
           preparedAvatar.storedAvatar.storageKey || null,
           preparedAvatar.storedAvatar.storageUrl || null,
           JSON.stringify(electricalQualification),
+          JSON.stringify(preparedUserDocuments.nextDocuments),
           normalized.email,
           normalized.legacyUsername || null,
           passwordHash,
@@ -2349,7 +2497,7 @@ export class MySqlTenantRepository {
       return this.getUserById(result.insertId);
     } catch (error) {
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
-      await cleanupStoredAssets(preparedElectricalDocuments?.nextDocuments ?? []);
+      await cleanupStoredAssets(preparedUserDocuments?.nextDocuments ?? []);
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
       connection.release();
@@ -2359,7 +2507,7 @@ export class MySqlTenantRepository {
   async updateUser(actor, userId, patch) {
     const connection = await this.pool.getConnection();
     let preparedAvatar = null;
-    let preparedElectricalDocuments = {
+    let preparedUserDocuments = {
       nextDocuments: [],
       staleDocuments: [],
     };
@@ -2404,18 +2552,18 @@ export class MySqlTenantRepository {
         fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
         avatarDataUrl: normalized.avatarDataUrl,
       });
-      const currentElectricalQualification = mapUserElectricalQualification(current);
-      preparedElectricalDocuments = await prepareStoredUserElectricalDocuments(
-        normalized.electricalQualification.documents,
+      const currentUserDocuments = mapUserDocuments(current);
+      preparedUserDocuments = await prepareStoredUserDocuments(
+        normalized.documents,
         {
           userId: current.id,
           fallbackKey: normalized.email || normalized.legacyUsername || current.id,
-          currentDocuments: currentElectricalQualification.documents,
+          currentDocuments: currentUserDocuments,
         },
       );
       const electricalQualification = {
         ...normalized.electricalQualification,
-        documents: preparedElectricalDocuments.nextDocuments,
+        documents: [],
       };
 
       const updateFields = [
@@ -2429,6 +2577,7 @@ export class MySqlTenantRepository {
         "avatar_storage_key = ?",
         "avatar_storage_url = ?",
         "electrical_qualification_json = ?",
+        "user_documents_json = ?",
         "email = ?",
         "legacy_username = ?",
         "role = ?",
@@ -2445,6 +2594,7 @@ export class MySqlTenantRepository {
         preparedAvatar.storedAvatar.storageKey || null,
         preparedAvatar.storedAvatar.storageUrl || null,
         JSON.stringify(electricalQualification),
+        JSON.stringify(preparedUserDocuments.nextDocuments),
         normalized.email,
         normalized.legacyUsername || null,
         normalized.role,
@@ -2459,12 +2609,12 @@ export class MySqlTenantRepository {
       params.push(Number(userId));
       await connection.query(`UPDATE app_users SET ${updateFields.join(", ")} WHERE id = ?`, params);
       await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
-      await cleanupStoredAssets(preparedElectricalDocuments.staleDocuments);
+      await cleanupStoredAssets(preparedUserDocuments.staleDocuments);
 
       return this.getUserById(userId);
     } catch (error) {
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
-      await cleanupStoredAssets(preparedElectricalDocuments?.nextDocuments ?? []);
+      await cleanupStoredAssets(preparedUserDocuments?.nextDocuments ?? []);
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
       connection.release();

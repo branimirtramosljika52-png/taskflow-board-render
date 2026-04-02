@@ -170,6 +170,42 @@ test("memory tenant repository lets a signed-in user update their own avatar", a
   assert.equal(updated.avatarDataUrl, "data:image/png;base64,avatar");
 });
 
+test("memory tenant repository keeps generic user documents separate from panic qualification", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Maja",
+    lastName: "Docs",
+    email: "maja-docs@example.com",
+    password: "secret123",
+    role: "user",
+    documents: [
+      {
+        id: "doc-1",
+        fileName: "Osobna.pdf",
+        fileType: "application/pdf",
+        fileSize: 1200,
+        documentCategory: "osobna_iskaznica",
+        dataUrl: "data:application/pdf;base64,abc",
+      },
+    ],
+    electricalQualification: {
+      canInspect: true,
+      classCode: "KL-1",
+      urbroj: "UR-55",
+      eBroj: "E-99",
+    },
+  });
+
+  assert.equal(createdUser.documents.length, 1);
+  assert.equal(createdUser.documents[0].documentCategory, "osobna_iskaznica");
+  assert.equal(createdUser.electricalQualification.documents.length, 0);
+  assert.equal(createdUser.electricalQualification.canInspect, true);
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

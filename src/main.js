@@ -1265,7 +1265,9 @@ let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let measurementEquipmentDocumentDrafts = [];
+let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
+let userEditorDocumentDragDepth = 0;
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1788,6 +1790,9 @@ const userAvatarPreview = document.querySelector("#user-avatar-preview");
 const userRoleInput = document.querySelector("#user-role");
 const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
 const userIsActiveInput = document.querySelector("#user-is-active");
+const userDocumentsInput = document.querySelector("#user-documents-input");
+const userDocumentsUploadButton = document.querySelector("#user-documents-upload");
+const userDocumentsList = document.querySelector("#user-documents-list");
 const userElectricalCanInspectInput = document.querySelector("#user-electrical-can-inspect");
 const userElectricalCanAuthorizeInput = document.querySelector("#user-electrical-can-authorize");
 const userElectricalClassInput = document.querySelector("#user-electrical-class");
@@ -8458,9 +8463,6 @@ function createUserElectricalCell(user) {
       qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
       qualification.eBroj ? `E ${qualification.eBroj}` : "",
     ].filter(Boolean).join(" | ") || "Bez dodijeljenih podataka",
-    tertiary: qualification.documents.length > 0
-      ? `${qualification.documents.length} dokument${qualification.documents.length === 1 ? "" : "a"}`
-      : "",
     meta: statusMeta,
   });
 }
@@ -9300,6 +9302,10 @@ function scrollUserEditorToTop() {
   userEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function setUserEditorDocumentDropActive(isActive) {
+  userEditorPanel?.classList.toggle("is-drop-target", Boolean(isActive));
+}
+
 function syncUserEditorModal() {
   if (state.userEditorOpen && (state.activeView !== "management" || !state.user)) {
     state.userEditorOpen = false;
@@ -9309,6 +9315,10 @@ function syncUserEditorModal() {
 
   userEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-user-editor-open", isOpen);
+  if (!isOpen) {
+    userEditorDocumentDragDepth = 0;
+    setUserEditorDocumentDropActive(false);
+  }
 
   if (userEditorPanel) {
     userEditorPanel.hidden = !isOpen;
@@ -9901,6 +9911,16 @@ const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "rjesenje_nositelj", label: "Rjesenje nositelja" },
   { value: "evidencija", label: "Evidencija / potvrda" },
   { value: "potpis", label: "Potpis / pecat" },
+  { value: "ostalo", label: "Ostalo" },
+];
+
+const USER_DOCUMENT_CATEGORY_OPTIONS = [
+  { value: "", label: "Odaberi vrstu dokumenta" },
+  { value: "osobna_iskaznica", label: "Osobna iskaznica" },
+  { value: "iban", label: "IBAN" },
+  { value: "uvjerenje", label: "Uvjerenje" },
+  { value: "certifikat", label: "Certifikat" },
+  { value: "ugovor", label: "Ugovor" },
   { value: "ostalo", label: "Ostalo" },
 ];
 
@@ -11639,6 +11659,146 @@ function getUserElectricalQualification(user = {}) {
     eBroj: String(qualification.eBroj || "").trim(),
     documents: Array.isArray(qualification.documents) ? qualification.documents : [],
   };
+}
+
+function getUserDocuments(user = {}) {
+  return Array.isArray(user?.documents) ? user.documents : [];
+}
+
+function setUserDocumentDrafts(items = []) {
+  userDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((item) => item.fileName && item.dataUrl);
+}
+
+function updateUserDocumentDraft(documentId, patch = {}) {
+  userDocumentDrafts = userDocumentDrafts.map((item) => (
+    item.id === documentId
+      ? {
+        ...item,
+        ...patch,
+      }
+      : item
+  ));
+}
+
+function focusUserDocumentCategory(documentId = "") {
+  if (!documentId || !userDocumentsList) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const target = Array.from(
+      userDocumentsList.querySelectorAll(".module-attachment-category-select"),
+    ).find((input) => input.dataset.documentId === String(documentId));
+
+    target?.focus({ preventScroll: false });
+  });
+}
+
+function renderUserDocuments() {
+  if (!userDocumentsList) {
+    return;
+  }
+
+  if (userDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema dodane dokumentacije za ovog korisnika.";
+    userDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  userDocumentsList.replaceChildren(...userDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+    row.classList.toggle("is-unclassified", !entry.documentCategory);
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      entry.fileType || "",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDate(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    const fieldWrap = document.createElement("div");
+    fieldWrap.className = "module-attachment-fields";
+
+    const nameField = document.createElement("label");
+    nameField.className = "module-attachment-field";
+
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "module-attachment-field-label";
+    nameLabel.textContent = "Naziv dokumenta";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = entry.fileName;
+    nameInput.maxLength = 220;
+    nameInput.placeholder = "Naziv dokumenta";
+    nameInput.addEventListener("input", () => {
+      updateUserDocumentDraft(entry.id, { fileName: nameInput.value });
+    });
+
+    nameField.append(nameLabel, nameInput);
+
+    const categoryField = document.createElement("label");
+    categoryField.className = "module-attachment-field";
+
+    const categoryLabel = document.createElement("span");
+    categoryLabel.className = "module-attachment-field-label";
+    categoryLabel.textContent = "Sto je ovo?";
+
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "module-attachment-category-select";
+    categorySelect.dataset.documentId = entry.id;
+    replaceSelectOptions(
+      categorySelect,
+      USER_DOCUMENT_CATEGORY_OPTIONS,
+      entry.documentCategory || "",
+    );
+    categorySelect.addEventListener("change", () => {
+      const nextValue = categorySelect.value || "";
+      updateUserDocumentDraft(entry.id, { documentCategory: nextValue });
+      row.classList.toggle("is-unclassified", !nextValue);
+    });
+
+    categoryField.append(categoryLabel, categorySelect);
+    fieldWrap.append(nameField, categoryField);
+    copy.append(meta, fieldWrap);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+
+    const openButton = createActionButton("Preuzmi", "card-button", () => {
+      triggerModuleAttachmentDownload({
+        ...entry,
+        fileName: nameInput.value || entry.fileName,
+      });
+    });
+    const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+      userDocumentDrafts = userDocumentDrafts.filter((item) => item.id !== entry.id);
+      renderUserDocuments();
+    });
+
+    actions.append(openButton, removeButton);
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueUserDocuments(files) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
+  userDocumentDrafts = [
+    ...userDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderUserDocuments();
+  focusUserDocumentCategory(nextDocuments[0]?.id || "");
 }
 
 function setUserElectricalDocumentDrafts(items = []) {
@@ -14582,6 +14742,7 @@ function buildUserPayload() {
     legacyUsername: userLegacyUsernameInput.value,
     isActive: userIsActiveInput.value,
     avatarDataUrl: userAvatarDataUrlInput.value,
+    documents: userDocumentDrafts.map((item) => ({ ...item })),
     electricalQualification: {
       discipline: "elektro",
       canInspect: userElectricalCanInspectInput?.value === "true",
@@ -14589,7 +14750,7 @@ function buildUserPayload() {
       classCode: userElectricalClassInput?.value || "",
       urbroj: userElectricalUrbrojInput?.value || "",
       eBroj: userElectricalEBrojInput?.value || "",
-      documents: userElectricalDocumentDrafts.map((item) => ({ ...item })),
+      documents: [],
     },
   };
 }
@@ -14715,9 +14876,10 @@ function resetUserForm() {
   if (userElectricalCanAuthorizeInput) {
     userElectricalCanAuthorizeInput.value = "false";
   }
-  setUserElectricalDocumentDrafts([]);
-  renderUserElectricalDocuments();
+  setUserDocumentDrafts([]);
+  renderUserDocuments();
   syncUserEditorChrome(false);
+  setUserEditorDocumentDropActive(false);
   renderAvatar(userAvatarPreview, {});
 }
 
@@ -14882,8 +15044,8 @@ function hydrateUserForm(user) {
   if (userElectricalEBrojInput) {
     userElectricalEBrojInput.value = electricalQualification.eBroj;
   }
-  setUserElectricalDocumentDrafts(electricalQualification.documents);
-  renderUserElectricalDocuments();
+  setUserDocumentDrafts(getUserDocuments(user));
+  renderUserDocuments();
   renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
   renderAvatar(userAvatarPreview, user);
   userError.textContent = "";
@@ -19548,6 +19710,9 @@ function renderSharedOptions() {
   }
   if (state.safetyAuthorizationEditorOpen) {
     renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationTemplateSelectionIds());
+  }
+  if (userDocumentsInput) {
+    userDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
   if (measurementEquipmentDocumentsInput) {
     measurementEquipmentDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
@@ -28266,20 +28431,71 @@ userForm?.addEventListener("submit", (event) => {
   });
 });
 
-userElectricalDocumentsUploadButton?.addEventListener("click", () => {
-  userElectricalDocumentsInput?.click();
+userDocumentsUploadButton?.addEventListener("click", () => {
+  userDocumentsInput?.click();
 });
 
-userElectricalDocumentsInput?.addEventListener("change", () => {
-  const files = Array.from(userElectricalDocumentsInput.files ?? []);
+userDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(userDocumentsInput.files ?? []);
 
   if (files.length === 0) {
     return;
   }
 
-  void runMutation(() => queueUserElectricalDocuments(files), userError).then(() => {
-    userElectricalDocumentsInput.value = "";
+  void runMutation(() => queueUserDocuments(files), userError).then(() => {
+    userDocumentsInput.value = "";
   });
+});
+
+userEditorPanel?.addEventListener("dragenter", (event) => {
+  if (!isFileDragEvent(event)) {
+    return;
+  }
+
+  event.preventDefault();
+  userEditorDocumentDragDepth += 1;
+  setUserEditorDocumentDropActive(true);
+});
+
+userEditorPanel?.addEventListener("dragover", (event) => {
+  if (!isFileDragEvent(event)) {
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  setUserEditorDocumentDropActive(true);
+});
+
+userEditorPanel?.addEventListener("dragleave", (event) => {
+  if (!isFileDragEvent(event)) {
+    return;
+  }
+
+  event.preventDefault();
+  userEditorDocumentDragDepth = Math.max(0, userEditorDocumentDragDepth - 1);
+  if (userEditorDocumentDragDepth === 0) {
+    setUserEditorDocumentDropActive(false);
+  }
+});
+
+userEditorPanel?.addEventListener("drop", (event) => {
+  if (!isFileDragEvent(event)) {
+    return;
+  }
+
+  event.preventDefault();
+  userEditorDocumentDragDepth = 0;
+  setUserEditorDocumentDropActive(false);
+  const files = Array.from(event.dataTransfer?.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueUserDocuments(files), userError);
 });
 
 userResetButton?.addEventListener("click", () => {
