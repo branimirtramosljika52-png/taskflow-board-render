@@ -9665,7 +9665,10 @@ body.is-work-order-document-wizard-open {
 
 .work-group-column-select,
 .work-item-select-cell {
-  justify-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
 }
 
 .work-group-column-select .work-group-column-title,
@@ -9789,7 +9792,7 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-item-select-cell {
-  padding-top: 2px;
+  padding-top: 0;
 }
 
 .work-item-card.is-selected .work-item-row {
