@@ -24618,6 +24618,24 @@ function renderGroupedWorkOrdersList() {
     : `Prikazano svih ${filtered.length} RN.`;
 }
 
+function createCompactLocationLabel(value = "") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "Bez lokacije";
+  }
+
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return text;
+  }
+
+  return parts.slice(0, 2).join(", ");
+}
+
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
