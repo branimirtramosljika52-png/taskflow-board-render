@@ -9762,6 +9762,43 @@ body.is-work-order-document-wizard-open {
   padding: 10px 14px;
 }
 
+.work-item-row.is-collapsed {
+  align-items: center;
+  padding: 8px 14px;
+}
+
+.work-item-row.is-collapsed .work-item-cell,
+.work-item-row.is-collapsed .work-item-cell-group,
+.work-item-row.is-collapsed .work-item-basic-stack {
+  gap: 4px;
+}
+
+.work-item-row.is-collapsed .work-item-value-primary {
+  font-size: 0.88rem;
+  line-height: 1.24;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.work-item-row.is-collapsed .work-item-value-secondary {
+  font-size: 0.74rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+.work-item-row.is-collapsed .work-item-basic-value.is-work-order-number {
+  font-size: 0.94rem;
+}
+
+.work-item-row.is-collapsed .work-item-executors-cell {
+  align-content: center;
+}
+
 .work-item-card:hover .work-item-row,
 .work-item-card.is-expanded .work-item-row {
   background: #fcfcff;

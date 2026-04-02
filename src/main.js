@@ -24473,6 +24473,24 @@ function renderGroupedWorkOrdersList() {
         return wrap;
       };
 
+      const createCompactLocationLabel = (value = "") => {
+        const text = String(value || "").trim();
+        if (!text) {
+          return "Bez lokacije";
+        }
+
+        const parts = text
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean);
+
+        if (!parts.length) {
+          return text;
+        }
+
+        return parts.slice(0, 2).join(", ");
+      };
+
       const createTagPill = (value) => {
         if (!value) {
           return null;
@@ -24988,11 +25006,10 @@ function renderCompactWorkOrdersList() {
       } else {
         clientCell.append(createValueStack(
           item.companyName || "Bez tvrtke",
-          getWorkOrderServiceSummary(item) || "",
         ));
 
         locationCell.append(createValueStack(
-          item.locationName || "Bez lokacije",
+          createCompactLocationLabel(item.locationName),
           item.region || "",
         ));
       }
