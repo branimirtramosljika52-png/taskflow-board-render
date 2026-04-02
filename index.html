@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260402ad" />
+  <link rel="stylesheet" href="/styles.css?v=20260402ae" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2191,6 +2191,49 @@
                 </label>
               </div>
 
+              <section class="service-catalog-template-block user-electrical-qualification-block">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Elektro</p>
+                    <h3>Elektro ispitivanje i ovlaštenja</h3>
+                  </div>
+                  <div class="document-template-reference-actions">
+                    <input id="user-electrical-documents-input" type="file" multiple hidden />
+                    <button id="user-electrical-documents-upload" type="button" class="ghost-button">Dodaj dokumente</button>
+                  </div>
+                </div>
+                <p class="helper-copy module-copy">Odredi moze li osoba biti elektro ispitivac ili nositelj ovlastenja, upisi klasu, UrBROJ i E broj, pa dodaj popratne dokumente.</p>
+                <div class="form-grid user-electrical-grid">
+                  <label class="field">
+                    <span>Elektro ispitivač</span>
+                    <select id="user-electrical-can-inspect">
+                      <option value="false">Ne</option>
+                      <option value="true">Da</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Nositelj ovlaštenja</span>
+                    <select id="user-electrical-can-authorize">
+                      <option value="false">Ne</option>
+                      <option value="true">Da</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Klasa</span>
+                    <input id="user-electrical-class" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span>UrBROJ</span>
+                    <input id="user-electrical-urbroj" type="text" maxlength="160" />
+                  </label>
+                  <label class="field">
+                    <span>E broj</span>
+                    <input id="user-electrical-e-broj" type="text" maxlength="160" />
+                  </label>
+                </div>
+                <div id="user-electrical-documents-list" class="module-attachment-list"></div>
+              </section>
+
               <div class="form-actions">
                 <button type="submit" class="primary-button">Save user</button>
                 <button id="user-reset" type="button" class="ghost-button">Reset</button>
@@ -2206,6 +2249,7 @@
                     <th>User</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Elektro</th>
                     <th>Organization</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -3423,6 +3467,14 @@
                               <strong>Ubaci Excel</strong>
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
                             </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
+                              <strong>Potpis ispitivača</strong>
+                              <span>Dodaje potpis elektro ispitivača</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
+                              <strong>Potpis nositelja</strong>
+                              <span>Dodaje potpis nositelja ovlaštenja</span>
+                            </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="page_break">
                               <strong>Novi sheet</strong>
                               <span>Dodaje novu stranicu u dokumentu</span>
@@ -3601,6 +3653,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260402ad"></script>
+    <script type="module" src="/src/main.js?v=20260402ae"></script>
   </body>
 </html>

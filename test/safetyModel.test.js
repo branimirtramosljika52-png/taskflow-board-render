@@ -290,6 +290,20 @@ test("document templates keep nested builder data and support filtering", () => 
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
         {
+          label: "Potpis ispitivaca",
+          wordLabel: "Potpis ispitivaca elektro",
+          key: "potpis_ispitivaca",
+          type: "inspector_signature",
+          signatureArea: "elektro",
+        },
+        {
+          label: "Potpis nositelja",
+          wordLabel: "Potpis nositelja elektro",
+          key: "potpis_nositelja",
+          type: "authorization_holder_signature",
+          signatureArea: "elektro",
+        },
+        {
           label: "Excel mjerenja",
           key: "excel_mjerenja",
           type: "measurement_table",
@@ -347,16 +361,20 @@ test("document templates keep nested builder data and support filtering", () => 
     () => "2026-03-31T12:00:00.000Z",
   );
 
-  assert.equal(template.customFields.length, 5);
+  assert.equal(template.customFields.length, 7);
   assert.equal(template.customFields[0].source, "COMPANY_NAME");
   assert.equal(template.customFields[0].wordLabel, "Tvrtka");
   assert.equal(template.customFields[2].type, "checkbox");
   assert.equal(template.customFields[3].type, "toggle");
-  assert.equal(template.customFields[4].type, "measurement_table");
-  assert.equal(template.customFields[4].rowCount, 8);
-  assert.equal(template.customFields[4].sheet?.columns.length, 2);
-  assert.equal(template.customFields[4].sheet?.rows[0]?.cells["measurement-column-1"], "Panik rasvjeta 1");
-  assert.equal(template.customFields[4].sheet?.merges[0]?.colSpan, 2);
+  assert.equal(template.customFields[4].type, "inspector_signature");
+  assert.equal(template.customFields[4].signatureArea, "elektro");
+  assert.equal(template.customFields[5].type, "authorization_holder_signature");
+  assert.equal(template.customFields[5].signatureArea, "elektro");
+  assert.equal(template.customFields[6].type, "measurement_table");
+  assert.equal(template.customFields[6].rowCount, 8);
+  assert.equal(template.customFields[6].sheet?.columns.length, 2);
+  assert.equal(template.customFields[6].sheet?.rows[0]?.cells["measurement-column-1"], "Panik rasvjeta 1");
+  assert.equal(template.customFields[6].sheet?.merges[0]?.colSpan, 2);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");

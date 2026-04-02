@@ -1264,6 +1264,7 @@ let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let measurementEquipmentDocumentDrafts = [];
+let userElectricalDocumentDrafts = [];
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1781,6 +1782,14 @@ const userAvatarPreview = document.querySelector("#user-avatar-preview");
 const userRoleInput = document.querySelector("#user-role");
 const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
 const userIsActiveInput = document.querySelector("#user-is-active");
+const userElectricalCanInspectInput = document.querySelector("#user-electrical-can-inspect");
+const userElectricalCanAuthorizeInput = document.querySelector("#user-electrical-can-authorize");
+const userElectricalClassInput = document.querySelector("#user-electrical-class");
+const userElectricalUrbrojInput = document.querySelector("#user-electrical-urbroj");
+const userElectricalEBrojInput = document.querySelector("#user-electrical-e-broj");
+const userElectricalDocumentsInput = document.querySelector("#user-electrical-documents-input");
+const userElectricalDocumentsUploadButton = document.querySelector("#user-electrical-documents-upload");
+const userElectricalDocumentsList = document.querySelector("#user-electrical-documents-list");
 const userResetButton = document.querySelector("#user-reset");
 const usersBody = document.querySelector("#users-body");
 const managementViewKicker = document.querySelector("#management-view-kicker");
@@ -8397,6 +8406,30 @@ function createUserIdentityCell(user) {
   return cell;
 }
 
+function createUserElectricalCell(user) {
+  const qualification = getUserElectricalQualification(user);
+  const roles = [];
+
+  if (qualification.canInspect) {
+    roles.push("Ispitivac");
+  }
+  if (qualification.canAuthorize) {
+    roles.push("Nositelj");
+  }
+
+  return createStackCell({
+    title: roles.length > 0 ? roles.join(" | ") : "Bez elektro ovlasti",
+    subtitle: [
+      qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+      qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+      qualification.eBroj ? `E ${qualification.eBroj}` : "",
+    ].filter(Boolean).join(" | ") || "Elektro dio nije dodijeljen",
+    tertiary: qualification.documents.length > 0
+      ? `${qualification.documents.length} dokument${qualification.documents.length === 1 ? "" : "a"}`
+      : "",
+  });
+}
+
 function createBadgeCell(badge, subtitle = "", tertiary = "") {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
@@ -9770,6 +9803,19 @@ const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "ostalo", label: "Ostalo" },
 ];
 
+const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
+  { value: "", label: "Odaberi vrstu dokumenta" },
+  { value: "dokaz_ispitivac", label: "Dokaz ispitivaca" },
+  { value: "rjesenje_nositelj", label: "Rjesenje nositelja" },
+  { value: "evidencija", label: "Evidencija / potvrda" },
+  { value: "potpis", label: "Potpis / pecat" },
+  { value: "ostalo", label: "Ostalo" },
+];
+
+const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
+  { value: "elektro", label: "Elektro" },
+];
+
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CUSTOM_VALUE", label: "Rucni unos / custom" },
   { value: "DOCUMENT_TITLE", label: "Template - naziv" },
@@ -9800,6 +9846,8 @@ const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "legal_list",
   "equipment_list",
   "measurement_table",
+  "inspector_signature",
+  "authorization_holder_signature",
   "page_break",
 ]);
 
@@ -9861,6 +9909,32 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         wordLabel: "Mjerna oprema",
         type: "equipment_list",
         helpText: "Povezana mjerna i ispitna oprema iz Measurement Equipment modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "inspector_signature") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Potpis ispitivaca",
+        wordLabel: "Potpis ispitivaca elektro",
+        type: "inspector_signature",
+        signatureArea: "elektro",
+        helpText: "Potpis elektro ispitivaca iz People modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "authorization_holder_signature") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Potpis nositelja",
+        wordLabel: "Potpis nositelja elektro",
+        type: "authorization_holder_signature",
+        signatureArea: "elektro",
+        helpText: "Potpis elektro nositelja ovlastenja iz People modula.",
       },
       baseIndex,
     );
@@ -9978,6 +10052,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
+    signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
     columns: Array.isArray(initial.columns)
       ? initial.columns.join(", ")
       : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
@@ -10389,6 +10464,7 @@ function buildDocumentTemplateDraft() {
       source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
+      signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
       columns: String(field.columns || "")
         .split(/[\n,]/)
         .map((entry) => entry.trim())
@@ -10415,6 +10491,7 @@ function buildDocumentTemplateDraft() {
         return {
           ...field,
           source: "",
+          signatureArea: field.signatureArea || "elektro",
           columns: [],
           rowCount: 0,
           sheet: null,
@@ -10646,6 +10723,33 @@ function getDocumentTemplatePreviewLocation(template = buildDocumentTemplateDraf
   return getLocation(locationId);
 }
 
+function normalizePersonLookupValue(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function resolveQualifiedWorkOrderUser(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  const executorNames = getWorkOrderExecutors(workOrder).map((entry) => normalizePersonLookupValue(entry)).filter(Boolean);
+  const eligibleUsers = (state.users ?? []).filter((user) => {
+    const qualification = getUserElectricalQualification(user);
+    if (qualification.discipline !== normalizedArea) {
+      return false;
+    }
+    return capability === "authorize" ? qualification.canAuthorize : qualification.canInspect;
+  });
+
+  const matchedExecutor = eligibleUsers.find((user) => (
+    executorNames.includes(normalizePersonLookupValue(user.fullName || user.email || ""))
+  ));
+
+  return matchedExecutor || eligibleUsers[0] || null;
+}
+
 function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
@@ -10696,11 +10800,30 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
   return sourceMap[safeSource] ?? "";
 }
 
+function getDocumentTemplateSignaturePreviewValue(field = {}, context = {}) {
+  const workOrder = context.sampleWorkOrder;
+  const signatureArea = String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  const capability = field.type === "authorization_holder_signature" ? "authorize" : "inspect";
+  const matchedUser = resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
+
+  if (matchedUser?.fullName) {
+    return matchedUser.fullName;
+  }
+
+  return capability === "authorize"
+    ? `Nositelj ovlastenja (${signatureArea})`
+    : `Ispitivac (${signatureArea})`;
+}
+
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
   const token = getDocumentTemplateFieldToken(field, index);
 
   if (placeholderMode) {
     return token;
+  }
+
+  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+    return getDocumentTemplateSignaturePreviewValue(field, context);
   }
 
   const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
@@ -11115,6 +11238,27 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     `;
   }
 
+  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+    const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode });
+    const areaLabel = getOptionLabel(
+      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      field.signatureArea || "elektro",
+    );
+    return `
+      <section class="document-template-preview-section">
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
+        </div>
+        <div class="document-template-preview-signature">
+          <strong>${placeholderMode ? escapeHtml(token) : escapeHtml(value)}</strong>
+          <div class="document-template-preview-signature-line"></div>
+        </div>
+        ${helpText}
+      </section>
+    `;
+  }
+
   const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode });
   const valueHtml = field.type === "longtext"
     ? escapeHtml(value).replace(/\n/g, "<br />")
@@ -11384,6 +11528,138 @@ function createModuleAttachmentDraft(document = {}) {
     createdAt: String(document.createdAt || new Date().toISOString()),
     updatedAt: String(document.updatedAt || document.createdAt || new Date().toISOString()),
   };
+}
+
+function getUserElectricalQualification(user = {}) {
+  const qualification = user?.electricalQualification ?? {};
+  return {
+    discipline: String(qualification.discipline || "elektro").trim().toLowerCase() || "elektro",
+    canInspect: Boolean(qualification.canInspect),
+    canAuthorize: Boolean(qualification.canAuthorize),
+    classCode: String(qualification.classCode || "").trim(),
+    urbroj: String(qualification.urbroj || "").trim(),
+    eBroj: String(qualification.eBroj || "").trim(),
+    documents: Array.isArray(qualification.documents) ? qualification.documents : [],
+  };
+}
+
+function setUserElectricalDocumentDrafts(items = []) {
+  userElectricalDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((item) => item.fileName && item.dataUrl);
+}
+
+function updateUserElectricalDocumentDraft(documentId, patch = {}) {
+  userElectricalDocumentDrafts = userElectricalDocumentDrafts.map((item) => (
+    item.id === documentId
+      ? {
+        ...item,
+        ...patch,
+      }
+      : item
+  ));
+}
+
+function focusUserElectricalDocumentCategory(documentId = "") {
+  if (!documentId || !userElectricalDocumentsList) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const target = Array.from(
+      userElectricalDocumentsList.querySelectorAll(".module-attachment-category-select"),
+    ).find((input) => input.dataset.documentId === String(documentId));
+
+    target?.focus({ preventScroll: false });
+  });
+}
+
+function renderUserElectricalDocuments() {
+  if (!userElectricalDocumentsList) {
+    return;
+  }
+
+  if (userElectricalDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema dodanih elektro dokumenata za ovog korisnika.";
+    userElectricalDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  userElectricalDocumentsList.replaceChildren(...userElectricalDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+    row.classList.toggle("is-unclassified", !entry.documentCategory);
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName;
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      entry.fileType || "",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDate(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const fieldWrap = document.createElement("div");
+    fieldWrap.className = "module-attachment-fields";
+
+    const categoryField = document.createElement("label");
+    categoryField.className = "module-attachment-field";
+
+    const categoryLabel = document.createElement("span");
+    categoryLabel.className = "module-attachment-field-label";
+    categoryLabel.textContent = "Sto je ovo?";
+
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "module-attachment-category-select";
+    categorySelect.dataset.documentId = entry.id;
+    replaceSelectOptions(
+      categorySelect,
+      USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS,
+      entry.documentCategory || "",
+    );
+    categorySelect.addEventListener("change", () => {
+      const nextValue = categorySelect.value || "";
+      updateUserElectricalDocumentDraft(entry.id, { documentCategory: nextValue });
+      row.classList.toggle("is-unclassified", !nextValue);
+    });
+    categoryField.append(categoryLabel, categorySelect);
+    fieldWrap.append(categoryField);
+    copy.append(fieldWrap);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+
+    const openButton = createActionButton("Preuzmi", "card-button", () => {
+      triggerModuleAttachmentDownload(entry);
+    });
+    const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+      userElectricalDocumentDrafts = userElectricalDocumentDrafts.filter((item) => item.id !== entry.id);
+      renderUserElectricalDocuments();
+    });
+
+    actions.append(openButton, removeButton);
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueUserElectricalDocuments(files) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
+  userElectricalDocumentDrafts = [
+    ...userElectricalDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderUserElectricalDocuments();
+  focusUserElectricalDocumentCategory(nextDocuments[0]?.id || "");
 }
 
 function setMeasurementEquipmentDocumentDrafts(items = []) {
@@ -12895,6 +13171,20 @@ function renderDocumentTemplateFieldRows() {
       specialInfoValue.className = "document-template-inline-special-value";
       specialInfoValue.textContent = "Povlači povezanu mjernu i ispitnu opremu.";
       specialInfoField.append(specialInfoValue);
+    } else if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+      specialInfoSpan.textContent = "Dio";
+      const signatureAreaSelect = document.createElement("select");
+      signatureAreaSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        signatureAreaSelect,
+        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        field.signatureArea || "elektro",
+      );
+      signatureAreaSelect.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
+        renderDocumentTemplatePreviewContent();
+      });
+      specialInfoField.append(signatureAreaSelect);
     } else if (field.type === "page_break") {
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
@@ -14194,6 +14484,15 @@ function buildUserPayload() {
     legacyUsername: userLegacyUsernameInput.value,
     isActive: userIsActiveInput.value,
     avatarDataUrl: userAvatarDataUrlInput.value,
+    electricalQualification: {
+      discipline: "elektro",
+      canInspect: userElectricalCanInspectInput?.value === "true",
+      canAuthorize: userElectricalCanAuthorizeInput?.value === "true",
+      classCode: userElectricalClassInput?.value || "",
+      urbroj: userElectricalUrbrojInput?.value || "",
+      eBroj: userElectricalEBrojInput?.value || "",
+      documents: userElectricalDocumentDrafts.map((item) => ({ ...item })),
+    },
   };
 }
 
@@ -14290,6 +14589,14 @@ function resetUserForm() {
   renderAvatar(userAvatarPreview, {});
   userOrganizationIdInput.value = state.activeOrganizationId || state.organizations[0]?.id || "";
   renderUserOrganizationMemberships([userOrganizationIdInput.value].filter(Boolean));
+  if (userElectricalCanInspectInput) {
+    userElectricalCanInspectInput.value = "false";
+  }
+  if (userElectricalCanAuthorizeInput) {
+    userElectricalCanAuthorizeInput.value = "false";
+  }
+  setUserElectricalDocumentDrafts([]);
+  renderUserElectricalDocuments();
 }
 
 function resetLoginContentForm() {
@@ -14427,6 +14734,7 @@ function hydrateOrganizationForm(organization) {
 function hydrateUserForm(user) {
   state.activeView = "management";
   renderActiveView();
+  const electricalQualification = getUserElectricalQualification(user);
   userIdInput.value = user.id;
   userAvatarDataUrlInput.value = user.avatarDataUrl || "";
   userFirstNameInput.value = user.firstName;
@@ -14437,6 +14745,23 @@ function hydrateUserForm(user) {
   userRoleInput.value = user.role;
   userLegacyUsernameInput.value = user.legacyUsername || "";
   userIsActiveInput.value = String(user.isActive);
+  if (userElectricalCanInspectInput) {
+    userElectricalCanInspectInput.value = electricalQualification.canInspect ? "true" : "false";
+  }
+  if (userElectricalCanAuthorizeInput) {
+    userElectricalCanAuthorizeInput.value = electricalQualification.canAuthorize ? "true" : "false";
+  }
+  if (userElectricalClassInput) {
+    userElectricalClassInput.value = electricalQualification.classCode;
+  }
+  if (userElectricalUrbrojInput) {
+    userElectricalUrbrojInput.value = electricalQualification.urbroj;
+  }
+  if (userElectricalEBrojInput) {
+    userElectricalEBrojInput.value = electricalQualification.eBroj;
+  }
+  setUserElectricalDocumentDrafts(electricalQualification.documents);
+  renderUserElectricalDocuments();
   renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
   renderAvatar(userAvatarPreview, user);
   userError.textContent = "";
@@ -25286,6 +25611,7 @@ function renderUsers() {
         title: user.role === "admin" ? "Admin" : user.role === "super_admin" ? "Super Admin" : "User",
         subtitle: user.isActive ? "Active" : "Inactive",
       }),
+      createUserElectricalCell(user),
       createStackCell({
         title: user.organizationName || "Bez organizacije",
         subtitle: user.organizations?.length > 1 ? `${user.organizations.length} organizations` : "Single organization",
@@ -27775,6 +28101,22 @@ userForm?.addEventListener("submit", (event) => {
     if (success) {
       resetUserForm();
     }
+  });
+});
+
+userElectricalDocumentsUploadButton?.addEventListener("click", () => {
+  userElectricalDocumentsInput?.click();
+});
+
+userElectricalDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(userElectricalDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueUserElectricalDocuments(files), userError).then(() => {
+    userElectricalDocumentsInput.value = "";
   });
 });
 

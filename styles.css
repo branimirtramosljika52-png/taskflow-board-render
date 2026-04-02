@@ -14089,6 +14089,15 @@ body.is-document-template-editor-open {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.user-electrical-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.user-electrical-qualification-block {
+  display: grid;
+  gap: 12px;
+}
+
 .safety-authorization-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -14167,6 +14176,11 @@ body.is-document-template-editor-open {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.document-template-preview-signature strong {
+  color: #243846;
+  font-size: 1rem;
 }
 
 .service-catalog-template-block {
@@ -15005,6 +15019,7 @@ body.is-document-template-editor-open {
   .safety-authorization-filters,
   .template-development-filters,
   .service-catalog-form-grid,
+  .user-electrical-grid,
   .measurement-equipment-form-grid,
   .safety-authorization-form-grid,
   .document-template-meta-grid,

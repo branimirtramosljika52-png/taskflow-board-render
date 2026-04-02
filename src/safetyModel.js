@@ -95,6 +95,8 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "legal_list", label: "Popis propisa" },
   { value: "equipment_list", label: "Popis opreme" },
   { value: "measurement_table", label: "Excel tablica" },
+  { value: "inspector_signature", label: "Potpis ispitivaca" },
+  { value: "authorization_holder_signature", label: "Potpis nositelja" },
   { value: "page_break", label: "Nova stranica" },
 ];
 
@@ -1023,6 +1025,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       wordLabel,
       type,
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
+      signatureArea: normalizeText(field?.signatureArea).toLowerCase() || "elektro",
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
       columns: type === "measurement_table"
