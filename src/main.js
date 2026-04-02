@@ -24594,10 +24594,6 @@ function renderCompactWorkOrdersList() {
   selectionColumn.className = "work-group-column work-group-column-select";
   selectionColumn.dataset.preventRowOpen = "true";
 
-  const selectionTitle = document.createElement("strong");
-  selectionTitle.className = "work-group-column-title";
-  selectionTitle.textContent = "Odabir";
-
   const selectionControl = document.createElement("label");
   selectionControl.className = "work-order-row-select master";
   selectionControl.dataset.preventRowOpen = "true";
@@ -24618,12 +24614,8 @@ function renderCompactWorkOrdersList() {
     setVisibleWorkOrderDocumentSelection(selectionInput.checked);
   });
 
-  const selectionMeta = document.createElement("span");
-  selectionMeta.className = "work-group-column-subtitle";
-  selectionMeta.textContent = selectedVisibleCount > 0 ? `${selectedVisibleCount}/${visibleItems.length}` : "Prikazano";
-
   selectionControl.append(selectionInput);
-  selectionColumn.append(selectionTitle, selectionControl, selectionMeta);
+  selectionColumn.append(selectionControl);
   columns.append(selectionColumn);
 
   ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvrsitelji"].forEach((label) => {
