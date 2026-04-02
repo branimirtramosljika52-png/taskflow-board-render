@@ -9688,9 +9688,11 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-group-columns {
-  padding: 0 14px 8px;
+  padding: 0 14px 10px;
+  margin-bottom: 2px;
   color: #7f8498;
   font-size: 0.72rem;
+  border-bottom: 1px solid rgba(231, 88, 201, 0.16);
 }
 
 .work-group-column {
@@ -9729,12 +9731,13 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-group-column-title {
-  color: #2d3346;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  color: #b346c8;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   width: 100%;
+  text-shadow: 0 0 0.01px currentColor;
 }
 
 .work-group-column-subtitle {
