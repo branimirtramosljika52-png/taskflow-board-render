@@ -23922,7 +23922,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   });
 
   footer.append(helper, resetButton);
-  card.append(head, rail, grid, footer);
+  card.append(head, grid, footer, rail);
   return card;
 }
 
