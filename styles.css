@@ -7341,22 +7341,23 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-wizard-template-dock {
   position: sticky;
-  bottom: 0;
+  bottom: -6px;
   z-index: 3;
-  padding-top: 10px;
-  display: flex;
-  justify-content: center;
+  padding-top: 4px;
+  padding-bottom: 0;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: auto auto 0;
 }
 
 .work-order-document-template-dock-shell {
-  display: inline-flex;
+  display: flex;
   align-items: stretch;
   gap: 8px;
-  width: fit-content;
   max-width: 100%;
   overflow-x: auto;
-  padding: 10px 12px;
-  border-radius: 20px;
+  padding: 7px 8px;
+  border-radius: 18px;
   background: rgba(20, 19, 28, 0.88);
   border: 1px solid rgba(231, 88, 201, 0.28);
   box-shadow: 0 18px 42px rgba(15, 12, 27, 0.32);
@@ -7391,9 +7392,9 @@ body.is-work-order-document-wizard-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  border-radius: 12px;
-  padding: 0 12px;
+  min-height: 28px;
+  border-radius: 10px;
+  padding: 0 10px;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: linear-gradient(135deg, rgba(240, 79, 151, 0.92), rgba(123, 92, 255, 0.92));
@@ -7402,14 +7403,14 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-template-dock-type {
-  font-size: 0.82rem;
+  font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .work-order-document-template-dock-number {
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   background: linear-gradient(135deg, rgba(110, 154, 255, 0.88), rgba(123, 92, 255, 0.9));
