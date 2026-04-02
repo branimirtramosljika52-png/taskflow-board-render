@@ -9427,6 +9427,7 @@ function syncDocumentTemplateEditorModal() {
   const isOpen = state.documentTemplateEditorOpen;
   documentTemplateEditorPanel?.classList.toggle("is-workspace-open", isOpen);
   templateDevelopmentModule?.classList.toggle("is-editor-open", isOpen);
+  document.body.classList.toggle("is-document-template-editor-open", isOpen);
 
   if (documentTemplateEditorPanel) {
     documentTemplateEditorPanel.hidden = !isOpen;

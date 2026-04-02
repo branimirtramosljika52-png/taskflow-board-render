@@ -13718,15 +13718,25 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-editor-panel.is-workspace-open {
-  width: 100%;
-  min-height: calc(100vh - 190px);
-  padding: 18px;
+  position: fixed;
+  inset: 10px;
+  z-index: 210;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  padding: 16px 18px;
   overflow: hidden;
+  border-radius: 28px;
+  box-shadow: 0 28px 60px rgba(20, 33, 27, 0.18);
 }
 
 .document-template-editor-panel.is-workspace-open .document-template-editor-body {
   padding: 0;
-  overflow: visible;
+  overflow: auto;
+}
+
+body.is-document-template-editor-open {
+  overflow: hidden;
 }
 
 .service-catalog-form-grid {
@@ -13944,6 +13954,7 @@ body.is-vehicle-reservation-open {
   display: grid;
   gap: 14px;
   min-height: 0;
+  height: 100%;
 }
 
 .document-template-meta-grid {
@@ -13954,10 +13965,10 @@ body.is-vehicle-reservation-open {
 
 .document-template-builder-shell {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
-  min-height: calc(100vh - 360px);
+  min-height: calc(100dvh - 230px);
 }
 
 .document-template-builder-sidebar,
@@ -14774,6 +14785,12 @@ body.is-vehicle-reservation-open {
     width: calc(100vw - 16px);
     height: calc(100vh - 16px);
     top: 8px;
+  }
+
+  .document-template-editor-panel.is-workspace-open {
+    inset: 8px;
+    padding: 14px;
+    border-radius: 22px;
   }
 
   .work-order-document-wizard-panel {
