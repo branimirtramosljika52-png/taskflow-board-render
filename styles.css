@@ -9640,7 +9640,7 @@ body.is-work-order-document-wizard-open {
 .work-item-row {
   display: grid;
   grid-template-columns:
-      56px
+      76px
       minmax(132px, 0.62fr)
       minmax(220px, 1.06fr)
       minmax(220px, 1.02fr)
@@ -9648,7 +9648,7 @@ body.is-work-order-document-wizard-open {
       minmax(255px, 1.2fr)
       minmax(220px, 0.95fr);
   column-gap: 14px;
-  min-width: 1430px;
+  min-width: 1450px;
 }
 
 .work-group-columns {
@@ -9668,6 +9668,7 @@ body.is-work-order-document-wizard-open {
   align-items: center;
   justify-content: center;
   align-self: center;
+  text-align: center;
 }
 
 .work-item-select-cell {
@@ -9697,12 +9698,15 @@ body.is-work-order-document-wizard-open {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  width: 100%;
 }
 
 .work-group-column-subtitle {
   color: #9096aa;
   font-size: 0.72rem;
   line-height: 1.35;
+  width: 100%;
+  text-align: center;
 }
 
 .work-group-body {
