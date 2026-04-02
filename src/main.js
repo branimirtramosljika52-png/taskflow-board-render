@@ -23224,6 +23224,7 @@ function renderWorkOrderBatchBar() {
 
   if (workOrderBulkBar) {
     workOrderBulkBar.hidden = !isVisible;
+    workOrderBulkBar.style.display = isVisible ? "block" : "none";
   }
 
   if (!isVisible) {
@@ -23395,7 +23396,11 @@ function toggleWorkOrderDocumentSelection(workOrderId, forceValue = null) {
     state.workOrderDocumentWizard.open = false;
   }
 
+  updateWorkOrderDocumentSelectionChrome({
+    visibleItems: getFilteredWorkOrders().slice(0, state.workOrderRenderLimit),
+  });
   renderWorkOrderWorkspace();
+  renderWorkOrderBatchBar();
   if (state.workOrderDocumentWizard.open) {
     renderWorkOrderDocumentWizard();
   }
@@ -23425,7 +23430,9 @@ function setVisibleWorkOrderDocumentSelection(selectAll = false) {
     state.workOrderDocumentWizard.open = false;
   }
 
+  updateWorkOrderDocumentSelectionChrome({ visibleItems });
   renderWorkOrderWorkspace();
+  renderWorkOrderBatchBar();
   if (state.workOrderDocumentWizard.open) {
     renderWorkOrderDocumentWizard();
   }
