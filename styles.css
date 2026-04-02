@@ -6341,6 +6341,18 @@ body.is-work-order-editor-open {
   gap: 12px;
 }
 
+.work-order-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.work-order-list-density-toggle {
+  margin-left: auto;
+}
+
 .workspace-list-actions .helper-copy {
   max-width: none;
   text-align: left;
@@ -9639,6 +9651,7 @@ body.is-work-order-document-wizard-open {
 .work-group-columns,
 .work-item-row {
   display: grid;
+  column-gap: 14px;
   grid-template-columns:
       48px
       minmax(132px, 0.62fr)
@@ -9647,7 +9660,30 @@ body.is-work-order-document-wizard-open {
       minmax(195px, 0.9fr)
       minmax(255px, 1.2fr)
       minmax(220px, 0.95fr);
-  column-gap: 14px;
+  min-width: 1422px;
+}
+
+.work-group-columns.is-collapsed,
+.work-item-row.is-collapsed {
+  grid-template-columns:
+      48px
+      minmax(156px, 0.82fr)
+      minmax(240px, 1.1fr)
+      minmax(250px, 1.08fr)
+      minmax(220px, 0.92fr);
+  min-width: 1040px;
+}
+
+.work-group-columns.is-expanded,
+.work-item-row.is-expanded {
+  grid-template-columns:
+      48px
+      minmax(132px, 0.62fr)
+      minmax(220px, 1.06fr)
+      minmax(220px, 1.02fr)
+      minmax(195px, 0.9fr)
+      minmax(255px, 1.2fr)
+      minmax(220px, 0.95fr);
   min-width: 1422px;
 }
 

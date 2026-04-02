@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260402q" />
+  <link rel="stylesheet" href="/styles.css?v=20260402r" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1074,10 +1074,17 @@
               </div>
             </div>
 
-            <div class="workspace-view-chips" aria-label="Pogledi radnog prostora">
-              <button type="button" class="workspace-view-chip is-active" data-work-order-mode="list">List</button>
-              <button type="button" class="workspace-view-chip" data-work-order-mode="calendar">Calendar</button>
-              <button type="button" class="workspace-view-chip" data-work-order-mode="maps">Maps</button>
+            <div class="work-order-list-toolbar">
+              <div class="workspace-view-chips" aria-label="Pogledi radnog prostora">
+                <button type="button" class="workspace-view-chip is-active" data-work-order-mode="list">List</button>
+                <button type="button" class="workspace-view-chip" data-work-order-mode="calendar">Calendar</button>
+                <button type="button" class="workspace-view-chip" data-work-order-mode="maps">Maps</button>
+              </div>
+
+              <div id="work-order-list-density-toggle" class="workspace-view-chips work-order-list-density-toggle" aria-label="Gustoca prikaza liste">
+                <button type="button" class="workspace-view-chip is-active" data-work-order-list-density="collapsed">Sažeto</button>
+                <button type="button" class="workspace-view-chip" data-work-order-list-density="expanded">Detaljno</button>
+              </div>
             </div>
 
             <div class="work-order-filter-shell">
@@ -3601,6 +3608,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260402q"></script>
+    <script type="module" src="/src/main.js?v=20260402r"></script>
   </body>
 </html>
