@@ -7339,6 +7339,84 @@ body.is-work-order-document-wizard-open {
   gap: 12px;
 }
 
+.work-order-document-wizard-template-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding-top: 10px;
+}
+
+.work-order-document-template-dock-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 14px;
+  border-radius: 24px;
+  background: rgba(20, 19, 28, 0.88);
+  border: 1px solid rgba(231, 88, 201, 0.28);
+  box-shadow: 0 18px 42px rgba(15, 12, 27, 0.32);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.work-order-document-template-dock-shell::-webkit-scrollbar {
+  height: 8px;
+}
+
+.work-order-document-template-dock-shell::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.work-order-document-template-dock-item {
+  flex: 0 0 auto;
+  min-width: 132px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.work-order-document-template-dock-type,
+.work-order-document-template-dock-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: 14px;
+  padding: 0 16px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, rgba(240, 79, 151, 0.92), rgba(123, 92, 255, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 24px rgba(113, 67, 196, 0.24);
+  color: #ffffff;
+}
+
+.work-order-document-template-dock-type {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.work-order-document-template-dock-number {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, rgba(110, 154, 255, 0.88), rgba(123, 92, 255, 0.9));
+}
+
+.work-order-document-template-dock-item:hover .work-order-document-template-dock-type,
+.work-order-document-template-dock-item:hover .work-order-document-template-dock-number,
+.work-order-document-template-dock-item:focus-visible .work-order-document-template-dock-type,
+.work-order-document-template-dock-item:focus-visible .work-order-document-template-dock-number {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 14px 28px rgba(113, 67, 196, 0.34);
+}
+
 .work-order-document-wizard-work-orders[data-layout="single"] {
   grid-template-columns: minmax(0, 1fr);
 }

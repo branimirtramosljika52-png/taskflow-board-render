@@ -1432,6 +1432,7 @@ const workOrderDocumentWizardSelectionSummary = document.querySelector("#work-or
 const workOrderDocumentWizardWorkOrders = document.querySelector("#work-order-document-wizard-work-orders");
 const workOrderDocumentWizardTemplateSummary = document.querySelector("#work-order-document-wizard-template-summary");
 const workOrderDocumentWizardTemplateList = document.querySelector("#work-order-document-wizard-template-list");
+const workOrderDocumentWizardTemplateDock = document.querySelector("#work-order-document-wizard-template-dock");
 const workOrderDocumentWizardPrevButton = document.querySelector("#work-order-document-wizard-prev");
 const workOrderDocumentWizardNextButton = document.querySelector("#work-order-document-wizard-next");
 const workOrderDocumentWizardError = document.querySelector("#work-order-document-wizard-error");
@@ -24033,6 +24034,53 @@ function openDocumentTemplateFromWizard(templateId = "", workOrders = getAllSele
   hydrateDocumentTemplateForm(template, { preserveRuntimeContext: true });
 }
 
+function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
+  if (!workOrderDocumentWizardTemplateDock) {
+    return;
+  }
+
+  const pairs = recommendations.flatMap((entry) =>
+    entry.workOrders.map((workOrder) => ({
+      template: entry.template,
+      workOrder,
+    })),
+  );
+
+  workOrderDocumentWizardTemplateDock.hidden = pairs.length === 0;
+
+  if (pairs.length === 0) {
+    workOrderDocumentWizardTemplateDock.replaceChildren();
+    return;
+  }
+
+  const shell = document.createElement("div");
+  shell.className = "work-order-document-template-dock-shell";
+
+  pairs.forEach(({ template, workOrder }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "work-order-document-template-dock-item";
+    button.title = `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`;
+    button.setAttribute("aria-label", `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`);
+    button.addEventListener("click", () => {
+      openDocumentTemplateFromWizard(template.id, [workOrder]);
+    });
+
+    const templateLabel = document.createElement("span");
+    templateLabel.className = "work-order-document-template-dock-type";
+    templateLabel.textContent = String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim();
+
+    const workOrderLabel = document.createElement("strong");
+    workOrderLabel.className = "work-order-document-template-dock-number";
+    workOrderLabel.textContent = workOrder.workOrderNumber || "Bez broja";
+
+    button.append(templateLabel, workOrderLabel);
+    shell.append(button);
+  });
+
+  workOrderDocumentWizardTemplateDock.replaceChildren(shell);
+}
+
 function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   if (!workOrderDocumentWizardTemplateSummary || !workOrderDocumentWizardTemplateList) {
     return;
@@ -24065,6 +24113,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     empty.className = "helper-copy module-copy";
     empty.textContent = "Za odabrane RN-ove jos nema povezanih templatea. Povezi ih na usluzi pa ce se ovdje pojaviti po tipu zapisnika (SPR, TZIN...).";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
+    renderWorkOrderDocumentWizardTemplateDock([]);
     return;
   }
 
@@ -24139,6 +24188,8 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     card.append(head, services, workOrderList, footer);
     return card;
   }));
+
+  renderWorkOrderDocumentWizardTemplateDock(recommendations);
 }
 
 function renderWorkOrderDocumentWizard() {
