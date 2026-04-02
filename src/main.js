@@ -23488,8 +23488,6 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
     state.workOrderDocumentWizard.common.issuedDate
       ? `Izdavanje ${formatCompactDate(state.workOrderDocumentWizard.common.issuedDate)}`
       : "",
-    String(state.workOrderDocumentWizard.common.issuedPlace || "").trim(),
-    String(state.workOrderDocumentWizard.common.note || "").trim() ? "Napomena unesena" : "",
   ].filter(Boolean);
 }
 
@@ -23929,12 +23927,12 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       label: "Mjesto izdavanja",
       type: "text",
       fieldName: "issuedPlace",
-      placeholder: state.workOrderDocumentWizard.common.issuedPlace || "Koristi zajednicko mjesto",
+      placeholder: "npr. Zagreb",
     }),
     createOverrideField({
       label: "Napomena za ovaj RN",
       fieldName: "note",
-      placeholder: state.workOrderDocumentWizard.common.note || "Koristi zajednicku napomenu",
+      placeholder: "Opcionalna napomena za ovaj RN",
       rows: 2,
     }),
   );
@@ -23943,7 +23941,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   footer.className = "work-order-document-selection-footer";
 
   const helper = document.createElement("span");
-  helper.textContent = "Prazno polje koristi zajednicku vrijednost iz vrha.";
+  helper.textContent = "Datume gore postavis svima, a ovdje prepravis samo ako ovaj RN odskace.";
 
   const resetButton = document.createElement("button");
   resetButton.type = "button";
