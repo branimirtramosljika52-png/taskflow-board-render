@@ -23492,6 +23492,7 @@ function syncWorkOrderDocumentWizardModal() {
     workOrderDocumentWizardPanel.setAttribute("aria-hidden", String(!isOpen));
     workOrderDocumentWizardPanel.classList.toggle("is-open", isOpen);
   }
+  document.body.classList.toggle("is-work-order-document-wizard-open", isOpen);
 }
 
 function setWorkOrderDocumentWizardStep(step = "details", { render = true } = {}) {

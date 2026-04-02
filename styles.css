@@ -7090,26 +7090,32 @@ body.is-work-order-editor-open {
 .work-order-document-wizard-panel {
   position: fixed;
   z-index: 59;
-  top: 16px;
-  left: 50%;
-  width: min(1360px, calc(100vw - 24px));
-  max-height: calc(100dvh - 32px);
+  inset: 10px;
+  left: auto;
+  width: auto;
+  max-height: none;
+  height: auto;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 14px;
-  padding: 18px;
+  padding: 18px 20px;
   border: 1px solid rgba(215, 221, 233, 0.94);
-  border-radius: 28px;
+  border-radius: 30px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.98));
   box-shadow: 0 24px 64px rgba(31, 42, 71, 0.22);
-  transform: translateX(-50%) translateY(10px);
+  transform: translateY(10px);
   opacity: 0;
   transition: opacity 160ms ease, transform 160ms ease;
+  min-width: 0;
 }
 
 .work-order-document-wizard-panel.is-open {
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
   opacity: 1;
+}
+
+body.is-work-order-document-wizard-open {
+  overflow: hidden;
 }
 
 .work-order-document-wizard-head,
@@ -7185,7 +7191,7 @@ body.is-work-order-editor-open {
   display: grid;
   align-content: start;
   gap: 12px;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .work-order-document-wizard-block,
@@ -7346,8 +7352,8 @@ body.is-work-order-editor-open {
 }
 
 .work-order-document-carousel-track .work-order-document-selection-card {
-  flex: 0 0 calc((100% - 24px) / 3);
-  min-width: 320px;
+  flex: 0 0 calc((100% - 32px) / 3);
+  min-width: 380px;
   scroll-snap-align: start;
 }
 
@@ -14794,9 +14800,9 @@ body.is-document-template-editor-open {
   }
 
   .work-order-document-wizard-panel {
-    width: calc(100vw - 16px);
-    top: 8px;
-    max-height: calc(100dvh - 16px);
+    inset: 8px;
+    width: auto;
+    max-height: none;
     padding: 16px;
     border-radius: 22px;
   }
