@@ -24733,7 +24733,7 @@ function renderCompactWorkOrdersList() {
       rowCard.setAttribute("aria-label", `Otvori radni nalog ${item.workOrderNumber || item.companyName || ""}`.trim());
 
       const row = document.createElement("article");
-      row.className = "work-item-row";
+      row.className = `work-item-row is-${isExpanded ? "expanded" : "collapsed"}`;
 
       const createBasicField = (label, value, options = {}) => {
         const {
