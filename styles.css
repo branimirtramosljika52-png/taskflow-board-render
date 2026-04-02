@@ -9688,7 +9688,9 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-group-columns {
-  padding: 0 14px 10px;
+  min-height: 46px;
+  align-items: center;
+  padding: 6px 14px 10px;
   margin-bottom: 2px;
   color: #7f8498;
   font-size: 0.72rem;
@@ -9698,6 +9700,7 @@ body.is-work-order-document-wizard-open {
 .work-group-column {
   min-width: 0;
   display: grid;
+  align-content: center;
   gap: 4px;
 }
 
