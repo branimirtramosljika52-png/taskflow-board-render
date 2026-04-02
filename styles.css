@@ -11894,22 +11894,33 @@ body.is-work-order-document-wizard-open {
 }
 
 .auth-page.is-auth-ready .auth-minimal-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: none;
   animation: auth-card-in 760ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-logo {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 520ms 90ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-login-copy {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 520ms 150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-form-tenant .field:nth-of-type(1) {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 480ms 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-form-tenant .field:nth-of-type(2) {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 480ms 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -11934,11 +11945,15 @@ body.is-work-order-document-wizard-open {
 }
 
 .auth-page.is-auth-ready .auth-submit-button {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 520ms 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-switch-row,
 .auth-page.is-auth-ready .auth-request-actions {
+  opacity: 1;
+  transform: translateY(0);
   animation: auth-fade-up 520ms 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 

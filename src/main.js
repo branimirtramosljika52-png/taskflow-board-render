@@ -2067,8 +2067,12 @@ function setLoginBusy(isBusy) {
     loginSubmitButton.textContent = isBusy ? "Signing in..." : "Sign in";
   }
 
-  loginEmailInput.disabled = isBusy;
-  loginPasswordInput.disabled = isBusy;
+  if (loginEmailInput) {
+    loginEmailInput.disabled = isBusy;
+  }
+  if (loginPasswordInput) {
+    loginPasswordInput.disabled = isBusy;
+  }
 }
 
 function applyLoginRedirectState() {
@@ -27990,13 +27994,15 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
     });
 });
 
-loginForm.addEventListener("submit", () => {
-  loginError.textContent = "";
+loginForm?.addEventListener("submit", () => {
+  if (loginError) {
+    loginError.textContent = "";
+  }
   loginForm.classList.add("is-submitting");
   document.body.classList.add("is-auth-leaving");
 });
 
-logoutButton.addEventListener("click", () => {
+logoutButton?.addEventListener("click", () => {
   void apiRequest("/auth/logout", {
     method: "POST",
   }).finally(() => {
