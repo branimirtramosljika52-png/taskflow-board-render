@@ -470,6 +470,7 @@ const state = {
   activeMeasurementEquipmentId: "",
   activeSafetyAuthorizationId: "",
   activeDocumentTemplateId: "",
+  userEditorOpen: false,
   companyEditorOpen: false,
   locationEditorOpen: false,
   vehicleEditorOpen: false,
@@ -1510,6 +1511,14 @@ if (workOrderDocumentWizardPanel?.parentElement !== document.body) {
   document.body.append(workOrderDocumentWizardPanel);
 }
 
+if (userEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(userEditorBackdrop);
+}
+
+if (userEditorPanel?.parentElement !== document.body) {
+  document.body.append(userEditorPanel);
+}
+
 if (workOrderEditorBackdrop) {
   workOrderEditorBackdrop.hidden = true;
 }
@@ -1535,6 +1544,15 @@ if (vehicleEditorBackdrop) {
 if (vehicleEditorPanel) {
   vehicleEditorPanel.hidden = true;
   vehicleEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (userEditorBackdrop) {
+  userEditorBackdrop.hidden = true;
+}
+
+if (userEditorPanel) {
+  userEditorPanel.hidden = true;
+  userEditorPanel.setAttribute("aria-hidden", "true");
 }
 
 if (vehicleReservationBackdrop) {
@@ -1766,6 +1784,11 @@ const organizationResetButton = document.querySelector("#organization-reset");
 
 const userForm = document.querySelector("#user-form");
 const userError = document.querySelector("#user-error");
+const userOpenFormButton = document.querySelector("#user-open-form");
+const userEditorBackdrop = document.querySelector("#user-editor-backdrop");
+const userEditorPanel = document.querySelector("#user-editor-panel");
+const userEditorCloseButton = document.querySelector("#user-editor-close");
+const userEditorBody = document.querySelector("#user-editor-body");
 const userIdInput = document.querySelector("#user-id");
 const userAvatarDataUrlInput = document.querySelector("#user-avatar-data-url");
 const userFirstNameInput = document.querySelector("#user-first-name");
@@ -8428,7 +8451,7 @@ function createUserElectricalCell(user) {
   }
 
   return createStackCell({
-    title: qualification.canInspect ? "Ispitivanje panik rasvjete" : "Nije dodijeljeno",
+    title: qualification.canInspect ? "Da" : "Ne",
     subtitle: [
       qualification.classCode ? `Klasa ${qualification.classCode}` : "",
       qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
@@ -9270,6 +9293,63 @@ function closeOfferEditor({ reset = false } = {}) {
 function dismissOfferEditor() {
   closeOfferEditor({ reset: true });
   renderOffersModule();
+}
+
+function scrollUserEditorToTop() {
+  userEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function syncUserEditorModal() {
+  if (state.userEditorOpen && (state.activeView !== "management" || !state.user)) {
+    state.userEditorOpen = false;
+  }
+
+  const isOpen = state.userEditorOpen;
+
+  userEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-user-editor-open", isOpen);
+
+  if (userEditorPanel) {
+    userEditorPanel.hidden = !isOpen;
+    userEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (userEditorBackdrop) {
+    userEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (userEditorCloseButton) {
+    userEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollUserEditorToTop();
+      userEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollUserEditorToTop();
+      }, 0);
+    });
+  }
+}
+
+function openUserEditor() {
+  state.userEditorOpen = true;
+  syncUserEditorModal();
+}
+
+function closeUserEditor({ reset = false } = {}) {
+  state.userEditorOpen = false;
+  syncUserEditorModal();
+
+  if (reset) {
+    resetUserForm();
+  }
+}
+
+function dismissUserEditor() {
+  closeUserEditor({ reset: true });
+  renderManagement();
 }
 
 function scrollCompanyEditorToTop() {
@@ -14515,13 +14595,13 @@ function buildUserPayload() {
 
 function syncUserEditorChrome(editing = false, user = null) {
   if (userPanelKicker) {
-    userPanelKicker.textContent = editing ? "People" : (getIsSuperAdmin() ? "Admin assignment" : "Organization team");
+    userPanelKicker.textContent = "People";
   }
 
   if (userPanelTitle) {
     userPanelTitle.textContent = editing
       ? `Uredi korisnika · ${user?.fullName || user?.email || "User"}`
-      : (getIsSuperAdmin() ? "Admins & users" : "Users");
+      : "Novi korisnik";
   }
 
   if (userSubmitButton) {
@@ -14529,7 +14609,7 @@ function syncUserEditorChrome(editing = false, user = null) {
   }
 
   if (userResetButton) {
-    userResetButton.textContent = editing ? "Odustani" : "Reset";
+    userResetButton.textContent = editing ? "Odustani" : "Ocisti";
   }
 
   userForm?.classList.toggle("is-editing", editing);
@@ -14637,6 +14717,7 @@ function resetUserForm() {
   setUserElectricalDocumentDrafts([]);
   renderUserElectricalDocuments();
   syncUserEditorChrome(false);
+  renderAvatar(userAvatarPreview, {});
 }
 
 function resetLoginContentForm() {
@@ -14806,8 +14887,8 @@ function hydrateUserForm(user) {
   renderAvatar(userAvatarPreview, user);
   userError.textContent = "";
   syncUserEditorChrome(true, user);
+  openUserEditor();
   requestAnimationFrame(() => {
-    userForm?.scrollIntoView({ behavior: "smooth", block: "start" });
     userFirstNameInput?.focus({ preventScroll: true });
   });
 }
@@ -19288,11 +19369,16 @@ function renderActiveView() {
     state.locationEditorOpen = false;
   }
 
+  if (state.activeView !== "management") {
+    state.userEditorOpen = false;
+  }
+
   renderDashboardOverview();
   renderWorkOrderWorkspace();
   renderSidebarState();
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
+  syncUserEditorModal();
   syncCompanyEditorModal();
   syncLocationEditorModal();
   syncOfferEditorModal();
@@ -25828,12 +25914,6 @@ function renderManagement() {
     if (managementViewDescription) {
       managementViewDescription.textContent = "Ti jedini kreiras organizacije, dodjeljujes admina i po potrebi pregledavas signup zahtjeve prije odobravanja pristupa.";
     }
-    if (userPanelKicker) {
-      userPanelKicker.textContent = "Admin assignment";
-    }
-    if (userPanelTitle) {
-      userPanelTitle.textContent = "Admins & users";
-    }
     if (userManagementNote) {
       userManagementNote.textContent = "Odaberi organizaciju i rolu. Admin ovdje dobiva pristup svojoj organizaciji, a user ostaje operativni korisnik.";
     }
@@ -25848,12 +25928,6 @@ function renderManagement() {
       managementViewDescription.textContent = currentOrganization
         ? `Upravljaj korisnicima za organizaciju ${currentOrganization.name}. Organizacije i admine postavlja samo super admin.`
         : "Upravljaj korisnicima svoje organizacije. Organizacije i admine postavlja samo super admin.";
-    }
-    if (userPanelKicker) {
-      userPanelKicker.textContent = "Organization team";
-    }
-    if (userPanelTitle) {
-      userPanelTitle.textContent = "Users";
     }
     if (userManagementNote) {
       userManagementNote.textContent = currentOrganization
@@ -28159,6 +28233,22 @@ organizationResetButton?.addEventListener("click", () => {
   resetOrganizationForm();
 });
 
+userOpenFormButton?.addEventListener("click", () => {
+  resetUserForm();
+  openUserEditor();
+  requestAnimationFrame(() => {
+    userFirstNameInput?.focus({ preventScroll: true });
+  });
+});
+
+userEditorCloseButton?.addEventListener("click", () => {
+  dismissUserEditor();
+});
+
+userEditorBackdrop?.addEventListener("click", () => {
+  dismissUserEditor();
+});
+
 userForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const isEditing = Boolean(userIdInput.value);
@@ -28170,7 +28260,7 @@ userForm?.addEventListener("submit", (event) => {
     body: buildUserPayload(),
   }), userError).then((success) => {
     if (success) {
-      resetUserForm();
+      closeUserEditor({ reset: true });
     }
   });
 });
@@ -28191,7 +28281,15 @@ userElectricalDocumentsInput?.addEventListener("change", () => {
   });
 });
 
-userResetButton?.addEventListener("click", resetUserForm);
+userResetButton?.addEventListener("click", () => {
+  if (userIdInput.value) {
+    dismissUserEditor();
+    return;
+  }
+
+  resetUserForm();
+  openUserEditor();
+});
 
 loginContentForm?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -28335,6 +28433,11 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && state.locationEditorOpen) {
     dismissLocationEditor();
+    return;
+  }
+
+  if (event.key === "Escape" && state.userEditorOpen) {
+    dismissUserEditor();
     return;
   }
 

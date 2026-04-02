@@ -2311,6 +2311,14 @@ body.is-location-editor-open {
   background: linear-gradient(180deg, #fbfcfe, #f5f7fb);
 }
 
+.masterdata-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 128;
+  background: rgba(17, 21, 31, 0.28);
+  backdrop-filter: blur(6px);
+}
+
 .masterdata-editor-panel.is-modal-open {
   position: fixed;
   top: 14px;
@@ -2333,7 +2341,18 @@ body.is-location-editor-open {
   z-index: 129;
 }
 
+.user-editor-panel.is-modal-open {
+  width: min(1120px, calc(100vw - 28px));
+  top: 12px;
+  height: calc(100vh - 24px);
+  z-index: 129;
+}
+
 .company-editor-backdrop {
+  z-index: 128;
+}
+
+.user-editor-backdrop {
   z-index: 128;
 }
 
@@ -14127,16 +14146,29 @@ body.is-document-template-editor-open {
 }
 
 .user-electrical-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .user-electrical-qualification-block {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
-.user-electrical-qualification-block .section-kicker {
-  color: #cc47e6;
+.user-electrical-qualification-block .section-heading {
+  align-items: center;
+}
+
+.user-electrical-qualification-block h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.user-editor-panel .module-attachment-list {
+  margin-top: 4px;
+}
+
+.user-editor-panel .form-actions {
+  justify-content: flex-end;
 }
 
 .safety-authorization-form-grid {

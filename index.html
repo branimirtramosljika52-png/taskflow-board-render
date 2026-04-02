@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260402ah" />
+  <link rel="stylesheet" href="/styles.css?v=20260402ai" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2051,7 +2051,7 @@
         </section>
 
         <section id="management-view" class="workspace-view" hidden>
-          <section class="panel management-intro-panel">
+          <section id="management-intro-panel" class="panel management-intro-panel" hidden>
             <div class="section-heading">
               <div>
                 <p id="management-view-kicker" class="section-kicker">Tenant control</p>
@@ -2133,114 +2133,13 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p id="user-panel-kicker" class="section-kicker">Users</p>
-                <h2 id="user-panel-title">Access</h2>
+                <p class="section-kicker">People</p>
+                <h2>Korisnici</h2>
+              </div>
+              <div class="masterdata-panel-actions">
+                <button id="user-open-form" type="button" class="primary-button">+ Novi korisnik</button>
               </div>
             </div>
-
-            <p id="user-management-note" class="helper-copy management-panel-copy">
-              Super admin bira organizaciju i dodjeljuje admina. Admin ovdje upravlja svojim korisnicima.
-            </p>
-
-            <form id="user-form" class="entity-form">
-              <input id="user-id" type="hidden" />
-              <input id="user-avatar-data-url" type="hidden" />
-
-              <div class="form-grid">
-                <label class="field">
-                  <span>First name</span>
-                  <input id="user-first-name" type="text" maxlength="120" required />
-                </label>
-                <label class="field">
-                  <span>Last name</span>
-                  <input id="user-last-name" type="text" maxlength="160" />
-                </label>
-                <label class="field">
-                  <span>Email</span>
-                  <input id="user-email" type="email" maxlength="160" required />
-                </label>
-                <label class="field">
-                  <span>Password</span>
-                  <input id="user-password" type="password" maxlength="160" placeholder="Leave blank to keep current" />
-                </label>
-                <label id="user-organization-field" class="field">
-                  <span>Primary organization</span>
-                  <select id="user-organization-id"></select>
-                </label>
-                <label id="user-role-field" class="field">
-                  <span>Role</span>
-                  <select id="user-role">
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-                <label id="user-organization-memberships-field" class="field field-span-full">
-                  <span>Organization access</span>
-                  <div id="user-organization-memberships" class="membership-grid"></div>
-                </label>
-                <label class="field">
-                  <span>Legacy username</span>
-                  <input id="user-legacy-username" type="text" maxlength="100" />
-                </label>
-                <label class="field">
-                  <span>Status</span>
-                  <select id="user-is-active">
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
-                </label>
-              </div>
-
-                <section class="service-catalog-template-block user-electrical-qualification-block">
-                  <div class="section-heading offers-section-heading">
-                    <div>
-                      <p class="section-kicker">Panik rasvjeta</p>
-                      <h3>Ispitivanje panik rasvjete i ovlastenja</h3>
-                    </div>
-                    <div class="document-template-reference-actions">
-                      <input id="user-electrical-documents-input" type="file" multiple hidden />
-                      <button id="user-electrical-documents-upload" type="button" class="ghost-button">Dodaj dokumente</button>
-                    </div>
-                  </div>
-                  <p class="helper-copy module-copy">Odredi moze li osoba raditi ispitivanje panik rasvjete ili biti nositelj ovlastenja, upisi klasu, UrBROJ i E broj, pa dodaj popratne dokumente.</p>
-                  <div class="form-grid user-electrical-grid">
-                    <label class="field">
-                      <span>Ispitivanje panik rasvjete</span>
-                      <select id="user-electrical-can-inspect">
-                        <option value="false">Ne</option>
-                        <option value="true">Da</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Nositelj ovlastenja</span>
-                    <select id="user-electrical-can-authorize">
-                      <option value="false">Ne</option>
-                      <option value="true">Da</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Klasa</span>
-                    <input id="user-electrical-class" type="text" maxlength="160" />
-                  </label>
-                  <label class="field">
-                    <span>UrBROJ</span>
-                    <input id="user-electrical-urbroj" type="text" maxlength="160" />
-                  </label>
-                  <label class="field">
-                    <span>E broj</span>
-                    <input id="user-electrical-e-broj" type="text" maxlength="160" />
-                  </label>
-                </div>
-                <div id="user-electrical-documents-list" class="module-attachment-list"></div>
-              </section>
-
-              <div class="form-actions">
-                <button id="user-submit" type="submit" class="primary-button">Spremi korisnika</button>
-                <button id="user-reset" type="button" class="ghost-button">Reset</button>
-              </div>
-            </form>
-
-            <p id="user-error" class="form-error" aria-live="polite"></p>
 
             <div class="table-wrap">
               <table class="data-table">
@@ -2258,6 +2157,119 @@
                 <tbody id="users-body"></tbody>
               </table>
             </div>
+
+            <div id="user-editor-backdrop" class="masterdata-editor-backdrop user-editor-backdrop" hidden></div>
+            <section id="user-editor-panel" class="panel masterdata-editor-panel user-editor-panel" hidden>
+              <div class="masterdata-editor-fixed-head">
+                <div>
+                  <p id="user-panel-kicker" class="section-kicker">People</p>
+                  <h2 id="user-panel-title">Novi korisnik</h2>
+                </div>
+                <div class="masterdata-editor-head-actions">
+                  <button id="user-editor-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+              </div>
+
+              <div id="user-editor-body" class="masterdata-editor-body" tabindex="-1">
+                <form id="user-form" class="entity-form">
+                  <input id="user-id" type="hidden" />
+                  <input id="user-avatar-data-url" type="hidden" />
+
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>First name</span>
+                      <input id="user-first-name" type="text" maxlength="120" required />
+                    </label>
+                    <label class="field">
+                      <span>Last name</span>
+                      <input id="user-last-name" type="text" maxlength="160" />
+                    </label>
+                    <label class="field">
+                      <span>Email</span>
+                      <input id="user-email" type="email" maxlength="160" required />
+                    </label>
+                    <label class="field">
+                      <span>Password</span>
+                      <input id="user-password" type="password" maxlength="160" placeholder="Leave blank to keep current" />
+                    </label>
+                    <label id="user-organization-field" class="field">
+                      <span>Primary organization</span>
+                      <select id="user-organization-id"></select>
+                    </label>
+                    <label id="user-role-field" class="field">
+                      <span>Role</span>
+                      <select id="user-role">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label id="user-organization-memberships-field" class="field field-span-full">
+                      <span>Organization access</span>
+                      <div id="user-organization-memberships" class="membership-grid"></div>
+                    </label>
+                    <label class="field">
+                      <span>Legacy username</span>
+                      <input id="user-legacy-username" type="text" maxlength="100" />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="user-is-active">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <section class="service-catalog-template-block user-electrical-qualification-block">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <h3>Panik rasvjeta</h3>
+                      </div>
+                      <div class="document-template-reference-actions">
+                        <input id="user-electrical-documents-input" type="file" multiple hidden />
+                        <button id="user-electrical-documents-upload" type="button" class="ghost-button">Dokumenti</button>
+                      </div>
+                    </div>
+                    <div class="form-grid user-electrical-grid">
+                      <label class="field">
+                        <span>Ispitivac</span>
+                        <select id="user-electrical-can-inspect">
+                          <option value="false">Ne</option>
+                          <option value="true">Da</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Nositelj</span>
+                        <select id="user-electrical-can-authorize">
+                          <option value="false">Ne</option>
+                          <option value="true">Da</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Klasa</span>
+                        <input id="user-electrical-class" type="text" maxlength="160" />
+                      </label>
+                      <label class="field">
+                        <span>UrBROJ</span>
+                        <input id="user-electrical-urbroj" type="text" maxlength="160" />
+                      </label>
+                      <label class="field">
+                        <span>E broj</span>
+                        <input id="user-electrical-e-broj" type="text" maxlength="160" />
+                      </label>
+                    </div>
+                    <div id="user-electrical-documents-list" class="module-attachment-list"></div>
+                  </section>
+
+                  <p id="user-error" class="form-error" aria-live="polite"></p>
+
+                  <div class="form-actions">
+                    <button id="user-submit" type="submit" class="primary-button">Spremi korisnika</button>
+                    <button id="user-reset" type="button" class="ghost-button">Reset</button>
+                  </div>
+                </form>
+              </div>
+            </section>
           </section>
 
           <section id="signup-requests-panel" class="panel" hidden>
@@ -3653,6 +3665,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260402ah"></script>
+    <script type="module" src="/src/main.js?v=20260402ai"></script>
   </body>
 </html>
