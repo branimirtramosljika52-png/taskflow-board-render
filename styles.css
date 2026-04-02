@@ -9663,12 +9663,19 @@ body.is-work-order-document-wizard-open {
   gap: 4px;
 }
 
-.work-group-column-select,
-.work-item-select-cell {
+.work-group-column-select {
   display: flex;
   align-items: center;
   justify-content: center;
   align-self: center;
+}
+
+.work-item-select-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 100%;
 }
 
 .work-group-column-select .work-group-column-title,
@@ -9793,6 +9800,7 @@ body.is-work-order-document-wizard-open {
 
 .work-item-select-cell {
   padding-top: 0;
+  padding-bottom: 0;
 }
 
 .work-item-card.is-selected .work-item-row {
