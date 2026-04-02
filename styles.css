@@ -7341,19 +7341,20 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-wizard-template-dock {
   position: sticky;
-  bottom: -6px;
+  bottom: -10px;
   z-index: 3;
   padding-top: 4px;
   padding-bottom: 0;
-  width: fit-content;
-  max-width: calc(100% - 24px);
-  margin: auto auto 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
 }
 
 .work-order-document-template-dock-shell {
-  display: flex;
+  display: grid;
   align-items: stretch;
   gap: 8px;
+  width: 100%;
   max-width: 100%;
   overflow-x: auto;
   padding: 7px 8px;
@@ -7375,10 +7376,9 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-template-dock-item {
-  flex: 0 0 auto;
-  width: var(--dock-item-width, 108px);
-  min-width: var(--dock-item-width, 108px);
-  max-width: var(--dock-item-width, 108px);
+  min-width: 0;
+  width: auto;
+  max-width: none;
   padding: 0;
   display: grid;
   gap: 4px;
@@ -7392,6 +7392,7 @@ body.is-work-order-document-wizard-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   min-height: 28px;
   border-radius: 10px;
   padding: 0 10px;

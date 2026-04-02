@@ -24056,12 +24056,10 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
   const shell = document.createElement("div");
   shell.className = "work-order-document-template-dock-shell";
   const dockCount = pairs.length;
-  const itemWidth = dockCount <= 2 ? 88 : dockCount === 3 ? 94 : dockCount <= 5 ? 102 : 110;
-  const desiredShellWidth = Math.min(820, (dockCount * itemWidth) + (Math.max(0, dockCount - 1) * 8) + 18);
-  workOrderDocumentWizardTemplateDock.style.width = `${desiredShellWidth}px`;
-  workOrderDocumentWizardTemplateDock.style.maxWidth = "calc(100% - 24px)";
-  shell.style.width = "100%";
-  shell.style.setProperty("--dock-item-width", `${itemWidth}px`);
+  const minItemWidth = dockCount <= 3 ? 0 : dockCount <= 5 ? 132 : 148;
+  workOrderDocumentWizardTemplateDock.style.width = "100%";
+  workOrderDocumentWizardTemplateDock.style.maxWidth = "100%";
+  shell.style.gridTemplateColumns = `repeat(${dockCount}, minmax(${minItemWidth}px, 1fr))`;
 
   pairs.forEach(({ template, workOrder }) => {
     const button = document.createElement("button");
