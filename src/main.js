@@ -23476,7 +23476,7 @@ function renderWorkOrderDocumentWizardCommonSection() {
       : "Vrijedi za sve odabrane RN-ove.";
   }
   if (workOrderDocumentWizardCommonToggleButton) {
-    workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži" : "Sakrij";
+    workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži zajednicke podatke" : "Sakrij zajednicke podatke";
     workOrderDocumentWizardCommonToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
   }
 }
@@ -23842,6 +23842,14 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   }
   head.append(chips);
 
+  const rail = document.createElement("div");
+  rail.className = "work-order-document-selection-rail";
+  const railLabel = document.createElement("span");
+  railLabel.textContent = "Radni nalog";
+  const railValue = document.createElement("strong");
+  railValue.textContent = workOrder.workOrderNumber || "Bez broja";
+  rail.append(railLabel, railValue);
+
   const grid = document.createElement("div");
   grid.className = "form-grid work-order-document-selection-grid";
 
@@ -23914,7 +23922,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   });
 
   footer.append(helper, resetButton);
-  card.append(head, grid, footer);
+  card.append(head, rail, grid, footer);
   return card;
 }
 
@@ -24107,12 +24115,6 @@ function renderWorkOrderDocumentWizard() {
   const { recommendations } = getWorkOrderDocumentTemplateRecommendations(workOrders);
   syncWorkOrderDocumentWizardCommonInputs();
   renderWorkOrderDocumentWizardCommonSection();
-
-  if (workOrderDocumentWizardHelper) {
-    workOrderDocumentWizardHelper.textContent = workOrders.length > 1
-      ? "Zajednicki podaci vrijede za sve, a po pojedinom RN-u prepravi samo ono sto odskace."
-      : "Postavi zajednicke podatke pa ih po potrebi prepravi samo za ovaj RN.";
-  }
 
   if (workOrderDocumentWizardStepDetailsButton) {
     const isActive = state.workOrderDocumentWizard.step === "details";
