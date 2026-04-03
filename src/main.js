@@ -11704,14 +11704,7 @@ function renderUserDocuments() {
   if (userDocumentDrafts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "module-attachment-empty";
-
-    const title = document.createElement("strong");
-    title.textContent = "Nema dokumenata";
-
-    const copy = document.createElement("span");
-    copy.textContent = "Povuci datoteke na popup ili klikni \"Dodaj dokumente\".";
-
-    empty.append(title, copy);
+    empty.setAttribute("aria-label", "Nema dokumenata za korisnika");
     userDocumentsList.replaceChildren(empty);
     return;
   }
