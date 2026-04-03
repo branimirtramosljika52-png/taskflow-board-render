@@ -1802,6 +1802,7 @@ const userElectricalDocumentsInput = document.querySelector("#user-electrical-do
 const userElectricalDocumentsUploadButton = document.querySelector("#user-electrical-documents-upload");
 const userElectricalDocumentsList = document.querySelector("#user-electrical-documents-list");
 const userSubmitButton = document.querySelector("#user-submit");
+const userSubmitShortcutButton = document.querySelector("#user-submit-shortcut");
 const userResetButton = document.querySelector("#user-reset");
 const usersBody = document.querySelector("#users-body");
 const managementViewKicker = document.querySelector("#management-view-kicker");
@@ -14849,6 +14850,10 @@ function syncUserEditorChrome(editing = false, user = null) {
 
   if (userSubmitButton) {
     userSubmitButton.textContent = editing ? "Spremi promjene" : "Spremi korisnika";
+  }
+
+  if (userSubmitShortcutButton) {
+    userSubmitShortcutButton.textContent = editing ? "Spremi promjene" : "Spremi korisnika";
   }
 
   if (userResetButton) {

@@ -14445,6 +14445,16 @@ body.is-document-template-editor-open {
 
 .user-editor-panel .form-actions {
   justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 14px;
+  padding-top: 14px;
+  background: linear-gradient(180deg, rgba(252, 252, 255, 0), rgba(252, 249, 255, 0.96) 34%, rgba(250, 246, 255, 0.99));
+}
+
+.user-editor-panel .masterdata-editor-head-actions .primary-button {
+  min-width: 170px;
 }
 
 .safety-authorization-form-grid {
