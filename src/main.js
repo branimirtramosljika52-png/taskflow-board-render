@@ -2342,7 +2342,9 @@ async function runMutation(callback, errorTarget) {
     }
 
     const payload = await callback();
-    applySnapshot(payload);
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
     return true;
   } catch (error) {
     if (error.statusCode === 401) {

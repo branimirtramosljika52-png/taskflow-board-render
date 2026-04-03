@@ -14379,7 +14379,6 @@ body.is-document-template-editor-open {
 }
 
 .user-electrical-qualification-block {
-  grid-area: electrical;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(253, 246, 255, 0.98)) padding-box,
     linear-gradient(135deg, rgba(213, 77, 192, 0.78), rgba(106, 93, 243, 0.62)) border-box;
