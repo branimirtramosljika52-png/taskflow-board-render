@@ -2356,7 +2356,7 @@ body.is-location-editor-open {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-bottom: 108px;
+  padding-bottom: 28px;
 }
 
 .user-editor-panel.is-drop-target::before {
@@ -14453,12 +14453,11 @@ body.is-document-template-editor-open {
 
 .user-editor-panel .form-actions {
   justify-content: flex-end;
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin-top: 14px;
-  padding-top: 14px;
-  background: linear-gradient(180deg, rgba(252, 252, 255, 0), rgba(252, 249, 255, 0.96) 34%, rgba(250, 246, 255, 0.99));
+  position: static;
+  margin-top: 10px;
+  padding-top: 6px;
+  padding-bottom: 4px;
+  background: transparent;
 }
 
 .user-editor-panel .masterdata-editor-head-actions .primary-button {
