@@ -11702,9 +11702,16 @@ function renderUserDocuments() {
   }
 
   if (userDocumentDrafts.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema dodanih dokumenata za ovog korisnika.";
+    const empty = document.createElement("div");
+    empty.className = "module-attachment-empty";
+
+    const title = document.createElement("strong");
+    title.textContent = "Nema dokumenata";
+
+    const copy = document.createElement("span");
+    copy.textContent = "Povuci datoteke na popup ili klikni \"Dodaj dokumente\".";
+
+    empty.append(title, copy);
     userDocumentsList.replaceChildren(empty);
     return;
   }

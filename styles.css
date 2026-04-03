@@ -14247,14 +14247,18 @@ body.is-document-template-editor-open {
 
 .user-editor-modules {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
-  gap: 14px;
+  grid-template-areas: "documents electrical";
+  grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+  gap: 12px;
   align-items: start;
 }
 
 .user-editor-module {
   min-width: 0;
-  min-height: 100%;
+  min-height: 0;
+  align-self: start;
+  position: relative;
+  overflow: hidden;
 }
 
 .user-electrical-grid {
@@ -14276,27 +14280,40 @@ body.is-document-template-editor-open {
 .user-documents-block,
 .user-electrical-qualification-block {
   display: grid;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 12px 14px;
   align-content: start;
   border: 1px solid transparent;
-  border-radius: 24px;
+  border-radius: 22px;
+}
+
+.user-documents-block::before,
+.user-electrical-qualification-block::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(213, 77, 192, 0.92), rgba(106, 93, 243, 0.86));
+}
+
+.user-documents-block {
+  grid-area: documents;
 }
 
 .user-documents-block {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(251, 247, 255, 0.985)) padding-box,
-    linear-gradient(135deg, rgba(213, 77, 192, 0.62), rgba(106, 93, 243, 0.52)) border-box;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(252, 248, 255, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(213, 77, 192, 0.72), rgba(106, 93, 243, 0.56)) border-box;
   box-shadow:
-    0 18px 36px rgba(116, 78, 178, 0.06),
-    0 0 0 1px rgba(204, 71, 230, 0.08);
+    0 16px 32px rgba(116, 78, 178, 0.06),
+    0 0 0 1px rgba(204, 71, 230, 0.1);
 }
 
 .user-documents-block .section-heading,
 .user-electrical-qualification-block .section-heading {
   align-items: center;
   margin-bottom: 0;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(204, 71, 230, 0.12);
 }
 
@@ -14313,7 +14330,7 @@ body.is-document-template-editor-open {
 
 .user-documents-block .module-copy {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: #6b6f83;
 }
 
@@ -14323,12 +14340,13 @@ body.is-document-template-editor-open {
 }
 
 .user-electrical-qualification-block {
+  grid-area: electrical;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(252, 245, 255, 0.985)) padding-box,
-    linear-gradient(135deg, rgba(213, 77, 192, 0.7), rgba(106, 93, 243, 0.6)) border-box;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(253, 246, 255, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(213, 77, 192, 0.78), rgba(106, 93, 243, 0.62)) border-box;
   box-shadow:
-    0 22px 44px rgba(133, 78, 178, 0.08),
-    0 0 0 1px rgba(204, 71, 230, 0.1);
+    0 18px 34px rgba(133, 78, 178, 0.08),
+    0 0 0 1px rgba(204, 71, 230, 0.12);
 }
 
 .user-editor-panel .module-attachment-list {
@@ -14336,19 +14354,19 @@ body.is-document-template-editor-open {
 }
 
 .user-documents-block .module-attachment-list {
-  gap: 8px;
-  max-height: 360px;
+  gap: 7px;
+  max-height: 300px;
   overflow: auto;
   padding-right: 4px;
 }
 
 .user-documents-block .module-attachment-row {
-  padding: 10px 12px;
-  border-radius: 16px;
-  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  gap: 8px;
   align-items: center;
   border-color: rgba(204, 71, 230, 0.12);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .user-documents-block .module-attachment-row.is-unclassified {
@@ -14357,23 +14375,23 @@ body.is-document-template-editor-open {
 }
 
 .user-documents-block .module-attachment-copy {
-  gap: 6px;
+  gap: 4px;
 }
 
 .user-documents-block .module-attachment-meta {
   color: #6d768d;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .user-documents-block .module-attachment-fields {
-  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.95fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(150px, 0.9fr);
+  gap: 6px;
   margin-top: 0;
 }
 
 .user-documents-block .module-attachment-field {
   max-width: none;
-  gap: 4px;
+  gap: 3px;
 }
 
 .user-documents-block .module-attachment-field-label {
@@ -14383,19 +14401,71 @@ body.is-document-template-editor-open {
 
 .user-documents-block .module-attachment-field input,
 .user-documents-block .module-attachment-category-select {
-  min-height: 36px;
+  min-height: 34px;
 }
 
 .user-documents-block .module-attachment-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
+  align-self: center;
 }
 
 .user-documents-block .module-attachment-actions .card-button {
-  min-width: 92px;
-  min-height: 34px;
-  padding: 0 10px;
+  min-width: 76px;
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.user-documents-block .module-attachment-empty {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  justify-items: start;
+  padding: 14px 16px;
+  min-height: 108px;
+  border: 1px dashed rgba(204, 71, 230, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.user-documents-block .module-attachment-empty strong {
+  color: #2f3150;
+  font-size: 0.92rem;
+}
+
+.user-documents-block .module-attachment-empty span {
+  color: #6b6f83;
+  font-size: 0.79rem;
+  line-height: 1.45;
+  max-width: 36ch;
+}
+
+.user-electrical-qualification-block .section-heading + .form-grid {
+  margin-top: 2px;
+}
+
+.user-electrical-qualification-block .field span {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: #6d6787;
+}
+
+.user-electrical-qualification-block select,
+.user-electrical-qualification-block input {
+  min-height: 42px;
+}
+
+@media (max-width: 980px) {
+  .user-editor-modules {
+    grid-template-areas:
+      "documents"
+      "electrical";
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 }
 
 .user-editor-panel .form-actions {
