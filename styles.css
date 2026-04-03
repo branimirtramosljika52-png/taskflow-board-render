@@ -2347,6 +2347,9 @@ body.is-location-editor-open {
   bottom: 24px !important;
   height: auto !important;
   max-height: calc(100dvh - 48px) !important;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
   z-index: 129;
 }
 
@@ -2355,6 +2358,8 @@ body.is-location-editor-open {
 }
 
 .user-editor-panel .masterdata-editor-body {
+  height: auto;
+  min-height: 0;
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
