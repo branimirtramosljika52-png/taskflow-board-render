@@ -11704,7 +11704,7 @@ function renderUserDocuments() {
   if (userDocumentDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema dodane dokumentacije za ovog korisnika.";
+    empty.textContent = "Nema dodanih dokumenata za ovog korisnika.";
     userDocumentsList.replaceChildren(empty);
     return;
   }
@@ -11718,6 +11718,7 @@ function renderUserDocuments() {
     copy.className = "module-attachment-copy";
 
     const meta = document.createElement("span");
+    meta.className = "module-attachment-meta";
     meta.textContent = [
       entry.fileType || "",
       formatFileSize(entry.fileSize),
@@ -11732,7 +11733,7 @@ function renderUserDocuments() {
 
     const nameLabel = document.createElement("span");
     nameLabel.className = "module-attachment-field-label";
-    nameLabel.textContent = "Naziv dokumenta";
+    nameLabel.textContent = "Naziv";
 
     const nameInput = document.createElement("input");
     nameInput.type = "text";
@@ -11750,7 +11751,7 @@ function renderUserDocuments() {
 
     const categoryLabel = document.createElement("span");
     categoryLabel.className = "module-attachment-field-label";
-    categoryLabel.textContent = "Sto je ovo?";
+    categoryLabel.textContent = "Vrsta";
 
     const categorySelect = document.createElement("select");
     categorySelect.className = "module-attachment-category-select";
