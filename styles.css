@@ -7569,16 +7569,18 @@ body.is-work-order-document-wizard-open {
   box-shadow:
     0 0 0 1px rgba(168, 101, 216, 0.1),
     0 14px 30px rgba(121, 92, 189, 0.1);
+  overflow: hidden;
 }
 
 .work-order-document-selection-grid {
   align-content: start;
+  gap: 12px;
 }
 
 .work-order-document-selection-rail {
   margin: 0 -14px -14px;
-  min-height: 42px;
-  padding: 10px 14px;
+  min-height: 38px;
+  padding: 8px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -7608,16 +7610,35 @@ body.is-work-order-document-wizard-open {
   align-items: start;
 }
 
+.work-order-document-selection-head {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(220, 156, 212, 0.24);
+}
+
 .work-order-document-selection-copy,
 .work-order-document-template-card-copy {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .work-order-document-selection-copy strong,
 .work-order-document-template-card-copy strong {
   color: #1f2740;
-  font-size: 1rem;
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.work-order-document-selection-company {
+  color: #2f3d5d;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.work-order-document-selection-subline {
+  color: #667694;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .work-order-document-selection-chips,
@@ -7628,6 +7649,51 @@ body.is-work-order-document-wizard-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.work-order-document-selection-chips {
+  justify-content: flex-end;
+}
+
+.work-order-document-selection-grid .field {
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.34);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.work-order-document-selection-grid .field > span {
+  color: #697793;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.work-order-document-selection-grid input,
+.work-order-document-selection-grid textarea {
+  border-radius: 14px;
+  border-color: rgba(220, 156, 212, 0.46);
+}
+
+.work-order-document-selection-grid textarea {
+  min-height: 88px;
+}
+
+.work-order-document-selection-footer {
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.work-order-document-selection-helper {
+  color: #7683a0;
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+.work-order-document-selection-reset {
+  min-height: 40px;
+  border-radius: 16px;
 }
 
 .work-order-document-template-work-order-chip {

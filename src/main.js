@@ -24460,6 +24460,16 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     serviceItems.flatMap((item) => getResolvedWorkOrderServiceTemplateTitles(item)).map((value) => String(value ?? "").trim()).filter(Boolean),
   ));
   const override = getWorkOrderDocumentWizardOverride(workOrder.id);
+  const locationDetail = [
+    workOrder.locationName || "",
+    workOrder.locationAddressSnapshot && workOrder.locationAddressSnapshot !== workOrder.locationName
+      ? workOrder.locationAddressSnapshot
+      : "",
+  ].filter(Boolean).join(", ");
+  const detailParts = [
+    locationDetail || "Bez lokacije",
+    getWorkOrderServiceSummary(workOrder) || "",
+  ].filter(Boolean);
 
   const card = document.createElement("article");
   card.className = "work-order-document-selection-card";
@@ -24473,14 +24483,15 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   const title = document.createElement("strong");
   title.textContent = workOrder.workOrderNumber || "Bez broja";
 
-  const meta = document.createElement("span");
-  meta.textContent = [
-    workOrder.companyName || "Bez tvrtke",
-    workOrder.locationName || "Bez lokacije",
-    getWorkOrderServiceSummary(workOrder) || "",
-  ].filter(Boolean).join(" | ");
+  const companyLine = document.createElement("span");
+  companyLine.className = "work-order-document-selection-company";
+  companyLine.textContent = workOrder.companyName || "Bez tvrtke";
 
-  copy.append(title, meta);
+  const meta = document.createElement("span");
+  meta.className = "work-order-document-selection-subline";
+  meta.textContent = detailParts.join(" | ");
+
+  copy.append(title, companyLine, meta);
   head.append(copy);
 
   const chips = document.createElement("div");
@@ -24565,11 +24576,12 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   footer.className = "work-order-document-selection-footer";
 
   const helper = document.createElement("span");
+  helper.className = "work-order-document-selection-helper";
   helper.textContent = "Datume gore postavis svima, a ovdje prepravis samo ako ovaj RN odskace.";
 
   const resetButton = document.createElement("button");
   resetButton.type = "button";
-  resetButton.className = "ghost-button";
+  resetButton.className = "ghost-button work-order-document-selection-reset";
   resetButton.textContent = "Vrati na zajednicko";
   resetButton.addEventListener("click", () => {
     delete state.workOrderDocumentWizard.overrides[String(workOrder.id)];
