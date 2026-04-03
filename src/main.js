@@ -1274,9 +1274,6 @@ let measurementEquipmentDocumentDrafts = [];
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
-let userElectricalSignatureIsDrawing = false;
-let userElectricalSignaturePointerId = null;
-let userElectricalSignatureLastPoint = null;
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1815,7 +1812,9 @@ const userTipkaloClassInput = document.querySelector("#user-tipkalo-class");
 const userTipkaloUrbrojInput = document.querySelector("#user-tipkalo-urbroj");
 const userTipkaloEBrojInput = document.querySelector("#user-tipkalo-e-broj");
 const userElectricalSignatureDataUrlInput = document.querySelector("#user-electrical-signature-data-url");
-const userElectricalSignatureCanvas = document.querySelector("#user-electrical-signature-canvas");
+const userElectricalSignatureFileInput = document.querySelector("#user-electrical-signature-file");
+const userElectricalSignatureUploadButton = document.querySelector("#user-electrical-signature-upload");
+const userElectricalSignaturePreview = document.querySelector("#user-electrical-signature-preview");
 const userElectricalSignatureClearButton = document.querySelector("#user-electrical-signature-clear");
 const userElectricalDocumentsInput = document.querySelector("#user-electrical-documents-input");
 const userElectricalDocumentsUploadButton = document.querySelector("#user-electrical-documents-upload");
@@ -12155,175 +12154,58 @@ function getUserDocuments(user = {}) {
   return Array.isArray(user?.documents) ? user.documents : [];
 }
 
-function getUserElectricalSignatureContext() {
-  if (!userElectricalSignatureCanvas) {
-    return null;
-  }
-
-  const context = userElectricalSignatureCanvas.getContext("2d");
-  if (!context) {
-    return null;
-  }
-
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.lineWidth = 2.4;
-  context.strokeStyle = "#2d2441";
-  return context;
-}
-
 function clearUserElectricalSignaturePad({ preserveValue = false } = {}) {
-  const context = getUserElectricalSignatureContext();
-  if (context && userElectricalSignatureCanvas) {
-    context.clearRect(0, 0, userElectricalSignatureCanvas.width, userElectricalSignatureCanvas.height);
-  }
-
-  if (userElectricalSignatureCanvas) {
-    userElectricalSignatureCanvas.style.backgroundImage = "none";
-    userElectricalSignatureCanvas.dataset.hasPreview = "false";
-  }
-
   if (!preserveValue && userElectricalSignatureDataUrlInput) {
     userElectricalSignatureDataUrlInput.value = "";
   }
 
-  userElectricalSignatureIsDrawing = false;
-  userElectricalSignaturePointerId = null;
-  userElectricalSignatureLastPoint = null;
+  if (userElectricalSignatureFileInput) {
+    userElectricalSignatureFileInput.value = "";
+  }
+
+  if (userElectricalSignaturePreview) {
+    userElectricalSignaturePreview.replaceChildren();
+    userElectricalSignaturePreview.classList.add("is-empty");
+  }
 }
 
 function renderUserElectricalSignaturePad(signatureValue = "") {
-  clearUserElectricalSignaturePad({ preserveValue: true });
   const safeValue = String(signatureValue || "").trim();
 
   if (userElectricalSignatureDataUrlInput) {
     userElectricalSignatureDataUrlInput.value = safeValue;
   }
 
-  if (!userElectricalSignatureCanvas) {
+  if (userElectricalSignatureFileInput) {
+    userElectricalSignatureFileInput.value = "";
+  }
+
+  if (!userElectricalSignaturePreview) {
     return;
   }
 
-  if (safeValue) {
-    userElectricalSignatureCanvas.style.backgroundImage = `url(${JSON.stringify(safeValue)})`;
-    userElectricalSignatureCanvas.dataset.hasPreview = "true";
+  userElectricalSignaturePreview.replaceChildren();
+  userElectricalSignaturePreview.classList.toggle("is-empty", !safeValue);
+
+  if (!safeValue) {
+    return;
   }
+
+  const previewImage = document.createElement("img");
+  previewImage.src = safeValue;
+  previewImage.alt = "Scan potpisa korisnika";
+  previewImage.loading = "lazy";
+
+  userElectricalSignaturePreview.append(previewImage);
 }
 
-function prepareUserElectricalSignaturePadForDrawing() {
-  if (!userElectricalSignatureCanvas) {
+async function queueUserElectricalSignatureFile(file) {
+  if (!file) {
     return;
   }
 
-  if (userElectricalSignatureCanvas.dataset.hasPreview === "true") {
-    clearUserElectricalSignaturePad();
-  }
-}
-
-function getUserElectricalSignaturePointer(event) {
-  if (!userElectricalSignatureCanvas) {
-    return null;
-  }
-
-  const rect = userElectricalSignatureCanvas.getBoundingClientRect();
-  if (!rect.width || !rect.height) {
-    return null;
-  }
-
-  const scaleX = userElectricalSignatureCanvas.width / rect.width;
-  const scaleY = userElectricalSignatureCanvas.height / rect.height;
-  return {
-    x: (event.clientX - rect.left) * scaleX,
-    y: (event.clientY - rect.top) * scaleY,
-  };
-}
-
-function commitUserElectricalSignaturePad() {
-  if (!userElectricalSignatureCanvas || !userElectricalSignatureDataUrlInput) {
-    return;
-  }
-
-  try {
-    userElectricalSignatureDataUrlInput.value = userElectricalSignatureCanvas.toDataURL("image/png");
-  } catch {
-    userElectricalSignatureDataUrlInput.value = "";
-  }
-}
-
-function handleUserElectricalSignaturePointerDown(event) {
-  if (!userElectricalSignatureCanvas) {
-    return;
-  }
-
-  if (event.button !== undefined && event.button !== 0) {
-    return;
-  }
-
-  const context = getUserElectricalSignatureContext();
-  const point = getUserElectricalSignaturePointer(event);
-  if (!context || !point) {
-    return;
-  }
-
-  event.preventDefault();
-  prepareUserElectricalSignaturePadForDrawing();
-  userElectricalSignatureIsDrawing = true;
-  userElectricalSignaturePointerId = event.pointerId ?? null;
-  userElectricalSignatureLastPoint = point;
-  context.beginPath();
-  context.moveTo(point.x, point.y);
-  context.lineTo(point.x + 0.1, point.y + 0.1);
-  context.stroke();
-  userElectricalSignatureCanvas.setPointerCapture?.(event.pointerId);
-  commitUserElectricalSignaturePad();
-}
-
-function handleUserElectricalSignaturePointerMove(event) {
-  if (!userElectricalSignatureIsDrawing || !userElectricalSignatureCanvas) {
-    return;
-  }
-
-  if (userElectricalSignaturePointerId !== null && event.pointerId !== userElectricalSignaturePointerId) {
-    return;
-  }
-
-  const context = getUserElectricalSignatureContext();
-  const point = getUserElectricalSignaturePointer(event);
-  if (!context || !point || !userElectricalSignatureLastPoint) {
-    return;
-  }
-
-  event.preventDefault();
-  context.beginPath();
-  context.moveTo(userElectricalSignatureLastPoint.x, userElectricalSignatureLastPoint.y);
-  context.lineTo(point.x, point.y);
-  context.stroke();
-  userElectricalSignatureLastPoint = point;
-  commitUserElectricalSignaturePad();
-}
-
-function handleUserElectricalSignaturePointerUp(event) {
-  if (!userElectricalSignatureCanvas) {
-    return;
-  }
-
-  if (userElectricalSignaturePointerId !== null && event.pointerId !== userElectricalSignaturePointerId) {
-    return;
-  }
-
-  if (userElectricalSignatureIsDrawing) {
-    event.preventDefault();
-    commitUserElectricalSignaturePad();
-  }
-
-  const pointerId = typeof event.pointerId === "number" ? event.pointerId : null;
-  const hasCapture = pointerId !== null && userElectricalSignatureCanvas.hasPointerCapture?.(pointerId);
-  userElectricalSignatureIsDrawing = false;
-  userElectricalSignaturePointerId = null;
-  userElectricalSignatureLastPoint = null;
-  if (hasCapture) {
-    userElectricalSignatureCanvas.releasePointerCapture?.(pointerId);
-  }
+  const dataUrl = await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`);
+  renderUserElectricalSignaturePad(dataUrl);
 }
 
 function setUserDocumentDrafts(items = []) {
@@ -29452,11 +29334,22 @@ userElectricalSignatureClearButton?.addEventListener("click", () => {
   clearUserElectricalSignaturePad();
 });
 
-userElectricalSignatureCanvas?.addEventListener("pointerdown", handleUserElectricalSignaturePointerDown);
-userElectricalSignatureCanvas?.addEventListener("pointermove", handleUserElectricalSignaturePointerMove);
-userElectricalSignatureCanvas?.addEventListener("pointerup", handleUserElectricalSignaturePointerUp);
-userElectricalSignatureCanvas?.addEventListener("pointercancel", handleUserElectricalSignaturePointerUp);
-userElectricalSignatureCanvas?.addEventListener("pointerleave", handleUserElectricalSignaturePointerUp);
+userElectricalSignatureUploadButton?.addEventListener("click", () => {
+  userElectricalSignatureFileInput?.click();
+});
+
+userElectricalSignatureFileInput?.addEventListener("change", () => {
+  const [file] = Array.from(userElectricalSignatureFileInput.files ?? []);
+  if (!file) {
+    return;
+  }
+
+  void runMutation(() => queueUserElectricalSignatureFile(file), userError).then(() => {
+    if (userElectricalSignatureFileInput) {
+      userElectricalSignatureFileInput.value = "";
+    }
+  });
+});
 
 userEditorPanel?.addEventListener("dragenter", (event) => {
   if (!isFileDragEvent(event)) {

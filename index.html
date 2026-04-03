@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260403m" />
+  <link rel="stylesheet" href="/styles.css?v=20260403n" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2252,6 +2252,7 @@
                       </div>
                     </div>
                     <input id="user-electrical-signature-data-url" type="hidden" />
+                    <input id="user-electrical-signature-file" type="file" accept="image/*" hidden />
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
                         <span>Ispitivac</span>
@@ -2279,12 +2280,15 @@
                         <span>E broj</span>
                         <input id="user-electrical-e-broj" type="text" maxlength="160" />
                       </label>
-                      <section class="user-signature-field" aria-label="Digitalni potpis">
+                      <section class="user-signature-field" aria-label="Scan potpisa">
                         <div class="user-signature-field-head">
-                          <span>Digitalni potpis</span>
-                          <button id="user-electrical-signature-clear" type="button" class="ghost-button">Ocisti potpis</button>
+                          <span>Scan potpisa</span>
+                          <div class="user-signature-field-actions">
+                            <button id="user-electrical-signature-upload" type="button" class="ghost-button">Dodaj datoteku</button>
+                            <button id="user-electrical-signature-clear" type="button" class="ghost-button">Makni</button>
+                          </div>
                         </div>
-                        <canvas id="user-electrical-signature-canvas" class="user-signature-pad" width="760" height="220"></canvas>
+                        <div id="user-electrical-signature-preview" class="user-signature-upload-preview" aria-live="polite"></div>
                       </section>
                     </div>
                   </section>
@@ -3739,6 +3743,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260403m"></script>
+    <script type="module" src="/src/main.js?v=20260403n"></script>
   </body>
 </html>

@@ -14486,19 +14486,52 @@ body.is-document-template-editor-open {
   color: #6d6787;
 }
 
-.user-signature-pad {
-  display: block;
-  width: 100%;
-  height: 168px;
+.user-signature-field-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-signature-upload-preview {
+  display: grid;
+  place-items: center;
+  min-height: 168px;
+  overflow: hidden;
   border-radius: 16px;
   border: 1px solid rgba(204, 71, 230, 0.24);
-  background-color: rgba(255, 255, 255, 0.98);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 245, 255, 0.94));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  touch-action: none;
-  cursor: crosshair;
+}
+
+.user-signature-upload-preview::before {
+  content: "";
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(213, 77, 192, 0.14), rgba(106, 93, 243, 0.18));
+  box-shadow: inset 0 0 0 1px rgba(204, 71, 230, 0.14);
+}
+
+.user-signature-upload-preview.is-empty::after {
+  content: "Dodaj scan potpisa";
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: #756f91;
+  letter-spacing: 0.04em;
+}
+
+.user-signature-upload-preview img {
+  max-width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(92, 66, 120, 0.12));
+}
+
+.user-signature-upload-preview:not(.is-empty)::before,
+.user-signature-upload-preview:not(.is-empty)::after {
+  content: none;
 }
 
 .user-editor-panel .form-actions {
