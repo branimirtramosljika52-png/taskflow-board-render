@@ -2343,8 +2343,10 @@ body.is-location-editor-open {
 
 .user-editor-panel.is-modal-open {
   width: min(1120px, calc(100vw - 28px));
-  top: 12px;
-  height: calc(100vh - 24px);
+  top: 18px;
+  bottom: 18px;
+  height: auto;
+  max-height: calc(100dvh - 36px);
   z-index: 129;
 }
 
@@ -2356,7 +2358,12 @@ body.is-location-editor-open {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-bottom: 28px;
+  padding-bottom: 36px;
+  padding-top: 12px;
+}
+
+.user-editor-panel .masterdata-editor-body > .entity-form {
+  padding-bottom: 22px;
 }
 
 .user-editor-panel.is-drop-target::before {
