@@ -1274,6 +1274,14 @@
                   <span>Datum izdavanja</span>
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
+                <label class="field">
+                  <span>Ispitivac panik rasvjete</span>
+                  <select id="work-order-document-common-inspector-user-id"></select>
+                </label>
+                <label class="field">
+                  <span>Nositelj ovlastenja</span>
+                  <select id="work-order-document-common-authorization-holder-user-id"></select>
+                </label>
               </div>
             </section>
 
@@ -2243,6 +2251,7 @@
                         <h3>Panik rasvjeta</h3>
                       </div>
                     </div>
+                    <input id="user-electrical-signature-data-url" type="hidden" />
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
                         <span>Ispitivac</span>
@@ -2270,6 +2279,13 @@
                         <span>E broj</span>
                         <input id="user-electrical-e-broj" type="text" maxlength="160" />
                       </label>
+                      <section class="user-signature-field" aria-label="Digitalni potpis">
+                        <div class="user-signature-field-head">
+                          <span>Digitalni potpis</span>
+                          <button id="user-electrical-signature-clear" type="button" class="ghost-button">Ocisti potpis</button>
+                        </div>
+                        <canvas id="user-electrical-signature-canvas" class="user-signature-pad" width="760" height="220"></canvas>
+                      </section>
                     </div>
                   </section>
                   </div>
@@ -3491,6 +3507,14 @@
                             <button type="button" class="document-template-tool-button" data-template-tool="measurement_table">
                               <strong>Ubaci Excel</strong>
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector">
+                              <strong>Ispitivac</strong>
+                              <span>Dodaje podatke o ispitivacu panik rasvjete</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="qualified_authorization_holder">
+                              <strong>Nositelj</strong>
+                              <span>Dodaje podatke o nositelju ovlastenja</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
                               <strong>Potpis ispitivača</strong>

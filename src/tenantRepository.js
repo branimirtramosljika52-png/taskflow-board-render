@@ -196,6 +196,13 @@ function mapUserElectricalQualification(row = {}) {
     row.electrical_qualification_json ?? row.electricalQualification,
     {},
   );
+  const storedSignature = mapStoredAssetLocation({
+    dataUrl: rawQualification.signatureDataUrl,
+    storageProvider: rawQualification.signatureStorageProvider,
+    storageBucket: rawQualification.signatureStorageBucket,
+    storageKey: rawQualification.signatureStorageKey,
+    storageUrl: rawQualification.signatureStorageUrl,
+  });
 
   return {
     discipline: dbString(rawQualification.discipline || "elektro").toLowerCase() || "elektro",
@@ -204,6 +211,11 @@ function mapUserElectricalQualification(row = {}) {
     classCode: dbString(rawQualification.classCode),
     urbroj: dbString(rawQualification.urbroj),
     eBroj: dbString(rawQualification.eBroj),
+    signatureDataUrl: storedSignature.dataUrl,
+    signatureStorageProvider: storedSignature.storageProvider,
+    signatureStorageBucket: storedSignature.storageBucket,
+    signatureStorageKey: storedSignature.storageKey,
+    signatureStorageUrl: storedSignature.storageUrl,
     documents: parseJsonArray(rawQualification.documents)
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && document.dataUrl),
@@ -466,6 +478,66 @@ async function prepareStoredUserDocuments(documents = [], {
   };
 }
 
+function mapUserElectricalSignatureStorage(qualification = {}) {
+  return mapStoredAssetLocation({
+    dataUrl: qualification?.signatureDataUrl,
+    storageProvider: qualification?.signatureStorageProvider,
+    storageBucket: qualification?.signatureStorageBucket,
+    storageKey: qualification?.signatureStorageKey,
+    storageUrl: qualification?.signatureStorageUrl,
+  });
+}
+
+async function prepareStoredUserElectricalSignature({
+  currentQualification = {},
+  userId = "",
+  fallbackKey = "",
+  signatureDataUrl = "",
+} = {}) {
+  const currentStoredSignature = mapUserElectricalSignatureStorage(currentQualification);
+  const nextSignatureDataUrl = dbString(signatureDataUrl);
+
+  if (!nextSignatureDataUrl) {
+    return {
+      storedSignature: mapStoredAssetLocation(),
+      previousStoredSignature: currentStoredSignature.storageKey ? currentStoredSignature : null,
+    };
+  }
+
+  if (!isDataUrlLike(nextSignatureDataUrl)) {
+    if (nextSignatureDataUrl === currentStoredSignature.dataUrl) {
+      return {
+        storedSignature: currentStoredSignature,
+        previousStoredSignature: null,
+      };
+    }
+
+    return {
+      storedSignature: mapStoredAssetLocation({ dataUrl: nextSignatureDataUrl }),
+      previousStoredSignature: currentStoredSignature.storageKey ? currentStoredSignature : null,
+    };
+  }
+
+  const uploaded = await uploadDataUrlToObjectStorage({
+    keyPrefix: `users/${dbString(userId) || dbString(fallbackKey) || "pending"}/electrical-signature`,
+    fileName: "panik-rasvjeta-potpis",
+    fileType: "image/png",
+    dataUrl: nextSignatureDataUrl,
+    cacheControl: "public, max-age=31536000, immutable",
+  });
+
+  return {
+    storedSignature: mapStoredAssetLocation({
+      dataUrl: uploaded?.storageUrl || nextSignatureDataUrl,
+      storageProvider: uploaded?.storageProvider ?? "",
+      storageBucket: uploaded?.storageBucket ?? "",
+      storageKey: uploaded?.storageKey ?? "",
+      storageUrl: uploaded?.storageUrl ?? "",
+    }),
+    previousStoredSignature: currentStoredSignature.storageKey ? currentStoredSignature : null,
+  };
+}
+
 function normalizeUserElectricalQualification(input = {}, fallback = {}) {
   const source = {
     discipline: "elektro",
@@ -474,10 +546,22 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     classCode: "",
     urbroj: "",
     eBroj: "",
+    signatureDataUrl: "",
+    signatureStorageProvider: "",
+    signatureStorageBucket: "",
+    signatureStorageKey: "",
+    signatureStorageUrl: "",
     documents: [],
     ...parseJsonObject(fallback, {}),
     ...(input && typeof input === "object" ? input : {}),
   };
+  const storedSignature = mapStoredAssetLocation({
+    dataUrl: source.signatureDataUrl,
+    storageProvider: source.signatureStorageProvider,
+    storageBucket: source.signatureStorageBucket,
+    storageKey: source.signatureStorageKey,
+    storageUrl: source.signatureStorageUrl,
+  });
 
   return {
     discipline: dbString(source.discipline || "elektro").toLowerCase() || "elektro",
@@ -486,6 +570,11 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     classCode: dbString(source.classCode),
     urbroj: dbString(source.urbroj),
     eBroj: dbString(source.eBroj),
+    signatureDataUrl: storedSignature.dataUrl,
+    signatureStorageProvider: storedSignature.storageProvider,
+    signatureStorageBucket: storedSignature.storageBucket,
+    signatureStorageKey: storedSignature.storageKey,
+    signatureStorageUrl: storedSignature.storageUrl,
     documents: (Array.isArray(source.documents) ? source.documents : [])
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && document.dataUrl),
@@ -2433,6 +2522,10 @@ export class MySqlTenantRepository {
       nextDocuments: [],
       staleDocuments: [],
     };
+    let preparedUserElectricalSignature = {
+      storedSignature: mapStoredAssetLocation(),
+      previousStoredSignature: null,
+    };
 
     if (!canManageOrganizationUsers(actor, normalized.organizationIds, normalized.role)) {
       throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
@@ -2461,9 +2554,18 @@ export class MySqlTenantRepository {
           fallbackKey: normalized.email || normalized.legacyUsername || "new-user",
         },
       );
+      preparedUserElectricalSignature = await prepareStoredUserElectricalSignature({
+        fallbackKey: normalized.email || normalized.legacyUsername || "new-user",
+        signatureDataUrl: normalized.electricalQualification?.signatureDataUrl,
+      });
       const electricalQualification = {
         ...normalized.electricalQualification,
         documents: [],
+        signatureDataUrl: preparedUserElectricalSignature.storedSignature.dataUrl || "",
+        signatureStorageProvider: preparedUserElectricalSignature.storedSignature.storageProvider || "",
+        signatureStorageBucket: preparedUserElectricalSignature.storedSignature.storageBucket || "",
+        signatureStorageKey: preparedUserElectricalSignature.storedSignature.storageKey || "",
+        signatureStorageUrl: preparedUserElectricalSignature.storedSignature.storageUrl || "",
       };
 
       const [result] = await connection.query(
@@ -2498,6 +2600,12 @@ export class MySqlTenantRepository {
     } catch (error) {
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
       await cleanupStoredAssets(preparedUserDocuments?.nextDocuments ?? []);
+      await cleanupStoredAssets(
+        preparedUserElectricalSignature?.storedSignature?.storageKey
+        && preparedUserElectricalSignature?.storedSignature?.storageKey !== preparedUserElectricalSignature?.previousStoredSignature?.storageKey
+          ? [preparedUserElectricalSignature.storedSignature]
+          : [],
+      );
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
       connection.release();
@@ -2510,6 +2618,10 @@ export class MySqlTenantRepository {
     let preparedUserDocuments = {
       nextDocuments: [],
       staleDocuments: [],
+    };
+    let preparedUserElectricalSignature = {
+      storedSignature: mapStoredAssetLocation(),
+      previousStoredSignature: null,
     };
 
     try {
@@ -2561,9 +2673,20 @@ export class MySqlTenantRepository {
           currentDocuments: currentUserDocuments,
         },
       );
+      preparedUserElectricalSignature = await prepareStoredUserElectricalSignature({
+        currentQualification: mapUserElectricalQualification(current),
+        userId: current.id,
+        fallbackKey: normalized.email || normalized.legacyUsername || current.id,
+        signatureDataUrl: normalized.electricalQualification?.signatureDataUrl,
+      });
       const electricalQualification = {
         ...normalized.electricalQualification,
         documents: [],
+        signatureDataUrl: preparedUserElectricalSignature.storedSignature.dataUrl || "",
+        signatureStorageProvider: preparedUserElectricalSignature.storedSignature.storageProvider || "",
+        signatureStorageBucket: preparedUserElectricalSignature.storedSignature.storageBucket || "",
+        signatureStorageKey: preparedUserElectricalSignature.storedSignature.storageKey || "",
+        signatureStorageUrl: preparedUserElectricalSignature.storedSignature.storageUrl || "",
       };
 
       const updateFields = [
@@ -2610,11 +2733,22 @@ export class MySqlTenantRepository {
       await connection.query(`UPDATE app_users SET ${updateFields.join(", ")} WHERE id = ?`, params);
       await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
       await cleanupStoredAssets(preparedUserDocuments.staleDocuments);
+      await cleanupStoredAssets(
+        preparedUserElectricalSignature.previousStoredSignature
+          ? [preparedUserElectricalSignature.previousStoredSignature]
+          : [],
+      );
 
       return this.getUserById(userId);
     } catch (error) {
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
       await cleanupStoredAssets(preparedUserDocuments?.nextDocuments ?? []);
+      await cleanupStoredAssets(
+        preparedUserElectricalSignature?.storedSignature?.storageKey
+        && preparedUserElectricalSignature?.storedSignature?.storageKey !== preparedUserElectricalSignature?.previousStoredSignature?.storageKey
+          ? [preparedUserElectricalSignature.storedSignature]
+          : [],
+      );
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
     } finally {
       connection.release();

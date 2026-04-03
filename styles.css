@@ -14461,6 +14461,44 @@ body.is-document-template-editor-open {
 .user-electrical-qualification-block input {
   min-height: 42px;
 }
+
+.user-signature-field {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px dashed rgba(204, 71, 230, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.user-signature-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.user-signature-field-head span {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6d6787;
+}
+
+.user-signature-pad {
+  display: block;
+  width: 100%;
+  height: 168px;
+  border-radius: 16px;
+  border: 1px solid rgba(204, 71, 230, 0.24);
+  background-color: rgba(255, 255, 255, 0.98);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .user-editor-panel .form-actions {
@@ -15350,6 +15388,13 @@ body.is-document-template-editor-open {
 .document-template-preview-signature {
   display: grid;
   gap: 10px;
+}
+
+.document-template-preview-signature-image {
+  display: block;
+  max-width: 100%;
+  max-height: 88px;
+  object-fit: contain;
 }
 
 .document-template-preview-signature-line {

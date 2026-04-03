@@ -539,6 +539,8 @@ const state = {
       issuedDate: new Date().toISOString().slice(0, 10),
       issuedPlace: "",
       note: "",
+      inspectorUserId: "",
+      authorizationHolderUserId: "",
     },
     overrides: {},
   },
@@ -556,6 +558,8 @@ const state = {
       issuedDate: "",
       issuedPlace: "",
       note: "",
+      inspectorUserId: "",
+      authorizationHolderUserId: "",
     },
     overrides: {},
   },
@@ -1268,6 +1272,9 @@ let measurementEquipmentDocumentDrafts = [];
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
+let userElectricalSignatureIsDrawing = false;
+let userElectricalSignaturePointerId = null;
+let userElectricalSignatureLastPoint = null;
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -1442,6 +1449,8 @@ const workOrderDocumentWizardNextButton = document.querySelector("#work-order-do
 const workOrderDocumentWizardError = document.querySelector("#work-order-document-wizard-error");
 const workOrderDocumentCommonInspectionDateInput = document.querySelector("#work-order-document-common-inspection-date");
 const workOrderDocumentCommonIssuedDateInput = document.querySelector("#work-order-document-common-issued-date");
+const workOrderDocumentCommonInspectorInput = document.querySelector("#work-order-document-common-inspector-user-id");
+const workOrderDocumentCommonAuthorizationHolderInput = document.querySelector("#work-order-document-common-authorization-holder-user-id");
 const workOrderDocumentCommonIssuedPlaceInput = document.querySelector("#work-order-document-common-issued-place");
 const workOrderDocumentCommonNoteInput = document.querySelector("#work-order-document-common-note");
 
@@ -1798,6 +1807,9 @@ const userElectricalCanAuthorizeInput = document.querySelector("#user-electrical
 const userElectricalClassInput = document.querySelector("#user-electrical-class");
 const userElectricalUrbrojInput = document.querySelector("#user-electrical-urbroj");
 const userElectricalEBrojInput = document.querySelector("#user-electrical-e-broj");
+const userElectricalSignatureDataUrlInput = document.querySelector("#user-electrical-signature-data-url");
+const userElectricalSignatureCanvas = document.querySelector("#user-electrical-signature-canvas");
+const userElectricalSignatureClearButton = document.querySelector("#user-electrical-signature-clear");
 const userElectricalDocumentsInput = document.querySelector("#user-electrical-documents-input");
 const userElectricalDocumentsUploadButton = document.querySelector("#user-electrical-documents-upload");
 const userElectricalDocumentsList = document.querySelector("#user-electrical-documents-list");
@@ -9995,6 +10007,16 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_EXECUTORS", label: "Izvrsitelji - puni naziv" },
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
+  { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivac - ime i prezime" },
+  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitivac - klasa" },
+  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitivac - UrBROJ" },
+  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitivac - E broj" },
+  { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivac - podaci o ovlastenju" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_NAME", label: "Nositelj - ime i prezime" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE", label: "Nositelj - klasa" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_URBROJ", label: "Nositelj - UrBROJ" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ", label: "Nositelj - E broj" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY", label: "Nositelj - podaci o ovlastenju" },
   { value: "CONTACT_NAME", label: "Kontakt - ime" },
   { value: "CONTACT_PHONE", label: "Kontakt - telefon" },
   { value: "CONTACT_EMAIL", label: "Kontakt - email" },
@@ -10093,6 +10115,32 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         type: "authorization_holder_signature",
         signatureArea: "elektro",
         helpText: "Potpis nositelja ovlastenja za panik rasvjetu iz People modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "qualified_inspector") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Ispitivac",
+        wordLabel: "Ispitivac panik rasvjete",
+        type: "text",
+        source: "QUALIFIED_INSPECTOR_SUMMARY",
+        helpText: "Povlaci podatke o odabranom ispitivacu iz People modula.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "qualified_authorization_holder") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Nositelj",
+        wordLabel: "Nositelj ovlastenja panik rasvjete",
+        type: "text",
+        source: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY",
+        helpText: "Povlaci podatke o odabranom nositelju ovlastenja iz People modula.",
       },
       baseIndex,
     );
@@ -10893,13 +10941,7 @@ function normalizePersonLookupValue(value = "") {
 function resolveQualifiedWorkOrderUser(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
   const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
   const executorNames = getWorkOrderExecutors(workOrder).map((entry) => normalizePersonLookupValue(entry)).filter(Boolean);
-  const eligibleUsers = (state.users ?? []).filter((user) => {
-    const qualification = getUserElectricalQualification(user);
-    if (qualification.discipline !== normalizedArea) {
-      return false;
-    }
-    return capability === "authorize" ? qualification.canAuthorize : qualification.canInspect;
-  });
+  const eligibleUsers = getQualifiedUsersForSignatureArea(capability, normalizedArea);
 
   const matchedExecutor = eligibleUsers.find((user) => (
     executorNames.includes(normalizePersonLookupValue(user.fullName || user.email || ""))
@@ -10933,6 +10975,11 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
     .map((item) => item.serviceName || item.name || item.serviceCode || "")
     .filter(Boolean)
     .join(", ");
+  const qualifiedUserValue = getQualifiedUserSourcePreviewValue(safeSource, context);
+
+  if (qualifiedUserValue) {
+    return qualifiedUserValue;
+  }
 
   const sourceMap = {
     CUSTOM_VALUE: "",
@@ -10963,20 +11010,34 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
   return sourceMap[safeSource] ?? "";
 }
 
-function getDocumentTemplateSignaturePreviewValue(field = {}, context = {}) {
+function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const signatureArea = String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro";
   const signatureAreaLabel = getSignatureAreaLabel(signatureArea);
   const capability = field.type === "authorization_holder_signature" ? "authorize" : "inspect";
-  const matchedUser = resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
+  const matchedUser = getWorkOrderDocumentQualifiedUser(workOrder, capability, signatureArea);
+  const qualification = getUserElectricalQualification(matchedUser);
 
-  if (matchedUser?.fullName) {
-    return matchedUser.fullName;
-  }
-
-  return capability === "authorize"
-    ? `Nositelj ovlastenja (${signatureAreaLabel})`
-    : `Ispitivac (${signatureAreaLabel})`;
+  return {
+    capability,
+    signatureArea,
+    signatureAreaLabel,
+    user: matchedUser,
+    qualification,
+    signatureImageUrl: String(
+      qualification.signatureDataUrl
+      || qualification.signatureStorageUrl
+      || "",
+    ).trim(),
+    displayName: matchedUser?.fullName
+      ? matchedUser.fullName
+      : capability === "authorize"
+        ? `Nositelj ovlastenja (${signatureAreaLabel})`
+        : `Ispitivac (${signatureAreaLabel})`,
+    summary: matchedUser
+      ? getQualifiedUserSummaryValue(matchedUser, capability, signatureArea)
+      : "",
+  };
 }
 
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
@@ -10987,7 +11048,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
   }
 
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-    return getDocumentTemplateSignaturePreviewValue(field, context);
+    return getDocumentTemplateSignaturePreviewData(field, context).displayName;
   }
 
   const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
@@ -11403,11 +11464,19 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   }
 
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-    const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode });
+    const signaturePreview = getDocumentTemplateSignaturePreviewData(field, context);
     const areaLabel = getOptionLabel(
       DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
       field.signatureArea || "elektro",
     );
+    const signatureVisual = placeholderMode
+      ? `<strong>${escapeHtml(token)}</strong>`
+      : signaturePreview.signatureImageUrl
+        ? `<img class="document-template-preview-signature-image" src="${escapeHtml(signaturePreview.signatureImageUrl)}" alt="${escapeHtml(signaturePreview.displayName)}" />`
+        : `<strong>${escapeHtml(signaturePreview.displayName)}</strong>`;
+    const signatureMeta = !placeholderMode && signaturePreview.user
+      ? `<p class="document-template-preview-muted">${escapeHtml(signaturePreview.summary)}</p>`
+      : "";
     return `
       <section class="document-template-preview-section">
         <div class="document-template-preview-field-head">
@@ -11415,7 +11484,8 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
         </div>
         <div class="document-template-preview-signature">
-          <strong>${placeholderMode ? escapeHtml(token) : escapeHtml(value)}</strong>
+          ${signatureVisual}
+          ${signatureMeta}
           <div class="document-template-preview-signature-line"></div>
         </div>
         ${helpText}
@@ -11703,12 +11773,319 @@ function getUserElectricalQualification(user = {}) {
     classCode: String(qualification.classCode || "").trim(),
     urbroj: String(qualification.urbroj || "").trim(),
     eBroj: String(qualification.eBroj || "").trim(),
+    signatureDataUrl: String(
+      qualification.signatureDataUrl
+      || qualification.signatureStorageUrl
+      || qualification.storageUrl
+      || "",
+    ).trim(),
+    signatureStorageProvider: String(qualification.signatureStorageProvider || "").trim(),
+    signatureStorageBucket: String(qualification.signatureStorageBucket || "").trim(),
+    signatureStorageKey: String(qualification.signatureStorageKey || "").trim(),
+    signatureStorageUrl: String(qualification.signatureStorageUrl || "").trim(),
     documents: Array.isArray(qualification.documents) ? qualification.documents : [],
   };
 }
 
+function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea = "elektro") {
+  const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
+  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  return (state.users ?? [])
+    .filter((user) => Boolean(user?.isActive))
+    .filter((user) => {
+      const qualification = getUserElectricalQualification(user);
+      if (qualification.discipline !== normalizedArea) {
+        return false;
+      }
+
+      return normalizedCapability === "authorize"
+        ? qualification.canAuthorize
+        : qualification.canInspect;
+    })
+    .sort((left, right) => String(left.fullName || left.email || "").localeCompare(
+      String(right.fullName || right.email || ""),
+      "hr",
+    ));
+}
+
+function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatureArea = "elektro") {
+  const qualification = getUserElectricalQualification(user);
+  const summaryParts = [
+    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+    qualification.eBroj ? `E ${qualification.eBroj}` : "",
+  ].filter(Boolean);
+  const roleLabel = capability === "authorize" ? "nositelj" : "ispitivac";
+  const areaLabel = getSignatureAreaLabel(signatureArea);
+  const fallback = `${roleLabel} · ${areaLabel}`;
+  return [
+    String(user.fullName || user.email || fallback).trim(),
+    summaryParts.join(" · "),
+  ].filter(Boolean).join(" | ");
+}
+
+function getQualifiedUserSelectOptions(capability = "inspect", signatureArea = "elektro") {
+  const emptyLabel = capability === "authorize"
+    ? "Odaberi nositelja"
+    : "Odaberi ispitivaca";
+  return [
+    { value: "", label: emptyLabel },
+    ...getQualifiedUsersForSignatureArea(capability, signatureArea).map((user) => ({
+      value: String(user.id),
+      label: getQualifiedUserSelectLabel(user, capability, signatureArea),
+    })),
+  ];
+}
+
+function findQualifiedUserById(userId = "", capability = "inspect", signatureArea = "elektro") {
+  const normalizedId = String(userId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+
+  return getQualifiedUsersForSignatureArea(capability, signatureArea)
+    .find((user) => String(user.id) === normalizedId) || null;
+}
+
+function getQualifiedUserSummaryValue(user = null, capability = "inspect", signatureArea = "elektro") {
+  if (!user) {
+    const roleLabel = capability === "authorize" ? "Nositelj ovlastenja" : "Ispitivac";
+    return `${roleLabel} (${getSignatureAreaLabel(signatureArea)})`;
+  }
+
+  const qualification = getUserElectricalQualification(user);
+  return [
+    String(user.fullName || user.email || "").trim(),
+    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+    qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+  ].filter(Boolean).join(" | ");
+}
+
+function getWorkOrderDocumentQualifiedUser(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  const fieldName = capability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId";
+  const explicitUserId = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, fieldName) : "";
+  const explicitUser = findQualifiedUserById(explicitUserId, capability, signatureArea);
+  if (explicitUser) {
+    return explicitUser;
+  }
+
+  return resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
+}
+
+function getQualifiedUserSourcePreviewValue(source, context = {}) {
+  const workOrder = context.sampleWorkOrder;
+  const normalizedSource = String(source || "").trim().toUpperCase();
+  if (!workOrder) {
+    return "";
+  }
+
+  const sourceMap = {
+    QUALIFIED_INSPECTOR_NAME: { capability: "inspect", field: "name" },
+    QUALIFIED_INSPECTOR_CLASS_CODE: { capability: "inspect", field: "classCode" },
+    QUALIFIED_INSPECTOR_URBROJ: { capability: "inspect", field: "urbroj" },
+    QUALIFIED_INSPECTOR_E_BROJ: { capability: "inspect", field: "eBroj" },
+    QUALIFIED_INSPECTOR_SUMMARY: { capability: "inspect", field: "summary" },
+    QUALIFIED_AUTHORIZATION_HOLDER_NAME: { capability: "authorize", field: "name" },
+    QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE: { capability: "authorize", field: "classCode" },
+    QUALIFIED_AUTHORIZATION_HOLDER_URBROJ: { capability: "authorize", field: "urbroj" },
+    QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ: { capability: "authorize", field: "eBroj" },
+    QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY: { capability: "authorize", field: "summary" },
+  };
+  const mapping = sourceMap[normalizedSource];
+  if (!mapping) {
+    return "";
+  }
+
+  const user = getWorkOrderDocumentQualifiedUser(workOrder, mapping.capability, "elektro");
+  if (!user) {
+    return "";
+  }
+
+  const qualification = getUserElectricalQualification(user);
+  if (mapping.field === "summary") {
+    return getQualifiedUserSummaryValue(user, mapping.capability, "elektro");
+  }
+  if (mapping.field === "name") {
+    return String(user.fullName || user.email || "").trim();
+  }
+
+  return String(qualification[mapping.field] || "").trim();
+}
+
 function getUserDocuments(user = {}) {
   return Array.isArray(user?.documents) ? user.documents : [];
+}
+
+function getUserElectricalSignatureContext() {
+  if (!userElectricalSignatureCanvas) {
+    return null;
+  }
+
+  const context = userElectricalSignatureCanvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.lineWidth = 2.4;
+  context.strokeStyle = "#2d2441";
+  return context;
+}
+
+function clearUserElectricalSignaturePad({ preserveValue = false } = {}) {
+  const context = getUserElectricalSignatureContext();
+  if (context && userElectricalSignatureCanvas) {
+    context.clearRect(0, 0, userElectricalSignatureCanvas.width, userElectricalSignatureCanvas.height);
+  }
+
+  if (userElectricalSignatureCanvas) {
+    userElectricalSignatureCanvas.style.backgroundImage = "none";
+    userElectricalSignatureCanvas.dataset.hasPreview = "false";
+  }
+
+  if (!preserveValue && userElectricalSignatureDataUrlInput) {
+    userElectricalSignatureDataUrlInput.value = "";
+  }
+
+  userElectricalSignatureIsDrawing = false;
+  userElectricalSignaturePointerId = null;
+  userElectricalSignatureLastPoint = null;
+}
+
+function renderUserElectricalSignaturePad(signatureValue = "") {
+  clearUserElectricalSignaturePad({ preserveValue: true });
+  const safeValue = String(signatureValue || "").trim();
+
+  if (userElectricalSignatureDataUrlInput) {
+    userElectricalSignatureDataUrlInput.value = safeValue;
+  }
+
+  if (!userElectricalSignatureCanvas) {
+    return;
+  }
+
+  if (safeValue) {
+    userElectricalSignatureCanvas.style.backgroundImage = `url(${JSON.stringify(safeValue)})`;
+    userElectricalSignatureCanvas.dataset.hasPreview = "true";
+  }
+}
+
+function prepareUserElectricalSignaturePadForDrawing() {
+  if (!userElectricalSignatureCanvas) {
+    return;
+  }
+
+  if (userElectricalSignatureCanvas.dataset.hasPreview === "true") {
+    clearUserElectricalSignaturePad();
+  }
+}
+
+function getUserElectricalSignaturePointer(event) {
+  if (!userElectricalSignatureCanvas) {
+    return null;
+  }
+
+  const rect = userElectricalSignatureCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return null;
+  }
+
+  const scaleX = userElectricalSignatureCanvas.width / rect.width;
+  const scaleY = userElectricalSignatureCanvas.height / rect.height;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
+  };
+}
+
+function commitUserElectricalSignaturePad() {
+  if (!userElectricalSignatureCanvas || !userElectricalSignatureDataUrlInput) {
+    return;
+  }
+
+  try {
+    userElectricalSignatureDataUrlInput.value = userElectricalSignatureCanvas.toDataURL("image/png");
+  } catch {
+    userElectricalSignatureDataUrlInput.value = "";
+  }
+}
+
+function handleUserElectricalSignaturePointerDown(event) {
+  if (!userElectricalSignatureCanvas) {
+    return;
+  }
+
+  if (event.button !== undefined && event.button !== 0) {
+    return;
+  }
+
+  const context = getUserElectricalSignatureContext();
+  const point = getUserElectricalSignaturePointer(event);
+  if (!context || !point) {
+    return;
+  }
+
+  event.preventDefault();
+  prepareUserElectricalSignaturePadForDrawing();
+  userElectricalSignatureIsDrawing = true;
+  userElectricalSignaturePointerId = event.pointerId ?? null;
+  userElectricalSignatureLastPoint = point;
+  context.beginPath();
+  context.moveTo(point.x, point.y);
+  context.lineTo(point.x + 0.1, point.y + 0.1);
+  context.stroke();
+  userElectricalSignatureCanvas.setPointerCapture?.(event.pointerId);
+  commitUserElectricalSignaturePad();
+}
+
+function handleUserElectricalSignaturePointerMove(event) {
+  if (!userElectricalSignatureIsDrawing || !userElectricalSignatureCanvas) {
+    return;
+  }
+
+  if (userElectricalSignaturePointerId !== null && event.pointerId !== userElectricalSignaturePointerId) {
+    return;
+  }
+
+  const context = getUserElectricalSignatureContext();
+  const point = getUserElectricalSignaturePointer(event);
+  if (!context || !point || !userElectricalSignatureLastPoint) {
+    return;
+  }
+
+  event.preventDefault();
+  context.beginPath();
+  context.moveTo(userElectricalSignatureLastPoint.x, userElectricalSignatureLastPoint.y);
+  context.lineTo(point.x, point.y);
+  context.stroke();
+  userElectricalSignatureLastPoint = point;
+  commitUserElectricalSignaturePad();
+}
+
+function handleUserElectricalSignaturePointerUp(event) {
+  if (!userElectricalSignatureCanvas) {
+    return;
+  }
+
+  if (userElectricalSignaturePointerId !== null && event.pointerId !== userElectricalSignaturePointerId) {
+    return;
+  }
+
+  if (userElectricalSignatureIsDrawing) {
+    event.preventDefault();
+    commitUserElectricalSignaturePad();
+  }
+
+  const pointerId = typeof event.pointerId === "number" ? event.pointerId : null;
+  const hasCapture = pointerId !== null && userElectricalSignatureCanvas.hasPointerCapture?.(pointerId);
+  userElectricalSignatureIsDrawing = false;
+  userElectricalSignaturePointerId = null;
+  userElectricalSignatureLastPoint = null;
+  if (hasCapture) {
+    userElectricalSignatureCanvas.releasePointerCapture?.(pointerId);
+  }
 }
 
 function setUserDocumentDrafts(items = []) {
@@ -12286,6 +12663,26 @@ function renderDocumentTemplateRuntimeContext() {
     {
       label: "Napomena",
       value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "note") : "",
+    },
+    {
+      label: "Ispitivac",
+      value: activeWorkOrder
+        ? findQualifiedUserById(
+          getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectorUserId"),
+          "inspect",
+          "elektro",
+        )?.fullName || ""
+        : "",
+    },
+    {
+      label: "Nositelj",
+      value: activeWorkOrder
+        ? findQualifiedUserById(
+          getDocumentTemplateRuntimeValue(activeWorkOrder.id, "authorizationHolderUserId"),
+          "authorize",
+          "elektro",
+        )?.fullName || ""
+        : "",
     },
   ].filter((entry) => String(entry.value || "").trim());
 
@@ -14895,6 +15292,7 @@ function buildUserPayload() {
       classCode: userElectricalClassInput?.value || "",
       urbroj: userElectricalUrbrojInput?.value || "",
       eBroj: userElectricalEBrojInput?.value || "",
+      signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
       documents: [],
     },
   };
@@ -15013,6 +15411,9 @@ function resetUserForm() {
   userForm.reset();
   userIdInput.value = "";
   userAvatarDataUrlInput.value = "";
+  if (userElectricalSignatureDataUrlInput) {
+    userElectricalSignatureDataUrlInput.value = "";
+  }
   userError.textContent = "";
   userIsActiveInput.value = "true";
   userRoleInput.value = getIsSuperAdmin() ? "admin" : "user";
@@ -15027,6 +15428,7 @@ function resetUserForm() {
   }
   setUserDocumentDrafts([]);
   renderUserDocuments();
+  renderUserElectricalSignaturePad("");
   syncUserEditorChrome(false);
   setUserEditorDocumentDropActive(false);
   renderAvatar(userAvatarPreview, {});
@@ -15193,6 +15595,7 @@ function hydrateUserForm(user) {
   if (userElectricalEBrojInput) {
     userElectricalEBrojInput.value = electricalQualification.eBroj;
   }
+  renderUserElectricalSignaturePad(electricalQualification.signatureDataUrl || "");
   setUserDocumentDrafts(getUserDocuments(user));
   renderUserDocuments();
   renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
@@ -24156,6 +24559,8 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     issuedDate: new Date().toISOString().slice(0, 10),
     issuedPlace: "",
     note: "",
+    inspectorUserId: "",
+    authorizationHolderUserId: "",
   };
 
   if (closeWizard) {
@@ -24250,9 +24655,37 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   if (workOrderDocumentCommonNoteInput) {
     workOrderDocumentCommonNoteInput.value = state.workOrderDocumentWizard.common.note || "";
   }
+  if (workOrderDocumentCommonInspectorInput) {
+    const options = getQualifiedUserSelectOptions("inspect", "elektro");
+    const selectedValue = String(state.workOrderDocumentWizard.common.inspectorUserId || "").trim();
+    replaceSelectOptions(
+      workOrderDocumentCommonInspectorInput,
+      options,
+      optionListIncludesValue(options, selectedValue) ? selectedValue : "",
+    );
+  }
+  if (workOrderDocumentCommonAuthorizationHolderInput) {
+    const options = getQualifiedUserSelectOptions("authorize", "elektro");
+    const selectedValue = String(state.workOrderDocumentWizard.common.authorizationHolderUserId || "").trim();
+    replaceSelectOptions(
+      workOrderDocumentCommonAuthorizationHolderInput,
+      options,
+      optionListIncludesValue(options, selectedValue) ? selectedValue : "",
+    );
+  }
 }
 
 function getWorkOrderDocumentWizardCommonSummaryParts() {
+  const inspector = findQualifiedUserById(
+    state.workOrderDocumentWizard.common.inspectorUserId,
+    "inspect",
+    "elektro",
+  );
+  const authorizationHolder = findQualifiedUserById(
+    state.workOrderDocumentWizard.common.authorizationHolderUserId,
+    "authorize",
+    "elektro",
+  );
   return [
     state.workOrderDocumentWizard.common.inspectionDate
       ? `Ispitivanje ${formatCompactDate(state.workOrderDocumentWizard.common.inspectionDate)}`
@@ -24260,6 +24693,8 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
     state.workOrderDocumentWizard.common.issuedDate
       ? `Izdavanje ${formatCompactDate(state.workOrderDocumentWizard.common.issuedDate)}`
       : "",
+    inspector?.fullName ? `Ispitivac ${inspector.fullName}` : "",
+    authorizationHolder?.fullName ? `Nositelj ${authorizationHolder.fullName}` : "",
   ].filter(Boolean);
 }
 
@@ -24346,14 +24781,36 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
   }
 
   const current = getWorkOrderDocumentWizardOverride(normalizedId);
+  const hasInspectorPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserId");
+  const hasAuthorizationHolderPatch = Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId");
   const next = {
     inspectionDate: String(patch.inspectionDate ?? current.inspectionDate ?? "").trim(),
     issuedDate: String(patch.issuedDate ?? current.issuedDate ?? "").trim(),
     issuedPlace: String(patch.issuedPlace ?? current.issuedPlace ?? "").trim(),
     note: String(patch.note ?? current.note ?? "").trim(),
+    inspectorUserId: hasInspectorPatch
+      ? (String(patch.inspectorUserId ?? "").trim() || null)
+      : (Object.prototype.hasOwnProperty.call(current, "inspectorUserId")
+        ? current.inspectorUserId ?? null
+        : ""),
+    authorizationHolderUserId: hasAuthorizationHolderPatch
+      ? (String(patch.authorizationHolderUserId ?? "").trim() || null)
+      : (Object.prototype.hasOwnProperty.call(current, "authorizationHolderUserId")
+        ? current.authorizationHolderUserId ?? null
+        : ""),
   };
+  const hasExplicitSignatureUserOverride = next.inspectorUserId === null
+    || next.authorizationHolderUserId === null
+    || Boolean(next.inspectorUserId)
+    || Boolean(next.authorizationHolderUserId);
 
-  if (!next.inspectionDate && !next.issuedDate && !next.issuedPlace && !next.note) {
+  if (
+    !next.inspectionDate
+    && !next.issuedDate
+    && !next.issuedPlace
+    && !next.note
+    && !hasExplicitSignatureUserOverride
+  ) {
     delete state.workOrderDocumentWizard.overrides[normalizedId];
     return;
   }
@@ -24363,9 +24820,8 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
 
 function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
   const override = getWorkOrderDocumentWizardOverride(workOrderId);
-  const overrideValue = String(override?.[fieldName] ?? "").trim();
-  if (overrideValue) {
-    return overrideValue;
+  if (override && Object.prototype.hasOwnProperty.call(override, fieldName)) {
+    return String(override?.[fieldName] ?? "").trim();
   }
   return String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
 }
@@ -24386,6 +24842,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       issuedDate: "",
       issuedPlace: "",
       note: "",
+      inspectorUserId: "",
+      authorizationHolderUserId: "",
     },
     overrides: {},
   };
@@ -24453,10 +24911,8 @@ function getDocumentTemplateRuntimeActiveWorkOrder() {
 function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
   const normalizedId = String(workOrderId || "").trim();
   const current = normalizedId ? state.documentTemplateRuntime.overrides?.[normalizedId] ?? {} : {};
-  const overrideValue = String(current?.[fieldName] ?? "").trim();
-
-  if (overrideValue) {
-    return overrideValue;
+  if (current && Object.prototype.hasOwnProperty.call(current, fieldName)) {
+    return String(current?.[fieldName] ?? "").trim();
   }
 
   return String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
@@ -24476,6 +24932,10 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
       issuedPlace: String(state.workOrderDocumentWizard.common?.issuedPlace ?? "").trim(),
       note: String(state.workOrderDocumentWizard.common?.note ?? "").trim(),
+      inspectorUserId: String(state.workOrderDocumentWizard.common?.inspectorUserId ?? "").trim(),
+      authorizationHolderUserId: String(
+        state.workOrderDocumentWizard.common?.authorizationHolderUserId ?? "",
+      ).trim(),
     },
     overrides: { ...(state.workOrderDocumentWizard.overrides ?? {}) },
   };
@@ -24667,25 +25127,40 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   const grid = document.createElement("div");
   grid.className = "form-grid work-order-document-selection-grid";
 
-  const createOverrideField = ({ label, type = "text", fieldName, placeholder = "", rows = 0 }) => {
+  const createOverrideField = ({
+    label,
+    type = "text",
+    fieldName,
+    placeholder = "",
+    rows = 0,
+    options = null,
+  }) => {
     const field = document.createElement("label");
     field.className = rows ? "field field-span-full" : "field";
 
     const labelNode = document.createElement("span");
     labelNode.textContent = label;
 
-    const input = rows
-      ? document.createElement("textarea")
-      : document.createElement("input");
+    let input;
 
-    if (input instanceof HTMLInputElement) {
-      input.type = type;
+    if (Array.isArray(options)) {
+      input = document.createElement("select");
+      replaceSelectOptions(input, options, getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName));
+    } else if (rows) {
+      input = document.createElement("textarea");
     } else {
-      input.rows = rows;
+      input = document.createElement("input");
+      input.type = type;
     }
 
-    input.value = override?.[fieldName] || "";
-    input.placeholder = placeholder;
+    if (input instanceof HTMLTextAreaElement) {
+      input.rows = rows;
+      input.value = override?.[fieldName] || "";
+      input.placeholder = placeholder;
+    } else if (input instanceof HTMLInputElement) {
+      input.value = override?.[fieldName] || "";
+      input.placeholder = placeholder;
+    }
     input.dataset.batchField = fieldName;
     input.dataset.batchWorkOrderId = String(workOrder.id);
 
@@ -24707,6 +25182,16 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
     }),
     createOverrideField({
+      label: "Ispitivac",
+      fieldName: "inspectorUserId",
+      options: getQualifiedUserSelectOptions("inspect", "elektro"),
+    }),
+    createOverrideField({
+      label: "Nositelj",
+      fieldName: "authorizationHolderUserId",
+      options: getQualifiedUserSelectOptions("authorize", "elektro"),
+    }),
+    createOverrideField({
       label: "Mjesto izdavanja",
       type: "text",
       fieldName: "issuedPlace",
@@ -24725,7 +25210,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const helper = document.createElement("span");
   helper.className = "work-order-document-selection-helper";
-  helper.textContent = "Datume gore postavis svima, a ovdje prepravis samo ako ovaj RN odskace.";
+  helper.textContent = "Gore postavis zajednicke datume i osobe, a ovdje prepravis samo ako ovaj RN odskace.";
 
   const resetButton = document.createElement("button");
   resetButton.type = "button";
@@ -26525,6 +27010,8 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
   [workOrderDocumentCommonIssuedDateInput, "issuedDate"],
   [workOrderDocumentCommonIssuedPlaceInput, "issuedPlace"],
   [workOrderDocumentCommonNoteInput, "note"],
+  [workOrderDocumentCommonInspectorInput, "inspectorUserId"],
+  [workOrderDocumentCommonAuthorizationHolderInput, "authorizationHolderUserId"],
 ].forEach(([input, fieldName]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
@@ -26545,7 +27032,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
 });
 workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
     return;
   }
   const workOrderId = target.dataset.batchWorkOrderId || "";
@@ -26559,7 +27046,7 @@ workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
 });
 workOrderDocumentWizardWorkOrders?.addEventListener("change", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
     return;
   }
   const workOrderId = target.dataset.batchWorkOrderId || "";
@@ -28607,6 +29094,16 @@ userDocumentsInput?.addEventListener("change", () => {
     userDocumentsInput.value = "";
   });
 });
+
+userElectricalSignatureClearButton?.addEventListener("click", () => {
+  clearUserElectricalSignaturePad();
+});
+
+userElectricalSignatureCanvas?.addEventListener("pointerdown", handleUserElectricalSignaturePointerDown);
+userElectricalSignatureCanvas?.addEventListener("pointermove", handleUserElectricalSignaturePointerMove);
+userElectricalSignatureCanvas?.addEventListener("pointerup", handleUserElectricalSignaturePointerUp);
+userElectricalSignatureCanvas?.addEventListener("pointercancel", handleUserElectricalSignaturePointerUp);
+userElectricalSignatureCanvas?.addEventListener("pointerleave", handleUserElectricalSignaturePointerUp);
 
 userEditorPanel?.addEventListener("dragenter", (event) => {
   if (!isFileDragEvent(event)) {

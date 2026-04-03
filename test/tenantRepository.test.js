@@ -206,6 +206,30 @@ test("memory tenant repository keeps generic user documents separate from panic 
   assert.equal(createdUser.electricalQualification.canInspect, true);
 });
 
+test("memory tenant repository keeps panic qualification signature on user", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Iva",
+    lastName: "Potpis",
+    email: "iva-potpis@example.com",
+    password: "secret123",
+    role: "user",
+    electricalQualification: {
+      canInspect: true,
+      classCode: "KL-22",
+      signatureDataUrl: "data:image/png;base64,potpisslika",
+    },
+  });
+
+  assert.equal(createdUser.electricalQualification.canInspect, true);
+  assert.equal(createdUser.electricalQualification.classCode, "KL-22");
+  assert.equal(createdUser.electricalQualification.signatureDataUrl, "data:image/png;base64,potpisslika");
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
