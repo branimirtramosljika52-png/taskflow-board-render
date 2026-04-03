@@ -14247,8 +14247,10 @@ body.is-document-template-editor-open {
 
 .user-editor-modules {
   display: grid;
-  grid-template-areas: "documents electrical";
-  grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+  grid-template-areas:
+    "documents"
+    "electrical";
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -14388,6 +14390,10 @@ body.is-document-template-editor-open {
   gap: 3px;
 }
 
+.user-documents-block .module-attachment-field.is-custom-category {
+  grid-column: 1 / -1;
+}
+
 .user-documents-block .module-attachment-field-label {
   font-size: 0.64rem;
   letter-spacing: 0.12em;
@@ -14434,15 +14440,6 @@ body.is-document-template-editor-open {
 .user-electrical-qualification-block select,
 .user-electrical-qualification-block input {
   min-height: 42px;
-}
-
-@media (max-width: 980px) {
-  .user-editor-modules {
-    grid-template-areas:
-      "documents"
-      "electrical";
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 }
 

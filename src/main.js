@@ -2369,6 +2369,25 @@ function replaceSelectOptions(select, options, selectedValue = "") {
   }
 }
 
+function optionListIncludesValue(options = [], value = "") {
+  return options.some((option) => String(option.value) === String(value));
+}
+
+function buildCategoryOptions(options = [], currentValue = "") {
+  const normalizedCurrent = String(currentValue || "").trim();
+  if (!normalizedCurrent || optionListIncludesValue(options, normalizedCurrent)) {
+    return options;
+  }
+
+  const insertIndex = Math.max(0, options.length - 1);
+  const nextOptions = options.slice();
+  nextOptions.splice(insertIndex, 0, {
+    value: normalizedCurrent,
+    label: normalizedCurrent,
+  });
+  return nextOptions;
+}
+
 function getUserInitials(userLike = {}) {
   const firstName = String(userLike.firstName ?? "").trim();
   const lastName = String(userLike.lastName ?? "").trim();
@@ -9922,6 +9941,7 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "certifikat", label: "Certifikat" },
   { value: "ugovor", label: "Ugovor" },
   { value: "ostalo", label: "Ostalo" },
+  { value: "__custom__", label: "Add new..." },
 ];
 
 const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
@@ -11696,6 +11716,20 @@ function focusUserDocumentCategory(documentId = "") {
   });
 }
 
+function focusUserDocumentCustomCategory(documentId = "") {
+  if (!documentId || !userDocumentsList) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const target = Array.from(
+      userDocumentsList.querySelectorAll(".module-attachment-custom-category-input"),
+    ).find((input) => input.dataset.documentId === String(documentId));
+
+    target?.focus({ preventScroll: false });
+  });
+}
+
 function renderUserDocuments() {
   if (!userDocumentsList) {
     return;
@@ -11756,19 +11790,65 @@ function renderUserDocuments() {
     const categorySelect = document.createElement("select");
     categorySelect.className = "module-attachment-category-select";
     categorySelect.dataset.documentId = entry.id;
+    const categoryOptions = buildCategoryOptions(USER_DOCUMENT_CATEGORY_OPTIONS, entry.documentCategory || "");
+    const usesCustomCategory = entry.documentCategoryMode === "custom"
+      || Boolean(entry.documentCategory && !optionListIncludesValue(USER_DOCUMENT_CATEGORY_OPTIONS, entry.documentCategory));
     replaceSelectOptions(
       categorySelect,
-      USER_DOCUMENT_CATEGORY_OPTIONS,
+      categoryOptions,
       entry.documentCategory || "",
     );
     categorySelect.addEventListener("change", () => {
       const nextValue = categorySelect.value || "";
-      updateUserDocumentDraft(entry.id, { documentCategory: nextValue });
+      if (nextValue === "__custom__") {
+        updateUserDocumentDraft(entry.id, {
+          documentCategory: "",
+          documentCategoryMode: "custom",
+        });
+        renderUserDocuments();
+        focusUserDocumentCustomCategory(entry.id);
+        return;
+      }
+      updateUserDocumentDraft(entry.id, {
+        documentCategory: nextValue,
+        documentCategoryMode: "",
+      });
       row.classList.toggle("is-unclassified", !nextValue);
+      if (usesCustomCategory) {
+        renderUserDocuments();
+      }
     });
 
     categoryField.append(categoryLabel, categorySelect);
     fieldWrap.append(nameField, categoryField);
+    if (usesCustomCategory) {
+      const customCategoryField = document.createElement("label");
+      customCategoryField.className = "module-attachment-field is-custom-category";
+
+      const customCategoryLabel = document.createElement("span");
+      customCategoryLabel.className = "module-attachment-field-label";
+      customCategoryLabel.textContent = "Nova vrsta";
+
+      const customCategoryInput = document.createElement("input");
+      customCategoryInput.type = "text";
+      customCategoryInput.value = entry.documentCategory || "";
+      customCategoryInput.maxLength = 64;
+      customCategoryInput.placeholder = "Upiši vrstu dokumenta";
+      customCategoryInput.className = "module-attachment-custom-category-input";
+      customCategoryInput.dataset.documentId = entry.id;
+      customCategoryInput.addEventListener("input", () => {
+        const customValue = customCategoryInput.value;
+        updateUserDocumentDraft(entry.id, {
+          documentCategory: customValue,
+          documentCategoryMode: "custom",
+        });
+        row.classList.toggle("is-unclassified", !String(customValue || "").trim());
+      });
+
+      customCategoryField.append(customCategoryLabel, customCategoryInput);
+      fieldWrap.append(customCategoryField);
+    }
+
     copy.append(meta, fieldWrap);
 
     const actions = document.createElement("div");
