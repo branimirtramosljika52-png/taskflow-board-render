@@ -2389,6 +2389,31 @@ function buildCategoryOptions(options = [], currentValue = "") {
   return nextOptions;
 }
 
+function buildDraftCategoryOptions(baseOptions = [], drafts = [], currentValue = "") {
+  const baseWithoutCustom = baseOptions.filter((option) => option.value !== "__custom__");
+  const customOption = baseOptions.find((option) => option.value === "__custom__") || null;
+  const seen = new Set(baseWithoutCustom.map((option) => String(option.value)));
+  const customValues = [];
+
+  (Array.isArray(drafts) ? drafts : []).forEach((draft) => {
+    const value = String(draft?.documentCategory || "").trim();
+    if (!value || seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+    customValues.push({
+      value,
+      label: value,
+    });
+  });
+
+  const nextOptions = [...baseWithoutCustom, ...customValues];
+  if (customOption) {
+    nextOptions.push(customOption);
+  }
+  return buildCategoryOptions(nextOptions, currentValue);
+}
+
 function getUserInitials(userLike = {}) {
   const firstName = String(userLike.firstName ?? "").trim();
   const lastName = String(userLike.lastName ?? "").trim();
@@ -11731,6 +11756,21 @@ function focusUserDocumentCustomCategory(documentId = "") {
   });
 }
 
+function finalizeUserDocumentCustomCategory(documentId = "", rawValue = "") {
+  const nextValue = String(rawValue || "").trim();
+  if (!documentId || !nextValue) {
+    return false;
+  }
+
+  updateUserDocumentDraft(documentId, {
+    documentCategory: nextValue,
+    documentCategoryMode: "",
+  });
+  renderUserDocuments();
+  focusUserDocumentCategory(documentId);
+  return true;
+}
+
 function renderUserDocuments() {
   if (!userDocumentsList) {
     return;
@@ -11791,9 +11831,12 @@ function renderUserDocuments() {
     const categorySelect = document.createElement("select");
     categorySelect.className = "module-attachment-category-select";
     categorySelect.dataset.documentId = entry.id;
-    const categoryOptions = buildCategoryOptions(USER_DOCUMENT_CATEGORY_OPTIONS, entry.documentCategory || "");
-    const usesCustomCategory = entry.documentCategoryMode === "custom"
-      || Boolean(entry.documentCategory && !optionListIncludesValue(USER_DOCUMENT_CATEGORY_OPTIONS, entry.documentCategory));
+    const categoryOptions = buildDraftCategoryOptions(
+      USER_DOCUMENT_CATEGORY_OPTIONS,
+      userDocumentDrafts,
+      entry.documentCategory || "",
+    );
+    const usesCustomCategory = entry.documentCategoryMode === "custom";
     replaceSelectOptions(
       categorySelect,
       categoryOptions,
@@ -11844,6 +11887,26 @@ function renderUserDocuments() {
           documentCategoryMode: "custom",
         });
         row.classList.toggle("is-unclassified", !String(customValue || "").trim());
+      });
+      customCategoryInput.addEventListener("blur", () => {
+        finalizeUserDocumentCustomCategory(entry.id, customCategoryInput.value);
+      });
+      customCategoryInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finalizeUserDocumentCustomCategory(entry.id, customCategoryInput.value);
+          return;
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault();
+          updateUserDocumentDraft(entry.id, {
+            documentCategory: "",
+            documentCategoryMode: "",
+          });
+          renderUserDocuments();
+          focusUserDocumentCategory(entry.id);
+        }
       });
 
       customCategoryField.append(customCategoryLabel, customCategoryInput);

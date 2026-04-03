@@ -2352,6 +2352,13 @@ body.is-location-editor-open {
   position: relative;
 }
 
+.user-editor-panel .masterdata-editor-body {
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 108px;
+}
+
 .user-editor-panel.is-drop-target::before {
   content: "";
   position: absolute;
@@ -14354,6 +14361,7 @@ body.is-document-template-editor-open {
   max-height: 300px;
   overflow: auto;
   padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .user-documents-block .module-attachment-row {
