@@ -204,21 +204,40 @@ function mapUserElectricalQualification(row = {}) {
     storageUrl: rawQualification.signatureStorageUrl,
   });
 
-  return {
-    discipline: dbString(rawQualification.discipline || "elektro").toLowerCase() || "elektro",
-    canInspect: toBooleanFlag(rawQualification.canInspect, false),
-    canAuthorize: toBooleanFlag(rawQualification.canAuthorize, false),
-    classCode: dbString(rawQualification.classCode),
-    urbroj: dbString(rawQualification.urbroj),
-    eBroj: dbString(rawQualification.eBroj),
+  const mapQualificationArea = (rawArea = {}, discipline = "elektro") => ({
+    discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
+    canInspect: toBooleanFlag(rawArea.canInspect, false),
+    canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
+    classCode: dbString(rawArea.classCode),
+    urbroj: dbString(rawArea.urbroj),
+    eBroj: dbString(rawArea.eBroj),
     signatureDataUrl: storedSignature.dataUrl,
     signatureStorageProvider: storedSignature.storageProvider,
     signatureStorageBucket: storedSignature.storageBucket,
     signatureStorageKey: storedSignature.storageKey,
     signatureStorageUrl: storedSignature.storageUrl,
+    documents: [],
+  });
+
+  const mappedAdditionalAreas = Object.fromEntries(
+    Object.entries(parseJsonObject(rawQualification.additionalAreas, {}))
+      .map(([key, value]) => {
+        const normalizedKey = dbString(key).toLowerCase();
+        if (!normalizedKey || normalizedKey === "elektro") {
+          return null;
+        }
+
+        return [normalizedKey, mapQualificationArea(parseJsonObject(value, {}), normalizedKey)];
+      })
+      .filter(Boolean),
+  );
+
+  return {
+    ...mapQualificationArea(rawQualification, rawQualification.discipline || "elektro"),
     documents: parseJsonArray(rawQualification.documents)
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && document.dataUrl),
+    additionalAreas: mappedAdditionalAreas,
   };
 }
 
@@ -578,6 +597,32 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     documents: (Array.isArray(source.documents) ? source.documents : [])
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && document.dataUrl),
+    additionalAreas: Object.fromEntries(
+      Object.entries(parseJsonObject(source.additionalAreas, {}))
+        .map(([key, value]) => {
+          const normalizedKey = dbString(key).toLowerCase();
+          if (!normalizedKey || normalizedKey === "elektro") {
+            return null;
+          }
+
+          const rawArea = parseJsonObject(value, {});
+          return [normalizedKey, {
+            discipline: normalizedKey,
+            canInspect: toBooleanFlag(rawArea.canInspect, false),
+            canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
+            classCode: dbString(rawArea.classCode),
+            urbroj: dbString(rawArea.urbroj),
+            eBroj: dbString(rawArea.eBroj),
+            signatureDataUrl: storedSignature.dataUrl,
+            signatureStorageProvider: storedSignature.storageProvider,
+            signatureStorageBucket: storedSignature.storageBucket,
+            signatureStorageKey: storedSignature.storageKey,
+            signatureStorageUrl: storedSignature.storageUrl,
+            documents: [],
+          }];
+        })
+        .filter(Boolean),
+    ),
   };
 }
 

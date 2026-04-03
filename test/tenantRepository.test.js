@@ -230,6 +230,40 @@ test("memory tenant repository keeps panic qualification signature on user", asy
   assert.equal(createdUser.electricalQualification.signatureDataUrl, "data:image/png;base64,potpisslika");
 });
 
+test("memory tenant repository keeps additional switch-off qualifications on user", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Nikola",
+    lastName: "Tipkalo",
+    email: "nikola-tipkalo@example.com",
+    password: "secret123",
+    role: "user",
+    electricalQualification: {
+      canInspect: false,
+      additionalAreas: {
+        tipkalo: {
+          canInspect: true,
+          canAuthorize: true,
+          classCode: "UP/I-133-02/25-02/26",
+          urbroj: "1392/25",
+          eBroj: "89627512970",
+        },
+      },
+    },
+  });
+
+  assert.equal(createdUser.electricalQualification.canInspect, false);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canInspect, true);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canAuthorize, true);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.classCode, "UP/I-133-02/25-02/26");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.urbroj, "1392/25");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.eBroj, "89627512970");
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

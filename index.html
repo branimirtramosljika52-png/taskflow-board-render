@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260403l" />
+  <link rel="stylesheet" href="/styles.css?v=20260403m" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1275,8 +1275,8 @@
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
                 <label class="field">
-                  <span>Ispitivac panik rasvjete</span>
-                  <select id="work-order-document-common-inspector-user-id"></select>
+                  <span>Ispitivači</span>
+                  <select id="work-order-document-common-inspector-user-id" multiple size="4"></select>
                 </label>
                 <label class="field">
                   <span>Nositelj ovlastenja</span>
@@ -2156,7 +2156,7 @@
                     <th>User</th>
                     <th>Email</th>
                     <th>Role</th>
-                      <th>Panik rasvjeta</th>
+                      <th>Ovlaštenja</th>
                     <th>Organization</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -2286,6 +2286,43 @@
                         </div>
                         <canvas id="user-electrical-signature-canvas" class="user-signature-pad" width="760" height="220"></canvas>
                       </section>
+                    </div>
+                  </section>
+
+                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Ovlaštenja</p>
+                        <h3>Tipkalo za isklop napona</h3>
+                      </div>
+                    </div>
+                    <div class="form-grid user-electrical-grid">
+                      <label class="field">
+                        <span>Ispitivač</span>
+                        <select id="user-tipkalo-can-inspect">
+                          <option value="false">Ne</option>
+                          <option value="true">Da</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Nositelj</span>
+                        <select id="user-tipkalo-can-authorize">
+                          <option value="false">Ne</option>
+                          <option value="true">Da</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Klasa</span>
+                        <input id="user-tipkalo-class" type="text" maxlength="160" />
+                      </label>
+                      <label class="field">
+                        <span>UrBROJ</span>
+                        <input id="user-tipkalo-urbroj" type="text" maxlength="160" />
+                      </label>
+                      <label class="field">
+                        <span>E broj</span>
+                        <input id="user-tipkalo-e-broj" type="text" maxlength="160" />
+                      </label>
                     </div>
                   </section>
                   </div>
@@ -3509,8 +3546,8 @@
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector">
-                              <strong>Ispitivac</strong>
-                              <span>Dodaje podatke o ispitivacu panik rasvjete</span>
+                              <strong>Ispitivači</strong>
+                              <span>Dodaje složeni blok svih odabranih ispitivača za traženi dio</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_authorization_holder">
                               <strong>Nositelj</strong>
@@ -3702,6 +3739,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260403l"></script>
+    <script type="module" src="/src/main.js?v=20260403m"></script>
   </body>
 </html>

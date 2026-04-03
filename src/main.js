@@ -539,6 +539,7 @@ const state = {
       issuedDate: new Date().toISOString().slice(0, 10),
       issuedPlace: "",
       note: "",
+      inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
     },
@@ -558,6 +559,7 @@ const state = {
       issuedDate: "",
       issuedPlace: "",
       note: "",
+      inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
     },
@@ -1807,6 +1809,11 @@ const userElectricalCanAuthorizeInput = document.querySelector("#user-electrical
 const userElectricalClassInput = document.querySelector("#user-electrical-class");
 const userElectricalUrbrojInput = document.querySelector("#user-electrical-urbroj");
 const userElectricalEBrojInput = document.querySelector("#user-electrical-e-broj");
+const userTipkaloCanInspectInput = document.querySelector("#user-tipkalo-can-inspect");
+const userTipkaloCanAuthorizeInput = document.querySelector("#user-tipkalo-can-authorize");
+const userTipkaloClassInput = document.querySelector("#user-tipkalo-class");
+const userTipkaloUrbrojInput = document.querySelector("#user-tipkalo-urbroj");
+const userTipkaloEBrojInput = document.querySelector("#user-tipkalo-e-broj");
 const userElectricalSignatureDataUrlInput = document.querySelector("#user-electrical-signature-data-url");
 const userElectricalSignatureCanvas = document.querySelector("#user-electrical-signature-canvas");
 const userElectricalSignatureClearButton = document.querySelector("#user-electrical-signature-clear");
@@ -8498,28 +8505,36 @@ function createUserIdentityCell(user) {
 }
 
 function createUserElectricalCell(user) {
-  const qualification = getUserElectricalQualification(user);
+  const panicQualification = getUserElectricalQualification(user, "elektro");
+  const switchQualification = getUserElectricalQualification(user, "tipkalo");
   const statusMeta = [];
-
-  statusMeta.push({
-    label: qualification.canInspect ? "Ispitivanje: da" : "Ispitivanje: ne",
-    className: qualification.canInspect ? "is-success" : "is-muted",
-  });
-
-  if (qualification.canAuthorize) {
-    statusMeta.push({
-      label: "Nositelj",
-      className: "is-accent",
-    });
-  }
-
-  return createStackCell({
-    title: qualification.canInspect ? "Da" : "Ne",
-    subtitle: [
+  const summarizeQualification = (qualification, label) => {
+    const detail = [
       qualification.classCode ? `Klasa ${qualification.classCode}` : "",
       qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
       qualification.eBroj ? `E ${qualification.eBroj}` : "",
-    ].filter(Boolean).join(" | ") || "Bez dodijeljenih podataka",
+    ].filter(Boolean).join(" | ");
+
+    return detail ? `${label}: ${detail}` : `${label}: nema podataka`;
+  };
+
+  if (panicQualification.canInspect) {
+    statusMeta.push({ label: "Panik ispitivač", className: "is-success" });
+  }
+  if (panicQualification.canAuthorize) {
+    statusMeta.push({ label: "Panik nositelj", className: "is-accent" });
+  }
+  if (switchQualification.canInspect) {
+    statusMeta.push({ label: "Tipkalo ispitivač", className: "is-success" });
+  }
+  if (switchQualification.canAuthorize) {
+    statusMeta.push({ label: "Tipkalo nositelj", className: "is-accent" });
+  }
+
+  return createStackCell({
+    title: statusMeta.length > 0 ? "Aktivna ovlaštenja" : "Bez ovlaštenja",
+    subtitle: summarizeQualification(panicQualification, "Panik"),
+    tertiary: summarizeQualification(switchQualification, "Tipkalo"),
     meta: statusMeta,
   });
 }
@@ -9983,7 +9998,8 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
-      { value: "elektro", label: "Panik rasvjeta" },
+  { value: "elektro", label: "Panik rasvjeta" },
+  { value: "tipkalo", label: "Tipkalo za isklop napona" },
 ];
 
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
@@ -10023,6 +10039,7 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
+  "qualified_inspectors",
   "legal_list",
   "equipment_list",
   "measurement_table",
@@ -10123,11 +10140,11 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "qualified_inspector") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Ispitivac",
-        wordLabel: "Ispitivac panik rasvjete",
-        type: "text",
-        source: "QUALIFIED_INSPECTOR_SUMMARY",
-        helpText: "Povlaci podatke o odabranom ispitivacu iz People modula.",
+        label: "Ispitivači",
+        wordLabel: "Ispitivači panik rasvjete",
+        type: "qualified_inspectors",
+        signatureArea: "elektro",
+        helpText: "Povlači sve odabrane ispitivače za traženi dio i slaže ih u blok s potpisima.",
       },
       baseIndex,
     );
@@ -10950,9 +10967,64 @@ function resolveQualifiedWorkOrderUser(workOrder = {}, capability = "inspect", s
   return matchedExecutor || eligibleUsers[0] || null;
 }
 
+function normalizeQualificationAreaKey(signatureArea = "elektro") {
+  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase();
+  return normalizedArea || "elektro";
+}
+
+function getUsersByIds(userIds = []) {
+  const normalizedIds = normalizeQualifiedUserIdList(userIds);
+  if (normalizedIds.length === 0) {
+    return [];
+  }
+
+  return normalizedIds
+    .map((userId) => state.users.find((user) => String(user?.id) === userId))
+    .filter(Boolean);
+}
+
 function getSignatureAreaLabel(signatureArea = "elektro") {
-  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
-  return normalizedArea === "elektro" ? "panik rasvjeta" : normalizedArea;
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  if (normalizedArea === "elektro") {
+    return "panik rasvjeta";
+  }
+  if (normalizedArea === "tipkalo") {
+    return "tipkalo za isklop napona";
+  }
+  return normalizedArea;
+}
+
+function getDocumentTemplateSignatureAreas(template = {}) {
+  const areas = new Set();
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
+    if (!["qualified_inspectors", "inspector_signature", "authorization_holder_signature"].includes(field?.type)) {
+      return;
+    }
+
+    areas.add(normalizeQualificationAreaKey(field?.signatureArea || "elektro"));
+  });
+
+  return areas.size > 0 ? [...areas] : ["elektro"];
+}
+
+function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
+  const areas = new Set();
+  getWorkOrderServiceItems(workOrder).forEach((service) => {
+    getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
+      const template = getDocumentTemplateById(templateId);
+      getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
+    });
+  });
+
+  return areas.size > 0 ? [...areas] : ["elektro"];
+}
+
+function getBatchRelevantSignatureAreas(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const areas = new Set();
+  (Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
+    getWorkOrderRelevantSignatureAreas(workOrder).forEach((area) => areas.add(area));
+  });
+  return areas.size > 0 ? [...areas] : ["elektro"];
 }
 
 function getDocumentTemplateFieldToken(field = {}, index = 0) {
@@ -11016,7 +11088,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const signatureAreaLabel = getSignatureAreaLabel(signatureArea);
   const capability = field.type === "authorization_holder_signature" ? "authorize" : "inspect";
   const matchedUser = getWorkOrderDocumentQualifiedUser(workOrder, capability, signatureArea);
-  const qualification = getUserElectricalQualification(matchedUser);
+  const qualification = getUserElectricalQualification(matchedUser, signatureArea);
 
   return {
     capability,
@@ -11356,6 +11428,63 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <strong>${title}</strong>
           <span>${placeholderMode ? escapeHtml(token) : "Nova stranica u dokumentu"}</span>
         </div>
+      </section>
+    `;
+  }
+
+  if (field.type === "qualified_inspectors") {
+    const areaLabel = getOptionLabel(
+      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      field.signatureArea || "elektro",
+    );
+    const inspectors = placeholderMode
+      ? []
+      : getWorkOrderDocumentQualifiedUsers(context.sampleWorkOrder, "inspect", field.signatureArea || "elektro");
+    const inspectorMarkup = inspectors.length > 0
+      ? inspectors.map((user, inspectorIndex) => {
+        const qualification = getUserElectricalQualification(user, field.signatureArea || "elektro");
+        const isRightAligned = inspectors.length % 2 === 1 && inspectorIndex === inspectors.length - 1;
+        const signatureImage = qualification.signatureDataUrl
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(qualification.signatureDataUrl)}" alt="${escapeHtml(user.fullName || user.email || "Potpis")}" />`
+          : `<div class="document-template-preview-signature-placeholder">Bez potpisa</div>`;
+        const metaLines = [
+          qualification.classCode ? `KLASA: ${qualification.classCode}` : "",
+          qualification.urbroj ? `UrBROJ: ${qualification.urbroj}` : "",
+          qualification.eBroj ? `E broj: ${qualification.eBroj}` : "",
+        ].filter(Boolean).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+
+        return `
+          <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
+            <div class="document-template-preview-person-copy">
+              <span class="document-template-preview-person-role">Ispitivač</span>
+              <strong>${escapeHtml(user.fullName || user.email || "Ispitivač")}</strong>
+              <div class="document-template-preview-person-meta">${metaLines}</div>
+            </div>
+            <div class="document-template-preview-signature">
+              ${signatureImage}
+            </div>
+          </article>
+        `;
+      }).join("")
+      : `
+        <article class="document-template-preview-person-signature is-right-aligned">
+          <div class="document-template-preview-person-copy">
+            <span class="document-template-preview-person-role">Ispitivači</span>
+            <strong>${escapeHtml(token)}</strong>
+          </div>
+        </article>
+      `;
+
+    return `
+      <section class="document-template-preview-section">
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
+        </div>
+        <div class="document-template-preview-person-signature-grid">
+          ${inspectorMarkup}
+        </div>
+        ${helpText}
       </section>
     `;
   }
@@ -11764,10 +11893,20 @@ function createModuleAttachmentDraft(document = {}) {
   };
 }
 
-function getUserElectricalQualification(user = {}) {
-  const qualification = user?.electricalQualification ?? {};
+function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const rootQualification = user?.electricalQualification ?? {};
+  const qualification = normalizedArea === "elektro"
+    ? rootQualification
+    : rootQualification?.additionalAreas?.[normalizedArea] ?? {};
+  const inheritedSignatureDataUrl = String(
+    rootQualification.signatureDataUrl
+    || rootQualification.signatureStorageUrl
+    || rootQualification.storageUrl
+    || "",
+  ).trim();
   return {
-    discipline: String(qualification.discipline || "elektro").trim().toLowerCase() || "elektro",
+    discipline: String(qualification.discipline || normalizedArea || "elektro").trim().toLowerCase() || "elektro",
     canInspect: Boolean(qualification.canInspect),
     canAuthorize: Boolean(qualification.canAuthorize),
     classCode: String(qualification.classCode || "").trim(),
@@ -11776,6 +11915,7 @@ function getUserElectricalQualification(user = {}) {
     signatureDataUrl: String(
       qualification.signatureDataUrl
       || qualification.signatureStorageUrl
+      || inheritedSignatureDataUrl
       || qualification.storageUrl
       || "",
     ).trim(),
@@ -11789,11 +11929,11 @@ function getUserElectricalQualification(user = {}) {
 
 function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
-  const normalizedArea = String(signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   return (state.users ?? [])
     .filter((user) => Boolean(user?.isActive))
     .filter((user) => {
-      const qualification = getUserElectricalQualification(user);
+      const qualification = getUserElectricalQualification(user, normalizedArea);
       if (qualification.discipline !== normalizedArea) {
         return false;
       }
@@ -11809,7 +11949,7 @@ function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea
 }
 
 function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatureArea = "elektro") {
-  const qualification = getUserElectricalQualification(user);
+  const qualification = getUserElectricalQualification(user, signatureArea);
   const summaryParts = [
     qualification.classCode ? `Klasa ${qualification.classCode}` : "",
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
@@ -11837,6 +11977,57 @@ function getQualifiedUserSelectOptions(capability = "inspect", signatureArea = "
   ];
 }
 
+function getQualifiedUserOptionsForSignatureAreas(
+  capability = "inspect",
+  signatureAreas = [],
+  { includeEmpty = false, emptyLabel = "" } = {},
+) {
+  const normalizedAreas = Array.from(new Set(
+    (Array.isArray(signatureAreas) ? signatureAreas : [signatureAreas])
+      .map((area) => normalizeQualificationAreaKey(area))
+      .filter(Boolean),
+  ));
+  const areas = normalizedAreas.length > 0 ? normalizedAreas : ["elektro"];
+  const merged = new Map();
+
+  areas.forEach((area) => {
+    getQualifiedUsersForSignatureArea(capability, area).forEach((user) => {
+      const key = String(user.id);
+      const existing = merged.get(key) ?? {
+        user,
+        areas: new Set(),
+      };
+      existing.areas.add(area);
+      merged.set(key, existing);
+    });
+  });
+
+  const options = [...merged.values()]
+    .sort((left, right) => String(left.user.fullName || left.user.email || "").localeCompare(
+      String(right.user.fullName || right.user.email || ""),
+      "hr",
+    ))
+    .map(({ user, areas: userAreas }) => {
+      const labels = [...userAreas].map((area) => getSignatureAreaLabel(area));
+      return {
+        value: String(user.id),
+        label: [
+          String(user.fullName || user.email || "").trim(),
+          labels.join(", "),
+        ].filter(Boolean).join(" | "),
+      };
+    });
+
+  if (!includeEmpty) {
+    return options;
+  }
+
+  return [
+    { value: "", label: emptyLabel || (capability === "authorize" ? "Odaberi nositelja" : "Odaberi ispitivaca") },
+    ...options,
+  ];
+}
+
 function findQualifiedUserById(userId = "", capability = "inspect", signatureArea = "elektro") {
   const normalizedId = String(userId || "").trim();
   if (!normalizedId) {
@@ -11853,7 +12044,7 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
     return `${roleLabel} (${getSignatureAreaLabel(signatureArea)})`;
   }
 
-  const qualification = getUserElectricalQualification(user);
+  const qualification = getUserElectricalQualification(user, signatureArea);
   return [
     String(user.fullName || user.email || "").trim(),
     qualification.classCode ? `Klasa ${qualification.classCode}` : "",
@@ -11862,15 +12053,62 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
   ].filter(Boolean).join(" | ");
 }
 
-function getWorkOrderDocumentQualifiedUser(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
-  const fieldName = capability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId";
-  const explicitUserId = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, fieldName) : "";
-  const explicitUser = findQualifiedUserById(explicitUserId, capability, signatureArea);
-  if (explicitUser) {
-    return explicitUser;
+function normalizeQualifiedUserIdList(values = []) {
+  const source = Array.isArray(values)
+    ? values
+    : String(values || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+  return Array.from(new Set(source.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function getQualifiedUsersByIds(userIds = [], capability = "inspect", signatureArea = "elektro") {
+  const normalizedIds = new Set(normalizeQualifiedUserIdList(userIds));
+  if (normalizedIds.size === 0) {
+    return [];
   }
 
-  return resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
+  return getQualifiedUsersForSignatureArea(capability, signatureArea)
+    .filter((user) => normalizedIds.has(String(user.id)));
+}
+
+function resolveQualifiedWorkOrderUsers(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const executorNames = getWorkOrderExecutors(workOrder).map((entry) => normalizePersonLookupValue(entry)).filter(Boolean);
+  const eligibleUsers = getQualifiedUsersForSignatureArea(capability, normalizedArea);
+
+  return eligibleUsers.filter((user) => (
+    executorNames.includes(normalizePersonLookupValue(user.fullName || user.email || ""))
+  ));
+}
+
+function getWorkOrderDocumentQualifiedUsers(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  const listFieldName = capability === "authorize" ? "authorizationHolderUserIds" : "inspectorUserIds";
+  const explicitUsers = getQualifiedUsersByIds(
+    workOrder?.id ? getDocumentTemplateRuntimeArrayValue(workOrder.id, listFieldName) : [],
+    capability,
+    signatureArea,
+  );
+
+  if (explicitUsers.length > 0) {
+    return explicitUsers;
+  }
+
+  const singleFieldName = capability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId";
+  const explicitSingleUserId = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, singleFieldName) : "";
+  const explicitSingleUser = findQualifiedUserById(explicitSingleUserId, capability, signatureArea);
+  if (explicitSingleUser) {
+    return [explicitSingleUser];
+  }
+
+  return resolveQualifiedWorkOrderUsers(workOrder, capability, signatureArea);
+}
+
+function getWorkOrderDocumentQualifiedUser(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  return getWorkOrderDocumentQualifiedUsers(workOrder, capability, signatureArea)[0]
+    || resolveQualifiedWorkOrderUser(workOrder, capability, signatureArea);
 }
 
 function getQualifiedUserSourcePreviewValue(source, context = {}) {
@@ -12665,23 +12903,18 @@ function renderDocumentTemplateRuntimeContext() {
       value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "note") : "",
     },
     {
-      label: "Ispitivac",
+      label: "Ispitivači",
       value: activeWorkOrder
-        ? findQualifiedUserById(
-          getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectorUserId"),
-          "inspect",
-          "elektro",
-        )?.fullName || ""
+        ? getUsersByIds(getDocumentTemplateRuntimeArrayValue(activeWorkOrder.id, "inspectorUserIds"))
+          .map((user) => user.fullName || user.email || "")
+          .filter(Boolean)
+          .join(", ")
         : "",
     },
     {
       label: "Nositelj",
       value: activeWorkOrder
-        ? findQualifiedUserById(
-          getDocumentTemplateRuntimeValue(activeWorkOrder.id, "authorizationHolderUserId"),
-          "authorize",
-          "elektro",
-        )?.fullName || ""
+        ? getUsersByIds([getDocumentTemplateRuntimeValue(activeWorkOrder.id, "authorizationHolderUserId")])[0]?.fullName || ""
         : "",
     },
   ].filter((entry) => String(entry.value || "").trim());
@@ -13961,6 +14194,20 @@ function renderDocumentTemplateFieldRows() {
 
     if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
+    } else if (field.type === "qualified_inspectors") {
+      specialInfoSpan.textContent = "Dio";
+      const signatureAreaSelect = document.createElement("select");
+      signatureAreaSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        signatureAreaSelect,
+        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        field.signatureArea || "elektro",
+      );
+      signatureAreaSelect.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
+        renderDocumentTemplatePreviewContent();
+      });
+      specialInfoField.append(signatureAreaSelect);
     } else if (field.type === "legal_list") {
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
@@ -15294,6 +15541,16 @@ function buildUserPayload() {
       eBroj: userElectricalEBrojInput?.value || "",
       signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
       documents: [],
+      additionalAreas: {
+        tipkalo: {
+          discipline: "tipkalo",
+          canInspect: userTipkaloCanInspectInput?.value === "true",
+          canAuthorize: userTipkaloCanAuthorizeInput?.value === "true",
+          classCode: userTipkaloClassInput?.value || "",
+          urbroj: userTipkaloUrbrojInput?.value || "",
+          eBroj: userTipkaloEBrojInput?.value || "",
+        },
+      },
     },
   };
 }
@@ -15425,6 +15682,21 @@ function resetUserForm() {
   }
   if (userElectricalCanAuthorizeInput) {
     userElectricalCanAuthorizeInput.value = "false";
+  }
+  if (userTipkaloCanInspectInput) {
+    userTipkaloCanInspectInput.value = "false";
+  }
+  if (userTipkaloCanAuthorizeInput) {
+    userTipkaloCanAuthorizeInput.value = "false";
+  }
+  if (userTipkaloClassInput) {
+    userTipkaloClassInput.value = "";
+  }
+  if (userTipkaloUrbrojInput) {
+    userTipkaloUrbrojInput.value = "";
+  }
+  if (userTipkaloEBrojInput) {
+    userTipkaloEBrojInput.value = "";
   }
   setUserDocumentDrafts([]);
   renderUserDocuments();
@@ -15570,6 +15842,7 @@ function hydrateUserForm(user) {
   state.activeView = "management";
   renderActiveView();
   const electricalQualification = getUserElectricalQualification(user);
+  const switchQualification = getUserElectricalQualification(user, "tipkalo");
   userIdInput.value = user.id;
   userAvatarDataUrlInput.value = user.avatarDataUrl || "";
   userFirstNameInput.value = user.firstName;
@@ -15594,6 +15867,21 @@ function hydrateUserForm(user) {
   }
   if (userElectricalEBrojInput) {
     userElectricalEBrojInput.value = electricalQualification.eBroj;
+  }
+  if (userTipkaloCanInspectInput) {
+    userTipkaloCanInspectInput.value = switchQualification.canInspect ? "true" : "false";
+  }
+  if (userTipkaloCanAuthorizeInput) {
+    userTipkaloCanAuthorizeInput.value = switchQualification.canAuthorize ? "true" : "false";
+  }
+  if (userTipkaloClassInput) {
+    userTipkaloClassInput.value = switchQualification.classCode;
+  }
+  if (userTipkaloUrbrojInput) {
+    userTipkaloUrbrojInput.value = switchQualification.urbroj;
+  }
+  if (userTipkaloEBrojInput) {
+    userTipkaloEBrojInput.value = switchQualification.eBroj;
   }
   renderUserElectricalSignaturePad(electricalQualification.signatureDataUrl || "");
   setUserDocumentDrafts(getUserDocuments(user));
@@ -24559,6 +24847,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     issuedDate: new Date().toISOString().slice(0, 10),
     issuedPlace: "",
     note: "",
+    inspectorUserIds: [],
     inspectorUserId: "",
     authorizationHolderUserId: "",
   };
@@ -24656,16 +24945,22 @@ function syncWorkOrderDocumentWizardCommonInputs() {
     workOrderDocumentCommonNoteInput.value = state.workOrderDocumentWizard.common.note || "";
   }
   if (workOrderDocumentCommonInspectorInput) {
-    const options = getQualifiedUserSelectOptions("inspect", "elektro");
-    const selectedValue = String(state.workOrderDocumentWizard.common.inspectorUserId || "").trim();
-    replaceSelectOptions(
-      workOrderDocumentCommonInspectorInput,
-      options,
-      optionListIncludesValue(options, selectedValue) ? selectedValue : "",
+    const options = getQualifiedUserOptionsForSignatureAreas(
+      "inspect",
+      getBatchRelevantSignatureAreas(getAllSelectedWorkOrdersForDocumentWizard()),
     );
+    replaceSelectOptions(workOrderDocumentCommonInspectorInput, options, "");
+    const selectedValues = new Set(normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common.inspectorUserIds ?? []));
+    Array.from(workOrderDocumentCommonInspectorInput.options).forEach((option) => {
+      option.selected = selectedValues.has(String(option.value));
+    });
   }
   if (workOrderDocumentCommonAuthorizationHolderInput) {
-    const options = getQualifiedUserSelectOptions("authorize", "elektro");
+    const options = getQualifiedUserOptionsForSignatureAreas(
+      "authorize",
+      getBatchRelevantSignatureAreas(getAllSelectedWorkOrdersForDocumentWizard()),
+      { includeEmpty: true, emptyLabel: "Odaberi nositelja" },
+    );
     const selectedValue = String(state.workOrderDocumentWizard.common.authorizationHolderUserId || "").trim();
     replaceSelectOptions(
       workOrderDocumentCommonAuthorizationHolderInput,
@@ -24676,16 +24971,8 @@ function syncWorkOrderDocumentWizardCommonInputs() {
 }
 
 function getWorkOrderDocumentWizardCommonSummaryParts() {
-  const inspector = findQualifiedUserById(
-    state.workOrderDocumentWizard.common.inspectorUserId,
-    "inspect",
-    "elektro",
-  );
-  const authorizationHolder = findQualifiedUserById(
-    state.workOrderDocumentWizard.common.authorizationHolderUserId,
-    "authorize",
-    "elektro",
-  );
+  const inspectors = getUsersByIds(state.workOrderDocumentWizard.common.inspectorUserIds);
+  const authorizationHolder = getUsersByIds([state.workOrderDocumentWizard.common.authorizationHolderUserId])[0] || null;
   return [
     state.workOrderDocumentWizard.common.inspectionDate
       ? `Ispitivanje ${formatCompactDate(state.workOrderDocumentWizard.common.inspectionDate)}`
@@ -24693,7 +24980,7 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
     state.workOrderDocumentWizard.common.issuedDate
       ? `Izdavanje ${formatCompactDate(state.workOrderDocumentWizard.common.issuedDate)}`
       : "",
-    inspector?.fullName ? `Ispitivac ${inspector.fullName}` : "",
+    inspectors.length > 0 ? `Ispitivači ${inspectors.map((user) => user.fullName || user.email || "").filter(Boolean).join(", ")}` : "",
     authorizationHolder?.fullName ? `Nositelj ${authorizationHolder.fullName}` : "",
   ].filter(Boolean);
 }
@@ -24781,15 +25068,24 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
   }
 
   const current = getWorkOrderDocumentWizardOverride(normalizedId);
+  const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
   const hasInspectorPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserId");
   const hasAuthorizationHolderPatch = Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId");
+  const inspectorUserIds = hasInspectorIdsPatch
+    ? normalizeQualifiedUserIdList(patch.inspectorUserIds)
+    : Object.prototype.hasOwnProperty.call(current, "inspectorUserIds")
+      ? normalizeQualifiedUserIdList(current.inspectorUserIds)
+      : normalizeQualifiedUserIdList(current.inspectorUserId ? [current.inspectorUserId] : []);
   const next = {
     inspectionDate: String(patch.inspectionDate ?? current.inspectionDate ?? "").trim(),
     issuedDate: String(patch.issuedDate ?? current.issuedDate ?? "").trim(),
     issuedPlace: String(patch.issuedPlace ?? current.issuedPlace ?? "").trim(),
     note: String(patch.note ?? current.note ?? "").trim(),
+    inspectorUserIds,
     inspectorUserId: hasInspectorPatch
       ? (String(patch.inspectorUserId ?? "").trim() || null)
+      : hasInspectorIdsPatch
+        ? (inspectorUserIds[0] || null)
       : (Object.prototype.hasOwnProperty.call(current, "inspectorUserId")
         ? current.inspectorUserId ?? null
         : ""),
@@ -24801,6 +25097,7 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
   };
   const hasExplicitSignatureUserOverride = next.inspectorUserId === null
     || next.authorizationHolderUserId === null
+    || inspectorUserIds.length > 0
     || Boolean(next.inspectorUserId)
     || Boolean(next.authorizationHolderUserId);
 
@@ -24826,6 +25123,14 @@ function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
   return String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
 }
 
+function getWorkOrderDocumentWizardSourceValues(workOrderId, fieldName) {
+  const override = getWorkOrderDocumentWizardOverride(workOrderId);
+  if (override && Object.prototype.hasOwnProperty.call(override, fieldName)) {
+    return normalizeQualifiedUserIdList(override?.[fieldName] ?? []);
+  }
+  return normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.[fieldName] ?? []);
+}
+
 function hasDocumentTemplateRuntimeContext() {
   return state.documentTemplateRuntime.source === "wizard"
     && Array.isArray(state.documentTemplateRuntime.workOrderIds)
@@ -24842,6 +25147,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       issuedDate: "",
       issuedPlace: "",
       note: "",
+      inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
     },
@@ -24918,6 +25224,16 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
   return String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
 }
 
+function getDocumentTemplateRuntimeArrayValue(workOrderId, fieldName) {
+  const normalizedId = String(workOrderId || "").trim();
+  const current = normalizedId ? state.documentTemplateRuntime.overrides?.[normalizedId] ?? {} : {};
+  if (current && Object.prototype.hasOwnProperty.call(current, fieldName)) {
+    return normalizeQualifiedUserIdList(current?.[fieldName] ?? []);
+  }
+
+  return normalizeQualifiedUserIdList(state.documentTemplateRuntime.common?.[fieldName] ?? []);
+}
+
 function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
   const ids = workOrders
     .map((item) => String(item?.id ?? "").trim())
@@ -24932,6 +25248,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
       issuedPlace: String(state.workOrderDocumentWizard.common?.issuedPlace ?? "").trim(),
       note: String(state.workOrderDocumentWizard.common?.note ?? "").trim(),
+      inspectorUserIds: normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []),
       inspectorUserId: String(state.workOrderDocumentWizard.common?.inspectorUserId ?? "").trim(),
       authorizationHolderUserId: String(
         state.workOrderDocumentWizard.common?.authorizationHolderUserId ?? "",
@@ -25134,9 +25451,10 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     placeholder = "",
     rows = 0,
     options = null,
+    multiple = false,
   }) => {
     const field = document.createElement("label");
-    field.className = rows ? "field field-span-full" : "field";
+    field.className = rows || multiple ? "field field-span-full" : "field";
 
     const labelNode = document.createElement("span");
     labelNode.textContent = label;
@@ -25145,7 +25463,17 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
     if (Array.isArray(options)) {
       input = document.createElement("select");
-      replaceSelectOptions(input, options, getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName));
+      if (multiple) {
+        input.multiple = true;
+        input.size = Math.max(3, Math.min(6, options.length || 4));
+        replaceSelectOptions(input, options, "");
+        const selectedValues = new Set(getWorkOrderDocumentWizardSourceValues(workOrder.id, fieldName));
+        Array.from(input.options).forEach((option) => {
+          option.selected = selectedValues.has(String(option.value));
+        });
+      } else {
+        replaceSelectOptions(input, options, getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName));
+      }
     } else if (rows) {
       input = document.createElement("textarea");
     } else {
@@ -25182,14 +25510,22 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
     }),
     createOverrideField({
-      label: "Ispitivac",
-      fieldName: "inspectorUserId",
-      options: getQualifiedUserSelectOptions("inspect", "elektro"),
+      label: "Ispitivači",
+      fieldName: "inspectorUserIds",
+      options: getQualifiedUserOptionsForSignatureAreas(
+        "inspect",
+        getWorkOrderRelevantSignatureAreas(workOrder),
+      ),
+      multiple: true,
     }),
     createOverrideField({
       label: "Nositelj",
       fieldName: "authorizationHolderUserId",
-      options: getQualifiedUserSelectOptions("authorize", "elektro"),
+      options: getQualifiedUserOptionsForSignatureAreas(
+        "authorize",
+        getWorkOrderRelevantSignatureAreas(workOrder),
+        { includeEmpty: true, emptyLabel: "Odaberi nositelja" },
+      ),
     }),
     createOverrideField({
       label: "Mjesto izdavanja",
@@ -27010,7 +27346,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
   [workOrderDocumentCommonIssuedDateInput, "issuedDate"],
   [workOrderDocumentCommonIssuedPlaceInput, "issuedPlace"],
   [workOrderDocumentCommonNoteInput, "note"],
-  [workOrderDocumentCommonInspectorInput, "inspectorUserId"],
   [workOrderDocumentCommonAuthorizationHolderInput, "authorizationHolderUserId"],
 ].forEach(([input, fieldName]) => {
   input?.addEventListener("input", () => {
@@ -27030,6 +27365,18 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
     }
   });
 });
+workOrderDocumentCommonInspectorInput?.addEventListener("change", () => {
+  const selectedValues = Array.from(workOrderDocumentCommonInspectorInput.selectedOptions ?? [])
+    .map((option) => String(option.value || "").trim())
+    .filter(Boolean);
+  state.workOrderDocumentWizard.common.inspectorUserIds = normalizeQualifiedUserIdList(selectedValues);
+  state.workOrderDocumentWizard.common.inspectorUserId = state.workOrderDocumentWizard.common.inspectorUserIds[0] || "";
+  renderWorkOrderDocumentWizardCommonSection();
+  renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+  if (state.workOrderDocumentWizard.step === "templates") {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
+});
 workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
@@ -27040,8 +27387,11 @@ workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
   if (!workOrderId || !fieldName) {
     return;
   }
+  const patchValue = target instanceof HTMLSelectElement && target.multiple
+    ? Array.from(target.selectedOptions).map((option) => String(option.value || "").trim()).filter(Boolean)
+    : (target.value || "");
   setWorkOrderDocumentWizardOverride(workOrderId, {
-    [fieldName]: target.value || "",
+    [fieldName]: patchValue,
   });
 });
 workOrderDocumentWizardWorkOrders?.addEventListener("change", (event) => {
@@ -27054,8 +27404,11 @@ workOrderDocumentWizardWorkOrders?.addEventListener("change", (event) => {
   if (!workOrderId || !fieldName) {
     return;
   }
+  const patchValue = target instanceof HTMLSelectElement && target.multiple
+    ? Array.from(target.selectedOptions).map((option) => String(option.value || "").trim()).filter(Boolean)
+    : (target.value || "");
   setWorkOrderDocumentWizardOverride(workOrderId, {
-    [fieldName]: target.value || "",
+    [fieldName]: patchValue,
   });
   if (state.workOrderDocumentWizard.step === "templates") {
     renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
