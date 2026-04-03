@@ -2343,10 +2343,10 @@ body.is-location-editor-open {
 
 .user-editor-panel.is-modal-open {
   width: min(1120px, calc(100vw - 28px));
-  top: 18px;
-  bottom: 18px;
-  height: auto;
-  max-height: calc(100dvh - 36px);
+  top: 24px !important;
+  bottom: 24px !important;
+  height: auto !important;
+  max-height: calc(100dvh - 48px) !important;
   z-index: 129;
 }
 
