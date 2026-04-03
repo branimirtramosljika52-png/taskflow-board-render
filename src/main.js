@@ -11095,11 +11095,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     signatureAreaLabel,
     user: matchedUser,
     qualification,
-    signatureImageUrl: String(
-      qualification.signatureDataUrl
-      || qualification.signatureStorageUrl
-      || "",
-    ).trim(),
+    signatureImageUrl: getUserSignatureScanDataUrl(matchedUser),
     displayName: matchedUser?.fullName
       ? matchedUser.fullName
       : capability === "authorize"
@@ -11443,8 +11439,9 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       ? inspectors.map((user, inspectorIndex) => {
         const qualification = getUserElectricalQualification(user, field.signatureArea || "elektro");
         const isRightAligned = inspectors.length % 2 === 1 && inspectorIndex === inspectors.length - 1;
-        const signatureImage = qualification.signatureDataUrl
-          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(qualification.signatureDataUrl)}" alt="${escapeHtml(user.fullName || user.email || "Potpis")}" />`
+        const signatureScanUrl = getUserSignatureScanDataUrl(user);
+        const signatureImage = signatureScanUrl
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(signatureScanUrl)}" alt="${escapeHtml(user.fullName || user.email || "Potpis")}" />`
           : `<div class="document-template-preview-signature-placeholder">Bez potpisa</div>`;
         const metaLines = [
           qualification.classCode ? `KLASA: ${qualification.classCode}` : "",
@@ -12152,6 +12149,18 @@ function getQualifiedUserSourcePreviewValue(source, context = {}) {
 
 function getUserDocuments(user = {}) {
   return Array.isArray(user?.documents) ? user.documents : [];
+}
+
+function getUserSignatureScanDataUrl(user = {}) {
+  const rootQualification = user?.electricalQualification ?? {};
+  return String(
+    user?.signatureDataUrl
+    || user?.signatureStorageUrl
+    || rootQualification.signatureDataUrl
+    || rootQualification.signatureStorageUrl
+    || rootQualification.storageUrl
+    || "",
+  ).trim();
 }
 
 function clearUserElectricalSignaturePad({ preserveValue = false } = {}) {

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="hr">
   <head>
     <meta charset="UTF-8" />
@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260403n" />
+  <link rel="stylesheet" href="/styles.css?v=20260403o" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -67,7 +67,7 @@
     <main id="app-shell" class="app-shell" hidden>
       <section id="app-frame" class="app-frame">
         <aside class="app-rail" aria-label="Primarna navigacija">
-          <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljački panel">S</button>
+          <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljaÄŤki panel">S</button>
           <nav class="app-rail-nav">
             <button type="button" class="rail-button is-active" data-sidebar-group="home" title="Home" aria-label="Home">
               <span class="rail-icon" aria-hidden="true">
@@ -158,7 +158,7 @@
               id="sidebar-home-button"
               type="button"
               class="sidebar-brand-pill"
-              aria-label="Otvori upravljački panel"
+              aria-label="Otvori upravljaÄŤki panel"
             >
               <div class="auth-logo-mark">
                 <span></span>
@@ -671,7 +671,7 @@
                         </label>
 
                         <label class="field work-order-executors-field">
-                          <span>Izvršitelji</span>
+                          <span>IzvrĹˇitelji</span>
                           <input id="work-order-executors-data" type="hidden" />
                           <div id="work-order-executors-picker" class="work-order-inline-executor-picker"></div>
                         </label>
@@ -765,7 +765,7 @@
                               <span>Odabrane usluge</span>
                               <div id="work-order-service-selection" class="work-order-service-selection"></div>
                               <p id="work-order-service-template-hint" class="helper-copy work-order-service-template-hint">
-                                Odaberi jednu ili više usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.
+                                Odaberi jednu ili viĹˇe usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.
                               </p>
                             </div>
                           </div>
@@ -835,7 +835,7 @@
                         </button>
                         <div id="work-order-document-loading" class="work-order-document-loading" hidden>Ucitavanje dokumenata...</div>
                         <p id="work-order-document-empty" class="work-order-document-empty">
-                          Dokumenti ce se ovdje pojaviti nakon uploada. Ako je RN nov, prvo ga spremimo pa dokument vežemo uz njega.
+                          Dokumenti ce se ovdje pojaviti nakon uploada. Ako je RN nov, prvo ga spremimo pa dokument veĹľemo uz njega.
                         </p>
                         <p id="work-order-document-error" class="form-error work-order-document-error" hidden></p>
                         <div id="work-order-document-list" class="work-order-document-list"></div>
@@ -1082,7 +1082,7 @@
               </div>
 
               <div id="work-order-list-density-toggle" class="workspace-view-chips work-order-list-density-toggle" aria-label="Gustoca prikaza liste">
-                <button type="button" class="workspace-view-chip is-active" data-work-order-list-density="collapsed">Sažeto</button>
+                <button type="button" class="workspace-view-chip is-active" data-work-order-list-density="collapsed">SaĹľeto</button>
                 <button type="button" class="workspace-view-chip" data-work-order-list-density="expanded">Detaljno</button>
               </div>
             </div>
@@ -1148,7 +1148,7 @@
                   </button>
 
                   <button id="work-order-bulk-clear" type="button" class="work-order-bulk-action-button">
-                    Očisti
+                    OÄŤisti
                   </button>
                 </div>
               </div>
@@ -1275,7 +1275,7 @@
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
                 <label class="field">
-                  <span>Ispitivači</span>
+                  <span>IspitivaÄŤi</span>
                   <select id="work-order-document-common-inspector-user-id" multiple size="4"></select>
                 </label>
                 <label class="field">
@@ -1346,7 +1346,7 @@
             <div class="measurement-sheet-toolbar" aria-label="Spreadsheet toolbar">
               <div class="measurement-toolbar-primary">
                 <label class="measurement-toolbar-namebox">
-                  <span class="measurement-toolbar-label">Ćelija</span>
+                  <span class="measurement-toolbar-label">Ä†elija</span>
                   <input id="measurement-name-box" type="text" readonly />
                 </label>
 
@@ -2156,7 +2156,7 @@
                     <th>User</th>
                     <th>Email</th>
                     <th>Role</th>
-                      <th>Ovlaštenja</th>
+                      <th>OvlaĹˇtenja</th>
                     <th>Organization</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -2244,15 +2244,29 @@
                     <div id="user-documents-list" class="module-attachment-list"></div>
                   </section>
 
-                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
+                  <section class="service-catalog-template-block user-editor-module user-signature-module-block">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Ovlaštenja</p>
-                        <h3>Panik rasvjeta</h3>
+                        <p class="section-kicker">Potpis korisnika</p>
+                        <h3>Scan potpisa</h3>
+                      </div>
+                      <div class="document-template-reference-actions">
+                        <input id="user-electrical-signature-file" type="file" accept="image/*" hidden />
+                        <button id="user-electrical-signature-upload" type="button" class="ghost-button">Dodaj datoteku</button>
+                        <button id="user-electrical-signature-clear" type="button" class="ghost-button">Makni</button>
                       </div>
                     </div>
                     <input id="user-electrical-signature-data-url" type="hidden" />
-                    <input id="user-electrical-signature-file" type="file" accept="image/*" hidden />
+                    <div id="user-electrical-signature-preview" class="user-signature-upload-preview is-empty" aria-live="polite"></div>
+                  </section>
+
+                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Ovlastenja</p>
+                        <h3>Ispitivanje panik rasvjete</h3>
+                      </div>
+                    </div>
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
                         <span>Ispitivac</span>
@@ -2280,29 +2294,19 @@
                         <span>E broj</span>
                         <input id="user-electrical-e-broj" type="text" maxlength="160" />
                       </label>
-                      <section class="user-signature-field" aria-label="Scan potpisa">
-                        <div class="user-signature-field-head">
-                          <span>Scan potpisa</span>
-                          <div class="user-signature-field-actions">
-                            <button id="user-electrical-signature-upload" type="button" class="ghost-button">Dodaj datoteku</button>
-                            <button id="user-electrical-signature-clear" type="button" class="ghost-button">Makni</button>
-                          </div>
-                        </div>
-                        <div id="user-electrical-signature-preview" class="user-signature-upload-preview" aria-live="polite"></div>
-                      </section>
                     </div>
                   </section>
 
                   <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Ovlaštenja</p>
+                        <p class="section-kicker">Ovlastenja</p>
                         <h3>Tipkalo za isklop napona</h3>
                       </div>
                     </div>
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
-                        <span>Ispitivač</span>
+                        <span>Ispitivac</span>
                         <select id="user-tipkalo-can-inspect">
                           <option value="false">Ne</option>
                           <option value="true">Da</option>
@@ -2654,7 +2658,7 @@
                         <select id="vehicle-reservation-status"></select>
                       </label>
                       <label class="field field-span-full">
-                        <span>Izvršitelji</span>
+                        <span>IzvrĹˇitelji</span>
                         <div id="vehicle-reservation-assignees-dropdown" class="vehicle-reservation-assignee-dropdown">
                           <button id="vehicle-reservation-assignees-trigger" type="button" class="vehicle-reservation-assignee-trigger" aria-expanded="false" aria-haspopup="listbox">
                             <div id="vehicle-reservation-assignees-preview" class="vehicle-reservation-assignees-preview"></div>
@@ -2724,7 +2728,7 @@
                   <strong id="offers-sent-count" class="offers-stat-value">0</strong>
                 </article>
                 <article class="offers-stat-card is-accepted">
-                  <span class="offers-stat-label">Prihvaćeno</span>
+                  <span class="offers-stat-label">PrihvaÄ‡eno</span>
                   <strong id="offers-accepted-count" class="offers-stat-value">0</strong>
                 </article>
               </div>
@@ -2742,7 +2746,7 @@
                   <div class="offers-status-legend" aria-label="Statusi ponuda">
                     <span class="offer-status-badge is-draft">Skica</span>
                     <span class="offer-status-badge is-sent">Poslano</span>
-                    <span class="offer-status-badge is-accepted">Prihvaćeno</span>
+                    <span class="offer-status-badge is-accepted">PrihvaÄ‡eno</span>
                     <span class="offer-status-badge is-rejected">Odbijeno</span>
                   </div>
 
@@ -2809,7 +2813,7 @@
                     <div class="form-grid offers-form-grid">
                       <label class="field field-span-full">
                         <span>Naziv ponude</span>
-                        <input id="offer-title" name="offer-title" maxlength="180" placeholder="Godišnje održavanje, dopuna usluga..." required />
+                        <input id="offer-title" name="offer-title" maxlength="180" placeholder="GodiĹˇnje odrĹľavanje, dopuna usluga..." required />
                       </label>
                       <label class="field">
                         <span>Tvrtka</span>
@@ -2842,13 +2846,13 @@
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
+                      <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaÄ‡anja..."></textarea>
                     </label>
 
                     <div class="offers-items-head">
                       <div>
                         <strong>Stavke ponude</strong>
-                        <p class="inline-help">Dodaj uslugu, količinu i jediničnu cijenu.</p>
+                        <p class="inline-help">Dodaj uslugu, koliÄŤinu i jediniÄŤnu cijenu.</p>
                       </div>
                       <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
                     </div>
@@ -2865,7 +2869,7 @@
                         </label>
                       </div>
                       <div class="offers-total-line">
-                        <span>Međuzbroj</span>
+                        <span>MeÄ‘uzbroj</span>
                         <strong id="offer-subtotal">0,00 EUR</strong>
                       </div>
                       <div id="offer-discount-line" class="offers-total-line" hidden>
@@ -3550,15 +3554,15 @@
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector">
-                              <strong>Ispitivači</strong>
-                              <span>Dodaje složeni blok svih odabranih ispitivača za traženi dio</span>
+                              <strong>IspitivaÄŤi</strong>
+                              <span>Dodaje sloĹľeni blok svih odabranih ispitivaÄŤa za traĹľeni dio</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_authorization_holder">
                               <strong>Nositelj</strong>
                               <span>Dodaje podatke o nositelju ovlastenja</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
-                              <strong>Potpis ispitivača</strong>
+                              <strong>Potpis ispitivaÄŤa</strong>
                           <span>Dodaje potpis ispitivaca panik rasvjete</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
@@ -3579,12 +3583,12 @@
                               <h3>Placeholder Word flow</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">1. Preuzmi placeholder Word. 2. Uredi ga u Wordu. 3. Vrati uređeni dokument natrag u app.</p>
+                          <p class="helper-copy module-copy">1. Preuzmi placeholder Word. 2. Uredi ga u Wordu. 3. Vrati ureÄ‘eni dokument natrag u app.</p>
                           <div class="document-template-reference-actions">
                             <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
                             <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi placeholder</button>
-                            <button id="document-template-reference-upload" type="button" class="ghost-button">Vrati uređeni Word</button>
-                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi vraćeni Word</button>
+                            <button id="document-template-reference-upload" type="button" class="ghost-button">Vrati ureÄ‘eni Word</button>
+                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi vraÄ‡eni Word</button>
                             <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
                           </div>
                           <div id="document-template-reference-meta" class="document-template-reference-meta">
@@ -3743,6 +3747,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260403n"></script>
+    <script type="module" src="/src/main.js?v=20260403o"></script>
   </body>
 </html>
