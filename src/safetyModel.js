@@ -86,6 +86,7 @@ export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [
 ];
 
 export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
+  { value: "chapter", label: "Poglavlje" },
   { value: "text", label: "Tekst" },
   { value: "longtext", label: "Dugi tekst" },
   { value: "date", label: "Datum" },
@@ -98,7 +99,6 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "measurement_table", label: "Excel tablica" },
   { value: "inspector_signature", label: "Potpis ispitivača" },
   { value: "authorization_holder_signature", label: "Potpis nositelja" },
-  { value: "page_break", label: "Nova stranica" },
 ];
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
@@ -993,7 +993,8 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
 }
 
 function normalizeDocumentTemplateFields(fields = []) {
-  const source = Array.isArray(fields) ? fields : [];
+  const source = (Array.isArray(fields) ? fields : [])
+    .filter((field) => normalizeText(field?.type).toLowerCase() !== "page_break");
   const seenKeys = new Set();
 
   return source.map((field, index) => {
@@ -1027,6 +1028,8 @@ function normalizeDocumentTemplateFields(fields = []) {
       type,
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       signatureArea: normalizeText(field?.signatureArea).toLowerCase() || "elektro",
+      legalFrameworkIds: normalizeIdList(field?.legalFrameworkIds ?? field?.availableLegalFrameworkIds ?? []),
+      defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
       columns: type === "measurement_table"

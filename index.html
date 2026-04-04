@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260404a" />
+<link rel="stylesheet" href="/styles.css?v=20260404b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3516,10 +3516,10 @@
                           <div class="section-heading offers-section-heading">
                             <div>
                               <p class="section-kicker">Alatna traka</p>
-                              <h3>Ubaci u stranicu</h3>
+                              <h3>Ubaci u template</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">Klik na alat i blok ide na aktivni sheet redom. Excel odmah otvara tablicu za uređivanje.</p>
+                          <p class="helper-copy module-copy">Klik na alat i blok se dodaje redom u template. Excel odmah otvara tablicu za uređivanje.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
                             <button type="button" class="document-template-tool-button" data-template-tool="text">
                               <strong>Tekst polje</strong>
@@ -3541,9 +3541,13 @@
                               <strong>Toggle</strong>
                               <span>Vizualni status ili potvrda</span>
                             </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="chapter">
+                              <strong>Poglavlje</strong>
+                              <span>Vizualno odvaja blokove i naslovno grupira sadržaj</span>
+                            </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="legal_list">
                               <strong>Ubaci pravilnike</strong>
-                              <span>Povuče povezane propise iz Legal Framework modula</span>
+                              <span>Odaberi koje pravilnike prikazuje i koje označava unaprijed</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="equipment_list">
                               <strong>Ubaci mjernu opremu</strong>
@@ -3568,10 +3572,6 @@
                             <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
                               <strong>Potpis nositelja</strong>
                           <span>Dodaje potpis nositelja ovlaštenja za panik rasvjetu</span>
-                            </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="page_break">
-                              <strong>Novi sheet</strong>
-                              <span>Dodaje novu stranicu u dokumentu</span>
                             </button>
                           </div>
                         </section>
@@ -3602,12 +3602,11 @@
                           <div class="section-heading offers-section-heading">
                             <div>
                               <p class="section-kicker">Canvas</p>
-                              <h3>Stranice i blokovi</h3>
+                              <h3>Blokovi</h3>
                             </div>
                             <div class="document-template-layout-actions">
                               <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj blok</button>
                               <button id="document-template-add-excel" type="button" class="ghost-button">+ Dodaj Excel</button>
-                              <button id="document-template-add-page-break" type="button" class="ghost-button">+ Novi sheet</button>
                             </div>
                           </div>
                           <label class="field field-span-full">
@@ -3747,6 +3746,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260404a"></script>
+    <script type="module" src="/src/main.js?v=20260404b"></script>
   </body>
 </html>

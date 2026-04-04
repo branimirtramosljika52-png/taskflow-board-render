@@ -1159,7 +1159,6 @@ const documentTemplateLinkSummary = document.querySelector("#document-template-l
 const documentTemplateToolbox = document.querySelector("#document-template-toolbox");
 const documentTemplateAddFieldButton = document.querySelector("#document-template-add-field");
 const documentTemplateAddExcelButton = document.querySelector("#document-template-add-excel");
-const documentTemplateAddPageBreakButton = document.querySelector("#document-template-add-page-break");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
 const documentTemplateEquipmentItems = document.querySelector("#document-template-equipment-items");
 const documentTemplateAddEquipmentButton = document.querySelector("#document-template-add-equipment");
@@ -10004,10 +10003,10 @@ const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
-  { value: "CUSTOM_VALUE", label: "Rucni unos / custom" },
+  { value: "CUSTOM_VALUE", label: "Ručni unos / custom" },
   { value: "DOCUMENT_TITLE", label: "Template - naziv" },
   { value: "DOCUMENT_TYPE", label: "Template - vrsta dokumenta" },
-  { value: "TODAY", label: "Danasnji datum" },
+  { value: "TODAY", label: "Današnji datum" },
   { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
   { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
   { value: "COMPANY_HEADQUARTERS", label: "Tvrtka - sjedište" },
@@ -10025,9 +10024,9 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
   { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivač - ime i prezime" },
-  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitiva? - klasa" },
-  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitiva? - UrBROJ" },
-  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitiva? - E broj" },
+  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitivač - klasa" },
+  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitivač - UrBROJ" },
+  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitivač - E broj" },
   { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivač - podaci o ovlaštenju" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_NAME", label: "Nositelj - ime i prezime" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE", label: "Nositelj - klasa" },
@@ -10040,13 +10039,13 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
+  "chapter",
   "qualified_inspectors",
   "legal_list",
   "equipment_list",
   "measurement_table",
   "inspector_signature",
   "authorization_holder_signature",
-  "page_break",
 ]);
 
 function getDocumentTemplateFieldTypeLabel(value) {
@@ -10068,6 +10067,18 @@ function getDocumentTemplateDefaultFieldSource(type = "text") {
 function buildDocumentTemplateToolFieldDraft(tool = "text") {
   const safeTool = String(tool || "text").trim().toLowerCase();
   const baseIndex = documentTemplateFieldDrafts.length;
+
+  if (safeTool === "chapter") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Novo poglavlje",
+        wordLabel: "Novo poglavlje",
+        type: "chapter",
+        defaultValue: "Naslov poglavlja",
+      },
+      baseIndex,
+    );
+  }
 
   if (safeTool === "measurement_table") {
     const sheet = buildTemplateMeasurementSheetFromLegacyConfig({
@@ -10094,7 +10105,7 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         label: "Propisi",
         wordLabel: "Propisi",
         type: "legal_list",
-        helpText: "Povezani pravilnici i propisi iz Legal Framework modula.",
+        helpText: "Odaberi koje pravilnike prikazuje ovaj blok i koje označava unaprijed.",
       },
       baseIndex,
     );
@@ -10207,30 +10218,8 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
 function addDocumentTemplateBuilderBlock(tool = "text") {
   const safeTool = String(tool || "text").trim().toLowerCase();
 
-  if (safeTool === "page_break") {
-    const nextPageIndex = activeDocumentTemplateSheetIndex + 1;
-    insertDocumentTemplateFieldDraft(
-      createEmptyDocumentTemplateFieldDraft(
-        {
-          label: `Stranica ${nextPageIndex + 1}`,
-          wordLabel: `Stranica ${nextPageIndex + 1}`,
-          type: "page_break",
-        },
-        documentTemplateFieldDrafts.length,
-      ),
-      { pageIndex: activeDocumentTemplateSheetIndex },
-    );
-    activeDocumentTemplateSheetIndex = nextPageIndex;
-    renderDocumentTemplateFieldRows();
-    renderDocumentTemplatePreviewContent();
-    return;
-  }
-
   const fieldDraft = buildDocumentTemplateToolFieldDraft(safeTool);
-  insertDocumentTemplateFieldDraft(
-    fieldDraft,
-    { pageIndex: activeDocumentTemplateSheetIndex },
-  );
+  insertDocumentTemplateFieldDraft(fieldDraft);
   renderDocumentTemplateFieldRows();
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
@@ -10259,7 +10248,7 @@ function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1"
 function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const fallbackKey = `FIELD_${index + 1}`;
   const type = initial.type || "text";
-  const label = String(initial.label ?? "").trim() || (type === "page_break" ? "Nova stranica" : "");
+  const label = String(initial.label ?? "").trim() || (type === "chapter" ? "Novo poglavlje" : "");
   const wordLabel = String(initial.wordLabel ?? "").trim() || label;
   const defaultColumns = type === "measurement_table"
     ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
@@ -10277,6 +10266,12 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
+    legalFrameworkIds: Array.isArray(initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds)
+      ? [...new Set((initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds).map((entry) => String(entry || "").trim()).filter(Boolean))]
+      : [],
+    defaultLegalFrameworkIds: Array.isArray(initial.defaultLegalFrameworkIds ?? initial.preselectedLegalFrameworkIds)
+      ? [...new Set((initial.defaultLegalFrameworkIds ?? initial.preselectedLegalFrameworkIds).map((entry) => String(entry || "").trim()).filter(Boolean))]
+      : [],
     columns: Array.isArray(initial.columns)
       ? initial.columns.join(", ")
       : String(initial.columns ?? (defaultColumns.length ? defaultColumns.join(", ") : "")).trim(),
@@ -10355,7 +10350,11 @@ function createDefaultDocumentTemplateSectionDrafts() {
 }
 
 function setDocumentTemplateFieldDrafts(fields = [], { ensureOne = false } = {}) {
-  const nextDrafts = Array.isArray(fields) ? fields.map((field, index) => createEmptyDocumentTemplateFieldDraft(field, index)) : [];
+  const nextDrafts = Array.isArray(fields)
+    ? fields
+      .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
+      .map((field, index) => createEmptyDocumentTemplateFieldDraft(field, index))
+    : [];
   documentTemplateFieldDrafts = nextDrafts.length > 0
     ? nextDrafts
     : (ensureOne ? [createEmptyDocumentTemplateFieldDraft({}, 0)] : []);
@@ -10378,43 +10377,18 @@ function setDocumentTemplateSectionDrafts(sections = [], { ensureDefault = true 
 }
 
 function buildDocumentTemplateSheetGroups(fields = documentTemplateFieldDrafts) {
-  const source = Array.isArray(fields) ? fields : [];
-  const pages = [{
+  const source = (Array.isArray(fields) ? fields : []).filter((field) => field?.type !== "page_break");
+  return [{
     index: 0,
-    id: "sheet-1",
-    title: "Stranica 1",
+    id: "template-layout",
+    title: "Template",
     breakField: null,
     breakIndex: -1,
-    fields: [],
-  }];
-  let currentPage = pages[0];
-
-  source.forEach((field, index) => {
-    if (field?.type === "page_break") {
-      const nextIndex = pages.length;
-      currentPage = {
-        index: nextIndex,
-        id: String(field.id || `sheet-${nextIndex + 1}`),
-        title: String(field.label || "").trim() || `Stranica ${nextIndex + 1}`,
-        breakField: field,
-        breakIndex: index,
-        fields: [],
-      };
-      pages.push(currentPage);
-      return;
-    }
-
-    currentPage.fields.push({
+    fields: source.map((field, index) => ({
       field,
       index,
-    });
-  });
-
-  return pages.map((page, index) => ({
-    ...page,
-    index,
-    title: String(page.title || "").trim() || `Stranica ${index + 1}`,
-  }));
+    })),
+  }];
 }
 
 function clampDocumentTemplateSheetIndex(pages = buildDocumentTemplateSheetGroups()) {
@@ -10679,6 +10653,7 @@ function buildDocumentTemplateDraft() {
   )) ?? null;
 
   const customFields = documentTemplateFieldDrafts
+    .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
     .map((field, index) => ({
       id: field.id || crypto.randomUUID(),
       key: normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`),
@@ -10689,6 +10664,12 @@ function buildDocumentTemplateDraft() {
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
+      legalFrameworkIds: (Array.isArray(field.legalFrameworkIds) ? field.legalFrameworkIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+      defaultLegalFrameworkIds: (Array.isArray(field.defaultLegalFrameworkIds) ? field.defaultLegalFrameworkIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
       columns: String(field.columns || "")
         .split(/[\n,]/)
         .map((entry) => entry.trim())
@@ -10712,23 +10693,33 @@ function buildDocumentTemplateDraft() {
       }
 
       if (isDocumentTemplateSpecialFieldType(field.type)) {
+        const legalFrameworkIds = field.type === "legal_list"
+          ? field.legalFrameworkIds
+          : [];
+        const defaultLegalFrameworkIds = field.type === "legal_list"
+          ? field.defaultLegalFrameworkIds.filter((value) => legalFrameworkIds.includes(value))
+          : [];
         return {
           ...field,
           source: "",
           signatureArea: field.signatureArea || "elektro",
+          legalFrameworkIds,
+          defaultLegalFrameworkIds,
           columns: [],
           rowCount: 0,
           sheet: null,
         };
       }
 
-      return {
-        ...field,
-        source: field.source || "CUSTOM_VALUE",
-        columns: [],
-        rowCount: 0,
-        sheet: null,
-      };
+        return {
+          ...field,
+          source: field.source || "CUSTOM_VALUE",
+          legalFrameworkIds: [],
+          defaultLegalFrameworkIds: [],
+          columns: [],
+          rowCount: 0,
+          sheet: null,
+        };
     })
     .filter((field) => (
       isDocumentTemplateSpecialFieldType(field.type)
@@ -10902,6 +10893,38 @@ function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemp
     selectedIds.has(String(item.id))
     || ((item.linkedTemplateIds ?? []).map(String).includes(templateId))
   ));
+}
+
+function getDocumentTemplateLegalFrameworkOptions() {
+  return sortLegalFrameworks(state.legalFrameworks ?? []).map((item) => ({
+    value: String(item.id),
+    label: item.referenceCode
+      ? `${item.title || "Propis"} | ${item.referenceCode}`
+      : (item.title || "Propis"),
+  }));
+}
+
+function getDocumentTemplateLegalFrameworksForField(
+  template = buildDocumentTemplateDraft(),
+  field = {},
+  { selectedOnly = false } = {},
+) {
+  const allFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
+  const visibleIds = new Set((field.legalFrameworkIds ?? []).map((value) => String(value)).filter(Boolean));
+  const selectedIds = new Set((field.defaultLegalFrameworkIds ?? []).map((value) => String(value)).filter(Boolean));
+  const availableFrameworks = visibleIds.size > 0
+    ? allFrameworks.filter((item) => visibleIds.has(String(item.id)))
+    : allFrameworks;
+
+  if (!selectedOnly) {
+    return availableFrameworks;
+  }
+
+  const selectedFrameworks = selectedIds.size > 0
+    ? availableFrameworks.filter((item) => selectedIds.has(String(item.id)))
+    : [];
+
+  return selectedFrameworks;
 }
 
 function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplateDraft()) {
@@ -11118,6 +11141,10 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
     return getDocumentTemplateSignaturePreviewData(field, context).displayName;
+  }
+
+  if (field.type === "chapter") {
+    return field.label || field.wordLabel || `Poglavlje ${index + 1}`;
   }
 
   const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
@@ -11363,18 +11390,18 @@ function buildDocumentTemplatePreviewPageMarkup(
     pageCount = 1,
   } = {},
 ) {
-  const pageTitle = escapeHtml(page?.title || `Stranica ${pageIndex + 1}`);
+  const pageTitle = escapeHtml(pageCount > 1 ? (page?.title || `Stranica ${pageIndex + 1}`) : "Raspored templatea");
   const pagePlaceholderChips = (page?.fields ?? []).length > 0
     ? (page.fields ?? []).map(({ field, index }) => (
       `<span class="document-template-preview-pill">${escapeHtml(getDocumentTemplateFieldToken(field, index))}</span>`
     )).join("")
-    : '<span class="document-template-preview-empty">Na ovoj stranici još nema placeholdera.</span>';
+    : '<span class="document-template-preview-empty">U templateu još nema placeholdera.</span>';
   const blocks = (page?.fields ?? []).length > 0
     ? (page.fields ?? []).map(({ field, index }) => buildDocumentTemplateFieldPreviewMarkup(field, context, index, { placeholderMode })).join("")
     : `
       <section class="document-template-preview-section">
-        <h2>Prazna stranica</h2>
-        <p class="document-template-preview-copy">Dodaj blokove u aktivnu stranicu da odmah vidiš raspored i preview.</p>
+        <h2>Prazan template</h2>
+        <p class="document-template-preview-copy">Dodaj blokove da odmah vidiš raspored i placeholdere.</p>
       </section>
     `;
 
@@ -11387,7 +11414,7 @@ function buildDocumentTemplatePreviewPageMarkup(
           <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predložak, a ovdje se definira raspored placeholdera i blokova.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
-          <div><span>Stranica</span><strong>${pageTitle}</strong></div>
+          <div><span>${pageCount > 1 ? "Stranica" : "Raspored"}</span><strong>${pageTitle}</strong></div>
           <div><span>Blokova</span><strong>${(page?.fields ?? []).length}</strong></div>
           <div><span>Povezani propisi</span><strong>${context.legalFrameworks.length}</strong></div>
           <div><span>Povezana oprema</span><strong>${context.equipmentItems.length}</strong></div>
@@ -11418,12 +11445,15 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     ? `<p class="document-template-preview-muted">${escapeHtml(field.helpText)}</p>`
     : "";
 
-  if (field.type === "page_break") {
+  if (field.type === "chapter") {
     return `
-      <section class="document-template-preview-section is-page-break">
-        <div class="document-template-preview-page-break">
-          <strong>${title}</strong>
-          <span>${placeholderMode ? escapeHtml(token) : "Nova stranica u dokumentu"}</span>
+      <section class="document-template-preview-section is-chapter">
+        <div class="document-template-preview-chapter">
+          <span class="document-template-preview-chapter-line"></span>
+          <div>
+            <h2>${placeholderMode ? escapeHtml(token) : title}</h2>
+            ${!placeholderMode ? `<p class="document-template-preview-muted">Poglavlje vizualno odvaja sljedeće blokove u templateu.</p>` : ""}
+          </div>
         </div>
       </section>
     `;
@@ -11488,13 +11518,18 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   }
 
   if (field.type === "legal_list") {
+    const visibleFrameworks = getDocumentTemplateLegalFrameworksForField(context.template, field, { selectedOnly: false });
+    const selectedFrameworks = getDocumentTemplateLegalFrameworksForField(context.template, field, { selectedOnly: true });
     const listHtml = placeholderMode
       ? `<div class="document-template-preview-pill-row"><span class="document-template-preview-pill">${escapeHtml(token)}</span></div>`
-      : context.legalFrameworks.length > 0
-        ? `<ul class="document-template-preview-list">${context.legalFrameworks.map((item) => (
+      : selectedFrameworks.length > 0
+        ? `<ul class="document-template-preview-list">${selectedFrameworks.map((item) => (
           `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}</li>`
         )).join("")}</ul>`
-        : '<span class="document-template-preview-empty">Nema povezanih propisa za ovaj template.</span>';
+        : '<span class="document-template-preview-empty">Nema odabranih propisa za ovaj blok.</span>';
+    const legalMeta = !placeholderMode && visibleFrameworks.length > 0
+      ? `<p class="document-template-preview-muted">Prikazuje ${visibleFrameworks.length} propisa, unaprijed označeno ${selectedFrameworks.length}.</p>`
+      : "";
 
     return `
       <section class="document-template-preview-section">
@@ -11503,6 +11538,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
         </div>
         ${listHtml}
+        ${legalMeta}
         ${helpText}
       </section>
     `;
@@ -11655,7 +11691,7 @@ function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraf
     },
   ));
 
-  if (placeholderMode || !sheetTabs) {
+  if (placeholderMode || !sheetTabs || pages.length <= 1) {
     return pageMarkup.join("");
   }
 
@@ -11684,6 +11720,7 @@ function buildDocumentTemplatePlaceholderWordMarkup(template = buildDocumentTemp
 
   return pages.map((page) => {
     const tokens = (page.fields ?? [])
+      .filter(({ field }) => field?.type !== "chapter")
       .map(({ field, index }) => getDocumentTemplateFieldToken(field, index))
       .filter(Boolean);
 
@@ -11704,7 +11741,7 @@ function renderDocumentTemplatePreviewContent() {
   clampDocumentTemplateSheetIndex();
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(buildDocumentTemplateDraft(), {
     placeholderMode: false,
-    sheetTabs: true,
+    sheetTabs: false,
   });
 }
 
@@ -13842,71 +13879,27 @@ function renderDocumentTemplateFieldRows() {
     return;
   }
 
-  const pages = buildDocumentTemplateSheetGroups();
-  const safePageIndex = clampDocumentTemplateSheetIndex(pages);
-  const activePage = pages[safePageIndex] ?? pages[0];
+  const visibleFields = documentTemplateFieldDrafts.filter((field) => field?.type !== "page_break");
   const shell = document.createElement("div");
   shell.className = "document-template-sheet-shell";
-
-  const tabs = document.createElement("div");
-  tabs.className = "document-template-sheet-tabs";
-  pages.forEach((page, index) => {
-    const tab = document.createElement("button");
-    tab.type = "button";
-    tab.className = `document-template-sheet-tab ${index === safePageIndex ? "is-active" : ""}`;
-    tab.dataset.templateSheetTab = String(index);
-
-    const title = document.createElement("strong");
-    title.textContent = page.title;
-    const meta = document.createElement("span");
-    meta.textContent = `${page.fields.length} blok${page.fields.length === 1 ? "" : (page.fields.length < 5 ? "a" : "ova")}`;
-
-    tab.append(title, meta);
-    tab.addEventListener("click", () => {
-      activeDocumentTemplateSheetIndex = index;
-      renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePreviewContent();
-    });
-
-    if (index > 0 && page.breakField?.id) {
-      const removeTabButton = document.createElement("button");
-      removeTabButton.type = "button";
-      removeTabButton.className = "document-template-sheet-tab-remove";
-      removeTabButton.setAttribute("aria-label", `Makni ${page.title}`);
-      removeTabButton.textContent = "×";
-      removeTabButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        removeDocumentTemplateSheet(index);
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
-      });
-      tab.append(removeTabButton);
-    }
-
-    tabs.append(tab);
-  });
-
-  const activeMeta = document.createElement("div");
-  activeMeta.className = "document-template-sheet-meta";
-  activeMeta.innerHTML = `
-    <strong>${activePage?.title || "Stranica 1"}</strong>
-    <span>${(activePage?.fields ?? []).length} bloka na aktivnoj stranici</span>
-  `;
 
   const pageBody = document.createElement("div");
   pageBody.className = "document-template-sheet-panel";
 
-  if (!activePage || activePage.fields.length === 0) {
+  if (visibleFields.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy document-template-sheet-empty";
-    empty.textContent = "Ova stranica je prazna. Dodaj blok, Excel tablicu ili novi sheet pa ces odmah dobiti live preview.";
+    empty.textContent = "Template je prazan. Dodaj blok, pravilnike, opremu ili Excel tablicu pa nastavi slagati raspored.";
     pageBody.append(empty);
   }
 
-  activePage?.fields.forEach(({ field, index }) => {
-    const draftIndex = index;
+  documentTemplateFieldDrafts.forEach((field, draftIndex) => {
+    if (field?.type === "page_break") {
+      return;
+    }
+
     const row = document.createElement("div");
-    row.className = "document-template-item-card";
+    row.className = `document-template-item-card${field.type === "chapter" ? " is-chapter" : ""}`;
     row.dataset.templateFieldId = String(field.id || "");
 
     const head = document.createElement("div");
@@ -13964,7 +13957,7 @@ function renderDocumentTemplateFieldRows() {
         draggedDocumentTemplateFieldId,
         field.id,
         {
-          pageIndex: safePageIndex,
+          pageIndex: 0,
           placement: row.dataset.dropPlacement || "before",
         },
       );
@@ -14067,7 +14060,7 @@ function renderDocumentTemplateFieldRows() {
     const excelMeta = document.createElement("button");
     excelMeta.type = "button";
     excelMeta.className = "document-template-excel-meta";
-    excelMeta.setAttribute("aria-label", `Otvori Excel blok ${field.label || `Polje ${index + 1}`}`);
+    excelMeta.setAttribute("aria-label", `Otvori Excel blok ${field.label || `Polje ${draftIndex + 1}`}`);
     excelMeta.addEventListener("click", () => {
       openTemplateMeasurementSheet(field.id);
     });
@@ -14085,7 +14078,15 @@ function renderDocumentTemplateFieldRows() {
     });
     removeButton.classList.add("document-template-item-remove");
 
-    if (field.type === "measurement_table") {
+    grid.append(labelField, wordLabelField);
+
+    if (field.type === "chapter") {
+      specialInfoSpan.textContent = "Poglavlje";
+      const specialInfoValue = document.createElement("div");
+      specialInfoValue.className = "document-template-inline-special-value";
+      specialInfoValue.textContent = "Naslovno odvaja sljedeće blokove i služi kao jasna vizualna cjelina.";
+      specialInfoField.append(specialInfoValue);
+    } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
     } else if (field.type === "qualified_inspectors") {
       specialInfoSpan.textContent = "Dio";
@@ -14102,10 +14103,69 @@ function renderDocumentTemplateFieldRows() {
       });
       specialInfoField.append(signatureAreaSelect);
     } else if (field.type === "legal_list") {
-      const specialInfoValue = document.createElement("div");
-      specialInfoValue.className = "document-template-inline-special-value";
-      specialInfoValue.textContent = "Povlači povezane pravilnike iz Legal Framework modula.";
-      specialInfoField.append(specialInfoValue);
+      specialInfoField.hidden = true;
+
+      const legalFrameworkOptions = getDocumentTemplateLegalFrameworkOptions();
+      const allLegalFrameworkIds = legalFrameworkOptions.map((option) => String(option.value));
+      const visibleLegalIds = new Set(
+        (Array.isArray(field.legalFrameworkIds) && field.legalFrameworkIds.length > 0
+          ? field.legalFrameworkIds
+          : allLegalFrameworkIds).map(String),
+      );
+      const defaultLegalIds = new Set(
+        (Array.isArray(field.defaultLegalFrameworkIds) ? field.defaultLegalFrameworkIds : []).map(String),
+      );
+
+      const createLegalSelectField = (labelText, selectedValues, onChange) => {
+        const fieldShell = document.createElement("label");
+        fieldShell.className = "field";
+        const fieldTitle = document.createElement("span");
+        fieldTitle.textContent = labelText;
+        const select = document.createElement("select");
+        select.className = "document-template-source-select";
+        select.multiple = true;
+        select.size = Math.max(4, Math.min(8, legalFrameworkOptions.length || 4));
+        if (legalFrameworkOptions.length === 0) {
+          select.disabled = true;
+        }
+        legalFrameworkOptions.forEach((option) => {
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          node.selected = selectedValues.has(String(option.value));
+          select.append(node);
+        });
+        select.addEventListener("change", () => {
+          onChange(Array.from(select.selectedOptions).map((option) => String(option.value)));
+        });
+        fieldShell.append(fieldTitle, select);
+        return fieldShell;
+      };
+
+      const visibleField = createLegalSelectField("Prikaži pravilnike", visibleLegalIds, (selectedValues) => {
+        const normalizedValues = selectedValues.length > 0 ? selectedValues : [];
+        documentTemplateFieldDrafts[draftIndex].legalFrameworkIds = normalizedValues;
+        documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds = (documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds ?? [])
+          .filter((value) => normalizedValues.length === 0 || normalizedValues.includes(String(value)));
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+
+      const selectedField = createLegalSelectField("Preselektiraj", defaultLegalIds, (selectedValues) => {
+        const allowedIds = documentTemplateFieldDrafts[draftIndex].legalFrameworkIds?.length
+          ? new Set(documentTemplateFieldDrafts[draftIndex].legalFrameworkIds.map(String))
+          : new Set(allLegalFrameworkIds);
+        documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds = selectedValues.filter((value) => allowedIds.has(String(value)));
+        renderDocumentTemplatePreviewContent();
+      });
+
+      const legalHint = document.createElement("div");
+      legalHint.className = "document-template-inline-special-value document-template-legal-hint";
+      legalHint.textContent = legalFrameworkOptions.length > 0
+        ? "Prvi popis određuje što korisnik vidi, a drugi što je već označeno kad otvori zapisnik."
+        : "Nema dostupnih pravilnika u Legal Framework modulu.";
+
+      grid.append(visibleField, selectedField, legalHint);
     } else if (field.type === "equipment_list") {
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
@@ -14125,18 +14185,14 @@ function renderDocumentTemplateFieldRows() {
         renderDocumentTemplatePreviewContent();
       });
       specialInfoField.append(signatureAreaSelect);
-    } else if (field.type === "page_break") {
-      const specialInfoValue = document.createElement("div");
-      specialInfoValue.className = "document-template-inline-special-value";
-      specialInfoValue.textContent = "Ovaj blok otvara novi sheet / novu stranicu dokumenta.";
-      specialInfoField.append(specialInfoValue);
     } else {
       specialInfoField.hidden = true;
     }
 
-    grid.append(labelField, wordLabelField);
     if (field.type === "measurement_table") {
       grid.append(columnsField);
+    } else if (field.type === "legal_list") {
+      // legal fields already appended above
     } else if (isSpecialType) {
       grid.append(specialInfoField);
     } else {
@@ -14148,10 +14204,10 @@ function renderDocumentTemplateFieldRows() {
     pageBody.append(row);
   });
 
-  if ((activePage?.fields?.length ?? 0) > 0) {
+  if (visibleFields.length > 0) {
     const tailDropZone = document.createElement("div");
     tailDropZone.className = "document-template-drop-tail";
-    tailDropZone.textContent = "Povuci blok ovdje za kraj aktivnog sheeta";
+    tailDropZone.textContent = "Povuci blok ovdje za kraj templatea";
     tailDropZone.addEventListener("dragover", (event) => {
       if (!draggedDocumentTemplateFieldId) {
         return;
@@ -14165,13 +14221,13 @@ function renderDocumentTemplateFieldRows() {
     });
     tailDropZone.addEventListener("drop", (event) => {
       event.preventDefault();
-      const lastField = activePage.fields[activePage.fields.length - 1]?.field;
+      const lastField = visibleFields[visibleFields.length - 1];
       const moved = lastField
         ? moveDocumentTemplateFieldDraft(
           draggedDocumentTemplateFieldId,
           lastField.id,
           {
-            pageIndex: safePageIndex,
+            pageIndex: 0,
             placement: "after",
           },
         )
@@ -14188,7 +14244,7 @@ function renderDocumentTemplateFieldRows() {
     pageBody.append(tailDropZone);
   }
 
-  shell.append(tabs, activeMeta, pageBody);
+  shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
 
   renderDocumentTemplatePlaceholderPalette();
@@ -28414,10 +28470,6 @@ documentTemplateAddExcelButton?.addEventListener("click", () => {
   addDocumentTemplateBuilderBlock("measurement_table");
 });
 
-documentTemplateAddPageBreakButton?.addEventListener("click", () => {
-  addDocumentTemplateBuilderBlock("page_break");
-});
-
 documentTemplateToolbox?.addEventListener("click", (event) => {
   const button = event.target instanceof HTMLElement
     ? event.target.closest("[data-template-tool]")
@@ -29644,6 +29696,3 @@ refreshSession()
     connectionStatus.textContent = "Backend nije dostupan";
     connectionStatus.classList.add("is-memory");
   });
-
-
-
