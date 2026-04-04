@@ -7649,6 +7649,58 @@ function openTemplateMeasurementSheet(fieldId) {
   syncMeasurementToolbar();
 }
 
+function getTemplateMeasurementSheetInlineHost(fieldId = state.measurementSheet.ownerFieldId) {
+  if (!documentTemplateCustomFields || !fieldId) {
+    return null;
+  }
+
+  const fieldRow = documentTemplateCustomFields.querySelector(`.document-template-item-card[data-template-field-id="${String(fieldId)}"]`);
+  if (!(fieldRow instanceof HTMLElement)) {
+    return null;
+  }
+
+  const host = fieldRow.querySelector(".document-template-inline-excel-host");
+  return host instanceof HTMLElement ? host : null;
+}
+
+function syncMeasurementSheetPanelMount() {
+  if (!measurementSheetPanel) {
+    return;
+  }
+
+  const shouldMountInline = state.measurementSheet.isOpen && state.measurementSheet.ownerKind === "template_field";
+  const inlineHost = shouldMountInline
+    ? getTemplateMeasurementSheetInlineHost(state.measurementSheet.ownerFieldId)
+    : null;
+
+  documentTemplateCustomFields?.querySelectorAll(".document-template-inline-excel-host").forEach((host) => {
+    if (host instanceof HTMLElement) {
+      host.hidden = true;
+    }
+  });
+
+  if (inlineHost) {
+    inlineHost.hidden = false;
+    if (measurementSheetPanel.parentElement !== inlineHost) {
+      inlineHost.append(measurementSheetPanel);
+    }
+    measurementSheetPanel.classList.add("is-inline-template-sheet");
+    if (measurementSheetModal) {
+      measurementSheetModal.hidden = true;
+    }
+    document.body.classList.remove("measurement-sheet-open");
+    return;
+  }
+
+  measurementSheetPanel.classList.remove("is-inline-template-sheet");
+  if (measurementSheetModal && measurementSheetPanel.parentElement !== measurementSheetModal) {
+    measurementSheetModal.append(measurementSheetPanel);
+  }
+  if (measurementSheetModal) {
+    measurementSheetModal.hidden = !state.measurementSheet.isOpen;
+  }
+}
+
 function renderMeasurementSheet() {
   ensureMeasurementSheetStructure();
 
@@ -8004,12 +8056,9 @@ function extendMeasurementSheetRowsIfNeeded() {
 
 function setMeasurementSheetOpen(isOpen) {
   state.measurementSheet.isOpen = Boolean(isOpen);
-
-  if (measurementSheetModal) {
-    measurementSheetModal.hidden = !state.measurementSheet.isOpen;
-  }
-
-  document.body.classList.toggle("measurement-sheet-open", state.measurementSheet.isOpen);
+  const inlineTemplateSheet = state.measurementSheet.isOpen && state.measurementSheet.ownerKind === "template_field";
+  document.body.classList.toggle("measurement-sheet-open", state.measurementSheet.isOpen && !inlineTemplateSheet);
+  syncMeasurementSheetPanelMount();
 
   if (!state.measurementSheet.isOpen) {
     document.body.classList.remove("is-filling-measurement-cells");
@@ -14042,7 +14091,7 @@ function renderDocumentTemplateFieldRows() {
           openTemplateMeasurementSheet(field.id);
           return;
         }
-        if (target.closest("input, select, textarea, button, a, option, label")) {
+        if (target.closest("input, select, textarea, button, a, option, label, .document-template-inline-excel-host, .measurement-sheet-panel")) {
           return;
         }
         openTemplateMeasurementSheet(field.id);
@@ -14314,6 +14363,15 @@ function renderDocumentTemplateFieldRows() {
 
     head.append(removeButton);
     row.append(head, grid);
+    if (field.type === "measurement_table") {
+      const inlineExcelHost = document.createElement("div");
+      inlineExcelHost.className = "document-template-inline-excel-host";
+      inlineExcelHost.dataset.templateFieldId = fieldId;
+      inlineExcelHost.hidden = !(state.measurementSheet.isOpen
+        && state.measurementSheet.ownerKind === "template_field"
+        && String(state.measurementSheet.ownerFieldId) === fieldId);
+      row.append(inlineExcelHost);
+    }
     pageBody.append(row);
   });
 
@@ -14359,6 +14417,7 @@ function renderDocumentTemplateFieldRows() {
 
   shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
+  syncMeasurementSheetPanelMount();
 
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();

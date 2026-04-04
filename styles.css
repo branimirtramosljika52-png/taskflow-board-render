@@ -14935,6 +14935,11 @@ body.is-document-template-editor-open {
   box-shadow: 0 22px 44px rgba(214, 89, 173, 0.12);
 }
 
+.document-template-inline-excel-host {
+  margin-top: 10px;
+  min-height: 0;
+}
+
 .document-template-sheet-shell {
   display: grid;
   gap: 10px;
@@ -15188,6 +15193,34 @@ body.is-document-template-editor-open {
 
 .document-template-inline-excel-launcher {
   cursor: pointer;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(214, 89, 173, 0.28);
+  background: linear-gradient(180deg, rgba(255, 250, 255, 0.98), rgba(249, 243, 255, 0.98));
+  box-shadow: 0 16px 34px rgba(109, 72, 170, 0.12);
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head {
+  gap: 10px;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head h2 {
+  font-size: 1.35rem;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head-actions {
+  flex-wrap: wrap;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid-wrap {
+  min-height: 420px;
+  max-height: min(64vh, 720px);
 }
 
 .document-template-inline-special-value {
