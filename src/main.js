@@ -1269,6 +1269,7 @@ let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
+let collapsedDocumentTemplateChapterIds = new Set();
 let measurementEquipmentDocumentDrafts = [];
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
@@ -10220,6 +10221,15 @@ function addDocumentTemplateBuilderBlock(tool = "text") {
 
   const fieldDraft = buildDocumentTemplateToolFieldDraft(safeTool);
   insertDocumentTemplateFieldDraft(fieldDraft);
+  if (safeTool !== "chapter") {
+    const insertedIndex = documentTemplateFieldDrafts.findIndex((field) => String(field.id) === String(fieldDraft.id));
+    for (let index = insertedIndex - 1; index >= 0; index -= 1) {
+      if (documentTemplateFieldDrafts[index]?.type === "chapter") {
+        collapsedDocumentTemplateChapterIds.delete(String(documentTemplateFieldDrafts[index].id || ""));
+        break;
+      }
+    }
+  }
   renderDocumentTemplateFieldRows();
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
@@ -13880,6 +13890,30 @@ function renderDocumentTemplateFieldRows() {
   }
 
   const visibleFields = documentTemplateFieldDrafts.filter((field) => field?.type !== "page_break");
+  const chapterIds = new Set(
+    visibleFields
+      .filter((field) => field?.type === "chapter")
+      .map((field) => String(field.id || ""))
+      .filter(Boolean),
+  );
+  collapsedDocumentTemplateChapterIds = new Set(
+    [...collapsedDocumentTemplateChapterIds].filter((id) => chapterIds.has(String(id))),
+  );
+  const chapterChildCounts = new Map();
+  const chapterOwnerByFieldId = new Map();
+  let activeChapterId = "";
+  visibleFields.forEach((field) => {
+    const fieldId = String(field?.id || "");
+    if (field?.type === "chapter") {
+      activeChapterId = fieldId;
+      chapterChildCounts.set(fieldId, 0);
+      return;
+    }
+    chapterOwnerByFieldId.set(fieldId, activeChapterId);
+    if (activeChapterId) {
+      chapterChildCounts.set(activeChapterId, (chapterChildCounts.get(activeChapterId) || 0) + 1);
+    }
+  });
   const shell = document.createElement("div");
   shell.className = "document-template-sheet-shell";
 
@@ -13898,9 +13932,31 @@ function renderDocumentTemplateFieldRows() {
       return;
     }
 
+    const fieldId = String(field.id || "");
+    const chapterOwnerId = field.type === "chapter" ? "" : (chapterOwnerByFieldId.get(fieldId) || "");
+    const previousField = visibleFields[draftIndex - 1] ?? null;
+    const nextField = visibleFields[draftIndex + 1] ?? null;
+    const previousOwnerId = previousField && previousField.type !== "chapter"
+      ? (chapterOwnerByFieldId.get(String(previousField.id || "")) || "")
+      : "";
+    const nextOwnerId = nextField && nextField.type !== "chapter"
+      ? (chapterOwnerByFieldId.get(String(nextField.id || "")) || "")
+      : "";
+    const isChapterChild = Boolean(chapterOwnerId);
+    const isHiddenByCollapsedChapter = isChapterChild && collapsedDocumentTemplateChapterIds.has(chapterOwnerId);
     const row = document.createElement("div");
-    row.className = `document-template-item-card${field.type === "chapter" ? " is-chapter" : ""}`;
+    row.className = [
+      "document-template-item-card",
+      field.type === "chapter" ? "is-chapter" : "",
+      isChapterChild ? "is-chapter-child" : "",
+      isChapterChild && previousOwnerId !== chapterOwnerId ? "is-chapter-child-start" : "",
+      isChapterChild && nextOwnerId !== chapterOwnerId ? "is-chapter-child-end" : "",
+      isHiddenByCollapsedChapter ? "is-hidden-by-chapter" : "",
+    ].filter(Boolean).join(" ");
     row.dataset.templateFieldId = String(field.id || "");
+    if (chapterOwnerId) {
+      row.dataset.chapterOwnerId = chapterOwnerId;
+    }
 
     const head = document.createElement("div");
     head.className = "document-template-item-head";
@@ -13930,6 +13986,13 @@ function renderDocumentTemplateFieldRows() {
     tokenPreview.className = "document-template-inline-token";
     tokenPreview.textContent = getDocumentTemplateFieldToken(field, draftIndex);
     headCopy.append(title, tokenPreview);
+    if (field.type === "chapter") {
+      const chapterCount = document.createElement("span");
+      chapterCount.className = "document-template-chapter-count";
+      const count = chapterChildCounts.get(fieldId) || 0;
+      chapterCount.textContent = `${count} ${count === 1 ? "blok" : "blokova"}`;
+      headCopy.append(chapterCount);
+    }
     head.append(dragHandle, headCopy);
 
     row.addEventListener("dragover", (event) => {
@@ -14073,6 +14136,9 @@ function renderDocumentTemplateFieldRows() {
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();
+      if (field.type === "chapter") {
+        collapsedDocumentTemplateChapterIds.delete(String(field.id || ""));
+      }
       documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
       renderDocumentTemplateFieldRows();
     });
@@ -14084,7 +14150,10 @@ function renderDocumentTemplateFieldRows() {
       specialInfoSpan.textContent = "Poglavlje";
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
-      specialInfoValue.textContent = "Naslovno odvaja sljedeće blokove i služi kao jasna vizualna cjelina.";
+      const chapterCount = chapterChildCounts.get(fieldId) || 0;
+      specialInfoValue.textContent = chapterCount > 0
+        ? `U ovom poglavlju je ${chapterCount} ${chapterCount === 1 ? "blok" : "blokova"}. Sve sljedeće stavke ulaze unutra do novog poglavlja.`
+        : "Prazno poglavlje. Dodaj blokove ispod njega i oni će automatski ući u ovu cjelinu.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
@@ -14197,6 +14266,23 @@ function renderDocumentTemplateFieldRows() {
       grid.append(specialInfoField);
     } else {
       grid.append(sourceField);
+    }
+
+    if (field.type === "chapter") {
+      const collapseButton = document.createElement("button");
+      collapseButton.type = "button";
+      collapseButton.className = "ghost-button document-template-chapter-toggle";
+      const isCollapsed = collapsedDocumentTemplateChapterIds.has(fieldId);
+      collapseButton.textContent = isCollapsed ? "Otkrij blok" : "Sakrij blok";
+      collapseButton.addEventListener("click", () => {
+        if (collapsedDocumentTemplateChapterIds.has(fieldId)) {
+          collapsedDocumentTemplateChapterIds.delete(fieldId);
+        } else {
+          collapsedDocumentTemplateChapterIds.add(fieldId);
+        }
+        renderDocumentTemplateFieldRows();
+      });
+      head.append(collapseButton);
     }
 
     head.append(removeButton);
@@ -14503,6 +14589,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateSectionTarget = "";
   documentTemplateReferenceDraft = null;
   clearDocumentTemplateFieldDragState();
+  collapsedDocumentTemplateChapterIds = new Set();
   clearDocumentTemplateRuntimeContext({ render: false });
 
   if (documentTemplateIdInput) {
@@ -14541,6 +14628,7 @@ function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false 
   renderModuleView();
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
+  collapsedDocumentTemplateChapterIds = new Set();
   if (!preserveRuntimeContext) {
     clearDocumentTemplateRuntimeContext({ render: false });
   }
