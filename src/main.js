@@ -13957,6 +13957,9 @@ function renderDocumentTemplateFieldRows() {
     if (chapterOwnerId) {
       row.dataset.chapterOwnerId = chapterOwnerId;
     }
+    if (field.type === "measurement_table") {
+      row.classList.add("is-excel-block");
+    }
 
     const head = document.createElement("div");
     head.className = "document-template-item-head";
@@ -14032,6 +14035,19 @@ function renderDocumentTemplateFieldRows() {
         renderDocumentTemplatePreviewContent();
       }
     });
+    if (field.type === "measurement_table") {
+      row.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          openTemplateMeasurementSheet(field.id);
+          return;
+        }
+        if (target.closest("input, select, textarea, button, a, option, label")) {
+          return;
+        }
+        openTemplateMeasurementSheet(field.id);
+      });
+    }
 
     const grid = document.createElement("div");
     grid.className = "form-grid document-template-inline-grid";
@@ -14115,17 +14131,22 @@ function renderDocumentTemplateFieldRows() {
     specialInfoSpan.textContent = "Veza";
     specialInfoField.append(specialInfoSpan);
 
-    const columnsField = document.createElement("label");
-    columnsField.className = "field document-template-inline-excel-field";
+    const columnsField = document.createElement("div");
+    columnsField.className = "field document-template-inline-excel-field document-template-inline-excel-launcher";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
     columnsSpan.textContent = "Excel blok";
+    const openExcelBlock = () => {
+      openTemplateMeasurementSheet(field.id);
+    };
     const excelMeta = document.createElement("button");
     excelMeta.type = "button";
     excelMeta.className = "document-template-excel-meta";
     excelMeta.setAttribute("aria-label", `Otvori Excel blok ${field.label || `Polje ${draftIndex + 1}`}`);
-    excelMeta.addEventListener("click", () => {
-      openTemplateMeasurementSheet(field.id);
+    excelMeta.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openExcelBlock();
     });
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
@@ -14133,6 +14154,12 @@ function renderDocumentTemplateFieldRows() {
     excelHint.textContent = "Klik na blok otvara live Excel i isti raspored ide u preview/PDF.";
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
+    columnsField.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest(".card-button")) {
+        return;
+      }
+      openExcelBlock();
+    });
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();

@@ -14926,6 +14926,15 @@ body.is-document-template-editor-open {
   display: none;
 }
 
+.document-template-item-card.is-excel-block {
+  cursor: pointer;
+}
+
+.document-template-item-card.is-excel-block:hover {
+  border-color: rgba(214, 89, 173, 0.34);
+  box-shadow: 0 22px 44px rgba(214, 89, 173, 0.12);
+}
+
 .document-template-sheet-shell {
   display: grid;
   gap: 10px;
@@ -15175,6 +15184,10 @@ body.is-document-template-editor-open {
 .document-template-inline-excel-field {
   align-self: stretch;
   grid-column: span 2;
+}
+
+.document-template-inline-excel-launcher {
+  cursor: pointer;
 }
 
 .document-template-inline-special-value {
