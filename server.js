@@ -637,7 +637,7 @@ async function handleApiRequest(request, response, url) {
       const updatedUser = await tenantRepository.updateOwnAvatar(user, body.avatarDataUrl);
 
       if (!updatedUser) {
-        sendError(response, 404, "Korisnik nije pronaden.");
+        sendError(response, 404, "Korisnik nije pronađen.");
         return true;
       }
 
@@ -738,7 +738,7 @@ async function handleApiRequest(request, response, url) {
       const updated = await tenantRepository.updateOrganization(user, organizationMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Organizacija nije pronadena.");
+        sendError(response, 404, "Organizacija nije pronađena.");
         return true;
       }
 
@@ -757,7 +757,7 @@ async function handleApiRequest(request, response, url) {
       const updated = await tenantRepository.updateUser(user, userMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Korisnik nije pronaden.");
+        sendError(response, 404, "Korisnik nije pronađen.");
         return true;
       }
 
@@ -776,7 +776,7 @@ async function handleApiRequest(request, response, url) {
       const updated = await tenantRepository.updateLoginContent(user, loginContentMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Login sadrzaj nije pronaden.");
+        sendError(response, 404, "Login sadržaj nije pronađen.");
         return true;
       }
 
@@ -788,7 +788,7 @@ async function handleApiRequest(request, response, url) {
       const deleted = await tenantRepository.deleteLoginContent(user, loginContentMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Login sadrzaj nije pronaden.");
+        sendError(response, 404, "Login sadržaj nije pronađen.");
         return true;
       }
 
@@ -995,7 +995,7 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "POST" && url.pathname === "/api/safety-authorizations") {
       if (!canManageMasterData(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ovlastenjima.");
+        sendError(response, 403, "Nemate pravo upravljati ovlaštenjima.");
         return true;
       }
 
@@ -1037,7 +1037,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationsCollectionMatch[1], "Vozilo nije pronadeno.");
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationsCollectionMatch[1], "Vozilo nije pronađeno.");
       const reservationUserPayload = resolveVehicleReservationUserPayload(scopedSnapshot, body);
       await domainRepository.createVehicleReservation(vehicle.id, {
         ...body,
@@ -1067,11 +1067,11 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronadena.");
+      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronađena.");
       const updated = await domainRepository.updateCompany(companyMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Tvrtka nije pronadena.");
+        sendError(response, 404, "Tvrtka nije pronađena.");
         return true;
       }
 
@@ -1086,11 +1086,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronadena.");
+      assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronađena.");
       const deleted = await domainRepository.deleteCompany(companyMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Tvrtka nije pronadena.");
+        sendError(response, 404, "Tvrtka nije pronađena.");
         return true;
       }
 
@@ -1107,12 +1107,12 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronadena.");
+      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronađena.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateLocation(locationMatch[1], body);
 
       if (!updated) {
-        sendError(response, 404, "Lokacija nije pronadena.");
+        sendError(response, 404, "Lokacija nije pronađena.");
         return true;
       }
 
@@ -1127,11 +1127,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronadena.");
+      assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronađena.");
       const deleted = await domainRepository.deleteLocation(locationMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Lokacija nije pronadena.");
+        sendError(response, 404, "Lokacija nije pronađena.");
         return true;
       }
 
@@ -1141,7 +1141,7 @@ async function handleApiRequest(request, response, url) {
 
     if (workOrderActivityMatch && request.method === "GET") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.getWorkOrderActivity(workOrderActivityMatch[1]);
       sendJson(response, 200, { items });
       return true;
@@ -1149,7 +1149,7 @@ async function handleApiRequest(request, response, url) {
 
     if (workOrderDocumentsMatch && request.method === "GET") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.getWorkOrderDocuments(workOrderDocumentsMatch[1]);
       sendJson(response, 200, { items });
       return true;
@@ -1163,7 +1163,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.addWorkOrderDocuments(
         workOrderDocumentsMatch[1],
         body.files ?? [],
@@ -1182,7 +1182,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronađen.");
       const item = await domainRepository.updateWorkOrderDocument(
         workOrderDocumentMatch[1],
         workOrderDocumentMatch[2],
@@ -1191,7 +1191,7 @@ async function handleApiRequest(request, response, url) {
       );
 
       if (!item) {
-        sendError(response, 404, "Dokument nije pronaden.");
+        sendError(response, 404, "Dokument nije pronađen.");
         return true;
       }
 
@@ -1206,7 +1206,7 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderDocumentMatch[1], "Radni nalog nije pronađen.");
       const deleted = await domainRepository.deleteWorkOrderDocument(
         workOrderDocumentMatch[1],
         workOrderDocumentMatch[2],
@@ -1214,7 +1214,7 @@ async function handleApiRequest(request, response, url) {
       );
 
       if (!deleted) {
-        sendError(response, 404, "Dokument nije pronaden.");
+        sendError(response, 404, "Dokument nije pronađen.");
         return true;
       }
 
@@ -1230,7 +1230,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronađen.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
@@ -1240,7 +1240,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "Radni nalog nije pronaden.");
+        sendError(response, 404, "Radni nalog nije pronađen.");
         return true;
       }
 
@@ -1256,7 +1256,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronaden.");
+      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronađen.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
@@ -1266,7 +1266,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "Reminder nije pronaden.");
+        sendError(response, 404, "Reminder nije pronađen.");
         return true;
       }
 
@@ -1282,7 +1282,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronaden.");
+      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronađen.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
@@ -1294,7 +1294,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "ToDo zadatak nije pronaden.");
+        sendError(response, 404, "ToDo zadatak nije pronađen.");
         return true;
       }
 
@@ -1310,7 +1310,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronadena.");
+      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronađena.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateOffer(offerMatch[1], {
@@ -1319,7 +1319,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "Ponuda nije pronadena.");
+        sendError(response, 404, "Ponuda nije pronađena.");
         return true;
       }
 
@@ -1335,14 +1335,14 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronadeno.");
+      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronađeno.");
       const updated = await domainRepository.updateVehicle(vehicleMatch[1], {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
 
       if (!updated) {
-        sendError(response, 404, "Vozilo nije pronadeno.");
+        sendError(response, 404, "Vozilo nije pronađeno.");
         return true;
       }
 
@@ -1358,7 +1358,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronaden.");
+      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronađen.");
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body, "linkedTemplateIds");
       const updated = await domainRepository.updateLegalFramework(legalFrameworkMatch[1], {
         ...body,
@@ -1366,7 +1366,7 @@ async function handleApiRequest(request, response, url) {
       });
 
       if (!updated) {
-        sendError(response, 404, "Propis nije pronaden.");
+        sendError(response, 404, "Propis nije pronađen.");
         return true;
       }
 
@@ -1382,7 +1382,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uredaj nije pronaden.");
+      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uređaj nije pronađen.");
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateMeasurementEquipmentItem(measurementEquipmentMatch[1], {
         ...body,
@@ -1390,7 +1390,7 @@ async function handleApiRequest(request, response, url) {
       });
 
       if (!updated) {
-        sendError(response, 404, "Uredaj nije pronaden.");
+        sendError(response, 404, "Uređaj nije pronađen.");
         return true;
       }
 
@@ -1406,7 +1406,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronadena.");
+      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronađena.");
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateServiceCatalogItem(serviceCatalogMatch[1], {
         ...body,
@@ -1414,7 +1414,7 @@ async function handleApiRequest(request, response, url) {
       });
 
       if (!updated) {
-        sendError(response, 404, "Usluga nije pronadena.");
+        sendError(response, 404, "Usluga nije pronađena.");
         return true;
       }
 
@@ -1424,13 +1424,13 @@ async function handleApiRequest(request, response, url) {
 
     if (safetyAuthorizationMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ovlastenjima.");
+        sendError(response, 403, "Nemate pravo upravljati ovlaštenjima.");
         return true;
       }
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlastenje nije pronadeno.");
+      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlaštenje nije pronađeno.");
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateSafetyAuthorization(safetyAuthorizationMatch[1], {
         ...body,
@@ -1438,7 +1438,7 @@ async function handleApiRequest(request, response, url) {
       });
 
       if (!updated) {
-        sendError(response, 404, "Ovlastenje nije pronadeno.");
+        sendError(response, 404, "Ovlaštenje nije pronađeno.");
         return true;
       }
 
@@ -1454,7 +1454,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronaden.");
+      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronađen.");
       assertSampleCompanyPayloadInScope(scopedSnapshot, body);
       assertSampleLocationPayloadInScope(scopedSnapshot, body);
       assertLegalFrameworkIdsPayloadInScope(scopedSnapshot, body);
@@ -1464,7 +1464,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "Template nije pronaden.");
+        sendError(response, 404, "Template nije pronađen.");
         return true;
       }
 
@@ -1480,8 +1480,8 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronadeno.");
-      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronadena.");
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronađeno.");
+      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronađena.");
       const reservationUserPayload = resolveVehicleReservationUserPayload(scopedSnapshot, body);
       const updated = await domainRepository.updateVehicleReservation(vehicle.id, vehicleReservationMatch[2], {
         ...body,
@@ -1489,7 +1489,7 @@ async function handleApiRequest(request, response, url) {
       }, user);
 
       if (!updated) {
-        sendError(response, 404, "Rezervacija vozila nije pronadena.");
+        sendError(response, 404, "Rezervacija vozila nije pronađena.");
         return true;
       }
 
@@ -1500,7 +1500,7 @@ async function handleApiRequest(request, response, url) {
     if (dashboardWidgetMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronadena.");
+      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronađena.");
       const updated = await domainRepository.updateDashboardWidget(dashboardWidgetMatch[1], {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
@@ -1508,7 +1508,7 @@ async function handleApiRequest(request, response, url) {
       });
 
       if (!updated) {
-        sendError(response, 404, "Dashboard kartica nije pronadena.");
+        sendError(response, 404, "Dashboard kartica nije pronađena.");
         return true;
       }
 
@@ -1523,11 +1523,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronaden.");
+      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronađen.");
       const deleted = await domainRepository.deleteWorkOrder(workOrderMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Radni nalog nije pronaden.");
+        sendError(response, 404, "Radni nalog nije pronađen.");
         return true;
       }
 
@@ -1542,11 +1542,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronaden.");
+      assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronađen.");
       const deleted = await domainRepository.deleteReminder(reminderMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Reminder nije pronaden.");
+        sendError(response, 404, "Reminder nije pronađen.");
         return true;
       }
 
@@ -1562,11 +1562,11 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.todoTasks, todoTaskCommentMatch[1], "ToDo zadatak nije pronaden.");
+      assertInScope(scopedSnapshot.todoTasks, todoTaskCommentMatch[1], "ToDo zadatak nije pronađen.");
       const updated = await domainRepository.addTodoTaskComment(todoTaskCommentMatch[1], body, user);
 
       if (!updated) {
-        sendError(response, 404, "ToDo zadatak nije pronaden.");
+        sendError(response, 404, "ToDo zadatak nije pronađen.");
         return true;
       }
 
@@ -1581,11 +1581,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronaden.");
+      assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronađen.");
       const deleted = await domainRepository.deleteTodoTask(todoTaskMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "ToDo zadatak nije pronaden.");
+        sendError(response, 404, "ToDo zadatak nije pronađen.");
         return true;
       }
 
@@ -1600,11 +1600,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronadena.");
+      assertInScope(scopedSnapshot.offers, offerMatch[1], "Ponuda nije pronađena.");
       const deleted = await domainRepository.deleteOffer(offerMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Ponuda nije pronadena.");
+        sendError(response, 404, "Ponuda nije pronađena.");
         return true;
       }
 
@@ -1619,11 +1619,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronadeno.");
+      assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronađeno.");
       const deleted = await domainRepository.deleteVehicle(vehicleMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Vozilo nije pronadeno.");
+        sendError(response, 404, "Vozilo nije pronađeno.");
         return true;
       }
 
@@ -1638,11 +1638,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronaden.");
+      assertInScope(scopedSnapshot.legalFrameworks ?? [], legalFrameworkMatch[1], "Propis nije pronađen.");
       const deleted = await domainRepository.deleteLegalFramework(legalFrameworkMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Propis nije pronaden.");
+        sendError(response, 404, "Propis nije pronađen.");
         return true;
       }
 
@@ -1657,11 +1657,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uredaj nije pronaden.");
+      assertInScope(scopedSnapshot.measurementEquipment ?? [], measurementEquipmentMatch[1], "Uređaj nije pronađen.");
       const deleted = await domainRepository.deleteMeasurementEquipmentItem(measurementEquipmentMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Uredaj nije pronaden.");
+        sendError(response, 404, "Uređaj nije pronađen.");
         return true;
       }
 
@@ -1676,11 +1676,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronadena.");
+      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronađena.");
       const deleted = await domainRepository.deleteServiceCatalogItem(serviceCatalogMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Usluga nije pronadena.");
+        sendError(response, 404, "Usluga nije pronađena.");
         return true;
       }
 
@@ -1690,16 +1690,16 @@ async function handleApiRequest(request, response, url) {
 
     if (safetyAuthorizationMatch && request.method === "DELETE") {
       if (!canManageMasterData(user)) {
-        sendError(response, 403, "Nemate pravo brisati ovlastenja.");
+        sendError(response, 403, "Nemate pravo brisati ovlaštenja.");
         return true;
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlastenje nije pronadeno.");
+      assertInScope(scopedSnapshot.safetyAuthorizations ?? [], safetyAuthorizationMatch[1], "Ovlaštenje nije pronađeno.");
       const deleted = await domainRepository.deleteSafetyAuthorization(safetyAuthorizationMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Ovlastenje nije pronadeno.");
+        sendError(response, 404, "Ovlaštenje nije pronađeno.");
         return true;
       }
 
@@ -1714,11 +1714,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronaden.");
+      assertInScope(scopedSnapshot.documentTemplates ?? [], documentTemplateMatch[1], "Template nije pronađen.");
       const deleted = await domainRepository.deleteDocumentTemplate(documentTemplateMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Template nije pronaden.");
+        sendError(response, 404, "Template nije pronađen.");
         return true;
       }
 
@@ -1733,12 +1733,12 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronadeno.");
-      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronadena.");
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleReservationMatch[1], "Vozilo nije pronađeno.");
+      assertInScope(vehicle.reservations ?? [], vehicleReservationMatch[2], "Rezervacija vozila nije pronađena.");
       const deleted = await domainRepository.deleteVehicleReservation(vehicle.id, vehicleReservationMatch[2]);
 
       if (!deleted) {
-        sendError(response, 404, "Rezervacija vozila nije pronadena.");
+        sendError(response, 404, "Rezervacija vozila nije pronađena.");
         return true;
       }
 
@@ -1748,11 +1748,11 @@ async function handleApiRequest(request, response, url) {
 
     if (dashboardWidgetMatch && request.method === "DELETE") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronadena.");
+      assertInScope(scopedSnapshot.dashboardWidgets, dashboardWidgetMatch[1], "Dashboard kartica nije pronađena.");
       const deleted = await domainRepository.deleteDashboardWidget(dashboardWidgetMatch[1]);
 
       if (!deleted) {
-        sendError(response, 404, "Dashboard kartica nije pronadena.");
+        sendError(response, 404, "Dashboard kartica nije pronađena.");
         return true;
       }
 

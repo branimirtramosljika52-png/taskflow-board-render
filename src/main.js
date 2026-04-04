@@ -119,7 +119,7 @@ const CHAT_POLL_INTERVAL_MS = 7_000;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
-const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok placanja 30 dana od slanja racuna.";
+const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
@@ -151,19 +151,19 @@ const DASHBOARD_WIDGET_TEMPLATE_CATEGORIES = [
 const DASHBOARD_WIDGET_TEMPLATES = [
   { key: "featured-open-rn", category: "featured", source: "work_orders", visualization: "metric", metricKey: "active", title: "Otvoreni RN", description: "Brzi KPI za aktivne radne naloge.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "featured-status", category: "featured", source: "work_orders", visualization: "donut", metricKey: "status", title: "Status radnih naloga", description: "Udio RN po statusima na jednom mjestu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
-  { key: "featured-priority", category: "featured", source: "work_orders", visualization: "bar", metricKey: "priority", title: "Prioriteti RN", description: "Pregled prioriteta i opterecenja.", size: "large", gridWidth: 6, gridHeight: 4, limit: 5 },
-  { key: "featured-upcoming", category: "featured", source: "work_orders", visualization: "list", metricKey: "upcoming_due", title: "Sljedeci rokovi", description: "RN koje treba pratiti u narednim danima.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "featured-priority", category: "featured", source: "work_orders", visualization: "bar", metricKey: "priority", title: "Prioriteti RN", description: "Pregled prioriteta i opterećenja.", size: "large", gridWidth: 6, gridHeight: 4, limit: 5 },
+  { key: "featured-upcoming", category: "featured", source: "work_orders", visualization: "list", metricKey: "upcoming_due", title: "Sljedeći rokovi", description: "RN koje treba pratiti u narednim danima.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "wo-total", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "total", title: "Svi radni nalozi", description: "Ukupan broj RN nakon aktivnih filtara.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
-  { key: "wo-overdue", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "overdue", title: "RN u kasnjenju", description: "Otvoreni RN kojima je rok vec prosao.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "wo-overdue", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "overdue", title: "RN u kasnjenju", description: "Otvoreni RN kojima je rok već prošao.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "wo-region-bar", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "region", title: "RN po regiji", description: "Bar chart raspodjele po regijama.", size: "full", gridWidth: 12, gridHeight: 4, limit: 6 },
-  { key: "wo-executor-donut", category: "work_orders", source: "work_orders", visualization: "donut", metricKey: "executor", title: "Opterecenje izvrsitelja", description: "Tko trenutno nosi najvise RN-a.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "wo-executor-donut", category: "work_orders", source: "work_orders", visualization: "donut", metricKey: "executor", title: "Opterećenje izvršitelja", description: "Tko trenutno nosi najviše RN-a.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "reminders-active", category: "reminders", source: "reminders", visualization: "metric", metricKey: "active", title: "Aktivni reminders", description: "Broj otvorenih reminders stavki.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
-  { key: "reminders-status", category: "reminders", source: "reminders", visualization: "donut", metricKey: "status", title: "Reminder statusi", description: "Kako su reminders rasporedeni po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
-  { key: "reminders-due", category: "reminders", source: "reminders", visualization: "list", metricKey: "due_soon", title: "Reminder rokovi", description: "Sto uskoro dolazi na red.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "reminders-status", category: "reminders", source: "reminders", visualization: "donut", metricKey: "status", title: "Reminder statusi", description: "Kako su reminders raspoređeni po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "reminders-due", category: "reminders", source: "reminders", visualization: "list", metricKey: "due_soon", title: "Reminder rokovi", description: "Što uskoro dolazi na red.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "todo-assigned", category: "todo_tasks", source: "todo_tasks", visualization: "metric", metricKey: "assigned_to_me", title: "Moji zadaci", description: "Koliko zadataka je dodijeljeno meni.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "todo-status", category: "todo_tasks", source: "todo_tasks", visualization: "donut", metricKey: "status", title: "ToDo statusi", description: "Raspodjela timskih zadataka po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "todo-open-items", category: "todo_tasks", source: "todo_tasks", visualization: "list", metricKey: "open_items", title: "Otvoreni ToDo", description: "Aktivna komunikacija i otvoreni taskovi.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
-  { key: "locations-missing", category: "locations", source: "locations", visualization: "metric", metricKey: "missing_coordinates", title: "Lokacije bez koordinata", description: "Lokacije koje jos traze doradu podataka.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "locations-missing", category: "locations", source: "locations", visualization: "metric", metricKey: "missing_coordinates", title: "Lokacije bez koordinata", description: "Lokacije koje još traže doradu podataka.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "locations-region", category: "locations", source: "locations", visualization: "bar", metricKey: "region", title: "Lokacije po regiji", description: "Raspored lokacija kroz regije.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "locations-list", category: "locations", source: "locations", visualization: "list", metricKey: "recent", title: "Lista lokacija", description: "Brzi pregled lokacija i koordinata.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
 ];
@@ -275,25 +275,25 @@ const MODULE_VIEW_DEFINITIONS = {
   reminders: {
     kicker: "Home",
     title: "Reminders",
-    description: "Ovjde mozemo pripremiti podsjetnike, follow-upove i operativne termine vezane uz klijente, opremu i naloge.",
+    description: "Ovdje možemo pripremiti podsjetnike, follow-upove i operativne termine vezane uz klijente, opremu i naloge.",
     chips: ["Follow-up", "Deadlines", "Alerts"],
   },
   todo: {
     kicker: "Home",
     title: "ToDo",
-    description: "Modul je pripremljen za osobne i timske zadatke, s kratkim pregledom sto je hitno i sto jos ceka obradu.",
+    description: "Modul je pripremljen za osobne i timske zadatke, s kratkim pregledom što je hitno i što još čeka obradu.",
     chips: ["Personal tasks", "Team tasks", "Today"],
   },
   settings: {
     kicker: "Home",
     title: "Settings",
-    description: "Mjesto za korisnicke postavke, preference prikaza i sistemske opcije koje cemo kasnije odvojiti po ulozi.",
+    description: "Mjesto za korisničke postavke, preference prikaza i sistemske opcije koje ćemo kasnije odvojiti po ulozi.",
     chips: ["Profile", "Preferences", "Workspace"],
   },
   "measurement-equipment": {
     kicker: "Organisations",
     title: "Measurement Equipment",
-    description: "Sekcija za popis i pracenje mjerne opreme, certifikata i servisnih rokova unutar organizacije.",
+    description: "Sekcija za popis i praćenje mjerne opreme, certifikata i servisnih rokova unutar organizacije.",
     chips: ["Devices", "Calibration", "Service dates"],
   },
   vehicles: {
@@ -2510,7 +2510,7 @@ function applyPresenceToAvatar(target, presence = "online") {
   target.dataset.presence = normalizeUserPresence(presence);
 }
 
-function readFileAsDataUrl(file, errorMessage = "Ne mogu ucitati datoteku.") {
+function readFileAsDataUrl(file, errorMessage = "Ne mogu učitati datoteku.") {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
@@ -2524,7 +2524,7 @@ function readFileAsDataUrl(file, errorMessage = "Ne mogu ucitati datoteku.") {
 }
 
 function readAvatarFileAsDataUrl(file) {
-  return readFileAsDataUrl(file, "Ne mogu ucitati sliku.");
+  return readFileAsDataUrl(file, "Ne mogu učitati sliku.");
 }
 
 function normalizeLooseName(value = "") {
@@ -3107,7 +3107,7 @@ function renderChatConversationList() {
   if (conversations.length === 0) {
     const empty = document.createElement("div");
     empty.className = "chat-empty-inline";
-    empty.textContent = state.chat.search ? "Nema razgovora za zadani pojam." : "Jos nema aktivnih razgovora.";
+    empty.textContent = state.chat.search ? "Nema razgovora za zadani pojam." : "Još nema aktivnih razgovora.";
     chatConversationsView.replaceChildren(empty);
     return;
   }
@@ -3411,7 +3411,7 @@ function renderChatDock() {
 
   if (chatListCaption) {
     chatListCaption.textContent = state.chat.tab === "people"
-      ? "Pokreni direktni chat ili slozi novu grupu."
+      ? "Pokreni direktni chat ili složi novu grupu."
       : "Aktivni razgovori i trenutna prisutnost kolega.";
   }
 
@@ -4536,7 +4536,7 @@ function renderWorkOrderEditorSummary() {
   if (companySummaryNodes.length === 0) {
     const placeholderLine = document.createElement("span");
     placeholderLine.className = "work-order-editor-company-line is-placeholder";
-    placeholderLine.textContent = "Odaberi tvrtku, sjediste i OIB ce se prikazati ovdje.";
+    placeholderLine.textContent = "Odaberi tvrtku, sjedište i OIB će se prikazati ovdje.";
     companySummaryNodes.push(placeholderLine);
   }
 
@@ -4700,7 +4700,7 @@ function renderWorkOrderEditorExecutorPicker() {
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal";
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", "Izbor izvrsitelja");
+    menu.setAttribute("aria-label", "Izbor izvršitelja");
 
     ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
       menu.addEventListener(eventName, (event) => {
@@ -4714,7 +4714,7 @@ function renderWorkOrderEditorExecutorPicker() {
     const searchInput = document.createElement("input");
     searchInput.type = "search";
     searchInput.className = "work-order-calendar-executor-search-input";
-    searchInput.placeholder = "Trazi po imenu ili prezimenu";
+    searchInput.placeholder = "Traži po imenu ili prezimenu";
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
     searchWrap.append(searchInput);
@@ -4731,7 +4731,7 @@ function renderWorkOrderEditorExecutorPicker() {
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
-    clearButton.textContent = "Ocisti";
+    clearButton.textContent = "Očisti";
 
     const selectionsEqual = (leftValues, rightValues) => {
       if (leftValues.length !== rightValues.length) {
@@ -4780,7 +4780,7 @@ function renderWorkOrderEditorExecutorPicker() {
       if (draftValues.length === 0) {
         const empty = document.createElement("span");
         empty.className = "work-order-calendar-executor-selection-empty";
-        empty.textContent = "Bez izvrsitelja";
+        empty.textContent = "Bez izvršitelja";
         selection.append(empty);
         return;
       }
@@ -4822,7 +4822,7 @@ function renderWorkOrderEditorExecutorPicker() {
       if (visibleOptions.length === 0) {
         const empty = document.createElement("p");
         empty.className = "work-order-calendar-executor-empty";
-        empty.textContent = "Nema izvrsitelja za ovaj pojam.";
+        empty.textContent = "Nema izvršitelja za ovaj pojam.";
         optionsList.append(empty);
         return;
       }
@@ -4864,8 +4864,8 @@ function renderWorkOrderEditorExecutorPicker() {
       renderSelection();
       renderOptions();
       helper.textContent = draftValues.length > 0
-        ? `${draftValues.length} odabranih izvrsitelja.`
-        : "Odaberi jednog ili vise izvrsitelja.";
+        ? `${draftValues.length} odabranih izvršitelja.`
+        : "Odaberi jednog ili više izvršitelja.";
       clearButton.disabled = draftValues.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -8474,7 +8474,7 @@ function createCompanyIdentityCell(company) {
   copy.className = "company-list-copy";
   copy.append(
     createListLine(company.name || "Tvrtka", "list-primary"),
-    createListLine(company.headquarters || "Bez sjedista", "list-secondary"),
+    createListLine(company.headquarters || "Bez sjedišta", "list-secondary"),
     createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary"),
   );
 
@@ -8608,8 +8608,8 @@ function renderWorkOrderActivity() {
   workOrderActivityList.replaceChildren();
 
   const emptyMessage = !workOrderId
-    ? "Otvori radni nalog da vidis promjene i status timeline."
-    : "Jos nema zabiljezenih promjena za ovaj RN.";
+    ? "Otvori radni nalog da vidi? promjene i status timeline."
+    : "Još nema zabilježenih promjena za ovaj RN.";
   workOrderActivityEmpty.textContent = emptyMessage;
   workOrderActivityEmpty.hidden = loading || Boolean(error) || items.length > 0;
 
@@ -8629,7 +8629,7 @@ function renderWorkOrderActivity() {
 
     const description = document.createElement("strong");
     description.className = "work-order-activity-description";
-    description.textContent = entry.description || "Azuriranje radnog naloga";
+    description.textContent = entry.description || "Ažuriranje radnog naloga";
 
     const time = document.createElement("span");
     time.className = "work-order-activity-time";
@@ -8910,7 +8910,7 @@ function renderWorkOrderDocuments() {
     workOrderDocumentDropzone,
     uploading,
     "Dodaj dokumente u RN",
-    "Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni. Drag and drop radi i bilo gdje u lijevom dijelu prozora.",
+    "Povuci mailove, PDF, slike, Word, Excel i slične fajlove ili klikni. Drag and drop radi i bilo gdje u lijevom dijelu prozora.",
   );
   syncWorkOrderDocumentDropzone(
     workOrderActivityDropzone,
@@ -8926,10 +8926,10 @@ function renderWorkOrderDocuments() {
 
   const editorEmptyMessage = !workOrderId
     ? "Povuci dokumente ovdje. Ako je RN nov, prvo spremimo osnovne podatke pa dokument vežemo uz njega."
-    : "Jos nema dokumenata za ovaj RN.";
+    : "Još nema dokumenata za ovaj RN.";
   const activityEmptyMessage = !workOrderId
-    ? "Dokumenti ce se pojaviti kad RN bude spremljen."
-    : "Jos nema dokumenata u activity prikazu.";
+    ? "Dokumenti ?e se pojaviti kad RN bude spremljen."
+    : "Još nema dokumenata u activity prikazu.";
 
   workOrderDocumentEmpty.textContent = editorEmptyMessage;
   workOrderActivityDocumentEmpty.textContent = activityEmptyMessage;
@@ -9047,7 +9047,7 @@ async function buildWorkOrderDocumentUploadPayload(files) {
     fileName: file.name,
     fileType: file.type,
     fileSize: file.size,
-    dataUrl: await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`),
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
   })));
 }
 
@@ -9969,10 +9969,10 @@ function getDocumentTemplateSectionTypeLabel(value) {
 
 const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
-  { value: "racun", label: "Racun" },
+  { value: "racun", label: "Račun" },
   { value: "umjernica", label: "Umjernica" },
-  { value: "karton_uredaja", label: "Karton uredaja" },
-  { value: "slika_uredaja", label: "Slika uredaja" },
+  { value: "karton_uređaja", label: "Karton uređaja" },
+  { value: "slika_uređaja", label: "Slika uređaja" },
   { value: "servisni_zapis", label: "Servisni zapis" },
   { value: "upute", label: "Upute / dokumentacija" },
   { value: "ostalo", label: "Ostalo" },
@@ -9980,7 +9980,7 @@ const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
 
 const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
-  { value: "dokaz_ispitivac", label: "Dokaz ispitivaca" },
+  { value: "dokaz_ispitivac", label: "Dokaz ispitivača" },
   { value: "rjesenje_nositelj", label: "Rjesenje nositelja" },
   { value: "evidencija", label: "Evidencija / potvrda" },
   { value: "potpis", label: "Potpis / pecat" },
@@ -10010,7 +10010,7 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "TODAY", label: "Danasnji datum" },
   { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
   { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
-  { value: "COMPANY_HEADQUARTERS", label: "Tvrtka - sjediste" },
+  { value: "COMPANY_HEADQUARTERS", label: "Tvrtka - sjedište" },
   { value: "LOCATION_NAME", label: "Lokacija - naziv" },
   { value: "LOCATION_REGION", label: "Lokacija - regija" },
   { value: "LOCATION_COORDINATES", label: "Lokacija - koordinate" },
@@ -10021,19 +10021,19 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_ISSUED_DATE", label: "Dokument - datum izdavanja" },
   { value: "WORK_ORDER_ISSUED_PLACE", label: "Dokument - mjesto izdavanja" },
   { value: "WORK_ORDER_DOCUMENT_NOTE", label: "Dokument - napomena" },
-  { value: "WORK_ORDER_EXECUTORS", label: "Izvrsitelji - puni naziv" },
+  { value: "WORK_ORDER_EXECUTORS", label: "Izvršitelji - puni naziv" },
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
-  { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivac - ime i prezime" },
-  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitivac - klasa" },
-  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitivac - UrBROJ" },
-  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitivac - E broj" },
-  { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivac - podaci o ovlastenju" },
+  { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivač - ime i prezime" },
+  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitiva? - klasa" },
+  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitiva? - UrBROJ" },
+  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitiva? - E broj" },
+  { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivač - podaci o ovlaštenju" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_NAME", label: "Nositelj - ime i prezime" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE", label: "Nositelj - klasa" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_URBROJ", label: "Nositelj - UrBROJ" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ", label: "Nositelj - E broj" },
-  { value: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY", label: "Nositelj - podaci o ovlastenju" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY", label: "Nositelj - podaci o ovlaštenju" },
   { value: "CONTACT_NAME", label: "Kontakt - ime" },
   { value: "CONTACT_PHONE", label: "Kontakt - telefon" },
   { value: "CONTACT_EMAIL", label: "Kontakt - email" },
@@ -10115,11 +10115,11 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "inspector_signature") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Potpis ispitivaca",
-        wordLabel: "Potpis ispitivaca panik rasvjete",
+        label: "Potpis ispitivača",
+        wordLabel: "Potpis ispitivača panik rasvjete",
         type: "inspector_signature",
         signatureArea: "elektro",
-        helpText: "Potpis ispitivaca panik rasvjete iz People modula.",
+        helpText: "Potpis ispitivača panik rasvjete iz People modula.",
       },
       baseIndex,
     );
@@ -10132,7 +10132,7 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         wordLabel: "Potpis nositelja panik rasvjete",
         type: "authorization_holder_signature",
         signatureArea: "elektro",
-        helpText: "Potpis nositelja ovlastenja za panik rasvjetu iz People modula.",
+        helpText: "Potpis nositelja ovlaštenja za panik rasvjetu iz People modula.",
       },
       baseIndex,
     );
@@ -10155,10 +10155,10 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     return createEmptyDocumentTemplateFieldDraft(
       {
         label: "Nositelj",
-        wordLabel: "Nositelj ovlastenja panik rasvjete",
+        wordLabel: "Nositelj ovlaštenja panik rasvjete",
         type: "text",
         source: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY",
-        helpText: "Povlaci podatke o odabranom nositelju ovlastenja iz People modula.",
+        helpText: "Povlači podatke o odabranom nositelju ovlaštenja iz People modula.",
       },
       baseIndex,
     );
@@ -10327,7 +10327,7 @@ function createDefaultDocumentTemplateSectionDrafts() {
     {
       type: "rich_text",
       title: "Uvod",
-      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvrsen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
+      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvršen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
     },
     {
       type: "legal_list",
@@ -10632,7 +10632,7 @@ function renderDocumentTemplateReferenceMeta() {
   if (!documentTemplateReferenceDraft) {
     const empty = document.createElement("p");
     empty.className = "helper-copy";
-    empty.textContent = "Upload Word predlozak koji ces kasnije urediti i vratiti nazad u builder.";
+    empty.textContent = "Upload Word predložak koji ćeš kasnije urediti i vratiti nazad u builder.";
     documentTemplateReferenceMeta.append(empty);
     if (documentTemplateReferenceDownloadButton) {
       documentTemplateReferenceDownloadButton.hidden = true;
@@ -10648,7 +10648,7 @@ function renderDocumentTemplateReferenceMeta() {
   const meta = document.createElement("span");
   meta.textContent = [
     documentTemplateReferenceDraft.fileType || "datoteka",
-    documentTemplateReferenceDraft.updatedAt ? `Azurirano ${formatDateTime(documentTemplateReferenceDraft.updatedAt)}` : "",
+    documentTemplateReferenceDraft.updatedAt ? `Ažurirano ${formatDateTime(documentTemplateReferenceDraft.updatedAt)}` : "",
   ].filter(Boolean).join(" | ");
   documentTemplateReferenceMeta.append(title, meta);
 
@@ -11101,8 +11101,8 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     displayName: matchedUser?.fullName
       ? matchedUser.fullName
       : capability === "authorize"
-        ? `Nositelj ovlastenja (${signatureAreaLabel})`
-        : `Ispitivac (${signatureAreaLabel})`,
+        ? `Nositelj ovlaštenja (${signatureAreaLabel})`
+        : `Ispitivač (${signatureAreaLabel})`,
     summary: matchedUser
       ? getQualifiedUserSummaryValue(matchedUser, capability, signatureArea)
       : "",
@@ -11368,13 +11368,13 @@ function buildDocumentTemplatePreviewPageMarkup(
     ? (page.fields ?? []).map(({ field, index }) => (
       `<span class="document-template-preview-pill">${escapeHtml(getDocumentTemplateFieldToken(field, index))}</span>`
     )).join("")
-    : '<span class="document-template-preview-empty">Na ovoj stranici jos nema placeholdera.</span>';
+    : '<span class="document-template-preview-empty">Na ovoj stranici još nema placeholdera.</span>';
   const blocks = (page?.fields ?? []).length > 0
     ? (page.fields ?? []).map(({ field, index }) => buildDocumentTemplateFieldPreviewMarkup(field, context, index, { placeholderMode })).join("")
     : `
       <section class="document-template-preview-section">
         <h2>Prazna stranica</h2>
-        <p class="document-template-preview-copy">Dodaj blokove u aktivnu stranicu da odmah vidis raspored i preview.</p>
+        <p class="document-template-preview-copy">Dodaj blokove u aktivnu stranicu da odmah vidiš raspored i preview.</p>
       </section>
     `;
 
@@ -11384,7 +11384,7 @@ function buildDocumentTemplatePreviewPageMarkup(
         <div>
           <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
           <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template")}</h1>
-          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predlozak, a ovdje se definira raspored placeholdera i blokova.")}</p>
+          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predložak, a ovdje se definira raspored placeholdera i blokova.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
           <div><span>Stranica</span><strong>${pageTitle}</strong></div>
@@ -11404,7 +11404,7 @@ function buildDocumentTemplatePreviewPageMarkup(
       ${template.referenceDocument?.fileName ? `
         <section class="document-template-preview-section">
           <h2>Word reference</h2>
-          <p class="document-template-preview-copy">Povezani Word predlozak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
+          <p class="document-template-preview-copy">Povezani Word predložak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
         </section>
       ` : ""}
     </article>
@@ -11953,7 +11953,7 @@ function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatur
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     qualification.eBroj ? `E ${qualification.eBroj}` : "",
   ].filter(Boolean);
-  const roleLabel = capability === "authorize" ? "nositelj" : "ispitivac";
+  const roleLabel = capability === "authorize" ? "nositelj" : "ispitivač";
   const areaLabel = getSignatureAreaLabel(signatureArea);
   const fallback = `${roleLabel} · ${areaLabel}`;
   return [
@@ -11965,7 +11965,7 @@ function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatur
 function getQualifiedUserSelectOptions(capability = "inspect", signatureArea = "elektro") {
   const emptyLabel = capability === "authorize"
     ? "Odaberi nositelja"
-    : "Odaberi ispitivaca";
+    : "Odaberi ispitivača";
   return [
     { value: "", label: emptyLabel },
     ...getQualifiedUsersForSignatureArea(capability, signatureArea).map((user) => ({
@@ -12021,7 +12021,7 @@ function getQualifiedUserOptionsForSignatureAreas(
   }
 
   return [
-    { value: "", label: emptyLabel || (capability === "authorize" ? "Odaberi nositelja" : "Odaberi ispitivaca") },
+    { value: "", label: emptyLabel || (capability === "authorize" ? "Odaberi nositelja" : "Odaberi ispitivača") },
     ...options,
   ];
 }
@@ -12038,7 +12038,7 @@ function findQualifiedUserById(userId = "", capability = "inspect", signatureAre
 
 function getQualifiedUserSummaryValue(user = null, capability = "inspect", signatureArea = "elektro") {
   if (!user) {
-    const roleLabel = capability === "authorize" ? "Nositelj ovlastenja" : "Ispitivac";
+    const roleLabel = capability === "authorize" ? "Nositelj ovlaštenja" : "Ispitivač";
     return `${roleLabel} (${getSignatureAreaLabel(signatureArea)})`;
   }
 
@@ -12215,7 +12215,7 @@ async function queueUserElectricalSignatureFile(file) {
     return;
   }
 
-  const dataUrl = await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`);
+  const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`);
   renderUserElectricalSignaturePad(dataUrl);
 }
 
@@ -12526,7 +12526,7 @@ function renderUserElectricalDocuments() {
 
     const categoryLabel = document.createElement("span");
     categoryLabel.className = "module-attachment-field-label";
-    categoryLabel.textContent = "Sto je ovo?";
+    categoryLabel.textContent = "Što je ovo?";
 
     const categorySelect = document.createElement("select");
     categorySelect.className = "module-attachment-category-select";
@@ -12629,7 +12629,7 @@ function renderMeasurementEquipmentDocuments() {
   if (measurementEquipmentDocumentDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema dodanih datoteka za ovaj uredaj.";
+    empty.textContent = "Nema dodanih datoteka za ovaj uređaj.";
     measurementEquipmentDocumentsList.replaceChildren(empty);
     return;
   }
@@ -12662,7 +12662,7 @@ function renderMeasurementEquipmentDocuments() {
 
     const categoryLabel = document.createElement("span");
     categoryLabel.className = "module-attachment-field-label";
-    categoryLabel.textContent = "Sto je ovo?";
+    categoryLabel.textContent = "Što je ovo?";
 
     const categorySelect = document.createElement("select");
     categorySelect.className = "module-attachment-category-select";
@@ -13015,7 +13015,7 @@ function renderLegalFrameworkModule() {
 
     const note = document.createElement("p");
     note.className = "legal-framework-card-note";
-    note.textContent = item.note || item.sourceUrl || "Dodaj sazetak obveze, link na izvor ili bitne napomene za zapisnik.";
+    note.textContent = item.note || item.sourceUrl || "Dodaj sažetak obveze, link na izvor ili bitne napomene za zapisnik.";
 
     const footer = document.createElement("div");
     footer.className = "legal-framework-card-footer";
@@ -13285,7 +13285,7 @@ function renderServiceCatalogModule() {
     const updated = document.createElement("span");
     updated.className = "service-catalog-card-updated";
     updated.textContent = item.updatedAt
-      ? `Azurirano ${formatCompactDate(item.updatedAt)}`
+      ? `Ažurirano ${formatCompactDate(item.updatedAt)}`
       : "Novo";
     footer.append(updated);
 
@@ -13599,7 +13599,7 @@ function renderSafetyAuthorizationTemplateChecklist(selectedIds = []) {
   renderTemplateSelectionChecklist(safetyAuthorizationTemplateList, {
     selectedIds,
     inputName: "safety-authorization-template-id",
-    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s ovlastenjem.",
+    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje poveži s ovlaštenjem.",
   });
 }
 
@@ -13618,8 +13618,8 @@ function buildSafetyAuthorizationPayload() {
 function syncSafetyAuthorizationEditorChrome() {
   if (safetyAuthorizationEditorTitle) {
     safetyAuthorizationEditorTitle.textContent = safetyAuthorizationIdInput?.value
-      ? `Uredi ovlastenje | ${safetyAuthorizationTitleInput?.value?.trim() || "Bez naziva"}`
-      : "Novo ovlastenje";
+      ? `Uredi ovlaštenje | ${safetyAuthorizationTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novo ovlaštenje";
   }
 
   if (safetyAuthorizationDeleteButton) {
@@ -13699,8 +13699,8 @@ function renderSafetyAuthorizationModule() {
   }
   if (safetyAuthorizationHelper) {
     safetyAuthorizationHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} ovlastenja. Ovdje povezujes ih sa zapisnicima.`
-      : `Prikazano ${visibleItems.length} od ${allItems.length} ovlastenja.`;
+      ? `Prikazano ${visibleItems.length} ovlaštenja. Ovdje ih povezuješ sa zapisnicima.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} ovlaštenja.`;
   }
 
   safetyAuthorizationList.replaceChildren(...visibleItems.map((item) => {
@@ -13777,8 +13777,8 @@ function renderSafetyAuthorizationModule() {
     const empty = document.createElement("div");
     empty.className = "offers-empty-card";
     empty.textContent = canManageMasterData
-      ? "Nema ovlastenja za ove filtere. Dodaj prvo ovlastenje i povezi ga sa zapisnicima."
-      : "Nema ovlastenja za prikaz u odabranoj organizaciji.";
+      ? "Nema ovlaštenja za ove filtere. Dodaj prvo ovlaštenje i poveži ga sa zapisnicima."
+      : "Nema ovlaštenja za prikaz u odabranoj organizaciji.";
     safetyAuthorizationList.replaceChildren(empty);
   }
 }
@@ -13823,7 +13823,7 @@ function renderDocumentTemplateLinkSummary() {
   legalCard.innerHTML = `
     <span>Propisi</span>
     <strong>${legalFrameworks.length}</strong>
-    <p>${legalFrameworks.length > 0 ? "Povezano kroz Legal Framework modul." : "Jos nema povezanih propisa za ovaj template."}</p>
+    <p>${legalFrameworks.length > 0 ? "Povezano kroz Legal Framework modul." : "Još nema povezanih propisa za ovaj template."}</p>
   `;
 
   const equipmentCard = document.createElement("article");
@@ -13831,7 +13831,7 @@ function renderDocumentTemplateLinkSummary() {
   equipmentCard.innerHTML = `
     <span>Oprema</span>
     <strong>${equipmentItems.length}</strong>
-    <p>${equipmentItems.length > 0 ? "Povezano kroz Measurement Equipment modul." : "Jos nema povezane opreme za ovaj template."}</p>
+    <p>${equipmentItems.length > 0 ? "Povezano kroz Measurement Equipment modul." : "Još nema povezane opreme za ovaj template."}</p>
   `;
 
   documentTemplateLinkSummary.replaceChildren(legalCard, equipmentCard);
@@ -14229,7 +14229,7 @@ function renderDocumentTemplateEquipmentRows() {
     [
       { label: "Naziv opreme", key: "name", spanFull: false },
       { label: "Oznaka", key: "code", spanFull: false },
-      { label: "Kolicina", key: "quantity", spanFull: false },
+      { label: "Količina", key: "quantity", spanFull: false },
       { label: "Napomena", key: "note", spanFull: true },
     ].forEach((definition) => {
       const label = document.createElement("label");
@@ -14606,13 +14606,13 @@ function renderDocumentTemplateModule() {
       linkedLegalCount > 0 ? `${linkedLegalCount} propisa` : "",
       linkedEquipmentCount > 0 ? `${linkedEquipmentCount} opreme` : "",
       template.referenceDocument?.fileName ? "Word ref" : "",
-    ].filter(Boolean).join(" | ") || "Word predlozak i placeholderi";
+    ].filter(Boolean).join(" | ") || "Word predložak i placeholderi";
     copy.append(title, meta);
     head.append(badges, copy);
 
     const description = document.createElement("p");
     description.className = "document-template-card-description";
-    description.textContent = template.description || "Word ostaje glavni predlozak, a ovdje slazes blokove, placeholdere i povezane izvore podataka.";
+    description.textContent = template.description || "Word ostaje glavni predložak, a ovdje slažeš blokove, placeholdere i povezane izvore podataka.";
 
     const chips = document.createElement("div");
     chips.className = "document-template-card-chips";
@@ -14627,7 +14627,7 @@ function renderDocumentTemplateModule() {
     const output = document.createElement("span");
     output.textContent = template.referenceDocument?.fileName ? "Word reference dodan" : "Bez Word reference";
     const updated = document.createElement("span");
-    updated.textContent = template.updatedAt ? `Azurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
+    updated.textContent = template.updatedAt ? `Ažurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
     footer.append(output, updated);
 
     const openCard = () => {
@@ -15468,7 +15468,7 @@ function syncUserEditorChrome(editing = false, user = null) {
   }
 
   if (userResetButton) {
-    userResetButton.textContent = editing ? "Odustani" : "Ocisti";
+    userResetButton.textContent = editing ? "Odustani" : "Očisti";
   }
 
   userForm?.classList.toggle("is-editing", editing);
@@ -15846,7 +15846,7 @@ function renderDashboardBreakdownList(container, items) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   if (items.length === 0 || total === 0) {
-    container.replaceChildren(createDashboardEmptyState("Jos nema dovoljno podataka za prikaz."));
+    container.replaceChildren(createDashboardEmptyState("Još nema dovoljno podataka za prikaz."));
     return;
   }
 
@@ -15883,7 +15883,7 @@ function renderDashboardExecutorList(container, items) {
   }
 
   if (items.length === 0) {
-    container.replaceChildren(createDashboardEmptyState("Nema rasporedenih izvrsitelja."));
+    container.replaceChildren(createDashboardEmptyState("Nema raspoređenih izvršitelja."));
     return;
   }
 
@@ -15917,7 +15917,7 @@ function renderDashboardUpcomingList(container, items) {
   }
 
   if (items.length === 0) {
-    container.replaceChildren(createDashboardEmptyState("Nema hitnih rokova u sljedecih 14 dana."));
+    container.replaceChildren(createDashboardEmptyState("Nema hitnih rokova u sljedećih 14 dana."));
     return;
   }
 
@@ -16260,7 +16260,7 @@ function renderDashboardWidgetTemplateGrid() {
   if (templates.length === 0) {
     dashboardWidgetTemplateGrid.replaceChildren(
       createDashboardBuilderEmptyState("Nema predloska za trenutnu pretragu.", [
-        createActionButton("Ocisti pretragu", "ghost-button", () => {
+        createActionButton("Očisti pretragu", "ghost-button", () => {
           state.dashboardBuilder.search = "";
           syncDashboardBuilderSearchInput();
           renderDashboardOverview();
@@ -16389,7 +16389,7 @@ function syncDashboardWidgetFormOptions() {
   ], dashboardWidgetRegionFilterInput?.value ?? "");
 
   replaceSelectOptions(dashboardWidgetExecutorFilterInput, [
-    { value: "", label: "Svi izvrsitelji" },
+    { value: "", label: "Svi izvršitelji" },
     ...getDashboardExecutorOptions().map((entry) => ({ value: entry, label: entry })),
   ], dashboardWidgetExecutorFilterInput?.value ?? "");
 
@@ -16495,7 +16495,7 @@ function openDashboardBuilder(widget = null) {
   if (dashboardBuilderCopy) {
     dashboardBuilderCopy.textContent = widget
       ? "Promijeni tip kartice, velicinu, filtre i raspored na dashboardu."
-      : "Odaberi predlozak kao u ClickUp builderu, a zatim prilagodi filtre i layout.";
+      : "Odaberi predložak kao u ClickUp builderu, a zatim prilagodi filtre i layout.";
   }
 
   syncDashboardBuilderSearchInput();
@@ -17146,7 +17146,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
     const dragHandle = document.createElement("button");
     dragHandle.type = "button";
     dragHandle.className = "card-button card-button-light dashboard-widget-action dashboard-widget-drag-handle";
-    dragHandle.title = "Povuci za premjestanje";
+    dragHandle.title = "Povuci za premještanje";
     dragHandle.textContent = "⋮⋮";
     dragHandle.addEventListener("pointerdown", (event) => {
       beginDashboardWidgetLayoutInteraction("move", widget, card, event);
@@ -17204,7 +17204,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
     const resizeHandle = document.createElement("button");
     resizeHandle.type = "button";
     resizeHandle.className = "dashboard-widget-resize-handle";
-    resizeHandle.title = "Povuci za promjenu velicine";
+    resizeHandle.title = "Povuci za promjenu veličine";
     resizeHandle.setAttribute("aria-label", "Promijeni velicinu kartice");
     resizeHandle.addEventListener("pointerdown", (event) => {
       beginDashboardWidgetLayoutInteraction("resize", widget, card, event);
@@ -17576,7 +17576,7 @@ function renderReminders() {
 
     const note = document.createElement("p");
     note.className = "reminder-card-note";
-    note.textContent = reminder.note || "Bez dodatne biljeske.";
+    note.textContent = reminder.note || "Bez dodatne bilješke.";
 
     const footer = document.createElement("div");
     footer.className = "reminder-card-footer";
@@ -17608,7 +17608,7 @@ function renderReminders() {
       createActionButton("Uredi", "ghost-button reminder-inline-action", () => {
         hydrateReminderForm(reminder);
       }),
-      createActionButton("Obrisi", "ghost-button reminder-inline-action is-danger", () => {
+      createActionButton("Obriši", "ghost-button reminder-inline-action is-danger", () => {
         if (!window.confirm(`Obrisati reminder "${reminder.title}"?`)) {
           return;
         }
@@ -17653,7 +17653,7 @@ function isTodoTaskOverdue(task) {
 
 function getTodoAssigneeOptions() {
   return [
-    { value: "", label: "Bez izvrsitelja" },
+    { value: "", label: "Bez izvršitelja" },
     ...[...state.users]
       .filter((user) => user?.isActive !== false)
       .sort((left, right) => String(left.fullName || left.email).localeCompare(String(right.fullName || right.email)))
@@ -17876,7 +17876,7 @@ function renderTodoList() {
     const subtitle = document.createElement("span");
     subtitle.className = "todo-task-card-subtitle";
     subtitle.textContent = [
-      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvrsitelja",
+      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvršitelja",
       task.createdByLabel ? `od ${task.createdByLabel}` : "",
     ].filter(Boolean).join(" · ");
     copy.append(title, subtitle);
@@ -17944,7 +17944,7 @@ function renderTodoDetail() {
 
   if (todoDetailMeta) {
     const lines = [
-      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvrsitelja",
+      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvršitelja",
       task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
       task.createdAt ? formatDateTime(task.createdAt) : "",
     ].filter(Boolean);
@@ -19264,7 +19264,7 @@ function getVehicleReservationAssigneeLabels(reservation) {
   return labels.map((value) => String(value || "").trim()).filter(Boolean);
 }
 
-function createVehicleReservationExecutorList(labels = [], { compact = false, emptyLabel = "Bez izvrsitelja" } = {}) {
+function createVehicleReservationExecutorList(labels = [], { compact = false, emptyLabel = "Bez izvršitelja" } = {}) {
   const wrap = document.createElement("div");
   wrap.className = compact
     ? "vehicle-reservation-executors is-compact"
@@ -19295,10 +19295,10 @@ function syncVehicleReservationAssigneePreview() {
   const summary = document.createElement("span");
   summary.className = "vehicle-reservation-assignees-summary";
   summary.textContent = labels.length === 0
-    ? "Odaberi izvrsitelje"
+    ? "Odaberi izvršitelje"
     : labels.length === 1
       ? labels[0]
-      : `${labels.length} izvrsitelja`;
+      : `${labels.length} izvršitelja`;
 
   vehicleReservationAssigneesPreview.replaceChildren(executors, summary);
 }
@@ -19773,11 +19773,11 @@ function syncVehicleScheduleHelperText() {
   const selection = getVehicleScheduleSelectionRange();
 
   if (!selection) {
-    vehicleScheduleHelper.textContent = `Povuci preko praznih sati za novu rezervaciju ili prosirenje postojece za ${formatDate(dateKey)}.`;
+    vehicleScheduleHelper.textContent = `Povuci preko praznih sati za novu rezervaciju ili proširenje postojeće za ${formatDate(dateKey)}.`;
     return;
   }
 
-  vehicleScheduleHelper.textContent = `Odabran raspon ${String(selection.startHour).padStart(2, "0")}:00 - ${String(selection.endHour + 1).padStart(2, "0")}:00. Pusti tipku za novu rezervaciju ili prosirenje postojece.`;
+  vehicleScheduleHelper.textContent = `Odabran raspon ${String(selection.startHour).padStart(2, "0")}:00 - ${String(selection.endHour + 1).padStart(2, "0")}:00. Pusti tipku za novu rezervaciju ili proširenje postojeće.`;
 }
 
 function syncVehicleScheduleSlotSelection(track, vehicleId) {
@@ -20208,7 +20208,7 @@ function renderVehiclesModule() {
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "ghost-button";
-      deleteButton.textContent = "Obrisi";
+      deleteButton.textContent = "Obriši";
       deleteButton.addEventListener("click", () => {
         if (!window.confirm("Obrisati ovu rezervaciju?")) {
           return;
@@ -20234,8 +20234,8 @@ function renderVehiclesModule() {
   if (vehicleReservationsEmpty) {
     vehicleReservationsEmpty.hidden = Boolean(reservationVehicle && reservations.length > 0);
     vehicleReservationsEmpty.textContent = reservationVehicle
-      ? "Ovo vozilo jos nema aktivnih rezervacija."
-      : "Odaberi vozilo da pripremis rezervacije i povijest voznje.";
+      ? "Ovo vozilo još nema aktivnih rezervacija."
+      : "Odaberi vozilo da pripremiš rezervacije i povijest vožnje.";
   }
 
   renderVehicleSchedule(visibleVehicles, nowValue);
@@ -20343,7 +20343,7 @@ function renderSharedOptions() {
     { value: "all", label: "Sve" },
     { value: "assigned", label: "Dodijeljeno meni" },
     { value: "created", label: "Poslao sam" },
-    { value: "unassigned", label: "Bez izvrsitelja" },
+    { value: "unassigned", label: "Bez izvršitelja" },
   ], todoFilterScopeInput?.value || "assigned");
   if (offerStatusInput) {
     replaceSelectOptions(offerStatusInput, OFFER_STATUS_OPTIONS, offerStatusInput.value || "draft");
@@ -21259,7 +21259,7 @@ function createExecutorOverflowBadge(hiddenCount, className = "work-order-mini-e
   const badge = document.createElement("span");
   badge.className = `${className} is-overflow`;
   badge.textContent = `+${hiddenCount}`;
-  badge.setAttribute("aria-label", `${hiddenCount} dodatnih izvrsitelja`);
+  badge.setAttribute("aria-label", `${hiddenCount} dodatnih izvršitelja`);
   return badge;
 }
 
@@ -21276,7 +21276,7 @@ function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-ex
   const avatar = document.createElement("span");
   avatar.className = className;
   avatar.title = label;
-  avatar.setAttribute("aria-label", label || "Izvrsitelj");
+  avatar.setAttribute("aria-label", label || "Izvršitelj");
   avatar.style.setProperty("--executor-bg", tone.bg);
   avatar.style.setProperty("--executor-fg", tone.fg);
 
@@ -21284,7 +21284,7 @@ function createWorkOrderMiniExecutor(executor, { className = "work-order-mini-ex
     avatar.classList.add("has-image");
     const image = document.createElement("img");
     image.src = user.avatarDataUrl;
-    image.alt = user.fullName || user.email || label || "Izvrsitelj";
+    image.alt = user.fullName || user.email || label || "Izvršitelj";
     avatar.append(image);
 
     if (shouldShowBadge) {
@@ -21318,7 +21318,7 @@ function normalizeWorkOrderExecutorValues(values = []) {
 
 function getWorkOrderExecutorOptions(currentValues = [], { includeEmpty = false } = {}) {
   const normalizedCurrentValues = normalizeWorkOrderExecutorValues(currentValues);
-  const options = includeEmpty ? [{ value: "", label: "Bez izvrsitelja", user: null, isEmpty: true }] : [];
+  const options = includeEmpty ? [{ value: "", label: "Bez izvršitelja", user: null, isEmpty: true }] : [];
   const seen = new Set(options.map((option) => option.value));
 
   normalizedCurrentValues.forEach((currentValue) => {
@@ -21506,8 +21506,8 @@ function setWorkOrderCalendarExecutorTriggerContent(trigger, values = []) {
   const isEditorTrigger = trigger.classList.contains("work-order-editor-executor-trigger");
 
   trigger.replaceChildren();
-  trigger.title = selectedValues.length > 0 ? selectedValues.join(", ") : "Dodaj izvrsitelje";
-  trigger.setAttribute("aria-label", selectedValues.length > 0 ? selectedValues.join(", ") : "Dodaj izvrsitelje");
+  trigger.title = selectedValues.length > 0 ? selectedValues.join(", ") : "Dodaj izvršitelje";
+  trigger.setAttribute("aria-label", selectedValues.length > 0 ? selectedValues.join(", ") : "Dodaj izvršitelje");
 
   if (selectedValues.length > 0) {
     const stack = document.createElement("span");
@@ -21537,7 +21537,7 @@ function setWorkOrderCalendarExecutorTriggerContent(trigger, values = []) {
 
     const label = document.createElement("span");
     label.className = "work-order-editor-executor-trigger-label is-placeholder";
-    label.textContent = "Odaberi izvrsitelje";
+    label.textContent = "Odaberi izvršitelje";
 
     trigger.append(icon, label);
     return;
@@ -21616,7 +21616,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal";
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", "Izbor izvrsitelja");
+    menu.setAttribute("aria-label", "Izbor izvršitelja");
 
     ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
       menu.addEventListener(eventName, (event) => {
@@ -21630,7 +21630,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const searchInput = document.createElement("input");
     searchInput.type = "search";
     searchInput.className = "work-order-calendar-executor-search-input";
-    searchInput.placeholder = "Trazi po imenu ili prezimenu";
+    searchInput.placeholder = "Traži po imenu ili prezimenu";
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
     searchWrap.append(searchInput);
@@ -21647,7 +21647,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
-    clearButton.textContent = "Ocisti";
+    clearButton.textContent = "Očisti";
     let menuPending = false;
 
     const selectionsEqual = (leftValues, rightValues) => {
@@ -21732,7 +21732,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       if (draftValues.length === 0) {
         const empty = document.createElement("span");
         empty.className = "work-order-calendar-executor-selection-empty";
-        empty.textContent = "Bez izvrsitelja";
+        empty.textContent = "Bez izvršitelja";
         selection.append(empty);
         return;
       }
@@ -21777,7 +21777,7 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       if (visibleOptions.length === 0) {
         const empty = document.createElement("p");
         empty.className = "work-order-calendar-executor-empty";
-        empty.textContent = "Nema izvrsitelja za ovaj pojam.";
+        empty.textContent = "Nema izvršitelja za ovaj pojam.";
         optionsList.append(empty);
         return;
       }
@@ -21821,8 +21821,8 @@ function createWorkOrderCalendarExecutorPicker(workOrder) {
       renderSelection();
       renderOptions();
       helper.textContent = draftValues.length > 0
-        ? `${draftValues.length} odabranih izvrsitelja.`
-        : "Odaberi jednog ili vise izvrsitelja.";
+        ? `${draftValues.length} odabranih izvršitelja.`
+        : "Odaberi jednog ili više izvršitelja.";
       clearButton.disabled = menuPending || draftValues.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -22551,7 +22551,7 @@ function buildWorkOrderLeafletPopup(marker) {
 
   const executorLabel = document.createElement("span");
   executorLabel.className = "work-order-map-popup-status-label";
-  executorLabel.textContent = "Izvrsitelji";
+  executorLabel.textContent = "Izvršitelji";
 
   const executorPicker = createWorkOrderCalendarExecutorPicker(popupWorkOrder);
   executorPicker.classList.add("work-order-map-popup-executor-picker");
@@ -23307,7 +23307,7 @@ function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
   if (workOrderCalendarNextButton) {
     workOrderCalendarNextButton.setAttribute(
       "aria-label",
-      state.workOrderCalendar.displayMode === "month" ? "Sljedeci mjesec" : "Sljedeci tjedan",
+      state.workOrderCalendar.displayMode === "month" ? "Sljedeći mjesec" : "Sljedeći tjedan",
     );
   }
 
@@ -23754,7 +23754,7 @@ function renderWorkOrders() {
 
       if (state.user?.role !== "user") {
         actions.append(
-          createActionButton("Obrisi", "card-button card-button-light card-danger", () => {
+          createActionButton("Obriši", "card-button card-button-light card-danger", () => {
             if (!window.confirm(`Obrisati ${item.workOrderNumber}?`)) {
               return;
             }
@@ -23790,7 +23790,7 @@ function renderWorkOrders() {
 
   workOrdersLoadState.hidden = false;
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
-    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za još.`
     : `Prikazano svih ${filtered.length} RN.`;
 }
 
@@ -24323,7 +24323,7 @@ function createWorkOrderBatchExecutorPicker(selectedWorkOrders = []) {
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal work-order-bulk-executor-menu-portal";
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", "Batch izbor izvrsitelja");
+    menu.setAttribute("aria-label", "Batch izbor izvršitelja");
 
     ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
       menu.addEventListener(eventName, (event) => {
@@ -25494,7 +25494,7 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
   const nextButton = document.createElement("button");
   nextButton.type = "button";
   nextButton.className = "ghost-button work-order-document-carousel-nav is-next";
-  nextButton.setAttribute("aria-label", "Sljedeci radni nalozi");
+  nextButton.setAttribute("aria-label", "Sljedeći radni nalozi");
   nextButton.textContent = "→";
 
   const track = document.createElement("div");
@@ -25596,7 +25596,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   summary.className = "work-order-document-template-summary-card";
   summary.innerHTML = `
     <strong>${selectedTemplateCount} templatea</strong>
-    <span>${selectedTemplateCount > 0 ? "Pronadeni su iz usluga na odabranim RN-ovima." : "Na odabranim RN-ovima jos nema povezanih templatea."}</span>
+    <span>${selectedTemplateCount > 0 ? "Pronađeni su iz usluga na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih templatea."}</span>
   `;
   workOrderDocumentWizardTemplateSummary.append(summary);
 
@@ -25613,7 +25613,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   if (recommendations.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Za odabrane RN-ove jos nema povezanih templatea. Povezi ih na usluzi pa ce se ovdje pojaviti po tipu zapisnika (SPR, TZIN...).";
+    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SPR, TZIN...).";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
     renderWorkOrderDocumentWizardTemplateDock([]);
     return;
@@ -26165,7 +26165,7 @@ function renderGroupedWorkOrdersList() {
 
   workOrdersLoadState.hidden = false;
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
-    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jo?.`
     : `Prikazano svih ${filtered.length} RN.`;
 }
 
@@ -26233,8 +26233,8 @@ function renderCompactWorkOrdersList() {
   columns.append(selectionColumn);
 
   (isExpanded
-    ? ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvrsitelji"]
-    : ["Osnovno", "Tvrtka", "Lokacija", "Izvrsitelji"]
+    ? ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvršitelji"]
+    : ["Osnovno", "Tvrtka", "Lokacija", "Izvršitelji"]
   ).forEach((label) => {
     const cell = document.createElement("div");
     cell.className = "work-group-column";
@@ -26610,7 +26610,7 @@ function renderCompactWorkOrdersList() {
 
   workOrdersLoadState.hidden = false;
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
-    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jo?.`
     : `Prikazano svih ${filtered.length} RN.`;
   if (workOrdersHelper) {
     workOrdersHelper.dataset.baseText = workOrdersLoadState.textContent;
@@ -26720,7 +26720,7 @@ function renderLocations() {
     if (canManageMasterData) {
       actionsCell.append(
         createActionButton("Uredi", "card-button", () => hydrateLocationForm(location)),
-        createActionButton("Obrisi", "card-button card-danger", () => {
+        createActionButton("Obriši", "card-button card-danger", () => {
           if (!window.confirm(`Obrisati lokaciju ${location.name}?`)) {
             return;
           }
@@ -26797,7 +26797,7 @@ function renderUsers() {
       createUserIdentityCell(user),
       createStackCell({
         title: user.email,
-        subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Jos bez prijave",
+        subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Još bez prijave",
       }),
       createStackCell({
         title: user.role === "admin" ? "Admin" : user.role === "super_admin" ? "Super Admin" : "User",
@@ -26826,8 +26826,8 @@ function renderLoginContentItems() {
     actionsCell.className = "table-actions";
     actionsCell.append(
       createActionButton("Uredi", "card-button", () => hydrateLoginContentForm(item)),
-      createActionButton("Obrisi", "card-button card-danger", () => {
-        if (!window.confirm("Obrisati ovu login pricu?")) {
+      createActionButton("Obriši", "card-button card-danger", () => {
+        if (!window.confirm("Obrisati ovu login priču?")) {
           return;
         }
 
@@ -28307,7 +28307,7 @@ safetyAuthorizationResetButton?.addEventListener("click", () => {
 safetyAuthorizationDeleteButton?.addEventListener("click", () => {
   const authorizationId = safetyAuthorizationIdInput?.value || "";
 
-  if (!authorizationId || !window.confirm("Obrisati ovo ovlastenje?")) {
+  if (!authorizationId || !window.confirm("Obrisati ovo ovlaštenje?")) {
     return;
   }
 
@@ -28481,7 +28481,7 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
     return;
   }
 
-  void readFileAsDataUrl(file, "Ne mogu ucitati Word predlozak.")
+  void readFileAsDataUrl(file, "Ne mogu učitati Word predložak.")
     .then((dataUrl) => {
       setDocumentTemplateReferenceDocument({
         fileName: file.name,
@@ -29149,7 +29149,7 @@ userAvatarFileInput?.addEventListener("change", () => {
     });
     userError.textContent = "";
   }).catch(() => {
-    userError.textContent = "Ne mogu ucitati sliku.";
+    userError.textContent = "Ne mogu učitati sliku.";
   });
 });
 
@@ -29185,7 +29185,7 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
       userMenuAvatarFileInput.value = "";
     })
     .catch(() => {
-      setUserMenuError("Ne mogu ucitati sliku.");
+      setUserMenuError("Ne mogu učitati sliku.");
     })
     .finally(() => {
       userMenuAvatarButton.disabled = false;

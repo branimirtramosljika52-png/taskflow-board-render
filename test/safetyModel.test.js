@@ -213,7 +213,7 @@ test("legal framework create, update, filter and sort work together", () => {
   const first = createLegalFramework(
     {
       organizationId: "org-1",
-      title: "Zakon o zastiti od pozara",
+      title: "Zakon o zaštiti od požara",
       category: "Zakon",
       status: "active",
       authority: "NN",
@@ -517,7 +517,7 @@ test("createWorkOrder keeps all selected executors and preserves legacy executor
     {
       companyId: "company-1",
       locationId: "location-1",
-      description: "Nalog s vise izvrsitelja",
+      description: "Nalog s više izvršitelja",
       executors: ["Ana Kovac", "Marko Horvat", "Iva Novak", "Petra Bencic"],
     },
     state,
@@ -2164,7 +2164,7 @@ test("safety authorizations support template links, filters and sorting", () => 
   const first = createSafetyAuthorization(
     {
       organizationId: "org-1",
-      title: "Ovlastenje za ispitivanje",
+      title: "Ovlaštenje za ispitivanje",
       scope: "NN 1/2026",
       issuedOn: "2026-01-15",
       validUntil: "2026-06-01",
@@ -2178,7 +2178,7 @@ test("safety authorizations support template links, filters and sorting", () => 
   const second = createSafetyAuthorization(
     {
       organizationId: "org-1",
-      title: "Ovlastenje za servis",
+      title: "Ovlaštenje za servis",
       scope: "Servis i pregled",
       issuedOn: "2026-02-01",
       validUntil: "",

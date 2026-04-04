@@ -96,7 +96,7 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "legal_list", label: "Popis propisa" },
   { value: "equipment_list", label: "Popis opreme" },
   { value: "measurement_table", label: "Excel tablica" },
-  { value: "inspector_signature", label: "Potpis ispitivaca" },
+  { value: "inspector_signature", label: "Potpis ispitivača" },
   { value: "authorization_holder_signature", label: "Potpis nositelja" },
   { value: "page_break", label: "Nova stranica" },
 ];
@@ -141,9 +141,9 @@ export const DASHBOARD_WIDGET_HEIGHT_OPTIONS = [
 export const DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS = [
   { value: "all", label: "Bez ogranicenja" },
   { value: "overdue", label: "Kasni" },
-  { value: "7d", label: "Sljedecih 7 dana" },
-  { value: "14d", label: "Sljedecih 14 dana" },
-  { value: "30d", label: "Sljedecih 30 dana" },
+  { value: "7d", label: "Sljedećih 7 dana" },
+  { value: "14d", label: "Sljedećih 14 dana" },
+  { value: "30d", label: "Sljedećih 30 dana" },
 ];
 
 export const DASHBOARD_WIDGET_DEFINITIONS = {
@@ -163,14 +163,14 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
       { value: "priority", label: "Prioritet" },
       { value: "region", label: "Regija" },
       { value: "company", label: "Tvrtka" },
-      { value: "executor", label: "Izvrsitelj" },
+      { value: "executor", label: "Izvršitelj" },
       { value: "tag", label: "Tag" },
     ],
     lists: [
-      { value: "upcoming_due", label: "Sljedeci rokovi" },
+      { value: "upcoming_due", label: "Sljedeći rokovi" },
       { value: "overdue", label: "RN kojima je istekao rok" },
       { value: "urgent_open", label: "Urgent otvoreni RN" },
-      { value: "recent", label: "Nedavno azurirani RN" },
+      { value: "recent", label: "Nedavno ažurirani RN" },
     ],
   },
   reminders: {
@@ -205,7 +205,7 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
     groupings: [
       { value: "status", label: "Status zadatka" },
       { value: "priority", label: "Prioritet" },
-      { value: "assignee", label: "Izvrsitelj" },
+      { value: "assignee", label: "Izvršitelj" },
       { value: "creator", label: "Posiljatelj" },
     ],
     lists: [
@@ -228,7 +228,7 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
     ],
     lists: [
       { value: "missing_coordinates", label: "Lokacije bez koordinata" },
-      { value: "recent", label: "Nedavno azurirane lokacije" },
+      { value: "recent", label: "Nedavno ažurirane lokacije" },
     ],
   },
 };
@@ -932,7 +932,7 @@ function createDefaultDocumentTemplateSections() {
     {
       type: "rich_text",
       title: "Uvod",
-      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvrsen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
+      body: "Na temelju {{LEGAL_REFERENCES_INLINE}} izvršen je pregled sustava za {{COMPANY_NAME}} na lokaciji {{LOCATION_NAME}}.",
       columns: [],
       rowCount: 0,
     },
@@ -2205,7 +2205,7 @@ export function createServiceCatalogItem(
 ) {
   const timestamp = now();
   const organizationId = requireText(input.organizationId, "Organizacija");
-  const serviceCode = requireText(input.serviceCode, "Sifra usluge");
+  const serviceCode = requireText(input.serviceCode, "Šifra usluge");
   const normalizedTemplateIds = deriveServiceTemplateSnapshot(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
@@ -2237,7 +2237,7 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     ? requireText(patch.organizationId, "Organizacija")
     : current.organizationId;
   const serviceCode = hasOwn(patch, "serviceCode")
-    ? requireText(patch.serviceCode, "Sifra usluge")
+    ? requireText(patch.serviceCode, "Šifra usluge")
     : current.serviceCode;
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? deriveServiceTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
@@ -3479,7 +3479,7 @@ export function updateVehicleReservation(vehicle, reservationId, patch, now = is
   const currentReservation = findVehicleReservationById(vehicle, reservationId);
 
   if (!currentReservation) {
-    throw new Error("Rezervacija vozila nije pronadena.");
+    throw new Error("Rezervacija vozila nije pronađena.");
   }
 
   const timestamp = now();
@@ -3992,7 +3992,7 @@ export function getWorkOrderExecutorGroup(workOrder) {
 
   return {
     key: executors.length ? executors.map((value) => value.toLowerCase()).join("||") : "unassigned",
-    label: executors.length ? executors.join(" + ") : "Bez izvrsitelja",
+    label: executors.length ? executors.join(" + ") : "Bez izvršitelja",
     executors,
   };
 }
@@ -5083,7 +5083,7 @@ function buildDashboardDistributionItems(widget, items) {
       items.flatMap((item) => getWorkOrderExecutors(item)),
       (value) => value,
       {
-        fallback: "Bez izvrsitelja",
+        fallback: "Bez izvršitelja",
         limit: widget.limit,
       },
     );
@@ -5195,7 +5195,7 @@ function mapDashboardListItem(entry, type) {
       id: entry.id,
       type,
       title: entry.title || "ToDo",
-      subtitle: [entry.assignedToLabel, entry.workOrderNumber].filter(Boolean).join(" · ") || "Bez izvrsitelja",
+      subtitle: [entry.assignedToLabel, entry.workOrderNumber].filter(Boolean).join(" · ") || "Bez izvršitelja",
       meta: entry.dueDate || entry.updatedAt || "",
       status: entry.status,
       workOrderId: entry.workOrderId,
@@ -5392,7 +5392,7 @@ export function getDashboardInsights(snapshot, today = todayString()) {
     activeWorkOrders.flatMap((item) => getWorkOrderExecutors(item)),
     (value) => value,
     {
-      fallback: "Bez izvrsitelja",
+      fallback: "Bez izvršitelja",
       limit: 5,
     },
   );

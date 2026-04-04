@@ -514,7 +514,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   dueDate: "Rok zavrsetka",
   teamLabel: "Tim",
   companyName: "Tvrtka",
-  headquarters: "Sjediste",
+  headquarters: "Sjedište",
   companyOib: "OIB",
   locationName: "Lokacija",
   region: "Regija",
@@ -522,7 +522,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   contactName: "Kontakt osoba",
   contactPhone: "Kontakt broj",
   contactEmail: "Kontakt email",
-  executors: "Izvrsitelji",
+  executors: "Izvršitelji",
   serviceItems: "Stavke usluge",
   serviceLine: "Usluga",
   department: "Odjel",
@@ -638,7 +638,7 @@ function buildWorkOrderUpdatedActivityEntries(current, next) {
       newValue,
       description: fieldKey === "status"
         ? `Status promijenjen iz "${oldValue || "-"}" u "${newValue || "-"}"`
-        : `${fieldLabel} azuriran`,
+        : `${fieldLabel} ažuriran`,
     }];
   });
 }
@@ -757,7 +757,7 @@ function buildWorkOrderDocumentUpdatedActivityEntries(current, next) {
       fieldLabel: "Dokument",
       oldValue: current.fileName,
       newValue: next.fileName,
-      description: `Naziv dokumenta azuriran u ${next.fileName}`,
+      description: `Naziv dokumenta ažuriran u ${next.fileName}`,
     });
   }
 
@@ -769,7 +769,7 @@ function buildWorkOrderDocumentUpdatedActivityEntries(current, next) {
       oldValue: current.description,
       newValue: next.description,
       description: next.description
-        ? `Opis dokumenta azuriran za ${next.fileName}`
+        ? `Opis dokumenta ažuriran za ${next.fileName}`
         : `Opis dokumenta uklonjen za ${next.fileName}`,
     });
   }

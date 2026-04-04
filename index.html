@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260403p" />
+<link rel="stylesheet" href="/styles.css?v=20260404a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -67,7 +67,7 @@
     <main id="app-shell" class="app-shell" hidden>
       <section id="app-frame" class="app-frame">
         <aside class="app-rail" aria-label="Primarna navigacija">
-          <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljaÄŤki panel">S</button>
+          <button id="app-home-button" type="button" class="app-rail-logo" aria-label="Otvori upravljački panel">S</button>
           <nav class="app-rail-nav">
             <button type="button" class="rail-button is-active" data-sidebar-group="home" title="Home" aria-label="Home">
               <span class="rail-icon" aria-hidden="true">
@@ -158,7 +158,7 @@
               id="sidebar-home-button"
               type="button"
               class="sidebar-brand-pill"
-              aria-label="Otvori upravljaÄŤki panel"
+              aria-label="Otvori upravljački panel"
             >
               <div class="auth-logo-mark">
                 <span></span>
@@ -643,7 +643,7 @@
                         </label>
 
                         <label class="field">
-                          <span>Sjediste</span>
+                          <span>Sjedište</span>
                           <input id="work-order-headquarters" type="text" readonly />
                         </label>
 
@@ -671,7 +671,7 @@
                         </label>
 
                         <label class="field work-order-executors-field">
-                          <span>IzvrĹˇitelji</span>
+                          <span>Izvršitelji</span>
                           <input id="work-order-executors-data" type="hidden" />
                           <div id="work-order-executors-picker" class="work-order-inline-executor-picker"></div>
                         </label>
@@ -689,7 +689,7 @@
 
                       <label class="field field-span-full work-order-inline-note">
                         <span>Napomena</span>
-                        <textarea id="work-order-description" rows="3" placeholder="Sto se radi, koji je opseg i sto je bitno za RN."></textarea>
+                        <textarea id="work-order-description" rows="3" placeholder="Što se radi, koji je opseg i što je bitno za RN."></textarea>
                       </label>
                     </section>
 
@@ -765,7 +765,7 @@
                               <span>Odabrane usluge</span>
                               <div id="work-order-service-selection" class="work-order-service-selection"></div>
                               <p id="work-order-service-template-hint" class="helper-copy work-order-service-template-hint">
-                                Odaberi jednu ili viĹˇe usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.
+                          Odaberi jednu ili više usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.
                               </p>
                             </div>
                           </div>
@@ -781,7 +781,7 @@
 
                             <label class="field">
                               <span>Nalog zavrsio</span>
-                              <input id="work-order-completed-by" type="text" placeholder="Zavrsio" />
+                              <input id="work-order-completed-by" type="text" placeholder="Završio" />
                             </label>
 
                             <label class="field">
@@ -796,7 +796,7 @@
                     <section class="work-order-editor-section is-notes">
                       <div class="work-order-editor-section-head">
                         <div>
-                          <p class="work-order-editor-section-kicker">Biljeske</p>
+                          <p class="work-order-editor-section-kicker">Bilješke</p>
                           <h3>Interna napomena i faktura</h3>
                         </div>
                       </div>
@@ -830,12 +830,12 @@
                           <span class="work-order-document-dropzone-mark" aria-hidden="true">+</span>
                           <span class="work-order-document-dropzone-copy">
                             <strong>Dodaj dokumente u RN</strong>
-                            <span>Povuci mailove, PDF, slike, Word, Excel i slicne fajlove ili klikni. Drag and drop radi i bilo gdje u lijevom dijelu prozora.</span>
+                            <span>Povuci mailove, PDF, slike, Word, Excel i slične fajlove ili klikni. Drag and drop radi i bilo gdje u lijevom dijelu prozora.</span>
                           </span>
                         </button>
                         <div id="work-order-document-loading" class="work-order-document-loading" hidden>Ucitavanje dokumenata...</div>
                         <p id="work-order-document-empty" class="work-order-document-empty">
-                          Dokumenti ce se ovdje pojaviti nakon uploada. Ako je RN nov, prvo ga spremimo pa dokument veĹľemo uz njega.
+                          Dokumenti će se ovdje pojaviti nakon uploada. Ako je RN nov, prvo ga spremimo pa dokument vežemo uz njega.
                         </p>
                         <p id="work-order-document-error" class="form-error work-order-document-error" hidden></p>
                         <div id="work-order-document-list" class="work-order-document-list"></div>
@@ -846,7 +846,7 @@
                       <button id="work-order-open-todo" type="button" class="ghost-button">ToDo</button>
                       <button id="work-order-open-reminder" type="button" class="ghost-button">Reminder</button>
                       <button id="measurement-sheet-open" type="button" class="ghost-button">Mjerenja</button>
-                      <button id="work-order-reset" type="button" class="ghost-button">Ocisti formu</button>
+                      <button id="work-order-reset" type="button" class="ghost-button">Očisti formu</button>
                     </div>
                   </form>
 
@@ -905,7 +905,7 @@
                 <h2>Dashboard</h2>
               </div>
               <p class="helper-copy dashboard-overview-copy">
-                Slozi vlastite kartice, grafove i liste. Biraj sto gledas, koliki je widget i koji se filtri primjenjuju.
+                Složi vlastite kartice, grafove i liste. Biraj što gledaš, koliki je widget i koji se filtri primjenjuju.
               </p>
             </div>
 
@@ -928,7 +928,7 @@
                   <div>
                     <p class="section-kicker">Builder</p>
                     <h3 id="dashboard-builder-title">Nova kartica</h3>
-                    <p id="dashboard-builder-copy" class="helper-copy">Dodaj KPI, graf ili listu i slozi Dashboard po svojoj mjeri.</p>
+                    <p id="dashboard-builder-copy" class="helper-copy">Dodaj KPI, graf ili listu i složi Dashboard po svojoj mjeri.</p>
                   </div>
                   <button id="dashboard-builder-close" type="button" class="ghost-button">Zatvori</button>
                 </div>
@@ -936,7 +936,7 @@
                 <div class="dashboard-builder-dialog-body">
                   <aside class="dashboard-builder-sidebar">
                     <label class="field field-span-full dashboard-builder-search-field">
-                      <span>Trazi predlozak</span>
+                      <span>Traži predložak</span>
                       <input id="dashboard-widget-search" type="search" placeholder="KPI, status, reminders, RN..." />
                     </label>
 
@@ -946,8 +946,8 @@
                   <div class="dashboard-builder-main">
                     <section class="dashboard-template-library">
                       <div class="dashboard-widget-preview-head">
-                        <strong>Predlosci kartica</strong>
-                        <span>Odaberi pocetak, a zatim prilagodi filtre, velicinu i prikaz.</span>
+                        <strong>Predlošci kartica</strong>
+                        <span>Odaberi početak, a zatim prilagodi filtre, veličinu i prikaz.</span>
                       </div>
                       <div id="dashboard-widget-template-grid" class="dashboard-widget-template-grid"></div>
                     </section>
@@ -1017,7 +1017,7 @@
                         </label>
 
                         <label class="field">
-                          <span>Izvrsitelj</span>
+                          <span>Izvršitelj</span>
                           <select id="dashboard-widget-executor-filter"></select>
                         </label>
 
@@ -1046,7 +1046,7 @@
                       </div>
 
                       <div class="form-actions dashboard-widget-form-actions">
-                        <button id="dashboard-widget-delete" type="button" class="ghost-button">Obrisi</button>
+                        <button id="dashboard-widget-delete" type="button" class="ghost-button">Obriši</button>
                         <button id="dashboard-widget-cancel" type="button" class="ghost-button">Odustani</button>
                         <button type="submit" class="primary-button">Spremi karticu</button>
                       </div>
@@ -1065,7 +1065,7 @@
                 <h2>Lista RN</h2>
               </div>
               <div class="workspace-list-actions">
-                <button id="work-order-batch-clear" type="button" class="ghost-button" hidden>Ocisti odabir</button>
+                <button id="work-order-batch-clear" type="button" class="ghost-button" hidden>Očisti odabir</button>
                 <button id="work-order-open-documents" type="button" class="ghost-button work-order-batch-launch" disabled>
                   Zapisnici
                   <span id="work-order-open-documents-count" class="work-order-batch-count" hidden>0</span>
@@ -1082,7 +1082,7 @@
               </div>
 
               <div id="work-order-list-density-toggle" class="workspace-view-chips work-order-list-density-toggle" aria-label="Gustoca prikaza liste">
-                <button type="button" class="workspace-view-chip is-active" data-work-order-list-density="collapsed">SaĹľeto</button>
+                <button type="button" class="workspace-view-chip is-active" data-work-order-list-density="collapsed">Sažeto</button>
                 <button type="button" class="workspace-view-chip" data-work-order-list-density="expanded">Detaljno</button>
               </div>
             </div>
@@ -1148,7 +1148,7 @@
                   </button>
 
                   <button id="work-order-bulk-clear" type="button" class="work-order-bulk-action-button">
-                    OÄŤisti
+                    Očisti
                   </button>
                 </div>
               </div>
@@ -1159,7 +1159,7 @@
                 <div class="work-order-calendar-nav">
                   <button id="work-order-calendar-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni mjesec">&#8592;</button>
                   <button id="work-order-calendar-today" type="button" class="ghost-button">Danas</button>
-                  <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeci mjesec">&#8594;</button>
+                  <button id="work-order-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći mjesec">&#8594;</button>
                   <strong id="work-order-calendar-range" class="work-order-calendar-range"></strong>
                 </div>
                 <div class="work-order-calendar-toolbar-side">
@@ -1230,7 +1230,7 @@
               <p class="section-kicker">Batch zapisnici</p>
               <h2>Izrada zapisnika</h2>
               <p id="work-order-document-wizard-helper" class="helper-copy" hidden>
-                Gore postavi zajednicke podatke za sve, a dolje po RN-u prepravi samo ono sto odskace.
+                Gore postavi zajedničke podatke za sve, a dolje po RN-u prepravi samo ono što odskače.
               </p>
             </div>
             <div class="work-order-document-wizard-head-actions">
@@ -1262,7 +1262,7 @@
                   class="ghost-button work-order-document-wizard-common-toggle"
                   aria-expanded="true"
                 >
-                  Sakrij zajednicke podatke
+                  Sakrij zajedničke podatke
                 </button>
               </div>
               <div id="work-order-document-wizard-common-body" class="form-grid work-order-document-wizard-common-grid">
@@ -1275,11 +1275,11 @@
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
                 <label class="field">
-                  <span>IspitivaÄŤi</span>
+                  <span>Ispitivači</span>
                   <select id="work-order-document-common-inspector-user-id" multiple size="4"></select>
                 </label>
                 <label class="field">
-                  <span>Nositelj ovlastenja</span>
+                  <span>Nositelj ovlaštenja</span>
                   <select id="work-order-document-common-authorization-holder-user-id"></select>
                 </label>
               </div>
@@ -1328,8 +1328,8 @@
               </label>
 
               <label class="field">
-                <span>Sjediste</span>
-                <input id="measurement-headquarters" type="text" placeholder="Sjediste tvrtke" />
+                <span>Sjedište</span>
+                <input id="measurement-headquarters" type="text" placeholder="Sjedište tvrtke" />
               </label>
 
               <label class="field">
@@ -1346,7 +1346,7 @@
             <div class="measurement-sheet-toolbar" aria-label="Spreadsheet toolbar">
               <div class="measurement-toolbar-primary">
                 <label class="measurement-toolbar-namebox">
-                  <span class="measurement-toolbar-label">Ä†elija</span>
+                  <span class="measurement-toolbar-label">Ćelija</span>
                   <input id="measurement-name-box" type="text" readonly />
                 </label>
 
@@ -1493,8 +1493,8 @@
                     </label>
 
                     <label class="field field-span-full">
-                      <span>Biljeska</span>
-                      <textarea id="reminder-note" rows="5" placeholder="Kratka biljeska, follow-up ili interni podsjetnik."></textarea>
+                      <span>Bilješka</span>
+                      <textarea id="reminder-note" rows="5" placeholder="Kratka bilješka, follow-up ili interni podsjetnik."></textarea>
                     </label>
                   </div>
 
@@ -1502,7 +1502,7 @@
 
                   <div class="form-actions">
                     <button type="submit" class="primary-button">Spremi reminder</button>
-                    <button id="reminder-reset" type="button" class="ghost-button">Ocisti formu</button>
+                    <button id="reminder-reset" type="button" class="ghost-button">Očisti formu</button>
                   </div>
                 </form>
 
@@ -1520,7 +1520,7 @@
                 <div class="filter-row filter-row-clickup reminders-filter-row">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="reminders-search" type="search" placeholder="Naslov, RN, klijent, biljeska..." />
+                    <input id="reminders-search" type="search" placeholder="Naslov, RN, klijent, bilješka..." />
                   </label>
 
                   <label class="field">
@@ -1584,7 +1584,7 @@
                   <div class="form-grid todo-form-grid">
                     <label class="field field-span-full">
                       <span>Naslov</span>
-                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Posalji ponudu klijentu" required />
+                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Pošalji ponudu klijentu" required />
                     </label>
 
                     <label class="field">
@@ -1614,15 +1614,15 @@
 
                     <label class="field field-span-full">
                       <span>Poruka</span>
-                      <textarea id="todo-message" rows="6" placeholder="Sto treba napraviti, do kada i sto je bitno?"></textarea>
+                    <textarea id="todo-message" rows="6" placeholder="Što treba napraviti, do kada i što je bitno?"></textarea>
                     </label>
                   </div>
 
                   <div id="todo-link-preview" class="reminder-link-preview" hidden></div>
 
                   <div class="form-actions">
-                    <button type="submit" class="primary-button">Posalji zadatak</button>
-                    <button id="todo-reset" type="button" class="ghost-button">Ocisti formu</button>
+                    <button type="submit" class="primary-button">Pošalji zadatak</button>
+                    <button id="todo-reset" type="button" class="ghost-button">Očisti formu</button>
                   </div>
                 </form>
 
@@ -1676,7 +1676,7 @@
                     <div class="todo-detail-actions">
                       <button id="todo-detail-open-work-order" type="button" class="ghost-button" hidden>Otvori RN</button>
                       <button id="todo-detail-edit" type="button" class="ghost-button">Uredi</button>
-                      <button id="todo-detail-delete" type="button" class="ghost-button">Obrisi</button>
+                      <button id="todo-detail-delete" type="button" class="ghost-button">Obriši</button>
                     </div>
                   </div>
 
@@ -1694,7 +1694,7 @@
                     </label>
 
                     <label class="field">
-                      <span>Izvrsitelj</span>
+                      <span>Izvršitelj</span>
                       <select id="todo-detail-assignee"></select>
                     </label>
 
@@ -1713,16 +1713,16 @@
                     </div>
 
                     <div id="todo-comments-body" class="todo-comments-list"></div>
-                    <p id="todo-comments-empty" class="empty-inline" hidden>Jos nema komentara.</p>
+                    <p id="todo-comments-empty" class="empty-inline" hidden>Još nema komentara.</p>
 
                     <form id="todo-comment-form" class="todo-comment-form">
                       <label class="field field-span-full">
                         <span>Dodaj poruku</span>
-                        <textarea id="todo-comment-message" rows="4" placeholder="Napisite kratku poruku kolegi ili update zadatka..." required></textarea>
+                        <textarea id="todo-comment-message" rows="4" placeholder="Napišite kratku poruku kolegi ili update zadatka..." required></textarea>
                       </label>
 
                       <div class="form-actions">
-                        <button type="submit" class="primary-button">Posalji poruku</button>
+                        <button type="submit" class="primary-button">Pošalji poruku</button>
                       </div>
                     </form>
 
@@ -1745,7 +1745,7 @@
                 <button id="company-open-form" type="button" class="primary-button">+ Nova tvrtka</button>
               </div>
             </div>
-            <p class="helper-copy">Dodavanje i uredivanje tvrtki sada ide kroz popup editor da lista ostane cista i pregledna.</p>
+            <p class="helper-copy">Dodavanje i uređivanje tvrtki sada ide kroz popup editor da lista ostane cista i pregledna.</p>
           </section>
 
           <section class="panel">
@@ -1835,7 +1835,7 @@
                     </label>
 
                     <label class="field field-company-headquarters">
-                      <span>Sjediste</span>
+                      <span>Sjedište</span>
                       <input id="company-headquarters" type="text" maxlength="160" />
                     </label>
 
@@ -1913,8 +1913,8 @@
 
                 <div class="form-actions">
                   <button type="submit" class="primary-button">Spremi tvrtku</button>
-                  <button id="company-reset" type="button" class="ghost-button">Ocisti formu</button>
-                  <button id="company-delete" type="button" class="card-button card-danger" hidden>Obrisi tvrtku</button>
+                  <button id="company-reset" type="button" class="ghost-button">Očisti formu</button>
+                  <button id="company-delete" type="button" class="card-button card-danger" hidden>Obriši tvrtku</button>
                 </div>
               </form>
 
@@ -2049,7 +2049,7 @@
 
                 <div class="form-actions">
                   <button type="submit" class="primary-button">Spremi lokaciju</button>
-                  <button id="location-reset" type="button" class="ghost-button">Ocisti formu</button>
+                  <button id="location-reset" type="button" class="ghost-button">Očisti formu</button>
                 </div>
               </form>
 
@@ -2156,7 +2156,7 @@
                     <th>User</th>
                     <th>Email</th>
                     <th>Role</th>
-                      <th>OvlaĹˇtenja</th>
+                      <th>Ovlaštenja</th>
                     <th>Organization</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -2263,13 +2263,13 @@
                   <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Ovlastenja</p>
+                        <p class="section-kicker">Ovlaštenja</p>
                         <h3>Ispitivanje panik rasvjete</h3>
                       </div>
                     </div>
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
-                        <span>Ispitivac</span>
+                        <span>Ispitivač</span>
                         <select id="user-electrical-can-inspect">
                           <option value="false">Ne</option>
                           <option value="true">Da</option>
@@ -2300,13 +2300,13 @@
                   <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Ovlastenja</p>
+                        <p class="section-kicker">Ovlaštenja</p>
                         <h3>Tipkalo za isklop napona</h3>
                       </div>
                     </div>
                     <div class="form-grid user-electrical-grid">
                       <label class="field">
-                        <span>Ispitivac</span>
+                        <span>Ispitivač</span>
                         <select id="user-tipkalo-can-inspect">
                           <option value="false">Ne</option>
                           <option value="true">Da</option>
@@ -2493,7 +2493,7 @@
                 <div class="vehicles-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="vehicles-search" type="search" placeholder="Naziv, registracija, marka, vozac..." />
+                    <input id="vehicles-search" type="search" placeholder="Naziv, registracija, marka, vozač..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
@@ -2525,7 +2525,7 @@
                     <button id="vehicle-schedule-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni dan">&#8592;</button>
                     <button id="vehicle-schedule-today" type="button" class="ghost-button">Danas</button>
                     <input id="vehicle-schedule-date" type="date" class="vehicle-schedule-date-input" />
-                    <button id="vehicle-schedule-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeci dan">&#8594;</button>
+                    <button id="vehicle-schedule-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći dan">&#8594;</button>
                   </div>
                 </div>
 
@@ -2616,7 +2616,7 @@
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="vehicle-notes" rows="3" placeholder="Oprema, zaduzenja, stanje vozila..."></textarea>
+                      <textarea id="vehicle-notes" rows="3" placeholder="Oprema, zaduženja, stanje vozila..."></textarea>
                     </label>
 
                     <p id="vehicle-error" class="form-error" aria-live="polite"></p>
@@ -2624,7 +2624,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi vozilo</button>
                       <button id="vehicle-reset" type="button" class="ghost-button">Novo vozilo</button>
-                      <button id="vehicle-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="vehicle-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -2658,7 +2658,7 @@
                         <select id="vehicle-reservation-status"></select>
                       </label>
                       <label class="field field-span-full">
-                        <span>IzvrĹˇitelji</span>
+                        <span>Izvršitelji</span>
                         <div id="vehicle-reservation-assignees-dropdown" class="vehicle-reservation-assignee-dropdown">
                           <button id="vehicle-reservation-assignees-trigger" type="button" class="vehicle-reservation-assignee-trigger" aria-expanded="false" aria-haspopup="listbox">
                             <div id="vehicle-reservation-assignees-preview" class="vehicle-reservation-assignees-preview"></div>
@@ -2707,7 +2707,7 @@
                     </div>
 
                     <div id="vehicle-reservations-list" class="vehicle-reservations-list"></div>
-                    <p id="vehicle-reservations-empty" class="helper-copy" hidden>Odaberi vozilo da pripremis rezervacije i povijest voznje.</p>
+                    <p id="vehicle-reservations-empty" class="helper-copy" hidden>Odaberi vozilo da pripremiš rezervacije i povijest vožnje.</p>
                   </section>
                 </div>
               </section>
@@ -2728,7 +2728,7 @@
                   <strong id="offers-sent-count" class="offers-stat-value">0</strong>
                 </article>
                 <article class="offers-stat-card is-accepted">
-                  <span class="offers-stat-label">PrihvaÄ‡eno</span>
+                  <span class="offers-stat-label">Prihvaćeno</span>
                   <strong id="offers-accepted-count" class="offers-stat-value">0</strong>
                 </article>
               </div>
@@ -2746,7 +2746,7 @@
                   <div class="offers-status-legend" aria-label="Statusi ponuda">
                     <span class="offer-status-badge is-draft">Skica</span>
                     <span class="offer-status-badge is-sent">Poslano</span>
-                    <span class="offer-status-badge is-accepted">PrihvaÄ‡eno</span>
+                    <span class="offer-status-badge is-accepted">Prihvaćeno</span>
                     <span class="offer-status-badge is-rejected">Odbijeno</span>
                   </div>
 
@@ -2813,7 +2813,7 @@
                     <div class="form-grid offers-form-grid">
                       <label class="field field-span-full">
                         <span>Naziv ponude</span>
-                        <input id="offer-title" name="offer-title" maxlength="180" placeholder="GodiĹˇnje odrĹľavanje, dopuna usluga..." required />
+                        <input id="offer-title" name="offer-title" maxlength="180" placeholder="Godišnje održavanje, dopuna usluga..." required />
                       </label>
                       <label class="field">
                         <span>Tvrtka</span>
@@ -2846,13 +2846,13 @@
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaÄ‡anja..."></textarea>
+                      <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
                     </label>
 
                     <div class="offers-items-head">
                       <div>
                         <strong>Stavke ponude</strong>
-                        <p class="inline-help">Dodaj uslugu, koliÄŤinu i jediniÄŤnu cijenu.</p>
+                        <p class="inline-help">Dodaj uslugu, količinu i jediničnu cijenu.</p>
                       </div>
                       <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
                     </div>
@@ -2869,7 +2869,7 @@
                         </label>
                       </div>
                       <div class="offers-total-line">
-                        <span>MeÄ‘uzbroj</span>
+                        <span>Međuzbroj</span>
                         <strong id="offer-subtotal">0,00 EUR</strong>
                       </div>
                       <div id="offer-discount-line" class="offers-total-line" hidden>
@@ -2895,7 +2895,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi ponudu</button>
                       <button id="offer-reset" type="button" class="ghost-button">Nova ponuda</button>
-                      <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                     </form>
                   </div>
@@ -2976,7 +2976,7 @@
                     <div class="form-grid legal-framework-form-grid">
                       <label class="field field-span-full">
                         <span>Naziv propisa</span>
-                        <input id="legal-framework-title" maxlength="220" placeholder="Zakon o zastiti na radu..." required />
+                        <input id="legal-framework-title" maxlength="220" placeholder="Zakon o zaštiti na radu..." required />
                       </label>
                       <input id="legal-framework-category" type="hidden" />
                       <input id="legal-framework-authority" type="hidden" />
@@ -3001,13 +3001,13 @@
                       </label>
                       <label class="field field-span-full">
                         <span>Tagovi</span>
-                        <input id="legal-framework-tags-text" maxlength="255" placeholder="vatrogastvo, zastita na radu, servis..." />
+                        <input id="legal-framework-tags-text" maxlength="255" placeholder="vatrogastvo, zaštita na radu, servis..." />
                       </label>
                     </div>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="legal-framework-note" rows="4" placeholder="Bitne napomene, sazetak obveze, sto se koristi u zapisnicima..."></textarea>
+                      <textarea id="legal-framework-note" rows="4" placeholder="Bitne napomene, sažetak obveze, što se koristi u zapisnicima..."></textarea>
                     </label>
 
                     <section class="service-catalog-template-block">
@@ -3017,7 +3017,7 @@
                           <h3>Zapisnici u kojima se koristi</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Oznaci zapisnike u koje ovaj propis ide kako bi se automatski pojavljivao u builderu.</p>
+                      <p class="helper-copy module-copy">Označi zapisnike u koje ovaj propis ide kako bi se automatski pojavljivao u builderu.</p>
                       <div id="legal-framework-template-list" class="service-catalog-template-list"></div>
                     </section>
 
@@ -3026,7 +3026,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi propis</button>
                       <button id="legal-framework-reset" type="button" class="ghost-button">Novi propis</button>
-                      <button id="legal-framework-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="legal-framework-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -3065,7 +3065,7 @@
                 <div class="service-catalog-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, sifra, zapisnik..." />
+                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, šifra, zapisnik..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
@@ -3109,7 +3109,7 @@
                         <input id="service-catalog-name" maxlength="180" placeholder="Ispitivanje radne opreme" required />
                       </label>
                       <label class="field">
-                        <span>Sifra usluge</span>
+                        <span>Šifra usluge</span>
                         <input id="service-catalog-code" maxlength="80" placeholder="IRO-001" required />
                       </label>
                       <label class="field">
@@ -3125,13 +3125,13 @@
                           <h3>Povezani zapisnici</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Oznaci zapisnike koji se nude uz ovu uslugu kako bi ih RN editor kasnije mogao prikazati kao preporuku.</p>
+                      <p class="helper-copy module-copy">Označi zapisnike koji se nude uz ovu uslugu kako bi ih RN editor kasnije mogao prikazati kao preporuku.</p>
                       <div id="service-catalog-template-list" class="service-catalog-template-list"></div>
                     </section>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="service-catalog-note" rows="3" placeholder="Kratka interna biljeska o usluzi, opsegu ili posebnostima."></textarea>
+                      <textarea id="service-catalog-note" rows="3" placeholder="Kratka interna bilješka o usluzi, opsegu ili posebnostima."></textarea>
                     </label>
 
                     <p id="service-catalog-error" class="form-error" aria-live="polite"></p>
@@ -3139,7 +3139,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi uslugu</button>
                       <button id="service-catalog-reset" type="button" class="ghost-button">Nova usluga</button>
-                      <button id="service-catalog-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="service-catalog-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -3178,7 +3178,7 @@
                 <div class="measurement-equipment-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="measurement-equipment-search" type="search" placeholder="Ime, proizvodac, tip, inv. broj..." />
+                    <input id="measurement-equipment-search" type="search" placeholder="Ime, proizvođač, tip, inv. broj..." />
                   </label>
                   <label class="field">
                     <span>Vrsta</span>
@@ -3219,14 +3219,14 @@
                     <div class="form-grid measurement-equipment-form-grid">
                       <label class="field field-span-full">
                         <span>Ime opreme</span>
-                        <input id="measurement-equipment-name" maxlength="180" placeholder="Mjerni instrument, uredaj..." required />
+                        <input id="measurement-equipment-name" maxlength="180" placeholder="Mjerni instrument, uređaj..." required />
                       </label>
                       <label class="field">
                         <span>Vrsta</span>
                         <select id="measurement-equipment-kind"></select>
                       </label>
                       <label class="field">
-                        <span>Proizvodac</span>
+                        <span>Proizvođač</span>
                         <input id="measurement-equipment-manufacturer" maxlength="160" placeholder="Fluke, Sonel..." />
                       </label>
                       <label class="field">
@@ -3265,7 +3265,7 @@
                           <h3>Koristi se u zapisnicima</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Oznaci zapisnike u kojima se ova oprema koristi ili navodi.</p>
+                      <p class="helper-copy module-copy">Označi zapisnike u kojima se ova oprema koristi ili navodi.</p>
                       <div id="measurement-equipment-template-list" class="service-catalog-template-list"></div>
                     </section>
 
@@ -3273,20 +3273,20 @@
                       <div class="section-heading offers-section-heading">
                         <div>
                           <p class="section-kicker">Documents</p>
-                          <h3>Datoteke uredaja</h3>
+                          <h3>Datoteke uređaja</h3>
                         </div>
                         <div class="document-template-reference-actions">
                           <input id="measurement-equipment-documents-input" type="file" multiple hidden />
                           <button id="measurement-equipment-documents-upload" type="button" class="ghost-button">Dodaj datoteke</button>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Dodaj racun, umjernicu, karton uredaja i slike. Nakon uploada odaberi sto je svaka datoteka. Datoteke se spremaju u Spaces.</p>
+                      <p class="helper-copy module-copy">Dodaj račun, umjernicu, karton uređaja i slike. Nakon uploada odaberi što je svaka datoteka. Datoteke se spremaju u Spaces.</p>
                       <div id="measurement-equipment-documents-list" class="module-attachment-list"></div>
                     </section>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="measurement-equipment-note" rows="4" placeholder="Interna napomena, stanje uredaja, lokacija, posebnosti..."></textarea>
+                      <textarea id="measurement-equipment-note" rows="4" placeholder="Interna napomena, stanje uređaja, lokacija, posebnosti..."></textarea>
                     </label>
 
                     <p id="measurement-equipment-error" class="form-error" aria-live="polite"></p>
@@ -3294,7 +3294,7 @@
                     <div class="form-actions">
                       <button type="submit" class="primary-button">Spremi opremu</button>
                       <button id="measurement-equipment-reset" type="button" class="ghost-button">Nova oprema</button>
-                      <button id="measurement-equipment-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="measurement-equipment-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -3321,15 +3321,15 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Authorizations</p>
-                    <h3>Ovlastenja</h3>
+                    <h3>Ovlaštenja</h3>
                   </div>
-                  <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novo ovlastenje</button>
+                  <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novo ovlaštenje</button>
                 </div>
 
                 <div class="safety-authorization-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="safety-authorization-search" type="search" placeholder="Naziv ovlastenja, opseg, zapisnik..." />
+                    <input id="safety-authorization-search" type="search" placeholder="Naziv ovlaštenja, opseg, zapisnik..." />
                   </label>
                 </div>
               </section>
@@ -3338,13 +3338,13 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Register</p>
-                    <h3>Popis ovlastenja</h3>
+                    <h3>Popis ovlaštenja</h3>
                   </div>
                 </div>
 
-                <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ovlastenja, rokova i zapisnika u kojima se spominju.</p>
+                <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ovlaštenja, rokova i zapisnika u kojima se spominju.</p>
                 <div id="safety-authorization-list" class="safety-authorization-list"></div>
-                <p id="safety-authorization-empty" class="helper-copy" hidden>Nema ovlastenja za prikaz u odabranoj organizaciji.</p>
+                <p id="safety-authorization-empty" class="helper-copy" hidden>Nema ovlaštenja za prikaz u odabranoj organizaciji.</p>
               </section>
 
               <div id="safety-authorization-editor-backdrop" class="offer-editor-backdrop safety-authorization-editor-backdrop" hidden></div>
@@ -3353,7 +3353,7 @@
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Safety authorization</p>
-                      <h3 id="safety-authorization-editor-title">Novo ovlastenje</h3>
+                      <h3 id="safety-authorization-editor-title">Novo ovlaštenje</h3>
                     </div>
                     <button id="safety-authorization-editor-close" type="button" class="ghost-button">Zatvori</button>
                   </div>
@@ -3365,12 +3365,12 @@
 
                     <div class="form-grid safety-authorization-form-grid">
                       <label class="field field-span-full">
-                        <span>Ime ovlastenja</span>
-                        <input id="safety-authorization-title" maxlength="180" placeholder="Ovlastenje za..." required />
+                        <span>Ime ovlaštenja</span>
+                        <input id="safety-authorization-title" maxlength="180" placeholder="Ovlaštenje za..." required />
                       </label>
                       <label class="field field-span-full">
-                        <span>Pod ovlastenje / opseg</span>
-                        <input id="safety-authorization-scope" maxlength="220" placeholder="Sto pokriva ovo ovlastenje" />
+                        <span>Pod ovlaštenje / opseg</span>
+                        <input id="safety-authorization-scope" maxlength="220" placeholder="Što pokriva ovo ovlaštenje" />
                       </label>
                       <label class="field">
                         <span>Datum izdavanja</span>
@@ -3389,21 +3389,21 @@
                           <h3>Pojavljuje se u zapisnicima</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Oznaci zapisnike u kojima ovo ovlastenje treba biti navedeno.</p>
+                      <p class="helper-copy module-copy">Označi zapisnike u kojima ovo ovlaštenje treba biti navedeno.</p>
                       <div id="safety-authorization-template-list" class="service-catalog-template-list"></div>
                     </section>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>
-                      <textarea id="safety-authorization-note" rows="4" placeholder="Napomena, broj rjesenja, dodatni detalji..."></textarea>
+                      <textarea id="safety-authorization-note" rows="4" placeholder="Napomena, broj rješenja, dodatni detalji..."></textarea>
                     </label>
 
                     <p id="safety-authorization-error" class="form-error" aria-live="polite"></p>
 
                     <div class="form-actions">
-                      <button type="submit" class="primary-button">Spremi ovlastenje</button>
-                      <button id="safety-authorization-reset" type="button" class="ghost-button">Novo ovlastenje</button>
-                      <button id="safety-authorization-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button type="submit" class="primary-button">Spremi ovlaštenje</button>
+                      <button id="safety-authorization-reset" type="button" class="ghost-button">Novo ovlaštenje</button>
+                      <button id="safety-authorization-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -3459,7 +3459,7 @@
                   </div>
                 </div>
 
-                <p id="document-template-helper" class="helper-copy module-copy">Slozi blokove i placeholdere, povezi ih s podacima iz baze i koristi Word kao glavni predlozak.</p>
+                <p id="document-template-helper" class="helper-copy module-copy">Složi blokove i placeholdere, poveži ih s podacima iz baze i koristi Word kao glavni predložak.</p>
                 <div id="document-template-list" class="document-template-list"></div>
                 <p id="document-template-empty" class="helper-copy" hidden>Nema templatea za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -3505,7 +3505,7 @@
                         </div>
                         <button id="document-template-runtime-clear" type="button" class="ghost-button">Makni context</button>
                       </div>
-                      <p id="document-template-runtime-helper" class="helper-copy module-copy">Odabran je jedan ili vise RN-ova iz liste i ovaj template sada cita njihove podatke.</p>
+                      <p id="document-template-runtime-helper" class="helper-copy module-copy">Odabran je jedan ili više RN-ova iz liste i ovaj template sada čita njihove podatke.</p>
                       <div id="document-template-runtime-work-orders" class="document-template-runtime-work-orders"></div>
                       <div id="document-template-runtime-common" class="document-template-runtime-common"></div>
                     </section>
@@ -3519,22 +3519,22 @@
                               <h3>Ubaci u stranicu</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">Klik na alat i blok ide na aktivni sheet redom. Excel odmah otvara tablicu za uredivanje.</p>
+                          <p class="helper-copy module-copy">Klik na alat i blok ide na aktivni sheet redom. Excel odmah otvara tablicu za uređivanje.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
                             <button type="button" class="document-template-tool-button" data-template-tool="text">
                               <strong>Tekst polje</strong>
-                              <span>Rucni unos ili vezano polje iz baze</span>
+                              <span>Ručni unos ili vezano polje iz baze</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="longtext">
-                              <strong>Dugacak tekst</strong>
-                              <span>Napomena, opis, uvod ili zakljucak</span>
+                              <strong>Dugačak tekst</strong>
+                              <span>Napomena, opis, uvod ili zaključak</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="date">
                               <strong>Datum</strong>
                               <span>Za datum pregleda, izdavanja ili vrijedi do</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="checkbox">
-                              <strong>Kvacica</strong>
+                              <strong>Kvačica</strong>
                               <span>Da / Ne oznaka</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="toggle">
@@ -3543,31 +3543,31 @@
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="legal_list">
                               <strong>Ubaci pravilnike</strong>
-                              <span>Povuce povezane propise iz Legal Framework modula</span>
+                              <span>Povuče povezane propise iz Legal Framework modula</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="equipment_list">
                               <strong>Ubaci mjernu opremu</strong>
-                              <span>Povuce povezanu opremu iz Measurement Equipment modula</span>
+                              <span>Povuče povezanu opremu iz Measurement Equipment modula</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="measurement_table">
                               <strong>Ubaci Excel</strong>
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector">
-                              <strong>IspitivaÄŤi</strong>
-                              <span>Dodaje sloĹľeni blok svih odabranih ispitivaÄŤa za traĹľeni dio</span>
+                              <strong>Ispitivači</strong>
+                              <span>Dodaje složeni blok svih odabranih ispitivača za traženi dio</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="qualified_authorization_holder">
                               <strong>Nositelj</strong>
-                              <span>Dodaje podatke o nositelju ovlastenja</span>
+                              <span>Dodaje podatke o nositelju ovlaštenja</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
-                              <strong>Potpis ispitivaÄŤa</strong>
-                          <span>Dodaje potpis ispitivaca panik rasvjete</span>
+                              <strong>Potpis ispitivača</strong>
+                          <span>Dodaje potpis ispitivača panik rasvjete</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
                               <strong>Potpis nositelja</strong>
-                          <span>Dodaje potpis nositelja ovlastenja za panik rasvjetu</span>
+                          <span>Dodaje potpis nositelja ovlaštenja za panik rasvjetu</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="page_break">
                               <strong>Novi sheet</strong>
@@ -3583,12 +3583,12 @@
                               <h3>Placeholder Word flow</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">1. Preuzmi placeholder Word. 2. Uredi ga u Wordu. 3. Vrati ureÄ‘eni dokument natrag u app.</p>
+                          <p class="helper-copy module-copy">1. Preuzmi placeholder Word. 2. Uredi ga u Wordu. 3. Vrati uređeni dokument natrag u app.</p>
                           <div class="document-template-reference-actions">
                             <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
                             <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi placeholder</button>
-                            <button id="document-template-reference-upload" type="button" class="ghost-button">Vrati ureÄ‘eni Word</button>
-                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi vraÄ‡eni Word</button>
+                            <button id="document-template-reference-upload" type="button" class="ghost-button">Vrati uređeni Word</button>
+                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi vraćeni Word</button>
                             <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
                           </div>
                           <div id="document-template-reference-meta" class="document-template-reference-meta">
@@ -3612,7 +3612,7 @@
                           </div>
                           <label class="field field-span-full">
                             <span>Opis i svrha</span>
-                            <textarea id="document-template-description" rows="3" placeholder="Sto template generira, za koji zapisnik, za koju operativu..."></textarea>
+                            <textarea id="document-template-description" rows="3" placeholder="Što template generira, za koji zapisnik, za koju operativu..."></textarea>
                           </label>
                           <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
                         </section>
@@ -3622,7 +3622,7 @@
 
                     <div class="form-actions">
                       <button id="document-template-reset" type="button" class="ghost-button">Novi template</button>
-                      <button id="document-template-delete" type="button" class="card-button card-danger" hidden>Obrisi</button>
+                      <button id="document-template-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
                 </div>
@@ -3672,7 +3672,7 @@
                   <path d="m16 16 4 4"></path>
                 </svg>
               </span>
-              <input id="chat-search-input" type="search" placeholder="Pretrazi razgovore ili kolege" />
+              <input id="chat-search-input" type="search" placeholder="Pretraži razgovore ili kolege" />
             </label>
             <p id="chat-list-caption" class="chat-list-caption">Aktivni razgovori i prisutnost kolega.</p>
             <div id="chat-conversations-view" class="chat-list-view"></div>
@@ -3700,12 +3700,12 @@
                   id="chat-message-input"
                   rows="2"
                   maxlength="1200"
-                  placeholder="Napisite poruku timu ili kolegi..."
+                  placeholder="Napišite poruku timu ili kolegi..."
                   required
                 ></textarea>
                 <div class="chat-message-actions">
                   <p id="chat-error" class="form-error chat-error" aria-live="polite"></p>
-                  <button id="chat-send-button" type="submit" class="primary-button">Posalji</button>
+                  <button id="chat-send-button" type="submit" class="primary-button">Pošalji</button>
                 </div>
               </form>
             </div>
@@ -3747,6 +3747,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260403p"></script>
+    <script type="module" src="/src/main.js?v=20260404a"></script>
   </body>
 </html>

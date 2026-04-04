@@ -2063,7 +2063,7 @@ export class MemoryTenantRepository {
     }
 
     if (request.status !== SIGNUP_STATUS_PENDING) {
-      throw createHttpError(400, "Zahtjev vise nije pending.");
+      throw createHttpError(400, "Zahtjev više nije pending.");
     }
 
     const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
@@ -2130,7 +2130,7 @@ export class MemoryTenantRepository {
     }
 
     if (request.status !== SIGNUP_STATUS_PENDING) {
-      throw createHttpError(400, "Zahtjev vise nije pending.");
+      throw createHttpError(400, "Zahtjev više nije pending.");
     }
 
     request.status = SIGNUP_STATUS_REJECTED;
@@ -3069,7 +3069,7 @@ export class MySqlTenantRepository {
       const request = sanitizeSignupRequest(current);
 
       if (request.status !== SIGNUP_STATUS_PENDING) {
-        throw createHttpError(400, "Zahtjev vise nije pending.");
+        throw createHttpError(400, "Zahtjev više nije pending.");
       }
 
       const [[existingUser]] = await connection.query(
@@ -3200,7 +3200,7 @@ export class MySqlTenantRepository {
           return null;
         }
 
-        throw createHttpError(400, "Zahtjev vise nije pending.");
+        throw createHttpError(400, "Zahtjev više nije pending.");
       }
 
       const [[nextRow]] = await connection.query(
