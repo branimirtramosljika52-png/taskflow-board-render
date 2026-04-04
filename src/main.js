@@ -14084,20 +14084,6 @@ function renderDocumentTemplateFieldRows() {
         renderDocumentTemplatePreviewContent();
       }
     });
-    if (field.type === "measurement_table") {
-      row.addEventListener("click", (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) {
-          openTemplateMeasurementSheet(field.id);
-          return;
-        }
-        if (target.closest("input, select, textarea, button, a, option, label, .document-template-inline-excel-host, .measurement-sheet-panel")) {
-          return;
-        }
-        openTemplateMeasurementSheet(field.id);
-      });
-    }
-
     const grid = document.createElement("div");
     grid.className = "form-grid document-template-inline-grid";
     const isSpecialType = isDocumentTemplateSpecialFieldType(field.type);
@@ -14184,7 +14170,7 @@ function renderDocumentTemplateFieldRows() {
     columnsField.className = "field document-template-inline-excel-field document-template-inline-excel-launcher";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
-    columnsSpan.textContent = "Excel blok";
+    columnsSpan.textContent = "Excel editor";
     const openExcelBlock = () => {
       openTemplateMeasurementSheet(field.id);
     };
@@ -14200,7 +14186,7 @@ function renderDocumentTemplateFieldRows() {
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
-    excelHint.textContent = "Klik na blok otvara live Excel i isti raspored ide u preview/PDF.";
+    excelHint.textContent = "Tablica je prikazana ispod i isti raspored ide u preview/PDF.";
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
     columnsField.addEventListener("click", (event) => {
@@ -14417,7 +14403,39 @@ function renderDocumentTemplateFieldRows() {
 
   shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
-  syncMeasurementSheetPanelMount();
+  const visibleMeasurementFields = visibleFields.filter((field) => field?.type === "measurement_table");
+
+  if (visibleMeasurementFields.length === 0) {
+    if (state.measurementSheet.ownerKind === "template_field" && state.measurementSheet.isOpen) {
+      state.measurementSheet.selectionDrag = null;
+      state.measurementSheet.fillMenu = null;
+      state.measurementSheet.fillDrag = null;
+      state.measurementSheet.contextMenu = null;
+      state.measurementSheet.editingCell = null;
+      state.measurementSheet.editorSource = null;
+      state.measurementSheet.formulaReferences = [];
+      document.body.classList.remove("is-selecting-measurement-cells");
+      document.body.classList.remove("is-filling-measurement-cells");
+      setMeasurementSheetOpen(false);
+      state.measurementSheet.ownerKind = "work_order";
+      state.measurementSheet.ownerFieldId = "";
+      syncMeasurementToolbar();
+    }
+    syncMeasurementSheetPanelMount();
+  } else {
+    const activeTemplateMeasurementId = state.measurementSheet.ownerKind === "template_field"
+      ? String(state.measurementSheet.ownerFieldId || "")
+      : "";
+    const activeTemplateMeasurementExists = visibleMeasurementFields.some((field) => String(field.id) === activeTemplateMeasurementId);
+
+    if (activeTemplateMeasurementExists && state.measurementSheet.isOpen) {
+      syncMeasurementSheetPanelMount();
+    } else {
+      queueMicrotask(() => {
+        openTemplateMeasurementSheet(visibleMeasurementFields[0].id);
+      });
+    }
+  }
 
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
