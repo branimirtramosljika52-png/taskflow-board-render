@@ -7293,8 +7293,16 @@ function refreshMeasurementSheetComputedValues() {
 
 function clearMeasurementFillPreview() {
   measurementSheetBody
-    ?.querySelectorAll(".is-fill-target")
-    .forEach((cell) => cell.classList.remove("is-fill-target"));
+    ?.querySelectorAll(".is-fill-target, .is-fill-preview-selected")
+    .forEach((cell) => cell.classList.remove("is-fill-target", "is-fill-preview-selected"));
+
+  measurementSheetBody
+    ?.querySelectorAll("th.is-fill-preview-row")
+    .forEach((cell) => cell.classList.remove("is-fill-preview-row"));
+
+  measurementSheetHead
+    ?.querySelectorAll("th.is-fill-preview-column")
+    .forEach((cell) => cell.classList.remove("is-fill-preview-column"));
 
   measurementSheetBody
     ?.querySelectorAll(".measurement-cell-input.is-fill-previewing")
@@ -7450,6 +7458,10 @@ function renderMeasurementFillPreview() {
       continue;
     }
 
+    measurementSheetBody
+      ?.querySelector(`tr[data-row-id="${CSS.escape(row.id)}"] > th`)
+      ?.classList.add("is-fill-preview-row");
+
     for (let columnIndex = fillDrag.selectionRange.startColumnIndex; columnIndex <= fillDrag.selectionRange.endColumnIndex; columnIndex += 1) {
       const column = state.measurementSheet.columns[columnIndex];
 
@@ -7457,8 +7469,13 @@ function renderMeasurementFillPreview() {
         continue;
       }
 
+      measurementSheetHead
+        ?.querySelector(`th[data-column-id="${CSS.escape(column.id)}"]`)
+        ?.classList.add("is-fill-preview-column");
+
       const cell = getMeasurementCellElement(row.id, column.id);
       cell?.classList.add("is-fill-target");
+      cell?.classList.add("is-fill-preview-selected");
 
       const columnPreview = targetColumns.find((item) => item.column.id === column.id);
       const input = getMeasurementInputElement(row.id, column.id);
@@ -8972,9 +8989,10 @@ function renderMeasurementSheet() {
       fillHandle.type = "button";
       fillHandle.className = "measurement-fill-handle";
       fillHandle.setAttribute("aria-label", `Kopiraj vrijednost prema dolje za kolonu ${column.label}`);
-    fillHandle.addEventListener("pointerdown", (event) => {
+      fillHandle.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
+        fillHandle.setPointerCapture?.(event.pointerId);
         const currentRange = getMeasurementSelectedRange();
 
         if (!currentRange
@@ -9001,6 +9019,8 @@ function renderMeasurementSheet() {
           selectionRange,
           endRowIndex: selectionRange.endRowIndex,
           snapshotRows,
+          pointerX: event.clientX,
+          pointerY: event.clientY,
         };
         document.body.classList.add("is-filling-measurement-cells");
         renderMeasurementFillPreview();

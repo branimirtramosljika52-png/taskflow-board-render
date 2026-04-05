@@ -6492,6 +6492,18 @@ body.is-work-order-editor-open {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.08), rgba(83, 104, 255, 0.12));
 }
 
+.measurement-sheet-grid td.is-fill-preview-selected {
+  background: linear-gradient(180deg, rgba(83, 104, 255, 0.16), rgba(83, 104, 255, 0.1));
+  box-shadow: inset 0 0 0 2px rgba(83, 104, 255, 0.34);
+}
+
+.measurement-sheet-grid tbody th.is-fill-preview-row,
+.measurement-sheet-grid thead th.is-fill-preview-column {
+  background: linear-gradient(180deg, #eef2ff, #e4ebff);
+  color: #4051af;
+  box-shadow: inset 0 0 0 1px rgba(83, 104, 255, 0.26);
+}
+
 .measurement-cell-input.is-fill-previewing {
   color: #32449c;
   font-weight: 600;
