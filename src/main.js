@@ -7731,7 +7731,7 @@ function buildDocumentTemplateInlineExcelEditor(field, draftIndex) {
 
   const title = document.createElement("strong");
   title.className = "document-template-inline-excel-editor-title";
-  title.textContent = "Spreadsheet editor";
+  title.textContent = "Excel tablica";
 
   const actions = document.createElement("div");
   actions.className = "document-template-inline-excel-editor-actions";
@@ -14508,13 +14508,16 @@ function renderDocumentTemplateFieldRows() {
     columnsField.className = "field document-template-inline-excel-field";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
-    columnsSpan.textContent = "Excel editor";
+    columnsSpan.textContent = "Excel tablica";
     const excelMeta = document.createElement("div");
     excelMeta.className = "document-template-excel-meta";
+    excelMeta.tabIndex = 0;
+    excelMeta.setAttribute("role", "button");
+    excelMeta.setAttribute("aria-label", "Otvori Excel tablicu");
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
-    excelHint.textContent = "Tablica je prikazana ispod i isti raspored ide u preview/PDF.";
+    excelHint.textContent = "Klik otvara napredni prikaz, a tablica je prikazana odmah ispod.";
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
 
@@ -14677,8 +14680,30 @@ function renderDocumentTemplateFieldRows() {
       inlineExcelHost.dataset.templateFieldId = fieldId;
       inlineExcelHost.hidden = false;
       inlineExcelHost.append(buildDocumentTemplateInlineExcelEditor(field, draftIndex));
+      const openExcelBlock = () => {
+        ensureTemplateMeasurementSheetForField(fieldId);
+        requestAnimationFrame(() => {
+          inlineExcelHost.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          });
+        });
+      };
+      excelMeta.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openExcelBlock();
+      });
+      excelMeta.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+
+        event.preventDefault();
+        openExcelBlock();
+      });
       documentTemplateMeasurementInlineHosts.set(fieldId, inlineExcelHost);
-      row.append(inlineExcelHost);
+      columnsField.append(inlineExcelHost);
     }
     pageBody.append(row);
   });
