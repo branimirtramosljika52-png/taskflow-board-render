@@ -6057,7 +6057,7 @@ body.is-work-order-editor-open {
 
 .measurement-toolbar-formula input {
   min-height: 44px;
-  padding: 0 16px 0 54px;
+  padding: 0 16px 0 52px;
   border: 1px solid #d9deea;
   border-radius: 14px;
   background: #ffffff;
@@ -6076,8 +6076,9 @@ body.is-work-order-editor-open {
 
 .measurement-toolbar-fx {
   position: absolute;
-  left: 14px;
-  bottom: 12px;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15680,8 +15681,13 @@ body.is-document-template-editor-open {
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding-top: 0;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-meta-field-secondary {
+  display: none;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta .field input,
