@@ -11361,10 +11361,10 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "chapter") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Novo poglavlje",
-        wordLabel: "Novo poglavlje",
+        label: "Novi blok",
+        wordLabel: "Novi blok",
         type: "chapter",
-        defaultValue: "Naslov poglavlja",
+        defaultValue: "Naziv bloka",
       },
       baseIndex,
     );
@@ -11550,7 +11550,7 @@ function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1"
 function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const fallbackKey = `FIELD_${index + 1}`;
   const type = initial.type || "text";
-  const label = String(initial.label ?? "").trim() || (type === "chapter" ? "Novo poglavlje" : "");
+  const label = String(initial.label ?? "").trim() || (type === "chapter" ? "Novi blok" : "");
   const wordLabel = String(initial.wordLabel ?? "").trim() || label;
   const defaultColumns = type === "measurement_table"
     ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
@@ -12446,7 +12446,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
   }
 
   if (field.type === "chapter") {
-    return field.label || field.wordLabel || `Poglavlje ${index + 1}`;
+    return field.label || field.wordLabel || `Blok ${index + 1}`;
   }
 
   const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
@@ -12762,7 +12762,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <span class="document-template-preview-chapter-line"></span>
           <div>
             <h2>${placeholderMode ? escapeHtml(token) : title}</h2>
-            ${!placeholderMode ? `<p class="document-template-preview-muted">Poglavlje vizualno odvaja sljedeće blokove u templateu.</p>` : ""}
+            ${!placeholderMode ? `<p class="document-template-preview-muted">Blok vizualno odvaja i grupira sljedeće stavke u templateu.</p>` : ""}
           </div>
         </div>
       </section>
@@ -15289,6 +15289,7 @@ function renderDocumentTemplateFieldRows() {
 
   const pageBody = document.createElement("div");
   pageBody.className = "document-template-sheet-panel";
+  const chapterShells = new Map();
 
   if (visibleFields.length === 0) {
     const empty = document.createElement("p");
@@ -15363,7 +15364,7 @@ function renderDocumentTemplateFieldRows() {
       const chapterCount = document.createElement("span");
       chapterCount.className = "document-template-chapter-count";
       const count = chapterChildCounts.get(fieldId) || 0;
-      chapterCount.textContent = `${count} ${count === 1 ? "blok" : "blokova"}`;
+      chapterCount.textContent = `${count} ${count === 1 ? "stavka" : "stavki"}`;
       headCopy.append(chapterCount);
     }
     head.append(dragHandle, headCopy);
@@ -15415,7 +15416,7 @@ function renderDocumentTemplateFieldRows() {
     const labelField = document.createElement("label");
     labelField.className = "field";
     const labelSpan = document.createElement("span");
-    labelSpan.textContent = "Prikaz u aplikaciji";
+    labelSpan.textContent = field.type === "chapter" ? "Ime bloka" : "Prikaz u aplikaciji";
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.value = field.label || "";
@@ -15451,7 +15452,7 @@ function renderDocumentTemplateFieldRows() {
     const wordLabelField = document.createElement("label");
     wordLabelField.className = "field";
     const wordLabelSpan = document.createElement("span");
-    wordLabelSpan.textContent = "Naziv u Wordu";
+    wordLabelSpan.textContent = field.type === "chapter" ? "Naslov u Wordu" : "Naziv u Wordu";
     const wordLabelInput = document.createElement("input");
     wordLabelInput.type = "text";
     wordLabelInput.value = field.wordLabel || field.label || "";
@@ -15524,13 +15525,13 @@ function renderDocumentTemplateFieldRows() {
     grid.append(labelField, wordLabelField);
 
     if (field.type === "chapter") {
-      specialInfoSpan.textContent = "Poglavlje";
+      specialInfoSpan.textContent = "Blok";
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
       const chapterCount = chapterChildCounts.get(fieldId) || 0;
       specialInfoValue.textContent = chapterCount > 0
-        ? `U ovom poglavlju je ${chapterCount} ${chapterCount === 1 ? "blok" : "blokova"}. Sve sljedeće stavke ulaze unutra do novog poglavlja.`
-        : "Prazno poglavlje. Dodaj blokove ispod njega i oni će automatski ući u ovu cjelinu.";
+        ? `U ovom bloku je ${chapterCount} ${chapterCount === 1 ? "stavka" : "stavki"}. Sve sljedeće stavke ulaze unutra do novog bloka.`
+        : "Prazan blok. Dodaj polja, tekst ili Excel ispod njega i sve će automatski ući u ovu cjelinu.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
@@ -15650,7 +15651,7 @@ function renderDocumentTemplateFieldRows() {
       collapseButton.type = "button";
       collapseButton.className = "ghost-button document-template-chapter-toggle";
       const isCollapsed = collapsedDocumentTemplateChapterIds.has(fieldId);
-      collapseButton.textContent = isCollapsed ? "Otkrij blok" : "Sakrij blok";
+      collapseButton.textContent = isCollapsed ? "Otvori sadržaj" : "Sakrij sadržaj";
       collapseButton.addEventListener("click", () => {
         if (collapsedDocumentTemplateChapterIds.has(fieldId)) {
           collapsedDocumentTemplateChapterIds.delete(fieldId);
@@ -15710,7 +15711,24 @@ function renderDocumentTemplateFieldRows() {
       documentTemplateMeasurementInlineHosts.set(fieldId, inlineExcelHost);
       columnsField.append(inlineExcelHost);
     }
-    pageBody.append(row);
+    if (field.type === "chapter") {
+      const chapterShell = document.createElement("section");
+      chapterShell.className = "document-template-chapter-group";
+      chapterShell.dataset.chapterId = fieldId;
+      if (collapsedDocumentTemplateChapterIds.has(fieldId)) {
+        chapterShell.classList.add("is-collapsed");
+      }
+      const chapterBody = document.createElement("div");
+      chapterBody.className = "document-template-chapter-group-body";
+      chapterBody.hidden = collapsedDocumentTemplateChapterIds.has(fieldId);
+      chapterShell.append(row, chapterBody);
+      chapterShells.set(fieldId, chapterBody);
+      pageBody.append(chapterShell);
+    } else if (chapterOwnerId && chapterShells.has(chapterOwnerId)) {
+      chapterShells.get(chapterOwnerId)?.append(row);
+    } else {
+      pageBody.append(row);
+    }
   });
 
   if (visibleFields.length > 0) {
@@ -30091,7 +30109,7 @@ documentTemplateLocationIdInput?.addEventListener("change", () => {
 });
 
 documentTemplateAddFieldButton?.addEventListener("click", () => {
-  addDocumentTemplateBuilderBlock("text");
+  addDocumentTemplateBuilderBlock("chapter");
 });
 
 documentTemplateAddExcelButton?.addEventListener("click", () => {
