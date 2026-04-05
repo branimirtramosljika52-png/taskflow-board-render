@@ -1270,6 +1270,7 @@ let activeDocumentTemplateTextTarget = null;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
+let documentTemplateMeasurementInlineHosts = new Map();
 let measurementEquipmentDocumentDrafts = [];
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
@@ -7597,7 +7598,7 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
     }
 
     if (measurementDateInput) {
-      measurementDateInput.value = todayString();
+      measurementDateInput.value = new Date().toISOString().slice(0, 10);
     }
 
     return;
@@ -7649,18 +7650,340 @@ function openTemplateMeasurementSheet(fieldId) {
   syncMeasurementToolbar();
 }
 
+function ensureTemplateMeasurementSheetForField(fieldId) {
+  if (!fieldId) {
+    return;
+  }
+
+  const normalizedFieldId = String(fieldId);
+  const isSameField = state.measurementSheet.ownerKind === "template_field"
+    && String(state.measurementSheet.ownerFieldId || "") === normalizedFieldId;
+
+  if (!state.measurementSheet.isOpen || !isSameField) {
+    openTemplateMeasurementSheet(normalizedFieldId);
+    return;
+  }
+
+  syncMeasurementSheetPanelMount();
+  syncMeasurementToolbar();
+}
+
+function buildDocumentTemplateInlineExcelPreview(field) {
+  const sheet = ensureDocumentTemplateMeasurementFieldSheet(field);
+  const preview = document.createElement("div");
+  preview.className = "document-template-inline-excel-preview";
+
+  const title = document.createElement("div");
+  title.className = "document-template-inline-excel-preview-head";
+  title.textContent = getMeasurementSheetTemplateSummary(sheet);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "document-template-inline-excel-preview-wrap";
+
+  const table = document.createElement("table");
+  table.className = "document-template-inline-excel-preview-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const indexHead = document.createElement("th");
+  indexHead.textContent = "#";
+  headRow.append(indexHead);
+  sheet.columns.forEach((column, index) => {
+    const th = document.createElement("th");
+    th.textContent = column?.label || getSpreadsheetColumnLabel(index);
+    headRow.append(th);
+  });
+  thead.append(headRow);
+
+  const tbody = document.createElement("tbody");
+  const visibleRows = sheet.rows.slice(0, Math.max(12, Math.min(24, sheet.rows.length || 12)));
+  visibleRows.forEach((row, rowIndex) => {
+    const tr = document.createElement("tr");
+    const indexCell = document.createElement("th");
+    indexCell.textContent = String(rowIndex + 1);
+    tr.append(indexCell);
+    sheet.columns.forEach((column) => {
+      const td = document.createElement("td");
+      td.textContent = String(row?.cells?.[column.id] ?? "").trim();
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+
+  table.append(thead, tbody);
+  tableWrap.append(table);
+  preview.append(title, tableWrap);
+  return preview;
+}
+
+function buildDocumentTemplateInlineExcelEditor(field, draftIndex) {
+  const fieldId = String(field?.id || "");
+  const draft = documentTemplateFieldDrafts[draftIndex];
+  let sheet = ensureDocumentTemplateMeasurementFieldSheet(draft ?? field);
+  let previewRenderRaf = 0;
+
+  const editor = document.createElement("div");
+  editor.className = "document-template-inline-excel-editor";
+  editor.dataset.templateFieldId = fieldId;
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "document-template-inline-excel-editor-toolbar";
+
+  const title = document.createElement("strong");
+  title.className = "document-template-inline-excel-editor-title";
+  title.textContent = "Spreadsheet editor";
+
+  const actions = document.createElement("div");
+  actions.className = "document-template-inline-excel-editor-actions";
+
+  const addRowButton = createActionButton("+ Red", "ghost-button");
+  const addColumnButton = createActionButton("+ Kolona", "ghost-button");
+  const resetButton = createActionButton("Reset", "ghost-button");
+  const advancedButton = createActionButton("Napredni", "ghost-button");
+  advancedButton.title = "Otvori napredni excel editor";
+
+  actions.append(addRowButton, addColumnButton, resetButton, advancedButton);
+  toolbar.append(title, actions);
+
+  const gridWrap = document.createElement("div");
+  gridWrap.className = "document-template-inline-excel-editor-grid-wrap";
+
+  const syncDraftSheetMeta = () => {
+    const currentDraft = documentTemplateFieldDrafts[draftIndex];
+    if (!currentDraft || String(currentDraft.id || "") !== fieldId) {
+      return;
+    }
+    currentDraft.type = "measurement_table";
+    currentDraft.sheet = sheet;
+    currentDraft.columns = sheet.columns.map((column) => column.label).join(", ");
+    currentDraft.rowCount = String(Math.max(DEFAULT_MEASUREMENT_ROW_COUNT, sheet.rows.length || DEFAULT_MEASUREMENT_ROW_COUNT));
+  };
+
+  const queuePreviewRender = () => {
+    if (previewRenderRaf) {
+      cancelAnimationFrame(previewRenderRaf);
+    }
+    previewRenderRaf = requestAnimationFrame(() => {
+      previewRenderRaf = 0;
+      renderDocumentTemplatePreviewContent();
+      syncDocumentTemplateEditorChrome();
+    });
+  };
+
+  const buildColumnId = (index) => {
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    return `measurement-inline-${fieldId || "field"}-${index + 1}-${randomPart}`;
+  };
+
+  const ensureRowShape = (row, rowIndex) => (
+    normalizeMeasurementSheetRowSnapshotLocal(row, sheet.columns, rowIndex)
+  );
+
+  const renderGrid = () => {
+    sheet.columns = sheet.columns.map((column, index) => (
+      normalizeMeasurementSheetColumnSnapshotLocal(
+        {
+          ...column,
+          id: column?.id || buildColumnId(index),
+          label: String(column?.label || "").trim() || `Kolona ${index + 1}`,
+        },
+        index,
+      )
+    ));
+    sheet.rows = sheet.rows.map((row, index) => ensureRowShape(row, index));
+    syncDraftSheetMeta();
+
+    const table = document.createElement("table");
+    table.className = "document-template-inline-excel-editor-grid";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+
+    const indexHead = document.createElement("th");
+    indexHead.className = "document-template-inline-excel-editor-index-head";
+    indexHead.textContent = "#";
+    headRow.append(indexHead);
+
+    sheet.columns.forEach((column, columnIndex) => {
+      const th = document.createElement("th");
+      const headCell = document.createElement("div");
+      headCell.className = "document-template-inline-excel-editor-head-cell";
+
+      const letter = document.createElement("span");
+      letter.className = "document-template-inline-excel-editor-letter";
+      letter.textContent = getSpreadsheetColumnLabel(columnIndex);
+
+      const labelInput = document.createElement("input");
+      labelInput.type = "text";
+      labelInput.className = "document-template-inline-excel-editor-column-input";
+      labelInput.value = column.label || `Kolona ${columnIndex + 1}`;
+      labelInput.addEventListener("input", (event) => {
+        const nextLabel = String(event.currentTarget.value || "").trim() || `Kolona ${columnIndex + 1}`;
+        sheet.columns[columnIndex].label = nextLabel;
+        sheet.columns[columnIndex].placeholder = nextLabel;
+        syncDraftSheetMeta();
+        queuePreviewRender();
+      });
+
+      headCell.append(letter, labelInput);
+      th.append(headCell);
+      headRow.append(th);
+    });
+
+    thead.append(headRow);
+
+    const tbody = document.createElement("tbody");
+    sheet.rows.forEach((row, rowIndex) => {
+      const tr = document.createElement("tr");
+
+      const rowHead = document.createElement("th");
+      rowHead.className = "document-template-inline-excel-editor-row-head";
+      rowHead.textContent = String(rowIndex + 1);
+      tr.append(rowHead);
+
+      sheet.columns.forEach((column, columnIndex) => {
+        const td = document.createElement("td");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "document-template-inline-excel-editor-cell-input";
+        input.value = String(row?.cells?.[column.id] ?? "");
+        input.placeholder = column.placeholder || column.label || getSpreadsheetColumnLabel(columnIndex);
+        input.addEventListener("input", (event) => {
+          if (!sheet.rows[rowIndex]) {
+            return;
+          }
+          if (!sheet.rows[rowIndex].cells || typeof sheet.rows[rowIndex].cells !== "object") {
+            sheet.rows[rowIndex].cells = {};
+          }
+          if (!sheet.rows[rowIndex].formats || typeof sheet.rows[rowIndex].formats !== "object") {
+            sheet.rows[rowIndex].formats = {};
+          }
+
+          sheet.rows[rowIndex].cells[column.id] = String(event.currentTarget.value ?? "");
+          sheet.rows[rowIndex].formats[column.id] = normalizeMeasurementCellFormat(sheet.rows[rowIndex].formats[column.id]);
+          syncDraftSheetMeta();
+          queuePreviewRender();
+        });
+
+        td.append(input);
+        tr.append(td);
+      });
+
+      tbody.append(tr);
+    });
+
+    table.append(thead, tbody);
+    gridWrap.replaceChildren(table);
+  };
+
+  addRowButton.addEventListener("click", () => {
+    const nextRow = normalizeMeasurementSheetRowSnapshotLocal({}, sheet.columns, sheet.rows.length);
+    sheet.rows.push(nextRow);
+    syncDraftSheetMeta();
+    renderGrid();
+    queuePreviewRender();
+    requestAnimationFrame(() => {
+      gridWrap.scrollTop = gridWrap.scrollHeight;
+    });
+  });
+
+  addColumnButton.addEventListener("click", () => {
+    const columnIndex = sheet.columns.length;
+    const fallbackLabel = `Kolona ${columnIndex + 1}`;
+    const nextColumn = normalizeMeasurementSheetColumnSnapshotLocal(
+      {
+        id: buildColumnId(columnIndex),
+        label: fallbackLabel,
+        placeholder: fallbackLabel,
+        width: 160,
+      },
+      columnIndex,
+    );
+    sheet.columns.push(nextColumn);
+    sheet.rows = sheet.rows.map((row, rowIndex) => ensureRowShape(row, rowIndex));
+    syncDraftSheetMeta();
+    renderGrid();
+    queuePreviewRender();
+  });
+
+  resetButton.addEventListener("click", () => {
+    sheet = buildTemplateMeasurementSheetFromLegacyConfig({
+      columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
+      rowCount: 12,
+    });
+    syncDraftSheetMeta();
+    renderGrid();
+    queuePreviewRender();
+  });
+
+  advancedButton.addEventListener("click", () => {
+    openTemplateMeasurementSheet(fieldId);
+  });
+
+  renderGrid();
+  editor.append(toolbar, gridWrap);
+  return editor;
+}
+
+function syncDocumentTemplateInlineExcelPreviewVisibility() {
+  if (!documentTemplateCustomFields) {
+    return;
+  }
+
+  const activeFieldId = state.measurementSheet.ownerKind === "template_field"
+    ? String(state.measurementSheet.ownerFieldId || "")
+    : "";
+  const isInlineOpen = state.measurementSheet.isOpen
+    && state.measurementSheet.ownerKind === "template_field"
+    && Boolean(activeFieldId);
+
+  documentTemplateCustomFields.querySelectorAll(".document-template-inline-excel-host").forEach((host) => {
+    if (!(host instanceof HTMLElement)) {
+      return;
+    }
+
+    const hostFieldId = String(host.dataset.templateFieldId || "");
+    const isActiveHost = isInlineOpen && hostFieldId === activeFieldId;
+    const hasInlinePanel = host.querySelector(".measurement-sheet-panel") instanceof HTMLElement;
+    host.classList.toggle("is-active", isActiveHost);
+    host.querySelectorAll(".document-template-inline-excel-preview").forEach((preview) => {
+      if (preview instanceof HTMLElement) {
+        preview.hidden = isActiveHost && hasInlinePanel;
+      }
+    });
+  });
+}
+
 function getTemplateMeasurementSheetInlineHost(fieldId = state.measurementSheet.ownerFieldId) {
-  if (!documentTemplateCustomFields || !fieldId) {
+  if (!fieldId) {
     return null;
   }
 
-  const fieldRow = documentTemplateCustomFields.querySelector(`.document-template-item-card[data-template-field-id="${String(fieldId)}"]`);
+  const normalizedFieldId = String(fieldId);
+  const mappedHost = documentTemplateMeasurementInlineHosts.get(normalizedFieldId);
+  if (mappedHost instanceof HTMLElement && mappedHost.isConnected) {
+    return mappedHost;
+  }
+
+  if (!documentTemplateCustomFields) {
+    return null;
+  }
+
+  const escapedFieldId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(normalizedFieldId)
+    : normalizedFieldId.replace(/["\\]/g, "\\$&");
+  const fieldRow = documentTemplateCustomFields.querySelector(`.document-template-item-card[data-template-field-id="${escapedFieldId}"]`);
   if (!(fieldRow instanceof HTMLElement)) {
     return null;
   }
 
   const host = fieldRow.querySelector(".document-template-inline-excel-host");
-  return host instanceof HTMLElement ? host : null;
+  if (host instanceof HTMLElement) {
+    documentTemplateMeasurementInlineHosts.set(normalizedFieldId, host);
+    return host;
+  }
+
+  return null;
 }
 
 function syncMeasurementSheetPanelMount() {
@@ -7669,18 +7992,29 @@ function syncMeasurementSheetPanelMount() {
   }
 
   const shouldMountInline = state.measurementSheet.isOpen && state.measurementSheet.ownerKind === "template_field";
-  const inlineHost = shouldMountInline
+  let inlineHost = shouldMountInline
     ? getTemplateMeasurementSheetInlineHost(state.measurementSheet.ownerFieldId)
     : null;
 
+  if (!inlineHost && shouldMountInline && documentTemplateCustomFields) {
+    const firstHost = documentTemplateCustomFields.querySelector(".document-template-inline-excel-host");
+    if (firstHost instanceof HTMLElement) {
+      inlineHost = firstHost;
+      const fallbackFieldId = String(firstHost.dataset.templateFieldId || "").trim();
+      if (fallbackFieldId) {
+        state.measurementSheet.ownerFieldId = fallbackFieldId;
+      }
+    }
+  }
+
   documentTemplateCustomFields?.querySelectorAll(".document-template-inline-excel-host").forEach((host) => {
     if (host instanceof HTMLElement) {
-      host.hidden = true;
+      host.hidden = false;
+      host.removeAttribute("hidden");
     }
   });
 
   if (inlineHost) {
-    inlineHost.hidden = false;
     if (measurementSheetPanel.parentElement !== inlineHost) {
       inlineHost.append(measurementSheetPanel);
     }
@@ -7688,6 +8022,7 @@ function syncMeasurementSheetPanelMount() {
     if (measurementSheetModal) {
       measurementSheetModal.hidden = true;
     }
+    syncDocumentTemplateInlineExcelPreviewVisibility();
     document.body.classList.remove("measurement-sheet-open");
     return;
   }
@@ -7699,6 +8034,7 @@ function syncMeasurementSheetPanelMount() {
   if (measurementSheetModal) {
     measurementSheetModal.hidden = !state.measurementSheet.isOpen;
   }
+  syncDocumentTemplateInlineExcelPreviewVisibility();
 }
 
 function renderMeasurementSheet() {
@@ -10285,7 +10621,7 @@ function addDocumentTemplateBuilderBlock(tool = "text") {
   renderDocumentTemplatePreviewContent();
 
   if (safeTool === "measurement_table") {
-    openTemplateMeasurementSheet(fieldDraft.id);
+    focusDocumentTemplateFieldLabel(fieldDraft.id);
     return;
   }
 
@@ -13938,6 +14274,8 @@ function renderDocumentTemplateFieldRows() {
     return;
   }
 
+  documentTemplateMeasurementInlineHosts = new Map();
+
   const visibleFields = documentTemplateFieldDrafts.filter((field) => field?.type !== "page_break");
   const chapterIds = new Set(
     visibleFields
@@ -14167,13 +14505,10 @@ function renderDocumentTemplateFieldRows() {
     specialInfoField.append(specialInfoSpan);
 
     const columnsField = document.createElement("div");
-    columnsField.className = "field document-template-inline-excel-field document-template-inline-excel-launcher";
+    columnsField.className = "field document-template-inline-excel-field";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
     columnsSpan.textContent = "Excel editor";
-    const openExcelBlock = () => {
-      openTemplateMeasurementSheet(field.id);
-    };
     const excelMeta = document.createElement("div");
     excelMeta.className = "document-template-excel-meta";
     const excelSummary = document.createElement("strong");
@@ -14182,12 +14517,6 @@ function renderDocumentTemplateFieldRows() {
     excelHint.textContent = "Tablica je prikazana ispod i isti raspored ide u preview/PDF.";
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
-    columnsField.addEventListener("click", (event) => {
-      if (event.target instanceof HTMLElement && event.target.closest(".card-button")) {
-        return;
-      }
-      openExcelBlock();
-    });
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();
@@ -14346,9 +14675,9 @@ function renderDocumentTemplateFieldRows() {
       const inlineExcelHost = document.createElement("div");
       inlineExcelHost.className = "document-template-inline-excel-host";
       inlineExcelHost.dataset.templateFieldId = fieldId;
-      inlineExcelHost.hidden = !(state.measurementSheet.isOpen
-        && state.measurementSheet.ownerKind === "template_field"
-        && String(state.measurementSheet.ownerFieldId) === fieldId);
+      inlineExcelHost.hidden = false;
+      inlineExcelHost.append(buildDocumentTemplateInlineExcelEditor(field, draftIndex));
+      documentTemplateMeasurementInlineHosts.set(fieldId, inlineExcelHost);
       row.append(inlineExcelHost);
     }
     pageBody.append(row);
@@ -14396,47 +14725,24 @@ function renderDocumentTemplateFieldRows() {
 
   shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
-  const visibleMeasurementFields = visibleFields.filter((field) => field?.type === "measurement_table");
-
-  if (visibleMeasurementFields.length === 0) {
-    if (state.measurementSheet.ownerKind === "template_field" && state.measurementSheet.isOpen) {
-      state.measurementSheet.selectionDrag = null;
-      state.measurementSheet.fillMenu = null;
-      state.measurementSheet.fillDrag = null;
-      state.measurementSheet.contextMenu = null;
-      state.measurementSheet.editingCell = null;
-      state.measurementSheet.editorSource = null;
-      state.measurementSheet.formulaReferences = [];
-      document.body.classList.remove("is-selecting-measurement-cells");
-      document.body.classList.remove("is-filling-measurement-cells");
-      setMeasurementSheetOpen(false);
-      state.measurementSheet.ownerKind = "work_order";
-      state.measurementSheet.ownerFieldId = "";
-      syncMeasurementToolbar();
-    }
-    syncMeasurementSheetPanelMount();
-  } else {
-    const activeTemplateMeasurementId = state.measurementSheet.ownerKind === "template_field"
-      ? String(state.measurementSheet.ownerFieldId || "")
-      : "";
-    const activeTemplateMeasurementExists = visibleMeasurementFields.some((field) => String(field.id) === activeTemplateMeasurementId);
-    const targetFieldId = activeTemplateMeasurementExists
-      ? activeTemplateMeasurementId
-      : String(visibleMeasurementFields[0]?.id || "");
-
-    if (!targetFieldId) {
-      syncMeasurementSheetPanelMount();
-    } else if (
-      state.measurementSheet.isOpen
-      && state.measurementSheet.ownerKind === "template_field"
-      && String(state.measurementSheet.ownerFieldId) === targetFieldId
-    ) {
-      syncMeasurementSheetPanelMount();
-    } else {
-      openTemplateMeasurementSheet(targetFieldId);
-    }
+  if (state.measurementSheet.ownerKind === "template_field" && state.measurementSheet.isOpen) {
+    state.measurementSheet.selectionDrag = null;
+    state.measurementSheet.fillMenu = null;
+    state.measurementSheet.fillDrag = null;
+    state.measurementSheet.contextMenu = null;
+    state.measurementSheet.editingCell = null;
+    state.measurementSheet.editorSource = null;
+    state.measurementSheet.formulaReferences = [];
+    document.body.classList.remove("is-selecting-measurement-cells");
+    document.body.classList.remove("is-filling-measurement-cells");
+    setMeasurementSheetOpen(false);
+    state.measurementSheet.ownerKind = "work_order";
+    state.measurementSheet.ownerFieldId = "";
+    syncMeasurementToolbar();
   }
 
+  syncMeasurementSheetPanelMount();
+  syncDocumentTemplateInlineExcelPreviewVisibility();
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
   renderDocumentTemplatePreviewContent();
@@ -24153,7 +24459,7 @@ function isInteractiveWorkOrderTarget(target) {
   }
 
   return Boolean(target.closest(
-    "select, button, input, textarea, a, [data-prevent-row-open='true']",
+    "select, button, input, textarea, a, [data-prevent-row-open='true'], [role='menuitem']",
   ));
 }
 
@@ -26530,6 +26836,7 @@ function renderCompactWorkOrdersList() {
       rowCard.tabIndex = 0;
       rowCard.setAttribute("role", "button");
       rowCard.setAttribute("aria-label", `Otvori radni nalog ${item.workOrderNumber || item.companyName || ""}`.trim());
+      rowCard.dataset.workOrderId = String(item.id || "");
 
       const row = document.createElement("article");
       row.className = `work-item-row is-${isExpanded ? "expanded" : "collapsed"}`;
@@ -26664,7 +26971,7 @@ function renderCompactWorkOrdersList() {
         }
         hydrateWorkOrderForm(item);
       };
-      rowCard.addEventListener("click", openWorkOrderFromRow);
+      rowCard.addEventListener("click", openWorkOrderFromRow, { capture: true });
       rowCard.addEventListener("keydown", (event) => {
         if (isInteractiveWorkOrderTarget(event.target)) {
           return;
@@ -26858,7 +27165,7 @@ function renderCompactWorkOrdersList() {
 
   workOrdersLoadState.hidden = false;
   workOrdersLoadState.textContent = visibleItems.length < filtered.length
-    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jo?.`
+    ? `Prikazano ${visibleItems.length} od ${filtered.length} RN. Skrolaj dalje za jos.`
     : `Prikazano svih ${filtered.length} RN.`;
   if (workOrdersHelper) {
     workOrdersHelper.dataset.baseText = workOrdersLoadState.textContent;

@@ -14938,6 +14938,181 @@ body.is-document-template-editor-open {
 .document-template-inline-excel-host {
   margin-top: 10px;
   min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.document-template-inline-excel-host.is-active {
+  border-radius: 18px;
+}
+
+.document-template-inline-excel-editor {
+  display: grid;
+  gap: 10px;
+  padding: 10px 11px 11px;
+  border: 1px solid rgba(214, 89, 173, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 251, 255, 0.98), rgba(248, 244, 252, 0.96));
+}
+
+.document-template-inline-excel-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.document-template-inline-excel-editor-title {
+  font-size: 0.82rem;
+  color: #4c2d6d;
+  letter-spacing: 0.02em;
+}
+
+.document-template-inline-excel-editor-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.document-template-inline-excel-editor-actions .ghost-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 0.74rem;
+}
+
+.document-template-inline-excel-editor-grid-wrap {
+  overflow: auto;
+  max-height: min(52vh, 560px);
+  border: 1px solid rgba(196, 168, 231, 0.35);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.document-template-inline-excel-editor-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.document-template-inline-excel-editor-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef1f8;
+  color: #3a4462;
+  font-weight: 700;
+}
+
+.document-template-inline-excel-editor-grid th,
+.document-template-inline-excel-editor-grid td {
+  border: 1px solid rgba(192, 201, 224, 0.6);
+  padding: 0;
+  min-width: 120px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.document-template-inline-excel-editor-grid .document-template-inline-excel-editor-index-head,
+.document-template-inline-excel-editor-grid .document-template-inline-excel-editor-row-head {
+  min-width: 42px;
+  text-align: center;
+  background: #f5f7fc;
+  color: #607096;
+  font-weight: 700;
+}
+
+.document-template-inline-excel-editor-head-cell {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.document-template-inline-excel-editor-letter {
+  font-size: 0.68rem;
+  color: #607096;
+  font-weight: 700;
+}
+
+.document-template-inline-excel-editor-column-input,
+.document-template-inline-excel-editor-cell-input {
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  color: #2f394f;
+  font-size: 0.78rem;
+}
+
+.document-template-inline-excel-editor-column-input:focus,
+.document-template-inline-excel-editor-cell-input:focus {
+  background: rgba(236, 224, 252, 0.35);
+}
+
+.document-template-inline-excel-preview {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px 11px;
+  border: 1px solid rgba(214, 89, 173, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 251, 255, 0.98), rgba(248, 244, 252, 0.96));
+}
+
+.document-template-inline-excel-preview-head {
+  color: #4c2d6d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.document-template-inline-excel-preview-wrap {
+  overflow: auto;
+  max-height: min(42vh, 420px);
+  border: 1px solid rgba(196, 168, 231, 0.35);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.document-template-inline-excel-preview-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.document-template-inline-excel-preview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef1f8;
+  color: #3a4462;
+  font-weight: 700;
+}
+
+.document-template-inline-excel-preview-table th,
+.document-template-inline-excel-preview-table td {
+  border: 1px solid rgba(192, 201, 224, 0.6);
+  padding: 6px 8px;
+  min-width: 110px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.document-template-inline-excel-preview-table tbody th {
+  min-width: 42px;
+  text-align: center;
+  background: #f5f7fc;
+  color: #607096;
+  font-weight: 700;
 }
 
 .document-template-sheet-shell {
@@ -15199,7 +15374,10 @@ body.is-document-template-editor-open {
   width: 100%;
   height: auto;
   max-height: none;
+  grid-template-rows: auto auto auto auto;
+  align-content: start;
   padding: 14px;
+  overflow: visible;
   border-radius: 24px;
   border: 1px solid rgba(214, 89, 173, 0.28);
   background: linear-gradient(180deg, rgba(255, 250, 255, 0.98), rgba(249, 243, 255, 0.98));
@@ -15219,8 +15397,13 @@ body.is-document-template-editor-open {
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid-wrap {
+  height: auto;
   min-height: 420px;
   max-height: min(64vh, 720px);
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid {
+  min-height: 0;
 }
 
 .document-template-inline-special-value {
