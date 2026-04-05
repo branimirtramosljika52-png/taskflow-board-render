@@ -6052,12 +6052,16 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-formula {
-  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
 }
 
 .measurement-toolbar-formula input {
   min-height: 44px;
-  padding: 0 16px 0 52px;
+  width: 100%;
+  padding: 0 16px;
   border: 1px solid #d9deea;
   border-radius: 14px;
   background: #ffffff;
@@ -6075,15 +6079,13 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-fx {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  transform: translateY(-50%);
+  position: static;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 20px;
+  flex: 0 0 auto;
   border-radius: 8px;
   background: rgba(83, 104, 255, 0.1);
   color: #5368ff;
