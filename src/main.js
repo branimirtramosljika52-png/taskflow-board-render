@@ -14427,6 +14427,9 @@ function renderDocumentTemplateFieldRows() {
     });
     const grid = document.createElement("div");
     grid.className = "form-grid document-template-inline-grid";
+    if (field.type === "measurement_table") {
+      grid.classList.add("is-excel-layout");
+    }
     const isSpecialType = isDocumentTemplateSpecialFieldType(field.type);
 
     const labelField = document.createElement("label");

@@ -15324,6 +15324,11 @@ body.is-document-template-editor-open {
   align-items: end;
 }
 
+.document-template-inline-grid.is-excel-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
 .document-template-item-card .field {
   gap: 4px;
   min-width: 0;
@@ -15366,6 +15371,15 @@ body.is-document-template-editor-open {
   grid-column: span 2;
 }
 
+.document-template-inline-grid.is-excel-layout > .field {
+  align-self: start;
+}
+
+.document-template-inline-grid.is-excel-layout .document-template-inline-excel-field {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .document-template-inline-excel-field > .document-template-inline-excel-label {
   display: inline-flex;
   align-items: center;
@@ -15387,6 +15401,10 @@ body.is-document-template-editor-open {
 
 .document-template-inline-excel-launcher {
   cursor: pointer;
+}
+
+.document-template-inline-excel-host {
+  width: 100%;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet {
