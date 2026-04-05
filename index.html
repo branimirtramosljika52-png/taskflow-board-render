@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260405p" />
+    <link rel="stylesheet" href="/styles.css?v=20260405q" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1273,14 +1273,40 @@
                   <span>Datum izdavanja</span>
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
-                <label class="field">
-                  <span>Ispitivači</span>
-                  <select id="work-order-document-common-inspector-user-id" multiple size="4"></select>
-                </label>
-                <label class="field">
-                  <span>Nositelj ovlaštenja</span>
-                  <select id="work-order-document-common-authorization-holder-user-id"></select>
-                </label>
+                <section id="work-order-document-wizard-common-people" class="work-order-document-wizard-common-person-block field-span-full">
+                  <div class="work-order-document-wizard-subblock-head">
+                    <div class="work-order-document-wizard-subblock-copy">
+                      <strong>Osobe i ovlaštenja</strong>
+                      <span id="work-order-document-wizard-common-people-summary" class="work-order-document-wizard-common-summary"></span>
+                    </div>
+                    <button
+                      id="work-order-document-wizard-common-people-toggle"
+                      type="button"
+                      class="ghost-button work-order-document-wizard-common-toggle"
+                      aria-expanded="true"
+                    >
+                      Sakrij osobe
+                    </button>
+                  </div>
+                  <div id="work-order-document-wizard-common-people-body" class="form-grid work-order-document-wizard-common-people-grid">
+                    <label class="field">
+                      <span>Ispitivač sigurnosna panik rasvjeta</span>
+                      <select id="work-order-document-common-electrical-inspector-user-id"></select>
+                    </label>
+                    <label class="field">
+                      <span>Odgovorna osoba sigurnosna panik rasvjeta</span>
+                      <select id="work-order-document-common-electrical-authorization-holder-user-id"></select>
+                    </label>
+                    <label class="field">
+                      <span>Ispitivač tipkalo za isklop napona</span>
+                      <select id="work-order-document-common-tipkalo-inspector-user-id"></select>
+                    </label>
+                    <label class="field">
+                      <span>Odgovorna osoba tipkalo za isklop napona</span>
+                      <select id="work-order-document-common-tipkalo-authorization-holder-user-id"></select>
+                    </label>
+                  </div>
+                </section>
               </div>
             </section>
 
@@ -3813,6 +3839,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260405p"></script>
+    <script type="module" src="/src/main.js?v=20260405q"></script>
   </body>
 </html>

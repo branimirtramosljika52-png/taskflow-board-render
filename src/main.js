@@ -572,6 +572,7 @@ const state = {
     step: "details",
     selectedIds: new Set(),
     commonCollapsed: false,
+    commonPeopleCollapsed: false,
     common: {
       inspectionDate: new Date().toISOString().slice(0, 10),
       issuedDate: new Date().toISOString().slice(0, 10),
@@ -580,6 +581,10 @@ const state = {
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
+      electricalInspectorUserId: "",
+      electricalAuthorizationHolderUserId: "",
+      tipkaloInspectorUserId: "",
+      tipkaloAuthorizationHolderUserId: "",
     },
     overrides: {},
   },
@@ -601,6 +606,10 @@ const state = {
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
+      electricalInspectorUserId: "",
+      electricalAuthorizationHolderUserId: "",
+      tipkaloInspectorUserId: "",
+      tipkaloAuthorizationHolderUserId: "",
     },
     overrides: {},
   },
@@ -1488,6 +1497,10 @@ const workOrderDocumentWizardCommonSection = document.querySelector("#work-order
 const workOrderDocumentWizardCommonBody = document.querySelector("#work-order-document-wizard-common-body");
 const workOrderDocumentWizardCommonSummary = document.querySelector("#work-order-document-wizard-common-summary");
 const workOrderDocumentWizardCommonToggleButton = document.querySelector("#work-order-document-wizard-common-toggle");
+const workOrderDocumentWizardCommonPeopleSection = document.querySelector("#work-order-document-wizard-common-people");
+const workOrderDocumentWizardCommonPeopleBody = document.querySelector("#work-order-document-wizard-common-people-body");
+const workOrderDocumentWizardCommonPeopleSummary = document.querySelector("#work-order-document-wizard-common-people-summary");
+const workOrderDocumentWizardCommonPeopleToggleButton = document.querySelector("#work-order-document-wizard-common-people-toggle");
 const workOrderDocumentWizardDetailsPanel = document.querySelector("#work-order-document-wizard-details");
 const workOrderDocumentWizardTemplatesPanel = document.querySelector("#work-order-document-wizard-templates");
 const workOrderDocumentWizardSelectionSummary = document.querySelector("#work-order-document-wizard-selection-summary");
@@ -1500,8 +1513,10 @@ const workOrderDocumentWizardNextButton = document.querySelector("#work-order-do
 const workOrderDocumentWizardError = document.querySelector("#work-order-document-wizard-error");
 const workOrderDocumentCommonInspectionDateInput = document.querySelector("#work-order-document-common-inspection-date");
 const workOrderDocumentCommonIssuedDateInput = document.querySelector("#work-order-document-common-issued-date");
-const workOrderDocumentCommonInspectorInput = document.querySelector("#work-order-document-common-inspector-user-id");
-const workOrderDocumentCommonAuthorizationHolderInput = document.querySelector("#work-order-document-common-authorization-holder-user-id");
+const workOrderDocumentCommonElectricalInspectorInput = document.querySelector("#work-order-document-common-electrical-inspector-user-id");
+const workOrderDocumentCommonElectricalAuthorizationHolderInput = document.querySelector("#work-order-document-common-electrical-authorization-holder-user-id");
+const workOrderDocumentCommonTipkaloInspectorInput = document.querySelector("#work-order-document-common-tipkalo-inspector-user-id");
+const workOrderDocumentCommonTipkaloAuthorizationHolderInput = document.querySelector("#work-order-document-common-tipkalo-authorization-holder-user-id");
 const workOrderDocumentCommonIssuedPlaceInput = document.querySelector("#work-order-document-common-issued-place");
 const workOrderDocumentCommonNoteInput = document.querySelector("#work-order-document-common-note");
 
@@ -12512,6 +12527,79 @@ function getBatchRelevantSignatureAreas(workOrders = getAllSelectedWorkOrdersFor
   return areas.size > 0 ? [...areas] : ["elektro"];
 }
 
+const WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS = [
+  {
+    fieldName: "electricalInspectorUserId",
+    capability: "inspect",
+    signatureArea: "elektro",
+    label: "Ispitivač sigurnosna panik rasvjeta",
+    summaryLabel: "Panik ispitivač",
+    emptyLabel: "Odaberi ispitivača",
+  },
+  {
+    fieldName: "electricalAuthorizationHolderUserId",
+    capability: "authorize",
+    signatureArea: "elektro",
+    label: "Odgovorna osoba sigurnosna panik rasvjeta",
+    summaryLabel: "Panik odgovorna osoba",
+    emptyLabel: "Odaberi odgovornu osobu",
+  },
+  {
+    fieldName: "tipkaloInspectorUserId",
+    capability: "inspect",
+    signatureArea: "tipkalo",
+    label: "Ispitivač tipkalo za isklop napona",
+    summaryLabel: "Tipkalo ispitivač",
+    emptyLabel: "Odaberi ispitivača",
+  },
+  {
+    fieldName: "tipkaloAuthorizationHolderUserId",
+    capability: "authorize",
+    signatureArea: "tipkalo",
+    label: "Odgovorna osoba tipkalo za isklop napona",
+    summaryLabel: "Tipkalo odgovorna osoba",
+    emptyLabel: "Odaberi odgovornu osobu",
+  },
+];
+
+function getWorkOrderDocumentSignaturePersonFieldName(capability = "inspect", signatureArea = "elektro") {
+  const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  return WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.find((entry) => (
+    entry.capability === normalizedCapability && entry.signatureArea === normalizedArea
+  ))?.fieldName || (normalizedCapability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId");
+}
+
+function getWorkOrderDocumentSignaturePersonOptions(capability = "inspect", signatureArea = "elektro", options = {}) {
+  const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
+  const definition = WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.find((entry) => (
+    entry.capability === normalizedCapability
+      && entry.signatureArea === normalizeQualificationAreaKey(signatureArea)
+  ));
+  return getQualifiedUserOptionsForSignatureAreas(
+    normalizedCapability,
+    [normalizeQualificationAreaKey(signatureArea)],
+    {
+      includeEmpty: options.includeEmpty ?? true,
+      emptyLabel: options.emptyLabel || definition?.emptyLabel || (
+        normalizedCapability === "authorize" ? "Odaberi odgovornu osobu" : "Odaberi ispitivača"
+      ),
+    },
+  );
+}
+
+function getWorkOrderDocumentSignaturePersonName(source = {}, fieldName = "") {
+  const value = String(source?.[fieldName] ?? "").trim();
+  return getUsersByIds([value])[0]?.fullName || "";
+}
+
+function getWorkOrderDocumentSignaturePersonSummaryParts(source = {}) {
+  return WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => {
+    const displayName = getWorkOrderDocumentSignaturePersonName(source, definition.fieldName);
+    return displayName ? `${definition.summaryLabel}: ${displayName}` : "";
+  }).filter(Boolean);
+}
+
 function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
@@ -13710,6 +13798,13 @@ function getWorkOrderDocumentQualifiedUsers(workOrder = {}, capability = "inspec
     return explicitUsers;
   }
 
+  const areaSpecificFieldName = getWorkOrderDocumentSignaturePersonFieldName(capability, signatureArea);
+  const areaSpecificUserId = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, areaSpecificFieldName) : "";
+  const areaSpecificUser = findQualifiedUserById(areaSpecificUserId, capability, signatureArea);
+  if (areaSpecificUser) {
+    return [areaSpecificUser];
+  }
+
   const singleFieldName = capability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId";
   const explicitSingleUserId = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, singleFieldName) : "";
   const explicitSingleUser = findQualifiedUserById(explicitSingleUserId, capability, signatureArea);
@@ -14416,6 +14511,50 @@ function renderDocumentTemplateRuntimeContext() {
     {
       label: "Napomena",
       value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "note") : "",
+    },
+    {
+      label: "Panik ispitivač",
+      value: activeWorkOrder
+        ? getWorkOrderDocumentSignaturePersonName(
+          {
+            electricalInspectorUserId: getDocumentTemplateRuntimeValue(activeWorkOrder.id, "electricalInspectorUserId"),
+          },
+          "electricalInspectorUserId",
+        )
+        : "",
+    },
+    {
+      label: "Panik odgovorna osoba",
+      value: activeWorkOrder
+        ? getWorkOrderDocumentSignaturePersonName(
+          {
+            electricalAuthorizationHolderUserId: getDocumentTemplateRuntimeValue(activeWorkOrder.id, "electricalAuthorizationHolderUserId"),
+          },
+          "electricalAuthorizationHolderUserId",
+        )
+        : "",
+    },
+    {
+      label: "Tipkalo ispitivač",
+      value: activeWorkOrder
+        ? getWorkOrderDocumentSignaturePersonName(
+          {
+            tipkaloInspectorUserId: getDocumentTemplateRuntimeValue(activeWorkOrder.id, "tipkaloInspectorUserId"),
+          },
+          "tipkaloInspectorUserId",
+        )
+        : "",
+    },
+    {
+      label: "Tipkalo odgovorna osoba",
+      value: activeWorkOrder
+        ? getWorkOrderDocumentSignaturePersonName(
+          {
+            tipkaloAuthorizationHolderUserId: getDocumentTemplateRuntimeValue(activeWorkOrder.id, "tipkaloAuthorizationHolderUserId"),
+          },
+          "tipkaloAuthorizationHolderUserId",
+        )
+        : "",
     },
     {
       label: "Ispitivači",
@@ -27011,6 +27150,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.overrides = {};
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.commonCollapsed = false;
+  state.workOrderDocumentWizard.commonPeopleCollapsed = false;
   state.workOrderBatch.pending = false;
   state.workOrderBatch.message = "";
   state.workOrderBatch.tone = "";
@@ -27022,6 +27162,10 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     inspectorUserIds: [],
     inspectorUserId: "",
     authorizationHolderUserId: "",
+    electricalInspectorUserId: "",
+    electricalAuthorizationHolderUserId: "",
+    tipkaloInspectorUserId: "",
+    tipkaloAuthorizationHolderUserId: "",
   };
 
   if (closeWizard) {
@@ -27116,35 +27260,23 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   if (workOrderDocumentCommonNoteInput) {
     workOrderDocumentCommonNoteInput.value = state.workOrderDocumentWizard.common.note || "";
   }
-  if (workOrderDocumentCommonInspectorInput) {
-    const options = getQualifiedUserOptionsForSignatureAreas(
-      "inspect",
-      getBatchRelevantSignatureAreas(getAllSelectedWorkOrdersForDocumentWizard()),
-    );
-    replaceSelectOptions(workOrderDocumentCommonInspectorInput, options, "");
-    const selectedValues = new Set(normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common.inspectorUserIds ?? []));
-    Array.from(workOrderDocumentCommonInspectorInput.options).forEach((option) => {
-      option.selected = selectedValues.has(String(option.value));
-    });
-  }
-  if (workOrderDocumentCommonAuthorizationHolderInput) {
-    const options = getQualifiedUserOptionsForSignatureAreas(
-      "authorize",
-      getBatchRelevantSignatureAreas(getAllSelectedWorkOrdersForDocumentWizard()),
-      { includeEmpty: true, emptyLabel: "Odaberi nositelja" },
-    );
-    const selectedValue = String(state.workOrderDocumentWizard.common.authorizationHolderUserId || "").trim();
-    replaceSelectOptions(
-      workOrderDocumentCommonAuthorizationHolderInput,
-      options,
-      optionListIncludesValue(options, selectedValue) ? selectedValue : "",
-    );
-  }
+
+  [
+    [workOrderDocumentCommonElectricalInspectorInput, "inspect", "elektro", "electricalInspectorUserId"],
+    [workOrderDocumentCommonElectricalAuthorizationHolderInput, "authorize", "elektro", "electricalAuthorizationHolderUserId"],
+    [workOrderDocumentCommonTipkaloInspectorInput, "inspect", "tipkalo", "tipkaloInspectorUserId"],
+    [workOrderDocumentCommonTipkaloAuthorizationHolderInput, "authorize", "tipkalo", "tipkaloAuthorizationHolderUserId"],
+  ].forEach(([input, capability, signatureArea, fieldName]) => {
+    if (!input) {
+      return;
+    }
+    const options = getWorkOrderDocumentSignaturePersonOptions(capability, signatureArea);
+    const selectedValue = String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
+    replaceSelectOptions(input, options, optionListIncludesValue(options, selectedValue) ? selectedValue : "");
+  });
 }
 
 function getWorkOrderDocumentWizardCommonSummaryParts() {
-  const inspectors = getUsersByIds(state.workOrderDocumentWizard.common.inspectorUserIds);
-  const authorizationHolder = getUsersByIds([state.workOrderDocumentWizard.common.authorizationHolderUserId])[0] || null;
   return [
     state.workOrderDocumentWizard.common.inspectionDate
       ? `Ispitivanje ${formatCompactDate(state.workOrderDocumentWizard.common.inspectionDate)}`
@@ -27152,9 +27284,29 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
     state.workOrderDocumentWizard.common.issuedDate
       ? `Izdavanje ${formatCompactDate(state.workOrderDocumentWizard.common.issuedDate)}`
       : "",
-    inspectors.length > 0 ? `Ispitivači ${inspectors.map((user) => user.fullName || user.email || "").filter(Boolean).join(", ")}` : "",
-    authorizationHolder?.fullName ? `Nositelj ${authorizationHolder.fullName}` : "",
+    ...getWorkOrderDocumentSignaturePersonSummaryParts(state.workOrderDocumentWizard.common),
   ].filter(Boolean);
+}
+
+function renderWorkOrderDocumentWizardCommonPeopleSection() {
+  const isCollapsed = Boolean(state.workOrderDocumentWizard.commonPeopleCollapsed);
+  const summaryParts = getWorkOrderDocumentSignaturePersonSummaryParts(state.workOrderDocumentWizard.common);
+
+  if (workOrderDocumentWizardCommonPeopleSection) {
+    workOrderDocumentWizardCommonPeopleSection.classList.toggle("is-collapsed", isCollapsed);
+  }
+  if (workOrderDocumentWizardCommonPeopleBody) {
+    workOrderDocumentWizardCommonPeopleBody.hidden = isCollapsed;
+  }
+  if (workOrderDocumentWizardCommonPeopleSummary) {
+    workOrderDocumentWizardCommonPeopleSummary.textContent = summaryParts.length > 0
+      ? summaryParts.join(" · ")
+      : "Jednim unosom postavi osobe za sve odabrane RN-ove.";
+  }
+  if (workOrderDocumentWizardCommonPeopleToggleButton) {
+    workOrderDocumentWizardCommonPeopleToggleButton.textContent = isCollapsed ? "Prikaži osobe" : "Sakrij osobe";
+    workOrderDocumentWizardCommonPeopleToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+  }
 }
 
 function renderWorkOrderDocumentWizardCommonSection() {
@@ -27176,6 +27328,7 @@ function renderWorkOrderDocumentWizardCommonSection() {
     workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži zajednicke podatke" : "Sakrij zajednicke podatke";
     workOrderDocumentWizardCommonToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
   }
+  renderWorkOrderDocumentWizardCommonPeopleSection();
 }
 
 function syncWorkOrderDocumentWizardModal() {
@@ -27243,6 +27396,17 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
   const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
   const hasInspectorPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserId");
   const hasAuthorizationHolderPatch = Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId");
+  const areaSpecificOverrides = Object.fromEntries(
+    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => {
+      const hasPatch = Object.prototype.hasOwnProperty.call(patch, definition.fieldName);
+      const nextValue = hasPatch
+        ? (String(patch[definition.fieldName] ?? "").trim() || null)
+        : (Object.prototype.hasOwnProperty.call(current, definition.fieldName)
+          ? current[definition.fieldName] ?? null
+          : "");
+      return [definition.fieldName, nextValue];
+    }),
+  );
   const inspectorUserIds = hasInspectorIdsPatch
     ? normalizeQualifiedUserIdList(patch.inspectorUserIds)
     : Object.prototype.hasOwnProperty.call(current, "inspectorUserIds")
@@ -27258,20 +27422,24 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
       ? (String(patch.inspectorUserId ?? "").trim() || null)
       : hasInspectorIdsPatch
         ? (inspectorUserIds[0] || null)
-      : (Object.prototype.hasOwnProperty.call(current, "inspectorUserId")
-        ? current.inspectorUserId ?? null
-        : ""),
+        : (Object.prototype.hasOwnProperty.call(current, "inspectorUserId")
+          ? current.inspectorUserId ?? null
+          : ""),
     authorizationHolderUserId: hasAuthorizationHolderPatch
       ? (String(patch.authorizationHolderUserId ?? "").trim() || null)
       : (Object.prototype.hasOwnProperty.call(current, "authorizationHolderUserId")
         ? current.authorizationHolderUserId ?? null
         : ""),
+    ...areaSpecificOverrides,
   };
   const hasExplicitSignatureUserOverride = next.inspectorUserId === null
     || next.authorizationHolderUserId === null
     || inspectorUserIds.length > 0
     || Boolean(next.inspectorUserId)
-    || Boolean(next.authorizationHolderUserId);
+    || Boolean(next.authorizationHolderUserId)
+    || WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.some((definition) => (
+      next[definition.fieldName] === null || Boolean(next[definition.fieldName])
+    ));
 
   if (
     !next.inspectionDate
@@ -27337,6 +27505,10 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
     inspectorUserIds: normalizeQualifiedUserIdList(source.inspectorUserIds ?? []),
     inspectorUserId: String(source.inspectorUserId ?? "").trim(),
     authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
+    electricalInspectorUserId: String(source.electricalInspectorUserId ?? "").trim(),
+    electricalAuthorizationHolderUserId: String(source.electricalAuthorizationHolderUserId ?? "").trim(),
+    tipkaloInspectorUserId: String(source.tipkaloInspectorUserId ?? "").trim(),
+    tipkaloAuthorizationHolderUserId: String(source.tipkaloAuthorizationHolderUserId ?? "").trim(),
     fieldValues,
     fieldSheets,
   };
@@ -27348,9 +27520,12 @@ function getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure = false 
     return null;
   }
 
-  const currentRecord = normalizeDocumentTemplateRuntimeOverrideRecord(
-    state.documentTemplateRuntime.overrides?.[normalizedId] ?? {},
-  );
+  const existingRecord = state.documentTemplateRuntime.overrides?.[normalizedId];
+  if (!ensure && (!existingRecord || typeof existingRecord !== "object")) {
+    return null;
+  }
+
+  const currentRecord = normalizeDocumentTemplateRuntimeOverrideRecord(existingRecord ?? {});
 
   if (ensure) {
     state.documentTemplateRuntime.overrides = {
@@ -27465,6 +27640,14 @@ function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true 
 
 function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {}) {
   const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
+  const areaSpecificCommonFields = Object.fromEntries(
+    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => ([
+      definition.fieldName,
+      Object.prototype.hasOwnProperty.call(patch, definition.fieldName)
+        ? String(patch[definition.fieldName] ?? "").trim()
+        : String(state.documentTemplateRuntime.common?.[definition.fieldName] ?? "").trim(),
+    ])),
+  );
   const nextCommon = {
     ...state.documentTemplateRuntime.common,
     inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
@@ -27490,6 +27673,7 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     authorizationHolderUserId: Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId")
       ? String(patch.authorizationHolderUserId ?? "").trim()
       : String(state.documentTemplateRuntime.common?.authorizationHolderUserId ?? "").trim(),
+    ...areaSpecificCommonFields,
   };
 
   state.documentTemplateRuntime.common = nextCommon;
@@ -27508,6 +27692,14 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
 
   const record = getDocumentTemplateRuntimeOverrideRecord(normalizedId, { ensure: true }) ?? {};
   const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
+  const areaSpecificOverrideFields = Object.fromEntries(
+    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => ([
+      definition.fieldName,
+      Object.prototype.hasOwnProperty.call(patch, definition.fieldName)
+        ? String(patch[definition.fieldName] ?? "").trim()
+        : String(record[definition.fieldName] ?? "").trim(),
+    ])),
+  );
   const nextRecord = {
     ...record,
     inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
@@ -27533,6 +27725,7 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     authorizationHolderUserId: Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId")
       ? String(patch.authorizationHolderUserId ?? "").trim()
       : String(record.authorizationHolderUserId ?? "").trim(),
+    ...areaSpecificOverrideFields,
     fieldValues: {
       ...(record.fieldValues ?? {}),
     },
@@ -27565,6 +27758,10 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
+      electricalInspectorUserId: "",
+      electricalAuthorizationHolderUserId: "",
+      tipkaloInspectorUserId: "",
+      tipkaloAuthorizationHolderUserId: "",
     },
     overrides: {},
   };
@@ -27675,6 +27872,18 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       inspectorUserId: String(state.workOrderDocumentWizard.common?.inspectorUserId ?? "").trim(),
       authorizationHolderUserId: String(
         state.workOrderDocumentWizard.common?.authorizationHolderUserId ?? "",
+      ).trim(),
+      electricalInspectorUserId: String(
+        state.workOrderDocumentWizard.common?.electricalInspectorUserId ?? "",
+      ).trim(),
+      electricalAuthorizationHolderUserId: String(
+        state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId ?? "",
+      ).trim(),
+      tipkaloInspectorUserId: String(
+        state.workOrderDocumentWizard.common?.tipkaloInspectorUserId ?? "",
+      ).trim(),
+      tipkaloAuthorizationHolderUserId: String(
+        state.workOrderDocumentWizard.common?.tipkaloAuthorizationHolderUserId ?? "",
       ).trim(),
     },
     overrides: Object.fromEntries(
@@ -27810,7 +28019,6 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   const linkedTemplateTitles = Array.from(new Set(
     serviceItems.flatMap((item) => getResolvedWorkOrderServiceTemplateTitles(item)).map((value) => String(value ?? "").trim()).filter(Boolean),
   ));
-  const override = getWorkOrderDocumentWizardOverride(workOrder.id);
   const locationDetail = [
     workOrder.locationName || "",
     workOrder.locationAddressSnapshot && workOrder.locationAddressSnapshot !== workOrder.locationName
@@ -27909,10 +28117,10 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
     if (input instanceof HTMLTextAreaElement) {
       input.rows = rows;
-      input.value = override?.[fieldName] || "";
+      input.value = getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName);
       input.placeholder = placeholder;
     } else if (input instanceof HTMLInputElement) {
-      input.value = override?.[fieldName] || "";
+      input.value = getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName);
       input.placeholder = placeholder;
     }
     input.dataset.batchField = fieldName;
@@ -27921,6 +28129,31 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     field.append(labelNode, input);
     return field;
   };
+
+  const peopleBlock = document.createElement("section");
+  peopleBlock.className = "work-order-document-selection-person-block field-span-full";
+
+  const peopleHead = document.createElement("div");
+  peopleHead.className = "work-order-document-selection-person-head";
+
+  const peopleTitle = document.createElement("strong");
+  peopleTitle.textContent = "Ispitivači i odgovorne osobe";
+
+  const peopleCopy = document.createElement("span");
+  peopleCopy.textContent = "Zajednički odabiri gore ovdje se automatski preslikaju, a po RN-u ih mijenjaš samo ako treba.";
+
+  peopleHead.append(peopleTitle, peopleCopy);
+
+  const peopleGrid = document.createElement("div");
+  peopleGrid.className = "form-grid work-order-document-selection-person-grid";
+  WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.forEach((definition) => {
+    peopleGrid.append(createOverrideField({
+      label: definition.label,
+      fieldName: definition.fieldName,
+      options: getWorkOrderDocumentSignaturePersonOptions(definition.capability, definition.signatureArea),
+    }));
+  });
+  peopleBlock.append(peopleHead, peopleGrid);
 
   grid.append(
     createOverrideField({
@@ -27935,24 +28168,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       fieldName: "issuedDate",
       placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
     }),
-    createOverrideField({
-      label: "Ispitivači",
-      fieldName: "inspectorUserIds",
-      options: getQualifiedUserOptionsForSignatureAreas(
-        "inspect",
-        getWorkOrderRelevantSignatureAreas(workOrder),
-      ),
-      multiple: true,
-    }),
-    createOverrideField({
-      label: "Nositelj",
-      fieldName: "authorizationHolderUserId",
-      options: getQualifiedUserOptionsForSignatureAreas(
-        "authorize",
-        getWorkOrderRelevantSignatureAreas(workOrder),
-        { includeEmpty: true, emptyLabel: "Odaberi nositelja" },
-      ),
-    }),
+    peopleBlock,
     createOverrideField({
       label: "Mjesto izdavanja",
       type: "text",
@@ -27972,7 +28188,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const helper = document.createElement("span");
   helper.className = "work-order-document-selection-helper";
-  helper.textContent = "Gore postavis zajednicke datume i osobe, a ovdje prepravis samo ako ovaj RN odskace.";
+  helper.textContent = "Datume i osobe postavi gore za sve, a ovdje prepravi samo ako ovaj RN odskače.";
 
   const resetButton = document.createElement("button");
   resetButton.type = "button";
@@ -29752,6 +29968,10 @@ workOrderDocumentWizardCommonToggleButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonCollapsed = !state.workOrderDocumentWizard.commonCollapsed;
   renderWorkOrderDocumentWizardCommonSection();
 });
+workOrderDocumentWizardCommonPeopleToggleButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonPeopleCollapsed = !state.workOrderDocumentWizard.commonPeopleCollapsed;
+  renderWorkOrderDocumentWizardCommonPeopleSection();
+});
 workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
   setWorkOrderDocumentWizardStep("details");
 });
@@ -29776,7 +29996,10 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
   [workOrderDocumentCommonIssuedDateInput, "issuedDate"],
   [workOrderDocumentCommonIssuedPlaceInput, "issuedPlace"],
   [workOrderDocumentCommonNoteInput, "note"],
-  [workOrderDocumentCommonAuthorizationHolderInput, "authorizationHolderUserId"],
+  [workOrderDocumentCommonElectricalInspectorInput, "electricalInspectorUserId"],
+  [workOrderDocumentCommonElectricalAuthorizationHolderInput, "electricalAuthorizationHolderUserId"],
+  [workOrderDocumentCommonTipkaloInspectorInput, "tipkaloInspectorUserId"],
+  [workOrderDocumentCommonTipkaloAuthorizationHolderInput, "tipkaloAuthorizationHolderUserId"],
 ].forEach(([input, fieldName]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
@@ -29794,18 +30017,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
     }
   });
-});
-workOrderDocumentCommonInspectorInput?.addEventListener("change", () => {
-  const selectedValues = Array.from(workOrderDocumentCommonInspectorInput.selectedOptions ?? [])
-    .map((option) => String(option.value || "").trim())
-    .filter(Boolean);
-  state.workOrderDocumentWizard.common.inspectorUserIds = normalizeQualifiedUserIdList(selectedValues);
-  state.workOrderDocumentWizard.common.inspectorUserId = state.workOrderDocumentWizard.common.inspectorUserIds[0] || "";
-  renderWorkOrderDocumentWizardCommonSection();
-  renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
-  if (state.workOrderDocumentWizard.step === "templates") {
-    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
-  }
 });
 workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
   const target = event.target;

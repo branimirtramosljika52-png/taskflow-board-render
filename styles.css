@@ -7601,6 +7601,27 @@ body.is-work-order-document-wizard-open {
   flex-wrap: wrap;
 }
 
+.work-order-document-wizard-subblock-head,
+.work-order-document-selection-person-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+}
+
+.work-order-document-wizard-subblock-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-document-wizard-subblock-copy strong,
+.work-order-document-selection-person-head strong {
+  color: #283454;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
 .work-order-document-wizard-common-summary {
   color: #71809b;
   font-size: 0.84rem;
@@ -7619,6 +7640,48 @@ body.is-work-order-document-wizard-open {
 .work-order-document-wizard-common-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
+}
+
+.work-order-document-wizard-common-person-block,
+.work-order-document-selection-person-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(220, 156, 212, 0.3);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 247, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.work-order-document-wizard-common-person-block.is-collapsed {
+  gap: 0;
+}
+
+.work-order-document-wizard-common-people-grid,
+.work-order-document-selection-person-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.work-order-document-wizard-common-people-grid .field,
+.work-order-document-selection-person-grid .field {
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.28);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.work-order-document-wizard-common-people-grid .field > span,
+.work-order-document-selection-person-grid .field > span {
+  color: #697793;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.work-order-document-selection-person-head span {
+  color: #71809b;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .work-order-document-wizard-common-grid .field textarea {
@@ -7944,6 +8007,13 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-selection-grid textarea {
   min-height: 88px;
+}
+
+.work-order-document-selection-grid select,
+.work-order-document-wizard-common-people-grid select,
+.work-order-document-selection-person-grid select {
+  border-radius: 14px;
+  border-color: rgba(220, 156, 212, 0.46);
 }
 
 .work-order-document-selection-footer {
@@ -16273,6 +16343,8 @@ body.is-document-template-editor-open {
   .document-template-builder-shell,
   .document-template-preview-person-signature-grid,
   .work-order-document-wizard-common-grid,
+  .work-order-document-wizard-common-people-grid,
+  .work-order-document-selection-person-grid,
   .work-order-document-selection-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -16306,6 +16378,8 @@ body.is-document-template-editor-open {
   .document-template-preview-signatures,
   .document-template-preview-person-signature-grid,
   .work-order-document-wizard-common-grid,
+  .work-order-document-wizard-common-people-grid,
+  .work-order-document-selection-person-grid,
   .work-order-document-selection-grid {
     grid-template-columns: minmax(0, 1fr);
   }
