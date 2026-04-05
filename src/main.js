@@ -14508,12 +14508,16 @@ function renderDocumentTemplateFieldRows() {
     columnsField.className = "field document-template-inline-excel-field";
     columnsField.hidden = field.type !== "measurement_table";
     const columnsSpan = document.createElement("span");
+    columnsSpan.className = "document-template-inline-excel-label";
     columnsSpan.textContent = "Excel tablica";
+    columnsSpan.tabIndex = 0;
+    columnsSpan.setAttribute("role", "button");
+    columnsSpan.setAttribute("aria-label", "Otvori napredni Excel");
     const excelMeta = document.createElement("div");
     excelMeta.className = "document-template-excel-meta";
     excelMeta.tabIndex = 0;
     excelMeta.setAttribute("role", "button");
-    excelMeta.setAttribute("aria-label", "Otvori Excel tablicu");
+    excelMeta.setAttribute("aria-label", "Otvori napredni Excel");
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
@@ -14689,19 +14693,26 @@ function renderDocumentTemplateFieldRows() {
           });
         });
       };
-      excelMeta.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        openExcelBlock();
-      });
-      excelMeta.addEventListener("keydown", (event) => {
+      const handleOpenExcelActivatorKey = (event) => {
         if (event.key !== "Enter" && event.key !== " ") {
           return;
         }
 
         event.preventDefault();
         openExcelBlock();
+      };
+      columnsSpan.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openExcelBlock();
       });
+      columnsSpan.addEventListener("keydown", handleOpenExcelActivatorKey);
+      excelMeta.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openExcelBlock();
+      });
+      excelMeta.addEventListener("keydown", handleOpenExcelActivatorKey);
       documentTemplateMeasurementInlineHosts.set(fieldId, inlineExcelHost);
       columnsField.append(inlineExcelHost);
     }

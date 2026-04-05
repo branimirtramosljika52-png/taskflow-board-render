@@ -15366,6 +15366,25 @@ body.is-document-template-editor-open {
   grid-column: span 2;
 }
 
+.document-template-inline-excel-field > .document-template-inline-excel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #4c2d6d;
+  cursor: pointer;
+}
+
+.document-template-inline-excel-field > .document-template-inline-excel-label:focus-visible {
+  outline: 2px solid rgba(214, 89, 173, 0.32);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
 .document-template-inline-excel-launcher {
   cursor: pointer;
 }
