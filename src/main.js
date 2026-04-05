@@ -10621,7 +10621,10 @@ function addDocumentTemplateBuilderBlock(tool = "text") {
   renderDocumentTemplatePreviewContent();
 
   if (safeTool === "measurement_table") {
-    focusDocumentTemplateFieldLabel(fieldDraft.id);
+    requestAnimationFrame(() => {
+      ensureTemplateMeasurementSheetForField(fieldDraft.id);
+      focusDocumentTemplateFieldLabel(fieldDraft.id);
+    });
     return;
   }
 
@@ -14521,7 +14524,7 @@ function renderDocumentTemplateFieldRows() {
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
-    excelHint.textContent = "Klik otvara napredni prikaz, a tablica je prikazana odmah ispod.";
+    excelHint.textContent = "Klik otvara napredni Excel sa svim funkcijama.";
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
 
@@ -14683,7 +14686,6 @@ function renderDocumentTemplateFieldRows() {
       inlineExcelHost.className = "document-template-inline-excel-host";
       inlineExcelHost.dataset.templateFieldId = fieldId;
       inlineExcelHost.hidden = false;
-      inlineExcelHost.append(buildDocumentTemplateInlineExcelEditor(field, draftIndex));
       const openExcelBlock = () => {
         ensureTemplateMeasurementSheetForField(fieldId);
         requestAnimationFrame(() => {
@@ -14707,6 +14709,15 @@ function renderDocumentTemplateFieldRows() {
         openExcelBlock();
       });
       columnsSpan.addEventListener("keydown", handleOpenExcelActivatorKey);
+      columnsField.addEventListener("click", (event) => {
+        if (event.target instanceof HTMLElement && event.target.closest("input, select, textarea, button")) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        openExcelBlock();
+      });
       excelMeta.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
