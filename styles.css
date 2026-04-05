@@ -5927,6 +5927,7 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  align-items: center;
 }
 
 .measurement-sheet-meta {
@@ -15653,6 +15654,7 @@ body.is-document-template-editor-open {
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head-actions {
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid-wrap {
