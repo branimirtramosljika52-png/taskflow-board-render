@@ -4699,9 +4699,9 @@ body.is-selecting-measurement-cells .measurement-cell-input {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   align-items: start;
-  gap: 14px;
+  gap: 10px;
   min-height: 0;
-  padding: 16px;
+  padding: 12px 14px 14px;
   overflow: hidden;
   border-radius: 20px;
   border: 1px solid rgba(219, 206, 236, 0.92);
@@ -5913,13 +5913,23 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-head {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.measurement-sheet-head > div:first-child {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
 }
 
 .measurement-sheet-head h2 {
   margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
 .measurement-sheet-head-actions {
@@ -5933,7 +5943,8 @@ body.is-work-order-editor-open {
 .measurement-sheet-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+  padding: 2px 0 0;
 }
 
 .measurement-meta-field > span {
@@ -5948,10 +5959,21 @@ body.is-work-order-editor-open {
   border: 0;
 }
 
+.measurement-sheet-meta .field {
+  margin: 0;
+}
+
+.measurement-sheet-meta .field input,
+.measurement-sheet-meta .field select {
+  min-height: 40px;
+  border-radius: 12px;
+  padding-inline: 12px;
+}
+
 .measurement-sheet-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -15636,7 +15658,7 @@ body.is-document-template-editor-open {
   max-height: none;
   grid-template-rows: auto auto auto auto;
   align-content: start;
-  padding: 14px;
+  padding: 10px 12px 12px;
   overflow: visible;
   border-radius: 24px;
   border: 1px solid rgba(214, 89, 173, 0.28);
@@ -15645,16 +15667,26 @@ body.is-document-template-editor-open {
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head {
-  gap: 10px;
+  gap: 8px;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head h2 {
-  font-size: 1.35rem;
+  font-size: 1.02rem;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-head-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta {
+  gap: 6px;
+  padding-top: 0;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta .field input,
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta .field select {
+  min-height: 38px;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid-wrap {
