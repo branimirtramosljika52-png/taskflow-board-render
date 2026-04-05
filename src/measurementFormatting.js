@@ -1,6 +1,7 @@
 const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   type: "general",
   decimals: 2,
+  align: "auto",
   fontFamily: "default",
   fontSize: 14,
   bold: false,
@@ -151,10 +152,14 @@ export function normalizeMeasurementCellFormat(format = {}) {
   const type = ["general", "number", "integer", "percent", "text"].includes(format?.type)
     ? format.type
     : DEFAULT_MEASUREMENT_FORMAT.type;
+  const align = ["auto", "left", "center", "right"].includes(format?.align)
+    ? format.align
+    : DEFAULT_MEASUREMENT_FORMAT.align;
 
   return {
     type,
     decimals: clampMeasurementDecimals(format?.decimals),
+    align,
     fontFamily: normalizeMeasurementFontFamily(format?.fontFamily),
     fontSize: clampMeasurementFontSize(format?.fontSize),
     bold: Boolean(format?.bold),

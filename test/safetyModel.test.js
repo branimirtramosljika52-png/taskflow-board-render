@@ -647,6 +647,7 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
         },
       },
     ],
+    headerRows: ["measurement-row-1"],
   };
 
   const workOrder = createWorkOrder(
@@ -672,6 +673,7 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.bold, true);
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.italic, true);
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.fillColor, "#efe6ff");
+  assert.deepEqual(workOrder.measurementSheet.headerRows, ["measurement-row-1"]);
 
   const updated = updateWorkOrder(
     workOrder,
@@ -690,6 +692,7 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
               reading1: {
                 type: "number",
                 decimals: 2,
+                align: "center",
                 bold: true,
                 underline: true,
                 fillColor: "#f8e4ff",
@@ -697,6 +700,7 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
             },
           },
         ],
+        headerRows: ["measurement-row-1"],
       },
     },
     state,
@@ -708,6 +712,8 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
   assert.equal(updated.measurementSheet.rows[0].formats.reading1.bold, true);
   assert.equal(updated.measurementSheet.rows[0].formats.reading1.underline, true);
   assert.equal(updated.measurementSheet.rows[0].formats.reading1.fillColor, "#f8e4ff");
+  assert.equal(updated.measurementSheet.rows[0].formats.reading1.align, "center");
+  assert.deepEqual(updated.measurementSheet.headerRows, ["measurement-row-1"]);
 });
 
 test("work orders can store service catalog items with completion state", () => {

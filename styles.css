@@ -6046,6 +6046,7 @@ body.is-work-order-editor-open {
 
 .measurement-toolbar-tertiary {
   justify-content: space-between;
+  align-items: center;
 }
 
 .measurement-toolbar-actions {
@@ -6102,14 +6103,14 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-style-buttons .ghost-button {
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 14px;
+  min-height: 38px;
+  min-width: 38px;
+  padding: 0 10px;
   white-space: nowrap;
 }
 
 .measurement-toolbar-toggle-button {
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 800;
 }
 
@@ -6130,6 +6131,69 @@ body.is-work-order-editor-open {
 
 .measurement-toolbar-preset-buttons .ghost-button {
   min-width: 108px;
+}
+
+.measurement-toolbar-icon-button {
+  letter-spacing: 0.04em;
+}
+
+.measurement-toolbar-format.is-compact {
+  flex: 0 0 auto;
+}
+
+.measurement-toolbar-format.is-compact .measurement-toolbar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.measurement-toolbar-format.is-compact select,
+.measurement-toolbar-format.is-compact input {
+  min-height: 38px;
+  border-radius: 12px;
+}
+
+.measurement-toolbar-font-family.is-compact {
+  flex-basis: 88px;
+}
+
+.measurement-toolbar-font-size.is-compact {
+  flex-basis: 72px;
+}
+
+.measurement-toolbar-color-palette {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.measurement-color-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 17, 17, 0.16);
+  background: var(--swatch-color, #ffffff);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.measurement-color-swatch[data-fill-color=""] {
+  background:
+    linear-gradient(135deg, transparent 45%, rgba(220, 53, 69, 0.88) 45%, rgba(220, 53, 69, 0.88) 55%, transparent 55%),
+    #ffffff;
+}
+
+.measurement-color-swatch.is-active {
+  border-color: rgba(17, 17, 17, 0.88);
+  box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
 }
 
 .measurement-sheet-grid-wrap {
@@ -6276,7 +6340,6 @@ body.is-work-order-editor-open {
   background: #ffffff;
   position: relative;
   cursor: cell;
-  box-shadow: var(--measurement-border-shadow, none);
 }
 
 .measurement-sheet-grid td.is-merged-cell {
@@ -6305,7 +6368,7 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid td.is-selected-cell {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.12), rgba(83, 104, 255, 0.08));
-  box-shadow: var(--measurement-border-shadow, none), inset 0 0 0 1px rgba(83, 104, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(83, 104, 255, 0.28);
 }
 
 .measurement-sheet-grid tbody th.is-selected-row,
@@ -6360,7 +6423,7 @@ body.is-work-order-editor-open {
 }
 
 .measurement-sheet-grid td.is-active-cell {
-  box-shadow: var(--measurement-border-shadow, none), inset 0 0 0 2px rgba(83, 104, 255, 0.52);
+  box-shadow: inset 0 0 0 2px rgba(83, 104, 255, 0.52);
 }
 
 .measurement-sheet-grid td.is-fill-target {
@@ -6369,7 +6432,7 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid td.is-formula-reference-cell {
   background: linear-gradient(180deg, rgba(250, 204, 21, 0.18), rgba(250, 204, 21, 0.1));
-  box-shadow: var(--measurement-border-shadow, none), inset 0 0 0 2px rgba(234, 179, 8, 0.72);
+  box-shadow: inset 0 0 0 2px rgba(234, 179, 8, 0.72);
 }
 
 .measurement-sheet-grid td.has-formula-cell:not(.is-selected-cell) {
@@ -6391,10 +6454,10 @@ body.is-work-order-editor-open {
 
 .measurement-fill-handle {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 8px;
-  height: 8px;
+  right: 1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
   padding: 0;
   border: 1px solid #ffffff;
   border-radius: 2px;
@@ -6408,6 +6471,16 @@ body.is-work-order-editor-open {
 .measurement-sheet-grid td.is-fill-origin .measurement-fill-handle {
   opacity: 1;
   pointer-events: auto;
+}
+
+.measurement-sheet-grid tbody tr.is-measurement-header-row td,
+.measurement-sheet-grid tbody tr.is-measurement-header-row th {
+  background: linear-gradient(180deg, rgba(248, 228, 255, 0.68), rgba(240, 228, 255, 0.42));
+}
+
+.measurement-sheet-grid tbody tr.is-measurement-header-row th {
+  color: #8d3fd1;
+  font-weight: 800;
 }
 
 .measurement-fill-menu {

@@ -245,35 +245,12 @@ const MEASUREMENT_FONT_FAMILY_STYLES = Object.freeze({
 const MEASUREMENT_STYLE_PRESETS = Object.freeze({
   title: Object.freeze({
     fontFamily: "default",
-    fontSize: 22,
+    fontSize: 15,
+    align: "center",
     bold: true,
     italic: false,
     underline: false,
     fillColor: "#f8e4ff",
-  }),
-  subtitle: Object.freeze({
-    fontFamily: "default",
-    fontSize: 18,
-    bold: true,
-    italic: false,
-    underline: false,
-    fillColor: "#fdf0ff",
-  }),
-  header: Object.freeze({
-    fontFamily: "default",
-    fontSize: 15,
-    bold: true,
-    italic: false,
-    underline: false,
-    fillColor: "#efe6ff",
-  }),
-  reset: Object.freeze({
-    fontFamily: "default",
-    fontSize: 14,
-    bold: false,
-    italic: false,
-    underline: false,
-    fillColor: "",
   }),
 });
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
@@ -643,6 +620,7 @@ const state = {
     columns: [],
     rows: [],
     merges: [],
+    headerRows: [],
     resizing: null,
     activeCell: null,
     editingCell: null,
@@ -1698,13 +1676,14 @@ const measurementFormatBorderInput = document.querySelector("#measurement-format
 const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
 const measurementFormatFontSizeInput = document.querySelector("#measurement-format-font-size");
 const measurementFormatFillColorInput = document.querySelector("#measurement-format-fill-color");
+const measurementColorSwatchButtons = Array.from(document.querySelectorAll(".measurement-color-swatch"));
 const measurementFormatBoldButton = document.querySelector("#measurement-format-bold");
 const measurementFormatItalicButton = document.querySelector("#measurement-format-italic");
 const measurementFormatUnderlineButton = document.querySelector("#measurement-format-underline");
+const measurementAlignLeftButton = document.querySelector("#measurement-align-left");
+const measurementAlignCenterButton = document.querySelector("#measurement-align-center");
+const measurementAlignRightButton = document.querySelector("#measurement-align-right");
 const measurementStyleTitleButton = document.querySelector("#measurement-style-title");
-const measurementStyleSubtitleButton = document.querySelector("#measurement-style-subtitle");
-const measurementStyleHeaderButton = document.querySelector("#measurement-style-header");
-const measurementStyleResetButton = document.querySelector("#measurement-style-reset");
 const measurementMergeButton = document.querySelector("#measurement-merge");
 const measurementUnmergeButton = document.querySelector("#measurement-unmerge");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
@@ -1718,8 +1697,10 @@ const measurementFillSeriesButton = document.querySelector("#measurement-fill-se
 const measurementContextMenu = document.querySelector("#measurement-context-menu");
 const measurementContextAddRowAboveButton = document.querySelector("#measurement-context-add-row-above");
 const measurementContextAddRowBelowButton = document.querySelector("#measurement-context-add-row-below");
+const measurementContextDeleteRowButton = document.querySelector("#measurement-context-delete-row");
 const measurementContextAddColumnLeftButton = document.querySelector("#measurement-context-add-column-left");
 const measurementContextAddColumnRightButton = document.querySelector("#measurement-context-add-column-right");
+const measurementContextDeleteColumnButton = document.querySelector("#measurement-context-delete-column");
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
@@ -5624,6 +5605,13 @@ function normalizeMeasurementSheetRowSnapshotLocal(row = {}, columns = [], index
   };
 }
 
+function normalizeMeasurementSheetHeaderRowsSnapshotLocal(values = [], rows = []) {
+  const rowIds = new Set((Array.isArray(rows) ? rows : []).map((row) => row.id));
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value || "").trim())
+    .filter((value) => value && rowIds.has(value))));
+}
+
 function normalizeMeasurementSheetMergeSnapshotLocal(merge = {}, rows = [], columns = []) {
   const rowId = String(merge?.rowId || "").trim();
   const columnId = String(merge?.columnId || "").trim();
@@ -5675,6 +5663,7 @@ function buildTemplateMeasurementSheetFromLegacyConfig(field = {}) {
     columns,
     rows,
     merges: [],
+    headerRows: [],
   };
 }
 
@@ -5767,10 +5756,12 @@ function applyMeasurementSheetSnapshot(snapshot = null) {
   const merges = (normalized?.merges ?? [])
     .map((merge) => normalizeMeasurementSheetMergeSnapshotLocal(merge, rows, columns))
     .filter(Boolean);
+  const headerRows = normalizeMeasurementSheetHeaderRowsSnapshotLocal(normalized?.headerRows, rows);
 
   state.measurementSheet.columns = columns;
   state.measurementSheet.rows = rows;
   state.measurementSheet.merges = merges;
+  state.measurementSheet.headerRows = headerRows;
   state.measurementSheet.resizing = null;
   state.measurementSheet.activeCell = null;
   state.measurementSheet.editingCell = null;
@@ -5797,13 +5788,14 @@ function buildMeasurementSheetSnapshot({ includeBlankStructure = false } = {}) {
   const merges = (state.measurementSheet.merges ?? [])
     .map((merge) => normalizeMeasurementSheetMergeSnapshotLocal(merge, rows, columns))
     .filter(Boolean);
+  const headerRows = normalizeMeasurementSheetHeaderRowsSnapshotLocal(state.measurementSheet.headerRows, rows);
   const lastMeaningfulRowIndex = rows.reduce((lastIndex, row, index) => (
     isMeasurementSheetRowMeaningful(row, columns) ? index : lastIndex
   ), -1);
   const hasMeaningfulRows = lastMeaningfulRowIndex >= 0;
   const hasCustomStructure = isMeasurementSheetStructureCustomized(columns);
 
-  if (!includeBlankStructure && !hasMeaningfulRows && !hasCustomStructure && merges.length === 0) {
+  if (!includeBlankStructure && !hasMeaningfulRows && !hasCustomStructure && merges.length === 0 && headerRows.length === 0) {
     return null;
   }
 
@@ -5815,6 +5807,7 @@ function buildMeasurementSheetSnapshot({ includeBlankStructure = false } = {}) {
     columns,
     rows: rows.slice(0, keepRowCount),
     merges,
+    headerRows: normalizeMeasurementSheetHeaderRowsSnapshotLocal(headerRows, rows.slice(0, keepRowCount)),
   };
 }
 
@@ -5948,6 +5941,10 @@ function ensureMeasurementSheetStructure() {
       state.measurementSheet.columns,
     ))
     .filter(Boolean);
+  state.measurementSheet.headerRows = normalizeMeasurementSheetHeaderRowsSnapshotLocal(
+    state.measurementSheet.headerRows,
+    state.measurementSheet.rows,
+  );
   ensureMeasurementMinimumRows(MIN_VISIBLE_MEASUREMENT_ROWS);
 }
 
@@ -6257,8 +6254,12 @@ function buildMeasurementBorderFromPreset(preset, range, rowIndex, columnIndex) 
 
 function getMeasurementCellStyleConfig(format = {}) {
   const normalized = normalizeMeasurementCellFormat(format);
+  const textAlign = normalized.align !== "auto"
+    ? normalized.align
+    : (["number", "integer", "percent"].includes(normalized.type) ? "right" : "left");
 
   return {
+    textAlign,
     fontFamily: MEASUREMENT_FONT_FAMILY_STYLES[normalized.fontFamily] || MEASUREMENT_FONT_FAMILY_STYLES.default,
     fontSize: `${normalized.fontSize}px`,
     fontWeight: normalized.bold ? "700" : "400",
@@ -6273,15 +6274,73 @@ function applyMeasurementCellStyleToElements(cell, input, format = {}) {
 
   if (cell instanceof HTMLElement) {
     cell.style.backgroundColor = styleConfig.fillColor || "";
+    cell.style.textAlign = styleConfig.textAlign;
   }
 
   if (input instanceof HTMLElement) {
+    input.style.textAlign = styleConfig.textAlign;
     input.style.fontFamily = styleConfig.fontFamily;
     input.style.fontSize = styleConfig.fontSize;
     input.style.fontWeight = styleConfig.fontWeight;
     input.style.fontStyle = styleConfig.fontStyle;
     input.style.textDecoration = styleConfig.textDecoration;
   }
+}
+
+function applyMeasurementCellBorderStyle(cell, border = {}) {
+  if (!(cell instanceof HTMLElement)) {
+    return;
+  }
+
+  const normalized = normalizeMeasurementBorder(border);
+  const baseColor = "rgba(17, 17, 17, 0.12)";
+  const activeColor = "rgba(17, 17, 17, 0.96)";
+  cell.style.borderTop = `${normalized.top ? 2 : 1}px solid ${normalized.top ? activeColor : baseColor}`;
+  cell.style.borderRight = `${normalized.right ? 2 : 1}px solid ${normalized.right ? activeColor : baseColor}`;
+  cell.style.borderBottom = `${normalized.bottom ? 2 : 1}px solid ${normalized.bottom ? activeColor : baseColor}`;
+  cell.style.borderLeft = `${normalized.left ? 2 : 1}px solid ${normalized.left ? activeColor : baseColor}`;
+}
+
+function isMeasurementHeaderRow(rowId = "") {
+  return state.measurementSheet.headerRows.includes(String(rowId || ""));
+}
+
+function toggleMeasurementHeaderRows() {
+  const range = getMeasurementSelectedRange();
+
+  if (!range) {
+    return;
+  }
+
+  const selectedRowIds = state.measurementSheet.rows
+    .slice(range.startRowIndex, range.endRowIndex + 1)
+    .map((row) => row?.id)
+    .filter(Boolean);
+
+  if (selectedRowIds.length === 0) {
+    return;
+  }
+
+  const allSelectedAreHeaders = selectedRowIds.every((rowId) => isMeasurementHeaderRow(rowId));
+  const nextHeaderRows = new Set(state.measurementSheet.headerRows);
+
+  selectedRowIds.forEach((rowId) => {
+    if (allSelectedAreHeaders) {
+      nextHeaderRows.delete(rowId);
+    } else {
+      nextHeaderRows.add(rowId);
+    }
+  });
+
+  state.measurementSheet.headerRows = normalizeMeasurementSheetHeaderRowsSnapshotLocal(
+    state.measurementSheet.rows
+      .map((row) => row.id)
+      .filter((rowId) => nextHeaderRows.has(rowId)),
+    state.measurementSheet.rows,
+  );
+  renderMeasurementSheet();
+  handleMeasurementSheetMutation();
+  return !allSelectedAreHeaders;
 }
 
 function getMeasurementBorderShadow(border) {
@@ -6377,6 +6436,10 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
         nextFormat.decimals = formatOverrides.decimals;
       }
 
+      if ("align" in formatOverrides) {
+        nextFormat.align = formatOverrides.align;
+      }
+
       if ("fontFamily" in formatOverrides) {
         nextFormat.fontFamily = formatOverrides.fontFamily;
       }
@@ -6453,6 +6516,45 @@ function applyMeasurementStylePreset(presetKey) {
   }
 
   applyMeasurementToolbarFormat(preset);
+}
+
+function applyMeasurementStylePresetToSelectedRows(presetKey) {
+  const preset = MEASUREMENT_STYLE_PRESETS[presetKey];
+  const range = getMeasurementSelectedRange();
+
+  if (!preset || !range) {
+    return;
+  }
+
+  const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+  const lastColumnIndex = getLastEditableMeasurementColumnIndex();
+
+  if (firstColumnIndex < 0 || lastColumnIndex < firstColumnIndex) {
+    return;
+  }
+
+  const previousRange = state.measurementSheet.selectedRange;
+  const previousAnchor = state.measurementSheet.selectionAnchor;
+  state.measurementSheet.selectedRange = createMeasurementSelectionRange(
+    range.startRowIndex,
+    firstColumnIndex,
+    range.endRowIndex,
+    lastColumnIndex,
+  );
+  state.measurementSheet.selectionAnchor = {
+    rowIndex: range.startRowIndex,
+    columnIndex: firstColumnIndex,
+  };
+  applyMeasurementToolbarFormat(preset);
+  state.measurementSheet.selectedRange = previousRange;
+  state.measurementSheet.selectionAnchor = previousAnchor;
+  renderMeasurementSelection();
+  renderMeasurementActiveCell();
+  syncMeasurementToolbar();
+}
+
+function setMeasurementAlignment(align) {
+  applyMeasurementToolbarFormat({ align });
 }
 
 function getEditableMeasurementColumnIndexes() {
@@ -6552,15 +6654,31 @@ function syncMeasurementToolbar() {
     }
   });
 
+  toggleMeasurementToolbarButtonState(measurementAlignLeftButton, activeFormat.align === "left");
+  toggleMeasurementToolbarButtonState(measurementAlignCenterButton, activeFormat.align === "center");
+  toggleMeasurementToolbarButtonState(measurementAlignRightButton, activeFormat.align === "right");
   [
+    measurementAlignLeftButton,
+    measurementAlignCenterButton,
+    measurementAlignRightButton,
     measurementStyleTitleButton,
-    measurementStyleSubtitleButton,
-    measurementStyleHeaderButton,
-    measurementStyleResetButton,
   ].forEach((button) => {
     if (button instanceof HTMLButtonElement) {
       button.disabled = !state.measurementSheet.activeCell;
     }
+  });
+
+  toggleMeasurementToolbarButtonState(
+    measurementStyleTitleButton,
+    Boolean(getMeasurementSelectedRange())
+      && state.measurementSheet.rows
+        .slice(getMeasurementSelectedRange().startRowIndex, getMeasurementSelectedRange().endRowIndex + 1)
+        .every((row) => isMeasurementHeaderRow(row?.id)),
+  );
+
+  measurementColorSwatchButtons.forEach((button) => {
+    button.classList.toggle("is-active", (button.dataset.fillColor || "") === (activeFormat.fillColor || ""));
+    button.disabled = !state.measurementSheet.activeCell;
   });
 
   if (measurementMergeButton) {
@@ -7054,7 +7172,7 @@ function refreshMeasurementSheetComputedValues() {
       }
 
       if (column.computed === "average") {
-        cell.style.setProperty("--measurement-border-shadow", "none");
+        applyMeasurementCellBorderStyle(cell, {});
         cell.textContent = formatMeasurementAverage(row);
         return;
       }
@@ -7071,7 +7189,7 @@ function refreshMeasurementSheetComputedValues() {
 
       cell.classList.toggle("has-formula-cell", hasFormula);
       cell.classList.toggle("has-formula-error", hasError);
-      cell.style.setProperty("--measurement-border-shadow", getMeasurementBorderShadow(format.border));
+      applyMeasurementCellBorderStyle(cell, format.border);
       applyMeasurementCellStyleToElements(cell, input, format);
 
       if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
@@ -7300,8 +7418,16 @@ function renderMeasurementContextMenu() {
 
   measurementContextAddRowAboveButton.hidden = !hasRowActions;
   measurementContextAddRowBelowButton.hidden = !hasRowActions;
+  measurementContextDeleteRowButton.hidden = !hasRowActions;
   measurementContextAddColumnLeftButton.hidden = !hasColumnActions;
   measurementContextAddColumnRightButton.hidden = !hasColumnActions;
+  measurementContextDeleteColumnButton.hidden = !hasColumnActions;
+  if (measurementContextDeleteRowButton) {
+    measurementContextDeleteRowButton.disabled = state.measurementSheet.rows.length <= 1;
+  }
+  if (measurementContextDeleteColumnButton) {
+    measurementContextDeleteColumnButton.disabled = getEditableMeasurementColumnIndexes().length <= 1;
+  }
 
   if (!hasRowActions && !hasColumnActions) {
     measurementContextMenu.hidden = true;
@@ -7314,8 +7440,10 @@ function renderMeasurementContextMenu() {
   const visibleItems = [
     measurementContextAddRowAboveButton,
     measurementContextAddRowBelowButton,
+    measurementContextDeleteRowButton,
     measurementContextAddColumnLeftButton,
     measurementContextAddColumnRightButton,
+    measurementContextDeleteColumnButton,
   ].filter((button) => !button.hidden).length;
   const estimatedWidth = 220;
   const estimatedHeight = visibleItems * 42 + 16;
@@ -8342,6 +8470,7 @@ function renderMeasurementSheet() {
     const tr = document.createElement("tr");
     tr.dataset.rowId = row.id;
     tr.classList.toggle("is-measurement-empty-row", isMeasurementRowEmpty(row));
+    tr.classList.toggle("is-measurement-header-row", isMeasurementHeaderRow(row.id));
 
     const indexCell = document.createElement("th");
     indexCell.scope = "row";
@@ -8491,9 +8620,9 @@ function renderMeasurementSheet() {
       fillHandle.type = "button";
       fillHandle.className = "measurement-fill-handle";
       fillHandle.setAttribute("aria-label", `Kopiraj vrijednost prema dolje za kolonu ${column.label}`);
-      fillHandle.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+    fillHandle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
         const currentRange = getMeasurementSelectedRange();
 
         if (!currentRange
@@ -8523,6 +8652,48 @@ function renderMeasurementSheet() {
         };
         document.body.classList.add("is-filling-measurement-cells");
         renderMeasurementFillPreview();
+      });
+      fillHandle.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const currentRange = getMeasurementSelectedRange();
+        if (!currentRange) {
+          setMeasurementSelection(row.id, column.id);
+        }
+
+        const selectionRange = getMeasurementSelectedRange();
+        if (!selectionRange) {
+          return;
+        }
+
+        const snapshotRows = state.measurementSheet.rows
+          .slice(selectionRange.startRowIndex, selectionRange.endRowIndex + 1)
+          .map((sourceRow) => ({
+            cells: { ...sourceRow.cells },
+            formats: { ...(sourceRow.formats ?? {}) },
+          }));
+        const lastMeaningfulRowIndex = state.measurementSheet.rows.reduce((lastIndex, candidate, candidateIndex) => (
+          isMeasurementSheetRowMeaningful(candidate, state.measurementSheet.columns)
+            ? candidateIndex
+            : lastIndex
+        ), -1);
+        const targetEndRowIndex = Math.max(
+          selectionRange.endRowIndex,
+          lastMeaningfulRowIndex > selectionRange.endRowIndex ? lastMeaningfulRowIndex : Math.min(state.measurementSheet.rows.length - 1, selectionRange.endRowIndex + 12),
+        );
+
+        if (targetEndRowIndex <= selectionRange.endRowIndex) {
+          return;
+        }
+
+        applyMeasurementFill("copy", {
+          pendingFill: {
+            selectionRange,
+            endRowIndex: targetEndRowIndex,
+            snapshotRows,
+          },
+        });
       });
 
       shell.append(input, fillHandle);
@@ -8626,6 +8797,7 @@ function resetMeasurementSheet() {
   state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
   state.measurementSheet.merges = [];
+  state.measurementSheet.headerRows = [];
   state.measurementSheet.resizing = null;
   state.measurementSheet.activeCell = null;
   state.measurementSheet.editingCell = null;
@@ -8745,6 +8917,103 @@ function insertMeasurementContextColumn(position) {
   insertMeasurementColumnAt(position === "left"
     ? contextMenuState.columnIndex
     : contextMenuState.columnIndex + 1);
+}
+
+function deleteMeasurementRowAt(index) {
+  ensureMeasurementSheetStructure();
+
+  if (!Number.isInteger(index) || state.measurementSheet.rows.length <= 1) {
+    return;
+  }
+
+  const targetRow = state.measurementSheet.rows[index];
+  if (!targetRow) {
+    return;
+  }
+
+  state.measurementSheet.rows.splice(index, 1);
+  state.measurementSheet.headerRows = state.measurementSheet.headerRows.filter((rowId) => rowId !== targetRow.id);
+  state.measurementSheet.merges = getMeasurementMergeDescriptors()
+    .filter((merge) => index < merge.anchorRowIndex || index > merge.endRowIndex)
+    .map((merge) => ({
+      rowId: merge.rowId,
+      columnId: merge.columnId,
+      rowSpan: merge.rowSpan,
+      colSpan: merge.colSpan,
+    }));
+
+  renderMeasurementSheet();
+  const nextRowIndex = Math.max(0, Math.min(index, state.measurementSheet.rows.length - 1));
+  const nextColumnIndex = getFirstEditableMeasurementColumnIndex();
+  if (nextColumnIndex >= 0 && state.measurementSheet.rows[nextRowIndex]) {
+    setMeasurementSelectionByIndex(nextRowIndex, nextColumnIndex, { focus: true });
+  }
+  closeMeasurementContextMenu();
+  handleMeasurementSheetMutation();
+}
+
+function deleteMeasurementColumnAt(index) {
+  ensureMeasurementSheetStructure();
+  const targetColumn = state.measurementSheet.columns[index];
+
+  if (!targetColumn || targetColumn.computed) {
+    return;
+  }
+
+  const editableColumns = getEditableMeasurementColumnIndexes();
+  if (editableColumns.length <= 1) {
+    return;
+  }
+
+  state.measurementSheet.columns.splice(index, 1);
+  state.measurementSheet.rows.forEach((row) => {
+    if (row?.cells) {
+      delete row.cells[targetColumn.id];
+    }
+    if (row?.formats) {
+      delete row.formats[targetColumn.id];
+    }
+  });
+  state.measurementSheet.merges = getMeasurementMergeDescriptors()
+    .filter((merge) => index < merge.anchorColumnIndex || index > merge.endColumnIndex)
+    .map((merge) => ({
+      rowId: merge.rowId,
+      columnId: merge.columnId,
+      rowSpan: merge.rowSpan,
+      colSpan: merge.colSpan,
+    }));
+
+  renderMeasurementSheet();
+  const nextEditableIndexes = getEditableMeasurementColumnIndexes();
+  const nextColumnIndex = nextEditableIndexes.find((columnIndex) => columnIndex >= index)
+    ?? nextEditableIndexes[nextEditableIndexes.length - 1]
+    ?? -1;
+  const activeRowIndex = Math.max(0, getMeasurementActiveCellPosition()?.rowIndex ?? 0);
+  if (nextColumnIndex >= 0 && state.measurementSheet.rows[activeRowIndex]) {
+    setMeasurementSelectionByIndex(activeRowIndex, nextColumnIndex, { focus: true });
+  }
+  closeMeasurementContextMenu();
+  handleMeasurementSheetMutation();
+}
+
+function deleteMeasurementContextRow() {
+  const contextMenuState = state.measurementSheet.contextMenu;
+
+  if (!contextMenuState || !Number.isInteger(contextMenuState.rowIndex)) {
+    return;
+  }
+
+  deleteMeasurementRowAt(contextMenuState.rowIndex);
+}
+
+function deleteMeasurementContextColumn() {
+  const contextMenuState = state.measurementSheet.contextMenu;
+
+  if (!contextMenuState || !Number.isInteger(contextMenuState.columnIndex)) {
+    return;
+  }
+
+  deleteMeasurementColumnAt(contextMenuState.columnIndex);
 }
 
 function getEditableMeasurementColumnsInRange(range) {
@@ -8879,6 +9148,32 @@ function updateMeasurementFillTarget(pointerX, pointerY) {
 
   if (!fillDrag) {
     return;
+  }
+
+  if (measurementSheetGridWrap instanceof HTMLElement) {
+    const rect = measurementSheetGridWrap.getBoundingClientRect();
+    const verticalThreshold = 56;
+    const horizontalThreshold = 40;
+    let nextScrollTop = measurementSheetGridWrap.scrollTop;
+    let nextScrollLeft = measurementSheetGridWrap.scrollLeft;
+
+    if (pointerY > rect.bottom - verticalThreshold) {
+      nextScrollTop += 24;
+    } else if (pointerY < rect.top + verticalThreshold) {
+      nextScrollTop -= 24;
+    }
+
+    if (pointerX > rect.right - horizontalThreshold) {
+      nextScrollLeft += 18;
+    } else if (pointerX < rect.left + horizontalThreshold) {
+      nextScrollLeft -= 18;
+    }
+
+    if (nextScrollTop !== measurementSheetGridWrap.scrollTop || nextScrollLeft !== measurementSheetGridWrap.scrollLeft) {
+      measurementSheetGridWrap.scrollTop = Math.max(0, nextScrollTop);
+      measurementSheetGridWrap.scrollLeft = Math.max(0, nextScrollLeft);
+      extendMeasurementSheetRowsIfNeeded();
+    }
   }
 
   const pointedCell = document.elementFromPoint(pointerX, pointerY)?.closest?.("td[data-row-id][data-column-id]");
@@ -11870,6 +12165,7 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
     columns: snapshot.columns,
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
     merges: (snapshot.merges ?? []).map((merge) => ({ ...merge })),
+    headerRows: normalizeMeasurementSheetHeaderRowsSnapshotLocal(snapshot.headerRows, visibleRows),
     sourceLabel: fieldSnapshot
       ? "Podaci iz template Excel bloka"
       : (context.sampleWorkOrder?.workOrderNumber
@@ -11891,9 +12187,7 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
   const styleConfig = getMeasurementCellStyleConfig(format);
   const styles = [];
 
-  if (["number", "integer", "percent"].includes(format.type)) {
-    styles.push("text-align:right");
-  }
+  styles.push(`text-align:${styleConfig.textAlign}`);
   styles.push(`font-family:${styleConfig.fontFamily}`);
   styles.push(`font-size:${styleConfig.fontSize}`);
   styles.push(`font-weight:${styleConfig.fontWeight}`);
@@ -12162,27 +12456,30 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       ? previewTable.columns.map((column) => column.label || column.id)
       : fallbackColumns;
     const rowCount = Math.max(4, Math.min(40, Number(field.rowCount) || 12));
-    const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
-    const previewMerges = previewTable ? buildMeasurementSheetPreviewMergeMaps(previewTable) : null;
+    const headerRowIds = previewTable?.headerRows ?? [];
+    const headerRowIndexes = previewTable
+      ? previewTable.rows.reduce((indexes, row, rowIndex) => {
+        if (headerRowIds.includes(row.id)) {
+          indexes.push(rowIndex);
+        }
+        return indexes;
+      }, [])
+      : [];
+    const bodyRowIndexes = previewTable
+      ? previewTable.rows.reduce((indexes, row, rowIndex) => {
+        if (!headerRowIds.includes(row.id)) {
+          indexes.push(rowIndex);
+        }
+        return indexes;
+      }, [])
+      : [];
+    const head = headerRowIndexes.length > 0
+      ? renderMeasurementSheetPreviewRows(previewTable, headerRowIndexes, { header: true })
+      : `<tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
     const rows = placeholderMode
-      ? `<tbody><tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr></tbody>`
+      ? `<tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr>`
       : previewTable
-        ? previewTable.rows.map((row, rowIndex) => {
-          const cells = previewTable.columns.map((column, columnIndex) => {
-            if (previewMerges?.covered.has(`${rowIndex}:${columnIndex}`)) {
-              return "";
-            }
-
-            const merge = previewMerges?.anchors.get(`${rowIndex}:${columnIndex}`) ?? null;
-            const value = getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex);
-            const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(previewTable, rowIndex, column);
-            const safeValue = value ? escapeHtml(value) : "&nbsp;";
-            const rowSpanAttr = merge?.rowSpan > 1 ? ` rowspan="${merge.rowSpan}"` : "";
-            const colSpanAttr = merge?.colSpan > 1 ? ` colspan="${merge.colSpan}"` : "";
-            return `<td${rowSpanAttr}${colSpanAttr}${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ""}>${safeValue}</td>`;
-          }).join("");
-          return `<tr>${cells}</tr>`;
-        }).join("")
+        ? renderMeasurementSheetPreviewRows(previewTable, bodyRowIndexes)
         : Array.from({ length: rowCount }, (_, rowIndex) => (
           `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
         )).join("");
@@ -12197,7 +12494,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
         </div>
         <table class="document-template-preview-table">
-          <thead><tr>${head}</tr></thead>
+          <thead>${head}</thead>
           <tbody>${rows}</tbody>
         </table>
         ${previewSource}
@@ -12323,6 +12620,71 @@ function renderDocumentTemplatePreviewContent() {
     placeholderMode: false,
     sheetTabs: false,
   });
+}
+
+function buildMeasurementSheetSectionMergeMaps(sheet, rowIndexes = []) {
+  const anchors = new Map();
+  const covered = new Set();
+  const localRowIndexByGlobal = new Map(rowIndexes.map((rowIndex, localIndex) => [rowIndex, localIndex]));
+
+  (sheet?.merges ?? []).forEach((merge) => {
+    const anchorRowIndex = sheet?.rows?.findIndex?.((row) => row.id === merge.rowId) ?? -1;
+    const anchorColumnIndex = sheet?.columns?.findIndex?.((column) => column.id === merge.columnId) ?? -1;
+
+    if (anchorRowIndex < 0 || anchorColumnIndex < 0 || !localRowIndexByGlobal.has(anchorRowIndex)) {
+      return;
+    }
+
+    const rowSpan = Math.max(1, Math.min(Number(merge.rowSpan) || 1, sheet.rows.length - anchorRowIndex));
+    const colSpan = Math.max(1, Math.min(Number(merge.colSpan) || 1, sheet.columns.length - anchorColumnIndex));
+    const coveredGlobalRows = Array.from({ length: rowSpan }, (_, offset) => anchorRowIndex + offset);
+
+    if (!coveredGlobalRows.every((globalIndex) => localRowIndexByGlobal.has(globalIndex))) {
+      return;
+    }
+
+    const localAnchorRowIndex = localRowIndexByGlobal.get(anchorRowIndex);
+    anchors.set(`${localAnchorRowIndex}:${anchorColumnIndex}`, {
+      rowSpan,
+      colSpan,
+    });
+
+    coveredGlobalRows.forEach((globalRowIndex) => {
+      const localRowIndex = localRowIndexByGlobal.get(globalRowIndex);
+      for (let columnIndex = anchorColumnIndex; columnIndex < anchorColumnIndex + colSpan; columnIndex += 1) {
+        if (localRowIndex === localAnchorRowIndex && columnIndex === anchorColumnIndex) {
+          continue;
+        }
+        covered.add(`${localRowIndex}:${columnIndex}`);
+      }
+    });
+  });
+
+  return { anchors, covered };
+}
+
+function renderMeasurementSheetPreviewRows(sheet, rowIndexes = [], options = {}) {
+  const { header = false } = options;
+  const merges = buildMeasurementSheetSectionMergeMaps(sheet, rowIndexes);
+
+  return rowIndexes.map((globalRowIndex, localRowIndex) => {
+    const row = sheet.rows[globalRowIndex];
+    const cells = sheet.columns.map((column, columnIndex) => {
+      if (merges.covered.has(`${localRowIndex}:${columnIndex}`)) {
+        return "";
+      }
+
+      const merge = merges.anchors.get(`${localRowIndex}:${columnIndex}`) ?? null;
+      const value = getMeasurementSheetPreviewCellValue(sheet, globalRowIndex, columnIndex);
+      const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(sheet, globalRowIndex, column);
+      const safeValue = value ? escapeHtml(value) : "&nbsp;";
+      const rowSpanAttr = merge?.rowSpan > 1 ? ` rowspan="${merge.rowSpan}"` : "";
+      const colSpanAttr = merge?.colSpan > 1 ? ` colspan="${merge.colSpan}"` : "";
+      const cellTag = header ? "th" : "td";
+      return `<${cellTag}${rowSpanAttr}${colSpanAttr}${inlineStyle ? ` style="${escapeHtml(inlineStyle)}"` : ""}>${safeValue}</${cellTag}>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
 }
 
 function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
@@ -28289,11 +28651,17 @@ measurementContextAddRowAboveButton?.addEventListener("click", () => {
 measurementContextAddRowBelowButton?.addEventListener("click", () => {
   insertMeasurementContextRow("below");
 });
+measurementContextDeleteRowButton?.addEventListener("click", () => {
+  deleteMeasurementContextRow();
+});
 measurementContextAddColumnLeftButton?.addEventListener("click", () => {
   insertMeasurementContextColumn("left");
 });
 measurementContextAddColumnRightButton?.addEventListener("click", () => {
   insertMeasurementContextColumn("right");
+});
+measurementContextDeleteColumnButton?.addEventListener("click", () => {
+  deleteMeasurementContextColumn();
 });
 measurementFormulaInput?.addEventListener("focus", () => {
   if (!state.measurementSheet.activeCell) {
@@ -28390,17 +28758,27 @@ measurementFormatItalicButton?.addEventListener("click", () => {
 measurementFormatUnderlineButton?.addEventListener("click", () => {
   toggleMeasurementTextStyle("underline");
 });
+measurementAlignLeftButton?.addEventListener("click", () => {
+  setMeasurementAlignment("left");
+});
+measurementAlignCenterButton?.addEventListener("click", () => {
+  setMeasurementAlignment("center");
+});
+measurementAlignRightButton?.addEventListener("click", () => {
+  setMeasurementAlignment("right");
+});
 measurementStyleTitleButton?.addEventListener("click", () => {
-  applyMeasurementStylePreset("title");
+  const applied = toggleMeasurementHeaderRows();
+  if (applied) {
+    applyMeasurementStylePresetToSelectedRows("title");
+  }
 });
-measurementStyleSubtitleButton?.addEventListener("click", () => {
-  applyMeasurementStylePreset("subtitle");
-});
-measurementStyleHeaderButton?.addEventListener("click", () => {
-  applyMeasurementStylePreset("header");
-});
-measurementStyleResetButton?.addEventListener("click", () => {
-  applyMeasurementStylePreset("reset");
+measurementColorSwatchButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    applyMeasurementToolbarFormat({
+      fillColor: button.dataset.fillColor || "",
+    });
+  });
 });
 measurementFillCopyButton?.addEventListener("click", () => {
   applyMeasurementFill("copy");

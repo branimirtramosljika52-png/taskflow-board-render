@@ -660,6 +660,12 @@ function normalizeMeasurementSheetRowSnapshot(input = {}, columns = [], index = 
   };
 }
 
+function normalizeMeasurementSheetHeaderRowsSnapshot(values = [], rowIds = new Set()) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map((value) => normalizeText(value))
+    .filter((value) => value && rowIds.has(value))));
+}
+
 function normalizeMeasurementSheetMergeSnapshot(input = {}, rowIds = new Set(), columnIds = new Set()) {
   const rowId = normalizeText(input?.rowId);
   const columnId = normalizeText(input?.columnId);
@@ -707,6 +713,7 @@ function buildLegacyTemplateMeasurementSheet(columnsInput = [], rowCountInput = 
     columns,
     rows,
     merges: [],
+    headerRows: [],
   };
 }
 
@@ -736,11 +743,13 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
     .slice(0, 200)
     .map((merge) => normalizeMeasurementSheetMergeSnapshot(merge, rowIds, columnIds))
     .filter(Boolean);
+  const headerRows = normalizeMeasurementSheetHeaderRowsSnapshot(input.headerRows, rowIds);
 
   return {
     columns,
     rows,
     merges,
+    headerRows,
   };
 }
 

@@ -13,6 +13,7 @@ test("measurement formatting normalizes cell format settings", () => {
   assert.deepEqual(normalizeMeasurementCellFormat(), {
     type: "general",
     decimals: 2,
+    align: "auto",
     fontFamily: "default",
     fontSize: 14,
     bold: false,
@@ -40,6 +41,7 @@ test("measurement formatting normalizes cell format settings", () => {
   }), {
     type: "number",
     decimals: 6,
+    align: "auto",
     fontFamily: "calibri",
     fontSize: 24,
     bold: true,
@@ -63,6 +65,7 @@ test("measurement formatting normalizes cell format settings", () => {
   }), {
     type: "general",
     decimals: 0,
+    align: "auto",
     fontFamily: "default",
     fontSize: 40,
     bold: false,
