@@ -233,6 +233,49 @@ const DEFAULT_MEASUREMENT_COLUMNS = [
   { id: "average", label: "Prosjek", placeholder: "", width: 120, computed: "average", readonly: true },
   { id: "note", label: "Napomena", placeholder: "Napomena", width: 240 },
 ];
+const MEASUREMENT_FONT_FAMILY_STYLES = Object.freeze({
+  default: "inherit",
+  arial: "Arial, Helvetica, sans-serif",
+  calibri: "Calibri, Arial, Helvetica, sans-serif",
+  georgia: "Georgia, 'Times New Roman', serif",
+  times: "'Times New Roman', Times, serif",
+  verdana: "Verdana, Geneva, sans-serif",
+  courier: "'Courier New', Courier, monospace",
+});
+const MEASUREMENT_STYLE_PRESETS = Object.freeze({
+  title: Object.freeze({
+    fontFamily: "default",
+    fontSize: 22,
+    bold: true,
+    italic: false,
+    underline: false,
+    fillColor: "#f8e4ff",
+  }),
+  subtitle: Object.freeze({
+    fontFamily: "default",
+    fontSize: 18,
+    bold: true,
+    italic: false,
+    underline: false,
+    fillColor: "#fdf0ff",
+  }),
+  header: Object.freeze({
+    fontFamily: "default",
+    fontSize: 15,
+    bold: true,
+    italic: false,
+    underline: false,
+    fillColor: "#efe6ff",
+  }),
+  reset: Object.freeze({
+    fontFamily: "default",
+    fontSize: 14,
+    bold: false,
+    italic: false,
+    underline: false,
+    fillColor: "",
+  }),
+});
 const SIDEBAR_COLLAPSED_KEY = "s360-sidebar-collapsed";
 const RAIL_HIDDEN_KEY = "s360-rail-hidden";
 const ALL_SIDEBAR_GROUPS = [
@@ -1652,6 +1695,16 @@ const measurementFormulaInput = document.querySelector("#measurement-formula-inp
 const measurementFormatTypeInput = document.querySelector("#measurement-format-type");
 const measurementFormatDecimalsInput = document.querySelector("#measurement-format-decimals");
 const measurementFormatBorderInput = document.querySelector("#measurement-format-border");
+const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
+const measurementFormatFontSizeInput = document.querySelector("#measurement-format-font-size");
+const measurementFormatFillColorInput = document.querySelector("#measurement-format-fill-color");
+const measurementFormatBoldButton = document.querySelector("#measurement-format-bold");
+const measurementFormatItalicButton = document.querySelector("#measurement-format-italic");
+const measurementFormatUnderlineButton = document.querySelector("#measurement-format-underline");
+const measurementStyleTitleButton = document.querySelector("#measurement-style-title");
+const measurementStyleSubtitleButton = document.querySelector("#measurement-style-subtitle");
+const measurementStyleHeaderButton = document.querySelector("#measurement-style-header");
+const measurementStyleResetButton = document.querySelector("#measurement-style-reset");
 const measurementMergeButton = document.querySelector("#measurement-merge");
 const measurementUnmergeButton = document.querySelector("#measurement-unmerge");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
@@ -6202,10 +6255,39 @@ function buildMeasurementBorderFromPreset(preset, range, rowIndex, columnIndex) 
   return normalizeMeasurementBorder(preset);
 }
 
+function getMeasurementCellStyleConfig(format = {}) {
+  const normalized = normalizeMeasurementCellFormat(format);
+
+  return {
+    fontFamily: MEASUREMENT_FONT_FAMILY_STYLES[normalized.fontFamily] || MEASUREMENT_FONT_FAMILY_STYLES.default,
+    fontSize: `${normalized.fontSize}px`,
+    fontWeight: normalized.bold ? "700" : "400",
+    fontStyle: normalized.italic ? "italic" : "normal",
+    textDecoration: normalized.underline ? "underline" : "none",
+    fillColor: normalized.fillColor || "",
+  };
+}
+
+function applyMeasurementCellStyleToElements(cell, input, format = {}) {
+  const styleConfig = getMeasurementCellStyleConfig(format);
+
+  if (cell instanceof HTMLElement) {
+    cell.style.backgroundColor = styleConfig.fillColor || "";
+  }
+
+  if (input instanceof HTMLElement) {
+    input.style.fontFamily = styleConfig.fontFamily;
+    input.style.fontSize = styleConfig.fontSize;
+    input.style.fontWeight = styleConfig.fontWeight;
+    input.style.fontStyle = styleConfig.fontStyle;
+    input.style.textDecoration = styleConfig.textDecoration;
+  }
+}
+
 function getMeasurementBorderShadow(border) {
   const normalized = normalizeMeasurementBorder(border);
   const parts = [];
-  const borderColor = "rgba(83, 104, 255, 0.92)";
+  const borderColor = "rgba(17, 17, 17, 0.96)";
 
   if (normalized.top) {
     parts.push(`inset 0 2px 0 0 ${borderColor}`);
@@ -6295,6 +6377,30 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
         nextFormat.decimals = formatOverrides.decimals;
       }
 
+      if ("fontFamily" in formatOverrides) {
+        nextFormat.fontFamily = formatOverrides.fontFamily;
+      }
+
+      if ("fontSize" in formatOverrides) {
+        nextFormat.fontSize = formatOverrides.fontSize;
+      }
+
+      if ("bold" in formatOverrides) {
+        nextFormat.bold = formatOverrides.bold;
+      }
+
+      if ("italic" in formatOverrides) {
+        nextFormat.italic = formatOverrides.italic;
+      }
+
+      if ("underline" in formatOverrides) {
+        nextFormat.underline = formatOverrides.underline;
+      }
+
+      if ("fillColor" in formatOverrides) {
+        nextFormat.fillColor = formatOverrides.fillColor;
+      }
+
       if ("borderPreset" in formatOverrides) {
         nextFormat.border = buildMeasurementBorderFromPreset(
           formatOverrides.borderPreset,
@@ -6320,6 +6426,33 @@ function applyMeasurementToolbarFormat(overrides = {}) {
   renderMeasurementActiveCell();
   syncMeasurementToolbar();
   handleMeasurementSheetMutation();
+}
+
+function toggleMeasurementToolbarButtonState(button, isActive) {
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+
+  button.classList.toggle("is-active", Boolean(isActive));
+  button.setAttribute("aria-pressed", isActive ? "true" : "false");
+}
+
+function toggleMeasurementTextStyle(styleKey) {
+  const activeFormat = getMeasurementActiveCellFormat();
+
+  applyMeasurementToolbarFormat({
+    [styleKey]: !Boolean(activeFormat?.[styleKey]),
+  });
+}
+
+function applyMeasurementStylePreset(presetKey) {
+  const preset = MEASUREMENT_STYLE_PRESETS[presetKey];
+
+  if (!preset) {
+    return;
+  }
+
+  applyMeasurementToolbarFormat(preset);
 }
 
 function getEditableMeasurementColumnIndexes() {
@@ -6390,6 +6523,45 @@ function syncMeasurementToolbar() {
     measurementFormatBorderInput.value = getMeasurementBorderPreset(activeFormat.border);
     measurementFormatBorderInput.disabled = !state.measurementSheet.activeCell;
   }
+
+  if (measurementFormatFontFamilyInput) {
+    measurementFormatFontFamilyInput.value = activeFormat.fontFamily;
+    measurementFormatFontFamilyInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  if (measurementFormatFontSizeInput) {
+    measurementFormatFontSizeInput.value = String(activeFormat.fontSize);
+    measurementFormatFontSizeInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  if (measurementFormatFillColorInput) {
+    measurementFormatFillColorInput.value = activeFormat.fillColor || "#ffffff";
+    measurementFormatFillColorInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  toggleMeasurementToolbarButtonState(measurementFormatBoldButton, activeFormat.bold);
+  toggleMeasurementToolbarButtonState(measurementFormatItalicButton, activeFormat.italic);
+  toggleMeasurementToolbarButtonState(measurementFormatUnderlineButton, activeFormat.underline);
+  [
+    measurementFormatBoldButton,
+    measurementFormatItalicButton,
+    measurementFormatUnderlineButton,
+  ].forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = !state.measurementSheet.activeCell;
+    }
+  });
+
+  [
+    measurementStyleTitleButton,
+    measurementStyleSubtitleButton,
+    measurementStyleHeaderButton,
+    measurementStyleResetButton,
+  ].forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = !state.measurementSheet.activeCell;
+    }
+  });
 
   if (measurementMergeButton) {
     measurementMergeButton.disabled = !canMergeMeasurementSelection();
@@ -6900,6 +7072,7 @@ function refreshMeasurementSheetComputedValues() {
       cell.classList.toggle("has-formula-cell", hasFormula);
       cell.classList.toggle("has-formula-error", hasError);
       cell.style.setProperty("--measurement-border-shadow", getMeasurementBorderShadow(format.border));
+      applyMeasurementCellStyleToElements(cell, input, format);
 
       if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
         input.value = getMeasurementCellInputDisplayValue(rowIndex, columnIndex);
@@ -11715,22 +11888,31 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
   }
 
   const format = normalizeMeasurementCellFormat(sheet?.rows?.[rowIndex]?.formats?.[column.id]);
+  const styleConfig = getMeasurementCellStyleConfig(format);
   const styles = [];
 
   if (["number", "integer", "percent"].includes(format.type)) {
     styles.push("text-align:right");
   }
+  styles.push(`font-family:${styleConfig.fontFamily}`);
+  styles.push(`font-size:${styleConfig.fontSize}`);
+  styles.push(`font-weight:${styleConfig.fontWeight}`);
+  styles.push(`font-style:${styleConfig.fontStyle}`);
+  styles.push(`text-decoration:${styleConfig.textDecoration}`);
+  if (styleConfig.fillColor) {
+    styles.push(`background-color:${styleConfig.fillColor}`);
+  }
   if (format.border.top) {
-    styles.push("border-top:2px solid rgba(47,104,84,0.32)");
+    styles.push("border-top:2px solid rgba(17,17,17,0.96)");
   }
   if (format.border.right) {
-    styles.push("border-right:2px solid rgba(47,104,84,0.32)");
+    styles.push("border-right:2px solid rgba(17,17,17,0.96)");
   }
   if (format.border.bottom) {
-    styles.push("border-bottom:2px solid rgba(47,104,84,0.32)");
+    styles.push("border-bottom:2px solid rgba(17,17,17,0.96)");
   }
   if (format.border.left) {
-    styles.push("border-left:2px solid rgba(47,104,84,0.32)");
+    styles.push("border-left:2px solid rgba(17,17,17,0.96)");
   }
 
   return styles.join("; ");
@@ -28183,6 +28365,42 @@ measurementFormatBorderInput?.addEventListener("change", () => {
   applyMeasurementToolbarFormat({
     borderPreset: measurementFormatBorderInput.value,
   });
+});
+measurementFormatFontFamilyInput?.addEventListener("change", () => {
+  applyMeasurementToolbarFormat({
+    fontFamily: measurementFormatFontFamilyInput.value,
+  });
+});
+measurementFormatFontSizeInput?.addEventListener("change", () => {
+  applyMeasurementToolbarFormat({
+    fontSize: measurementFormatFontSizeInput.value,
+  });
+});
+measurementFormatFillColorInput?.addEventListener("input", () => {
+  applyMeasurementToolbarFormat({
+    fillColor: measurementFormatFillColorInput.value,
+  });
+});
+measurementFormatBoldButton?.addEventListener("click", () => {
+  toggleMeasurementTextStyle("bold");
+});
+measurementFormatItalicButton?.addEventListener("click", () => {
+  toggleMeasurementTextStyle("italic");
+});
+measurementFormatUnderlineButton?.addEventListener("click", () => {
+  toggleMeasurementTextStyle("underline");
+});
+measurementStyleTitleButton?.addEventListener("click", () => {
+  applyMeasurementStylePreset("title");
+});
+measurementStyleSubtitleButton?.addEventListener("click", () => {
+  applyMeasurementStylePreset("subtitle");
+});
+measurementStyleHeaderButton?.addEventListener("click", () => {
+  applyMeasurementStylePreset("header");
+});
+measurementStyleResetButton?.addEventListener("click", () => {
+  applyMeasurementStylePreset("reset");
 });
 measurementFillCopyButton?.addEventListener("click", () => {
   applyMeasurementFill("copy");

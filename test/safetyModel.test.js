@@ -633,7 +633,17 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
         formats: {
           point: { type: "text" },
           label: { type: "text" },
-          reading1: { type: "number", decimals: 1, border: "bottom" },
+          reading1: {
+            type: "number",
+            decimals: 1,
+            border: "bottom",
+            fontFamily: "georgia",
+            fontSize: 18,
+            bold: true,
+            italic: true,
+            underline: false,
+            fillColor: "#efe6ff",
+          },
         },
       },
     ],
@@ -657,6 +667,11 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.type, "number");
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.decimals, 1);
   assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.border.bottom, true);
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.fontFamily, "georgia");
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.fontSize, 18);
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.bold, true);
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.italic, true);
+  assert.equal(workOrder.measurementSheet.rows[0].formats.reading1.fillColor, "#efe6ff");
 
   const updated = updateWorkOrder(
     workOrder,
@@ -672,7 +687,13 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
               reading1: "=10+5",
             },
             formats: {
-              reading1: { type: "number", decimals: 2 },
+              reading1: {
+                type: "number",
+                decimals: 2,
+                bold: true,
+                underline: true,
+                fillColor: "#f8e4ff",
+              },
             },
           },
         ],
@@ -684,6 +705,9 @@ test("work orders keep measurement sheet snapshots for excel-like reports", () =
 
   assert.equal(updated.measurementSheet.rows[0].cells.reading1, "=10+5");
   assert.equal(updated.measurementSheet.rows[0].formats.reading1.decimals, 2);
+  assert.equal(updated.measurementSheet.rows[0].formats.reading1.bold, true);
+  assert.equal(updated.measurementSheet.rows[0].formats.reading1.underline, true);
+  assert.equal(updated.measurementSheet.rows[0].formats.reading1.fillColor, "#f8e4ff");
 });
 
 test("work orders can store service catalog items with completion state", () => {

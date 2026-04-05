@@ -13,6 +13,12 @@ test("measurement formatting normalizes cell format settings", () => {
   assert.deepEqual(normalizeMeasurementCellFormat(), {
     type: "general",
     decimals: 2,
+    fontFamily: "default",
+    fontSize: 14,
+    bold: false,
+    italic: false,
+    underline: false,
+    fillColor: "",
     border: {
       top: false,
       right: false,
@@ -24,10 +30,22 @@ test("measurement formatting normalizes cell format settings", () => {
   assert.deepEqual(normalizeMeasurementCellFormat({
     type: "number",
     decimals: 9,
+    fontFamily: "Calibri",
+    fontSize: 24,
+    bold: true,
+    italic: true,
+    underline: true,
+    fillColor: "#ABC",
     border: "all",
   }), {
     type: "number",
     decimals: 6,
+    fontFamily: "calibri",
+    fontSize: 24,
+    bold: true,
+    italic: true,
+    underline: true,
+    fillColor: "#aabbcc",
     border: {
       top: true,
       right: true,
@@ -39,9 +57,18 @@ test("measurement formatting normalizes cell format settings", () => {
   assert.deepEqual(normalizeMeasurementCellFormat({
     type: "unknown",
     decimals: -2,
+    fontFamily: "unknown",
+    fontSize: 99,
+    fillColor: "red",
   }), {
     type: "general",
     decimals: 0,
+    fontFamily: "default",
+    fontSize: 40,
+    bold: false,
+    italic: false,
+    underline: false,
+    fillColor: "",
     border: {
       top: false,
       right: false,

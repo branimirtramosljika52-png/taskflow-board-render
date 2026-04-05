@@ -5949,6 +5949,14 @@ body.is-work-order-editor-open {
   align-items: stretch;
 }
 
+.measurement-toolbar-tertiary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
 .measurement-toolbar-namebox,
 .measurement-toolbar-formula,
 .measurement-toolbar-format {
@@ -6036,6 +6044,10 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
 }
 
+.measurement-toolbar-tertiary {
+  justify-content: space-between;
+}
+
 .measurement-toolbar-actions {
   display: flex;
   align-items: flex-end;
@@ -6054,13 +6066,70 @@ body.is-work-order-editor-open {
   flex: 1 1 0;
 }
 
+.measurement-toolbar-font-family {
+  flex: 0 1 220px;
+}
+
+.measurement-toolbar-font-size {
+  flex: 0 0 110px;
+}
+
+.measurement-toolbar-color {
+  flex: 0 0 140px;
+}
+
 .measurement-toolbar-format select,
 .measurement-toolbar-format input {
   padding: 0 14px;
 }
 
+.measurement-toolbar-color input[type="color"] {
+  padding: 6px;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+}
+
 .measurement-toolbar-decimals {
   flex: 0 0 110px;
+}
+
+.measurement-toolbar-style-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.measurement-toolbar-style-buttons .ghost-button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.measurement-toolbar-toggle-button {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.measurement-toolbar-toggle-button.is-italic {
+  font-style: italic;
+}
+
+.measurement-toolbar-toggle-button.is-underlined {
+  text-decoration: underline;
+}
+
+.measurement-toolbar-style-buttons .ghost-button.is-active {
+  border-color: rgba(17, 17, 17, 0.9);
+  background: rgba(17, 17, 17, 0.92);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(17, 17, 17, 0.18);
+}
+
+.measurement-toolbar-preset-buttons .ghost-button {
+  min-width: 108px;
 }
 
 .measurement-sheet-grid-wrap {
@@ -6088,8 +6157,8 @@ body.is-work-order-editor-open {
   top: 0;
   z-index: 1;
   padding: 0;
-  border-right: 1px solid rgba(229, 233, 241, 0.96);
-  border-bottom: 1px solid rgba(229, 233, 241, 0.96);
+  border-right: 1px solid rgba(17, 17, 17, 0.12);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.12);
   background: #f8f9fc;
   vertical-align: top;
 }
@@ -6191,8 +6260,8 @@ body.is-work-order-editor-open {
   left: 0;
   z-index: 1;
   padding: 0 8px;
-  border-right: 1px solid rgba(233, 236, 242, 0.98);
-  border-bottom: 1px solid rgba(233, 236, 242, 0.98);
+  border-right: 1px solid rgba(17, 17, 17, 0.12);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.12);
   background: #fafbfe;
   color: #7b8499;
   font-weight: 700;
@@ -6202,8 +6271,8 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid tbody td {
   padding: 0;
-  border-right: 1px solid rgba(233, 236, 242, 0.98);
-  border-bottom: 1px solid rgba(233, 236, 242, 0.98);
+  border-right: 1px solid rgba(17, 17, 17, 0.12);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.12);
   background: #ffffff;
   position: relative;
   cursor: cell;
@@ -6253,12 +6322,12 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid tr:last-child td,
 .measurement-sheet-grid tr:last-child th {
-  border-bottom: 1px solid rgba(233, 236, 242, 0.98);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.12);
 }
 
 .measurement-sheet-grid th:last-child,
 .measurement-sheet-grid td:last-child {
-  border-right: 1px solid rgba(233, 236, 242, 0.98);
+  border-right: 1px solid rgba(17, 17, 17, 0.12);
 }
 
 .measurement-cell-input {

@@ -1,3 +1,5 @@
+import { normalizeMeasurementCellFormat } from "./measurementFormatting.js";
+
 export const WORK_ORDER_STATUS_OPTIONS = [
   { value: "Otvoreni RN", label: "Otvoreni RN" },
   { value: "Gotov RN", label: "Gotov RN" },
@@ -621,14 +623,10 @@ function normalizeMeasurementSheetBorderSnapshot(border = {}) {
 }
 
 function normalizeMeasurementSheetCellFormatSnapshot(format = {}) {
-  const type = normalizeText(format?.type).toLowerCase();
-  const decimals = Number.parseInt(format?.decimals, 10);
-
-  return {
-    type: ["general", "number", "integer", "percent", "text"].includes(type) ? type : "general",
-    decimals: Number.isInteger(decimals) ? Math.min(6, Math.max(0, decimals)) : 2,
+  return normalizeMeasurementCellFormat({
+    ...format,
     border: normalizeMeasurementSheetBorderSnapshot(format?.border),
-  };
+  });
 }
 
 function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {

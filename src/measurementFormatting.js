@@ -1,6 +1,12 @@
 const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   type: "general",
   decimals: 2,
+  fontFamily: "default",
+  fontSize: 14,
+  bold: false,
+  italic: false,
+  underline: false,
+  fillColor: "",
   border: Object.freeze({
     top: false,
     right: false,
@@ -10,6 +16,7 @@ const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
 });
 
 const BORDER_PRESETS = new Set(["none", "all", "top", "right", "bottom", "left"]);
+const FONT_FAMILIES = new Set(["default", "arial", "calibri", "georgia", "times", "verdana", "courier"]);
 
 function clampMeasurementDecimals(value) {
   const parsed = Number.parseInt(value, 10);
@@ -19,6 +26,39 @@ function clampMeasurementDecimals(value) {
   }
 
   return Math.min(6, Math.max(0, parsed));
+}
+
+function clampMeasurementFontSize(value) {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_MEASUREMENT_FORMAT.fontSize;
+  }
+
+  return Math.min(40, Math.max(10, parsed));
+}
+
+function normalizeMeasurementFontFamily(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return FONT_FAMILIES.has(normalized) ? normalized : DEFAULT_MEASUREMENT_FORMAT.fontFamily;
+}
+
+function normalizeMeasurementFillColor(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^#[0-9a-f]{3}$/i.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) {
+    return normalized;
+  }
+
+  return "";
 }
 
 function parseMeasurementNumericValue(value) {
@@ -115,6 +155,12 @@ export function normalizeMeasurementCellFormat(format = {}) {
   return {
     type,
     decimals: clampMeasurementDecimals(format?.decimals),
+    fontFamily: normalizeMeasurementFontFamily(format?.fontFamily),
+    fontSize: clampMeasurementFontSize(format?.fontSize),
+    bold: Boolean(format?.bold),
+    italic: Boolean(format?.italic),
+    underline: Boolean(format?.underline),
+    fillColor: normalizeMeasurementFillColor(format?.fillColor),
     border: normalizeMeasurementBorder(format?.border),
   };
 }
