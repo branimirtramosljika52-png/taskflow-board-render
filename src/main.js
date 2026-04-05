@@ -589,6 +589,7 @@ const state = {
     tone: "",
   },
   documentTemplateRuntime: {
+    mode: "builder",
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
@@ -653,6 +654,7 @@ const state = {
     contextMenu: null,
     ownerKind: "work_order",
     ownerFieldId: "",
+    ownerRuntimeWorkOrderId: "",
   },
   dashboardBuilder: {
     open: false,
@@ -1175,6 +1177,8 @@ const documentTemplateEditorPanel = document.querySelector("#document-template-e
 const documentTemplateEditorCloseButton = document.querySelector("#document-template-editor-close");
 const documentTemplateEditorBody = documentTemplateEditorPanel?.querySelector(".document-template-editor-body");
 const documentTemplateEditorTitle = document.querySelector("#document-template-editor-title");
+const documentTemplateWorkspaceHead = documentTemplateEditorPanel?.querySelector(".document-template-workspace-head");
+const documentTemplateHeadActions = documentTemplateEditorPanel?.querySelector(".document-template-head-actions");
 const documentTemplateOpenPdfPreviewButton = document.querySelector("#document-template-open-pdf-preview");
 const documentTemplateExportPlaceholderButton = document.querySelector("#document-template-export-placeholder");
 const documentTemplateExportPreviewButton = document.querySelector("#document-template-export-preview");
@@ -1189,16 +1193,22 @@ const documentTemplateRuntimeHelper = document.querySelector("#document-template
 const documentTemplateRuntimeWorkOrders = document.querySelector("#document-template-runtime-work-orders");
 const documentTemplateRuntimeCommon = document.querySelector("#document-template-runtime-common");
 const documentTemplateRuntimeClearButton = document.querySelector("#document-template-runtime-clear");
+const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
 const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
 const documentTemplateLocationIdInput = document.querySelector("#document-template-location-id");
 const documentTemplateDescriptionInput = document.querySelector("#document-template-description");
+const documentTemplateDescriptionField = documentTemplateDescriptionInput?.closest("label");
 const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
 const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
 const documentTemplateLinkSummary = document.querySelector("#document-template-link-summary");
 const documentTemplateToolbox = document.querySelector("#document-template-toolbox");
 const documentTemplateAddFieldButton = document.querySelector("#document-template-add-field");
 const documentTemplateAddExcelButton = document.querySelector("#document-template-add-excel");
+const documentTemplateBuilderShell = documentTemplateEditorPanel?.querySelector(".document-template-builder-shell");
+const documentTemplateBuilderSidebar = documentTemplateEditorPanel?.querySelector(".document-template-builder-sidebar");
+const documentTemplateBuilderMain = documentTemplateEditorPanel?.querySelector(".document-template-builder-main");
+const documentTemplateLayoutActions = documentTemplateEditorPanel?.querySelector(".document-template-layout-actions");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
 const documentTemplateEquipmentItems = document.querySelector("#document-template-equipment-items");
 const documentTemplateAddEquipmentButton = document.querySelector("#document-template-add-equipment");
@@ -1209,6 +1219,7 @@ const documentTemplateReferenceUploadButton = document.querySelector("#document-
 const documentTemplateReferenceDownloadButton = document.querySelector("#document-template-reference-download");
 const documentTemplateReferenceRemoveButton = document.querySelector("#document-template-reference-remove");
 const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
+const documentTemplateFormActions = documentTemplateEditorPanel?.querySelector(".form-actions");
 const documentTemplatePreview = document.querySelector("#document-template-preview");
 const documentTemplateError = document.querySelector("#document-template-error");
 const documentTemplateResetButton = document.querySelector("#document-template-reset");
@@ -4516,6 +4527,11 @@ function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = 
 function handleMeasurementSheetMutation({ immediate = false } = {}) {
   if (state.measurementSheet.ownerKind === "template_field") {
     persistMeasurementSheetToTemplateField();
+    return;
+  }
+
+  if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+    persistMeasurementSheetToDocumentTemplateRuntimeField();
     return;
   }
 
@@ -8262,6 +8278,40 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
     return;
   }
 
+  if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+    const activeWorkOrderId = String(
+      state.measurementSheet.ownerRuntimeWorkOrderId
+      || state.documentTemplateRuntime.activeWorkOrderId
+      || "",
+    ).trim();
+    const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === activeWorkOrderId) || null;
+    const field = documentTemplateFieldDrafts.find((item) => String(item.id) === String(state.measurementSheet.ownerFieldId || "")) || null;
+    const company = getCompany(workOrder?.companyId || "");
+    const location = getLocation(workOrder?.locationId || "");
+
+    if (measurementCompanyInput) {
+      measurementCompanyInput.value = company?.name || documentTemplateTitleInput?.value || "Excel tablica";
+    }
+
+    if (measurementHeadquartersInput) {
+      measurementHeadquartersInput.value = field?.label || "Excel tablica";
+    }
+
+    if (measurementLocationInput) {
+      measurementLocationInput.value = [
+        workOrder?.workOrderNumber || "",
+        location?.name || "",
+      ].filter(Boolean).join(" · ");
+    }
+
+    if (measurementDateInput) {
+      measurementDateInput.value = getDocumentTemplateRuntimeValue(activeWorkOrderId, "inspectionDate")
+        || new Date().toISOString().slice(0, 10);
+    }
+
+    return;
+  }
+
   const company = getCompany(workOrderCompanyIdInput.value);
   const location = getLocation(workOrderLocationIdInput.value);
 
@@ -8305,6 +8355,80 @@ function openTemplateMeasurementSheet(fieldId) {
   }
 
   setMeasurementSheetOpen(true);
+  syncMeasurementToolbar();
+}
+
+function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows = false } = {}) {
+  const workOrderId = String(
+    state.measurementSheet.ownerRuntimeWorkOrderId
+    || state.documentTemplateRuntime.activeWorkOrderId
+    || "",
+  ).trim();
+  const fieldId = String(state.measurementSheet.ownerFieldId || "").trim();
+  if (!workOrderId || !fieldId) {
+    return;
+  }
+
+  const field = documentTemplateFieldDrafts.find((item) => String(item.id) === fieldId);
+  const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
+    ?? buildTemplateMeasurementSheetFromLegacyConfig(field ?? {});
+  setDocumentTemplateRuntimeMeasurementSheet(workOrderId, fieldId, snapshot, { render: false });
+  renderDocumentTemplatePreviewContent();
+  syncDocumentTemplateEditorChrome();
+
+  if (rerenderFieldRows) {
+    renderDocumentTemplateFieldRows();
+  }
+}
+
+function openDocumentTemplateRuntimeMeasurementSheet(fieldId, workOrderId = state.documentTemplateRuntime.activeWorkOrderId) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  if (!normalizedFieldId || !normalizedWorkOrderId) {
+    return;
+  }
+
+  const field = documentTemplateFieldDrafts.find((item) => String(item.id) === normalizedFieldId);
+  if (!field) {
+    return;
+  }
+
+  state.measurementSheet.ownerKind = "document_template_runtime_field";
+  state.measurementSheet.ownerFieldId = normalizedFieldId;
+  state.measurementSheet.ownerRuntimeWorkOrderId = normalizedWorkOrderId;
+  applyMeasurementSheetSnapshot(getDocumentTemplateRuntimeMeasurementSheet(normalizedWorkOrderId, field));
+  syncMeasurementSheetHeaderFromWorkOrder();
+  renderMeasurementSheet();
+
+  if (!state.measurementSheet.activeCell) {
+    const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+
+    if (firstColumnIndex >= 0 && state.measurementSheet.rows[0]) {
+      setMeasurementSelectionByIndex(0, firstColumnIndex);
+    }
+  }
+
+  setMeasurementSheetOpen(true);
+  syncMeasurementToolbar();
+}
+
+function ensureDocumentTemplateRuntimeMeasurementSheetForField(fieldId, workOrderId = state.documentTemplateRuntime.activeWorkOrderId) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  if (!normalizedFieldId || !normalizedWorkOrderId) {
+    return;
+  }
+
+  const isSameField = state.measurementSheet.ownerKind === "document_template_runtime_field"
+    && String(state.measurementSheet.ownerFieldId || "") === normalizedFieldId
+    && String(state.measurementSheet.ownerRuntimeWorkOrderId || "") === normalizedWorkOrderId;
+
+  if (!state.measurementSheet.isOpen || !isSameField) {
+    openDocumentTemplateRuntimeMeasurementSheet(normalizedFieldId, normalizedWorkOrderId);
+    return;
+  }
+
+  syncMeasurementSheetPanelMount();
   syncMeasurementToolbar();
 }
 
@@ -8588,11 +8712,17 @@ function syncDocumentTemplateInlineExcelPreviewVisibility() {
     return;
   }
 
-  const activeFieldId = state.measurementSheet.ownerKind === "template_field"
+  const activeFieldId = (
+    state.measurementSheet.ownerKind === "template_field"
+    || state.measurementSheet.ownerKind === "document_template_runtime_field"
+  )
     ? String(state.measurementSheet.ownerFieldId || "")
     : "";
   const isInlineOpen = state.measurementSheet.isOpen
-    && state.measurementSheet.ownerKind === "template_field"
+    && (
+      state.measurementSheet.ownerKind === "template_field"
+      || state.measurementSheet.ownerKind === "document_template_runtime_field"
+    )
     && Boolean(activeFieldId);
 
   documentTemplateCustomFields.querySelectorAll(".document-template-inline-excel-host").forEach((host) => {
@@ -8649,7 +8779,10 @@ function syncMeasurementSheetPanelMount() {
     return;
   }
 
-  const shouldMountInline = state.measurementSheet.isOpen && state.measurementSheet.ownerKind === "template_field";
+  const shouldMountInline = state.measurementSheet.isOpen && (
+    state.measurementSheet.ownerKind === "template_field"
+    || state.measurementSheet.ownerKind === "document_template_runtime_field"
+  );
   let inlineHost = shouldMountInline
     ? getTemplateMeasurementSheetInlineHost(state.measurementSheet.ownerFieldId)
     : null;
@@ -9123,6 +9256,7 @@ function setMeasurementSheetOpen(isOpen) {
 function openMeasurementSheet() {
   state.measurementSheet.ownerKind = "work_order";
   state.measurementSheet.ownerFieldId = "";
+  state.measurementSheet.ownerRuntimeWorkOrderId = "";
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
   if (!state.measurementSheet.activeCell) {
@@ -9143,6 +9277,8 @@ function closeMeasurementSheet() {
 
   if (state.measurementSheet.ownerKind === "template_field") {
     persistMeasurementSheetToTemplateField({ rerenderFieldRows: true });
+  } else if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+    persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows: true });
   }
 
   clearScheduledMeasurementSheetRefresh();
@@ -9163,6 +9299,7 @@ function closeMeasurementSheet() {
   }
   state.measurementSheet.ownerKind = "work_order";
   state.measurementSheet.ownerFieldId = "";
+  state.measurementSheet.ownerRuntimeWorkOrderId = "";
 }
 
 function resetMeasurementSheet() {
@@ -11506,6 +11643,9 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
 }
 
 function addDocumentTemplateBuilderBlock(tool = "text") {
+  if (isDocumentTemplateRuntimeFillMode()) {
+    return;
+  }
   const safeTool = String(tool || "text").trim().toLowerCase();
 
   const fieldDraft = buildDocumentTemplateToolFieldDraft(safeTool);
@@ -12135,6 +12275,10 @@ function saveDocumentTemplate() {
     return;
   }
 
+  if (isDocumentTemplateRuntimeFillMode()) {
+    return;
+  }
+
   if (state.measurementSheet.ownerKind === "template_field") {
     if (state.measurementSheet.editingCell) {
       commitMeasurementEditMode();
@@ -12209,11 +12353,15 @@ function getDocumentTemplateLegalFrameworkOptions() {
 function getDocumentTemplateLegalFrameworksForField(
   template = buildDocumentTemplateDraft(),
   field = {},
-  { selectedOnly = false } = {},
+  { selectedOnly = false, selectedIds: selectedIdsOverride = null } = {},
 ) {
   const allFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
   const visibleIds = new Set((field.legalFrameworkIds ?? []).map((value) => String(value)).filter(Boolean));
-  const selectedIds = new Set((field.defaultLegalFrameworkIds ?? []).map((value) => String(value)).filter(Boolean));
+  const selectedIds = new Set(
+    (selectedIdsOverride ?? field.defaultLegalFrameworkIds ?? [])
+      .map((value) => String(value))
+      .filter(Boolean),
+  );
   const availableFrameworks = visibleIds.size > 0
     ? allFrameworks.filter((item) => visibleIds.has(String(item.id)))
     : allFrameworks;
@@ -12227,6 +12375,17 @@ function getDocumentTemplateLegalFrameworksForField(
     : [];
 
   return selectedFrameworks;
+}
+
+function getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrderId, field = {}) {
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  if (Array.isArray(runtimeValue)) {
+    return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+
+  return (field.defaultLegalFrameworkIds ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
 }
 
 function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplateDraft()) {
@@ -12449,6 +12608,24 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return field.label || field.wordLabel || `Blok ${index + 1}`;
   }
 
+  const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+  const runtimeValue = runtimeWorkOrderId
+    ? getDocumentTemplateRuntimeFieldValue(runtimeWorkOrderId, field.id)
+    : undefined;
+  if (runtimeValue !== undefined) {
+    if (field.type === "checkbox" || field.type === "toggle") {
+      return runtimeValue ? "Da" : "Ne";
+    }
+
+    if (field.type === "date") {
+      return String(runtimeValue || "").trim()
+        ? formatCompactDate(String(runtimeValue || "").trim())
+        : "";
+    }
+
+    return String(runtimeValue ?? "").trim();
+  }
+
   const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
   if (boundValue) {
     return boundValue;
@@ -12584,8 +12761,13 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
 }
 
 function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
+  const runtimeSnapshot = context.sampleWorkOrder?.id
+    ? getDocumentTemplateRuntimeMeasurementSheet(context.sampleWorkOrder.id, field)
+    : null;
   const fieldSnapshot = normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet);
-  const snapshot = fieldSnapshot || normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
+  const snapshot = runtimeSnapshot
+    || fieldSnapshot
+    || normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
 
   if (!snapshot?.columns?.length) {
     return null;
@@ -12602,7 +12784,9 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
     merges: (snapshot.merges ?? []).map((merge) => ({ ...merge })),
     headerRows: normalizeMeasurementSheetHeaderRowsSnapshotLocal(snapshot.headerRows, visibleRows),
-    sourceLabel: fieldSnapshot
+    sourceLabel: runtimeSnapshot
+      ? "Podaci iz ispunjenog Excel bloka"
+      : fieldSnapshot
       ? "Podaci iz template Excel bloka"
       : (context.sampleWorkOrder?.workOrderNumber
       ? `Podaci iz RN ${context.sampleWorkOrder.workOrderNumber}`
@@ -12829,7 +13013,17 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
 
   if (field.type === "legal_list") {
     const visibleFrameworks = getDocumentTemplateLegalFrameworksForField(context.template, field, { selectedOnly: false });
-    const selectedFrameworks = getDocumentTemplateLegalFrameworksForField(context.template, field, { selectedOnly: true });
+    const selectedFrameworkIds = placeholderMode || !context.sampleWorkOrder?.id
+      ? null
+      : getDocumentTemplateRuntimeSelectedLegalFrameworkIds(context.sampleWorkOrder.id, field);
+    const selectedFrameworks = getDocumentTemplateLegalFrameworksForField(
+      context.template,
+      field,
+      {
+        selectedOnly: true,
+        selectedIds: selectedFrameworkIds,
+      },
+    );
     const listHtml = placeholderMode
       ? `<div class="document-template-preview-pill-row"><span class="document-template-preview-pill">${escapeHtml(token)}</span></div>`
       : selectedFrameworks.length > 0
@@ -13196,8 +13390,15 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
 
 function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   const template = buildDocumentTemplateDraft();
-  const fileName = `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`;
-  const html = buildDocumentTemplatePlaceholderWordMarkup(template);
+  const fileName = placeholderMode
+    ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`
+    : `${sanitizeDocumentTemplateFileName(template.title || "zapisnik")}.doc`;
+  const html = placeholderMode
+    ? buildDocumentTemplatePlaceholderWordMarkup(template)
+    : buildDocumentTemplatePreviewMarkup(template, {
+      placeholderMode: false,
+      sheetTabs: false,
+    });
   triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
 }
 
@@ -14149,7 +14350,12 @@ function renderDocumentTemplateRuntimeContext() {
   }
 
   const hasContext = hasDocumentTemplateRuntimeContext();
+  const fillMode = isDocumentTemplateRuntimeFillMode();
   documentTemplateRuntimeContext.hidden = !hasContext;
+  documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
+  if (documentTemplateRuntimeClearButton) {
+    documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
+  }
 
   if (!hasContext) {
     documentTemplateRuntimeWorkOrders.replaceChildren();
@@ -14161,9 +14367,13 @@ function renderDocumentTemplateRuntimeContext() {
   const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
 
   if (documentTemplateRuntimeHelper) {
-    documentTemplateRuntimeHelper.textContent = workOrders.length > 1
-      ? "Template trenutno cita zajednicke podatke iz batch odabira. Klikom na RN mijenjas aktivni preview i Word export."
-      : "Template trenutno cita podatke iz odabranog RN-a i zajednickih dokument podataka.";
+    documentTemplateRuntimeHelper.textContent = fillMode
+      ? (workOrders.length > 1
+        ? "Ispuni samo polja iz predloška. Podaci iz RN-a, zajednički dokument podaci i povezane usluge povlače se automatski."
+        : "Ovdje ispunjavaš samo ono što zapisnik stvarno traži. Sve ostalo se povlači automatski iz RN-a i templatea.")
+      : (workOrders.length > 1
+        ? "Template trenutno čita zajedničke podatke iz batch odabira. Klikom na RN mijenjaš aktivni preview i Word export."
+        : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka.");
   }
 
   documentTemplateRuntimeWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
@@ -14172,10 +14382,7 @@ function renderDocumentTemplateRuntimeContext() {
     button.className = "document-template-runtime-chip";
     button.classList.toggle("is-active", String(workOrder.id) === String(activeWorkOrder?.id || ""));
     button.addEventListener("click", () => {
-      state.documentTemplateRuntime.activeWorkOrderId = String(workOrder.id);
-      renderDocumentTemplateRuntimeContext();
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplatePreviewContent();
+      setDocumentTemplateRuntimeActiveWorkOrder(workOrder.id, { render: true });
     });
 
     const title = document.createElement("strong");
@@ -14253,19 +14460,56 @@ function renderDocumentTemplateRuntimeContext() {
 }
 
 function syncDocumentTemplateEditorChrome() {
+  const fillMode = isDocumentTemplateRuntimeFillMode();
   if (documentTemplateEditorTitle) {
-    documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
-      ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
-      : "Novi template";
+    documentTemplateEditorTitle.textContent = fillMode
+      ? `Zapisnik | ${documentTemplateTitleInput?.value?.trim() || "Predložak"}`
+      : (documentTemplateIdInput?.value
+        ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
+        : "Novi template");
+  }
+
+  if (documentTemplateEditorPanel) {
+    documentTemplateEditorPanel.classList.toggle("is-fill-mode", fillMode);
   }
 
   if (documentTemplateDeleteButton) {
-    documentTemplateDeleteButton.hidden = !documentTemplateIdInput?.value;
+    documentTemplateDeleteButton.hidden = fillMode || !documentTemplateIdInput?.value;
+  }
+
+  if (documentTemplateSaveButton) {
+    documentTemplateSaveButton.hidden = fillMode;
+  }
+  if (documentTemplateOpenPdfPreviewButton) {
+    documentTemplateOpenPdfPreviewButton.hidden = !fillMode;
+  }
+  if (documentTemplateExportPreviewButton) {
+    documentTemplateExportPreviewButton.hidden = !fillMode;
+  }
+  if (documentTemplateMetaGrid) {
+    documentTemplateMetaGrid.hidden = fillMode;
+  }
+  if (documentTemplateDescriptionField) {
+    documentTemplateDescriptionField.hidden = fillMode;
+  }
+  if (documentTemplateLayoutActions) {
+    documentTemplateLayoutActions.hidden = fillMode;
+  }
+  if (documentTemplateBuilderSidebar) {
+    documentTemplateBuilderSidebar.hidden = fillMode;
+  }
+  if (documentTemplateFormActions) {
+    documentTemplateFormActions.hidden = fillMode;
   }
 
   renderDocumentTemplateRuntimeContext();
-  renderDocumentTemplateReferenceMeta();
-  renderDocumentTemplatePlaceholderPalette();
+  if (!fillMode) {
+    renderDocumentTemplateReferenceMeta();
+    renderDocumentTemplatePlaceholderPalette();
+  } else {
+    documentTemplateReferenceMeta?.replaceChildren();
+    documentTemplatePlaceholderPalette?.replaceChildren();
+  }
   renderDocumentTemplatePreviewContent();
 }
 
@@ -15252,12 +15496,431 @@ function renderDocumentTemplateLinkSummary() {
   documentTemplateLinkSummary.replaceChildren(legalCard, equipmentCard);
 }
 
+function isDocumentTemplateRuntimeVisibleField(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (type === "chapter") {
+    return true;
+  }
+
+  if ([
+    "measurement_table",
+    "legal_list",
+    "equipment_list",
+    "qualified_inspectors",
+    "inspector_signature",
+    "authorization_holder_signature",
+  ].includes(type)) {
+    return true;
+  }
+
+  const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
+  return source === "CUSTOM_VALUE";
+}
+
+function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  if (runtimeValue !== undefined) {
+    return runtimeValue;
+  }
+
+  if (field.type === "checkbox" || field.type === "toggle") {
+    return ["1", "true", "da", "yes", "on"].includes(String(field.defaultValue || "").trim().toLowerCase());
+  }
+
+  return field.defaultValue ?? "";
+}
+
+function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldDrafts) {
+  const blocks = [];
+  let currentBlock = null;
+
+  (Array.isArray(fields) ? fields : []).forEach((field, index) => {
+    if (!field) {
+      return;
+    }
+
+    if (String(field.type || "").trim().toLowerCase() === "chapter") {
+      currentBlock = {
+        chapter: field,
+        chapterIndex: index,
+        items: [],
+      };
+      blocks.push(currentBlock);
+      return;
+    }
+
+    if (!isDocumentTemplateRuntimeVisibleField(field)) {
+      return;
+    }
+
+    if (!currentBlock) {
+      currentBlock = {
+        chapter: null,
+        chapterIndex: -1,
+        items: [],
+      };
+      blocks.push(currentBlock);
+    }
+
+    currentBlock.items.push({ field, index });
+  });
+
+  return blocks;
+}
+
+function renderDocumentTemplateRuntimeFieldRows() {
+  if (!documentTemplateCustomFields) {
+    return;
+  }
+
+  documentTemplateMeasurementInlineHosts = new Map();
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  const template = buildDocumentTemplateDraft();
+  const context = buildDocumentTemplatePreviewContext(template);
+  const shell = document.createElement("div");
+  shell.className = "document-template-runtime-shell";
+
+  if (!activeWorkOrder) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Odaberi RN kako bi otvorio predložak za unos zapisnika.";
+    shell.append(empty);
+    documentTemplateCustomFields.replaceChildren(shell);
+    return;
+  }
+
+  const visibleBlocks = buildDocumentTemplateRuntimeBlockGroups(documentTemplateFieldDrafts);
+  if (visibleBlocks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
+    shell.append(empty);
+    documentTemplateCustomFields.replaceChildren(shell);
+    return;
+  }
+
+  const createFieldTitle = (field, fallbackIndex) => field.label || field.wordLabel || `Polje ${fallbackIndex + 1}`;
+
+  const createStandardFieldControl = (field, workOrderId) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
+    const title = document.createElement("span");
+    title.textContent = createFieldTitle(field, 0);
+    wrapper.append(title);
+
+    let control;
+    if (field.type === "longtext") {
+      control = document.createElement("textarea");
+      control.rows = 4;
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    } else if (field.type === "date") {
+      control = document.createElement("input");
+      control.type = "date";
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    } else if (field.type === "checkbox" || field.type === "toggle") {
+      const toggleWrap = document.createElement("label");
+      toggleWrap.className = "document-template-runtime-checkbox";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrderId));
+      checkbox.addEventListener("change", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, Boolean(event.currentTarget.checked), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+      const copy = document.createElement("span");
+      copy.textContent = field.type === "toggle" ? "Označeno" : "Potvrđeno";
+      toggleWrap.append(checkbox, copy);
+      control = toggleWrap;
+    } else {
+      control = document.createElement("input");
+      control.type = "text";
+      if (field.type === "number") {
+        control.inputMode = "decimal";
+      }
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    }
+
+    wrapper.append(control);
+    if (field.helpText) {
+      const helper = document.createElement("small");
+      helper.className = "document-template-runtime-field-help";
+      helper.textContent = field.helpText;
+      wrapper.append(helper);
+    }
+    return wrapper;
+  };
+
+  const createInspectorsFieldControl = (field, workOrder) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "field field-span-full";
+    const title = document.createElement("span");
+    title.textContent = createFieldTitle(field, 0);
+    const select = document.createElement("select");
+    select.multiple = true;
+    const options = getQualifiedUserOptionsForSignatureAreas("inspect", [field.signatureArea || "elektro"]);
+    const selectedIds = new Set(getDocumentTemplateRuntimeArrayValue(workOrder.id, "inspectorUserIds"));
+    select.replaceChildren(...options
+      .filter((option) => String(option.value || "").trim())
+      .map((option) => {
+        const element = createOption(option.value, option.label);
+        element.selected = selectedIds.has(String(option.value));
+        return element;
+      }));
+    select.size = Math.max(4, Math.min(7, options.length || 4));
+    select.addEventListener("change", () => {
+      const nextValues = Array.from(select.selectedOptions)
+        .map((option) => String(option.value || "").trim())
+        .filter(Boolean);
+      updateDocumentTemplateRuntimeOverride(workOrder.id, {
+        inspectorUserIds: nextValues,
+        inspectorUserId: nextValues[0] || "",
+      }, { render: false });
+      syncDocumentTemplateEditorChrome();
+      renderDocumentTemplatePreviewContent();
+    });
+    wrapper.append(title, select);
+    if (field.helpText) {
+      const helper = document.createElement("small");
+      helper.className = "document-template-runtime-field-help";
+      helper.textContent = field.helpText;
+      wrapper.append(helper);
+    }
+    return wrapper;
+  };
+
+  const createLegalListFieldControl = (field, workOrder, templateDraft) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-legal-field";
+
+    const title = document.createElement("strong");
+    title.textContent = createFieldTitle(field, 0);
+    shellNode.append(title);
+
+    const frameworks = getDocumentTemplateLegalFrameworksForField(templateDraft, field, { selectedOnly: false });
+    const selectedIds = new Set(getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field));
+
+    if (frameworks.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Nema dostupnih propisa za ovaj blok.";
+      shellNode.append(empty);
+      return shellNode;
+    }
+
+    const list = document.createElement("div");
+    list.className = "document-template-runtime-checklist";
+    frameworks.forEach((framework) => {
+      const option = document.createElement("label");
+      option.className = "document-template-runtime-checklist-item";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(framework.id);
+      checkbox.checked = selectedIds.has(String(framework.id));
+      checkbox.addEventListener("change", () => {
+        const nextValues = Array.from(list.querySelectorAll('input[type="checkbox"]'))
+          .filter((input) => input instanceof HTMLInputElement && input.checked)
+          .map((input) => String(input.value || "").trim())
+          .filter(Boolean);
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, nextValues, { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+      const copy = document.createElement("span");
+      copy.textContent = framework.title || "Propis";
+      option.append(checkbox, copy);
+      list.append(option);
+    });
+
+    shellNode.append(list);
+    if (field.helpText) {
+      const helper = document.createElement("small");
+      helper.className = "document-template-runtime-field-help";
+      helper.textContent = field.helpText;
+      shellNode.append(helper);
+    }
+    return shellNode;
+  };
+
+  const createEquipmentFieldControl = (field, previewContext) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-readonly-card";
+    const title = document.createElement("strong");
+    title.textContent = createFieldTitle(field, 0);
+    const meta = document.createElement("p");
+    meta.className = "helper-copy module-copy";
+    meta.textContent = previewContext.equipmentItems.length > 0
+      ? previewContext.equipmentItems
+        .map((item) => item.name || item.inventoryNumber || item.code || "")
+        .filter(Boolean)
+        .join(" · ")
+      : "Povezana oprema povlači se automatski iz Measurement Equipment modula.";
+    shellNode.append(title, meta);
+    return shellNode;
+  };
+
+  const createSignatureFieldControl = (field, previewContext) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-readonly-card";
+    const title = document.createElement("strong");
+    title.textContent = createFieldTitle(field, 0);
+    const signaturePreview = getDocumentTemplateSignaturePreviewData(field, previewContext);
+    const meta = document.createElement("p");
+    meta.className = "helper-copy module-copy";
+    meta.textContent = signaturePreview.summary || `${signaturePreview.displayName} se povlači automatski iz People modula.`;
+    shellNode.append(title, meta);
+    return shellNode;
+  };
+
+  const createMeasurementFieldControl = (field, workOrder) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-measurement-field";
+    const title = document.createElement("strong");
+    title.textContent = createFieldTitle(field, 0);
+    const summaryButton = document.createElement("button");
+    summaryButton.type = "button";
+    summaryButton.className = "ghost-button document-template-runtime-excel-trigger";
+    summaryButton.textContent = getMeasurementSheetTemplateSummary(
+      getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field) ?? field.sheet,
+    );
+    summaryButton.addEventListener("click", () => {
+      ensureDocumentTemplateRuntimeMeasurementSheetForField(field.id, workOrder.id);
+      requestAnimationFrame(() => {
+        shellNode.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    });
+
+    const helper = document.createElement("p");
+    helper.className = "helper-copy module-copy";
+    helper.textContent = "Klik otvara napredni Excel unutar ovog bloka. Ono što upišeš ide u pregled i Word export.";
+
+    const inlineExcelHost = document.createElement("div");
+    inlineExcelHost.className = "document-template-inline-excel-host";
+    inlineExcelHost.dataset.templateFieldId = String(field.id || "");
+    const preview = document.createElement("div");
+    preview.className = "document-template-inline-excel-preview document-template-runtime-excel-preview";
+    preview.textContent = "Napredni Excel editor prikazuje se ovdje kada otvoriš ovu tablicu.";
+    inlineExcelHost.append(preview);
+    documentTemplateMeasurementInlineHosts.set(String(field.id || ""), inlineExcelHost);
+
+    shellNode.append(title, summaryButton, helper, inlineExcelHost);
+    return shellNode;
+  };
+
+  const createRuntimeFieldNode = ({ field, index }) => {
+    const card = document.createElement("article");
+    card.className = "document-template-item-card document-template-runtime-field-card";
+    card.dataset.templateFieldId = String(field.id || "");
+    const grid = document.createElement("div");
+    grid.className = "form-grid document-template-inline-grid";
+
+    if (field.type === "measurement_table") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createMeasurementFieldControl(field, activeWorkOrder));
+      grid.append(fieldShell);
+    } else if (field.type === "qualified_inspectors") {
+      grid.append(createInspectorsFieldControl(field, activeWorkOrder));
+    } else if (field.type === "legal_list") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createLegalListFieldControl(field, activeWorkOrder, template));
+      grid.append(fieldShell);
+    } else if (field.type === "equipment_list") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createEquipmentFieldControl(field, context));
+      grid.append(fieldShell);
+    } else if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createSignatureFieldControl(field, context));
+      grid.append(fieldShell);
+    } else {
+      grid.append(createStandardFieldControl(field, activeWorkOrder.id));
+    }
+
+    card.append(grid);
+    return card;
+  };
+
+  visibleBlocks.forEach((block, blockIndex) => {
+    const blockNode = document.createElement("section");
+    blockNode.className = "document-template-runtime-block";
+
+    const head = document.createElement("div");
+    head.className = "document-template-runtime-block-head";
+    const copy = document.createElement("div");
+    const title = document.createElement("h4");
+    title.textContent = block.chapter?.label || `Blok ${blockIndex + 1}`;
+    const meta = document.createElement("p");
+    meta.className = "document-template-runtime-block-meta";
+    meta.textContent = block.chapter?.helpText
+      || (block.items.length > 0
+        ? `${block.items.length} polja za unos u ovom bloku.`
+        : "Ovaj blok se puni automatski iz RN-a i povezanih podataka.");
+    copy.append(title, meta);
+    head.append(copy, createBadge(`${block.items.length} polja`, "document-template-meta-badge"));
+    blockNode.append(head);
+
+    const body = document.createElement("div");
+    body.className = "document-template-runtime-block-body";
+    if (block.items.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "U ovom bloku nema ručnih polja. Sadržaj će se popuniti automatski iz RN-a i povezanih izvora.";
+      body.append(empty);
+    } else {
+      block.items.forEach((entry) => {
+        body.append(createRuntimeFieldNode(entry));
+      });
+    }
+    blockNode.append(body);
+    shell.append(blockNode);
+  });
+
+  documentTemplateCustomFields.replaceChildren(shell);
+
+  const shouldCloseRuntimeSheet = state.measurementSheet.ownerKind === "document_template_runtime_field"
+    && (
+      !state.measurementSheet.isOpen
+      || String(state.measurementSheet.ownerRuntimeWorkOrderId || "") !== String(activeWorkOrder.id || "")
+      || !documentTemplateFieldDrafts.some((field) => String(field.id) === String(state.measurementSheet.ownerFieldId || ""))
+    );
+  if (shouldCloseRuntimeSheet) {
+    setMeasurementSheetOpen(false);
+    state.measurementSheet.ownerKind = "work_order";
+    state.measurementSheet.ownerFieldId = "";
+    state.measurementSheet.ownerRuntimeWorkOrderId = "";
+    syncMeasurementToolbar();
+  }
+
+  syncMeasurementSheetPanelMount();
+  syncDocumentTemplateInlineExcelPreviewVisibility();
+  renderDocumentTemplatePreviewContent();
+}
+
 function renderDocumentTemplateFieldRows() {
   if (!documentTemplateCustomFields) {
     return;
   }
 
   documentTemplateMeasurementInlineHosts = new Map();
+
+  if (isDocumentTemplateRuntimeFillMode()) {
+    renderDocumentTemplateRuntimeFieldRows();
+    return;
+  }
 
   const visibleFields = documentTemplateFieldDrafts.filter((field) => field?.type !== "page_break");
   const chapterIds = new Set(
@@ -15425,7 +16088,9 @@ function renderDocumentTemplateFieldRows() {
       const previousLabel = String(documentTemplateFieldDrafts[draftIndex].label || "");
       const previousWordLabel = String(documentTemplateFieldDrafts[draftIndex].wordLabel || "");
       const nextLabel = event.currentTarget.value;
-      const shouldSyncWordLabel = !previousWordLabel || previousWordLabel === previousLabel;
+      const shouldSyncWordLabel = field.type === "chapter"
+        || !previousWordLabel
+        || previousWordLabel === previousLabel;
       documentTemplateFieldDrafts[draftIndex].label = nextLabel;
       if (shouldSyncWordLabel) {
         documentTemplateFieldDrafts[draftIndex].wordLabel = nextLabel;
@@ -15439,7 +16104,7 @@ function renderDocumentTemplateFieldRows() {
       renderDocumentTemplatePreviewContent();
       title.textContent = nextLabel || getDocumentTemplateFieldTypeLabel(documentTemplateFieldDrafts[draftIndex].type) || `Blok ${draftIndex + 1}`;
       tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
-      if (shouldSyncWordLabel) {
+      if (shouldSyncWordLabel && field.type !== "chapter") {
         const wordLabelTarget = row.querySelector("[data-template-field-word-label]");
         if (wordLabelTarget instanceof HTMLInputElement) {
           wordLabelTarget.value = nextLabel;
@@ -15522,7 +16187,10 @@ function renderDocumentTemplateFieldRows() {
     });
     removeButton.classList.add("document-template-item-remove");
 
-    grid.append(labelField, wordLabelField);
+    grid.append(labelField);
+    if (field.type !== "chapter") {
+      grid.append(wordLabelField);
+    }
 
     if (field.type === "chapter") {
       specialInfoSpan.textContent = "Blok";
@@ -16079,7 +16747,7 @@ function resetDocumentTemplateForm() {
   syncDocumentTemplateEditorChrome();
 }
 
-function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false } = {}) {
+function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false, runtimeMode = "builder" } = {}) {
   state.activeView = "module";
   state.activeModuleItem = "template-development";
   renderActiveView();
@@ -16089,6 +16757,8 @@ function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false 
   collapsedDocumentTemplateChapterIds = new Set();
   if (!preserveRuntimeContext) {
     clearDocumentTemplateRuntimeContext({ render: false });
+  } else {
+    state.documentTemplateRuntime.mode = runtimeMode === "fill" ? "fill" : "builder";
   }
   if (documentTemplateIdInput) {
     documentTemplateIdInput.value = template.id || "";
@@ -16131,6 +16801,13 @@ function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false 
   syncDocumentTemplateEditorChrome();
   openDocumentTemplateEditor();
   requestAnimationFrame(() => {
+    if (isDocumentTemplateRuntimeFillMode()) {
+      const firstRuntimeInput = documentTemplateCustomFields?.querySelector("input, textarea, select, button");
+      if (firstRuntimeInput instanceof HTMLElement) {
+        firstRuntimeInput.focus({ preventScroll: true });
+        return;
+      }
+    }
     documentTemplateTitleInput?.focus({ preventScroll: true });
   });
 }
@@ -26632,8 +27309,251 @@ function hasDocumentTemplateRuntimeContext() {
     && state.documentTemplateRuntime.workOrderIds.length > 0;
 }
 
+function isDocumentTemplateRuntimeFillMode() {
+  return hasDocumentTemplateRuntimeContext()
+    && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
+}
+
+function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
+  const source = record && typeof record === "object" ? record : {};
+  const fieldValues = source.fieldValues && typeof source.fieldValues === "object"
+    ? { ...source.fieldValues }
+    : {};
+  const fieldSheets = Object.fromEntries(
+    Object.entries(source.fieldSheets && typeof source.fieldSheets === "object" ? source.fieldSheets : {})
+      .map(([fieldId, snapshot]) => {
+        const normalizedSnapshot = normalizeWorkOrderMeasurementSheet(snapshot);
+        return normalizedSnapshot ? [String(fieldId), normalizedSnapshot] : null;
+      })
+      .filter(Boolean),
+  );
+
+  return {
+    ...source,
+    inspectionDate: String(source.inspectionDate ?? "").trim(),
+    issuedDate: String(source.issuedDate ?? "").trim(),
+    issuedPlace: String(source.issuedPlace ?? "").trim(),
+    note: String(source.note ?? "").trim(),
+    inspectorUserIds: normalizeQualifiedUserIdList(source.inspectorUserIds ?? []),
+    inspectorUserId: String(source.inspectorUserId ?? "").trim(),
+    authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
+    fieldValues,
+    fieldSheets,
+  };
+}
+
+function getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure = false } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+
+  const currentRecord = normalizeDocumentTemplateRuntimeOverrideRecord(
+    state.documentTemplateRuntime.overrides?.[normalizedId] ?? {},
+  );
+
+  if (ensure) {
+    state.documentTemplateRuntime.overrides = {
+      ...(state.documentTemplateRuntime.overrides ?? {}),
+      [normalizedId]: currentRecord,
+    };
+  }
+
+  return currentRecord;
+}
+
+function getDocumentTemplateRuntimeFieldValue(workOrderId, fieldId) {
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId);
+  const normalizedFieldId = String(fieldId || "").trim();
+  if (!record || !normalizedFieldId) {
+    return undefined;
+  }
+  return record.fieldValues?.[normalizedFieldId];
+}
+
+function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { render = true } = {}) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true });
+  if (!record || !normalizedFieldId) {
+    return;
+  }
+
+  const nextFieldValues = {
+    ...(record.fieldValues ?? {}),
+  };
+
+  const shouldDelete = value == null
+    || (typeof value === "string" && !String(value).trim())
+    || (Array.isArray(value) && value.length === 0);
+
+  if (shouldDelete) {
+    delete nextFieldValues[normalizedFieldId];
+  } else {
+    nextFieldValues[normalizedFieldId] = value;
+  }
+
+  state.documentTemplateRuntime.overrides = {
+    ...(state.documentTemplateRuntime.overrides ?? {}),
+    [String(workOrderId || "").trim()]: {
+      ...record,
+      fieldValues: nextFieldValues,
+    },
+  };
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+  }
+}
+
+function getDocumentTemplateRuntimeMeasurementSheet(workOrderId, field = {}) {
+  const normalizedFieldId = String(field?.id || "").trim();
+  if (!normalizedFieldId) {
+    return normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null;
+  }
+
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId);
+  const runtimeSnapshot = normalizeWorkOrderMeasurementSheet(record?.fieldSheets?.[normalizedFieldId]);
+  if (runtimeSnapshot) {
+    return runtimeSnapshot;
+  }
+
+  return normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null;
+}
+
+function setDocumentTemplateRuntimeMeasurementSheet(workOrderId, fieldId, snapshot, { render = true } = {}) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true });
+  if (!record || !normalizedFieldId) {
+    return;
+  }
+
+  const nextFieldSheets = {
+    ...(record.fieldSheets ?? {}),
+  };
+  const normalizedSnapshot = normalizeWorkOrderMeasurementSheet(snapshot);
+  if (normalizedSnapshot) {
+    nextFieldSheets[normalizedFieldId] = normalizedSnapshot;
+  } else {
+    delete nextFieldSheets[normalizedFieldId];
+  }
+
+  state.documentTemplateRuntime.overrides = {
+    ...(state.documentTemplateRuntime.overrides ?? {}),
+    [String(workOrderId || "").trim()]: {
+      ...record,
+      fieldSheets: nextFieldSheets,
+    },
+  };
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+  }
+}
+
+function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+  state.documentTemplateRuntime.activeWorkOrderId = normalizedId;
+  if (render) {
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
+function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {}) {
+  const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
+  const nextCommon = {
+    ...state.documentTemplateRuntime.common,
+    inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
+      ? String(patch.inspectionDate ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.inspectionDate ?? "").trim(),
+    issuedDate: Object.prototype.hasOwnProperty.call(patch, "issuedDate")
+      ? String(patch.issuedDate ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.issuedDate ?? "").trim(),
+    issuedPlace: Object.prototype.hasOwnProperty.call(patch, "issuedPlace")
+      ? String(patch.issuedPlace ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.issuedPlace ?? "").trim(),
+    note: Object.prototype.hasOwnProperty.call(patch, "note")
+      ? String(patch.note ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.note ?? "").trim(),
+    inspectorUserIds: hasInspectorIdsPatch
+      ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
+      : normalizeQualifiedUserIdList(state.documentTemplateRuntime.common?.inspectorUserIds ?? []),
+    inspectorUserId: Object.prototype.hasOwnProperty.call(patch, "inspectorUserId")
+      ? String(patch.inspectorUserId ?? "").trim()
+      : (hasInspectorIdsPatch
+        ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])[0] || ""
+        : String(state.documentTemplateRuntime.common?.inspectorUserId ?? "").trim()),
+    authorizationHolderUserId: Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId")
+      ? String(patch.authorizationHolderUserId ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.authorizationHolderUserId ?? "").trim(),
+  };
+
+  state.documentTemplateRuntime.common = nextCommon;
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateFieldRows();
+  }
+}
+
+function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const record = getDocumentTemplateRuntimeOverrideRecord(normalizedId, { ensure: true }) ?? {};
+  const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
+  const nextRecord = {
+    ...record,
+    inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
+      ? String(patch.inspectionDate ?? "").trim()
+      : String(record.inspectionDate ?? "").trim(),
+    issuedDate: Object.prototype.hasOwnProperty.call(patch, "issuedDate")
+      ? String(patch.issuedDate ?? "").trim()
+      : String(record.issuedDate ?? "").trim(),
+    issuedPlace: Object.prototype.hasOwnProperty.call(patch, "issuedPlace")
+      ? String(patch.issuedPlace ?? "").trim()
+      : String(record.issuedPlace ?? "").trim(),
+    note: Object.prototype.hasOwnProperty.call(patch, "note")
+      ? String(patch.note ?? "").trim()
+      : String(record.note ?? "").trim(),
+    inspectorUserIds: hasInspectorIdsPatch
+      ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
+      : normalizeQualifiedUserIdList(record.inspectorUserIds ?? []),
+    inspectorUserId: Object.prototype.hasOwnProperty.call(patch, "inspectorUserId")
+      ? String(patch.inspectorUserId ?? "").trim()
+      : (hasInspectorIdsPatch
+        ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])[0] || ""
+        : String(record.inspectorUserId ?? "").trim()),
+    authorizationHolderUserId: Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId")
+      ? String(patch.authorizationHolderUserId ?? "").trim()
+      : String(record.authorizationHolderUserId ?? "").trim(),
+    fieldValues: {
+      ...(record.fieldValues ?? {}),
+    },
+    fieldSheets: {
+      ...(record.fieldSheets ?? {}),
+    },
+  };
+
+  state.documentTemplateRuntime.overrides = {
+    ...(state.documentTemplateRuntime.overrides ?? {}),
+    [normalizedId]: nextRecord,
+  };
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+  }
+}
+
 function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
   state.documentTemplateRuntime = {
+    mode: "builder",
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
@@ -26650,7 +27570,14 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
   };
 
   if (render) {
+    if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+      setMeasurementSheetOpen(false);
+      state.measurementSheet.ownerKind = "work_order";
+      state.measurementSheet.ownerFieldId = "";
+      state.measurementSheet.ownerRuntimeWorkOrderId = "";
+    }
     renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
     renderDocumentTemplatePlaceholderPalette();
     renderDocumentTemplatePreviewContent();
   }
@@ -26678,7 +27605,7 @@ function pruneDocumentTemplateRuntimeContext() {
   const nextOverrides = {};
   validIds.forEach((id) => {
     if (state.documentTemplateRuntime.overrides?.[id]) {
-      nextOverrides[id] = { ...state.documentTemplateRuntime.overrides[id] };
+      nextOverrides[id] = normalizeDocumentTemplateRuntimeOverrideRecord(state.documentTemplateRuntime.overrides[id]);
     }
   });
   state.documentTemplateRuntime.overrides = nextOverrides;
@@ -26711,7 +27638,7 @@ function getDocumentTemplateRuntimeActiveWorkOrder() {
 
 function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
   const normalizedId = String(workOrderId || "").trim();
-  const current = normalizedId ? state.documentTemplateRuntime.overrides?.[normalizedId] ?? {} : {};
+  const current = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) ?? {} : {};
   if (current && Object.prototype.hasOwnProperty.call(current, fieldName)) {
     return String(current?.[fieldName] ?? "").trim();
   }
@@ -26721,7 +27648,7 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
 
 function getDocumentTemplateRuntimeArrayValue(workOrderId, fieldName) {
   const normalizedId = String(workOrderId || "").trim();
-  const current = normalizedId ? state.documentTemplateRuntime.overrides?.[normalizedId] ?? {} : {};
+  const current = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) ?? {} : {};
   if (current && Object.prototype.hasOwnProperty.call(current, fieldName)) {
     return normalizeQualifiedUserIdList(current?.[fieldName] ?? []);
   }
@@ -26735,6 +27662,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     .filter(Boolean);
 
   state.documentTemplateRuntime = {
+    mode: "fill",
     source: ids.length > 0 ? "wizard" : "",
     workOrderIds: ids,
     activeWorkOrderId: ids[0] || "",
@@ -26749,7 +27677,10 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
         state.workOrderDocumentWizard.common?.authorizationHolderUserId ?? "",
       ).trim(),
     },
-    overrides: { ...(state.workOrderDocumentWizard.overrides ?? {}) },
+    overrides: Object.fromEntries(
+      Object.entries(state.workOrderDocumentWizard.overrides ?? {})
+        .map(([workOrderId, record]) => [String(workOrderId), normalizeDocumentTemplateRuntimeOverrideRecord(record)]),
+    ),
   };
 }
 
@@ -27130,7 +28061,10 @@ function openDocumentTemplateFromWizard(templateId = "", workOrders = getAllSele
 
   setDocumentTemplateRuntimeFromWizard(workOrders);
   closeWorkOrderDocumentWizard();
-  hydrateDocumentTemplateForm(template, { preserveRuntimeContext: true });
+  hydrateDocumentTemplateForm(template, {
+    preserveRuntimeContext: true,
+    runtimeMode: "fill",
+  });
 }
 
 function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
@@ -30206,7 +31140,7 @@ documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
 });
 
 documentTemplateExportPreviewButton?.addEventListener("click", () => {
-  exportDocumentTemplateWord({ placeholderMode: true });
+  exportDocumentTemplateWord({ placeholderMode: false });
 });
 
 documentTemplateForm?.addEventListener("focusin", (event) => {
