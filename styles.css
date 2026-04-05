@@ -5935,6 +5935,18 @@ body.is-work-order-editor-open {
   gap: 10px;
 }
 
+.measurement-meta-field > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .measurement-sheet-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
@@ -5946,7 +5958,11 @@ body.is-work-order-editor-open {
 .measurement-toolbar-secondary {
   display: flex;
   gap: 10px;
-  align-items: stretch;
+  align-items: center;
+}
+
+.measurement-toolbar-primary {
+  flex-wrap: nowrap;
 }
 
 .measurement-toolbar-tertiary {
@@ -5966,8 +5982,21 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-namebox {
-  width: 120px;
-  flex: 0 0 120px;
+  width: 92px;
+  flex: 0 0 92px;
+}
+
+.measurement-toolbar-namebox-compact .measurement-toolbar-label,
+.measurement-toolbar-hidden-controls .measurement-toolbar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .measurement-toolbar-label {
@@ -5989,7 +6018,7 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-namebox input {
-  padding: 0 14px;
+  padding: 0 10px;
   font-weight: 700;
   text-align: center;
   color: #3b4764;
@@ -6040,7 +6069,7 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-secondary {
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
 }
 
@@ -6054,6 +6083,36 @@ body.is-work-order-editor-open {
   align-items: flex-end;
   gap: 8px;
   flex: 0 0 auto;
+}
+
+.measurement-toolbar-icon-cluster,
+.measurement-toolbar-decimal-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.measurement-toolbar-decimal-stepper {
+  gap: 6px;
+}
+
+.measurement-toolbar-decimals-indicator {
+  min-width: 62px;
+  padding-inline: 8px;
+}
+
+.measurement-toolbar-hidden-controls {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  pointer-events: none;
 }
 
 .measurement-toolbar-actions .ghost-button {
@@ -6134,6 +6193,9 @@ body.is-work-order-editor-open {
 }
 
 .measurement-toolbar-icon-button {
+  min-height: 38px;
+  min-width: 38px;
+  padding: 0 10px;
   letter-spacing: 0.04em;
 }
 
@@ -6428,6 +6490,11 @@ body.is-work-order-editor-open {
 
 .measurement-sheet-grid td.is-fill-target {
   background: linear-gradient(180deg, rgba(83, 104, 255, 0.08), rgba(83, 104, 255, 0.12));
+}
+
+.measurement-cell-input.is-fill-previewing {
+  color: #32449c;
+  font-weight: 600;
 }
 
 .measurement-sheet-grid td.is-formula-reference-cell {
@@ -12406,6 +12473,7 @@ body.is-work-order-document-wizard-open {
   .measurement-toolbar-primary,
   .measurement-toolbar-secondary {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .measurement-toolbar-namebox,

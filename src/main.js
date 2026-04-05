@@ -242,6 +242,24 @@ const MEASUREMENT_FONT_FAMILY_STYLES = Object.freeze({
   verdana: "Verdana, Geneva, sans-serif",
   courier: "'Courier New', Courier, monospace",
 });
+const MEASUREMENT_TYPE_ORDER = Object.freeze(["general", "number", "integer", "percent", "text"]);
+const MEASUREMENT_TYPE_BUTTON_META = Object.freeze({
+  general: Object.freeze({ icon: "123", label: "General" }),
+  number: Object.freeze({ icon: "1,23", label: "Broj" }),
+  integer: Object.freeze({ icon: "42", label: "Cijeli broj" }),
+  percent: Object.freeze({ icon: "%", label: "Postotak" }),
+  text: Object.freeze({ icon: "TXT", label: "Tekst" }),
+});
+const MEASUREMENT_BORDER_ORDER = Object.freeze(["none", "all", "outline", "top", "bottom", "left", "right"]);
+const MEASUREMENT_BORDER_BUTTON_META = Object.freeze({
+  none: Object.freeze({ icon: "[]", label: "Bez obruba" }),
+  all: Object.freeze({ icon: "[#]", label: "Svi obrubi" }),
+  outline: Object.freeze({ icon: "[ ]", label: "Vanjski obrub" }),
+  top: Object.freeze({ icon: "^-", label: "Gornji obrub" }),
+  bottom: Object.freeze({ icon: "_", label: "Donji obrub" }),
+  left: Object.freeze({ icon: "|[", label: "Lijevi obrub" }),
+  right: Object.freeze({ icon: "]|", label: "Desni obrub" }),
+});
 const MEASUREMENT_STYLE_PRESETS = Object.freeze({
   title: Object.freeze({
     fontFamily: "default",
@@ -630,6 +648,7 @@ const state = {
     selectedRange: null,
     selectionDrag: null,
     fillDrag: null,
+    fillAutoScrollFrame: 0,
     fillMenu: null,
     contextMenu: null,
     ownerKind: "work_order",
@@ -1670,8 +1689,13 @@ const measurementLocationInput = document.querySelector("#measurement-location")
 const measurementDateInput = document.querySelector("#measurement-date");
 const measurementNameBoxInput = document.querySelector("#measurement-name-box");
 const measurementFormulaInput = document.querySelector("#measurement-formula-input");
+const measurementFormatTypeButton = document.querySelector("#measurement-format-type-button");
 const measurementFormatTypeInput = document.querySelector("#measurement-format-type");
+const measurementFormatDecimalsDecreaseButton = document.querySelector("#measurement-format-decimals-decrease");
+const measurementFormatDecimalsIndicatorButton = document.querySelector("#measurement-format-decimals-indicator");
+const measurementFormatDecimalsIncreaseButton = document.querySelector("#measurement-format-decimals-increase");
 const measurementFormatDecimalsInput = document.querySelector("#measurement-format-decimals");
+const measurementFormatBorderButton = document.querySelector("#measurement-format-border-button");
 const measurementFormatBorderInput = document.querySelector("#measurement-format-border");
 const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
 const measurementFormatFontSizeInput = document.querySelector("#measurement-format-font-size");
@@ -6206,6 +6230,32 @@ function getMeasurementSelectionLabel() {
   return startReference === endReference ? startReference : `${startReference}:${endReference}`;
 }
 
+function getNextMeasurementOptionValue(currentValue, orderedValues, step = 1) {
+  if (!Array.isArray(orderedValues) || orderedValues.length === 0) {
+    return currentValue;
+  }
+
+  const currentIndex = orderedValues.indexOf(currentValue);
+  const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
+  const nextIndex = (normalizedIndex + step + orderedValues.length) % orderedValues.length;
+  return orderedValues[nextIndex];
+}
+
+function formatMeasurementDecimalsBadge(decimals) {
+  const normalized = Math.max(0, normalizeMeasurementDecimals(decimals));
+  return normalized > 0 ? `0,${"0".repeat(normalized)}` : "0";
+}
+
+function setMeasurementToolbarButtonPresentation(button, icon, label) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  button.textContent = icon;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
 function getMeasurementActiveCellPosition() {
   const activeCell = state.measurementSheet.activeCell;
 
@@ -6616,14 +6666,51 @@ function syncMeasurementToolbar() {
     measurementFormatTypeInput.disabled = !state.measurementSheet.activeCell;
   }
 
+  const activeTypeMeta = MEASUREMENT_TYPE_BUTTON_META[activeFormat.type] || MEASUREMENT_TYPE_BUTTON_META.general;
+  setMeasurementToolbarButtonPresentation(
+    measurementFormatTypeButton,
+    activeTypeMeta.icon,
+    `Tip ćelije: ${activeTypeMeta.label}`,
+  );
+  if (measurementFormatTypeButton instanceof HTMLButtonElement) {
+    measurementFormatTypeButton.disabled = !state.measurementSheet.activeCell;
+  }
+
   if (measurementFormatDecimalsInput) {
     measurementFormatDecimalsInput.value = String(activeFormat.decimals);
     measurementFormatDecimalsInput.disabled = !state.measurementSheet.activeCell || ["general", "text", "integer"].includes(activeFormat.type);
   }
 
+  if (measurementFormatDecimalsIndicatorButton instanceof HTMLButtonElement) {
+    const decimalsLabel = formatMeasurementDecimalsBadge(activeFormat.decimals);
+    measurementFormatDecimalsIndicatorButton.textContent = decimalsLabel;
+    measurementFormatDecimalsIndicatorButton.title = `Broj decimalnih mjesta: ${activeFormat.decimals}`;
+    measurementFormatDecimalsIndicatorButton.setAttribute("aria-label", `Broj decimalnih mjesta: ${activeFormat.decimals}`);
+    measurementFormatDecimalsIndicatorButton.disabled = !state.measurementSheet.activeCell;
+  }
+  [
+    measurementFormatDecimalsDecreaseButton,
+    measurementFormatDecimalsIncreaseButton,
+  ].forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = !state.measurementSheet.activeCell;
+    }
+  });
+
   if (measurementFormatBorderInput) {
     measurementFormatBorderInput.value = getMeasurementBorderPreset(activeFormat.border);
     measurementFormatBorderInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  const activeBorderPreset = getMeasurementBorderPreset(activeFormat.border);
+  const activeBorderMeta = MEASUREMENT_BORDER_BUTTON_META[activeBorderPreset] || MEASUREMENT_BORDER_BUTTON_META.none;
+  setMeasurementToolbarButtonPresentation(
+    measurementFormatBorderButton,
+    activeBorderMeta.icon,
+    `Obrub ćelije: ${activeBorderMeta.label}`,
+  );
+  if (measurementFormatBorderButton instanceof HTMLButtonElement) {
+    measurementFormatBorderButton.disabled = !state.measurementSheet.activeCell;
   }
 
   if (measurementFormatFontFamilyInput) {
@@ -6662,6 +6749,8 @@ function syncMeasurementToolbar() {
     measurementAlignCenterButton,
     measurementAlignRightButton,
     measurementStyleTitleButton,
+    measurementMergeButton,
+    measurementUnmergeButton,
   ].forEach((button) => {
     if (button instanceof HTMLButtonElement) {
       button.disabled = !state.measurementSheet.activeCell;
@@ -6680,12 +6769,11 @@ function syncMeasurementToolbar() {
     button.classList.toggle("is-active", (button.dataset.fillColor || "") === (activeFormat.fillColor || ""));
     button.disabled = !state.measurementSheet.activeCell;
   });
-
-  if (measurementMergeButton) {
+  if (measurementMergeButton instanceof HTMLButtonElement) {
     measurementMergeButton.disabled = !canMergeMeasurementSelection();
   }
 
-  if (measurementUnmergeButton) {
+  if (measurementUnmergeButton instanceof HTMLButtonElement) {
     measurementUnmergeButton.disabled = !getMeasurementMergedSelectionDescriptor();
   }
 }
@@ -7207,6 +7295,21 @@ function clearMeasurementFillPreview() {
   measurementSheetBody
     ?.querySelectorAll(".is-fill-target")
     .forEach((cell) => cell.classList.remove("is-fill-target"));
+
+  measurementSheetBody
+    ?.querySelectorAll(".measurement-cell-input.is-fill-previewing")
+    .forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+
+      if (typeof input.dataset.previewOriginalValue === "string") {
+        input.value = input.dataset.previewOriginalValue;
+      }
+
+      delete input.dataset.previewOriginalValue;
+      input.classList.remove("is-fill-previewing");
+    });
 }
 
 function clearMeasurementSelectionClasses() {
@@ -7326,6 +7429,20 @@ function renderMeasurementFillPreview() {
     return;
   }
 
+  const selectionHeight = fillDrag.selectionRange.endRowIndex - fillDrag.selectionRange.startRowIndex + 1;
+  const targetColumns = getEditableMeasurementColumnsInRange(fillDrag.selectionRange).map((column) => {
+    const snapshotValues = fillDrag.snapshotRows.map((row) => row.cells?.[column.id] ?? "");
+    const snapshotFormats = fillDrag.snapshotRows.map((row) => normalizeMeasurementCellFormat(row.formats?.[column.id]));
+    const numericValues = snapshotValues.map(parseMeasurementNumber);
+    return {
+      column,
+      snapshotValues,
+      snapshotFormats,
+      numericValues,
+      canSeries: numericValues.every((value) => value !== null),
+    };
+  });
+
   for (let rowIndex = fillDrag.selectionRange.endRowIndex + 1; rowIndex <= fillDrag.endRowIndex; rowIndex += 1) {
     const row = state.measurementSheet.rows[rowIndex];
 
@@ -7340,7 +7457,45 @@ function renderMeasurementFillPreview() {
         continue;
       }
 
-      getMeasurementCellElement(row.id, column.id)?.classList.add("is-fill-target");
+      const cell = getMeasurementCellElement(row.id, column.id);
+      cell?.classList.add("is-fill-target");
+
+      const columnPreview = targetColumns.find((item) => item.column.id === column.id);
+      const input = getMeasurementInputElement(row.id, column.id);
+      if (!(input instanceof HTMLInputElement) || !columnPreview) {
+        continue;
+      }
+
+      if (typeof input.dataset.previewOriginalValue !== "string") {
+        input.dataset.previewOriginalValue = input.value;
+      }
+
+      const sourceOffset = (rowIndex - (fillDrag.selectionRange.endRowIndex + 1)) % selectionHeight;
+      const sourceRowIndex = fillDrag.selectionRange.startRowIndex + sourceOffset;
+      let previewRawValue = shiftMeasurementFillValue(
+        columnPreview.snapshotValues[sourceOffset] ?? "",
+        rowIndex - sourceRowIndex,
+        0,
+      );
+
+      if (columnPreview.canSeries) {
+        const lastNumericValue = columnPreview.numericValues[columnPreview.numericValues.length - 1];
+        const step = columnPreview.numericValues.length >= 2
+          ? columnPreview.numericValues[columnPreview.numericValues.length - 1]
+            - columnPreview.numericValues[columnPreview.numericValues.length - 2]
+          : 1;
+        previewRawValue = formatMeasurementSeriesValue(
+          lastNumericValue + (step * (rowIndex - fillDrag.selectionRange.endRowIndex)),
+        );
+      }
+
+      input.value = isMeasurementFormula(previewRawValue)
+        ? previewRawValue
+        : formatMeasurementLiteralDisplayValue(
+          previewRawValue,
+          columnPreview.snapshotFormats[sourceOffset],
+        );
+      input.classList.add("is-fill-previewing");
     }
   }
 }
@@ -7512,6 +7667,7 @@ function startMeasurementSelectionDrag(rowId, columnId, pointerId) {
   const anchor = state.measurementSheet.selectionAnchor ?? { rowIndex, columnIndex };
 
   state.measurementSheet.selectionDrag = {
+    mode: "cells",
     pointerId,
     anchorRowIndex: anchor.rowIndex,
     anchorColumnIndex: anchor.columnIndex,
@@ -7523,6 +7679,113 @@ function startMeasurementSelectionDrag(rowId, columnId, pointerId) {
   document.body.classList.add("is-selecting-measurement-cells");
 }
 
+function startMeasurementHeaderSelectionDrag(mode, index, pointerId) {
+  if (!["rows", "columns"].includes(mode)) {
+    return;
+  }
+
+  const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+  const lastColumnIndex = getLastEditableMeasurementColumnIndex();
+
+  if (firstColumnIndex < 0 || lastColumnIndex < firstColumnIndex || state.measurementSheet.rows.length === 0) {
+    return;
+  }
+
+  state.measurementSheet.selectionDrag = {
+    mode,
+    pointerId,
+    anchorRowIndex: mode === "rows"
+      ? (state.measurementSheet.selectionAnchor?.rowIndex ?? index)
+      : 0,
+    anchorColumnIndex: mode === "columns"
+      ? (state.measurementSheet.selectionAnchor?.columnIndex ?? index)
+      : firstColumnIndex,
+    rowIndex: mode === "rows" ? index : state.measurementSheet.rows.length - 1,
+    columnIndex: mode === "columns" ? index : lastColumnIndex,
+    hasMoved: false,
+  };
+
+  document.body.classList.add("is-selecting-measurement-cells");
+}
+
+function resolveMeasurementPointerRowIndex(pointerX, pointerY) {
+  const directTarget = document.elementFromPoint(pointerX, pointerY);
+  const directRowId = directTarget instanceof HTMLElement
+    ? (directTarget.closest("td[data-row-id][data-column-id]")?.dataset.rowId
+      || directTarget.closest("tr[data-row-id]")?.dataset.rowId)
+    : "";
+
+  if (directRowId) {
+    return getMeasurementRowIndex(directRowId);
+  }
+
+  const visibleRows = Array.from(measurementSheetBody?.querySelectorAll("tr[data-row-id]") ?? []);
+  if (visibleRows.length === 0) {
+    return -1;
+  }
+
+  const firstVisibleRow = visibleRows[0];
+  const lastVisibleRow = visibleRows[visibleRows.length - 1];
+  const firstRect = firstVisibleRow?.getBoundingClientRect?.();
+  const lastRect = lastVisibleRow?.getBoundingClientRect?.();
+
+  if (firstRect && pointerY <= firstRect.top) {
+    return getMeasurementRowIndex(firstVisibleRow.dataset.rowId);
+  }
+
+  if (lastRect && pointerY >= lastRect.bottom) {
+    return getMeasurementRowIndex(lastVisibleRow.dataset.rowId);
+  }
+
+  for (const rowElement of visibleRows) {
+    const rect = rowElement.getBoundingClientRect();
+    if (pointerY >= rect.top && pointerY <= rect.bottom) {
+      return getMeasurementRowIndex(rowElement.dataset.rowId);
+    }
+  }
+
+  return -1;
+}
+
+function resolveMeasurementPointerColumnIndex(pointerX, pointerY) {
+  const directTarget = document.elementFromPoint(pointerX, pointerY);
+  const directColumnId = directTarget instanceof HTMLElement
+    ? (directTarget.closest("td[data-column-id][data-row-id]")?.dataset.columnId
+      || directTarget.closest("th[data-column-id]")?.dataset.columnId)
+    : "";
+
+  if (directColumnId) {
+    return getMeasurementColumnIndex(directColumnId);
+  }
+
+  const visibleColumns = Array.from(measurementSheetHead?.querySelectorAll("th[data-column-id]") ?? []);
+  if (visibleColumns.length === 0) {
+    return -1;
+  }
+
+  const firstVisibleColumn = visibleColumns[0];
+  const lastVisibleColumn = visibleColumns[visibleColumns.length - 1];
+  const firstRect = firstVisibleColumn?.getBoundingClientRect?.();
+  const lastRect = lastVisibleColumn?.getBoundingClientRect?.();
+
+  if (firstRect && pointerX <= firstRect.left) {
+    return getMeasurementColumnIndex(firstVisibleColumn.dataset.columnId);
+  }
+
+  if (lastRect && pointerX >= lastRect.right) {
+    return getMeasurementColumnIndex(lastVisibleColumn.dataset.columnId);
+  }
+
+  for (const columnElement of visibleColumns) {
+    const rect = columnElement.getBoundingClientRect();
+    if (pointerX >= rect.left && pointerX <= rect.right) {
+      return getMeasurementColumnIndex(columnElement.dataset.columnId);
+    }
+  }
+
+  return -1;
+}
+
 function updateMeasurementSelectionDragTarget(pointerX, pointerY) {
   const selectionDrag = state.measurementSheet.selectionDrag;
 
@@ -7530,14 +7793,77 @@ function updateMeasurementSelectionDragTarget(pointerX, pointerY) {
     return;
   }
 
-  const pointedCell = document.elementFromPoint(pointerX, pointerY)?.closest?.("td[data-row-id][data-column-id]");
+  if (selectionDrag.mode === "rows") {
+    const rowIndex = resolveMeasurementPointerRowIndex(pointerX, pointerY);
+    const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+    const lastColumnIndex = getLastEditableMeasurementColumnIndex();
 
-  if (!(pointedCell instanceof HTMLElement)) {
+    if (rowIndex < 0 || firstColumnIndex < 0 || lastColumnIndex < firstColumnIndex) {
+      return;
+    }
+
+    if (rowIndex === selectionDrag.rowIndex) {
+      return;
+    }
+
+    selectionDrag.rowIndex = rowIndex;
+    selectionDrag.columnIndex = lastColumnIndex;
+    selectionDrag.hasMoved = true;
+    state.measurementSheet.activeCell = {
+      rowId: state.measurementSheet.rows[rowIndex]?.id,
+      columnId: state.measurementSheet.columns[firstColumnIndex]?.id,
+    };
+    state.measurementSheet.selectedRange = createMeasurementSelectionRange(
+      selectionDrag.anchorRowIndex,
+      firstColumnIndex,
+      rowIndex,
+      lastColumnIndex,
+    );
+    state.measurementSheet.fillMenu = null;
+    state.measurementSheet.contextMenu = null;
+    clearMeasurementFillPreview();
+    renderMeasurementSelection();
+    renderMeasurementActiveCell();
+    renderMeasurementContextMenu();
+    syncMeasurementToolbar();
     return;
   }
 
-  const rowIndex = getMeasurementRowIndex(pointedCell.dataset.rowId);
-  const columnIndex = getMeasurementColumnIndex(pointedCell.dataset.columnId);
+  if (selectionDrag.mode === "columns") {
+    const columnIndex = resolveMeasurementPointerColumnIndex(pointerX, pointerY);
+    if (columnIndex < 0 || state.measurementSheet.columns[columnIndex]?.computed || state.measurementSheet.rows.length === 0) {
+      return;
+    }
+
+    if (columnIndex === selectionDrag.columnIndex) {
+      return;
+    }
+
+    selectionDrag.columnIndex = columnIndex;
+    selectionDrag.rowIndex = state.measurementSheet.rows.length - 1;
+    selectionDrag.hasMoved = true;
+    state.measurementSheet.activeCell = {
+      rowId: state.measurementSheet.rows[0]?.id,
+      columnId: state.measurementSheet.columns[columnIndex]?.id,
+    };
+    state.measurementSheet.selectedRange = createMeasurementSelectionRange(
+      0,
+      selectionDrag.anchorColumnIndex,
+      state.measurementSheet.rows.length - 1,
+      columnIndex,
+    );
+    state.measurementSheet.fillMenu = null;
+    state.measurementSheet.contextMenu = null;
+    clearMeasurementFillPreview();
+    renderMeasurementSelection();
+    renderMeasurementActiveCell();
+    renderMeasurementContextMenu();
+    syncMeasurementToolbar();
+    return;
+  }
+
+  const rowIndex = resolveMeasurementPointerRowIndex(pointerX, pointerY);
+  const columnIndex = resolveMeasurementPointerColumnIndex(pointerX, pointerY);
 
   if (rowIndex < 0 || columnIndex < 0 || state.measurementSheet.columns[columnIndex]?.computed) {
     return;
@@ -7579,26 +7905,33 @@ function stopMeasurementSelectionDrag() {
   document.body.classList.remove("is-selecting-measurement-cells");
 }
 
-function selectMeasurementRow(rowIndex) {
+function selectMeasurementRow(rowIndex, options = {}) {
+  const {
+    extend = false,
+  } = options;
   ensureMeasurementSheetStructure();
   const row = state.measurementSheet.rows[rowIndex];
   const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
-  const lastColumnIndex = state.measurementSheet.columns.length - 1;
+  const lastColumnIndex = getLastEditableMeasurementColumnIndex();
 
   if (!row || firstColumnIndex < 0 || lastColumnIndex < firstColumnIndex) {
     return;
   }
+
+  const anchorRowIndex = extend && Number.isInteger(state.measurementSheet.selectionAnchor?.rowIndex)
+    ? state.measurementSheet.selectionAnchor.rowIndex
+    : rowIndex;
 
   state.measurementSheet.activeCell = {
     rowId: row.id,
     columnId: state.measurementSheet.columns[firstColumnIndex].id,
   };
   state.measurementSheet.selectionAnchor = {
-    rowIndex,
+    rowIndex: anchorRowIndex,
     columnIndex: firstColumnIndex,
   };
   state.measurementSheet.selectedRange = createMeasurementSelectionRange(
-    rowIndex,
+    anchorRowIndex,
     firstColumnIndex,
     rowIndex,
     lastColumnIndex,
@@ -7611,7 +7944,10 @@ function selectMeasurementRow(rowIndex) {
   syncMeasurementToolbar();
 }
 
-function selectMeasurementColumn(columnIndex) {
+function selectMeasurementColumn(columnIndex, options = {}) {
+  const {
+    extend = false,
+  } = options;
   ensureMeasurementSheetStructure();
   const column = state.measurementSheet.columns[columnIndex];
 
@@ -7619,17 +7955,21 @@ function selectMeasurementColumn(columnIndex) {
     return;
   }
 
+  const anchorColumnIndex = extend && Number.isInteger(state.measurementSheet.selectionAnchor?.columnIndex)
+    ? state.measurementSheet.selectionAnchor.columnIndex
+    : columnIndex;
+
   state.measurementSheet.activeCell = {
     rowId: state.measurementSheet.rows[0].id,
     columnId: column.id,
   };
   state.measurementSheet.selectionAnchor = {
     rowIndex: 0,
-    columnIndex,
+    columnIndex: anchorColumnIndex,
   };
   state.measurementSheet.selectedRange = createMeasurementSelectionRange(
     0,
-    columnIndex,
+    anchorColumnIndex,
     state.measurementSheet.rows.length - 1,
     columnIndex,
   );
@@ -8434,14 +8774,20 @@ function renderMeasurementSheet() {
     head.append(letter, title, resizeHandle);
     th.append(head);
     if (!column.computed) {
-      th.addEventListener("click", (event) => {
+      th.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
         if (event.target instanceof HTMLElement
           && (event.target.closest(".measurement-column-resize")
             || event.target.closest(".measurement-column-title"))) {
           return;
         }
 
-        selectMeasurementColumn(index);
+        event.preventDefault();
+        selectMeasurementColumn(index, { extend: event.shiftKey });
+        startMeasurementHeaderSelectionDrag("columns", index, event.pointerId);
       });
       th.addEventListener("contextmenu", (event) => {
         if (event.target instanceof HTMLElement
@@ -8476,8 +8822,14 @@ function renderMeasurementSheet() {
     indexCell.scope = "row";
     indexCell.textContent = String(index + 1);
     indexCell.title = `Oznaci red ${index + 1}`;
-    indexCell.addEventListener("click", () => {
-      selectMeasurementRow(index);
+    indexCell.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      selectMeasurementRow(index, { extend: event.shiftKey });
+      startMeasurementHeaderSelectionDrag("rows", index, event.pointerId);
     });
     indexCell.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -8687,7 +9039,7 @@ function renderMeasurementSheet() {
           return;
         }
 
-        applyMeasurementFill("copy", {
+        applyMeasurementFill("series", {
           pendingFill: {
             selectionRange,
             endRowIndex: targetEndRowIndex,
@@ -8774,6 +9126,7 @@ function closeMeasurementSheet() {
   }
 
   clearScheduledMeasurementSheetRefresh();
+  stopMeasurementFillAutoScroll();
   state.measurementSheet.selectionDrag = null;
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.fillDrag = null;
@@ -8794,6 +9147,7 @@ function closeMeasurementSheet() {
 
 function resetMeasurementSheet() {
   clearScheduledMeasurementSheetRefresh();
+  stopMeasurementFillAutoScroll();
   state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
   state.measurementSheet.merges = [];
@@ -9143,57 +9497,118 @@ function stopMeasurementColumnResize() {
   handleMeasurementSheetMutation();
 }
 
-function updateMeasurementFillTarget(pointerX, pointerY) {
+function getMeasurementFillAutoScrollDelta(pointerX, pointerY) {
+  if (!(measurementSheetGridWrap instanceof HTMLElement)) {
+    return { x: 0, y: 0 };
+  }
+
+  const rect = measurementSheetGridWrap.getBoundingClientRect();
+  const verticalThreshold = 72;
+  const horizontalThreshold = 44;
+  let deltaX = 0;
+  let deltaY = 0;
+
+  if (pointerY > rect.bottom - verticalThreshold) {
+    deltaY = Math.max(20, Math.ceil((pointerY - (rect.bottom - verticalThreshold)) / 4));
+  } else if (pointerY < rect.top + verticalThreshold) {
+    deltaY = -Math.max(20, Math.ceil(((rect.top + verticalThreshold) - pointerY) / 4));
+  }
+
+  if (pointerX > rect.right - horizontalThreshold) {
+    deltaX = Math.max(16, Math.ceil((pointerX - (rect.right - horizontalThreshold)) / 5));
+  } else if (pointerX < rect.left + horizontalThreshold) {
+    deltaX = -Math.max(16, Math.ceil(((rect.left + horizontalThreshold) - pointerX) / 5));
+  }
+
+  return { x: deltaX, y: deltaY };
+}
+
+function applyMeasurementFillAutoScroll(pointerX, pointerY) {
+  if (!(measurementSheetGridWrap instanceof HTMLElement)) {
+    return false;
+  }
+
+  const { x, y } = getMeasurementFillAutoScrollDelta(pointerX, pointerY);
+  if (!x && !y) {
+    return false;
+  }
+
+  const previousTop = measurementSheetGridWrap.scrollTop;
+  const previousLeft = measurementSheetGridWrap.scrollLeft;
+  measurementSheetGridWrap.scrollTop = Math.max(0, previousTop + y);
+  measurementSheetGridWrap.scrollLeft = Math.max(0, previousLeft + x);
+  extendMeasurementSheetRowsIfNeeded();
+  return previousTop !== measurementSheetGridWrap.scrollTop || previousLeft !== measurementSheetGridWrap.scrollLeft;
+}
+
+function stopMeasurementFillAutoScroll() {
+  if (state.measurementSheet.fillAutoScrollFrame) {
+    window.cancelAnimationFrame(state.measurementSheet.fillAutoScrollFrame);
+    state.measurementSheet.fillAutoScrollFrame = 0;
+  }
+}
+
+function scheduleMeasurementFillAutoScroll() {
+  if (state.measurementSheet.fillAutoScrollFrame || !state.measurementSheet.fillDrag) {
+    return;
+  }
+
+  state.measurementSheet.fillAutoScrollFrame = window.requestAnimationFrame(() => {
+    state.measurementSheet.fillAutoScrollFrame = 0;
+
+    const fillDrag = state.measurementSheet.fillDrag;
+    if (!fillDrag) {
+      return;
+    }
+
+    const pointerX = fillDrag.pointerX ?? 0;
+    const pointerY = fillDrag.pointerY ?? 0;
+    const scrolled = applyMeasurementFillAutoScroll(pointerX, pointerY);
+    updateMeasurementFillTarget(pointerX, pointerY, { skipAutoScroll: true });
+
+    if (scrolled) {
+      scheduleMeasurementFillAutoScroll();
+    }
+  });
+}
+
+function updateMeasurementFillTarget(pointerX, pointerY, options = {}) {
+  const {
+    skipAutoScroll = false,
+  } = options;
   const fillDrag = state.measurementSheet.fillDrag;
 
   if (!fillDrag) {
     return;
   }
 
-  if (measurementSheetGridWrap instanceof HTMLElement) {
-    const rect = measurementSheetGridWrap.getBoundingClientRect();
-    const verticalThreshold = 56;
-    const horizontalThreshold = 40;
-    let nextScrollTop = measurementSheetGridWrap.scrollTop;
-    let nextScrollLeft = measurementSheetGridWrap.scrollLeft;
+  fillDrag.pointerX = pointerX;
+  fillDrag.pointerY = pointerY;
 
-    if (pointerY > rect.bottom - verticalThreshold) {
-      nextScrollTop += 24;
-    } else if (pointerY < rect.top + verticalThreshold) {
-      nextScrollTop -= 24;
-    }
-
-    if (pointerX > rect.right - horizontalThreshold) {
-      nextScrollLeft += 18;
-    } else if (pointerX < rect.left + horizontalThreshold) {
-      nextScrollLeft -= 18;
-    }
-
-    if (nextScrollTop !== measurementSheetGridWrap.scrollTop || nextScrollLeft !== measurementSheetGridWrap.scrollLeft) {
-      measurementSheetGridWrap.scrollTop = Math.max(0, nextScrollTop);
-      measurementSheetGridWrap.scrollLeft = Math.max(0, nextScrollLeft);
-      extendMeasurementSheetRowsIfNeeded();
+  if (!skipAutoScroll) {
+    if (applyMeasurementFillAutoScroll(pointerX, pointerY)) {
+      scheduleMeasurementFillAutoScroll();
+    } else {
+      stopMeasurementFillAutoScroll();
     }
   }
 
-  const pointedCell = document.elementFromPoint(pointerX, pointerY)?.closest?.("td[data-row-id][data-column-id]");
-
-  if (!(pointedCell instanceof HTMLElement)) {
+  const hoveredColumnIndex = resolveMeasurementPointerColumnIndex(pointerX, pointerY);
+  if (hoveredColumnIndex >= 0
+    && (hoveredColumnIndex < fillDrag.selectionRange.startColumnIndex
+      || hoveredColumnIndex > fillDrag.selectionRange.endColumnIndex)) {
     fillDrag.endRowIndex = fillDrag.selectionRange.endRowIndex;
     renderMeasurementFillPreview();
     return;
   }
 
-  const hoveredColumnIndex = getMeasurementColumnIndex(pointedCell.dataset.columnId);
-
-  if (hoveredColumnIndex < fillDrag.selectionRange.startColumnIndex
-    || hoveredColumnIndex > fillDrag.selectionRange.endColumnIndex) {
+  const hoveredRowIndex = resolveMeasurementPointerRowIndex(pointerX, pointerY);
+  if (hoveredRowIndex < 0) {
     fillDrag.endRowIndex = fillDrag.selectionRange.endRowIndex;
     renderMeasurementFillPreview();
     return;
   }
 
-  const hoveredRowIndex = getMeasurementRowIndex(pointedCell.dataset.rowId);
   fillDrag.endRowIndex = hoveredRowIndex >= fillDrag.selectionRange.endRowIndex
     ? hoveredRowIndex
     : fillDrag.selectionRange.endRowIndex;
@@ -9208,6 +9623,7 @@ function stopMeasurementFillDrag(applyFill = true, pointerX = 0, pointerY = 0) {
   }
 
   state.measurementSheet.fillDrag = null;
+  stopMeasurementFillAutoScroll();
   document.body.classList.remove("is-filling-measurement-cells");
 
   if (applyFill && fillDrag.endRowIndex > fillDrag.selectionRange.endRowIndex) {
@@ -28703,6 +29119,21 @@ measurementFormulaInput?.addEventListener("blur", () => {
     exitMeasurementEditMode();
   }
 });
+measurementFormatTypeButton?.addEventListener("click", () => {
+  const nextType = getNextMeasurementOptionValue(
+    measurementFormatTypeInput?.value || getMeasurementActiveCellFormat().type,
+    MEASUREMENT_TYPE_ORDER,
+  );
+
+  if (measurementFormatTypeInput) {
+    measurementFormatTypeInput.value = nextType;
+  }
+
+  applyMeasurementToolbarFormat({
+    type: nextType,
+    decimals: normalizeMeasurementDecimals(measurementFormatDecimalsInput?.value),
+  });
+});
 measurementFormatTypeInput?.addEventListener("change", () => {
   const nextType = measurementFormatTypeInput.value;
 
@@ -28729,9 +29160,41 @@ measurementFormatDecimalsInput?.addEventListener("keydown", (event) => {
   event.preventDefault();
   commitMeasurementEditMode();
 });
+measurementFormatDecimalsDecreaseButton?.addEventListener("click", () => {
+  const nextDecimals = Math.max(0, normalizeMeasurementDecimals(measurementFormatDecimalsInput?.value) - 1);
+  if (measurementFormatDecimalsInput) {
+    measurementFormatDecimalsInput.value = String(nextDecimals);
+  }
+  applyMeasurementToolbarFormat({
+    decimals: nextDecimals,
+  });
+});
+measurementFormatDecimalsIncreaseButton?.addEventListener("click", () => {
+  const nextDecimals = Math.min(6, normalizeMeasurementDecimals(measurementFormatDecimalsInput?.value) + 1);
+  if (measurementFormatDecimalsInput) {
+    measurementFormatDecimalsInput.value = String(nextDecimals);
+  }
+  applyMeasurementToolbarFormat({
+    decimals: nextDecimals,
+  });
+});
 measurementFormatBorderInput?.addEventListener("change", () => {
   applyMeasurementToolbarFormat({
     borderPreset: measurementFormatBorderInput.value,
+  });
+});
+measurementFormatBorderButton?.addEventListener("click", () => {
+  const nextBorderPreset = getNextMeasurementOptionValue(
+    measurementFormatBorderInput?.value || getMeasurementBorderPreset(getMeasurementActiveCellFormat().border),
+    MEASUREMENT_BORDER_ORDER,
+  );
+
+  if (measurementFormatBorderInput) {
+    measurementFormatBorderInput.value = nextBorderPreset;
+  }
+
+  applyMeasurementToolbarFormat({
+    borderPreset: nextBorderPreset,
   });
 });
 measurementFormatFontFamilyInput?.addEventListener("change", () => {

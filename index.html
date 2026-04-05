@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260405i" />
+    <link rel="stylesheet" href="/styles.css?v=20260405j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1321,30 +1321,30 @@
             </div>
 
             <div class="measurement-sheet-meta">
-              <label class="field">
+              <label class="field measurement-meta-field">
                 <span>Tvrtka</span>
-                <input id="measurement-company" type="text" placeholder="Naziv tvrtke" />
+                <input id="measurement-company" type="text" placeholder="Naziv tvrtke" aria-label="Naziv tvrtke" />
               </label>
 
-              <label class="field">
+              <label class="field measurement-meta-field">
                 <span>Sjedište</span>
-                <input id="measurement-headquarters" type="text" placeholder="Sjedište tvrtke" />
+                <input id="measurement-headquarters" type="text" placeholder="Sjedište tvrtke" aria-label="Sjedište tvrtke" />
               </label>
 
-              <label class="field">
+              <label class="field measurement-meta-field">
                 <span>Lokacija</span>
-                <input id="measurement-location" type="text" placeholder="Naziv lokacije" />
+                <input id="measurement-location" type="text" placeholder="Naziv lokacije" aria-label="Naziv lokacije" />
               </label>
 
-              <label class="field">
+              <label class="field measurement-meta-field">
                 <span>Datum</span>
-                <input id="measurement-date" type="date" />
+                <input id="measurement-date" type="date" aria-label="Datum" />
               </label>
             </div>
 
             <div class="measurement-sheet-toolbar" aria-label="Spreadsheet toolbar">
               <div class="measurement-toolbar-primary">
-                <label class="measurement-toolbar-namebox">
+                <label class="measurement-toolbar-namebox measurement-toolbar-namebox-compact">
                   <span class="measurement-toolbar-label">Ćelija</span>
                   <input id="measurement-name-box" type="text" readonly />
                 </label>
@@ -1362,39 +1362,50 @@
               </div>
 
               <div class="measurement-toolbar-secondary">
-                <label class="measurement-toolbar-format is-compact" title="Tip prikaza vrijednosti">
-                  <span class="measurement-toolbar-label">Tip</span>
-                  <select id="measurement-format-type" aria-label="Tip prikaza vrijednosti">
-                    <option value="general">General</option>
-                    <option value="number">Number</option>
-                    <option value="integer">Integer</option>
-                    <option value="percent">Percent</option>
-                    <option value="text">Text</option>
-                  </select>
-                </label>
+                <div class="measurement-toolbar-icon-cluster" role="group" aria-label="Brzi alati za ćeliju">
+                  <button id="measurement-format-type-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Tip ćelije" aria-label="Tip ćelije">123</button>
 
-                <label class="measurement-toolbar-format measurement-toolbar-decimals is-compact" title="Broj decimala">
-                  <span class="measurement-toolbar-label">Decimale</span>
-                  <input id="measurement-format-decimals" type="number" min="0" max="6" step="1" value="2" aria-label="Broj decimala" />
-                </label>
+                  <div class="measurement-toolbar-decimal-stepper" role="group" aria-label="Broj decimalnih mjesta">
+                    <button id="measurement-format-decimals-decrease" type="button" class="ghost-button measurement-toolbar-icon-button" title="Smanji broj decimala" aria-label="Smanji broj decimala">-</button>
+                    <button id="measurement-format-decimals-indicator" type="button" class="ghost-button measurement-toolbar-icon-button measurement-toolbar-decimals-indicator" title="Broj decimalnih mjesta" aria-label="Broj decimalnih mjesta">0,00</button>
+                    <button id="measurement-format-decimals-increase" type="button" class="ghost-button measurement-toolbar-icon-button" title="Povećaj broj decimala" aria-label="Povećaj broj decimala">+</button>
+                  </div>
 
-                <label class="measurement-toolbar-format is-compact" title="Obrub ćelije">
-                  <span class="measurement-toolbar-label">Border</span>
-                  <select id="measurement-format-border" aria-label="Obrub ćelije">
-                    <option value="none">No border</option>
-                    <option value="all">All borders</option>
-                    <option value="outline">Outline</option>
-                    <option value="top">Top</option>
-                    <option value="bottom">Bottom</option>
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                    <option value="custom" disabled>Custom</option>
-                  </select>
-                </label>
+                  <button id="measurement-format-border-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Obrub ćelije" aria-label="Obrub ćelije">[]</button>
+                  <button id="measurement-merge" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji označene ćelije" aria-label="Spoji označene ćelije">[+]</button>
+                  <button id="measurement-unmerge" type="button" class="ghost-button measurement-toolbar-icon-button" title="Razdvoji spojene ćelije" aria-label="Razdvoji spojene ćelije">[ ]</button>
+                </div>
 
-                <div class="measurement-toolbar-actions">
-                  <button id="measurement-merge" type="button" class="ghost-button">Merge</button>
-                  <button id="measurement-unmerge" type="button" class="ghost-button">Unmerge</button>
+                <div class="measurement-toolbar-hidden-controls" aria-hidden="true">
+                  <label class="measurement-toolbar-format is-compact">
+                    <span class="measurement-toolbar-label">Tip</span>
+                    <select id="measurement-format-type" aria-label="Tip prikaza vrijednosti">
+                      <option value="general">General</option>
+                      <option value="number">Number</option>
+                      <option value="integer">Integer</option>
+                      <option value="percent">Percent</option>
+                      <option value="text">Text</option>
+                    </select>
+                  </label>
+
+                  <label class="measurement-toolbar-format measurement-toolbar-decimals is-compact">
+                    <span class="measurement-toolbar-label">Decimale</span>
+                    <input id="measurement-format-decimals" type="number" min="0" max="6" step="1" value="2" aria-label="Broj decimala" />
+                  </label>
+
+                  <label class="measurement-toolbar-format is-compact">
+                    <span class="measurement-toolbar-label">Border</span>
+                    <select id="measurement-format-border" aria-label="Obrub ćelije">
+                      <option value="none">No border</option>
+                      <option value="all">All borders</option>
+                      <option value="outline">Outline</option>
+                      <option value="top">Top</option>
+                      <option value="bottom">Bottom</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                      <option value="custom" disabled>Custom</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 
@@ -3805,6 +3816,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260405i"></script>
+    <script type="module" src="/src/main.js?v=20260405j"></script>
   </body>
 </html>
