@@ -14174,15 +14174,8 @@ function renderDocumentTemplateFieldRows() {
     const openExcelBlock = () => {
       openTemplateMeasurementSheet(field.id);
     };
-    const excelMeta = document.createElement("button");
-    excelMeta.type = "button";
+    const excelMeta = document.createElement("div");
     excelMeta.className = "document-template-excel-meta";
-    excelMeta.setAttribute("aria-label", `Otvori Excel blok ${field.label || `Polje ${draftIndex + 1}`}`);
-    excelMeta.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openExcelBlock();
-    });
     const excelSummary = document.createElement("strong");
     excelSummary.textContent = getMeasurementSheetTemplateSummary(field.sheet);
     const excelHint = document.createElement("span");
@@ -14427,13 +14420,20 @@ function renderDocumentTemplateFieldRows() {
       ? String(state.measurementSheet.ownerFieldId || "")
       : "";
     const activeTemplateMeasurementExists = visibleMeasurementFields.some((field) => String(field.id) === activeTemplateMeasurementId);
+    const targetFieldId = activeTemplateMeasurementExists
+      ? activeTemplateMeasurementId
+      : String(visibleMeasurementFields[0]?.id || "");
 
-    if (activeTemplateMeasurementExists && state.measurementSheet.isOpen) {
+    if (!targetFieldId) {
+      syncMeasurementSheetPanelMount();
+    } else if (
+      state.measurementSheet.isOpen
+      && state.measurementSheet.ownerKind === "template_field"
+      && String(state.measurementSheet.ownerFieldId) === targetFieldId
+    ) {
       syncMeasurementSheetPanelMount();
     } else {
-      queueMicrotask(() => {
-        openTemplateMeasurementSheet(visibleMeasurementFields[0].id);
-      });
+      openTemplateMeasurementSheet(targetFieldId);
     }
   }
 
