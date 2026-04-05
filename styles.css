@@ -7642,6 +7642,38 @@ body.is-work-order-document-wizard-open {
   align-items: end;
 }
 
+.work-order-document-wizard-control-slot {
+  min-height: 44px;
+  display: flex;
+  align-items: stretch;
+}
+
+.work-order-document-wizard-control-slot > * {
+  width: 100%;
+}
+
+.work-order-document-wizard-control-slot .work-order-bulk-choice-dropdown,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-picker {
+  width: 100%;
+}
+
+.work-order-document-wizard-control-slot .work-item-status-trigger,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-trigger {
+  min-height: 44px;
+  width: 100%;
+  border-radius: 14px;
+  justify-content: flex-start;
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(220, 156, 212, 0.46);
+  box-shadow: none;
+}
+
+.work-order-document-wizard-control-slot .work-order-bulk-action-label,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-trigger-label,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-selection-empty {
+  color: #31405f;
+}
+
 .work-order-document-wizard-common-person-block,
 .work-order-document-selection-person-block {
   display: grid;
@@ -7661,6 +7693,31 @@ body.is-work-order-document-wizard-open {
 .work-order-document-selection-person-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.work-order-document-selection-person-grid {
+  display: grid;
+}
+
+.work-order-document-selection-person-area {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 156, 212, 0.24);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.work-order-document-selection-person-area-title {
+  color: #31405f;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.work-order-document-selection-person-area-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .work-order-document-wizard-common-people-grid .field,
@@ -7940,6 +7997,9 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-selection-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 16px;
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(220, 156, 212, 0.24);
 }
@@ -7947,27 +8007,41 @@ body.is-work-order-document-wizard-open {
 .work-order-document-selection-copy,
 .work-order-document-template-card-copy {
   display: grid;
-  gap: 3px;
+  min-width: 0;
+  gap: 4px;
 }
 
 .work-order-document-selection-copy strong,
 .work-order-document-template-card-copy strong {
   color: #1f2740;
-  font-size: 1.55rem;
+  font-size: 1.5rem;
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .work-order-document-selection-company {
   color: #2f3d5d;
-  font-size: 0.98rem;
+  font-size: 0.94rem;
   font-weight: 700;
 }
 
 .work-order-document-selection-subline {
   color: #667694;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.work-order-document-selection-executors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.work-order-document-selection-executor {
+  width: 30px;
+  height: 30px;
 }
 
 .work-order-document-selection-chips,
@@ -7985,7 +8059,7 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-selection-grid .field {
-  padding: 10px 12px;
+  padding: 9px 11px;
   border-radius: 18px;
   border: 1px solid rgba(220, 156, 212, 0.34);
   background: rgba(255, 255, 255, 0.9);
@@ -7997,6 +8071,15 @@ body.is-work-order-document-wizard-open {
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.work-order-document-selection-date-field {
+  padding: 7px 10px !important;
+}
+
+.work-order-document-selection-date-field input {
+  min-height: 34px;
+  padding-block: 6px;
 }
 
 .work-order-document-selection-grid input,
@@ -8016,8 +8099,22 @@ body.is-work-order-document-wizard-open {
   border-color: rgba(220, 156, 212, 0.46);
 }
 
+.work-order-document-wizard-common-people-grid select[multiple],
+.work-order-document-selection-person-grid select[multiple] {
+  min-height: 96px;
+}
+
+.work-order-document-selection-person-block {
+  gap: 10px;
+  padding: 12px 13px;
+}
+
+.work-order-document-selection-person-area-grid .field {
+  padding: 9px 10px;
+}
+
 .work-order-document-selection-footer {
-  align-items: center;
+  align-items: flex-start;
   gap: 10px 14px;
 }
 
@@ -8025,6 +8122,7 @@ body.is-work-order-document-wizard-open {
   color: #7683a0;
   font-size: 0.79rem;
   line-height: 1.45;
+  max-width: 36rem;
 }
 
 .work-order-document-selection-reset {
@@ -16345,6 +16443,7 @@ body.is-document-template-editor-open {
   .work-order-document-wizard-common-grid,
   .work-order-document-wizard-common-people-grid,
   .work-order-document-selection-person-grid,
+  .work-order-document-selection-person-area-grid,
   .work-order-document-selection-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -16380,6 +16479,7 @@ body.is-document-template-editor-open {
   .work-order-document-wizard-common-grid,
   .work-order-document-wizard-common-people-grid,
   .work-order-document-selection-person-grid,
+  .work-order-document-selection-person-area-grid,
   .work-order-document-selection-grid {
     grid-template-columns: minmax(0, 1fr);
   }

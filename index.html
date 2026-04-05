@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260405q" />
+    <link rel="stylesheet" href="/styles.css?v=20260405r" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1273,6 +1273,14 @@
                   <span>Datum izdavanja</span>
                   <input id="work-order-document-common-issued-date" type="date" />
                 </label>
+                <label class="field">
+                  <span>Status radnog naloga</span>
+                  <div id="work-order-document-common-status-slot" class="work-order-document-wizard-control-slot"></div>
+                </label>
+                <label class="field field-span-full">
+                  <span>Izvršitelji</span>
+                  <div id="work-order-document-common-executors-slot" class="work-order-document-wizard-control-slot"></div>
+                </label>
                 <section id="work-order-document-wizard-common-people" class="work-order-document-wizard-common-person-block field-span-full">
                   <div class="work-order-document-wizard-subblock-head">
                     <div class="work-order-document-wizard-subblock-copy">
@@ -1290,16 +1298,16 @@
                   </div>
                   <div id="work-order-document-wizard-common-people-body" class="form-grid work-order-document-wizard-common-people-grid">
                     <label class="field">
-                      <span>Ispitivač sigurnosna panik rasvjeta</span>
-                      <select id="work-order-document-common-electrical-inspector-user-id"></select>
+                      <span>Ispitivači sigurnosna panik rasvjeta</span>
+                      <select id="work-order-document-common-electrical-inspector-user-id" multiple size="4"></select>
                     </label>
                     <label class="field">
                       <span>Odgovorna osoba sigurnosna panik rasvjeta</span>
                       <select id="work-order-document-common-electrical-authorization-holder-user-id"></select>
                     </label>
                     <label class="field">
-                      <span>Ispitivač tipkalo za isklop napona</span>
-                      <select id="work-order-document-common-tipkalo-inspector-user-id"></select>
+                      <span>Ispitivači tipkalo za isklop napona</span>
+                      <select id="work-order-document-common-tipkalo-inspector-user-id" multiple size="4"></select>
                     </label>
                     <label class="field">
                       <span>Odgovorna osoba tipkalo za isklop napona</span>
@@ -3839,6 +3847,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260405q"></script>
+    <script type="module" src="/src/main.js?v=20260405r"></script>
   </body>
 </html>
