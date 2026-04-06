@@ -573,6 +573,7 @@ const state = {
     selectedIds: new Set(),
     commonCollapsed: false,
     commonPeopleCollapsed: false,
+    collapsedSections: {},
     commonSheet: "basic",
     common: {
       inspectionDate: new Date().toISOString().slice(0, 10),
@@ -5554,7 +5555,11 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     menu.style.minWidth = `${Math.max(340, Math.round(triggerRect.width + 48))}px`;
   };
 
-  const closeMenu = () => {
+  const closeMenu = ({ commit = true } = {}) => {
+    if (commit && typeof wrapper._commitPendingChange === "function") {
+      wrapper._commitPendingChange();
+    }
+    wrapper._commitPendingChange = null;
     wrapper.classList.remove("is-open");
     trigger.setAttribute("aria-expanded", "false");
     if (wrapper._menuPortal) {
@@ -5574,6 +5579,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
 
     let draftItems = getCurrentItems();
     let searchQuery = "";
+    let hasPendingChange = false;
 
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-service-picker-menu-portal";
@@ -5612,11 +5618,27 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     clearButton.className = "ghost-button work-order-service-picker-clear";
     clearButton.textContent = "Očisti";
 
+    const actions = document.createElement("div");
+    actions.className = "work-order-service-picker-footer";
+    const doneButton = document.createElement("button");
+    doneButton.type = "button";
+    doneButton.className = "primary-button work-order-service-picker-done";
+    doneButton.textContent = "Gotovo";
+
     const commitItems = (nextItems) => {
       setWorkOrderDocumentWizardOverride(workOrder.id, {
         serviceItems: nextItems,
       });
+      setCurrentItems(nextItems);
       renderWorkOrderDocumentWizard();
+    };
+
+    wrapper._commitPendingChange = () => {
+      if (!hasPendingChange) {
+        return;
+      }
+      hasPendingChange = false;
+      commitItems(draftItems);
     };
 
     const toggleService = (service) => {
@@ -5632,7 +5654,9 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
         ];
       }
 
-      commitItems(draftItems);
+      hasPendingChange = true;
+      setCurrentItems(draftItems);
+      syncMenuState();
     };
 
     const syncMenuState = () => {
@@ -5712,7 +5736,9 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
 
     clearButton.addEventListener("click", () => {
       draftItems = [];
-      commitItems([]);
+      hasPendingChange = true;
+      setCurrentItems([]);
+      syncMenuState();
     });
 
     searchInput.addEventListener("input", () => {
@@ -5725,10 +5751,32 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
         event.preventDefault();
         closeMenu();
         trigger.focus({ preventScroll: true });
+        return;
       }
+
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      const visibleOptions = getWorkOrderServiceCatalogOptions(draftItems)
+        .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
+
+      if (visibleOptions.length !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      toggleService(visibleOptions[0]);
     });
 
-    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    doneButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeMenu();
+      trigger.focus({ preventScroll: true });
+    });
+
+    actions.append(clearButton, doneButton);
+    menu.append(searchWrap, selection, helper, optionsList, actions);
     syncMenuState();
 
     document.body.append(menu);
@@ -13191,6 +13239,14 @@ function createWorkOrderDocumentSignaturePersonPicker({
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
     clearButton.textContent = "Očisti";
 
+    const actions = document.createElement("div");
+    actions.className = "work-order-calendar-executor-footer";
+
+    const doneButton = document.createElement("button");
+    doneButton.type = "button";
+    doneButton.className = "primary-button work-order-calendar-executor-save";
+    doneButton.textContent = multiple ? "Gotovo" : "Zatvori";
+
     const emitChange = (nextValues, meta = {}) => {
       const normalized = multiple
         ? normalizeQualifiedUserIdList(nextValues)
@@ -13353,12 +13409,51 @@ function createWorkOrderDocumentSignaturePersonPicker({
       renderOptions();
     });
 
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      const visibleOptions = getWorkOrderDocumentSignaturePersonPickerOptions(normalizedCapability, normalizedArea)
+        .filter((option) => matchesWorkOrderDocumentSignaturePersonSearch(option, searchQuery));
+
+      if (visibleOptions.length !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      const nextOption = visibleOptions[0];
+      if (multiple) {
+        const nextValues = draftValues.includes(nextOption.value)
+          ? draftValues.filter((entry) => entry !== nextOption.value)
+          : [...draftValues, nextOption.value];
+        applyChange(nextValues, { keepMenuOpen: true });
+        return;
+      }
+
+      applyChange(draftValues.includes(nextOption.value) ? [] : [nextOption.value]);
+    });
+
     clearButton.addEventListener("click", (event) => {
       event.stopPropagation();
       applyChange([], { keepMenuOpen: multiple });
     });
 
-    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    doneButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeMenu();
+      trigger.focus({ preventScroll: true });
+    });
+
+    actions.append(clearButton, doneButton);
+    menu.append(searchWrap, selection, helper, optionsList, actions);
     syncMenuState();
 
     document.body.append(menu);
@@ -27992,6 +28087,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.commonCollapsed = false;
   state.workOrderDocumentWizard.commonPeopleCollapsed = false;
+  state.workOrderDocumentWizard.collapsedSections = {};
   state.workOrderDocumentWizard.commonSheet = "basic";
   state.workOrderBatch.pending = false;
   state.workOrderBatch.message = "";
@@ -28239,6 +28335,41 @@ function syncWorkOrderDocumentWizardCommonSummaryText() {
   workOrderDocumentWizardCommonSummary.textContent = summaryParts.length > 0
     ? summaryParts.join(", ")
     : "Vrijedi za sve odabrane RN-ove.";
+}
+
+function getWorkOrderDocumentWizardCollapsedSections(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return {};
+  }
+
+  if (!state.workOrderDocumentWizard.collapsedSections || typeof state.workOrderDocumentWizard.collapsedSections !== "object") {
+    state.workOrderDocumentWizard.collapsedSections = {};
+  }
+
+  if (!state.workOrderDocumentWizard.collapsedSections[normalizedId]) {
+    state.workOrderDocumentWizard.collapsedSections[normalizedId] = {};
+  }
+
+  return state.workOrderDocumentWizard.collapsedSections[normalizedId];
+}
+
+function isWorkOrderDocumentWizardSectionCollapsed(workOrderId = "", sectionKey = "") {
+  const normalizedKey = String(sectionKey || "").trim();
+  if (!normalizedKey) {
+    return false;
+  }
+  return Boolean(getWorkOrderDocumentWizardCollapsedSections(workOrderId)[normalizedKey]);
+}
+
+function toggleWorkOrderDocumentWizardSectionCollapsed(workOrderId = "", sectionKey = "") {
+  const normalizedKey = String(sectionKey || "").trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  const sections = getWorkOrderDocumentWizardCollapsedSections(workOrderId);
+  sections[normalizedKey] = !Boolean(sections[normalizedKey]);
 }
 
 function renderWorkOrderDocumentWizardCommonPeopleSection() {
@@ -29266,7 +29397,16 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     renderWorkOrderDocumentWizard();
   };
 
-  const createSectionHead = (titleText, descriptionText = "") => {
+  const createCollapsibleSection = ({
+    sectionKey,
+    titleText,
+    descriptionText = "",
+    className = "",
+    bodyClassName = "",
+  }) => {
+    const section = document.createElement("section");
+    section.className = [className, "field-span-full", "work-order-document-selection-section-block"].filter(Boolean).join(" ");
+
     const headNode = document.createElement("div");
     headNode.className = "work-order-document-selection-section-head";
 
@@ -29283,8 +29423,30 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       copyNode.append(descriptionNode);
     }
 
-    headNode.append(copyNode);
-    return headNode;
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = "ghost-button work-order-document-selection-section-toggle";
+
+    const bodyNode = document.createElement("div");
+    bodyNode.className = ["work-order-document-selection-section-body", bodyClassName].filter(Boolean).join(" ");
+
+    const syncSectionState = () => {
+      const isCollapsed = isWorkOrderDocumentWizardSectionCollapsed(workOrder.id, sectionKey);
+      section.classList.toggle("is-collapsed", isCollapsed);
+      bodyNode.hidden = isCollapsed;
+      toggleButton.textContent = isCollapsed ? "Prikaži" : "Sakrij";
+      toggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+    };
+
+    toggleButton.addEventListener("click", () => {
+      toggleWorkOrderDocumentWizardSectionCollapsed(workOrder.id, sectionKey);
+      syncSectionState();
+    });
+
+    headNode.append(copyNode, toggleButton);
+    section.append(headNode, bodyNode);
+    syncSectionState();
+    return { section, bodyNode };
   };
 
   const createOverrideField = ({
@@ -29362,67 +29524,12 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     return field;
   };
 
-  const peopleBlock = document.createElement("section");
-  peopleBlock.className = "work-order-document-selection-person-block field-span-full";
-
-  const peopleHead = document.createElement("div");
-  peopleHead.className = "work-order-document-selection-person-head";
-
-  const peopleTitle = document.createElement("strong");
-  peopleTitle.textContent = "Ispitivači i odgovorne osobe";
-
-  const peopleCopy = document.createElement("span");
-  peopleCopy.textContent = "Zajednički odabiri se automatski preslikaju. Ovdje prepravi samo ako ovaj RN odstupa.";
-
-  peopleHead.append(peopleTitle, peopleCopy);
-
-  const peopleGrid = document.createElement("div");
-  peopleGrid.className = "work-order-document-selection-person-grid";
-  [
-    {
-      title: "Sigurnosna panik rasvjeta",
-      fields: WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.filter((definition) => definition.signatureArea === "elektro"),
-    },
-    {
-      title: "Tipkalo za isklop napona",
-      fields: WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.filter((definition) => definition.signatureArea === "tipkalo"),
-    },
-  ].forEach((group) => {
-    const areaCard = document.createElement("section");
-    areaCard.className = "work-order-document-selection-person-area";
-
-    const areaTitle = document.createElement("strong");
-    areaTitle.className = "work-order-document-selection-person-area-title";
-    areaTitle.textContent = group.title;
-
-    const areaFields = document.createElement("div");
-    areaFields.className = "form-grid work-order-document-selection-person-area-grid";
-
-    group.fields.forEach((definition) => {
-      areaFields.append(createPickerField({
-        label: definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači",
-        capability: definition.capability,
-        signatureArea: definition.signatureArea,
-        multiple: Boolean(definition.multiple),
-        listFieldName: definition.listFieldName || "",
-        fieldName: definition.fieldName,
-        emptyLabel: definition.emptyLabel,
-      }));
-    });
-
-    areaCard.append(areaTitle, areaFields);
-    peopleGrid.append(areaCard);
+  const basicSection = createCollapsibleSection({
+    sectionKey: "basic",
+    titleText: "Osnovno",
+    descriptionText: "Datume i osnovne RN podatke korigiraj ovdje samo ako ovaj radni nalog odstupa od zajedničkog unosa.",
+    className: "work-order-document-selection-basic-block",
   });
-  peopleBlock.append(peopleHead, peopleGrid);
-
-  const basicBlock = document.createElement("section");
-  basicBlock.className = "work-order-document-selection-basic-block field-span-full";
-  basicBlock.append(
-    createSectionHead(
-      "Osnovno",
-      "Datume i osnovne RN podatke korigiraj ovdje samo ako ovaj radni nalog odstupa od zajedničkog unosa.",
-    ),
-  );
 
   const basicGrid = document.createElement("div");
   basicGrid.className = "form-grid work-order-document-selection-basic-grid";
@@ -29442,23 +29549,16 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       className: "work-order-document-selection-date-field",
     }),
   );
-  basicBlock.append(basicGrid);
+  basicSection.bodyNode.append(basicGrid);
 
-  const servicesBlock = document.createElement("section");
-  servicesBlock.className = "work-order-document-selection-services field-span-full";
-
-  const servicesHead = document.createElement("div");
-  servicesHead.className = "work-order-document-selection-section-head";
-
-  const servicesTitle = document.createElement("strong");
-  servicesTitle.textContent = "Usluge";
-
-  const servicesMeta = document.createElement("span");
-  servicesMeta.textContent = resolvedServiceItems.length > 0
-    ? `${resolvedServiceItems.length} usluga, ${getWorkOrderCompletedServiceCount({ serviceItems: resolvedServiceItems })} odrađeno`
-    : "Dodaj ili makni usluge za ovaj RN.";
-
-  servicesHead.append(servicesTitle, servicesMeta);
+  const servicesSection = createCollapsibleSection({
+    sectionKey: "services",
+    titleText: "Usluge",
+    descriptionText: resolvedServiceItems.length > 0
+      ? `${resolvedServiceItems.length} usluga, ${getWorkOrderCompletedServiceCount({ serviceItems: resolvedServiceItems })} odrađeno`
+      : "Dodaj ili makni usluge za ovaj RN.",
+    className: "work-order-document-selection-services",
+  });
 
   const servicesToolbar = document.createElement("div");
   servicesToolbar.className = "work-order-document-selection-services-toolbar";
@@ -29508,18 +29608,62 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     });
   }
 
-  servicesBlock.append(servicesHead, servicesToolbar, serviceList);
+  servicesSection.bodyNode.append(servicesToolbar, serviceList);
 
-  const environmentBlock = document.createElement("section");
-  environmentBlock.className = "work-order-document-selection-env-block field-span-full";
-  environmentBlock.append(
-    createSectionHead(
-      "Uvjeti ispitivanja",
-      state.workOrderDocumentWizard.common.randomizeEnvironment
-        ? "Zajedničke vrijednosti su blago varirane po RN-u. Ovdje ih po potrebi ručno korigiraj."
-        : "Zajednički uvjeti se ovdje automatski preslikaju. Mijenjaj samo ako ovaj RN odstupa.",
-    ),
-  );
+  const peopleSection = createCollapsibleSection({
+    sectionKey: "people",
+    titleText: "Ispitivači i odgovorne osobe",
+    descriptionText: "Zajednički odabiri se automatski preslikaju. Ovdje prepravi samo ako ovaj RN odstupa.",
+    className: "work-order-document-selection-person-block",
+  });
+
+  const peopleGrid = document.createElement("div");
+  peopleGrid.className = "work-order-document-selection-person-grid";
+  [
+    {
+      title: "Sigurnosna panik rasvjeta",
+      fields: WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.filter((definition) => definition.signatureArea === "elektro"),
+    },
+    {
+      title: "Tipkalo za isklop napona",
+      fields: WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.filter((definition) => definition.signatureArea === "tipkalo"),
+    },
+  ].forEach((group) => {
+    const areaCard = document.createElement("section");
+    areaCard.className = "work-order-document-selection-person-area";
+
+    const areaTitle = document.createElement("strong");
+    areaTitle.className = "work-order-document-selection-person-area-title";
+    areaTitle.textContent = group.title;
+
+    const areaFields = document.createElement("div");
+    areaFields.className = "form-grid work-order-document-selection-person-area-grid";
+
+    group.fields.forEach((definition) => {
+      areaFields.append(createPickerField({
+        label: definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači",
+        capability: definition.capability,
+        signatureArea: definition.signatureArea,
+        multiple: Boolean(definition.multiple),
+        listFieldName: definition.listFieldName || "",
+        fieldName: definition.fieldName,
+        emptyLabel: definition.emptyLabel,
+      }));
+    });
+
+    areaCard.append(areaTitle, areaFields);
+    peopleGrid.append(areaCard);
+  });
+  peopleSection.bodyNode.append(peopleGrid);
+
+  const environmentSection = createCollapsibleSection({
+    sectionKey: "environment",
+    titleText: "Uvjeti ispitivanja",
+    descriptionText: state.workOrderDocumentWizard.common.randomizeEnvironment
+      ? "Zajedničke vrijednosti su blago varirane po RN-u. Ovdje ih po potrebi ručno korigiraj."
+      : "Zajednički uvjeti se ovdje automatski preslikaju. Mijenjaj samo ako ovaj RN odstupa.",
+    className: "work-order-document-selection-env-block",
+  });
 
   const envGrid = document.createElement("div");
   envGrid.className = "form-grid work-order-document-selection-env-grid";
@@ -29555,14 +29699,14 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2 Ω",
     }),
   );
-  environmentBlock.append(envGrid);
+  environmentSection.bodyNode.append(envGrid);
 
   grid.append(
     companyBlock,
-    basicBlock,
-    servicesBlock,
-    peopleBlock,
-    environmentBlock,
+    basicSection.section,
+    servicesSection.section,
+    peopleSection.section,
+    environmentSection.section,
   );
 
   const footer = document.createElement("div");
