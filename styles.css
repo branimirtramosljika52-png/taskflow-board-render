@@ -8135,6 +8135,31 @@ body.is-work-order-document-wizard-open {
   gap: 14px;
 }
 
+.work-order-document-wizard-sheet-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-order-document-wizard-sheet-tab {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+}
+
+.work-order-document-wizard-sheet-tab.is-active {
+  border-color: rgba(214, 101, 190, 0.34);
+  background: linear-gradient(135deg, rgba(255, 240, 248, 0.98), rgba(244, 239, 255, 0.98));
+  color: #8f2e75;
+  box-shadow: 0 10px 22px rgba(140, 75, 198, 0.12);
+}
+
+.work-order-document-wizard-sheet-panel {
+  display: grid;
+  gap: 14px;
+}
+
 .work-order-document-wizard-company-block,
 .work-order-document-wizard-common-core,
 .work-order-document-wizard-common-env-block,
@@ -8287,6 +8312,17 @@ body.is-work-order-document-wizard-open {
   height: 30px;
 }
 
+.work-order-document-wizard-control-slot .work-order-bulk-executor-avatar .executor-avatar-badge,
+.work-order-document-selection-executor .executor-avatar-badge,
+.work-order-document-person-trigger .work-order-document-person-avatar .executor-avatar-badge {
+  color: #0c1223;
+  font-size: 0.76rem;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.98),
+    0 0 8px rgba(255, 255, 255, 0.92),
+    0 2px 4px rgba(16, 22, 37, 0.26);
+}
+
 .work-order-document-person-menu-portal .work-order-calendar-executor-chip,
 .work-order-document-person-menu-portal .work-order-calendar-executor-option {
   background: rgba(255, 255, 255, 0.98);
@@ -8372,6 +8408,55 @@ body.is-work-order-document-wizard-open {
 .work-order-document-selection-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 12px;
+}
+
+.work-order-document-selection-company-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 247, 255, 0.94));
+}
+
+.work-order-document-selection-company-logo {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 156, 212, 0.26);
+  background: linear-gradient(180deg, #ffffff, #faf6ff);
+}
+
+.work-order-document-selection-company-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.work-order-document-selection-company-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-document-selection-company-copy strong {
+  color: #26324d;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.work-order-document-selection-company-copy span {
+  color: #6f7d98;
+  font-size: 0.78rem;
+  line-height: 1.42;
 }
 
 .work-order-document-selection-grid .field {
@@ -16850,6 +16935,10 @@ body.is-document-template-editor-open {
 
   .work-order-document-company-strip {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-order-document-wizard-sheet-tabs {
+    width: 100%;
   }
 
   .work-order-document-selection-head,

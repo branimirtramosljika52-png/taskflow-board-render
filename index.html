@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260406a" />
+    <link rel="stylesheet" href="/styles.css?v=20260406b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1265,135 +1265,148 @@
                 </button>
               </div>
               <div id="work-order-document-wizard-common-body" class="work-order-document-wizard-common-layout">
-                <section class="work-order-document-wizard-company-block field-span-full">
-                  <div class="work-order-document-wizard-subblock-head">
-                    <div class="work-order-document-wizard-subblock-copy">
-                      <strong>Tvrtke u odabiru</strong>
-                      <span>Logo, sjedište i OIB za trenutno odabrane RN-ove.</span>
-                    </div>
-                  </div>
-                  <div id="work-order-document-wizard-company-strip" class="work-order-document-wizard-company-strip"></div>
-                </section>
+                <div class="work-order-document-wizard-sheet-tabs field-span-full">
+                  <button
+                    id="work-order-document-wizard-sheet-basic"
+                    type="button"
+                    class="ghost-button work-order-document-wizard-sheet-tab is-active"
+                    aria-selected="true"
+                  >
+                    Osnovno
+                  </button>
+                  <button
+                    id="work-order-document-wizard-sheet-validity"
+                    type="button"
+                    class="ghost-button work-order-document-wizard-sheet-tab"
+                    aria-selected="false"
+                  >
+                    Rokovi
+                  </button>
+                </div>
 
-                <section class="work-order-document-wizard-common-core field-span-full">
-                  <div class="work-order-document-wizard-common-core-grid">
-                    <label class="field work-order-document-wizard-date-field">
-                      <span>Datum ispitivanja</span>
-                      <input id="work-order-document-common-inspection-date" type="date" />
-                    </label>
-                    <label class="field work-order-document-wizard-date-field">
-                      <span>Datum izdavanja</span>
-                      <input id="work-order-document-common-issued-date" type="date" />
-                    </label>
-                    <label class="field">
-                      <span>Status radnog naloga</span>
-                      <div id="work-order-document-common-status-slot" class="work-order-document-wizard-control-slot"></div>
-                    </label>
-                    <label class="field">
-                      <span>Izvršitelji</span>
-                      <div id="work-order-document-common-executors-slot" class="work-order-document-wizard-control-slot"></div>
-                    </label>
-                  </div>
-                </section>
-
-                <section id="work-order-document-wizard-common-people" class="work-order-document-wizard-common-person-block field-span-full">
-                  <div class="work-order-document-wizard-subblock-head">
-                    <div class="work-order-document-wizard-subblock-copy">
-                      <strong>Osobe i ovlaštenja</strong>
-                      <span id="work-order-document-wizard-common-people-summary" class="work-order-document-wizard-common-summary"></span>
+                <div id="work-order-document-wizard-sheet-basic-panel" class="work-order-document-wizard-sheet-panel">
+                  <section class="work-order-document-wizard-common-core field-span-full">
+                    <div class="work-order-document-wizard-common-core-grid">
+                      <label class="field work-order-document-wizard-date-field">
+                        <span>Datum ispitivanja</span>
+                        <input id="work-order-document-common-inspection-date" type="date" />
+                      </label>
+                      <label class="field work-order-document-wizard-date-field">
+                        <span>Datum izdavanja</span>
+                        <input id="work-order-document-common-issued-date" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Status radnog naloga</span>
+                        <div id="work-order-document-common-status-slot" class="work-order-document-wizard-control-slot"></div>
+                      </label>
+                      <label class="field">
+                        <span>Izvršitelji</span>
+                        <div id="work-order-document-common-executors-slot" class="work-order-document-wizard-control-slot"></div>
+                      </label>
                     </div>
-                    <button
-                      id="work-order-document-wizard-common-people-toggle"
-                      type="button"
-                      class="ghost-button work-order-document-wizard-common-toggle"
-                      aria-expanded="true"
-                    >
-                      Sakrij osobe
-                    </button>
-                  </div>
-                  <div id="work-order-document-wizard-common-people-body" class="work-order-document-wizard-common-people-grid">
-                    <section class="work-order-document-wizard-common-person-area">
-                      <strong class="work-order-document-wizard-common-person-area-title">Sigurnosna panik rasvjeta</strong>
-                      <div class="work-order-document-wizard-common-person-area-grid">
-                        <label class="field">
-                          <span>Ispitivači</span>
-                          <div id="work-order-document-common-electrical-inspector-slot" class="work-order-document-wizard-control-slot"></div>
-                        </label>
-                        <label class="field">
-                          <span>Odgovorna osoba</span>
-                          <div id="work-order-document-common-electrical-authorization-holder-slot" class="work-order-document-wizard-control-slot"></div>
-                        </label>
+                  </section>
+
+                  <section id="work-order-document-wizard-common-people" class="work-order-document-wizard-common-person-block field-span-full">
+                    <div class="work-order-document-wizard-subblock-head">
+                      <div class="work-order-document-wizard-subblock-copy">
+                        <strong>Osobe i ovlaštenja</strong>
+                        <span id="work-order-document-wizard-common-people-summary" class="work-order-document-wizard-common-summary"></span>
                       </div>
-                    </section>
-                    <section class="work-order-document-wizard-common-person-area">
-                      <strong class="work-order-document-wizard-common-person-area-title">Tipkalo za isklop napona</strong>
-                      <div class="work-order-document-wizard-common-person-area-grid">
-                        <label class="field">
-                          <span>Ispitivači</span>
-                          <div id="work-order-document-common-tipkalo-inspector-slot" class="work-order-document-wizard-control-slot"></div>
-                        </label>
-                        <label class="field">
-                          <span>Odgovorna osoba</span>
-                          <div id="work-order-document-common-tipkalo-authorization-holder-slot" class="work-order-document-wizard-control-slot"></div>
-                        </label>
+                      <button
+                        id="work-order-document-wizard-common-people-toggle"
+                        type="button"
+                        class="ghost-button work-order-document-wizard-common-toggle"
+                        aria-expanded="true"
+                      >
+                        Sakrij osobe
+                      </button>
+                    </div>
+                    <div id="work-order-document-wizard-common-people-body" class="work-order-document-wizard-common-people-grid">
+                      <section class="work-order-document-wizard-common-person-area">
+                        <strong class="work-order-document-wizard-common-person-area-title">Sigurnosna panik rasvjeta</strong>
+                        <div class="work-order-document-wizard-common-person-area-grid">
+                          <label class="field">
+                            <span>Ispitivači</span>
+                            <div id="work-order-document-common-electrical-inspector-slot" class="work-order-document-wizard-control-slot"></div>
+                          </label>
+                          <label class="field">
+                            <span>Odgovorna osoba</span>
+                            <div id="work-order-document-common-electrical-authorization-holder-slot" class="work-order-document-wizard-control-slot"></div>
+                          </label>
+                        </div>
+                      </section>
+                      <section class="work-order-document-wizard-common-person-area">
+                        <strong class="work-order-document-wizard-common-person-area-title">Tipkalo za isklop napona</strong>
+                        <div class="work-order-document-wizard-common-person-area-grid">
+                          <label class="field">
+                            <span>Ispitivači</span>
+                            <div id="work-order-document-common-tipkalo-inspector-slot" class="work-order-document-wizard-control-slot"></div>
+                          </label>
+                          <label class="field">
+                            <span>Odgovorna osoba</span>
+                            <div id="work-order-document-common-tipkalo-authorization-holder-slot" class="work-order-document-wizard-control-slot"></div>
+                          </label>
+                        </div>
+                      </section>
+                    </div>
+                  </section>
+
+                  <section class="work-order-document-wizard-common-env-block field-span-full">
+                    <div class="work-order-document-wizard-subblock-head">
+                      <div class="work-order-document-wizard-subblock-copy">
+                        <strong>Uvjeti ispitivanja</strong>
+                        <span>Zajednički okolišni podaci koji se preslikavaju na sve odabrane RN-ove.</span>
                       </div>
-                    </section>
-                  </div>
-                </section>
-
-                <section class="work-order-document-wizard-common-env-block field-span-full">
-                  <div class="work-order-document-wizard-subblock-head">
-                    <div class="work-order-document-wizard-subblock-copy">
-                      <strong>Uvjeti ispitivanja</strong>
-                      <span>Zajednički okolišni podaci koji se preslikavaju na sve odabrane RN-ove.</span>
                     </div>
-                  </div>
-                  <div class="work-order-document-wizard-common-env-grid">
-                    <label class="field">
-                      <span>Vanjska temperatura</span>
-                      <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18 °C" />
-                    </label>
-                    <label class="field">
-                      <span>Relativna vlažnost</span>
-                      <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52 %" />
-                    </label>
-                    <label class="field">
-                      <span>Brzina strujanja</span>
-                      <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,4 m/s" />
-                    </label>
-                    <label class="field">
-                      <span>Vrijeme</span>
-                      <input id="work-order-document-common-weather" type="text" placeholder="npr. sunčano" />
-                    </label>
-                    <label class="field">
-                      <span>Stanje tla</span>
-                      <input id="work-order-document-common-ground-condition" type="text" placeholder="npr. suho" />
-                    </label>
-                    <label class="field">
-                      <span>Otpor tla</span>
-                      <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5,2 Ω" />
-                    </label>
-                  </div>
-                </section>
-
-                <section class="work-order-document-wizard-common-periods-block field-span-full">
-                  <div class="work-order-document-wizard-subblock-head">
-                    <div class="work-order-document-wizard-subblock-copy">
-                      <strong>Rokovi ispitivanja</strong>
-                      <span>Posebni rokovi koji će se kasnije koristiti u zapisniku.</span>
+                    <div class="work-order-document-wizard-common-env-grid">
+                      <label class="field">
+                        <span>Vanjska temperatura</span>
+                        <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18 °C" />
+                      </label>
+                      <label class="field">
+                        <span>Relativna vlažnost</span>
+                        <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52 %" />
+                      </label>
+                      <label class="field">
+                        <span>Brzina strujanja</span>
+                        <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,4 m/s" />
+                      </label>
+                      <label class="field">
+                        <span>Vrijeme</span>
+                        <input id="work-order-document-common-weather" type="text" placeholder="npr. sunčano" />
+                      </label>
+                      <label class="field">
+                        <span>Stanje tla</span>
+                        <input id="work-order-document-common-ground-condition" type="text" placeholder="npr. suho" />
+                      </label>
+                      <label class="field">
+                        <span>Otpor tla</span>
+                        <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5,2 Ω" />
+                      </label>
                     </div>
-                  </div>
-                  <div class="work-order-document-wizard-common-periods-grid">
-                    <label class="field">
-                      <span>Panik rasvjeta</span>
-                      <input id="work-order-document-common-electrical-validity-months" type="number" min="0" step="1" inputmode="numeric" />
-                    </label>
-                    <label class="field">
-                      <span>Tipkalo za isklop napona</span>
-                      <input id="work-order-document-common-tipkalo-validity-months" type="number" min="0" step="1" inputmode="numeric" />
-                    </label>
-                  </div>
-                </section>
+                  </section>
+                </div>
+
+                <div id="work-order-document-wizard-sheet-validity-panel" class="work-order-document-wizard-sheet-panel" hidden>
+                  <section class="work-order-document-wizard-common-periods-block field-span-full">
+                    <div class="work-order-document-wizard-subblock-head">
+                      <div class="work-order-document-wizard-subblock-copy">
+                        <strong>Rokovi ispitivanja</strong>
+                        <span>Posebni rokovi koji će se kasnije koristiti u zapisniku.</span>
+                      </div>
+                    </div>
+                    <div class="work-order-document-wizard-common-periods-grid">
+                      <label class="field">
+                        <span>Panik rasvjeta</span>
+                        <input id="work-order-document-common-electrical-validity-months" type="number" min="0" step="1" inputmode="numeric" />
+                      </label>
+                      <label class="field">
+                        <span>Tipkalo za isklop napona</span>
+                        <input id="work-order-document-common-tipkalo-validity-months" type="number" min="0" step="1" inputmode="numeric" />
+                      </label>
+                    </div>
+                  </section>
+                </div>
               </div>
             </section>
 
@@ -3926,6 +3939,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260406a"></script>
+    <script type="module" src="/src/main.js?v=20260406b"></script>
   </body>
 </html>
