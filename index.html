@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260406f" />
+  <link rel="stylesheet" href="/styles.css?v=20260406g" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3683,6 +3683,9 @@
                         <h3 id="document-template-editor-title">Novi template</h3>
                       </div>
                       <div class="document-template-head-actions">
+                        <button id="document-template-runtime-back" type="button" class="ghost-button" hidden>Vrati se na osnovne podatke</button>
+                        <button id="document-template-runtime-prev" type="button" class="ghost-button" hidden>Prethodni</button>
+                        <button id="document-template-runtime-next" type="button" class="primary-button" hidden>NEXT</button>
                         <button id="document-template-open-pdf-preview" type="button" class="ghost-button" hidden>PDF pregled</button>
                         <button id="document-template-export-preview" type="button" class="ghost-button" hidden>Preuzmi Word</button>
                         <button id="document-template-save" type="button" class="primary-button">Spremi template</button>
@@ -3716,6 +3719,7 @@
                         <button id="document-template-runtime-clear" type="button" class="ghost-button">Makni context</button>
                       </div>
                       <p id="document-template-runtime-helper" class="helper-copy module-copy">Odabran je jedan ili više RN-ova iz liste i ovaj template sada čita njihove podatke.</p>
+                      <div id="document-template-runtime-sequence-progress" class="document-template-runtime-sequence-progress" hidden></div>
                       <div id="document-template-runtime-work-orders" class="document-template-runtime-work-orders"></div>
                       <div id="document-template-runtime-common" class="document-template-runtime-common"></div>
                     </section>
@@ -3956,6 +3960,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260406f"></script>
+  <script type="module" src="/src/main.js?v=20260406g"></script>
   </body>
 </html>

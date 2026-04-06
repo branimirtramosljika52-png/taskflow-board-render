@@ -612,6 +612,8 @@ const state = {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    sequenceEntries: [],
+    sequenceIndex: -1,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -1227,6 +1229,10 @@ const documentTemplateRuntimeHelper = document.querySelector("#document-template
 const documentTemplateRuntimeWorkOrders = document.querySelector("#document-template-runtime-work-orders");
 const documentTemplateRuntimeCommon = document.querySelector("#document-template-runtime-common");
 const documentTemplateRuntimeClearButton = document.querySelector("#document-template-runtime-clear");
+const documentTemplateRuntimeBackButton = document.querySelector("#document-template-runtime-back");
+const documentTemplateRuntimePrevButton = document.querySelector("#document-template-runtime-prev");
+const documentTemplateRuntimeNextButton = document.querySelector("#document-template-runtime-next");
+const documentTemplateRuntimeSequenceProgress = document.querySelector("#document-template-runtime-sequence-progress");
 const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
 const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
@@ -15385,10 +15391,31 @@ function renderDocumentTemplateRuntimeContext() {
 
   const hasContext = hasDocumentTemplateRuntimeContext();
   const fillMode = isDocumentTemplateRuntimeFillMode();
+  const sequenceState = fillMode ? getDocumentTemplateRuntimeSequenceState() : null;
+  const hasSequence = Boolean(sequenceState);
+  const hasWizardRuntime = fillMode && state.documentTemplateRuntime.source === "wizard";
   documentTemplateRuntimeContext.hidden = !hasContext;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
   if (documentTemplateRuntimeClearButton) {
     documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
+  }
+  if (documentTemplateRuntimeBackButton) {
+    documentTemplateRuntimeBackButton.hidden = !hasWizardRuntime;
+  }
+  if (documentTemplateRuntimePrevButton) {
+    documentTemplateRuntimePrevButton.hidden = !hasSequence;
+    documentTemplateRuntimePrevButton.disabled = !hasSequence || sequenceState.index <= 0;
+  }
+  if (documentTemplateRuntimeNextButton) {
+    documentTemplateRuntimeNextButton.hidden = !hasSequence;
+    documentTemplateRuntimeNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
+    documentTemplateRuntimeNextButton.textContent = "NEXT";
+  }
+  if (documentTemplateRuntimeSequenceProgress) {
+    documentTemplateRuntimeSequenceProgress.hidden = !hasSequence;
+    documentTemplateRuntimeSequenceProgress.textContent = hasSequence
+      ? `${sequenceState.index + 1}/${sequenceState.total} · ${sequenceState.entry.templateTitle || "Zapisnik"} · RN ${sequenceState.entry.workOrderNumber || "bez broja"}`
+      : "";
   }
 
   if (!hasContext) {
@@ -15399,18 +15426,23 @@ function renderDocumentTemplateRuntimeContext() {
 
   const workOrders = getDocumentTemplateRuntimeWorkOrders();
   const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  const visibleWorkOrders = hasSequence
+    ? workOrders.filter((workOrder) => String(workOrder.id) === String(sequenceState.entry.workOrderId))
+    : workOrders;
 
   if (documentTemplateRuntimeHelper) {
-    documentTemplateRuntimeHelper.textContent = fillMode
-      ? (workOrders.length > 1
-        ? "Ispuni samo polja iz predloška. Podaci iz RN-a, zajednički dokument podaci i povezane usluge povlače se automatski."
-        : "Ovdje ispunjavaš samo ono što zapisnik stvarno traži. Sve ostalo se povlači automatski iz RN-a i templatea.")
+    documentTemplateRuntimeHelper.textContent = hasSequence
+      ? `Ispunjavaš zapisnike redom po povezanim uslugama. Nakon završetka ovog zapisnika klikni NEXT za sljedeći.`
+      : (fillMode
+        ? (workOrders.length > 1
+          ? "Ispuni samo polja iz predloška. Podaci iz RN-a, zajednički dokument podaci i povezane usluge povlače se automatski."
+          : "Ovdje ispunjavaš samo ono što zapisnik stvarno traži. Sve ostalo se povlači automatski iz RN-a i templatea.")
       : (workOrders.length > 1
         ? "Template trenutno čita zajedničke podatke iz batch odabira. Klikom na RN mijenjaš aktivni preview i Word export."
-        : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka.");
+        : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka."));
   }
 
-  documentTemplateRuntimeWorkOrders.replaceChildren(...workOrders.map((workOrder) => {
+  documentTemplateRuntimeWorkOrders.replaceChildren(...visibleWorkOrders.map((workOrder) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "document-template-runtime-chip";
@@ -29045,6 +29077,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    sequenceEntries: [],
+    sequenceIndex: -1,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -29112,6 +29146,20 @@ function pruneDocumentTemplateRuntimeContext() {
     }
   });
   state.documentTemplateRuntime.overrides = nextOverrides;
+  state.documentTemplateRuntime.sequenceEntries = normalizeDocumentTemplateRuntimeSequenceEntries(
+    state.documentTemplateRuntime.sequenceEntries ?? [],
+  );
+  if (state.documentTemplateRuntime.sequenceEntries.length === 0) {
+    state.documentTemplateRuntime.sequenceIndex = -1;
+  } else {
+    state.documentTemplateRuntime.sequenceIndex = Math.max(
+      0,
+      Math.min(
+        Number.parseInt(state.documentTemplateRuntime.sequenceIndex, 10) || 0,
+        state.documentTemplateRuntime.sequenceEntries.length - 1,
+      ),
+    );
+  }
 }
 
 function getDocumentTemplateRuntimeWorkOrders() {
@@ -29320,6 +29368,76 @@ function getWorkOrderDocumentTemplateRecommendations(workOrders = getAllSelected
     recommendations,
     unmatchedWorkOrders,
   };
+}
+
+function normalizeDocumentTemplateRuntimeSequenceEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => ({
+      templateId: String(entry?.templateId ?? "").trim(),
+      workOrderId: String(entry?.workOrderId ?? "").trim(),
+      templateTitle: String(entry?.templateTitle ?? "").trim(),
+      workOrderNumber: String(entry?.workOrderNumber ?? "").trim(),
+    }))
+    .filter((entry) => (
+      entry.templateId
+      && entry.workOrderId
+      && Boolean(getDocumentTemplateById(entry.templateId))
+      && (state.workOrders ?? []).some((item) => String(item.id) === entry.workOrderId)
+    ));
+}
+
+function getDocumentTemplateRuntimeSequenceEntries() {
+  return normalizeDocumentTemplateRuntimeSequenceEntries(state.documentTemplateRuntime.sequenceEntries ?? []);
+}
+
+function getDocumentTemplateRuntimeSequenceState() {
+  const entries = getDocumentTemplateRuntimeSequenceEntries();
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(Number.parseInt(state.documentTemplateRuntime.sequenceIndex, 10) || 0, entries.length - 1),
+  );
+
+  return {
+    entries,
+    entry: entries[safeIndex],
+    index: safeIndex,
+    total: entries.length,
+  };
+}
+
+function buildWorkOrderDocumentWizardSequence(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const sequence = [];
+  const seenPairs = new Set();
+
+  sortWorkOrders(Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
+    getWorkOrderDocumentWizardResolvedServiceItems(workOrder).forEach((service) => {
+      getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
+        const template = getDocumentTemplateById(templateId);
+        if (!template) {
+          return;
+        }
+
+        const pairKey = `${String(workOrder.id)}::${String(template.id)}`;
+        if (seenPairs.has(pairKey)) {
+          return;
+        }
+        seenPairs.add(pairKey);
+
+        sequence.push({
+          templateId: String(template.id),
+          workOrderId: String(workOrder.id),
+          templateTitle: String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim(),
+          workOrderNumber: String(workOrder.workOrderNumber || "Bez broja").trim(),
+        });
+      });
+    });
+  });
+
+  return sequence;
 }
 
 function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
@@ -29844,17 +29962,105 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
   requestAnimationFrame(syncNavButtons);
 }
 
-function openDocumentTemplateFromWizard(templateId = "", workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
-  const template = getDocumentTemplateById(templateId);
-  if (!template) {
+function reopenWorkOrderDocumentWizardFromRuntime() {
+  if (state.workOrderDocumentWizard.selectedIds.size === 0) {
     return;
   }
 
-  setDocumentTemplateRuntimeFromWizard(workOrders);
-  closeWorkOrderDocumentWizard();
+  closeDocumentTemplateEditor({ reset: false });
+  state.workOrderDocumentWizard.open = true;
+  state.workOrderDocumentWizard.step = "details";
+  renderWorkOrderDocumentWizard();
+  syncWorkOrderDocumentWizardModal();
+  requestAnimationFrame(() => {
+    if (state.workOrderDocumentWizard.commonCollapsed) {
+      workOrderDocumentWizardCommonToggleButton?.focus({ preventScroll: true });
+      return;
+    }
+    workOrderDocumentCommonInspectionDateInput?.focus({ preventScroll: true });
+  });
+}
+
+function openDocumentTemplateFromWizard(
+  templateId = "",
+  workOrders = getAllSelectedWorkOrdersForDocumentWizard(),
+  {
+    sequenceEntries = null,
+    sequenceIndex = -1,
+    activeWorkOrderId = "",
+    closeWizard = true,
+    preserveRuntimeContext = false,
+  } = {},
+) {
+  const template = getDocumentTemplateById(templateId);
+  if (!template) {
+    return false;
+  }
+
+  const reuseRuntimeContext = preserveRuntimeContext
+    && hasDocumentTemplateRuntimeContext()
+    && state.documentTemplateRuntime.source === "wizard";
+
+  if (!reuseRuntimeContext) {
+    setDocumentTemplateRuntimeFromWizard(workOrders);
+  } else {
+    const existingIds = new Set(
+      (state.documentTemplateRuntime.workOrderIds ?? [])
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    );
+    const nextIds = [
+      ...existingIds,
+      ...(Array.isArray(workOrders) ? workOrders : [])
+        .map((item) => String(item?.id ?? "").trim())
+        .filter((value) => value && !existingIds.has(value)),
+    ];
+    state.documentTemplateRuntime.mode = "fill";
+    state.documentTemplateRuntime.source = nextIds.length > 0 ? "wizard" : state.documentTemplateRuntime.source;
+    state.documentTemplateRuntime.workOrderIds = nextIds;
+  }
+
+  const normalizedSequenceEntries = sequenceEntries === null
+    ? []
+    : normalizeDocumentTemplateRuntimeSequenceEntries(sequenceEntries);
+  state.documentTemplateRuntime.sequenceEntries = normalizedSequenceEntries;
+  state.documentTemplateRuntime.sequenceIndex = normalizedSequenceEntries.length > 0
+    ? Math.max(0, Math.min(Number.parseInt(sequenceIndex, 10) || 0, normalizedSequenceEntries.length - 1))
+    : -1;
+  if (activeWorkOrderId) {
+    state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrderId || "").trim();
+  }
+
+  if (closeWizard) {
+    closeWorkOrderDocumentWizard();
+  }
   hydrateDocumentTemplateForm(template, {
     preserveRuntimeContext: true,
     runtimeMode: "fill",
+  });
+  if (activeWorkOrderId) {
+    setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
+  }
+  return true;
+}
+
+function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = false } = {}) {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState) {
+    return false;
+  }
+
+  const safeIndex = Math.max(0, Math.min(targetIndex, sequenceState.total - 1));
+  const entry = sequenceState.entries[safeIndex];
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
+  const sourceWorkOrders = selectedWorkOrders.length > 0 ? selectedWorkOrders : runtimeWorkOrders;
+  return openDocumentTemplateFromWizard(entry.templateId, sourceWorkOrders, {
+    sequenceEntries: sequenceState.entries,
+    sequenceIndex: safeIndex,
+    activeWorkOrderId: entry.workOrderId,
+    closeWizard,
+    preserveRuntimeContext: true,
   });
 }
 
@@ -31567,7 +31773,20 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
   if (state.workOrderDocumentWizard.step !== "details") {
     return;
   }
-  setWorkOrderDocumentWizardStep("templates");
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
+  if (sequence.length === 0) {
+    setWorkOrderDocumentWizardStep("templates");
+    return;
+  }
+  const firstEntry = sequence[0];
+  openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
+    sequenceEntries: sequence,
+    sequenceIndex: 0,
+    activeWorkOrderId: firstEntry.workOrderId,
+    closeWizard: true,
+    preserveRuntimeContext: false,
+  });
 });
 [
   [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
@@ -32813,6 +33032,23 @@ documentTemplateResetButton?.addEventListener("click", () => {
 
 documentTemplateRuntimeClearButton?.addEventListener("click", () => {
   clearDocumentTemplateRuntimeContext();
+});
+documentTemplateRuntimeBackButton?.addEventListener("click", () => {
+  reopenWorkOrderDocumentWizardFromRuntime();
+});
+documentTemplateRuntimePrevButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index <= 0) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index - 1);
+});
+documentTemplateRuntimeNextButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index >= sequenceState.total - 1) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
 });
 
 documentTemplateDeleteButton?.addEventListener("click", () => {
