@@ -2352,6 +2352,62 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
   return payload;
 }
 
+function parseResponseDownloadFileName(response, fallback = "download.bin") {
+  const contentDisposition = String(response.headers.get("content-disposition") || "").trim();
+  if (!contentDisposition) {
+    return fallback;
+  }
+
+  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].trim());
+    } catch {
+      return utfMatch[1].trim();
+    }
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1]?.trim() || fallback;
+}
+
+async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
+  const organizationHeader = state.activeOrganizationId
+    ? { "X-Organization-Id": state.activeOrganizationId }
+    : {};
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...organizationHeader,
+      ...(options.headers ?? {}),
+    },
+    credentials: "same-origin",
+    ...options,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
+    const refreshed = await requestTokenRefresh();
+
+    if (refreshed) {
+      return apiBinaryRequest(path, options, false);
+    }
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || "Request failed.");
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: parseResponseDownloadFileName(response),
+    contentType: String(response.headers.get("content-type") || "").trim(),
+  };
+}
+
 function applySnapshot(payload) {
   state.storage = payload.storage;
   state.organizations = payload.organizations ?? [];
@@ -14863,6 +14919,355 @@ function buildDocumentTemplatePlaceholderWordMarkup(template = buildDocumentTemp
   }).join('<div style="page-break-after: always;"></div>');
 }
 
+function getDocumentTemplateFieldTokenKey(field = {}, index = 0) {
+  return normalizeDocumentTemplateFieldKeyDraft(
+    field.key || field.wordLabel || field.label,
+    `FIELD_${index + 1}`,
+  );
+}
+
+function buildDocumentTemplateExportBlockGroups(fields = []) {
+  const blocks = [];
+  let currentBlock = null;
+
+  (Array.isArray(fields) ? fields : []).forEach((field, index) => {
+    if (!field || String(field.type || "").trim().toLowerCase() === "page_break") {
+      return;
+    }
+
+    if (String(field.type || "").trim().toLowerCase() === "chapter") {
+      currentBlock = {
+        chapter: field,
+        chapterIndex: index,
+        items: [],
+      };
+      blocks.push(currentBlock);
+      return;
+    }
+
+    if (!currentBlock) {
+      currentBlock = {
+        chapter: null,
+        chapterIndex: -1,
+        items: [],
+      };
+      blocks.push(currentBlock);
+    }
+
+    currentBlock.items.push({ field, index });
+  });
+
+  return blocks;
+}
+
+function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = {}) {
+  const previewTable = buildMeasurementSheetPreviewTable(field, context);
+  if (!previewTable) {
+    const fallbackColumns = (field.columns ?? []).length > 0
+      ? field.columns
+      : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    return {
+      title: field.label || field.wordLabel || "Excel tablica",
+      columns: fallbackColumns,
+      headerRows: [fallbackColumns],
+      rows: [],
+      landscape: fallbackColumns.length > 5,
+    };
+  }
+
+  const rowIndexById = new Map(previewTable.rows.map((row, rowIndex) => [row.id, rowIndex]));
+  const headerRows = (previewTable.headerRows ?? [])
+    .map((rowId) => {
+      const rowIndex = rowIndexById.get(rowId);
+      if (!Number.isInteger(rowIndex)) {
+        return null;
+      }
+
+      return previewTable.columns.map((column, columnIndex) => (
+        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex)
+      ));
+    })
+    .filter(Boolean);
+  const bodyRows = previewTable.rows
+    .filter((row) => !(previewTable.headerRows ?? []).includes(row.id))
+    .map((row) => {
+      const rowIndex = rowIndexById.get(row.id);
+      return previewTable.columns.map((column, columnIndex) => (
+        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex)
+      ));
+    });
+
+  return {
+    title: field.label || field.wordLabel || "Excel tablica",
+    columns: previewTable.columns.map((column) => column.label || column.id),
+    headerRows: headerRows.length > 0
+      ? headerRows
+      : [previewTable.columns.map((column) => column.label || column.id)],
+    rows: bodyRows,
+    landscape: previewTable.columns.length > 5,
+  };
+}
+
+function buildDocumentTemplateMeasurementTableText(field = {}, context = {}) {
+  const model = buildDocumentTemplateMeasurementTableExportModel(field, context);
+  return [...(model.headerRows ?? []), ...(model.rows ?? [])]
+    .map((row) => (Array.isArray(row) ? row : [])
+      .map((cell) => String(cell ?? "").trim())
+      .join(" | "))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildDocumentTemplateLegalExportItems(template = buildDocumentTemplateDraft(), field = {}, workOrder = null) {
+  const selectedIds = workOrder?.id
+    ? getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field)
+    : [];
+  const selectedItems = getDocumentTemplateLegalFrameworksForField(template, field, {
+    selectedOnly: true,
+    selectedIds,
+  });
+  const visibleItems = getDocumentTemplateLegalFrameworksForField(template, field, {
+    selectedOnly: false,
+  });
+
+  return (selectedItems.length > 0 ? selectedItems : visibleItems).map((item) => (
+    item.referenceCode
+      ? `${item.title || "Propis"} | ${item.referenceCode}`
+      : (item.title || "Propis")
+  ));
+}
+
+function buildDocumentTemplateEquipmentExportRows(context = {}) {
+  return (Array.isArray(context.equipmentItems) ? context.equipmentItems : []).map((item) => ([
+    item.name || "",
+    item.deviceType || item.code || "",
+    item.inventoryNumber || "",
+    item.note || "",
+  ]));
+}
+
+function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}) {
+  return getWorkOrderDocumentQualifiedUsers(
+    context.sampleWorkOrder,
+    "inspect",
+    field.signatureArea || "elektro",
+  ).map((user) => {
+    const qualification = getUserElectricalQualification(user, field.signatureArea || "elektro");
+    return {
+      role: "Ispitivač",
+      name: user.fullName || user.email || "Ispitivač",
+      metaLines: [
+        qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+        qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+        qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+      ].filter(Boolean),
+      signatureImageUrl: getUserSignatureScanDataUrl(user),
+    };
+  });
+}
+
+function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
+  const signaturePreview = getDocumentTemplateSignaturePreviewData(field, context);
+  return {
+    role: field.type === "authorization_holder_signature" ? "Nositelj ovlaštenja" : "Ispitivač",
+    name: signaturePreview.displayName || "Potpis",
+    metaLines: signaturePreview.summary
+      ? [signaturePreview.summary]
+      : [],
+    signatureImageUrl: signaturePreview.signatureImageUrl || "",
+  };
+}
+
+function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 0) {
+  if (field.type === "measurement_table") {
+    return buildDocumentTemplateMeasurementTableText(field, context);
+  }
+
+  if (field.type === "legal_list") {
+    return buildDocumentTemplateLegalExportItems(context.template, field, context.sampleWorkOrder).join("\n");
+  }
+
+  if (field.type === "equipment_list") {
+    return buildDocumentTemplateEquipmentExportRows(context)
+      .map((row) => row.filter(Boolean).join(" | "))
+      .join("\n");
+  }
+
+  if (field.type === "qualified_inspectors") {
+    return buildDocumentTemplateQualifiedInspectorEntries(field, context)
+      .map((entry) => [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n"))
+      .join("\n\n");
+  }
+
+  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+    const entry = buildDocumentTemplateSignatureEntry(field, context);
+    return [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n");
+  }
+
+  return getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false });
+}
+
+function buildDocumentTemplateRuntimeExportFileBaseName(template = buildDocumentTemplateDraft(), workOrder = null) {
+  const parts = [
+    String(template.outputFileName || template.title || template.documentType || "zapisnik").trim(),
+    String(workOrder?.workOrderNumber || "").trim(),
+  ].filter(Boolean);
+
+  return sanitizeDocumentTemplateFileName(parts.join(" "), "zapisnik");
+}
+
+function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const placeholders = {
+    DOCUMENT_TITLE: String(template.title || "").trim(),
+    DOCUMENT_TYPE: String(template.documentType || "").trim(),
+    REFERENCE_DOCUMENT_NAME: String(template.referenceDocument?.fileName || "").trim(),
+  };
+
+  (Array.isArray(template.customFields) ? template.customFields : []).forEach((field, index) => {
+    if (!field || String(field.type || "").trim().toLowerCase() === "chapter") {
+      return;
+    }
+
+    placeholders[getDocumentTemplateFieldTokenKey(field, index)] = buildDocumentTemplateFieldExportText(field, context, index);
+  });
+
+  return placeholders;
+}
+
+function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  return buildDocumentTemplateExportBlockGroups(template.customFields ?? []).map((block, blockIndex) => ({
+    title: block.chapter?.label || `Blok ${blockIndex + 1}`,
+    description: block.chapter?.helpText || "",
+    items: block.items.map(({ field, index }) => {
+      const title = field.label || field.wordLabel || `Polje ${index + 1}`;
+
+      if (field.type === "measurement_table") {
+        return {
+          type: "table",
+          title,
+          ...buildDocumentTemplateMeasurementTableExportModel(field, context),
+        };
+      }
+
+      if (field.type === "legal_list") {
+        return {
+          type: "list",
+          title,
+          items: buildDocumentTemplateLegalExportItems(template, field, context.sampleWorkOrder),
+        };
+      }
+
+      if (field.type === "equipment_list") {
+        return {
+          type: "table",
+          title,
+          columns: ["Oprema", "Tip", "Inv. broj", "Napomena"],
+          headerRows: [["Oprema", "Tip", "Inv. broj", "Napomena"]],
+          rows: buildDocumentTemplateEquipmentExportRows(context),
+          landscape: false,
+        };
+      }
+
+      if (field.type === "qualified_inspectors") {
+        return {
+          type: "signature_group",
+          title,
+          items: buildDocumentTemplateQualifiedInspectorEntries(field, context),
+        };
+      }
+
+      if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+        return {
+          type: "signature_group",
+          title,
+          items: [buildDocumentTemplateSignatureEntry(field, context)],
+        };
+      }
+
+      const value = buildDocumentTemplateFieldExportText(field, context, index);
+      return {
+        type: "field",
+        title,
+        value,
+        multiline: String(field.type || "").trim().toLowerCase() === "longtext" || String(value || "").includes("\n"),
+      };
+    }),
+  }));
+}
+
+function buildDocumentTemplateRuntimePdfPayload(template = buildDocumentTemplateDraft()) {
+  const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  const context = buildDocumentTemplatePreviewContext(template);
+
+  if (!workOrder) {
+    return null;
+  }
+
+  return {
+    fileName: `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.pdf`,
+    renderModel: {
+      title: String(template.title || template.documentType || "Zapisnik").trim(),
+      documentType: String(template.documentType || "Zapisnik").trim(),
+      workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
+      status: String(workOrder.status || "").trim(),
+      company: {
+        name: String(context.company?.name || "").trim(),
+        headquarters: String(context.company?.headquarters || "").trim(),
+        oib: String(context.company?.oib || "").trim(),
+        logoUrl: String(
+          context.company?.logoDataUrl
+          || context.company?.logoStorageUrl
+          || context.company?.logoUrl
+          || ""
+        ).trim(),
+      },
+      location: {
+        name: String(context.location?.name || "").trim(),
+        region: String(context.location?.region || "").trim(),
+        coordinates: String(context.location?.coordinates || "").trim(),
+      },
+      blocks: buildDocumentTemplateRuntimePdfBlocks(template, context),
+    },
+  };
+}
+
+async function exportDocumentTemplatePdf() {
+  const template = buildDocumentTemplateDraft();
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+
+  if (!templateId || !workOrder) {
+    setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije PDF exporta.");
+    return;
+  }
+
+  try {
+    await persistActiveDocumentTemplateRuntimeRecord();
+  } catch (error) {
+    console.error("Ne mogu spremiti runtime zapisnik prije PDF exporta.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu spremiti vrijednosti zapisnika prije PDF exporta.");
+    return;
+  }
+
+  const payload = buildDocumentTemplateRuntimePdfPayload(template);
+  if (!payload) {
+    setDocumentTemplateMessage("PDF payload nije ispravno pripremljen.");
+    return;
+  }
+
+  try {
+    const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-pdf`, {
+      method: "POST",
+      body: payload,
+    });
+    triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.pdf");
+    setDocumentTemplateMessage("PDF zapisnik je generiran.", { type: "success" });
+  } catch (error) {
+    console.error("Ne mogu generirati PDF zapisnik.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu generirati PDF zapisnik.");
+  }
+}
+
 function renderDocumentTemplatePreviewContent() {
   if (!documentTemplatePreview) {
     return;
@@ -15013,17 +15418,51 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
 
 async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   const template = buildDocumentTemplateDraft();
-  const fileName = placeholderMode
-    ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`
-    : `${sanitizeDocumentTemplateFileName(template.title || "zapisnik")}.doc`;
   if (!placeholderMode) {
+    const templateId = getDocumentTemplateRuntimeTemplateId(template);
+    const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+
+    if (!templateId || !workOrder) {
+      setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije Word exporta.");
+      return;
+    }
+
     try {
       await persistActiveDocumentTemplateRuntimeRecord();
     } catch (error) {
       console.error("Ne mogu spremiti runtime zapisnik prije Word exporta.", error);
       setDocumentTemplateMessage(error?.message || "Ne mogu spremiti vrijednosti zapisnika prije Word exporta.");
+      return;
+    }
+
+    if (template.referenceDocument?.dataUrl) {
+      try {
+        const payload = {
+          fileName: `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.docx`,
+          placeholders: buildDocumentTemplateRuntimePlaceholderPayload(
+            template,
+            buildDocumentTemplatePreviewContext(template),
+          ),
+        };
+        const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-word`, {
+          method: "POST",
+          body: payload,
+        });
+        triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.docx");
+        setDocumentTemplateMessage("Word zapisnik je generiran iz spremljenog predloška.", { type: "success" });
+        return;
+      } catch (error) {
+        console.error("Ne mogu generirati DOCX iz Word predloška, koristim fallback export.", error);
+        setDocumentTemplateMessage(
+          error?.message || "Ne mogu generirati Word iz spremljenog predloška. Koristim fallback export.",
+        );
+      }
     }
   }
+
+  const fileName = placeholderMode
+    ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`
+    : `${sanitizeDocumentTemplateFileName(template.title || "zapisnik")}.doc`;
   const html = placeholderMode
     ? buildDocumentTemplatePlaceholderWordMarkup(template)
     : buildDocumentTemplatePreviewMarkup(template, {
@@ -34293,7 +34732,7 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
 });
 
 documentTemplateOpenPdfPreviewButton?.addEventListener("click", () => {
-  openDocumentTemplatePreviewWindow({ placeholderMode: false });
+  void exportDocumentTemplatePdf();
 });
 
 documentTemplateExportPlaceholderButton?.addEventListener("click", () => {

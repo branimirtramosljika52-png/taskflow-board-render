@@ -8,6 +8,13 @@ import {
   canManageMasterData,
   canManageWorkOrders,
 } from "./src/accessControl.js";
+import {
+  buildDocxFromTemplateBuffer,
+  buildPdfFromRenderModel,
+  isWordTemplateFile,
+  readStoredDocumentBuffer,
+  sanitizeGeneratedDocumentFileName,
+} from "./src/documentExport.js";
 import { createLiveChatStore } from "./src/liveChatStore.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
 import { createTenantRepository } from "./src/tenantRepository.js";
@@ -84,6 +91,18 @@ function sendJson(response, statusCode, payload) {
 
 function sendError(response, statusCode, message) {
   sendJson(response, statusCode, { error: message });
+}
+
+function sendBinary(response, statusCode, body, {
+  contentType = "application/octet-stream",
+  fileName = "",
+} = {}) {
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", contentType);
+  if (fileName) {
+    response.setHeader("Content-Disposition", `attachment; filename="${fileName.replace(/"/g, "")}"`);
+  }
+  response.end(body);
 }
 
 function shouldUseSecureCookies(request) {
@@ -660,6 +679,8 @@ async function handleApiRequest(request, response, url) {
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
+    const documentTemplateWordExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-word$/);
+    const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
@@ -1081,6 +1102,78 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (documentTemplateWordExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati Word zapisnik.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const template = assertInScope(
+        scopedSnapshot.documentTemplates ?? [],
+        documentTemplateWordExportMatch[1],
+        "Template nije pronađen.",
+      );
+
+      if (!template.referenceDocument) {
+        sendError(response, 400, "Template još nema učitan Word predložak.");
+        return true;
+      }
+
+      if (!isWordTemplateFile(template.referenceDocument)) {
+        sendError(response, 400, "Za Word export učitaj .docx ili .dotx predložak.");
+        return true;
+      }
+
+      const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+      const generatedWord = await buildDocxFromTemplateBuffer(referenceDocument.buffer, body.placeholders ?? {});
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || template.outputFileName || template.title || "zapisnik",
+        { fallback: "zapisnik", extension: "docx" },
+      );
+
+      sendBinary(response, 200, generatedWord, {
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileName,
+      });
+      return true;
+    }
+
+    if (documentTemplatePdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF zapisnik.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const template = assertInScope(
+        scopedSnapshot.documentTemplates ?? [],
+        documentTemplatePdfExportMatch[1],
+        "Template nije pronađen.",
+      );
+
+      const renderModel = body.renderModel && typeof body.renderModel === "object"
+        ? body.renderModel
+        : {};
+      const pdfBuffer = await buildPdfFromRenderModel({
+        ...renderModel,
+        title: renderModel.title || body.title || template.title || "Zapisnik",
+        documentType: renderModel.documentType || template.documentType || "Zapisnik",
+      });
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || template.outputFileName || template.title || "zapisnik",
+        { fallback: "zapisnik", extension: "pdf" },
+      );
+
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
       return true;
     }
 
