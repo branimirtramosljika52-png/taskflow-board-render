@@ -8130,6 +8130,358 @@ body.is-work-order-document-wizard-open {
   border-radius: 16px;
 }
 
+.work-order-document-wizard-common-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.work-order-document-wizard-company-block,
+.work-order-document-wizard-common-core,
+.work-order-document-wizard-common-env-block,
+.work-order-document-wizard-common-periods-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(220, 156, 212, 0.3);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 247, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.work-order-document-wizard-company-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.work-order-document-company-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.26);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(125, 87, 190, 0.08);
+}
+
+.work-order-document-company-logo {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(220, 156, 212, 0.26);
+  background: linear-gradient(180deg, #ffffff, #f9f5ff);
+}
+
+.work-order-document-company-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.work-order-document-company-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-document-company-copy strong {
+  color: #283454;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.work-order-document-company-copy span {
+  color: #6f7d98;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.work-order-document-company-count {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(247, 238, 255, 0.96);
+  border: 1px solid rgba(220, 156, 212, 0.32);
+  color: #8a4aa8;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.work-order-document-wizard-common-core-grid,
+.work-order-document-wizard-common-env-grid,
+.work-order-document-wizard-common-periods-grid,
+.work-order-document-wizard-common-person-area-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-document-wizard-common-core-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+}
+
+.work-order-document-wizard-common-env-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.work-order-document-wizard-common-periods-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-order-document-wizard-common-person-area {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.26);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.work-order-document-wizard-common-person-area-title {
+  color: #31405f;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.work-order-document-wizard-common-person-area-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-order-document-wizard-control-slot .work-item-status-trigger,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-trigger,
+.work-order-document-selection-picker-slot .work-order-calendar-executor-trigger,
+.work-order-document-selection-services-toolbar .work-order-service-picker-trigger {
+  min-height: 44px;
+  width: 100%;
+  border-radius: 14px;
+  justify-content: flex-start;
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(220, 156, 212, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 8px 16px rgba(117, 81, 173, 0.08);
+}
+
+.work-order-document-wizard-control-slot .work-order-bulk-executor-avatar,
+.work-order-document-selection-executor,
+.work-order-document-person-trigger .work-order-document-person-avatar {
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 1px rgba(117, 81, 173, 0.22), 0 8px 18px rgba(59, 47, 110, 0.12);
+  background: #ffffff;
+}
+
+.work-order-document-person-trigger .work-order-document-person-avatar,
+.work-order-document-selection-executor {
+  width: 30px;
+  height: 30px;
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-chip,
+.work-order-document-person-menu-portal .work-order-calendar-executor-option {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(220, 156, 212, 0.28);
+  color: #2a3551;
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-option.is-selected,
+.work-order-document-service-picker .work-order-service-picker-option.is-selected {
+  border-color: rgba(214, 101, 190, 0.34);
+  background: linear-gradient(135deg, rgba(255, 240, 248, 0.98), rgba(244, 239, 255, 0.98));
+}
+
+.work-order-document-person-option-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.work-order-document-person-option-meta {
+  color: #67748f;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.work-order-document-selection-copy {
+  gap: 5px;
+}
+
+.work-order-document-selection-copy strong {
+  font-size: 1.25rem;
+}
+
+.work-order-document-selection-company {
+  color: #2c3652;
+}
+
+.work-order-document-selection-meta {
+  color: #6f7d98;
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
+.work-order-document-selection-service-summary {
+  color: #495674;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.work-order-document-selection-subline {
+  color: #667694;
+  font-size: 0.8rem;
+}
+
+.work-order-document-selection-executors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 7px 9px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 156, 212, 0.22);
+  background: rgba(252, 247, 255, 0.9);
+}
+
+.work-order-document-selection-executor-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.work-order-document-selection-executor-label {
+  min-width: 0;
+  color: #31405f;
+  font-size: 0.79rem;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-selection-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.work-order-document-selection-grid .field {
+  min-width: 0;
+}
+
+.work-order-document-selection-date-field {
+  padding: 7px 10px !important;
+}
+
+.work-order-document-selection-date-field input {
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.work-order-document-selection-services {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 156, 212, 0.28);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.work-order-document-selection-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.work-order-document-selection-section-head strong {
+  color: #31405f;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.work-order-document-selection-section-head span {
+  color: #70809b;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.work-order-document-selection-services-toolbar {
+  display: grid;
+  gap: 8px;
+}
+
+.work-order-document-selection-picker-slot .work-order-document-person-picker,
+.work-order-document-selection-services-toolbar .work-order-service-picker {
+  width: 100%;
+}
+
+.work-order-document-selection-service-list {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-order-document-selection-service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 156, 212, 0.28);
+  background: rgba(247, 241, 252, 0.98);
+  color: #3b4562;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.work-order-document-selection-service-chip.is-completed {
+  background: rgba(222, 246, 228, 0.96);
+  border-color: rgba(122, 194, 145, 0.34);
+  color: #26643d;
+}
+
+.work-order-document-selection-service-chip small {
+  color: #7b5ea6;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.work-order-document-selection-service-remove {
+  color: #8d688f;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.work-order-document-selection-service-empty {
+  color: #7b87a0;
+  font-size: 0.78rem;
+}
+
+.work-order-document-selection-person-area-grid .field,
+.work-order-document-selection-picker-field {
+  padding: 9px 10px;
+}
+
+.work-order-document-selection-person-area-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .work-order-document-template-work-order-chip {
   display: inline-flex;
   align-items: center;
@@ -16441,7 +16793,11 @@ body.is-document-template-editor-open {
   .document-template-builder-shell,
   .document-template-preview-person-signature-grid,
   .work-order-document-wizard-common-grid,
+  .work-order-document-wizard-common-core-grid,
+  .work-order-document-wizard-common-env-grid,
+  .work-order-document-wizard-common-periods-grid,
   .work-order-document-wizard-common-people-grid,
+  .work-order-document-wizard-common-person-area-grid,
   .work-order-document-selection-person-grid,
   .work-order-document-selection-person-area-grid,
   .work-order-document-selection-grid {
@@ -16477,7 +16833,11 @@ body.is-document-template-editor-open {
   .document-template-preview-signatures,
   .document-template-preview-person-signature-grid,
   .work-order-document-wizard-common-grid,
+  .work-order-document-wizard-common-core-grid,
+  .work-order-document-wizard-common-env-grid,
+  .work-order-document-wizard-common-periods-grid,
   .work-order-document-wizard-common-people-grid,
+  .work-order-document-wizard-common-person-area-grid,
   .work-order-document-selection-person-grid,
   .work-order-document-selection-person-area-grid,
   .work-order-document-selection-grid {
@@ -16486,6 +16846,24 @@ body.is-document-template-editor-open {
 
   .document-template-preview-person-signature.is-right-aligned {
     grid-column: auto;
+  }
+
+  .work-order-document-company-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-order-document-selection-head,
+  .work-order-document-selection-section-head,
+  .work-order-document-selection-executors {
+    align-items: flex-start;
+  }
+
+  .work-order-document-selection-executors {
+    flex-direction: column;
+  }
+
+  .work-order-document-selection-executor-label {
+    white-space: normal;
   }
 
   .work-order-document-wizard-work-orders[data-layout="double"],
