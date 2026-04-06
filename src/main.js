@@ -616,6 +616,7 @@ const state = {
     sequenceIndex: -1,
     previousRecordOptions: {},
     savedRecordFingerprints: {},
+    collapsedBlocks: {},
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -13015,6 +13016,80 @@ function getDocumentTemplatePreviousRecordCandidates(field = {}, workOrder = {},
   };
 }
 
+function getDocumentTemplatePreviousRecordFieldKey(field = {}) {
+  return String(field?.key || field?.id || "").trim();
+}
+
+function getDocumentTemplatePreviousRecordFieldCandidates(
+  field = {},
+  workOrder = {},
+  template = buildDocumentTemplateDraft(),
+  { kind = "value" } = {},
+) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  const cacheEntry = getDocumentTemplatePreviousRecordOptionsCacheEntry(templateId, workOrder);
+  const fieldKey = getDocumentTemplatePreviousRecordFieldKey(field);
+  const normalizedKind = String(kind || "value").trim().toLowerCase() === "sheet" ? "sheet" : "value";
+  const candidates = [];
+
+  if (fieldKey && Array.isArray(cacheEntry?.items)) {
+    cacheEntry.items.forEach((record, index) => {
+      const nextValue = normalizedKind === "sheet"
+        ? normalizeWorkOrderMeasurementSheet(record?.fieldSheets?.[fieldKey])
+        : record?.fieldValues?.[fieldKey];
+
+      if (!hasMeaningfulDocumentRecordValue(nextValue)) {
+        return;
+      }
+
+      candidates.push({
+        id: `record:${record.id}`,
+        label: buildDocumentTemplatePreviousRecordCandidateLabel(record, index),
+        meta: normalizedKind === "sheet"
+          ? getMeasurementSheetTemplateSummary(nextValue)
+          : (record.createdByLabel || formatDocumentTemplateLookupResolvedValue(nextValue)),
+        value: nextValue,
+      });
+    });
+  }
+
+  candidates.push({
+    id: "template",
+    label: "Template",
+    meta: normalizedKind === "sheet"
+      ? "Početna Excel tablica iz predloška"
+      : (hasMeaningfulDocumentRecordValue(field?.defaultValue)
+        ? "Zadana vrijednost iz predloška"
+        : "Ako nema starog zapisnika, ostaje vrijednost iz templatea"),
+    value: normalizedKind === "sheet"
+      ? normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null
+      : (field?.defaultValue ?? ""),
+  });
+
+  return {
+    status: cacheEntry?.status || "idle",
+    error: cacheEntry?.error || "",
+    candidates,
+  };
+}
+
+function getDocumentTemplatePreviousRecordFieldCandidateById(
+  field = {},
+  workOrder = {},
+  template = buildDocumentTemplateDraft(),
+  candidateId = "",
+  options = {},
+) {
+  const normalizedCandidateId = String(candidateId || "").trim();
+  if (!normalizedCandidateId) {
+    return null;
+  }
+
+  return getDocumentTemplatePreviousRecordFieldCandidates(field, workOrder, template, options)
+    .candidates
+    .find((candidate) => String(candidate.id || "").trim() === normalizedCandidateId) || null;
+}
+
 function getDocumentTemplatePreviousDocumentFallbackValue(field = {}, workOrderId = "", template = buildDocumentTemplateDraft()) {
   const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
   const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
@@ -14925,6 +15000,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     signatureAreaLabel,
     user: matchedUser,
     qualification,
+    metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea),
     signatureImageUrl: getUserSignatureScanDataUrl(matchedUser),
     displayName: matchedUser?.fullName
       ? matchedUser.fullName
@@ -14970,8 +15046,8 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return String(runtimeValue ?? "").trim();
   }
 
-  if (isDocumentTemplatePreviousDocumentLookupField(field)) {
-    const fallbackValue = getDocumentTemplatePreviousDocumentFallbackValue(field, runtimeWorkOrderId, context.template);
+  if (runtimeWorkOrderId && isDocumentTemplateRuntimePersistedField(field)) {
+    const fallbackValue = getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId);
     if (hasMeaningfulDocumentRecordValue(fallbackValue)) {
       if (field.type === "checkbox" || field.type === "toggle") {
         return fallbackValue ? "Da" : "Ne";
@@ -15143,13 +15219,20 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
 }
 
 function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
-  const runtimeSnapshot = context.sampleWorkOrder?.id
-    ? getDocumentTemplateRuntimeMeasurementSheet(context.sampleWorkOrder.id, field)
+  const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+  const directRuntimeSnapshot = runtimeWorkOrderId
+    ? normalizeWorkOrderMeasurementSheet(getDocumentTemplateRuntimeOverrideRecord(runtimeWorkOrderId)?.fieldSheets?.[String(field?.id || "").trim()])
+    : null;
+  const runtimeSnapshot = runtimeWorkOrderId
+    ? getDocumentTemplateRuntimeMeasurementSheet(runtimeWorkOrderId, field)
     : null;
   const fieldSnapshot = normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet);
   const snapshot = runtimeSnapshot
     || fieldSnapshot
     || normalizeWorkOrderMeasurementSheet(context.sampleWorkOrder?.measurementSheet);
+  const runtimeSourceId = runtimeWorkOrderId
+    ? getDocumentTemplateRuntimeFieldSource(runtimeWorkOrderId, field.id)
+    : "";
 
   if (!snapshot?.columns?.length) {
     return null;
@@ -15166,8 +15249,14 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
     merges: (snapshot.merges ?? []).map((merge) => ({ ...merge })),
     headerRows: normalizeMeasurementSheetHeaderRowsSnapshotLocal(snapshot.headerRows, visibleRows),
-    sourceLabel: runtimeSnapshot
+    sourceLabel: directRuntimeSnapshot
       ? "Podaci iz ispunjenog Excel bloka"
+      : runtimeSourceId === "template"
+      ? "Početna tablica iz templatea"
+      : runtimeSourceId.startsWith("record:")
+      ? "Podaci iz starog zapisnika"
+      : runtimeSnapshot
+      ? "Podaci iz starog zapisnika"
       : fieldSnapshot
       ? "Podaci iz template Excel bloka"
       : (context.sampleWorkOrder?.workOrderNumber
@@ -15345,24 +15434,20 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : getWorkOrderDocumentQualifiedUsers(context.sampleWorkOrder, "inspect", field.signatureArea || "elektro");
     const inspectorMarkup = inspectors.length > 0
       ? inspectors.map((user, inspectorIndex) => {
-        const qualification = getUserElectricalQualification(user, field.signatureArea || "elektro");
+        const metaLines = getQualifiedUserDocumentMetaLines(user, "inspect", field.signatureArea || "elektro");
         const isRightAligned = inspectors.length % 2 === 1 && inspectorIndex === inspectors.length - 1;
         const signatureScanUrl = getUserSignatureScanDataUrl(user);
         const signatureImage = signatureScanUrl
           ? `<img class="document-template-preview-signature-image" src="${escapeHtml(signatureScanUrl)}" alt="${escapeHtml(user.fullName || user.email || "Potpis")}" />`
           : `<div class="document-template-preview-signature-placeholder">Bez potpisa</div>`;
-        const metaLines = [
-          qualification.classCode ? `KLASA: ${qualification.classCode}` : "",
-          qualification.urbroj ? `UrBROJ: ${qualification.urbroj}` : "",
-          qualification.eBroj ? `E broj: ${qualification.eBroj}` : "",
-        ].filter(Boolean).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+        const metaMarkup = metaLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
 
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
               <span class="document-template-preview-person-role">Ispitivač</span>
               <strong>${escapeHtml(user.fullName || user.email || "Ispitivač")}</strong>
-              <div class="document-template-preview-person-meta">${metaLines}</div>
+              <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
             <div class="document-template-preview-signature">
               ${signatureImage}
@@ -15755,15 +15840,10 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
     "inspect",
     field.signatureArea || "elektro",
   ).map((user) => {
-    const qualification = getUserElectricalQualification(user, field.signatureArea || "elektro");
     return {
       role: "Ispitivač",
       name: user.fullName || user.email || "Ispitivač",
-      metaLines: [
-        qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-        qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-        qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
-      ].filter(Boolean),
+      metaLines: getQualifiedUserDocumentMetaLines(user, "inspect", field.signatureArea || "elektro"),
       signatureImageUrl: getUserSignatureScanDataUrl(user),
     };
   });
@@ -15774,9 +15854,9 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
   return {
     role: field.type === "authorization_holder_signature" ? "Nositelj ovlaštenja" : "Ispitivač",
     name: signaturePreview.displayName || "Potpis",
-    metaLines: signaturePreview.summary
-      ? [signaturePreview.summary]
-      : [],
+    metaLines: signaturePreview.metaLines?.length > 0
+      ? signaturePreview.metaLines
+      : (signaturePreview.summary ? [signaturePreview.summary] : []),
     signatureImageUrl: signaturePreview.signatureImageUrl || "",
   };
 }
@@ -15900,7 +15980,7 @@ async function ensureDocumentTemplateRuntimePreviousLookupState(
   }
 
   const hasPreviousDocumentFields = (Array.isArray(template.customFields) ? template.customFields : [])
-    .some((field) => isDocumentTemplatePreviousDocumentLookupField(field));
+    .some((field) => isDocumentTemplateRuntimePersistedField(field));
 
   if (!hasPreviousDocumentFields) {
     return;
@@ -16585,6 +16665,21 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
   ].filter(Boolean).join(" | ");
+}
+
+function getQualifiedUserDocumentMetaLines(user = null, capability = "inspect", signatureArea = "elektro") {
+  if (!user) {
+    return [];
+  }
+
+  const qualification = getUserElectricalQualification(user, signatureArea);
+  return [
+    user.title ? String(user.title).trim() : "",
+    user.oib ? `OIB ${String(user.oib).trim()}` : "",
+    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+    qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+  ].filter(Boolean);
 }
 
 function normalizeQualifiedUserIdList(values = []) {
@@ -18572,21 +18667,56 @@ function isDocumentTemplateRuntimeVisibleField(field = {}) {
   return source === "CUSTOM_VALUE" || isDocumentTemplatePreviousDocumentLookupField(field);
 }
 
+function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
+  if (field.type === "checkbox" || field.type === "toggle") {
+    return ["1", "true", "da", "yes", "on"].includes(String(field.defaultValue || "").trim().toLowerCase());
+  }
+  return field.defaultValue ?? "";
+}
+
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
   if (runtimeValue !== undefined) {
     return runtimeValue;
   }
 
+  const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
+  const template = buildDocumentTemplateDraft();
+  const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id);
+
+  if (sourceId === "blank") {
+    return field.type === "checkbox" || field.type === "toggle" ? false : "";
+  }
+
+  if (workOrder && sourceId === "template") {
+    return getDocumentTemplateFieldDefaultRuntimeValue(field);
+  }
+
+  if (workOrder && sourceId.startsWith("record:")) {
+    const selectedCandidate = getDocumentTemplatePreviousRecordFieldCandidateById(
+      field,
+      workOrder,
+      template,
+      sourceId,
+    );
+    if (selectedCandidate) {
+      return selectedCandidate.value;
+    }
+  }
+
   if (isDocumentTemplatePreviousDocumentLookupField(field)) {
-    return getDocumentTemplatePreviousDocumentFallbackValue(field, workOrderId);
+    return getDocumentTemplatePreviousDocumentFallbackValue(field, workOrderId, template);
   }
 
-  if (field.type === "checkbox" || field.type === "toggle") {
-    return ["1", "true", "da", "yes", "on"].includes(String(field.defaultValue || "").trim().toLowerCase());
+  if (workOrder && isDocumentTemplateRuntimePersistedField(field)) {
+    const { candidates } = getDocumentTemplatePreviousRecordFieldCandidates(field, workOrder, template);
+    if (candidates.length > 0) {
+      return candidates[0].value;
+    }
   }
 
-  return field.defaultValue ?? "";
+  return getDocumentTemplateFieldDefaultRuntimeValue(field);
 }
 
 function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldDrafts) {
@@ -18627,6 +18757,46 @@ function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldD
   return blocks;
 }
 
+function getDocumentTemplateRuntimeBlockId(block = {}, blockIndex = 0) {
+  const chapterId = String(block?.chapter?.id || "").trim();
+  return chapterId || `runtime-block:${blockIndex + 1}`;
+}
+
+function isDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0) {
+  const blockId = getDocumentTemplateRuntimeBlockId(block, blockIndex);
+  return Boolean(state.documentTemplateRuntime.collapsedBlocks?.[blockId]);
+}
+
+function setDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0, collapsed = false, { render = true } = {}) {
+  const blockId = getDocumentTemplateRuntimeBlockId(block, blockIndex);
+  const nextCollapsedBlocks = {
+    ...(state.documentTemplateRuntime.collapsedBlocks ?? {}),
+  };
+
+  if (collapsed) {
+    nextCollapsedBlocks[blockId] = true;
+  } else {
+    delete nextCollapsedBlocks[blockId];
+  }
+
+  state.documentTemplateRuntime = {
+    ...state.documentTemplateRuntime,
+    collapsedBlocks: nextCollapsedBlocks,
+  };
+
+  if (render) {
+    renderDocumentTemplateFieldRows();
+  }
+}
+
+function toggleDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0) {
+  setDocumentTemplateRuntimeBlockCollapsed(
+    block,
+    blockIndex,
+    !isDocumentTemplateRuntimeBlockCollapsed(block, blockIndex),
+  );
+}
+
 function renderDocumentTemplateRuntimeFieldRows() {
   if (!documentTemplateCustomFields) {
     return;
@@ -18660,12 +18830,97 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
   const createFieldTitle = (field, fallbackIndex) => field.label || field.wordLabel || `Polje ${fallbackIndex + 1}`;
 
-  const createStandardFieldControl = (field, workOrderId) => {
+  const createPersistedFieldSourcePicker = (field, workOrder, { kind = "value" } = {}) => {
+    if (!workOrder || !isDocumentTemplateRuntimePersistedField(field)) {
+      return null;
+    }
+
+    void ensureDocumentTemplatePreviousRecordOptions(template, workOrder);
+
+    const suggestionState = getDocumentTemplatePreviousRecordFieldCandidates(field, workOrder, template, { kind });
+    if (suggestionState.candidates.length === 0 && suggestionState.status !== "loading" && !suggestionState.error) {
+      return null;
+    }
+
+    const picker = document.createElement("div");
+    picker.className = "document-template-runtime-source-picker";
+
+    const pickerLabel = document.createElement("small");
+    pickerLabel.className = "document-template-runtime-source-label";
+    pickerLabel.textContent = kind === "sheet"
+      ? "Izvor tablice"
+      : "Izvor vrijednosti";
+
+    const optionList = document.createElement("div");
+    optionList.className = "document-template-runtime-source-options";
+
+    const selectedSourceId = getDocumentTemplateRuntimeFieldSource(workOrder.id, field.id)
+      || suggestionState.candidates[0]?.id
+      || "";
+
+    if (suggestionState.status === "loading" && suggestionState.candidates.length <= 1) {
+      const loading = document.createElement("span");
+      loading.className = "document-template-runtime-source-empty";
+      loading.textContent = "Učitavam stare zapisnike...";
+      optionList.append(loading);
+    } else if (suggestionState.candidates.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "document-template-runtime-source-empty";
+      empty.textContent = suggestionState.error || "Nema ranijih zapisnika za ovu tvrtku i lokaciju.";
+      optionList.append(empty);
+    } else {
+      suggestionState.candidates.forEach((candidate, candidateIndex) => {
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "document-template-runtime-source-option";
+        if (candidate.id === selectedSourceId) {
+          optionButton.classList.add("is-active");
+        } else if (!selectedSourceId && candidateIndex === 0 && String(candidate.id || "").startsWith("record:")) {
+          optionButton.classList.add("is-primary");
+        }
+        optionButton.title = kind === "sheet"
+          ? String(candidate.meta || candidate.label || "").trim()
+          : formatDocumentTemplateLookupResolvedValue(candidate.value);
+
+        const label = document.createElement("strong");
+        label.textContent = candidate.label;
+        const meta = document.createElement("span");
+        meta.textContent = candidate.meta || (kind === "sheet"
+          ? "Excel tablica"
+          : formatDocumentTemplateLookupResolvedValue(candidate.value));
+
+        optionButton.append(label, meta);
+        optionButton.addEventListener("click", () => {
+          applyDocumentTemplateRuntimePersistedFieldCandidate(workOrder.id, field, candidate.id, template, {
+            kind,
+            render: true,
+          });
+        });
+        optionList.append(optionButton);
+      });
+    }
+
+    const helper = document.createElement("small");
+    helper.className = "document-template-runtime-field-help";
+    helper.textContent = kind === "sheet"
+      ? "Najprije nudi zadnju spremljenu tablicu, zatim starije verzije, pa početnu tablicu iz templatea."
+      : "Najprije nudi najnoviji stari zapisnik, zatim starije varijante, pa template fallback.";
+
+    picker.append(pickerLabel, optionList, helper);
+    return picker;
+  };
+
+  const createStandardFieldControl = (field, workOrderId, workOrder = null) => {
     const wrapper = document.createElement("label");
     wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
     wrapper.append(title);
+
+    const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
+    if (sourcePicker) {
+      wrapper.append(sourcePicker);
+    }
 
     let control;
     if (field.type === "longtext") {
@@ -18721,163 +18976,36 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return wrapper;
   };
 
-  const createPreviousDocumentLookupFieldControl = (field, workOrder) => {
-    const wrapper = document.createElement("label");
-    wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
-
-    const title = document.createElement("span");
-    title.textContent = createFieldTitle(field, 0);
-    wrapper.append(title);
-
-    void ensureDocumentTemplatePreviousRecordOptions(template, workOrder);
-
-    let control = null;
-    const applyRuntimeValue = (nextValue) => {
-      const resolvedValue = field.type === "checkbox" || field.type === "toggle"
-        ? Boolean(nextValue)
-        : field.type === "date"
-          ? String(nextValue ?? "").trim()
-          : String(nextValue ?? "");
-
-      if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-        if (field.type === "checkbox" || field.type === "toggle") {
-          control.checked = Boolean(resolvedValue);
-        } else {
-          control.value = String(resolvedValue ?? "");
-        }
-      }
-
-      setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, resolvedValue, { render: false });
-      renderDocumentTemplatePreviewContent();
-    };
-
-    const picker = document.createElement("div");
-    picker.className = "document-template-runtime-source-picker";
-    const pickerLabel = document.createElement("small");
-    pickerLabel.className = "document-template-runtime-source-label";
-    pickerLabel.textContent = "Varijante iz starog zapisnika";
-    const optionList = document.createElement("div");
-    optionList.className = "document-template-runtime-source-options";
-
-    const suggestionState = getDocumentTemplatePreviousRecordCandidates(field, workOrder, template);
-    if (suggestionState.status === "loading" && suggestionState.candidates.length === 0) {
-      const loading = document.createElement("span");
-      loading.className = "document-template-runtime-source-empty";
-      loading.textContent = "Ucitavam stare zapisnike...";
-      optionList.append(loading);
-    } else if (suggestionState.candidates.length === 0) {
-      const empty = document.createElement("span");
-      empty.className = "document-template-runtime-source-empty";
-      empty.textContent = suggestionState.error || "Nema ranijih zapisnika za ovu tvrtku i lokaciju. Ostaje vrijednost iz templatea.";
-      optionList.append(empty);
-    } else {
-      suggestionState.candidates.forEach((candidate, candidateIndex) => {
-        const optionButton = document.createElement("button");
-        optionButton.type = "button";
-        optionButton.className = "document-template-runtime-source-option";
-        optionButton.title = formatDocumentTemplateLookupResolvedValue(candidate.value);
-        if (candidateIndex === 0 && String(candidate.id || "").startsWith("record:")) {
-          optionButton.classList.add("is-primary");
-        }
-
-        const label = document.createElement("strong");
-        label.textContent = candidate.label;
-        const meta = document.createElement("span");
-        meta.textContent = candidate.meta || formatDocumentTemplateLookupResolvedValue(candidate.value);
-
-        optionButton.append(label, meta);
-        optionButton.addEventListener("click", () => {
-          applyRuntimeValue(candidate.value);
-        });
-        optionList.append(optionButton);
-      });
-    }
-
-    picker.append(pickerLabel, optionList);
-    wrapper.append(picker);
-
-    if (field.type === "longtext") {
-      control = document.createElement("textarea");
-      control.rows = 4;
-      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
-      control.addEventListener("input", (event) => {
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
-        renderDocumentTemplatePreviewContent();
-      });
-    } else if (field.type === "date") {
-      control = document.createElement("input");
-      control.type = "date";
-      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
-      control.addEventListener("input", (event) => {
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
-        renderDocumentTemplatePreviewContent();
-      });
-    } else if (field.type === "checkbox" || field.type === "toggle") {
-      const toggleWrap = document.createElement("label");
-      toggleWrap.className = "document-template-runtime-checkbox";
-      control = document.createElement("input");
-      control.type = "checkbox";
-      control.checked = Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrder.id));
-      control.addEventListener("change", (event) => {
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, Boolean(event.currentTarget.checked), { render: false });
-        renderDocumentTemplatePreviewContent();
-      });
-      const copy = document.createElement("span");
-      copy.textContent = field.type === "toggle" ? "Oznaceno" : "Potvrdeno";
-      toggleWrap.append(control, copy);
-      wrapper.append(toggleWrap);
-      return wrapper;
-    } else {
-      control = document.createElement("input");
-      control.type = "text";
-      if (field.type === "number") {
-        control.inputMode = "decimal";
-      }
-      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
-      control.addEventListener("input", (event) => {
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
-        renderDocumentTemplatePreviewContent();
-      });
-    }
-
-    wrapper.append(control);
-
-    const helper = document.createElement("small");
-    helper.className = "document-template-runtime-field-help";
-    helper.textContent = "Najprije nudi najnoviji stari zapisnik, zatim starije varijante, pa template fallback.";
-    wrapper.append(helper);
-    return wrapper;
-  };
-
   const createInspectorsFieldControl = (field, workOrder) => {
     const wrapper = document.createElement("label");
     wrapper.className = "field field-span-full";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
-    const select = document.createElement("select");
-    select.multiple = true;
-    const options = getQualifiedUserOptionsForSignatureAreas("inspect", [field.signatureArea || "elektro"]);
-    const selectedIds = new Set(getDocumentTemplateRuntimeArrayValue(workOrder.id, "inspectorUserIds"));
-    select.replaceChildren(...options
-      .filter((option) => String(option.value || "").trim())
-      .map((option) => {
-        const element = createOption(option.value, option.label);
-        element.selected = selectedIds.has(String(option.value));
-        return element;
-      }));
-    select.size = Math.max(4, Math.min(7, options.length || 4));
-    select.addEventListener("change", () => {
-      const nextValues = Array.from(select.selectedOptions)
-        .map((option) => String(option.value || "").trim())
-        .filter(Boolean);
-      updateDocumentTemplateRuntimeOverride(workOrder.id, {
-        inspectorUserIds: nextValues,
-        inspectorUserId: nextValues[0] || "",
-      }, { render: false });
-      syncDocumentTemplateEditorChrome();
-      renderDocumentTemplatePreviewContent();
+    const area = field.signatureArea || "elektro";
+    const picker = createWorkOrderDocumentSignaturePersonPicker({
+      capability: "inspect",
+      signatureArea: area,
+      multiple: true,
+      value: getDocumentTemplateRuntimeArrayValue(
+        workOrder.id,
+        getWorkOrderDocumentSignaturePersonListFieldName("inspect", area) || "inspectorUserIds",
+      ),
+      emptyLabel: "Odaberi ispitivače",
+      onChange: (nextValues) => {
+        const normalizedValues = normalizeQualifiedUserIdList(nextValues);
+        const listFieldName = getWorkOrderDocumentSignaturePersonListFieldName("inspect", area) || "inspectorUserIds";
+        const fieldName = getWorkOrderDocumentSignaturePersonFieldName("inspect", area) || "inspectorUserId";
+        updateDocumentTemplateRuntimeOverride(workOrder.id, {
+          [listFieldName]: normalizedValues,
+          [fieldName]: normalizedValues[0] || "",
+          inspectorUserIds: normalizedValues,
+          inspectorUserId: normalizedValues[0] || "",
+        }, { render: false });
+        syncDocumentTemplateEditorChrome();
+        renderDocumentTemplatePreviewContent();
+      },
     });
-    wrapper.append(title, select);
+    wrapper.append(title, picker);
     if (field.helpText) {
       const helper = document.createElement("small");
       helper.className = "document-template-runtime-field-help";
@@ -18966,6 +19094,14 @@ function renderDocumentTemplateRuntimeFieldRows() {
     meta.className = "helper-copy module-copy";
     meta.textContent = signaturePreview.summary || `${signaturePreview.displayName} se povlači automatski iz People modula.`;
     shellNode.append(title, meta);
+    if (signaturePreview.signatureImageUrl) {
+      const previewImage = document.createElement("img");
+      previewImage.className = "document-template-runtime-signature-image";
+      previewImage.src = signaturePreview.signatureImageUrl;
+      previewImage.alt = signaturePreview.displayName || "Potpis";
+      previewImage.loading = "lazy";
+      shellNode.append(previewImage);
+    }
     return shellNode;
   };
 
@@ -18974,6 +19110,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.className = "document-template-runtime-measurement-field";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "sheet" });
     const summaryButton = document.createElement("button");
     summaryButton.type = "button";
     summaryButton.className = "ghost-button document-template-runtime-excel-trigger";
@@ -19000,7 +19137,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     inlineExcelHost.append(preview);
     documentTemplateMeasurementInlineHosts.set(String(field.id || ""), inlineExcelHost);
 
-    shellNode.append(title, summaryButton, helper, inlineExcelHost);
+    shellNode.append(title);
+    if (sourcePicker) {
+      shellNode.append(sourcePicker);
+    }
+    shellNode.append(summaryButton, helper, inlineExcelHost);
     return shellNode;
   };
 
@@ -19016,8 +19157,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.className = "field field-span-full";
       fieldShell.append(createMeasurementFieldControl(field, activeWorkOrder));
       grid.append(fieldShell);
-    } else if (isDocumentTemplatePreviousDocumentLookupField(field)) {
-      grid.append(createPreviousDocumentLookupFieldControl(field, activeWorkOrder));
     } else if (field.type === "qualified_inspectors") {
       grid.append(createInspectorsFieldControl(field, activeWorkOrder));
     } else if (field.type === "legal_list") {
@@ -19036,7 +19175,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.append(createSignatureFieldControl(field, context));
       grid.append(fieldShell);
     } else {
-      grid.append(createStandardFieldControl(field, activeWorkOrder.id));
+      grid.append(createStandardFieldControl(field, activeWorkOrder.id, activeWorkOrder));
     }
 
     card.append(grid);
@@ -19046,9 +19185,19 @@ function renderDocumentTemplateRuntimeFieldRows() {
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block";
+    const collapsed = isDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
+    blockNode.classList.toggle("is-collapsed", collapsed);
 
     const head = document.createElement("div");
     head.className = "document-template-runtime-block-head";
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = "document-template-runtime-block-toggle";
+    toggleButton.textContent = collapsed ? "+" : "−";
+    toggleButton.setAttribute("aria-label", collapsed ? "Prikaži blok" : "Sakrij blok");
+    toggleButton.addEventListener("click", () => {
+      toggleDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
+    });
     const copy = document.createElement("div");
     const title = document.createElement("h4");
     title.textContent = block.chapter?.label || `Blok ${blockIndex + 1}`;
@@ -19059,11 +19208,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
         ? `${block.items.length} polja za unos u ovom bloku.`
         : "Ovaj blok se puni automatski iz RN-a i povezanih podataka.");
     copy.append(title, meta);
-    head.append(copy, createBadge(`${block.items.length} polja`, "document-template-meta-badge"));
+    const headMeta = document.createElement("div");
+    headMeta.className = "document-template-runtime-block-actions";
+    headMeta.append(
+      createBadge(`${block.items.length} polja`, "document-template-meta-badge"),
+      toggleButton,
+    );
+    head.append(copy, headMeta);
     blockNode.append(head);
 
     const body = document.createElement("div");
     body.className = "document-template-runtime-block-body";
+    body.hidden = collapsed;
     if (block.items.length === 0) {
       const empty = document.createElement("p");
       empty.className = "helper-copy module-copy";
@@ -30967,6 +31123,11 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object"
     ? { ...source.fieldValues }
     : {};
+  const fieldSources = Object.fromEntries(
+    Object.entries(source.fieldSources && typeof source.fieldSources === "object" ? source.fieldSources : {})
+      .map(([fieldId, value]) => [String(fieldId), String(value ?? "").trim()])
+      .filter(([, value]) => value),
+  );
   const fieldSheets = Object.fromEntries(
     Object.entries(source.fieldSheets && typeof source.fieldSheets === "object" ? source.fieldSheets : {})
       .map(([fieldId, snapshot]) => {
@@ -31003,6 +31164,7 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
       ? { serviceItems: getWorkOrderServiceItems({ serviceItems: source.serviceItems }) }
       : {}),
     fieldValues,
+    fieldSources,
     fieldSheets,
   };
 }
@@ -31039,7 +31201,47 @@ function getDocumentTemplateRuntimeFieldValue(workOrderId, fieldId) {
   return record.fieldValues?.[normalizedFieldId];
 }
 
-function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { render = true } = {}) {
+function getDocumentTemplateRuntimeFieldSource(workOrderId, fieldId) {
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId);
+  const normalizedFieldId = String(fieldId || "").trim();
+  if (!record || !normalizedFieldId) {
+    return "";
+  }
+  return String(record.fieldSources?.[normalizedFieldId] || "").trim();
+}
+
+function setDocumentTemplateRuntimeFieldSource(workOrderId, fieldId, sourceId, { render = true } = {}) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  const normalizedSourceId = String(sourceId || "").trim();
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true });
+  if (!record || !normalizedFieldId) {
+    return;
+  }
+
+  const nextFieldSources = {
+    ...(record.fieldSources ?? {}),
+  };
+
+  if (normalizedSourceId) {
+    nextFieldSources[normalizedFieldId] = normalizedSourceId;
+  } else {
+    delete nextFieldSources[normalizedFieldId];
+  }
+
+  state.documentTemplateRuntime.overrides = {
+    ...(state.documentTemplateRuntime.overrides ?? {}),
+    [String(workOrderId || "").trim()]: {
+      ...record,
+      fieldSources: nextFieldSources,
+    },
+  };
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+  }
+}
+
+function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { render = true, preserveBlank = true } = {}) {
   const normalizedFieldId = String(fieldId || "").trim();
   const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true });
   if (!record || !normalizedFieldId) {
@@ -31049,6 +31251,9 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
   const nextFieldValues = {
     ...(record.fieldValues ?? {}),
   };
+  const nextFieldSources = {
+    ...(record.fieldSources ?? {}),
+  };
 
   const shouldDelete = value == null
     || (typeof value === "string" && !String(value).trim())
@@ -31056,8 +31261,14 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
 
   if (shouldDelete) {
     delete nextFieldValues[normalizedFieldId];
+    if (preserveBlank) {
+      nextFieldSources[normalizedFieldId] = "blank";
+    } else if (nextFieldSources[normalizedFieldId] === "manual" || nextFieldSources[normalizedFieldId] === "blank") {
+      delete nextFieldSources[normalizedFieldId];
+    }
   } else {
     nextFieldValues[normalizedFieldId] = value;
+    nextFieldSources[normalizedFieldId] = "manual";
   }
 
   state.documentTemplateRuntime.overrides = {
@@ -31065,6 +31276,7 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
     [String(workOrderId || "").trim()]: {
       ...record,
       fieldValues: nextFieldValues,
+      fieldSources: nextFieldSources,
     },
   };
 
@@ -31083,6 +31295,36 @@ function getDocumentTemplateRuntimeMeasurementSheet(workOrderId, field = {}) {
   const runtimeSnapshot = normalizeWorkOrderMeasurementSheet(record?.fieldSheets?.[normalizedFieldId]);
   if (runtimeSnapshot) {
     return runtimeSnapshot;
+  }
+
+  const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
+  const template = buildDocumentTemplateDraft();
+  const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, normalizedFieldId);
+
+  if (workOrder && sourceId === "template") {
+    return normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null;
+  }
+
+  if (workOrder && sourceId.startsWith("record:")) {
+    const selectedCandidate = getDocumentTemplatePreviousRecordFieldCandidateById(
+      field,
+      workOrder,
+      template,
+      sourceId,
+      { kind: "sheet" },
+    );
+    if (selectedCandidate?.value) {
+      return normalizeWorkOrderMeasurementSheet(selectedCandidate.value) ?? null;
+    }
+  }
+
+  if (workOrder) {
+    const { candidates } = getDocumentTemplatePreviousRecordFieldCandidates(field, workOrder, template, { kind: "sheet" });
+    const selectedValue = candidates[0]?.value;
+    if (selectedValue) {
+      return normalizeWorkOrderMeasurementSheet(selectedValue) ?? null;
+    }
   }
 
   return normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null;
@@ -31105,16 +31347,84 @@ function setDocumentTemplateRuntimeMeasurementSheet(workOrderId, fieldId, snapsh
     delete nextFieldSheets[normalizedFieldId];
   }
 
+  const nextFieldSources = {
+    ...(record.fieldSources ?? {}),
+  };
+  if (normalizedSnapshot) {
+    nextFieldSources[normalizedFieldId] = "manual";
+  } else if (nextFieldSources[normalizedFieldId] === "manual") {
+    delete nextFieldSources[normalizedFieldId];
+  }
+
   state.documentTemplateRuntime.overrides = {
     ...(state.documentTemplateRuntime.overrides ?? {}),
     [String(workOrderId || "").trim()]: {
       ...record,
+      fieldSources: nextFieldSources,
       fieldSheets: nextFieldSheets,
     },
   };
 
   if (render) {
     syncDocumentTemplateEditorChrome();
+  }
+}
+
+function applyDocumentTemplateRuntimePersistedFieldCandidate(
+  workOrderId,
+  field = {},
+  candidateId = "",
+  template = buildDocumentTemplateDraft(),
+  { kind = "value", render = true } = {},
+) {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  const normalizedCandidateId = String(candidateId || "").trim();
+  if (!normalizedWorkOrderId || !normalizedCandidateId) {
+    return;
+  }
+
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
+  if (!workOrder) {
+    return;
+  }
+
+  if (normalizedCandidateId === "template") {
+    setDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id, "template", { render: false });
+    if (String(kind || "value").trim().toLowerCase() === "sheet") {
+      setDocumentTemplateRuntimeMeasurementSheet(normalizedWorkOrderId, field.id, null, { render: false });
+    } else {
+      setDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id, null, { render: false, preserveBlank: false });
+    }
+    if (render) {
+      syncDocumentTemplateEditorChrome();
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePreviewContent();
+    }
+    return;
+  }
+
+  const candidate = getDocumentTemplatePreviousRecordFieldCandidateById(
+    field,
+    workOrder,
+    template,
+    normalizedCandidateId,
+    { kind },
+  );
+  if (!candidate) {
+    return;
+  }
+
+  if (String(kind || "value").trim().toLowerCase() === "sheet") {
+    setDocumentTemplateRuntimeMeasurementSheet(normalizedWorkOrderId, field.id, candidate.value, { render: false });
+  } else {
+    setDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id, candidate.value, { render: false });
+  }
+  setDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id, normalizedCandidateId, { render: false });
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
   }
 }
 
@@ -31330,6 +31640,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     sequenceIndex: -1,
     previousRecordOptions: {},
     savedRecordFingerprints: {},
+    collapsedBlocks: {},
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -31478,6 +31789,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     activeWorkOrderId: ids[0] || "",
     previousRecordOptions: {},
     savedRecordFingerprints: {},
+    collapsedBlocks: {},
     common: {
       inspectionDate: String(state.workOrderDocumentWizard.common?.inspectionDate ?? "").trim(),
       issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
