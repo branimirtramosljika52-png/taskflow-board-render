@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260406e" />
+    <link rel="stylesheet" href="/styles.css?v=20260406f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1318,7 +1318,7 @@
                         class="ghost-button work-order-document-wizard-common-toggle"
                         aria-expanded="true"
                       >
-                        Sakrij osobe
+                        −
                       </button>
                     </div>
                     <div id="work-order-document-wizard-common-people-body" class="work-order-document-wizard-common-people-grid">
@@ -1351,45 +1351,55 @@
                     </div>
                   </section>
 
-                  <section class="work-order-document-wizard-common-env-block field-span-full">
+                  <section id="work-order-document-wizard-common-env" class="work-order-document-wizard-common-env-block field-span-full">
                     <div class="work-order-document-wizard-subblock-head">
                       <div class="work-order-document-wizard-subblock-copy">
                         <strong>Uvjeti ispitivanja</strong>
                         <span>Zajednički okolišni podaci koji se preslikavaju na sve odabrane RN-ove, a po potrebi se mogu korigirati i na pojedinom RN-u.</span>
                       </div>
+                      <button
+                        id="work-order-document-wizard-common-env-toggle"
+                        type="button"
+                        class="ghost-button work-order-document-wizard-common-toggle"
+                        aria-expanded="true"
+                      >
+                        −
+                      </button>
                     </div>
-                    <label class="field field-span-full work-order-document-randomize-field">
-                      <span class="work-order-document-randomize-row">
-                        <input id="work-order-document-common-randomize-environment" type="checkbox" />
-                        <strong>Lagano variraj uvjete po RN-u (+/- 2%)</strong>
-                      </span>
-                      <small>Koristi zajedničke vrijednosti kao bazu, ali ih po RN-u malo prilagodi da ne budu potpuno identične.</small>
-                    </label>
-                    <div class="work-order-document-wizard-common-env-grid">
-                      <label class="field">
-                        <span>Vanjska temperatura</span>
-                        <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18 °C" />
+                    <div id="work-order-document-wizard-common-env-body" class="work-order-document-wizard-common-env-body">
+                      <label class="field field-span-full work-order-document-randomize-field">
+                        <span class="work-order-document-randomize-row">
+                          <input id="work-order-document-common-randomize-environment" type="checkbox" />
+                          <strong>Lagano variraj uvjete po RN-u (+/- 2%)</strong>
+                        </span>
+                        <small>Variraju samo vanjska temperatura, relativna vlažnost, brzina strujanja i otpor tla.</small>
                       </label>
-                      <label class="field">
-                        <span>Relativna vlažnost</span>
-                        <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52 %" />
-                      </label>
-                      <label class="field">
-                        <span>Brzina strujanja</span>
-                        <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,4 m/s" />
-                      </label>
-                      <label class="field">
-                        <span>Vrijeme</span>
-                        <input id="work-order-document-common-weather" type="text" placeholder="npr. sunčano" />
-                      </label>
-                      <label class="field">
-                        <span>Stanje tla</span>
-                        <input id="work-order-document-common-ground-condition" type="text" placeholder="npr. suho" />
-                      </label>
-                      <label class="field">
-                        <span>Otpor tla</span>
-                        <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5,2 Ω" />
-                      </label>
+                      <div class="work-order-document-wizard-common-env-grid">
+                        <label class="field">
+                          <span>Vanjska temperatura</span>
+                          <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18 °C" />
+                        </label>
+                        <label class="field">
+                          <span>Relativna vlažnost</span>
+                          <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52 %" />
+                        </label>
+                        <label class="field">
+                          <span>Brzina strujanja</span>
+                          <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,40 m/s" />
+                        </label>
+                        <label class="field">
+                          <span>Vrijeme</span>
+                          <input id="work-order-document-common-weather" type="text" placeholder="npr. sunčano" />
+                        </label>
+                        <label class="field">
+                          <span>Stanje tla</span>
+                          <input id="work-order-document-common-ground-condition" type="text" placeholder="npr. suho" />
+                        </label>
+                        <label class="field">
+                          <span>Otpor tla</span>
+                          <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5 Ω" />
+                        </label>
+                      </div>
                     </div>
                   </section>
                 </div>
@@ -3946,6 +3956,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260406e"></script>
+    <script type="module" src="/src/main.js?v=20260406f"></script>
   </body>
 </html>

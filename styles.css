@@ -7634,8 +7634,14 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-wizard-common-toggle {
+  width: 36px;
+  min-width: 36px;
   min-height: 36px;
-  padding: 0 16px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .work-order-document-wizard-block.is-collapsed {
@@ -7694,6 +7700,15 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-wizard-common-person-block.is-collapsed {
   gap: 0;
+}
+
+.work-order-document-wizard-common-env-block.is-collapsed {
+  gap: 0;
+}
+
+.work-order-document-wizard-common-env-body {
+  display: grid;
+  gap: 12px;
 }
 
 .work-order-document-wizard-common-people-grid {
@@ -8658,9 +8673,14 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-selection-section-toggle {
+  width: 34px;
+  min-width: 34px;
   min-height: 34px;
-  padding-inline: 12px;
-  border-radius: 999px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
   white-space: nowrap;
 }
 

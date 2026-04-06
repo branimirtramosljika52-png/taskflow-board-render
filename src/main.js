@@ -573,6 +573,7 @@ const state = {
     selectedIds: new Set(),
     commonCollapsed: false,
     commonPeopleCollapsed: false,
+    commonEnvCollapsed: false,
     collapsedSections: {},
     commonSheet: "basic",
     common: {
@@ -1525,6 +1526,9 @@ const workOrderDocumentWizardCommonPeopleSection = document.querySelector("#work
 const workOrderDocumentWizardCommonPeopleBody = document.querySelector("#work-order-document-wizard-common-people-body");
 const workOrderDocumentWizardCommonPeopleSummary = document.querySelector("#work-order-document-wizard-common-people-summary");
 const workOrderDocumentWizardCommonPeopleToggleButton = document.querySelector("#work-order-document-wizard-common-people-toggle");
+const workOrderDocumentWizardCommonEnvSection = document.querySelector("#work-order-document-wizard-common-env");
+const workOrderDocumentWizardCommonEnvBody = document.querySelector("#work-order-document-wizard-common-env-body");
+const workOrderDocumentWizardCommonEnvToggleButton = document.querySelector("#work-order-document-wizard-common-env-toggle");
 const workOrderDocumentWizardSheetBasicButton = document.querySelector("#work-order-document-wizard-sheet-basic");
 const workOrderDocumentWizardSheetValidityButton = document.querySelector("#work-order-document-wizard-sheet-validity");
 const workOrderDocumentWizardSheetBasicPanel = document.querySelector("#work-order-document-wizard-sheet-basic-panel");
@@ -12916,6 +12920,13 @@ const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS = new Set([
   "groundResistance",
 ]);
 
+const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT = {
+  outsideTemperature: { decimals: 1 },
+  relativeHumidity: { decimals: 1 },
+  airflowSpeed: { decimals: 2 },
+  groundResistance: { decimals: 0 },
+};
+
 const WORK_ORDER_DOCUMENT_COMMON_VALIDITY_FIELDS = [
   ["electricalValidityMonths", "Panik rasvjeta"],
   ["tipkaloValidityMonths", "Tipkalo za isklop napona"],
@@ -12931,7 +12942,7 @@ function getStableStringHash(value = "") {
   return Math.abs(hash);
 }
 
-function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", spread = 0.02) {
+function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", fieldName = "", spread = 0.02) {
   const normalizedRawValue = String(rawValue || "").trim();
   if (!normalizedRawValue) {
     return "";
@@ -12947,13 +12958,15 @@ function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", spre
     return normalizedRawValue;
   }
 
-  const decimals = (numericMatch[0].split(/[.,]/)[1] || "").length;
-  const usesComma = numericMatch[0].includes(",");
+  const numericDecimals = (numericMatch[0].split(/[.,]/)[1] || "").length;
+  const formatConfig = WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT[String(fieldName || "").trim()] || null;
+  const targetDecimals = formatConfig ? formatConfig.decimals : numericDecimals;
+  const usesComma = numericMatch[0].includes(",") || (!numericMatch[0].includes(".") && targetDecimals > 0);
   const hash = getStableStringHash(seedKey);
   const ratio = (hash % 2001) / 1000 - 1;
   const nextNumber = originalNumber * (1 + (ratio * spread));
-  const roundedValue = decimals > 0
-    ? nextNumber.toFixed(Math.min(decimals, 2))
+  const roundedValue = targetDecimals > 0
+    ? nextNumber.toFixed(Math.min(targetDecimals, 2))
     : String(Math.round(nextNumber));
   const localizedValue = usesComma ? roundedValue.replace(".", ",") : roundedValue;
 
@@ -28087,6 +28100,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.commonCollapsed = false;
   state.workOrderDocumentWizard.commonPeopleCollapsed = false;
+  state.workOrderDocumentWizard.commonEnvCollapsed = false;
   state.workOrderDocumentWizard.collapsedSections = {};
   state.workOrderDocumentWizard.commonSheet = "basic";
   state.workOrderBatch.pending = false;
@@ -28354,6 +28368,24 @@ function getWorkOrderDocumentWizardCollapsedSections(workOrderId = "") {
   return state.workOrderDocumentWizard.collapsedSections[normalizedId];
 }
 
+function setWorkOrderDocumentWizardCollapseButtonState(
+  button,
+  isCollapsed,
+  {
+    collapsedLabel = "Prikaži sekciju",
+    expandedLabel = "Sakrij sekciju",
+  } = {},
+) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  button.textContent = isCollapsed ? "+" : "−";
+  button.title = isCollapsed ? collapsedLabel : expandedLabel;
+  button.setAttribute("aria-label", button.title);
+  button.setAttribute("aria-expanded", String(!isCollapsed));
+}
+
 function isWorkOrderDocumentWizardSectionCollapsed(workOrderId = "", sectionKey = "") {
   const normalizedKey = String(sectionKey || "").trim();
   if (!normalizedKey) {
@@ -28387,10 +28419,24 @@ function renderWorkOrderDocumentWizardCommonPeopleSection() {
       ? summaryParts.join(", ")
       : "Jednim unosom postavi osobe za sve odabrane RN-ove.";
   }
-  if (workOrderDocumentWizardCommonPeopleToggleButton) {
-    workOrderDocumentWizardCommonPeopleToggleButton.textContent = isCollapsed ? "Prikaži osobe" : "Sakrij osobe";
-    workOrderDocumentWizardCommonPeopleToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+  setWorkOrderDocumentWizardCollapseButtonState(workOrderDocumentWizardCommonPeopleToggleButton, isCollapsed, {
+    collapsedLabel: "Prikaži osobe",
+    expandedLabel: "Sakrij osobe",
+  });
+}
+
+function renderWorkOrderDocumentWizardCommonEnvSection() {
+  const isCollapsed = Boolean(state.workOrderDocumentWizard.commonEnvCollapsed);
+  if (workOrderDocumentWizardCommonEnvSection) {
+    workOrderDocumentWizardCommonEnvSection.classList.toggle("is-collapsed", isCollapsed);
   }
+  if (workOrderDocumentWizardCommonEnvBody) {
+    workOrderDocumentWizardCommonEnvBody.hidden = isCollapsed;
+  }
+  setWorkOrderDocumentWizardCollapseButtonState(workOrderDocumentWizardCommonEnvToggleButton, isCollapsed, {
+    collapsedLabel: "Prikaži uvjete ispitivanja",
+    expandedLabel: "Sakrij uvjete ispitivanja",
+  });
 }
 
 function renderWorkOrderDocumentWizardCommonSection() {
@@ -28404,10 +28450,10 @@ function renderWorkOrderDocumentWizardCommonSection() {
     workOrderDocumentWizardCommonBody.hidden = isCollapsed;
   }
   syncWorkOrderDocumentWizardCommonSummaryText();
-  if (workOrderDocumentWizardCommonToggleButton) {
-    workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži zajednicke podatke" : "Sakrij zajednicke podatke";
-    workOrderDocumentWizardCommonToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
-  }
+  setWorkOrderDocumentWizardCollapseButtonState(workOrderDocumentWizardCommonToggleButton, isCollapsed, {
+    collapsedLabel: "Prikaži zajedničke podatke",
+    expandedLabel: "Sakrij zajedničke podatke",
+  });
   if (workOrderDocumentWizardSheetBasicButton) {
     const isActive = activeSheet === "basic";
     workOrderDocumentWizardSheetBasicButton.classList.toggle("is-active", isActive);
@@ -28425,6 +28471,7 @@ function renderWorkOrderDocumentWizardCommonSection() {
     workOrderDocumentWizardSheetValidityPanel.hidden = activeSheet !== "validity" || isCollapsed;
   }
   renderWorkOrderDocumentWizardCommonPeopleSection();
+  renderWorkOrderDocumentWizardCommonEnvSection();
 }
 
 function syncWorkOrderDocumentWizardModal() {
@@ -28610,7 +28657,7 @@ function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
     && state.workOrderDocumentWizard.common?.randomizeEnvironment
     && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(String(fieldName || ""))
   ) {
-    return applyDeterministicEnvironmentVariance(commonValue, `${workOrderId}:${fieldName}`);
+    return applyDeterministicEnvironmentVariance(commonValue, `${workOrderId}:${fieldName}`, fieldName);
   }
   return commonValue;
 }
@@ -29105,7 +29152,7 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
     && state.documentTemplateRuntime.common?.randomizeEnvironment
     && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(String(fieldName || ""))
   ) {
-    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${fieldName}`);
+    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${fieldName}`, fieldName);
   }
   return commonValue;
 }
@@ -29434,8 +29481,10 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       const isCollapsed = isWorkOrderDocumentWizardSectionCollapsed(workOrder.id, sectionKey);
       section.classList.toggle("is-collapsed", isCollapsed);
       bodyNode.hidden = isCollapsed;
-      toggleButton.textContent = isCollapsed ? "Prikaži" : "Sakrij";
-      toggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+      setWorkOrderDocumentWizardCollapseButtonState(toggleButton, isCollapsed, {
+        collapsedLabel: `Prikaži ${titleText.toLowerCase()}`,
+        expandedLabel: `Sakrij ${titleText.toLowerCase()}`,
+      });
     };
 
     toggleButton.addEventListener("click", () => {
@@ -31498,6 +31547,10 @@ workOrderDocumentWizardCommonToggleButton?.addEventListener("click", () => {
 workOrderDocumentWizardCommonPeopleToggleButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonPeopleCollapsed = !state.workOrderDocumentWizard.commonPeopleCollapsed;
   renderWorkOrderDocumentWizardCommonPeopleSection();
+});
+workOrderDocumentWizardCommonEnvToggleButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonEnvCollapsed = !state.workOrderDocumentWizard.commonEnvCollapsed;
+  renderWorkOrderDocumentWizardCommonEnvSection();
 });
 workOrderDocumentWizardSheetBasicButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonSheet = "basic";
