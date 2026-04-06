@@ -585,6 +585,7 @@ const state = {
       weather: "",
       groundCondition: "",
       groundResistance: "",
+      randomizeEnvironment: false,
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -620,6 +621,7 @@ const state = {
       weather: "",
       groundCondition: "",
       groundResistance: "",
+      randomizeEnvironment: false,
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -1550,6 +1552,7 @@ const workOrderDocumentCommonAirflowSpeedInput = document.querySelector("#work-o
 const workOrderDocumentCommonWeatherInput = document.querySelector("#work-order-document-common-weather");
 const workOrderDocumentCommonGroundConditionInput = document.querySelector("#work-order-document-common-ground-condition");
 const workOrderDocumentCommonGroundResistanceInput = document.querySelector("#work-order-document-common-ground-resistance");
+const workOrderDocumentCommonRandomizeEnvironmentInput = document.querySelector("#work-order-document-common-randomize-environment");
 const workOrderDocumentCommonElectricalValidityMonthsInput = document.querySelector("#work-order-document-common-electrical-validity-months");
 const workOrderDocumentCommonTipkaloValidityMonthsInput = document.querySelector("#work-order-document-common-tipkalo-validity-months");
 
@@ -5124,35 +5127,20 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
     ? selectedItems.map((item) => item.name || item.serviceCode).join(", ")
     : "Dodaj usluge";
 
-  if (selectedItems.length === 0) {
-    const empty = document.createElement("span");
-    empty.className = "work-order-service-picker-empty";
-    empty.textContent = "+ Dodaj usluge";
-    trigger.append(empty);
-    return;
-  }
-
-  const stack = document.createElement("span");
-  stack.className = "work-order-service-picker-stack";
-  selectedItems.slice(0, 3).forEach((item) => {
-    const chip = document.createElement("span");
-    chip.className = `work-order-service-picker-chip${item.isCompleted ? " is-completed" : ""}`;
-    chip.textContent = item.serviceCode || item.name || "Usluga";
-    stack.append(chip);
-  });
-
-  if (selectedItems.length > 3) {
-    const extra = document.createElement("span");
-    extra.className = "work-order-service-picker-chip is-extra";
-    extra.textContent = `+${selectedItems.length - 3}`;
-    stack.append(extra);
-  }
-
   const label = document.createElement("span");
   label.className = "work-order-service-picker-label";
-  label.textContent = selectedItems.map((item) => item.name || item.serviceCode).join(" · ");
+  label.textContent = selectedItems.length > 0
+    ? `Uredi usluge (${selectedItems.length})`
+    : "+ Dodaj usluge";
 
-  trigger.append(stack, label);
+  trigger.append(label);
+
+  if (selectedItems.length > 0) {
+    const meta = document.createElement("span");
+    meta.className = "work-order-service-picker-empty";
+    meta.textContent = `${getWorkOrderCompletedServiceCount({ serviceItems: selectedItems })}/${selectedItems.length} odrađeno`;
+    trigger.append(meta);
+  }
 }
 
 function renderWorkOrderServiceSelection() {
@@ -12873,10 +12861,56 @@ const WORK_ORDER_DOCUMENT_COMMON_ENVIRONMENT_FIELDS = [
   ["groundResistance", "Otpor tla"],
 ];
 
+const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS = new Set([
+  "outsideTemperature",
+  "relativeHumidity",
+  "airflowSpeed",
+  "groundResistance",
+]);
+
 const WORK_ORDER_DOCUMENT_COMMON_VALIDITY_FIELDS = [
   ["electricalValidityMonths", "Panik rasvjeta"],
   ["tipkaloValidityMonths", "Tipkalo za isklop napona"],
 ];
+
+function getStableStringHash(value = "") {
+  const normalizedValue = String(value || "");
+  let hash = 0;
+  for (let index = 0; index < normalizedValue.length; index += 1) {
+    hash = ((hash << 5) - hash) + normalizedValue.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", spread = 0.02) {
+  const normalizedRawValue = String(rawValue || "").trim();
+  if (!normalizedRawValue) {
+    return "";
+  }
+
+  const numericMatch = normalizedRawValue.match(/-?\d+(?:[.,]\d+)?/);
+  if (!numericMatch) {
+    return normalizedRawValue;
+  }
+
+  const originalNumber = Number(String(numericMatch[0]).replace(",", "."));
+  if (!Number.isFinite(originalNumber)) {
+    return normalizedRawValue;
+  }
+
+  const decimals = (numericMatch[0].split(/[.,]/)[1] || "").length;
+  const usesComma = numericMatch[0].includes(",");
+  const hash = getStableStringHash(seedKey);
+  const ratio = (hash % 2001) / 1000 - 1;
+  const nextNumber = originalNumber * (1 + (ratio * spread));
+  const roundedValue = decimals > 0
+    ? nextNumber.toFixed(Math.min(decimals, 2))
+    : String(Math.round(nextNumber));
+  const localizedValue = usesComma ? roundedValue.replace(".", ",") : roundedValue;
+
+  return `${normalizedRawValue.slice(0, numericMatch.index)}${localizedValue}${normalizedRawValue.slice((numericMatch.index ?? 0) + numericMatch[0].length)}`;
+}
 
 function getWorkOrderDocumentSignaturePersonFieldName(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
@@ -12997,11 +13031,7 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
   );
   const labelText = selectedUsers.length === 0
     ? defaultEmptyLabel
-    : multiple
-      ? (selectedUsers.length === 1
-        ? (selectedUsers[0]?.fullName || selectedUsers[0]?.email || "1 ispitivač")
-        : `${selectedUsers.length} ispitivača`)
-      : (selectedUsers[0]?.fullName || selectedUsers[0]?.email || defaultEmptyLabel);
+    : selectedUsers.map((user) => user.fullName || user.email || "Korisnik").filter(Boolean).join(", ");
 
   trigger.replaceChildren();
   trigger.title = selectedUsers.length > 0
@@ -13016,7 +13046,7 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
   if (selectedUsers.length > 0) {
     const stack = document.createElement("span");
     stack.className = "work-order-bulk-executor-stack work-order-document-person-stack";
-    selectedUsers.slice(0, 2).forEach((user) => {
+    selectedUsers.forEach((user) => {
       const avatar = createWorkOrderMiniExecutor({
         label: user.fullName || user.email || "Korisnik",
         user,
@@ -13026,13 +13056,6 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
       avatar.removeAttribute("title");
       stack.append(avatar);
     });
-
-    if (selectedUsers.length > 2) {
-      stack.append(createExecutorOverflowBadge(
-        selectedUsers.length - 2,
-        "work-order-bulk-executor-avatar work-order-document-person-avatar",
-      ));
-    }
 
     trigger.append(stack);
   }
@@ -27301,17 +27324,13 @@ function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = 
   if (normalizedValues.length > 0) {
     const stack = document.createElement("span");
     stack.className = "work-order-bulk-executor-stack";
-    normalizedValues.slice(0, 2).forEach((value) => {
+    normalizedValues.forEach((value) => {
       const avatar = createWorkOrderMiniExecutor(value, {
         className: "work-order-mini-executor work-order-bulk-executor-avatar",
       });
       avatar.removeAttribute("title");
       stack.append(avatar);
     });
-
-    if (normalizedValues.length > 2) {
-      stack.append(createExecutorOverflowBadge(normalizedValues.length - 2, "work-order-bulk-executor-avatar"));
-    }
 
     trigger.append(stack);
   }
@@ -27988,6 +28007,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     weather: "",
     groundCondition: "",
     groundResistance: "",
+    randomizeEnvironment: false,
     electricalValidityMonths: "12",
     tipkaloValidityMonths: "12",
     inspectorUserIds: [],
@@ -28109,6 +28129,9 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   }
   if (workOrderDocumentCommonGroundResistanceInput) {
     workOrderDocumentCommonGroundResistanceInput.value = state.workOrderDocumentWizard.common.groundResistance || "";
+  }
+  if (workOrderDocumentCommonRandomizeEnvironmentInput) {
+    workOrderDocumentCommonRandomizeEnvironmentInput.checked = Boolean(state.workOrderDocumentWizard.common.randomizeEnvironment);
   }
   if (workOrderDocumentCommonElectricalValidityMonthsInput) {
     workOrderDocumentCommonElectricalValidityMonthsInput.value = state.workOrderDocumentWizard.common.electricalValidityMonths || "12";
@@ -28384,6 +28407,14 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
     issuedDate: String(patch.issuedDate ?? current.issuedDate ?? "").trim(),
     issuedPlace: String(patch.issuedPlace ?? current.issuedPlace ?? "").trim(),
     note: String(patch.note ?? current.note ?? "").trim(),
+    outsideTemperature: String(patch.outsideTemperature ?? current.outsideTemperature ?? "").trim(),
+    relativeHumidity: String(patch.relativeHumidity ?? current.relativeHumidity ?? "").trim(),
+    airflowSpeed: String(patch.airflowSpeed ?? current.airflowSpeed ?? "").trim(),
+    weather: String(patch.weather ?? current.weather ?? "").trim(),
+    groundCondition: String(patch.groundCondition ?? current.groundCondition ?? "").trim(),
+    groundResistance: String(patch.groundResistance ?? current.groundResistance ?? "").trim(),
+    electricalValidityMonths: String(patch.electricalValidityMonths ?? current.electricalValidityMonths ?? "").trim(),
+    tipkaloValidityMonths: String(patch.tipkaloValidityMonths ?? current.tipkaloValidityMonths ?? "").trim(),
     inspectorUserIds,
     inspectorUserId: hasInspectorPatch
       ? (String(patch.inspectorUserId ?? "").trim() || null)
@@ -28442,7 +28473,15 @@ function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
   if (override && Object.prototype.hasOwnProperty.call(override, fieldName)) {
     return String(override?.[fieldName] ?? "").trim();
   }
-  return String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
+  const commonValue = String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim();
+  if (
+    String(workOrderId || "").trim()
+    && state.workOrderDocumentWizard.common?.randomizeEnvironment
+    && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(String(fieldName || ""))
+  ) {
+    return applyDeterministicEnvironmentVariance(commonValue, `${workOrderId}:${fieldName}`);
+  }
+  return commonValue;
 }
 
 function getWorkOrderDocumentWizardSourceValues(workOrderId, fieldName) {
@@ -28691,6 +28730,9 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     groundResistance: Object.prototype.hasOwnProperty.call(patch, "groundResistance")
       ? String(patch.groundResistance ?? "").trim()
       : String(state.documentTemplateRuntime.common?.groundResistance ?? "").trim(),
+    randomizeEnvironment: Object.prototype.hasOwnProperty.call(patch, "randomizeEnvironment")
+      ? Boolean(patch.randomizeEnvironment)
+      : Boolean(state.documentTemplateRuntime.common?.randomizeEnvironment),
     electricalValidityMonths: Object.prototype.hasOwnProperty.call(patch, "electricalValidityMonths")
       ? String(patch.electricalValidityMonths ?? "").trim()
       : String(state.documentTemplateRuntime.common?.electricalValidityMonths ?? "").trim(),
@@ -28765,6 +28807,30 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     note: Object.prototype.hasOwnProperty.call(patch, "note")
       ? String(patch.note ?? "").trim()
       : String(record.note ?? "").trim(),
+    outsideTemperature: Object.prototype.hasOwnProperty.call(patch, "outsideTemperature")
+      ? String(patch.outsideTemperature ?? "").trim()
+      : String(record.outsideTemperature ?? "").trim(),
+    relativeHumidity: Object.prototype.hasOwnProperty.call(patch, "relativeHumidity")
+      ? String(patch.relativeHumidity ?? "").trim()
+      : String(record.relativeHumidity ?? "").trim(),
+    airflowSpeed: Object.prototype.hasOwnProperty.call(patch, "airflowSpeed")
+      ? String(patch.airflowSpeed ?? "").trim()
+      : String(record.airflowSpeed ?? "").trim(),
+    weather: Object.prototype.hasOwnProperty.call(patch, "weather")
+      ? String(patch.weather ?? "").trim()
+      : String(record.weather ?? "").trim(),
+    groundCondition: Object.prototype.hasOwnProperty.call(patch, "groundCondition")
+      ? String(patch.groundCondition ?? "").trim()
+      : String(record.groundCondition ?? "").trim(),
+    groundResistance: Object.prototype.hasOwnProperty.call(patch, "groundResistance")
+      ? String(patch.groundResistance ?? "").trim()
+      : String(record.groundResistance ?? "").trim(),
+    electricalValidityMonths: Object.prototype.hasOwnProperty.call(patch, "electricalValidityMonths")
+      ? String(patch.electricalValidityMonths ?? "").trim()
+      : String(record.electricalValidityMonths ?? "").trim(),
+    tipkaloValidityMonths: Object.prototype.hasOwnProperty.call(patch, "tipkaloValidityMonths")
+      ? String(patch.tipkaloValidityMonths ?? "").trim()
+      : String(record.tipkaloValidityMonths ?? "").trim(),
     inspectorUserIds: hasInspectorIdsPatch
       ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
       : normalizeQualifiedUserIdList(record.inspectorUserIds ?? []),
@@ -28812,6 +28878,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       weather: "",
       groundCondition: "",
       groundResistance: "",
+      randomizeEnvironment: false,
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -28901,7 +28968,15 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
     return String(current?.[fieldName] ?? "").trim();
   }
 
-  return String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
+  const commonValue = String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
+  if (
+    normalizedId
+    && state.documentTemplateRuntime.common?.randomizeEnvironment
+    && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(String(fieldName || ""))
+  ) {
+    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${fieldName}`);
+  }
+  return commonValue;
 }
 
 function getDocumentTemplateRuntimeArrayValue(workOrderId, fieldName) {
@@ -28935,6 +29010,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       weather: String(state.workOrderDocumentWizard.common?.weather ?? "").trim(),
       groundCondition: String(state.workOrderDocumentWizard.common?.groundCondition ?? "").trim(),
       groundResistance: String(state.workOrderDocumentWizard.common?.groundResistance ?? "").trim(),
+      randomizeEnvironment: Boolean(state.workOrderDocumentWizard.common?.randomizeEnvironment),
       electricalValidityMonths: String(state.workOrderDocumentWizard.common?.electricalValidityMonths ?? "").trim(),
       tipkaloValidityMonths: String(state.workOrderDocumentWizard.common?.tipkaloValidityMonths ?? "").trim(),
       inspectorUserIds: normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []),
@@ -29099,10 +29175,6 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   ].filter(Boolean).join(", ");
   const executors = getWorkOrderExecutors(workOrder);
   const resolvedServiceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
-  const resolvedServiceSummary = resolvedServiceItems
-    .map((item) => item.name || item.serviceCode || "")
-    .filter(Boolean)
-    .join(", ");
   const detailParts = [
     locationDetail || "Bez lokacije",
     workOrder.region || "",
@@ -29124,25 +29196,18 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   meta.className = "work-order-document-selection-subline";
   meta.textContent = detailParts.join(", ");
 
-  const serviceSummary = document.createElement("span");
-  serviceSummary.className = "work-order-document-selection-service-summary";
-  serviceSummary.textContent = resolvedServiceSummary || "Bez dodanih usluga";
-
-  copy.append(title, meta, serviceSummary);
+  copy.append(title, meta);
   if (executors.length > 0) {
     const executorRow = document.createElement("div");
     executorRow.className = "work-order-document-selection-executors";
     const executorStack = document.createElement("div");
     executorStack.className = "work-order-document-selection-executor-stack";
 
-    executors.slice(0, 4).forEach((executor) => {
+    executors.forEach((executor) => {
       executorStack.append(createWorkOrderMiniExecutor(executor, {
         className: "work-order-mini-executor work-order-document-selection-executor",
       }));
     });
-    if (executors.length > 4) {
-      executorStack.append(createExecutorOverflowBadge(executors.length - 4, "work-order-mini-executor work-order-document-selection-executor"));
-    }
 
     const executorLabel = document.createElement("span");
     executorLabel.className = "work-order-document-selection-executor-label";
@@ -29199,6 +29264,27 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const rerenderWizard = () => {
     renderWorkOrderDocumentWizard();
+  };
+
+  const createSectionHead = (titleText, descriptionText = "") => {
+    const headNode = document.createElement("div");
+    headNode.className = "work-order-document-selection-section-head";
+
+    const copyNode = document.createElement("div");
+    copyNode.className = "work-order-document-selection-section-copy";
+
+    const titleNode = document.createElement("strong");
+    titleNode.textContent = titleText;
+    copyNode.append(titleNode);
+
+    if (descriptionText) {
+      const descriptionNode = document.createElement("span");
+      descriptionNode.textContent = descriptionText;
+      copyNode.append(descriptionNode);
+    }
+
+    headNode.append(copyNode);
+    return headNode;
   };
 
   const createOverrideField = ({
@@ -29314,7 +29400,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
     group.fields.forEach((definition) => {
       areaFields.append(createPickerField({
-        label: definition.label,
+        label: definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači",
         capability: definition.capability,
         signatureArea: definition.signatureArea,
         multiple: Boolean(definition.multiple),
@@ -29328,6 +29414,35 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     peopleGrid.append(areaCard);
   });
   peopleBlock.append(peopleHead, peopleGrid);
+
+  const basicBlock = document.createElement("section");
+  basicBlock.className = "work-order-document-selection-basic-block field-span-full";
+  basicBlock.append(
+    createSectionHead(
+      "Osnovno",
+      "Datume i osnovne RN podatke korigiraj ovdje samo ako ovaj radni nalog odstupa od zajedničkog unosa.",
+    ),
+  );
+
+  const basicGrid = document.createElement("div");
+  basicGrid.className = "form-grid work-order-document-selection-basic-grid";
+  basicGrid.append(
+    createOverrideField({
+      label: "Datum ispitivanja",
+      type: "date",
+      fieldName: "inspectionDate",
+      placeholder: state.workOrderDocumentWizard.common.inspectionDate || "",
+      className: "work-order-document-selection-date-field",
+    }),
+    createOverrideField({
+      label: "Datum izdavanja",
+      type: "date",
+      fieldName: "issuedDate",
+      placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
+      className: "work-order-document-selection-date-field",
+    }),
+  );
+  basicBlock.append(basicGrid);
 
   const servicesBlock = document.createElement("section");
   servicesBlock.className = "work-order-document-selection-services field-span-full";
@@ -29395,24 +29510,59 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   servicesBlock.append(servicesHead, servicesToolbar, serviceList);
 
+  const environmentBlock = document.createElement("section");
+  environmentBlock.className = "work-order-document-selection-env-block field-span-full";
+  environmentBlock.append(
+    createSectionHead(
+      "Uvjeti ispitivanja",
+      state.workOrderDocumentWizard.common.randomizeEnvironment
+        ? "Zajedničke vrijednosti su blago varirane po RN-u. Ovdje ih po potrebi ručno korigiraj."
+        : "Zajednički uvjeti se ovdje automatski preslikaju. Mijenjaj samo ako ovaj RN odstupa.",
+    ),
+  );
+
+  const envGrid = document.createElement("div");
+  envGrid.className = "form-grid work-order-document-selection-env-grid";
+  envGrid.append(
+    createOverrideField({
+      label: "Vanjska temperatura",
+      fieldName: "outsideTemperature",
+      placeholder: state.workOrderDocumentWizard.common.outsideTemperature || "npr. 18 °C",
+    }),
+    createOverrideField({
+      label: "Relativna vlažnost",
+      fieldName: "relativeHumidity",
+      placeholder: state.workOrderDocumentWizard.common.relativeHumidity || "npr. 52 %",
+    }),
+    createOverrideField({
+      label: "Brzina strujanja",
+      fieldName: "airflowSpeed",
+      placeholder: state.workOrderDocumentWizard.common.airflowSpeed || "npr. 0,4 m/s",
+    }),
+    createOverrideField({
+      label: "Vrijeme",
+      fieldName: "weather",
+      placeholder: state.workOrderDocumentWizard.common.weather || "npr. sunčano",
+    }),
+    createOverrideField({
+      label: "Stanje tla",
+      fieldName: "groundCondition",
+      placeholder: state.workOrderDocumentWizard.common.groundCondition || "npr. suho",
+    }),
+    createOverrideField({
+      label: "Otpor tla",
+      fieldName: "groundResistance",
+      placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2 Ω",
+    }),
+  );
+  environmentBlock.append(envGrid);
+
   grid.append(
     companyBlock,
-    createOverrideField({
-      label: "Datum ispitivanja",
-      type: "date",
-      fieldName: "inspectionDate",
-      placeholder: state.workOrderDocumentWizard.common.inspectionDate || "",
-      className: "work-order-document-selection-date-field",
-    }),
-    createOverrideField({
-      label: "Datum izdavanja",
-      type: "date",
-      fieldName: "issuedDate",
-      placeholder: state.workOrderDocumentWizard.common.issuedDate || "",
-      className: "work-order-document-selection-date-field",
-    }),
+    basicBlock,
     servicesBlock,
     peopleBlock,
+    environmentBlock,
   );
 
   const footer = document.createElement("div");
@@ -29420,7 +29570,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const helper = document.createElement("span");
   helper.className = "work-order-document-selection-helper";
-  helper.textContent = "Datume, status, izvršitelje, osobe, uvjete i rokove postavi gore, a ovdje mijenjaj samo ono što odstupa.";
+  helper.textContent = "Status, izvršitelje, osobe, uvjete i rokove postavi gore, a ovdje prepravi samo ono što odstupa za ovaj RN.";
 
   const resetButton = document.createElement("button");
   resetButton.type = "button";
@@ -29702,9 +29852,10 @@ function renderWorkOrderDocumentWizard() {
   }
   if (workOrderDocumentWizardPrevButton) {
     workOrderDocumentWizardPrevButton.hidden = state.workOrderDocumentWizard.step === "details";
+    workOrderDocumentWizardPrevButton.textContent = "Vrati se na osnovne podatke";
   }
   if (workOrderDocumentWizardNextButton) {
-    workOrderDocumentWizardNextButton.textContent = recommendations.length === 1 ? "Otvori zapisnik" : "Na zapisnike";
+    workOrderDocumentWizardNextButton.textContent = "NEXT";
     workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
   }
 
@@ -31217,18 +31368,8 @@ workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
 });
 workOrderDocumentWizardNextButton?.addEventListener("click", () => {
   if (state.workOrderDocumentWizard.step !== "details") {
-    setWorkOrderDocumentWizardStep("details");
     return;
   }
-
-  const workOrders = getAllSelectedWorkOrdersForDocumentWizard();
-  const { recommendations } = getWorkOrderDocumentTemplateRecommendations(workOrders);
-
-  if (recommendations.length === 1) {
-    openDocumentTemplateFromWizard(recommendations[0].template.id, recommendations[0].workOrders);
-    return;
-  }
-
   setWorkOrderDocumentWizardStep("templates");
 });
 [
@@ -31259,6 +31400,14 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
     }
   });
+});
+workOrderDocumentCommonRandomizeEnvironmentInput?.addEventListener("change", () => {
+  state.workOrderDocumentWizard.common.randomizeEnvironment = Boolean(workOrderDocumentCommonRandomizeEnvironmentInput.checked);
+  renderWorkOrderDocumentWizardCommonSection();
+  renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+  if (state.workOrderDocumentWizard.step === "templates") {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
 });
 workOrderDocumentWizardWorkOrders?.addEventListener("input", (event) => {
   const target = event.target;
