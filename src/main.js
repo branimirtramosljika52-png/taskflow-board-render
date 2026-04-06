@@ -11782,6 +11782,7 @@ const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CUSTOM_VALUE", label: "Ručni unos / custom" },
+  { value: "DATABASE_LOOKUP", label: "Napredno - lookup iz baze" },
   { value: "DOCUMENT_TITLE", label: "Template - naziv" },
   { value: "DOCUMENT_TYPE", label: "Template - vrsta dokumenta" },
   { value: "TODAY", label: "Današnji datum" },
@@ -11824,6 +11825,156 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CONTACT_EMAIL", label: "Kontakt - email" },
 ];
 
+const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
+  radni_nalozi: {
+    label: "radni_nalozi",
+    copy: "Operativa / RN podaci",
+    rows: () => state.workOrders ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "broj_rn", label: "Broj RN", getter: (row) => row?.workOrderNumber ?? "" },
+      { value: "ime_tvrtke", label: "Tvrtka", getter: (row) => row?.companyName ?? "" },
+      { value: "sjediste", label: "Sjediste", getter: (row) => row?.headquarters ?? "" },
+      { value: "oib", label: "OIB", getter: (row) => row?.companyOib ?? "" },
+      { value: "lokacija", label: "Lokacija", getter: (row) => row?.locationName ?? "" },
+      { value: "regija", label: "Regija", getter: (row) => row?.region ?? "" },
+      { value: "status_rn", label: "Status RN", getter: (row) => row?.status ?? "" },
+      { value: "datum_rn", label: "Datum RN", getter: (row) => row?.openedDate ?? "" },
+      { value: "rok_zavrsetka", label: "Rok zavrsetka", getter: (row) => row?.dueDate ?? "" },
+      { value: "veza_rn", label: "Veza RN", getter: (row) => row?.linkReference ?? "" },
+      { value: "tim_rn", label: "Tim", getter: (row) => row?.teamLabel ?? "" },
+      { value: "kontakt_osoba", label: "Kontakt osoba", getter: (row) => row?.contactName ?? "" },
+      { value: "kontakt_broj", label: "Kontakt broj", getter: (row) => row?.contactPhone ?? "" },
+      { value: "kontakt_email", label: "Kontakt email", getter: (row) => row?.contactEmail ?? "" },
+      { value: "prioritet", label: "Prioritet", getter: (row) => row?.priority ?? "" },
+    ],
+  },
+  firme: {
+    label: "firme",
+    copy: "Maticni podaci tvrtke",
+    rows: () => state.companies ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "naziv_tvrtke", label: "Naziv tvrtke", getter: (row) => row?.name ?? "" },
+      { value: "oib", label: "OIB", getter: (row) => row?.oib ?? "" },
+      { value: "sjediste", label: "Sjediste", getter: (row) => row?.headquarters ?? "" },
+      { value: "vrsta_ugovora", label: "Vrsta ugovora", getter: (row) => row?.contractType ?? "" },
+      { value: "broj_ugovora", label: "Broj ugovora", getter: (row) => row?.contractNumber ?? "" },
+      { value: "periodika", label: "Periodika", getter: (row) => row?.period ?? "" },
+      { value: "predstavnik_korisnika", label: "Predstavnik", getter: (row) => row?.representative ?? "" },
+      { value: "kontakt_broj", label: "Kontakt broj", getter: (row) => row?.contactPhone ?? "" },
+      { value: "kontakt_email", label: "Kontakt email", getter: (row) => row?.contactEmail ?? "" },
+      { value: "napomena", label: "Napomena", getter: (row) => row?.note ?? "" },
+    ],
+  },
+  lokacije: {
+    label: "lokacije",
+    copy: "Lokacija i regija",
+    rows: () => state.locations ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "firma_oib", label: "Firma OIB", getter: (row) => row?.companyOib ?? "" },
+      { value: "naziv_tvrtke", label: "Naziv tvrtke", getter: (row) => row?.companyName ?? "" },
+      { value: "lokacija", label: "Lokacija", getter: (row) => row?.name ?? "" },
+      { value: "sjediste", label: "Sjediste", getter: (row) => row?.headquarters ?? "" },
+      { value: "regija", label: "Regija", getter: (row) => row?.region ?? "" },
+      { value: "koordinate", label: "Koordinate", getter: (row) => row?.coordinates ?? "" },
+      { value: "periodika", label: "Periodika", getter: (row) => row?.period ?? "" },
+      { value: "predstavnik_korisnika", label: "Predstavnik", getter: (row) => row?.representative ?? "" },
+      { value: "kontakt_osoba", label: "Kontakt osoba", getter: (row) => row?.contactName1 ?? "" },
+      { value: "kontakt_broj", label: "Kontakt broj", getter: (row) => row?.contactPhone1 ?? "" },
+      { value: "kontakt_email", label: "Kontakt email", getter: (row) => row?.contactEmail1 ?? "" },
+    ],
+  },
+  web_service_catalog: {
+    label: "web_service_catalog",
+    copy: "Katalog usluga",
+    rows: () => state.serviceCatalog ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "name", label: "Naziv usluge", getter: (row) => row?.name ?? "" },
+      { value: "service_code", label: "Sifra usluge", getter: (row) => row?.serviceCode ?? "" },
+      { value: "status", label: "Status", getter: (row) => row?.status ?? "" },
+      { value: "note", label: "Napomena", getter: (row) => row?.note ?? "" },
+    ],
+  },
+  web_legal_frameworks: {
+    label: "web_legal_frameworks",
+    copy: "Propisi i norme",
+    rows: () => state.legalFrameworks ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "title", label: "Naslov", getter: (row) => row?.title ?? "" },
+      { value: "reference_code", label: "Oznaka", getter: (row) => row?.referenceCode ?? "" },
+      { value: "authority_name", label: "Tijelo", getter: (row) => row?.authority ?? "" },
+      { value: "status", label: "Status", getter: (row) => row?.status ?? "" },
+      { value: "published_on", label: "Objavljeno", getter: (row) => row?.publishedOn ?? "" },
+      { value: "note", label: "Napomena", getter: (row) => row?.note ?? "" },
+    ],
+  },
+  web_measurement_equipment: {
+    label: "web_measurement_equipment",
+    copy: "Mjerna i ispitna oprema",
+    rows: () => state.measurementEquipment ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "name", label: "Naziv", getter: (row) => row?.name ?? "" },
+      { value: "equipment_kind", label: "Vrsta", getter: (row) => row?.equipmentKind ?? "" },
+      { value: "manufacturer", label: "Proizvodjac", getter: (row) => row?.manufacturer ?? "" },
+      { value: "device_type", label: "Tip", getter: (row) => row?.deviceType ?? "" },
+      { value: "inventory_number", label: "Inv. broj", getter: (row) => row?.inventoryNumber ?? "" },
+      { value: "calibration_date", label: "Datum umjeravanja", getter: (row) => row?.calibrationDate ?? "" },
+      { value: "valid_until", label: "Vrijedi do", getter: (row) => row?.validUntil ?? "" },
+      { value: "note", label: "Napomena", getter: (row) => row?.note ?? "" },
+    ],
+  },
+  web_safety_authorizations: {
+    label: "web_safety_authorizations",
+    copy: "Ovlastenja",
+    rows: () => state.safetyAuthorizations ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "title", label: "Naziv", getter: (row) => row?.title ?? "" },
+      { value: "authorization_scope", label: "Podrucje", getter: (row) => row?.scope ?? "" },
+      { value: "issued_on", label: "Izdano", getter: (row) => row?.issuedOn ?? "" },
+      { value: "valid_until", label: "Vrijedi do", getter: (row) => row?.validUntil ?? "" },
+      { value: "note", label: "Napomena", getter: (row) => row?.note ?? "" },
+    ],
+  },
+  app_users: {
+    label: "app_users",
+    copy: "People / korisnici",
+    rows: () => state.users ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "full_name", label: "Ime i prezime", getter: (row) => row?.fullName ?? "" },
+      { value: "email", label: "Email", getter: (row) => row?.email ?? "" },
+      { value: "legacy_username", label: "Legacy username", getter: (row) => row?.legacyUsername ?? "" },
+      { value: "role", label: "Rola", getter: (row) => row?.role ?? "" },
+      { value: "status", label: "Status", getter: (row) => row?.status ?? "" },
+    ],
+  },
+};
+
+const DOCUMENT_TEMPLATE_LOOKUP_VALUE_SOURCE_OPTIONS = [
+  { value: "WORK_ORDER_NUMBER", label: "Aktivni RN - broj" },
+  { value: "WORK_ORDER_ID", label: "Aktivni RN - ID" },
+  { value: "COMPANY_ID", label: "Tvrtka - ID" },
+  { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
+  { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
+  { value: "LOCATION_ID", label: "Lokacija - ID" },
+  { value: "LOCATION_NAME", label: "Lokacija - naziv" },
+  { value: "LOCATION_REGION", label: "Lokacija - regija" },
+  { value: "CUSTOM_VALUE", label: "Rucni lookup" },
+];
+
+const DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS = [
+  { value: "NONE", label: "Bez ranijeg zapisnika" },
+  { value: "SAME_TEMPLATE_LOCATION", label: "Zadnji isti template + ista lokacija" },
+  { value: "SAME_TEMPLATE_COMPANY", label: "Zadnji isti template + ista tvrtka" },
+  { value: "SAME_TEMPLATE_WORK_ORDER", label: "Zadnji isti template + isti RN" },
+];
+
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "chapter",
   "qualified_inspectors",
@@ -11844,6 +11995,110 @@ function isDocumentTemplateSpecialFieldType(value) {
 
 function getDocumentTemplateFieldSourceLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_SOURCE_OPTIONS, String(value || "").trim().toUpperCase() || "CUSTOM_VALUE");
+}
+
+function getDocumentTemplateDatabaseTableLabel(value) {
+  return getOptionLabel(
+    Object.entries(DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS).map(([entryValue, definition]) => ({
+      value: entryValue,
+      label: definition.label,
+    })),
+    String(value || "").trim().toLowerCase(),
+  );
+}
+
+function getDocumentTemplatePreviousDocumentLabel(value) {
+  return getOptionLabel(DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS, String(value || "").trim().toUpperCase() || "NONE");
+}
+
+function getDocumentTemplateDatabaseTableDefinition(table = "") {
+  const normalizedTable = String(table || "").trim().toLowerCase();
+  return DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS[normalizedTable] ?? null;
+}
+
+function getDocumentTemplateDatabaseTableOptions() {
+  return Object.entries(DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS).map(([value, definition]) => ({
+    value,
+    label: `${definition.label} - ${definition.copy}`,
+  }));
+}
+
+function getDocumentTemplateDatabaseColumnOptions(table = "") {
+  const definition = getDocumentTemplateDatabaseTableDefinition(table);
+  if (!definition) {
+    return [];
+  }
+  return definition.columns.map((column) => ({
+    value: column.value,
+    label: `${column.value} - ${column.label}`,
+  }));
+}
+
+function getDocumentTemplateDatabaseColumnDefinition(table = "", column = "") {
+  const definition = getDocumentTemplateDatabaseTableDefinition(table);
+  if (!definition) {
+    return null;
+  }
+  const normalizedColumn = String(column || "").trim().toLowerCase();
+  return definition.columns.find((entry) => String(entry.value || "").trim().toLowerCase() === normalizedColumn) ?? null;
+}
+
+function getDocumentTemplateDefaultDatabaseLookupConfig(table = "radni_nalozi") {
+  const options = getDocumentTemplateDatabaseColumnOptions(table);
+  return {
+    sourceTable: table,
+    lookupColumn: options[1]?.value || options[0]?.value || "",
+    valueColumn: options[2]?.value || options[1]?.value || options[0]?.value || "",
+    lookupValueSource: "WORK_ORDER_NUMBER",
+    lookupValue: "",
+    previousDocumentMode: "NONE",
+  };
+}
+
+function ensureDocumentTemplateDatabaseLookupDraft(field = {}) {
+  if (String(field?.source || "").trim().toUpperCase() !== "DATABASE_LOOKUP") {
+    if (!field.previousDocumentMode) {
+      field.previousDocumentMode = "NONE";
+    }
+    return field;
+  }
+
+  const defaults = getDocumentTemplateDefaultDatabaseLookupConfig(field.sourceTable || "radni_nalozi");
+  const definition = getDocumentTemplateDatabaseTableDefinition(field.sourceTable || defaults.sourceTable)
+    ?? getDocumentTemplateDatabaseTableDefinition(defaults.sourceTable);
+  const columns = definition?.columns ?? [];
+  const hasLookupColumn = columns.some((column) => String(column.value) === String(field.lookupColumn || ""));
+  const hasValueColumn = columns.some((column) => String(column.value) === String(field.valueColumn || ""));
+
+  field.sourceTable = definition ? Object.entries(DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS)
+    .find(([, entry]) => entry === definition)?.[0] || defaults.sourceTable : defaults.sourceTable;
+  field.lookupColumn = hasLookupColumn ? field.lookupColumn : defaults.lookupColumn;
+  field.valueColumn = hasValueColumn ? field.valueColumn : defaults.valueColumn;
+  field.lookupValueSource = String(field.lookupValueSource || defaults.lookupValueSource).trim().toUpperCase();
+  field.lookupValue = String(field.lookupValue || "").trim();
+  field.previousDocumentMode = String(field.previousDocumentMode || "NONE").trim().toUpperCase();
+  return field;
+}
+
+function normalizeDocumentTemplateLookupComparable(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function formatDocumentTemplateLookupResolvedValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry ?? "").trim()).filter(Boolean).join(", ");
+  }
+  if (value === true) {
+    return "Da";
+  }
+  if (value === false) {
+    return "Ne";
+  }
+  const text = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return formatCompactDate(text);
+  }
+  return text;
 }
 
 function getDocumentTemplateDefaultFieldSource(type = "text") {
@@ -12057,13 +12312,19 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const sheet = type === "measurement_table"
     ? ensureDocumentTemplateMeasurementFieldSheet(initial)
     : null;
-  return {
+  const draft = {
     id: initial.id || crypto.randomUUID(),
     label,
     wordLabel,
     key: normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey),
     type,
     source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
+    sourceTable: String(initial.sourceTable ?? "").trim().toLowerCase(),
+    lookupColumn: String(initial.lookupColumn ?? "").trim().toLowerCase(),
+    lookupValueSource: String(initial.lookupValueSource ?? "").trim().toUpperCase() || "WORK_ORDER_NUMBER",
+    lookupValue: String(initial.lookupValue ?? "").trim(),
+    valueColumn: String(initial.valueColumn ?? "").trim().toLowerCase(),
+    previousDocumentMode: String(initial.previousDocumentMode ?? "").trim().toUpperCase() || "NONE",
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
@@ -12079,6 +12340,8 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     rowCount: String(initial.rowCount ?? (type === "measurement_table" ? 12 : 0)).trim(),
     sheet,
   };
+  ensureDocumentTemplateDatabaseLookupDraft(draft);
+  return draft;
 }
 
 function createEmptyDocumentTemplateEquipmentDraft(initial = {}, index = 0) {
@@ -12513,6 +12776,9 @@ function buildDocumentTemplateDraft() {
   const activeTemplate = (state.documentTemplates ?? []).find((item) => (
     String(item.id) === String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "")
   )) ?? null;
+  documentTemplateFieldDrafts.forEach((field) => {
+    ensureDocumentTemplateDatabaseLookupDraft(field);
+  });
 
   const customFields = documentTemplateFieldDrafts
     .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
@@ -12523,6 +12789,12 @@ function buildDocumentTemplateDraft() {
       wordLabel: String(field.wordLabel || field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
       source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
+      sourceTable: String(field.sourceTable || "").trim().toLowerCase(),
+      lookupColumn: String(field.lookupColumn || "").trim().toLowerCase(),
+      lookupValueSource: String(field.lookupValueSource || "").trim().toUpperCase() || "WORK_ORDER_NUMBER",
+      lookupValue: String(field.lookupValue || "").trim(),
+      valueColumn: String(field.valueColumn || "").trim().toLowerCase(),
+      previousDocumentMode: String(field.previousDocumentMode || "NONE").trim().toUpperCase() || "NONE",
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
@@ -12548,6 +12820,12 @@ function buildDocumentTemplateDraft() {
         return {
           ...field,
           source: "",
+          sourceTable: "",
+          lookupColumn: "",
+          lookupValueSource: "WORK_ORDER_NUMBER",
+          lookupValue: "",
+          valueColumn: "",
+          previousDocumentMode: "NONE",
           columns: sheet.columns.map((column) => column.label),
           rowCount: sheet.rows.length,
           sheet,
@@ -12564,6 +12842,12 @@ function buildDocumentTemplateDraft() {
         return {
           ...field,
           source: "",
+          sourceTable: "",
+          lookupColumn: "",
+          lookupValueSource: "WORK_ORDER_NUMBER",
+          lookupValue: "",
+          valueColumn: "",
+          previousDocumentMode: "NONE",
           signatureArea: field.signatureArea || "elektro",
           legalFrameworkIds,
           defaultLegalFrameworkIds,
@@ -12576,6 +12860,12 @@ function buildDocumentTemplateDraft() {
         return {
           ...field,
           source: field.source || "CUSTOM_VALUE",
+          sourceTable: field.source === "DATABASE_LOOKUP" ? field.sourceTable : "",
+          lookupColumn: field.source === "DATABASE_LOOKUP" ? field.lookupColumn : "",
+          lookupValueSource: field.source === "DATABASE_LOOKUP" ? field.lookupValueSource : "WORK_ORDER_NUMBER",
+          lookupValue: field.source === "DATABASE_LOOKUP" ? field.lookupValue : "",
+          valueColumn: field.source === "DATABASE_LOOKUP" ? field.valueColumn : "",
+          previousDocumentMode: field.previousDocumentMode || "NONE",
           legalFrameworkIds: [],
           defaultLegalFrameworkIds: [],
           columns: [],
@@ -12589,6 +12879,7 @@ function buildDocumentTemplateDraft() {
       || String(field.wordLabel || "").trim()
       || String(field.defaultValue || "").trim()
       || String(field.helpText || "").trim()
+      || String(field.previousDocumentMode || "NONE").trim().toUpperCase() !== "NONE"
       || (String(field.source || "").trim().toUpperCase() && String(field.source || "").trim().toUpperCase() !== "CUSTOM_VALUE")
     ));
 
@@ -13572,7 +13863,7 @@ function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
 
-function getDocumentTemplateSourcePreviewValue(source, context = {}) {
+function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const safeSource = String(source || "").trim().toUpperCase();
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
@@ -13639,6 +13930,54 @@ function getDocumentTemplateSourcePreviewValue(source, context = {}) {
   return sourceMap[safeSource] ?? "";
 }
 
+function getDocumentTemplateAdvancedLookupPreviewValue(field = {}, context = {}) {
+  if (String(field?.source || "").trim().toUpperCase() !== "DATABASE_LOOKUP") {
+    return "";
+  }
+
+  ensureDocumentTemplateDatabaseLookupDraft(field);
+  const definition = getDocumentTemplateDatabaseTableDefinition(field.sourceTable || "");
+  const lookupDefinition = getDocumentTemplateDatabaseColumnDefinition(field.sourceTable || "", field.lookupColumn || "");
+  const valueDefinition = getDocumentTemplateDatabaseColumnDefinition(field.sourceTable || "", field.valueColumn || "");
+  if (!definition || !lookupDefinition || !valueDefinition) {
+    return "";
+  }
+
+  const lookupValue = String(
+    String(field.lookupValueSource || "").trim().toUpperCase() === "CUSTOM_VALUE"
+      ? field.lookupValue || ""
+      : getDocumentTemplateLookupSourcePreviewValue(field.lookupValueSource || "WORK_ORDER_NUMBER", context),
+  ).trim();
+  if (!lookupValue) {
+    return "";
+  }
+
+  const rows = Array.isArray(definition.rows?.()) ? definition.rows() : [];
+  const normalizedLookup = normalizeDocumentTemplateLookupComparable(lookupValue);
+  const match = rows.find((row) => (
+    normalizeDocumentTemplateLookupComparable(lookupDefinition.getter(row)) === normalizedLookup
+  ));
+
+  if (!match) {
+    return "";
+  }
+
+  return formatDocumentTemplateLookupResolvedValue(valueDefinition.getter(match));
+}
+
+function getDocumentTemplateSourcePreviewValue(fieldOrSource, context = {}) {
+  const field = fieldOrSource && typeof fieldOrSource === "object"
+    ? fieldOrSource
+    : { source: fieldOrSource };
+  const safeSource = String(field?.source || "").trim().toUpperCase();
+
+  if (safeSource === "DATABASE_LOOKUP") {
+    return getDocumentTemplateAdvancedLookupPreviewValue(field, context);
+  }
+
+  return getDocumentTemplateLookupSourcePreviewValue(safeSource, context);
+}
+
 function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const signatureArea = String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro";
@@ -13698,7 +14037,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return String(runtimeValue ?? "").trim();
   }
 
-  const boundValue = getDocumentTemplateSourcePreviewValue(field.source, context);
+  const boundValue = getDocumentTemplateSourcePreviewValue(field, context);
   if (boundValue) {
     return boundValue;
   }
@@ -17166,6 +17505,7 @@ function renderDocumentTemplateFieldRows() {
     }
 
     const fieldId = String(field.id || "");
+    ensureDocumentTemplateDatabaseLookupDraft(field);
     const chapterOwnerId = field.type === "chapter" ? "" : (chapterOwnerByFieldId.get(fieldId) || "");
     const previousField = visibleFields[draftIndex - 1] ?? null;
     const nextField = visibleFields[draftIndex + 1] ?? null;
@@ -17373,9 +17713,160 @@ function renderDocumentTemplateFieldRows() {
     replaceSelectOptions(sourceSelect, DOCUMENT_TEMPLATE_SOURCE_OPTIONS, field.source || getDocumentTemplateDefaultFieldSource(field.type));
     sourceSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[draftIndex].source = sourceSelect.value || "CUSTOM_VALUE";
+      ensureDocumentTemplateDatabaseLookupDraft(documentTemplateFieldDrafts[draftIndex]);
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplateLinkSummary();
       renderDocumentTemplatePreviewContent();
     });
     sourceField.append(sourceSpan, sourceSelect);
+
+    const sourceConfigField = document.createElement("div");
+    sourceConfigField.className = "field field-span-full document-template-source-config";
+    sourceConfigField.hidden = isSpecialType;
+    const sourceConfigTitle = document.createElement("span");
+    sourceConfigTitle.textContent = "Lookup i fallback";
+    sourceConfigField.append(sourceConfigTitle);
+
+    const sourceConfigGrid = document.createElement("div");
+    sourceConfigGrid.className = "form-grid document-template-inline-grid document-template-source-config-grid";
+    const isDatabaseLookup = String(field.source || "").trim().toUpperCase() === "DATABASE_LOOKUP";
+
+    if (isDatabaseLookup) {
+      const tableField = document.createElement("label");
+      tableField.className = "field";
+      const tableSpan = document.createElement("span");
+      tableSpan.textContent = "Tablica";
+      const tableSelect = document.createElement("select");
+      tableSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        tableSelect,
+        getDocumentTemplateDatabaseTableOptions(),
+        field.sourceTable || getDocumentTemplateDefaultDatabaseLookupConfig().sourceTable,
+      );
+      tableSelect.addEventListener("change", () => {
+        const draft = documentTemplateFieldDrafts[draftIndex];
+        const defaults = getDocumentTemplateDefaultDatabaseLookupConfig(tableSelect.value || "radni_nalozi");
+        draft.sourceTable = defaults.sourceTable;
+        draft.lookupColumn = defaults.lookupColumn;
+        draft.valueColumn = defaults.valueColumn;
+        ensureDocumentTemplateDatabaseLookupDraft(draft);
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePlaceholderPalette();
+        renderDocumentTemplateLinkSummary();
+        renderDocumentTemplatePreviewContent();
+      });
+      tableField.append(tableSpan, tableSelect);
+
+      const lookupColumnField = document.createElement("label");
+      lookupColumnField.className = "field";
+      const lookupColumnSpan = document.createElement("span");
+      lookupColumnSpan.textContent = "Trazi po koloni";
+      const lookupColumnSelect = document.createElement("select");
+      lookupColumnSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        lookupColumnSelect,
+        getDocumentTemplateDatabaseColumnOptions(field.sourceTable || "radni_nalozi"),
+        field.lookupColumn || "",
+      );
+      lookupColumnSelect.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].lookupColumn = lookupColumnSelect.value || "";
+        renderDocumentTemplatePreviewContent();
+      });
+      lookupColumnField.append(lookupColumnSpan, lookupColumnSelect);
+
+      const lookupValueField = document.createElement("label");
+      lookupValueField.className = "field";
+      const lookupValueSpan = document.createElement("span");
+      lookupValueSpan.textContent = "Vrijednost za trazenje";
+      const lookupValueSourceSelect = document.createElement("select");
+      lookupValueSourceSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        lookupValueSourceSelect,
+        DOCUMENT_TEMPLATE_LOOKUP_VALUE_SOURCE_OPTIONS,
+        field.lookupValueSource || "WORK_ORDER_NUMBER",
+      );
+      lookupValueSourceSelect.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].lookupValueSource = lookupValueSourceSelect.value || "WORK_ORDER_NUMBER";
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      lookupValueField.append(lookupValueSpan, lookupValueSourceSelect);
+
+      const valueColumnField = document.createElement("label");
+      valueColumnField.className = "field";
+      const valueColumnSpan = document.createElement("span");
+      valueColumnSpan.textContent = "Vrati kolonu";
+      const valueColumnSelect = document.createElement("select");
+      valueColumnSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        valueColumnSelect,
+        getDocumentTemplateDatabaseColumnOptions(field.sourceTable || "radni_nalozi"),
+        field.valueColumn || "",
+      );
+      valueColumnSelect.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].valueColumn = valueColumnSelect.value || "";
+        renderDocumentTemplatePreviewContent();
+      });
+      valueColumnField.append(valueColumnSpan, valueColumnSelect);
+
+      sourceConfigGrid.append(tableField, lookupColumnField, lookupValueField, valueColumnField);
+
+      if (String(field.lookupValueSource || "").trim().toUpperCase() === "CUSTOM_VALUE") {
+        const lookupCustomValueField = document.createElement("label");
+        lookupCustomValueField.className = "field field-span-full";
+        const lookupCustomValueSpan = document.createElement("span");
+        lookupCustomValueSpan.textContent = "Rucna vrijednost za trazenje";
+        const lookupCustomValueInput = document.createElement("input");
+        lookupCustomValueInput.type = "text";
+        lookupCustomValueInput.placeholder = "Upisi lookup vrijednost";
+        lookupCustomValueInput.value = field.lookupValue || "";
+        lookupCustomValueInput.addEventListener("input", (event) => {
+          documentTemplateFieldDrafts[draftIndex].lookupValue = String(event.currentTarget.value || "");
+          renderDocumentTemplatePreviewContent();
+        });
+        lookupCustomValueField.append(lookupCustomValueSpan, lookupCustomValueInput);
+        sourceConfigGrid.append(lookupCustomValueField);
+      }
+    }
+
+    const previousDocumentField = document.createElement("label");
+    previousDocumentField.className = "field field-span-full";
+    const previousDocumentSpan = document.createElement("span");
+    previousDocumentSpan.textContent = "Raniji zapisnik";
+    const previousDocumentSelect = document.createElement("select");
+    previousDocumentSelect.className = "document-template-source-select";
+    replaceSelectOptions(
+      previousDocumentSelect,
+      DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS,
+      field.previousDocumentMode || "NONE",
+    );
+    previousDocumentSelect.addEventListener("change", () => {
+      documentTemplateFieldDrafts[draftIndex].previousDocumentMode = previousDocumentSelect.value || "NONE";
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePlaceholderPalette();
+      renderDocumentTemplateLinkSummary();
+      renderDocumentTemplatePreviewContent();
+    });
+    previousDocumentField.append(previousDocumentSpan, previousDocumentSelect);
+    sourceConfigGrid.append(previousDocumentField);
+
+    const sourceConfigHint = document.createElement("small");
+    sourceConfigHint.className = "document-template-source-config-hint";
+    if (isDatabaseLookup) {
+      const tableLabel = field.sourceTable || "radni_nalozi";
+      const lookupLabel = field.lookupColumn || "broj_rn";
+      const valueLabel = field.valueColumn || "ime_tvrtke";
+      sourceConfigHint.textContent = field.previousDocumentMode && field.previousDocumentMode !== "NONE"
+        ? `Prvo citaj ${tableLabel}.${valueLabel} preko ${tableLabel}.${lookupLabel}, a ako postoji stariji zapisnik koristi zadnji spremljeni unos za isti placeholder.`
+        : `Trazi podatak u tablici ${tableLabel} preko kolone ${lookupLabel} i vraca vrijednost iz kolone ${valueLabel}.`;
+    } else if (field.previousDocumentMode && field.previousDocumentMode !== "NONE") {
+      sourceConfigHint.textContent = "Ako postoji stariji zapisnik po ovom pravilu, uzet ce se isti placeholder iz ranijeg zapisa. Ako ga nema, ostaje vrijednost iz templatea ili baze.";
+    } else {
+      sourceConfigHint.textContent = "Po zelji dodaj pravilo za raniji zapisnik. Ako ga nema, ostaje vrijednost iz templatea.";
+    }
+
+    sourceConfigField.append(sourceConfigGrid, sourceConfigHint);
 
     const specialInfoField = document.createElement("label");
     specialInfoField.className = "field document-template-inline-special-field";
@@ -17539,7 +18030,7 @@ function renderDocumentTemplateFieldRows() {
     } else if (isSpecialType) {
       grid.append(specialInfoField);
     } else {
-      grid.append(sourceField);
+      grid.append(sourceField, sourceConfigField);
     }
 
     if (field.type === "chapter") {

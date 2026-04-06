@@ -16441,6 +16441,32 @@ body.is-document-template-editor-open {
   margin: -4px 0 0;
 }
 
+.document-template-source-config {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(214, 89, 173, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 250, 253, 0.92);
+}
+
+.document-template-source-config > span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8f357c;
+}
+
+.document-template-source-config-grid {
+  gap: 10px;
+}
+
+.document-template-source-config-hint {
+  color: #6d6280;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .document-template-item-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
