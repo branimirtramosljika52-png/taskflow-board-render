@@ -101,6 +101,7 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "measurement_table", label: "Excel tablica" },
   { value: "inspector_signature", label: "Potpis ispitivača" },
   { value: "authorization_holder_signature", label: "Potpis nositelja" },
+  { value: "digital_signature", label: "Digitalni potpis" },
 ];
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
@@ -1091,6 +1092,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       valueColumn: normalizeText(field?.valueColumn).toLowerCase().slice(0, 80),
       previousDocumentMode: normalizeText(field?.previousDocumentMode).toUpperCase().slice(0, 80) || "NONE",
       signatureArea: normalizeText(field?.signatureArea).toLowerCase() || "elektro",
+      signatureRole: normalizeText(field?.signatureRole).toLowerCase() || "inspect",
+      signatureMultiple: normalizeBoolean(field?.signatureMultiple, true),
+      signatureIncludeScan: normalizeBoolean(field?.signatureIncludeScan, false),
       legalFrameworkIds: normalizeIdList(field?.legalFrameworkIds ?? field?.availableLegalFrameworkIds ?? []),
       defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),

@@ -12521,6 +12521,12 @@ const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
   { value: "tipkalo", label: "Tipkalo za isklop napona" },
 ];
 
+const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
+  { value: "inspect", label: "Ispitivaci" },
+  { value: "authorize", label: "Odgovorna osoba" },
+  { value: "all", label: "Ispitivaci + odgovorna osoba" },
+];
+
 const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CUSTOM_VALUE", label: "Ručni unos / custom" },
   { value: "DATABASE_LOOKUP", label: "Napredno - lookup iz baze" },
@@ -12716,6 +12722,7 @@ const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "measurement_table",
   "inspector_signature",
   "authorization_holder_signature",
+  "digital_signature",
 ]);
 
 function getDocumentTemplateFieldTypeLabel(value) {
@@ -13195,6 +13202,22 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     );
   }
 
+  if (safeTool === "digital_signature") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Digitalni potpis",
+        wordLabel: "Digitalni potpis panik rasvjete",
+        type: "digital_signature",
+        signatureArea: "elektro",
+        signatureRole: "inspect",
+        signatureMultiple: true,
+        signatureIncludeScan: false,
+        helpText: "Rezervirani slot za buduci kvalificirani digitalni potpis. Moze prikazati jednog ili vise potpisnika za odabrani dio.",
+      },
+      baseIndex,
+    );
+  }
+
   if (safeTool === "qualified_inspector") {
     return createEmptyDocumentTemplateFieldDraft(
       {
@@ -13333,6 +13356,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
+    signatureRole: String(initial.signatureRole ?? "inspect").trim().toLowerCase() || "inspect",
+    signatureMultiple: initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true,
+    signatureIncludeScan: Boolean(initial.signatureIncludeScan),
     legalFrameworkIds: Array.isArray(initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds)
       ? [...new Set((initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds).map((entry) => String(entry || "").trim()).filter(Boolean))]
       : [],
@@ -13803,6 +13829,9 @@ function buildDocumentTemplateDraft() {
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
+      signatureRole: String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect",
+      signatureMultiple: Boolean(field.signatureMultiple ?? true),
+      signatureIncludeScan: Boolean(field.signatureIncludeScan),
       legalFrameworkIds: (Array.isArray(field.legalFrameworkIds) ? field.legalFrameworkIds : [])
         .map((value) => String(value || "").trim())
         .filter(Boolean),
@@ -13854,6 +13883,9 @@ function buildDocumentTemplateDraft() {
           valueColumn: "",
           previousDocumentMode: "NONE",
           signatureArea: field.signatureArea || "elektro",
+          signatureRole: field.signatureRole || "inspect",
+          signatureMultiple: Boolean(field.signatureMultiple ?? true),
+          signatureIncludeScan: Boolean(field.signatureIncludeScan),
           legalFrameworkIds,
           defaultLegalFrameworkIds,
           columns: [],
@@ -14198,7 +14230,7 @@ function getSignatureAreaLabel(signatureArea = "elektro") {
 function getDocumentTemplateSignatureAreas(template = {}) {
   const areas = new Set();
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
-    if (!["qualified_inspectors", "inspector_signature", "authorization_holder_signature"].includes(field?.type)) {
+    if (!["qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature"].includes(field?.type)) {
       return;
     }
 
@@ -15013,6 +15045,68 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   };
 }
 
+function getDocumentTemplateDigitalSignatureRoleLabel(role = "inspect") {
+  const normalizedRole = String(role || "inspect").trim().toLowerCase();
+  if (normalizedRole === "authorize") {
+    return "Odgovorna osoba";
+  }
+  if (normalizedRole === "all") {
+    return "Ispitivaci + odgovorna osoba";
+  }
+  return "Ispitivaci";
+}
+
+function getDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
+  const workOrder = context.sampleWorkOrder;
+  const signatureArea = String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro";
+  const role = String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect";
+  const allowMultiple = field.signatureMultiple !== false;
+  const includeScan = Boolean(field.signatureIncludeScan);
+  const entries = [];
+
+  const pushEntriesForCapability = (capability) => {
+    getWorkOrderDocumentQualifiedUsers(workOrder, capability, signatureArea).forEach((user) => {
+      entries.push({
+        role: capability === "authorize" ? "Odgovorna osoba" : "Ispitivač",
+        capability,
+        user,
+        signatureArea,
+        metaLines: getQualifiedUserDocumentMetaLines(user, capability, signatureArea),
+        signatureImageUrl: includeScan ? getUserSignatureScanDataUrl(user) : "",
+      });
+    });
+  };
+
+  if (role === "authorize") {
+    pushEntriesForCapability("authorize");
+  } else if (role === "all") {
+    pushEntriesForCapability("inspect");
+    pushEntriesForCapability("authorize");
+  } else {
+    pushEntriesForCapability("inspect");
+  }
+
+  return allowMultiple ? entries : entries.slice(0, 1);
+}
+
+function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
+  const areaLabel = getSignatureAreaLabel(field.signatureArea || "elektro");
+  const entries = getDocumentTemplateDigitalSignatureEntries(field, context);
+  if (entries.length === 0) {
+    return [
+      `Digitalni potpis (${areaLabel})`,
+      "[Ovdje se dodaje kvalificirani digitalni potpis]",
+    ].join("\n");
+  }
+
+  return entries.map((entry) => ([
+    `Digitalni potpis - ${entry.role}`,
+    String(entry.user?.fullName || entry.user?.email || "Potpisnik").trim(),
+    ...(entry.metaLines ?? []),
+    "[Kvalificirani digitalni potpis]",
+  ].filter(Boolean).join("\n"))).join("\n\n");
+}
+
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
   const token = getDocumentTemplateFieldToken(field, index);
 
@@ -15022,6 +15116,17 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
     return getDocumentTemplateSignaturePreviewData(field, context).displayName;
+  }
+
+  if (field.type === "digital_signature") {
+    const entries = getDocumentTemplateDigitalSignatureEntries(field, context);
+    if (entries.length > 0) {
+      return entries
+        .map((entry) => String(entry.user?.fullName || entry.user?.email || "Potpisnik").trim())
+        .filter(Boolean)
+        .join(", ");
+    }
+    return `Digitalni potpis (${getSignatureAreaLabel(field.signatureArea || "elektro")})`;
   }
 
   if (field.type === "chapter") {
@@ -15478,6 +15583,66 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     `;
   }
 
+  if (field.type === "digital_signature") {
+    const areaLabel = getOptionLabel(
+      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      field.signatureArea || "elektro",
+    );
+    const roleLabel = getDocumentTemplateDigitalSignatureRoleLabel(field.signatureRole || "inspect");
+    const entries = placeholderMode
+      ? []
+      : getDocumentTemplateDigitalSignatureEntries(field, context);
+    const entryMarkup = entries.length > 0
+      ? entries.map((entry, entryIndex) => {
+        const metaMarkup = (entry.metaLines ?? []).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+        const isRightAligned = entries.length % 2 === 1 && entryIndex === entries.length - 1;
+        const signatureVisual = entry.signatureImageUrl
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(entry.signatureImageUrl)}" alt="${escapeHtml(entry.user?.fullName || entry.user?.email || "Digitalni potpis")}" />`
+          : `<div class="document-template-preview-signature-placeholder is-digital">Kvalificirani digitalni potpis</div>`;
+        return `
+          <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
+            <div class="document-template-preview-person-copy">
+              <span class="document-template-preview-person-role">${escapeHtml(entry.role)}</span>
+              <strong>${escapeHtml(entry.user?.fullName || entry.user?.email || "Potpisnik")}</strong>
+              <div class="document-template-preview-person-meta">${metaMarkup}</div>
+            </div>
+            <div class="document-template-preview-signature document-template-preview-signature--digital">
+              <span class="document-template-inline-token">Digitalni potpis</span>
+              ${signatureVisual}
+            </div>
+          </article>
+        `;
+      }).join("")
+      : `
+        <article class="document-template-preview-person-signature is-right-aligned">
+          <div class="document-template-preview-person-copy">
+            <span class="document-template-preview-person-role">${escapeHtml(roleLabel)}</span>
+            <strong>${escapeHtml(token)}</strong>
+          </div>
+          <div class="document-template-preview-signature document-template-preview-signature--digital">
+            <span class="document-template-inline-token">Digitalni potpis</span>
+            <div class="document-template-preview-signature-placeholder is-digital">Rezervirano za certifikat</div>
+          </div>
+        </article>
+      `;
+
+    return `
+      <section class="document-template-preview-section">
+        <div class="document-template-preview-field-head">
+          <h2>${title}</h2>
+          <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
+        </div>
+        <p class="document-template-preview-muted">
+          ${escapeHtml(`${roleLabel}${field.signatureMultiple === false ? " · jedan potpisnik" : " · vise potpisnika"}`)}
+        </p>
+        <div class="document-template-preview-person-signature-grid">
+          ${entryMarkup}
+        </div>
+        ${helpText}
+      </section>
+    `;
+  }
+
   if (field.type === "legal_list") {
     const visibleFrameworks = getDocumentTemplateLegalFrameworksForField(context.template, field, { selectedOnly: false });
     const selectedFrameworkIds = placeholderMode || !context.sampleWorkOrder?.id
@@ -15861,6 +16026,16 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
   };
 }
 
+function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
+  return getDocumentTemplateDigitalSignatureEntries(field, context).map((entry) => ({
+    role: entry.role,
+    name: entry.user?.fullName || entry.user?.email || "Potpisnik",
+    metaLines: entry.metaLines ?? [],
+    signatureImageUrl: entry.signatureImageUrl || "",
+    signatureMode: "digital",
+  }));
+}
+
 function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 0) {
   if (field.type === "measurement_table") {
     return buildDocumentTemplateMeasurementTableText(field, context);
@@ -15885,6 +16060,10 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
     const entry = buildDocumentTemplateSignatureEntry(field, context);
     return [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n");
+  }
+
+  if (field.type === "digital_signature") {
+    return buildDocumentTemplateDigitalSignatureText(field, context);
   }
 
   return getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false });
@@ -16044,6 +16223,14 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
           type: "signature_group",
           title,
           items: [buildDocumentTemplateSignatureEntry(field, context)],
+        };
+      }
+
+      if (field.type === "digital_signature") {
+        return {
+          type: "signature_group",
+          title,
+          items: buildDocumentTemplateDigitalSignatureEntries(field, context),
         };
       }
 
@@ -16694,13 +16881,19 @@ function normalizeQualifiedUserIdList(values = []) {
 }
 
 function getQualifiedUsersByIds(userIds = [], capability = "inspect", signatureArea = "elektro") {
-  const normalizedIds = new Set(normalizeQualifiedUserIdList(userIds));
-  if (normalizedIds.size === 0) {
+  const normalizedIds = normalizeQualifiedUserIdList(userIds);
+  if (normalizedIds.length === 0) {
     return [];
   }
 
-  return getQualifiedUsersForSignatureArea(capability, signatureArea)
-    .filter((user) => normalizedIds.has(String(user.id)));
+  const eligibleUsers = new Map(
+    getQualifiedUsersForSignatureArea(capability, signatureArea)
+      .map((user) => [String(user.id), user]),
+  );
+
+  return normalizedIds
+    .map((id) => eligibleUsers.get(String(id)) || null)
+    .filter(Boolean);
 }
 
 function resolveQualifiedWorkOrderUsers(workOrder = {}, capability = "inspect", signatureArea = "elektro") {
@@ -18659,6 +18852,7 @@ function isDocumentTemplateRuntimeVisibleField(field = {}) {
     "qualified_inspectors",
     "inspector_signature",
     "authorization_holder_signature",
+    "digital_signature",
   ].includes(type)) {
     return true;
   }
@@ -19105,6 +19299,91 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return shellNode;
   };
 
+  const createDigitalSignatureFieldControl = (field, previewContext) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-readonly-card document-template-runtime-digital-signature-card";
+
+    const title = document.createElement("strong");
+    title.textContent = createFieldTitle(field, 0);
+
+    const badgeRow = document.createElement("div");
+    badgeRow.className = "document-template-runtime-digital-signature-badges";
+
+    const areaBadge = document.createElement("span");
+    areaBadge.className = "document-template-inline-token";
+    areaBadge.textContent = getSignatureAreaLabel(field.signatureArea || "elektro");
+
+    const roleBadge = document.createElement("span");
+    roleBadge.className = "document-template-inline-token";
+    roleBadge.textContent = getDocumentTemplateDigitalSignatureRoleLabel(field.signatureRole || "inspect");
+
+    const modeBadge = document.createElement("span");
+    modeBadge.className = "document-template-inline-token";
+    modeBadge.textContent = field.signatureMultiple === false ? "Jedan potpisnik" : "Vise potpisnika";
+
+    badgeRow.append(areaBadge, roleBadge, modeBadge);
+
+    const note = document.createElement("p");
+    note.className = "helper-copy module-copy";
+    note.textContent = "Ovaj blok rezervira mjesto za buduci kvalificirani digitalni potpis. Java/Fina/eOI integracija kasnije moze koristiti isti slot.";
+
+    const personGrid = document.createElement("div");
+    personGrid.className = "document-template-runtime-digital-signature-grid";
+    const entries = getDocumentTemplateDigitalSignatureEntries(field, previewContext);
+
+    if (entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "document-template-runtime-digital-signature-slot is-empty";
+      empty.textContent = "Nema odabranih osoba za ovaj digitalni potpis.";
+      personGrid.append(empty);
+    } else {
+      entries.forEach((entry) => {
+        const card = document.createElement("article");
+        card.className = "document-template-runtime-digital-signature-slot";
+
+        const role = document.createElement("span");
+        role.className = "document-template-runtime-digital-signature-role";
+        role.textContent = entry.role;
+
+        const name = document.createElement("strong");
+        name.textContent = entry.user?.fullName || entry.user?.email || "Potpisnik";
+
+        const meta = document.createElement("div");
+        meta.className = "document-template-runtime-digital-signature-meta";
+        (entry.metaLines ?? []).forEach((line) => {
+          const row = document.createElement("span");
+          row.textContent = line;
+          meta.append(row);
+        });
+
+        const footer = document.createElement("div");
+        footer.className = "document-template-runtime-digital-signature-footer";
+        const marker = document.createElement("span");
+        marker.className = "document-template-inline-token";
+        marker.textContent = "Digitalni potpis";
+        footer.append(marker);
+
+        card.append(role, name);
+        if (meta.childElementCount > 0) {
+          card.append(meta);
+        }
+        if (field.signatureIncludeScan && entry.signatureImageUrl) {
+          const previewImage = document.createElement("img");
+          previewImage.className = "document-template-runtime-signature-image";
+          previewImage.src = entry.signatureImageUrl;
+          previewImage.alt = entry.user?.fullName || "Potpis";
+          previewImage.loading = "lazy";
+          card.append(previewImage);
+        }
+        card.append(footer);
+        personGrid.append(card);
+      });
+    }
+
+    shellNode.append(title, badgeRow, note, personGrid);
+    return shellNode;
+  };
+
   const createMeasurementFieldControl = (field, workOrder) => {
     const shellNode = document.createElement("div");
     shellNode.className = "document-template-runtime-measurement-field";
@@ -19173,6 +19452,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const fieldShell = document.createElement("div");
       fieldShell.className = "field field-span-full";
       fieldShell.append(createSignatureFieldControl(field, context));
+      grid.append(fieldShell);
+    } else if (field.type === "digital_signature") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createDigitalSignatureFieldControl(field, context));
       grid.append(fieldShell);
     } else {
       grid.append(createStandardFieldControl(field, activeWorkOrder.id, activeWorkOrder));
@@ -19813,6 +20097,87 @@ function renderDocumentTemplateFieldRows() {
         renderDocumentTemplatePreviewContent();
       });
       specialInfoField.append(signatureAreaSelect);
+    } else if (field.type === "digital_signature") {
+      specialInfoField.hidden = true;
+
+      const createDigitalSelectField = (labelText, options, value, onChange) => {
+        const shellNode = document.createElement("label");
+        shellNode.className = "field";
+        const shellLabel = document.createElement("span");
+        shellLabel.textContent = labelText;
+        const select = document.createElement("select");
+        select.className = "document-template-source-select";
+        replaceSelectOptions(select, options, value);
+        select.addEventListener("change", () => {
+          onChange(select.value || "");
+          renderDocumentTemplatePreviewContent();
+        });
+        shellNode.append(shellLabel, select);
+        return shellNode;
+      };
+
+      const areaField = createDigitalSelectField(
+        "Dio",
+        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        field.signatureArea || "elektro",
+        (nextValue) => {
+          documentTemplateFieldDrafts[draftIndex].signatureArea = nextValue || "elektro";
+        },
+      );
+
+      const roleField = createDigitalSelectField(
+        "Potpisnici",
+        DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS,
+        field.signatureRole || "inspect",
+        (nextValue) => {
+          documentTemplateFieldDrafts[draftIndex].signatureRole = nextValue || "inspect";
+        },
+      );
+
+      const optionsField = document.createElement("label");
+      optionsField.className = "field document-template-inline-special-field";
+      const optionsLabel = document.createElement("span");
+      optionsLabel.textContent = "Opcije";
+      const optionsWrap = document.createElement("div");
+      optionsWrap.className = "document-template-inline-special-value document-template-digital-signature-options";
+
+      const multipleToggle = document.createElement("label");
+      multipleToggle.className = "document-template-inline-toggle";
+      const multipleCheckbox = document.createElement("input");
+      multipleCheckbox.type = "checkbox";
+      multipleCheckbox.checked = field.signatureMultiple !== false;
+      multipleCheckbox.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].signatureMultiple = multipleCheckbox.checked;
+        renderDocumentTemplatePreviewContent();
+      });
+      const multipleCopy = document.createElement("span");
+      multipleCopy.textContent = "Više potpisnika";
+      multipleToggle.append(multipleCheckbox, multipleCopy);
+
+      const scanToggle = document.createElement("label");
+      scanToggle.className = "document-template-inline-toggle";
+      const scanCheckbox = document.createElement("input");
+      scanCheckbox.type = "checkbox";
+      scanCheckbox.checked = Boolean(field.signatureIncludeScan);
+      scanCheckbox.addEventListener("change", () => {
+        documentTemplateFieldDrafts[draftIndex].signatureIncludeScan = scanCheckbox.checked;
+        renderDocumentTemplatePreviewContent();
+      });
+      const scanCopy = document.createElement("span");
+      scanCopy.textContent = "Prikaži scan potpisa";
+      scanToggle.append(scanCheckbox, scanCopy);
+
+      optionsWrap.append(multipleToggle, scanToggle);
+      optionsField.append(optionsLabel, optionsWrap);
+
+      const hintField = document.createElement("div");
+      hintField.className = "field field-span-full";
+      const hint = document.createElement("small");
+      hint.className = "document-template-source-config-hint";
+      hint.textContent = "Ovaj blok rezervira mjesto za budući kvalificirani digitalni potpis i koristi osobe koje odabereš u runtime zapisniku.";
+      hintField.append(hint);
+
+      grid.append(areaField, roleField, optionsField, hintField);
     } else {
       specialInfoField.hidden = true;
     }

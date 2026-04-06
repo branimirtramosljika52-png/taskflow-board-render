@@ -565,9 +565,10 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
     const metaLines = normalizePdfLines(item.metaLines ?? []);
     const role = clean(item.role) || "Osoba";
     const name = clean(item.name) || "Nepoznato";
+    const isDigital = clean(item.signatureMode).toLowerCase() === "digital";
     const signatureBuffer = await resolvePdfImageBuffer(item.signatureImageUrl || "");
     const cardWidth = helpers.availableWidth;
-    const estimatedHeight = signatureBuffer ? 142 : 110;
+    const estimatedHeight = signatureBuffer ? 142 : (isDigital ? 132 : 110);
     helpers.ensureSpace(estimatedHeight + 8);
     const x = doc.page.margins.left;
     const y = doc.y;
@@ -597,6 +598,17 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
           width: cardWidth - 32,
         });
       }
+    } else if (isDigital) {
+      doc.save();
+      doc.roundedRect(x + 16, y + estimatedHeight - 56, Math.max(220, cardWidth - 32), 34, 10);
+      doc.lineWidth(0.8);
+      doc.dash(5, { space: 3 });
+      doc.strokeColor("#111111").stroke();
+      doc.undash();
+      doc.restore();
+      doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text("Kvalificirani digitalni potpis", x + 28, y + estimatedHeight - 45, {
+        width: Math.max(200, cardWidth - 56),
+      });
     }
 
     doc.save();
