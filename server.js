@@ -9,9 +9,11 @@ import {
   canManageWorkOrders,
 } from "./src/accessControl.js";
 import {
+  buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   buildPdfFromRenderModel,
   isWordTemplateFile,
+  mergePdfBuffers,
   readStoredDocumentBuffer,
   sanitizeGeneratedDocumentFileName,
 } from "./src/documentExport.js";
@@ -103,6 +105,29 @@ function sendBinary(response, statusCode, body, {
     response.setHeader("Content-Disposition", `attachment; filename="${fileName.replace(/"/g, "")}"`);
   }
   response.end(body);
+}
+
+async function generatePdfBufferForTemplate(template = {}, {
+  placeholders = {},
+  renderModel = {},
+  fileName = "",
+} = {}) {
+  if (template.referenceDocument && isWordTemplateFile(template.referenceDocument)) {
+    try {
+      const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+      return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+        fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
+      });
+    } catch (error) {
+      console.warn("Word -> PDF conversion failed, using render fallback.", error);
+    }
+  }
+
+  return buildPdfFromRenderModel({
+    ...(renderModel && typeof renderModel === "object" ? renderModel : {}),
+    title: renderModel?.title || template.title || "Zapisnik",
+    documentType: renderModel?.documentType || template.documentType || "Zapisnik",
+  });
 }
 
 function shouldUseSecureCookies(request) {
@@ -678,10 +703,11 @@ async function handleApiRequest(request, response, url) {
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
-    const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
-    const documentTemplateWordExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-word$/);
-    const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
-    const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
+  const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
+  const documentTemplateWordExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-word$/);
+  const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
+  const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
+  const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
@@ -1160,10 +1186,14 @@ async function handleApiRequest(request, response, url) {
       const renderModel = body.renderModel && typeof body.renderModel === "object"
         ? body.renderModel
         : {};
-      const pdfBuffer = await buildPdfFromRenderModel({
-        ...renderModel,
-        title: renderModel.title || body.title || template.title || "Zapisnik",
-        documentType: renderModel.documentType || template.documentType || "Zapisnik",
+      const pdfBuffer = await generatePdfBufferForTemplate(template, {
+        placeholders: body.placeholders ?? {},
+        renderModel: {
+          ...renderModel,
+          title: renderModel.title || body.title || template.title || "Zapisnik",
+          documentType: renderModel.documentType || template.documentType || "Zapisnik",
+        },
+        fileName: body.fileName || template.outputFileName || template.title || "zapisnik.docx",
       });
       const fileName = sanitizeGeneratedDocumentFileName(
         body.fileName || template.outputFileName || template.title || "zapisnik",
@@ -1171,6 +1201,50 @@ async function handleApiRequest(request, response, url) {
       );
 
       sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (documentTemplateBatchPdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati batch PDF zapisnike.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entries = Array.isArray(body.entries) ? body.entries : [];
+
+      if (entries.length === 0) {
+        sendError(response, 400, "Batch PDF nema nijedan zapisnik za obradu.");
+        return true;
+      }
+
+      const pdfBuffers = [];
+
+      for (const entry of entries) {
+        const template = assertInScope(
+          scopedSnapshot.documentTemplates ?? [],
+          entry?.templateId,
+          "Template nije pronaÄ‘en.",
+        );
+
+        pdfBuffers.push(await generatePdfBufferForTemplate(template, {
+          placeholders: entry?.placeholders ?? {},
+          renderModel: entry?.renderModel ?? {},
+          fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
+        }));
+      }
+
+      const mergedPdf = await mergePdfBuffers(pdfBuffers);
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || "zapisnici-batch",
+        { fallback: "zapisnici-batch", extension: "pdf" },
+      );
+
+      sendBinary(response, 200, mergedPdf, {
         contentType: "application/pdf",
         fileName,
       });

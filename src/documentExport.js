@@ -1,8 +1,12 @@
 import { Buffer } from "node:buffer";
-import { fileURLToPath } from "node:url";
-import { dirname, extname, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Docxtemplater from "docxtemplater";
+import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 
@@ -13,6 +17,18 @@ const PDF_FONTS = {
   bold: resolve(DEJAVU_FONT_DIR, "DejaVuSans-Bold.ttf"),
   italic: resolve(DEJAVU_FONT_DIR, "DejaVuSans-Oblique.ttf"),
 };
+const SOFFICE_CANDIDATES = [
+  process.env.SOFFICE_PATH,
+  process.env.LIBREOFFICE_PATH,
+  "soffice",
+  "libreoffice",
+  "/usr/bin/soffice",
+  "/usr/bin/libreoffice",
+  "/app/.apt/usr/bin/soffice",
+  "/app/.apt/usr/bin/libreoffice",
+  "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+  "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+].filter(Boolean);
 
 function clean(value = "") {
   return String(value ?? "").trim();
@@ -56,6 +72,68 @@ function parseDataUrl(dataUrl = "") {
       ? Buffer.from(payload, "base64")
       : Buffer.from(decodeURIComponent(payload), "utf8"),
   };
+}
+
+async function fileExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runCommand(command, args = [], options = {}) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      ...options,
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += String(chunk ?? "");
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk ?? "");
+    });
+    child.on("error", rejectPromise);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolvePromise({ stdout, stderr });
+        return;
+      }
+      const error = new Error(clean(stderr || stdout) || `Command failed: ${command}`);
+      error.code = code;
+      rejectPromise(error);
+    });
+  });
+}
+
+async function resolveSofficeCommand() {
+  for (const candidate of SOFFICE_CANDIDATES) {
+    const safeCandidate = clean(candidate);
+    if (!safeCandidate) {
+      continue;
+    }
+
+    if (/^[A-Za-z]:\\/i.test(safeCandidate) || safeCandidate.startsWith("/")) {
+      if (!await fileExists(safeCandidate)) {
+        continue;
+      }
+    }
+
+    try {
+      await runCommand(safeCandidate, ["--version"]);
+      return safeCandidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
 }
 
 async function fetchBinaryFromUrl(url) {
@@ -170,6 +248,65 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
   } catch (error) {
     throw new Error(formatDocxRenderError(error));
   }
+}
+
+export async function convertDocxBufferToPdfBuffer(docxBuffer, {
+  fileName = "zapisnik.docx",
+} = {}) {
+  const sofficeCommand = await resolveSofficeCommand();
+  if (!sofficeCommand) {
+    throw new Error("LibreOffice nije dostupan na serveru za Word -> PDF konverziju.");
+  }
+
+  const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-docx-"));
+  const officeProfileDir = join(tempRoot, "lo-profile");
+  const inputBaseName = sanitizeGeneratedDocumentFileName(fileName, {
+    fallback: "zapisnik",
+    extension: "docx",
+  });
+  const inputPath = join(tempRoot, inputBaseName);
+  const outputPath = join(
+    tempRoot,
+    sanitizeGeneratedDocumentFileName(inputBaseName.replace(/\.docx$/i, ""), {
+      fallback: "zapisnik",
+      extension: "pdf",
+    }),
+  );
+
+  try {
+    await writeFile(inputPath, Buffer.isBuffer(docxBuffer) ? docxBuffer : Buffer.from(docxBuffer ?? []));
+    await runCommand(sofficeCommand, [
+      "--headless",
+      "--nologo",
+      "--nodefault",
+      "--nofirststartwizard",
+      `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
+      "--convert-to",
+      "pdf:writer_pdf_Export",
+      "--outdir",
+      tempRoot,
+      inputPath,
+    ], {
+      cwd: tempRoot,
+      env: {
+        ...process.env,
+        HOME: process.env.HOME || tempRoot,
+      },
+    });
+
+    if (!await fileExists(outputPath)) {
+      throw new Error("LibreOffice nije vratio PDF datoteku.");
+    }
+
+    return await readFile(outputPath);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
+  const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders);
+  return convertDocxBufferToPdfBuffer(generatedWord, options);
 }
 
 function pdfBufferFromDocument(doc) {
@@ -602,6 +739,28 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
   }
 
   return pdfBufferFromDocument(doc);
+}
+
+export async function mergePdfBuffers(buffers = []) {
+  const sourceBuffers = (Array.isArray(buffers) ? buffers : [])
+    .filter((entry) => Buffer.isBuffer(entry) && entry.length > 0);
+
+  if (sourceBuffers.length === 0) {
+    throw new Error("Nema PDF datoteka za spajanje.");
+  }
+
+  if (sourceBuffers.length === 1) {
+    return sourceBuffers[0];
+  }
+
+  const merged = await PdfLibDocument.create();
+  for (const buffer of sourceBuffers) {
+    const document = await PdfLibDocument.load(buffer);
+    const pages = await merged.copyPages(document, document.getPageIndices());
+    pages.forEach((page) => merged.addPage(page));
+  }
+
+  return Buffer.from(await merged.save());
 }
 
 export function isWordTemplateFile(referenceDocument = {}) {

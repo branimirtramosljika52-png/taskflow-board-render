@@ -1234,6 +1234,7 @@ const documentTemplateRuntimeClearButton = document.querySelector("#document-tem
 const documentTemplateRuntimeBackButton = document.querySelector("#document-template-runtime-back");
 const documentTemplateRuntimePrevButton = document.querySelector("#document-template-runtime-prev");
 const documentTemplateRuntimeNextButton = document.querySelector("#document-template-runtime-next");
+const documentTemplateRuntimePrintAllButton = document.querySelector("#document-template-runtime-print-all");
 const documentTemplateRuntimeSequenceProgress = document.querySelector("#document-template-runtime-sequence-progress");
 const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
@@ -11739,6 +11740,51 @@ function triggerBlobDownload(blob, fileName) {
   }, 1_000);
 }
 
+function triggerBlobPrint(blob, fileName = "zapisnici.pdf") {
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.src = url;
+
+  let settled = false;
+  const cleanup = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    window.setTimeout(() => {
+      iframe.remove();
+      URL.revokeObjectURL(url);
+    }, 1_500);
+  };
+
+  iframe.addEventListener("load", () => {
+    window.setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (error) {
+        console.error("Ne mogu otvoriti print dijalog za PDF batch.", error);
+        triggerBlobDownload(blob, fileName);
+      } finally {
+        cleanup();
+      }
+    }, 250);
+  }, { once: true });
+
+  iframe.addEventListener("error", () => {
+    triggerBlobDownload(blob, fileName);
+    cleanup();
+  }, { once: true });
+
+  document.body.append(iframe);
+}
+
 function triggerDataUrlDownload(dataUrl, fileName) {
   const link = document.createElement("a");
   link.href = dataUrl;
@@ -14345,8 +14391,10 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
   }));
 }
 
-function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDraft()) {
-  const sampleWorkOrder = getDocumentTemplatePreviewSampleWorkOrder(template);
+function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDraft(), {
+  workOrder = null,
+} = {}) {
+  const sampleWorkOrder = workOrder || getDocumentTemplatePreviewSampleWorkOrder(template);
   const company = getDocumentTemplatePreviewCompany(template, sampleWorkOrder);
   const location = getDocumentTemplatePreviewLocation(template, sampleWorkOrder);
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
@@ -15116,6 +15164,15 @@ function buildDocumentTemplateRuntimeExportFileBaseName(template = buildDocument
   return sanitizeDocumentTemplateFileName(parts.join(" "), "zapisnik");
 }
 
+function getDocumentTemplateRuntimeWorkOrderById(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+
+  return (state.workOrders ?? []).find((item) => String(item.id) === normalizedId) ?? null;
+}
+
 function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
   const placeholders = {
     DOCUMENT_TITLE: String(template.title || "").trim(),
@@ -15132,6 +15189,77 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
   });
 
   return placeholders;
+}
+
+function buildDocumentTemplateRuntimeExportEntry(
+  template = buildDocumentTemplateDraft(),
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+) {
+  const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  if (!runtimeTemplateId || !workOrder) {
+    return null;
+  }
+
+  const context = buildDocumentTemplatePreviewContext(template, { workOrder });
+  const baseFileName = buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder);
+
+  return {
+    templateId: runtimeTemplateId,
+    workOrderId: String(workOrder.id || "").trim(),
+    baseFileName,
+    wordFileName: `${baseFileName}.docx`,
+    pdfFileName: `${baseFileName}.pdf`,
+    placeholders: buildDocumentTemplateRuntimePlaceholderPayload(template, context),
+    renderModel: {
+      title: String(template.title || template.documentType || "Zapisnik").trim(),
+      documentType: String(template.documentType || "Zapisnik").trim(),
+      workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
+      status: String(workOrder.status || "").trim(),
+      company: {
+        name: String(context.company?.name || "").trim(),
+        headquarters: String(context.company?.headquarters || "").trim(),
+        oib: String(context.company?.oib || "").trim(),
+        logoUrl: String(
+          context.company?.logoDataUrl
+          || context.company?.logoStorageUrl
+          || context.company?.logoUrl
+          || ""
+        ).trim(),
+      },
+      location: {
+        name: String(context.location?.name || "").trim(),
+        region: String(context.location?.region || "").trim(),
+        coordinates: String(context.location?.coordinates || "").trim(),
+      },
+      blocks: buildDocumentTemplateRuntimePdfBlocks(template, context),
+    },
+  };
+}
+
+async function ensureDocumentTemplateRuntimePreviousLookupState(
+  template = buildDocumentTemplateDraft(),
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+) {
+  if (!template || !workOrder) {
+    return;
+  }
+
+  const hasPreviousDocumentFields = (Array.isArray(template.customFields) ? template.customFields : [])
+    .some((field) => isDocumentTemplatePreviousDocumentLookupField(field));
+
+  if (!hasPreviousDocumentFields) {
+    return;
+  }
+
+  await ensureDocumentTemplatePreviousRecordOptions(template, workOrder);
+}
+
+async function buildDocumentTemplateRuntimeExportEntryAsync(
+  template = buildDocumentTemplateDraft(),
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+) {
+  await ensureDocumentTemplateRuntimePreviousLookupState(template, workOrder);
+  return buildDocumentTemplateRuntimeExportEntry(template, workOrder);
 }
 
 function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
@@ -15195,39 +15323,15 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
   }));
 }
 
-function buildDocumentTemplateRuntimePdfPayload(template = buildDocumentTemplateDraft()) {
-  const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
-  const context = buildDocumentTemplatePreviewContext(template);
-
-  if (!workOrder) {
+function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
+  if (!exportEntry) {
     return null;
   }
 
   return {
-    fileName: `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.pdf`,
-    renderModel: {
-      title: String(template.title || template.documentType || "Zapisnik").trim(),
-      documentType: String(template.documentType || "Zapisnik").trim(),
-      workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
-      status: String(workOrder.status || "").trim(),
-      company: {
-        name: String(context.company?.name || "").trim(),
-        headquarters: String(context.company?.headquarters || "").trim(),
-        oib: String(context.company?.oib || "").trim(),
-        logoUrl: String(
-          context.company?.logoDataUrl
-          || context.company?.logoStorageUrl
-          || context.company?.logoUrl
-          || ""
-        ).trim(),
-      },
-      location: {
-        name: String(context.location?.name || "").trim(),
-        region: String(context.location?.region || "").trim(),
-        coordinates: String(context.location?.coordinates || "").trim(),
-      },
-      blocks: buildDocumentTemplateRuntimePdfBlocks(template, context),
-    },
+    fileName: exportEntry.pdfFileName,
+    placeholders: exportEntry.placeholders,
+    renderModel: exportEntry.renderModel,
   };
 }
 
@@ -15249,7 +15353,8 @@ async function exportDocumentTemplatePdf() {
     return;
   }
 
-  const payload = buildDocumentTemplateRuntimePdfPayload(template);
+  const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+  const payload = buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry);
   if (!payload) {
     setDocumentTemplateMessage("PDF payload nije ispravno pripremljen.");
     return;
@@ -15421,6 +15526,12 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   if (!placeholderMode) {
     const templateId = getDocumentTemplateRuntimeTemplateId(template);
     const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+    const hasReferenceTemplate = Boolean(
+      template.referenceDocument?.inlineDataUrl
+      || template.referenceDocument?.dataUrl
+      || template.referenceDocument?.storageUrl
+      || template.referenceDocument?.url,
+    );
 
     if (!templateId || !workOrder) {
       setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije Word exporta.");
@@ -15435,13 +15546,14 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
       return;
     }
 
-    if (template.referenceDocument?.dataUrl) {
+    if (hasReferenceTemplate) {
       try {
+        const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
         const payload = {
-          fileName: `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.docx`,
-          placeholders: buildDocumentTemplateRuntimePlaceholderPayload(
+          fileName: exportEntry?.wordFileName || `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.docx`,
+          placeholders: exportEntry?.placeholders || buildDocumentTemplateRuntimePlaceholderPayload(
             template,
-            buildDocumentTemplatePreviewContext(template),
+            buildDocumentTemplatePreviewContext(template, { workOrder }),
           ),
         };
         const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-word`, {
@@ -15470,6 +15582,89 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
       sheetTabs: false,
     });
   triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
+}
+
+function buildDocumentTemplateRuntimeBatchSequenceEntries() {
+  const sequenceEntries = getDocumentTemplateRuntimeSequenceEntries();
+  if (sequenceEntries.length > 0) {
+    return sequenceEntries;
+  }
+
+  const activeTemplate = buildDocumentTemplateDraft();
+  const activeTemplateId = getDocumentTemplateRuntimeTemplateId(activeTemplate);
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  if (!activeTemplateId || !activeWorkOrder) {
+    return [];
+  }
+
+  return [{
+    templateId: activeTemplateId,
+    workOrderId: String(activeWorkOrder.id || "").trim(),
+    templateTitle: String(activeTemplate.title || activeTemplate.documentType || "Zapisnik").trim(),
+    workOrderNumber: String(activeWorkOrder.workOrderNumber || "").trim(),
+  }];
+}
+
+async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
+  const sequenceEntries = buildDocumentTemplateRuntimeBatchSequenceEntries();
+  if (sequenceEntries.length === 0) {
+    setDocumentTemplateMessage("Nema zapisnika za batch ispis.");
+    return;
+  }
+
+  const exportEntries = [];
+
+  try {
+    for (const sequenceEntry of sequenceEntries) {
+      const template = getDocumentTemplateById(sequenceEntry.templateId);
+      const workOrder = getDocumentTemplateRuntimeWorkOrderById(sequenceEntry.workOrderId);
+
+      if (!template || !workOrder) {
+        continue;
+      }
+
+      await persistDocumentTemplateRuntimeRecordFor(template, workOrder);
+      const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+      if (exportEntry) {
+        exportEntries.push(exportEntry);
+      }
+    }
+  } catch (error) {
+    console.error("Ne mogu pripremiti batch zapisnike za ispis.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu pripremiti batch zapisnike za ispis.");
+    return;
+  }
+
+  if (exportEntries.length === 0) {
+    setDocumentTemplateMessage("Nema nijednog pripremljenog zapisnika za batch ispis.");
+    return;
+  }
+
+  try {
+    const response = await apiBinaryRequest("/document-templates/export-pdf-batch", {
+      method: "POST",
+      body: {
+        fileName: `zapisnici-${new Date().toISOString().slice(0, 10)}.pdf`,
+        entries: exportEntries.map((entry) => ({
+          templateId: entry.templateId,
+          fileName: entry.wordFileName,
+          placeholders: entry.placeholders,
+          renderModel: entry.renderModel,
+        })),
+      },
+    });
+
+    if (print) {
+      triggerBlobPrint(response.blob, response.fileName || "zapisnici.pdf");
+    } else {
+      triggerBlobDownload(response.blob, response.fileName || "zapisnici.pdf");
+    }
+
+    setDocumentTemplateMessage("Batch PDF zapisnici su pripremljeni.", { type: "success" });
+  } catch (error) {
+    console.error("Ne mogu generirati batch PDF zapisnike.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu generirati batch PDF zapisnike.");
+  }
 }
 
 function getCheckedValues(container, inputName) {
@@ -16470,6 +16665,11 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
     documentTemplateRuntimeNextButton.textContent = "NEXT";
   }
+  if (documentTemplateRuntimePrintAllButton) {
+    const showPrintAll = Boolean(hasSequence && sequenceState.total > 1 && sequenceState.index >= sequenceState.total - 1);
+    documentTemplateRuntimePrintAllButton.hidden = !showPrintAll;
+    documentTemplateRuntimePrintAllButton.disabled = !showPrintAll;
+  }
   if (documentTemplateRuntimeSequenceProgress) {
     documentTemplateRuntimeSequenceProgress.hidden = !hasSequence;
     documentTemplateRuntimeSequenceProgress.textContent = hasSequence
@@ -16656,6 +16856,9 @@ function syncDocumentTemplateEditorChrome() {
   }
   if (documentTemplateExportPreviewButton) {
     documentTemplateExportPreviewButton.hidden = !fillMode;
+  }
+  if (documentTemplateRuntimePrintAllButton) {
+    documentTemplateRuntimePrintAllButton.hidden = true;
   }
   if (documentTemplateMetaGrid) {
     documentTemplateMetaGrid.hidden = fillMode;
@@ -30796,12 +30999,22 @@ function upsertDocumentTemplatePreviousRecordCache(record = null) {
 }
 
 async function persistActiveDocumentTemplateRuntimeRecord() {
+  return persistDocumentTemplateRuntimeRecordFor(
+    buildDocumentTemplateDraft(),
+    getDocumentTemplateRuntimeActiveWorkOrder(),
+  );
+}
+
+async function persistDocumentTemplateRuntimeRecordFor(
+  template = buildDocumentTemplateDraft(),
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+) {
   if (!isDocumentTemplateRuntimeFillMode()) {
     return null;
   }
 
-  const template = buildDocumentTemplateDraft();
-  const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  await ensureDocumentTemplateRuntimePreviousLookupState(template, workOrder);
+
   const payload = buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder);
 
   if (!payload) {
@@ -34614,6 +34827,9 @@ documentTemplateRuntimeNextButton?.addEventListener("click", () => {
     return;
   }
   openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
+});
+documentTemplateRuntimePrintAllButton?.addEventListener("click", () => {
+  void exportDocumentTemplateBatchPdf({ print: true });
 });
 
 documentTemplateDeleteButton?.addEventListener("click", () => {
