@@ -5970,6 +5970,48 @@ body.is-work-order-editor-open {
   padding-inline: 12px;
 }
 
+.measurement-sheet-preset-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  align-items: end;
+  padding: 2px 0 0;
+}
+
+.measurement-sheet-preset-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.measurement-sheet-preset-field select {
+  min-height: 40px;
+  border-radius: 12px;
+  padding-inline: 12px;
+  border: 1px solid #d9deea;
+  background: #ffffff;
+}
+
+.measurement-sheet-preset-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.measurement-sheet-preset-actions .ghost-button {
+  min-height: 40px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+.measurement-sheet-preset-status {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  color: #67718b;
+  font-size: 0.78rem;
+}
+
 .measurement-sheet-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
@@ -6097,6 +6139,7 @@ body.is-work-order-editor-open {
 .measurement-toolbar-secondary {
   justify-content: flex-start;
   flex-wrap: wrap;
+  position: relative;
 }
 
 .measurement-toolbar-tertiary {
@@ -6117,6 +6160,45 @@ body.is-work-order-editor-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.measurement-toolbar-validation {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.measurement-validation-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  min-width: 320px;
+  max-width: min(380px, 76vw);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 89, 173, 0.22);
+  background: rgba(255, 252, 255, 0.98);
+  box-shadow: 0 20px 40px rgba(56, 35, 91, 0.16);
+}
+
+.measurement-validation-options {
+  grid-column: 1 / -1;
+}
+
+.measurement-validation-checkbox {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.84rem;
+  color: #4e5978;
+}
+
+.measurement-validation-checkbox input {
+  width: 16px;
+  height: 16px;
 }
 
 .measurement-toolbar-decimal-stepper {
@@ -6371,6 +6453,24 @@ body.is-work-order-editor-open {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   box-shadow: none;
+}
+
+.measurement-column-validation-badge {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(214, 89, 173, 0.12);
+  color: #93407b;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .measurement-sheet-grid thead th[data-column-id] {
@@ -16877,6 +16977,16 @@ body.is-document-template-editor-open {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding-top: 0;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-preset-wrap {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-preset-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-meta-field-secondary {

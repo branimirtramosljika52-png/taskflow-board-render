@@ -367,6 +367,49 @@ function mapDocumentRecordRow(row = {}) {
   });
 }
 
+function cloneMeasurementSheetPreset(record = {}) {
+  return {
+    ...record,
+    sheet: normalizeWorkOrderMeasurementSheet(record.sheet),
+  };
+}
+
+function createMeasurementSheetPresetEntry(input = {}, actor = null, createId = () => crypto.randomUUID(), now = () => new Date().toISOString()) {
+  const timestamp = normalizeTimestamp(now()) ?? new Date().toISOString();
+
+  return {
+    id: dbString(input.id) || createId(),
+    organizationId: dbString(input.organizationId),
+    templateId: dbString(input.templateId),
+    companyId: dbString(input.companyId),
+    locationId: dbString(input.locationId),
+    fieldKey: dbString(input.fieldKey),
+    title: dbString(input.title) || "Excel tablica",
+    sheet: normalizeWorkOrderMeasurementSheet(input.sheet),
+    createdByUserId: dbString(input.createdByUserId || actor?.id),
+    createdByLabel: dbString(input.createdByLabel || actor?.fullName || actor?.username || "Safety360"),
+    createdAt: normalizeTimestamp(input.createdAt) ?? timestamp,
+    updatedAt: normalizeTimestamp(input.updatedAt) ?? timestamp,
+  };
+}
+
+function mapMeasurementSheetPresetRow(row = {}) {
+  return createMeasurementSheetPresetEntry({
+    id: row.id,
+    organizationId: row.organization_id ?? row.organizationId,
+    templateId: row.template_id ?? row.templateId,
+    companyId: row.company_id ?? row.companyId,
+    locationId: row.location_id ?? row.locationId,
+    fieldKey: row.field_key ?? row.fieldKey,
+    title: row.title,
+    sheet: row.sheet_json ?? row.sheet,
+    createdByUserId: row.created_by_user_id ?? row.createdByUserId,
+    createdByLabel: row.created_by_label ?? row.createdByLabel,
+    createdAt: row.created_at ?? row.createdAt,
+    updatedAt: row.updated_at ?? row.updatedAt,
+  });
+}
+
 function isDataUrlLike(value = "") {
   return dbString(value).startsWith("data:");
 }
@@ -2885,6 +2928,60 @@ export class InMemorySafetyRepository {
     return cloneDocumentRecord(item);
   }
 
+  async listMeasurementSheetPresets(filters = {}) {
+    const organizationId = dbString(filters.organizationId);
+    const templateId = dbString(filters.templateId);
+    const companyId = dbString(filters.companyId);
+    const locationId = dbString(filters.locationId);
+    const fieldKey = dbString(filters.fieldKey);
+    const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+
+    return (this.snapshot.measurementSheetPresets ?? [])
+      .filter((item) => (
+        (!organizationId || String(item.organizationId) === organizationId)
+        && (!templateId || String(item.templateId) === templateId)
+        && (!companyId || String(item.companyId) === companyId)
+        && (!locationId || String(item.locationId) === locationId)
+        && (!fieldKey || String(item.fieldKey) === fieldKey)
+      ))
+      .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))
+      .slice(0, limit)
+      .map((item) => cloneMeasurementSheetPreset(item));
+  }
+
+  async saveMeasurementSheetPreset(input, actor = null) {
+    const entry = createMeasurementSheetPresetEntry(
+      input,
+      actor,
+      () => crypto.randomUUID(),
+      () => new Date().toISOString(),
+    );
+    const collection = [...(this.snapshot.measurementSheetPresets ?? [])];
+    const index = collection.findIndex((item) => (
+      String(item.organizationId) === String(entry.organizationId)
+      && String(item.templateId) === String(entry.templateId)
+      && String(item.companyId) === String(entry.companyId)
+      && String(item.locationId) === String(entry.locationId)
+      && String(item.fieldKey) === String(entry.fieldKey)
+    ));
+
+    if (index >= 0) {
+      const current = collection[index];
+      collection[index] = {
+        ...current,
+        ...entry,
+        id: current.id,
+        createdAt: current.createdAt,
+        updatedAt: entry.updatedAt,
+      };
+    } else {
+      collection.unshift(entry);
+    }
+
+    this.snapshot.measurementSheetPresets = collection;
+    return cloneMeasurementSheetPreset(index >= 0 ? collection[index] : entry);
+  }
+
   async createDashboardWidget(input) {
     const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
@@ -3239,6 +3336,25 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_document_records_scope (organization_id, template_id, company_id, location_id),
         INDEX idx_web_document_records_dates (organization_id, inspection_date, issued_date, created_at)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_measurement_sheet_presets (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        template_id BIGINT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NOT NULL,
+        field_key VARCHAR(180) NOT NULL,
+        title VARCHAR(180) NOT NULL DEFAULT 'Excel tablica',
+        sheet_json LONGTEXT NOT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(180) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_measurement_sheet_preset_scope (organization_id, template_id, company_id, location_id, field_key),
+        INDEX idx_web_measurement_sheet_preset_lookup (organization_id, template_id, company_id, location_id),
+        INDEX idx_web_measurement_sheet_preset_updated (organization_id, updated_at)
       )
     `);
     await this.pool.query(`
@@ -5789,6 +5905,122 @@ export class MySqlSafetyRepository {
       );
 
       return rows[0] ? mapDocumentRecordRow(rows[0]) : entry;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listMeasurementSheetPresets(filters = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const organizationId = Number(filters.organizationId);
+      const templateId = Number(filters.templateId);
+      const companyId = Number(filters.companyId);
+      const locationId = Number(filters.locationId);
+      const fieldKey = dbString(filters.fieldKey);
+      const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+
+      const conditions = [];
+      const params = [];
+
+      if (Number.isFinite(organizationId)) {
+        conditions.push("organization_id = ?");
+        params.push(organizationId);
+      }
+      if (Number.isFinite(templateId)) {
+        conditions.push("template_id = ?");
+        params.push(templateId);
+      }
+      if (Number.isFinite(companyId)) {
+        conditions.push("company_id = ?");
+        params.push(companyId);
+      }
+      if (Number.isFinite(locationId)) {
+        conditions.push("location_id = ?");
+        params.push(locationId);
+      }
+      if (fieldKey) {
+        conditions.push("field_key = ?");
+        params.push(fieldKey);
+      }
+
+      const whereClause = conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, organization_id, template_id, company_id, location_id, field_key, title,
+                 sheet_json, created_by_user_id, created_by_label, created_at, updated_at
+          FROM web_measurement_sheet_presets
+          ${whereClause}
+          ORDER BY updated_at DESC, id DESC
+          LIMIT ?
+        `,
+        [...params, limit],
+      );
+
+      return rows.map((row) => mapMeasurementSheetPresetRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
+  async saveMeasurementSheetPreset(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const entry = createMeasurementSheetPresetEntry(input, actor);
+      await connection.query(
+        `
+          INSERT INTO web_measurement_sheet_presets
+            (organization_id, template_id, company_id, location_id, field_key, title,
+             sheet_json, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            sheet_json = VALUES(sheet_json),
+            created_by_user_id = VALUES(created_by_user_id),
+            created_by_label = VALUES(created_by_label),
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          Number(entry.organizationId),
+          Number(entry.templateId),
+          Number(entry.companyId),
+          Number(entry.locationId),
+          entry.fieldKey,
+          entry.title,
+          JSON.stringify(entry.sheet),
+          entry.createdByUserId ? Number(entry.createdByUserId) : null,
+          entry.createdByLabel,
+        ],
+      );
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, organization_id, template_id, company_id, location_id, field_key, title,
+                 sheet_json, created_by_user_id, created_by_label, created_at, updated_at
+          FROM web_measurement_sheet_presets
+          WHERE organization_id = ?
+            AND template_id = ?
+            AND company_id = ?
+            AND location_id = ?
+            AND field_key = ?
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 1
+        `,
+        [
+          Number(entry.organizationId),
+          Number(entry.templateId),
+          Number(entry.companyId),
+          Number(entry.locationId),
+          entry.fieldKey,
+        ],
+      );
+
+      return rows[0] ? mapMeasurementSheetPresetRow(rows[0]) : entry;
     } finally {
       connection.release();
     }

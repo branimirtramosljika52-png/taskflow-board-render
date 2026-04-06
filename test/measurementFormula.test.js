@@ -90,3 +90,29 @@ test("formula helpers list and shift references for fill-down behavior", () => {
     "=IF(D5>0;E6;F7)",
   );
 });
+
+test("measurement formulas support VLOOKUP over cell ranges", () => {
+  const values = new Map([
+    ["A1", "SPR"],
+    ["B1", "12"],
+    ["A2", "TZIN"],
+    ["B2", "24"],
+    ["A3", "PANIK"],
+    ["B3", "6"],
+  ]);
+
+  const result = evaluateMeasurementFormula('=VLOOKUP("TZIN";A1:B3;2;FALSE)', {
+    resolveCellReference(reference) {
+      return values.get(reference) ?? "";
+    },
+    resolveRange(startReference, endReference) {
+      const rows = ["1", "2", "3"];
+      const columns = ["A", "B"];
+      assert.equal(startReference, "A1");
+      assert.equal(endReference, "B3");
+      return rows.map((row) => columns.map((column) => values.get(`${column}${row}`) ?? ""));
+    },
+  });
+
+  assert.equal(result, "24");
+});

@@ -1112,6 +1112,63 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/measurement-sheet-presets") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo pregledavati Excel presete.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const templateId = String(url.searchParams.get("templateId") ?? "").trim();
+      const companyId = String(url.searchParams.get("companyId") ?? "").trim();
+      const locationId = String(url.searchParams.get("locationId") ?? "").trim();
+      const fieldKey = String(url.searchParams.get("fieldKey") ?? "").trim();
+      const limit = String(url.searchParams.get("limit") ?? "12").trim();
+
+      if (templateId) {
+        assertInScope(scopedSnapshot.documentTemplates ?? [], templateId, "Template nije dostupan za odabranu organizaciju.");
+      }
+      if (companyId) {
+        assertInScope(scopedSnapshot.companies ?? [], companyId, "Tvrtka nije dostupna za odabranu organizaciju.");
+      }
+      if (locationId) {
+        assertInScope(scopedSnapshot.locations ?? [], locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+      }
+
+      const items = await domainRepository.listMeasurementSheetPresets({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        templateId,
+        companyId,
+        locationId,
+        fieldKey,
+        limit,
+      });
+
+      sendJson(response, 200, { items });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/measurement-sheet-presets") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati Excel presete.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.documentTemplates ?? [], body.templateId, "Template nije dostupan za odabranu organizaciju.");
+      assertInScope(scopedSnapshot.companies ?? [], body.companyId, "Tvrtka nije dostupna za odabranu organizaciju.");
+      assertInScope(scopedSnapshot.locations ?? [], body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+
+      const item = await domainRepository.saveMeasurementSheetPreset({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      sendJson(response, 201, { item });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/document-templates") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati templateima.");

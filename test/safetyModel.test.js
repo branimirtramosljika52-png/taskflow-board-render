@@ -42,10 +42,11 @@ import {
   getWorkOrderCompletedServiceCount,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
-  groupWorkOrdersByExecutorSet,
-  nextOfferNumber,
-  nextWorkOrderNumber,
-  parseCoordinates,
+    groupWorkOrdersByExecutorSet,
+    nextOfferNumber,
+    nextWorkOrderNumber,
+    normalizeWorkOrderMeasurementSheet,
+    parseCoordinates,
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
@@ -318,7 +319,18 @@ test("document templates keep nested builder data and support filtering", () => 
           rowCount: 8,
           sheet: {
             columns: [
-              { id: "measurement-column-1", label: "Pozicija", placeholder: "Pozicija", width: 220 },
+              {
+                id: "measurement-column-1",
+                label: "Pozicija",
+                placeholder: "Pozicija",
+                width: 220,
+                validation: {
+                  type: "list",
+                  sourceMode: "custom",
+                  options: ["Panik", "Tipkalo"],
+                  allowCustom: false,
+                },
+              },
               { id: "measurement-column-2", label: "Vrijednost", placeholder: "Vrijednost", width: 160 },
             ],
             rows: [
@@ -384,6 +396,8 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[7].sheet?.columns.length, 2);
   assert.equal(template.customFields[7].sheet?.rows[0]?.cells["measurement-column-1"], "Panik rasvjeta 1");
   assert.equal(template.customFields[7].sheet?.merges[0]?.colSpan, 2);
+  assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.type, "list");
+  assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.allowCustom, false);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");
@@ -481,6 +495,48 @@ test("service catalog keeps linked templates and supports filtering and sorting"
     updated,
   ]);
   assert.equal(sorted[0].serviceCode, "ZNR-200");
+});
+
+test("measurement sheet normalization keeps validation metadata on editable columns", () => {
+  const normalized = normalizeWorkOrderMeasurementSheet({
+    columns: [
+      {
+        id: "col-1",
+        label: "Oprema",
+        validation: {
+          type: "list",
+          sourceMode: "custom",
+          options: ["A", "B", "C"],
+          allowCustom: false,
+        },
+      },
+      {
+        id: "col-2",
+        label: "Lookup",
+        validation: {
+          type: "list",
+          sourceMode: "column",
+          sourceColumnId: "col-1",
+          allowCustom: true,
+        },
+      },
+    ],
+    rows: [
+      {
+        id: "row-1",
+        cells: {
+          "col-1": "A",
+          "col-2": "A",
+        },
+      },
+    ],
+  });
+
+  assert.equal(normalized.columns[0].validation.type, "list");
+  assert.deepEqual(normalized.columns[0].validation.options, ["A", "B", "C"]);
+  assert.equal(normalized.columns[0].validation.allowCustom, false);
+  assert.equal(normalized.columns[1].validation.sourceMode, "column");
+  assert.equal(normalized.columns[1].validation.sourceColumnId, "col-1");
 });
 
 test("createWorkOrder pulls snapshot data from selected company and location", () => {

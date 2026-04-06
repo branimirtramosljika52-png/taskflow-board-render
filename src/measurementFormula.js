@@ -36,6 +36,12 @@ function tokenizeFormulaExpression(expression) {
       continue;
     }
 
+    if (char === ":") {
+      tokens.push({ type: "range", value: char });
+      index += 1;
+      continue;
+    }
+
     if (char === "," || char === ";") {
       tokens.push({ type: "separator", value: char });
       index += 1;
@@ -203,8 +209,19 @@ function createFormulaParser(tokens) {
     }
 
     if (token.type === "cell") {
-      consume("cell");
-      return { type: "cell", reference: token.value };
+      const startReference = consume("cell").value;
+
+      if (peek()?.type === "range") {
+        consume("range");
+        const endReference = consume("cell").value;
+        return {
+          type: "range",
+          startReference,
+          endReference,
+        };
+      }
+
+      return { type: "cell", reference: startReference };
     }
 
     if (token.type === "identifier") {
@@ -302,6 +319,79 @@ function isTruthyFormulaValue(value) {
   return String(value ?? "").trim() !== "";
 }
 
+function isMeasurementRangeMatrix(value) {
+  return Array.isArray(value) && value.every((row) => Array.isArray(row));
+}
+
+function normalizeVLookupComparableValue(value) {
+  const normalized = normalizeComparableValue(value);
+  if (typeof normalized === "string") {
+    return normalized.trim().toUpperCase();
+  }
+  return normalized;
+}
+
+function compareVLookupValues(left, right) {
+  const normalizedLeft = normalizeVLookupComparableValue(left);
+  const normalizedRight = normalizeVLookupComparableValue(right);
+
+  if (typeof normalizedLeft === "string" && typeof normalizedRight === "string") {
+    return normalizedLeft.localeCompare(normalizedRight, "hr");
+  }
+
+  if (normalizedLeft === normalizedRight) {
+    return 0;
+  }
+
+  return normalizedLeft > normalizedRight ? 1 : -1;
+}
+
+function evaluateVLookup(node, context) {
+  if (node.args.length < 3 || node.args.length > 4) {
+    throw new MeasurementFormulaError("VLOOKUP trazi 3 ili 4 argumenta.");
+  }
+
+  const lookupValue = evaluateFormulaAst(node.args[0], context);
+  const matrix = evaluateFormulaAst(node.args[1], context);
+  const columnIndex = Math.floor(coerceToNumber(evaluateFormulaAst(node.args[2], context)));
+  const approximateMatch = node.args.length === 4
+    ? isTruthyFormulaValue(evaluateFormulaAst(node.args[3], context))
+    : false;
+
+  if (!isMeasurementRangeMatrix(matrix) || matrix.length === 0) {
+    throw new MeasurementFormulaError("VLOOKUP trazi raspon celija kao drugi argument.");
+  }
+
+  if (!Number.isFinite(columnIndex) || columnIndex < 1) {
+    throw new MeasurementFormulaError("VLOOKUP trazi pozitivan indeks kolone.");
+  }
+
+  const normalizedColumnIndex = columnIndex - 1;
+  if (normalizedColumnIndex >= matrix[0].length) {
+    throw new MeasurementFormulaError("VLOOKUP indeks kolone izlazi izvan raspona.");
+  }
+
+  let fallbackRow = null;
+  for (const row of matrix) {
+    const firstValue = row[0];
+    const comparison = compareVLookupValues(firstValue, lookupValue);
+
+    if (comparison === 0) {
+      return row[normalizedColumnIndex] ?? "";
+    }
+
+    if (approximateMatch && comparison <= 0) {
+      fallbackRow = row;
+    }
+  }
+
+  if (approximateMatch && fallbackRow) {
+    return fallbackRow[normalizedColumnIndex] ?? "";
+  }
+
+  throw new MeasurementFormulaError("VLOOKUP nije pronasao trazenu vrijednost.");
+}
+
 function evaluateFormulaAst(node, context) {
   switch (node.type) {
     case "number":
@@ -310,6 +400,11 @@ function evaluateFormulaAst(node, context) {
       return node.value;
     case "cell":
       return context.resolveCellReference(node.reference);
+    case "range":
+      if (typeof context.resolveRange !== "function") {
+        throw new MeasurementFormulaError("Range reference nije podrzan u ovom kontekstu.");
+      }
+      return context.resolveRange(node.startReference, node.endReference);
     case "unary": {
       const value = coerceToNumber(evaluateFormulaAst(node.argument, context));
       return node.operator === "-" ? -value : value;
@@ -405,6 +500,10 @@ function evaluateFormulaAst(node, context) {
         const random = context.randomBetween ?? ((start, end) =>
           Math.floor(Math.random() * (end - start + 1)) + start);
         return random(min, max);
+      }
+
+      if (node.name === "VLOOKUP") {
+        return evaluateVLookup(node, context);
       }
 
       throw new MeasurementFormulaError(`Nepodrzana funkcija: ${node.name}`);

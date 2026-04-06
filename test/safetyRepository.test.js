@@ -158,3 +158,100 @@ test("in-memory safety repository normalizes document record values and respects
   assert.equal(older.fieldValues.broj, 12);
   assert.deepEqual(older.fieldValues.lista, ["A", "B"]);
 });
+
+test("in-memory safety repository stores measurement sheet presets per template, company and location", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const actor = {
+    id: "user-7",
+    fullName: "Marko Admin",
+  };
+
+  const saved = await repository.saveMeasurementSheetPreset({
+    organizationId: "org-1",
+    templateId: "template-1",
+    companyId: "company-1",
+    locationId: "location-1",
+    fieldKey: "field-measurements",
+    title: "Excel tablica · Acme · Pogon",
+    sheet: {
+      columns: [
+        {
+          id: "c1",
+          label: "Pozicija",
+          validation: {
+            type: "list",
+            sourceMode: "custom",
+            options: ["SPR", "TZIN"],
+            allowCustom: false,
+          },
+        },
+        { id: "c2", label: "Vrijednost" },
+      ],
+      rows: [
+        {
+          id: "r1",
+          cells: {
+            c1: "SPR",
+            c2: "=VLOOKUP(\"SPR\";A1:B2;2;FALSE)",
+          },
+          formats: {
+            c2: {
+              fontFamily: "calibri",
+              align: "center",
+              bold: true,
+            },
+          },
+        },
+      ],
+      merges: [
+        {
+          rowId: "r1",
+          columnId: "c1",
+          rowSpan: 1,
+          colSpan: 2,
+        },
+      ],
+    },
+  }, actor);
+
+  const updated = await repository.saveMeasurementSheetPreset({
+    organizationId: "org-1",
+    templateId: "template-1",
+    companyId: "company-1",
+    locationId: "location-1",
+    fieldKey: "field-measurements",
+    title: "Excel tablica · Acme · Pogon",
+    sheet: {
+      columns: [
+        { id: "c1", label: "Pozicija" },
+        { id: "c2", label: "Vrijednost" },
+      ],
+      rows: [
+        {
+          id: "r1",
+          cells: {
+            c1: "TZIN",
+            c2: "24",
+          },
+        },
+      ],
+    },
+  }, actor);
+
+  const items = await repository.listMeasurementSheetPresets({
+    organizationId: "org-1",
+    templateId: "template-1",
+    companyId: "company-1",
+    locationId: "location-1",
+    fieldKey: "field-measurements",
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, saved.id);
+  assert.equal(updated.id, saved.id);
+  assert.equal(items[0].createdByLabel, "Marko Admin");
+  assert.equal(items[0].sheet.rows[0].cells.c1, "TZIN");
+  assert.equal(items[0].sheet.columns[0].validation?.type, "none");
+});

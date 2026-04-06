@@ -629,6 +629,46 @@ function normalizeMeasurementSheetCellFormatSnapshot(format = {}) {
   });
 }
 
+function normalizeMeasurementSheetValidationOptions(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : String(values ?? "")
+    .split(/[\n,;|]/))
+    .map((value) => normalizeText(value))
+    .filter(Boolean)))
+    .slice(0, 160);
+}
+
+function normalizeMeasurementSheetColumnValidationSnapshot(input = {}, availableColumnIds = new Set(), columnId = "") {
+  const source = input && typeof input === "object" ? input : {};
+  const type = normalizeText(source?.type).toLowerCase() === "list" ? "list" : "none";
+  const sourceMode = normalizeText(source?.sourceMode).toLowerCase() === "custom" ? "custom" : "column";
+  const sourceColumnId = normalizeText(source?.sourceColumnId);
+  const normalizedSourceColumnId = sourceMode === "column"
+    && sourceColumnId
+    && (!availableColumnIds.size || availableColumnIds.has(sourceColumnId))
+    ? sourceColumnId
+    : (sourceMode === "column" && columnId && (!availableColumnIds.size || availableColumnIds.has(columnId))
+      ? columnId
+      : "");
+
+  if (type !== "list") {
+    return {
+      type: "none",
+      sourceMode: "column",
+      sourceColumnId: "",
+      options: [],
+      allowCustom: true,
+    };
+  }
+
+  return {
+    type: "list",
+    sourceMode,
+    sourceColumnId: sourceMode === "column" ? normalizedSourceColumnId : "",
+    options: sourceMode === "custom" ? normalizeMeasurementSheetValidationOptions(source?.options) : [],
+    allowCustom: normalizeBoolean(source?.allowCustom, true),
+  };
+}
+
 function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
   const width = Number(input?.width);
   const computed = normalizeText(input?.computed);
@@ -640,6 +680,7 @@ function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
     width: Number.isFinite(width) ? Math.min(640, Math.max(72, Math.round(width))) : 160,
     computed: computed || null,
     readonly: normalizeBoolean(input?.readonly, false),
+    validation: normalizeMeasurementSheetColumnValidationSnapshot(input?.validation, new Set(), normalizeText(input?.id) || `measurement-column-${index + 1}`),
   };
 }
 
@@ -730,15 +771,24 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
       && items.findIndex((item) => item.id === column.id) === index
     ));
 
-  if (columns.length === 0 || columns.every((column) => column.computed)) {
+  const columnIds = new Set(columns.filter((column) => !column.computed).map((column) => column.id));
+  const normalizedColumns = columns.map((column) => ({
+    ...column,
+    validation: normalizeMeasurementSheetColumnValidationSnapshot(
+      column.validation,
+      columnIds,
+      column.id,
+    ),
+  }));
+
+  if (normalizedColumns.length === 0 || normalizedColumns.every((column) => column.computed)) {
     return null;
   }
 
   const rows = (Array.isArray(input.rows) ? input.rows : [])
     .slice(0, 600)
-    .map((row, index) => normalizeMeasurementSheetRowSnapshot(row, columns, index));
+    .map((row, index) => normalizeMeasurementSheetRowSnapshot(row, normalizedColumns, index));
   const rowIds = new Set(rows.map((row) => row.id));
-  const columnIds = new Set(columns.filter((column) => !column.computed).map((column) => column.id));
   const merges = (Array.isArray(input.merges) ? input.merges : [])
     .slice(0, 200)
     .map((merge) => normalizeMeasurementSheetMergeSnapshot(merge, rowIds, columnIds))
@@ -746,7 +796,7 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
   const headerRows = normalizeMeasurementSheetHeaderRowsSnapshot(input.headerRows, rowIds);
 
   return {
-    columns,
+    columns: normalizedColumns,
     rows,
     merges,
     headerRows,
