@@ -13168,6 +13168,14 @@ function createWorkOrderDocumentSignaturePersonPicker({
     clearButton.className = "ghost-button work-order-calendar-executor-clear";
     clearButton.textContent = "Očisti";
 
+    const emitChange = (nextValues, meta = {}) => {
+      const normalized = multiple
+        ? normalizeQualifiedUserIdList(nextValues)
+        : normalizeQualifiedUserIdList(nextValues).slice(0, 1);
+      onChange?.(multiple ? normalized : (normalized[0] || ""), meta);
+      return normalized;
+    };
+
     const applyChange = (nextValues, { keepMenuOpen = false } = {}) => {
       const normalized = multiple
         ? normalizeQualifiedUserIdList(nextValues)
@@ -13177,13 +13185,14 @@ function createWorkOrderDocumentSignaturePersonPicker({
 
       if (multiple && keepMenuOpen) {
         hasPendingChange = true;
+        emitChange(normalized, { keepMenuOpen: true, live: true });
         syncMenuState();
         return;
       }
 
       hasPendingChange = false;
       closeOpenWorkOrderStatusMenus();
-      onChange?.(multiple ? normalized : (normalized[0] || ""));
+      emitChange(normalized, { keepMenuOpen: false, live: false });
     };
 
     wrapper._commitPendingChange = () => {
@@ -13191,7 +13200,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
         return;
       }
       hasPendingChange = false;
-      onChange?.(multiple ? normalizeQualifiedUserIdList(draftValues) : (draftValues[0] || ""));
+      emitChange(draftValues, { keepMenuOpen: false, commit: true });
     };
 
     const renderSelection = () => {
@@ -28125,13 +28134,20 @@ function syncWorkOrderDocumentWizardCommonInputs() {
         ? normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.[listFieldName] ?? [])
         : String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim(),
       emptyLabel: capability === "authorize" ? "Odaberi odgovornu osobu" : "Odaberi ispitivače",
-      onChange: (nextValue) => {
+      onChange: (nextValue, meta = {}) => {
         if (multiple) {
           state.workOrderDocumentWizard.common[listFieldName] = normalizeQualifiedUserIdList(nextValue);
           state.workOrderDocumentWizard.common[fieldName] = state.workOrderDocumentWizard.common[listFieldName][0] || "";
         } else {
           state.workOrderDocumentWizard.common[fieldName] = String(nextValue || "").trim();
         }
+
+        if (meta.keepMenuOpen) {
+          syncWorkOrderDocumentWizardCommonSummaryText();
+          renderWorkOrderDocumentWizardCommonPeopleSection();
+          return;
+        }
+
         renderWorkOrderDocumentWizardCommonSection();
         renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
         if (state.workOrderDocumentWizard.step === "templates") {
@@ -28191,6 +28207,17 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
   ].filter(Boolean);
 }
 
+function syncWorkOrderDocumentWizardCommonSummaryText() {
+  if (!workOrderDocumentWizardCommonSummary) {
+    return;
+  }
+
+  const summaryParts = getWorkOrderDocumentWizardCommonSummaryParts();
+  workOrderDocumentWizardCommonSummary.textContent = summaryParts.length > 0
+    ? summaryParts.join(", ")
+    : "Vrijedi za sve odabrane RN-ove.";
+}
+
 function renderWorkOrderDocumentWizardCommonPeopleSection() {
   const isCollapsed = Boolean(state.workOrderDocumentWizard.commonPeopleCollapsed);
   const summaryParts = getWorkOrderDocumentSignaturePersonSummaryParts(state.workOrderDocumentWizard.common);
@@ -28214,7 +28241,6 @@ function renderWorkOrderDocumentWizardCommonPeopleSection() {
 
 function renderWorkOrderDocumentWizardCommonSection() {
   const isCollapsed = Boolean(state.workOrderDocumentWizard.commonCollapsed);
-  const summaryParts = getWorkOrderDocumentWizardCommonSummaryParts();
   const activeSheet = state.workOrderDocumentWizard.commonSheet === "validity" ? "validity" : "basic";
 
   if (workOrderDocumentWizardCommonSection) {
@@ -28223,11 +28249,7 @@ function renderWorkOrderDocumentWizardCommonSection() {
   if (workOrderDocumentWizardCommonBody) {
     workOrderDocumentWizardCommonBody.hidden = isCollapsed;
   }
-  if (workOrderDocumentWizardCommonSummary) {
-    workOrderDocumentWizardCommonSummary.textContent = summaryParts.length > 0
-      ? summaryParts.join(", ")
-      : "Vrijedi za sve odabrane RN-ove.";
-  }
+  syncWorkOrderDocumentWizardCommonSummaryText();
   if (workOrderDocumentWizardCommonToggleButton) {
     workOrderDocumentWizardCommonToggleButton.textContent = isCollapsed ? "Prikaži zajednicke podatke" : "Sakrij zajednicke podatke";
     workOrderDocumentWizardCommonToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
@@ -29229,7 +29251,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
         ? getWorkOrderDocumentWizardSourceValues(workOrder.id, listFieldName)
         : getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName),
       emptyLabel,
-      onChange: (nextValue) => {
+      onChange: (nextValue, meta = {}) => {
         if (multiple) {
           const normalizedValues = normalizeQualifiedUserIdList(nextValue);
           setWorkOrderDocumentWizardOverride(workOrder.id, {
@@ -29241,6 +29263,11 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
             [fieldName]: String(nextValue || "").trim(),
           });
         }
+
+        if (meta.keepMenuOpen) {
+          return;
+        }
+
         rerenderWizard();
       },
     }));

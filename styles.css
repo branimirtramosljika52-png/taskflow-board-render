@@ -8254,7 +8254,7 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-wizard-common-core-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
 }
 
@@ -8301,8 +8301,10 @@ body.is-work-order-document-wizard-open {
 .work-order-document-wizard-control-slot .work-order-bulk-executor-avatar,
 .work-order-document-selection-executor,
 .work-order-document-person-trigger .work-order-document-person-avatar {
-  border: 2px solid rgba(255, 255, 255, 0.96);
-  box-shadow: 0 0 0 1px rgba(117, 81, 173, 0.22), 0 8px 18px rgba(59, 47, 110, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(117, 81, 173, 0.28),
+    0 10px 22px rgba(59, 47, 110, 0.14);
   background: #ffffff;
 }
 
@@ -8315,25 +8317,63 @@ body.is-work-order-document-wizard-open {
 .work-order-document-wizard-control-slot .work-order-bulk-executor-avatar .executor-avatar-badge,
 .work-order-document-selection-executor .executor-avatar-badge,
 .work-order-document-person-trigger .work-order-document-person-avatar .executor-avatar-badge {
-  color: #0c1223;
-  font-size: 0.76rem;
+  color: #050914;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.98),
-    0 0 8px rgba(255, 255, 255, 0.92),
-    0 2px 4px rgba(16, 22, 37, 0.26);
+    0 0 10px rgba(255, 255, 255, 0.98),
+    0 2px 5px rgba(16, 22, 37, 0.36);
 }
 
-.work-order-document-person-menu-portal .work-order-calendar-executor-chip,
+.work-order-document-person-menu-portal {
+  background: rgba(18, 20, 25, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 56px rgba(5, 8, 14, 0.42);
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-search-input {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-search-input::placeholder {
+  color: rgba(236, 239, 247, 0.58);
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-search-input:focus {
+  border-color: rgba(122, 199, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(108, 178, 255, 0.16);
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-helper,
+.work-order-document-person-menu-portal .work-order-calendar-executor-empty,
+.work-order-document-person-menu-portal .work-order-calendar-executor-selection-empty {
+  color: rgba(236, 239, 247, 0.72);
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #f7f8fb;
+}
+
 .work-order-document-person-menu-portal .work-order-calendar-executor-option {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(220, 156, 212, 0.28);
-  color: #2a3551;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-option:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .work-order-document-person-menu-portal .work-order-calendar-executor-option.is-selected,
 .work-order-document-service-picker .work-order-service-picker-option.is-selected {
-  border-color: rgba(214, 101, 190, 0.34);
-  background: linear-gradient(135deg, rgba(255, 240, 248, 0.98), rgba(244, 239, 255, 0.98));
+  border-color: rgba(219, 120, 205, 0.35);
+  background: rgba(240, 79, 151, 0.14);
 }
 
 .work-order-document-person-option-copy {
@@ -8343,9 +8383,19 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-person-option-meta {
-  color: #67748f;
+  color: rgba(236, 239, 247, 0.72);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.work-order-document-person-menu-portal .work-order-calendar-executor-option-marker {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.work-order-document-person-menu-portal .ghost-button.work-order-calendar-executor-clear {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f8fb;
 }
 
 .work-order-document-selection-copy {
@@ -8384,8 +8434,8 @@ body.is-work-order-document-wizard-open {
   margin-top: 6px;
   padding: 7px 9px;
   border-radius: 16px;
-  border: 1px solid rgba(220, 156, 212, 0.22);
-  background: rgba(252, 247, 255, 0.9);
+  border: 1px solid rgba(164, 120, 224, 0.28);
+  background: linear-gradient(180deg, rgba(247, 241, 255, 0.98), rgba(255, 255, 255, 0.94));
 }
 
 .work-order-document-selection-executor-stack {
@@ -8396,9 +8446,9 @@ body.is-work-order-document-wizard-open {
 
 .work-order-document-selection-executor-label {
   min-width: 0;
-  color: #31405f;
+  color: #1f2b47;
   font-size: 0.79rem;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8563,7 +8613,7 @@ body.is-work-order-document-wizard-open {
 }
 
 .work-order-document-selection-person-area-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
