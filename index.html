@@ -3726,6 +3726,51 @@
 
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
+                        <section class="document-template-block document-template-word-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Word predložak</p>
+                              <h3>Gotovi Word s placeholderima</h3>
+                            </div>
+                          </div>
+                          <p class="helper-copy module-copy">1. Dodaj blokove i placeholder polja. 2. Preuzmi Word s tokenima. 3. Uredi ga u Wordu i vrati gotovi predložak natrag u app.</p>
+                          <div class="document-template-word-flow">
+                            <article class="document-template-word-step">
+                              <strong>1</strong>
+                              <span>Složi builder</span>
+                            </article>
+                            <article class="document-template-word-step">
+                              <strong>2</strong>
+                              <span>Preuzmi Word</span>
+                            </article>
+                            <article class="document-template-word-step">
+                              <strong>3</strong>
+                              <span>Vrati gotovi .docx</span>
+                            </article>
+                          </div>
+                          <div class="document-template-reference-actions">
+                            <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
+                            <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi Word s placeholderima</button>
+                            <button id="document-template-reference-upload" type="button" class="ghost-button">Upload gotovog Worda</button>
+                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni Word</button>
+                            <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni Word</button>
+                          </div>
+                          <div id="document-template-reference-meta" class="document-template-reference-meta">
+                            Nema spremljenog Word predloška.
+                          </div>
+                          <div id="document-template-link-summary" class="document-template-link-summary"></div>
+                          <div class="document-template-placeholder-panel">
+                            <div class="document-template-placeholder-panel-head">
+                              <div>
+                                <p class="section-kicker">Placeholderi</p>
+                                <h4>Tokeni za Word</h4>
+                              </div>
+                            </div>
+                            <p class="helper-copy module-copy">Klik na token ga kopira ili ubacuje u aktivno tekstualno polje unutar buildera.</p>
+                            <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                          </div>
+                        </section>
+
                         <section class="document-template-block">
                           <div class="section-heading offers-section-heading">
                             <div>
@@ -3733,7 +3778,7 @@
                               <h3>Ubaci u template</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">Klik na alat i blok se dodaje redom u template. Excel odmah otvara tablicu za uređivanje.</p>
+                          <p class="helper-copy module-copy">Blokovi ovdje definiraju što kasnije korisnik ispunjava u zapisniku i koje placeholder tokene koristiš u Wordu.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
                             <button type="button" class="document-template-tool-button" data-template-tool="text">
                               <strong>Tekst polje</strong>
@@ -3781,32 +3826,12 @@
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
                               <strong>Potpis ispitivača</strong>
-                          <span>Dodaje potpis ispitivača panik rasvjete</span>
+                              <span>Dodaje potpis ispitivača panik rasvjete</span>
                             </button>
                             <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
                               <strong>Potpis nositelja</strong>
-                          <span>Dodaje potpis nositelja ovlaštenja za panik rasvjetu</span>
+                              <span>Dodaje potpis nositelja ovlaštenja za panik rasvjetu</span>
                             </button>
-                          </div>
-                        </section>
-
-                        <section class="document-template-block">
-                          <div class="section-heading offers-section-heading">
-                            <div>
-                              <p class="section-kicker">Word reference</p>
-                              <h3>Placeholder Word flow</h3>
-                            </div>
-                          </div>
-                          <p class="helper-copy module-copy">1. Preuzmi placeholder Word. 2. Uredi ga u Wordu. 3. Vrati uređeni dokument natrag u app.</p>
-                          <div class="document-template-reference-actions">
-                            <input id="document-template-reference-file-input" type="file" accept=".doc,.docx,.dotx,.html,.txt,.pdf,.rtf" hidden />
-                            <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi placeholder</button>
-                            <button id="document-template-reference-upload" type="button" class="ghost-button">Vrati uređeni Word</button>
-                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi vraćeni Word</button>
-                            <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni</button>
-                          </div>
-                          <div id="document-template-reference-meta" class="document-template-reference-meta">
-                            Nema spremljenog povratnog Word dokumenta.
                           </div>
                         </section>
                       </aside>

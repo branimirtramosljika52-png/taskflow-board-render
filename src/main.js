@@ -355,8 +355,8 @@ const MODULE_VIEW_DEFINITIONS = {
   "template-development": {
     kicker: "Organisations",
     title: "Template Development",
-    description: "Builder za Zapisnike s placeholderima, propisima, opremom, previewem i Word exportom.",
-    chips: ["Templates", "Word", "Preview"],
+    description: "Builder za gotove Word predloske s placeholderima, blokovima i vezama na podatke iz baze.",
+    chips: ["Templates", "Word", "Placeholders"],
   },
   "safety-authorization": {
     kicker: "Organisations",
@@ -12338,6 +12338,30 @@ function insertTextIntoDocumentTemplateTarget(text) {
   }
 }
 
+async function copyDocumentTemplateToken(token = "") {
+  const safeToken = String(token || "").trim();
+  if (!safeToken) {
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(safeToken);
+      setDocumentTemplateMessage("Placeholder je kopiran u clipboard.", { type: "success" });
+      window.setTimeout(() => {
+        if (documentTemplateError?.textContent === "Placeholder je kopiran u clipboard.") {
+          setDocumentTemplateMessage("");
+        }
+      }, 1600);
+      return;
+    }
+  } catch (error) {
+    console.warn("Clipboard copy failed for document template token.", error);
+  }
+
+  insertTextIntoDocumentTemplateTarget(safeToken);
+}
+
 function rebuildDocumentTemplateCompanyOptions(selectedValue = "") {
   if (!documentTemplateCompanyIdInput) {
     return;
@@ -12403,12 +12427,32 @@ function renderDocumentTemplateReferenceMeta() {
   }
 
   documentTemplateReferenceMeta.replaceChildren();
+  const template = buildDocumentTemplateDraft();
+  const fields = Array.isArray(template.customFields) ? template.customFields : [];
+  const blockCount = fields.filter((field) => String(field?.type || "").trim().toLowerCase() === "chapter").length;
+  const placeholderCount = fields.filter((field) => String(field?.type || "").trim().toLowerCase() !== "chapter").length;
 
   if (!documentTemplateReferenceDraft) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy";
-    empty.textContent = "Upload Word predložak koji ćeš kasnije urediti i vratiti nazad u builder.";
-    documentTemplateReferenceMeta.append(empty);
+    const stateWrap = document.createElement("div");
+    stateWrap.className = "document-template-reference-status";
+
+    const stateBadge = document.createElement("span");
+    stateBadge.className = "document-template-reference-state is-missing";
+    stateBadge.textContent = "Word još nije vraćen";
+
+    const readiness = document.createElement("span");
+    readiness.className = "document-template-reference-note";
+    readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera spremno za export`;
+
+    stateWrap.append(stateBadge, readiness);
+
+    const empty = document.createElement("strong");
+    empty.textContent = "Preuzmi Word s placeholderima i vrati gotovi .docx kada završiš uređivanje.";
+
+    const meta = document.createElement("span");
+    meta.textContent = "Builder definira tokene i raspored u aplikaciji. Uploadani Word postaje glavni predložak za kasniji zapisnik.";
+
+    documentTemplateReferenceMeta.append(stateWrap, empty, meta);
     if (documentTemplateReferenceDownloadButton) {
       documentTemplateReferenceDownloadButton.hidden = true;
     }
@@ -12418,14 +12462,31 @@ function renderDocumentTemplateReferenceMeta() {
     return;
   }
 
+  const stateWrap = document.createElement("div");
+  stateWrap.className = "document-template-reference-status";
+
+  const stateBadge = document.createElement("span");
+  stateBadge.className = "document-template-reference-state is-ready";
+  stateBadge.textContent = "Word povezan";
+
+  const readiness = document.createElement("span");
+  readiness.className = "document-template-reference-note";
+  readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera`;
+  stateWrap.append(stateBadge, readiness);
+
   const title = document.createElement("strong");
   title.textContent = documentTemplateReferenceDraft.fileName || "reference.doc";
+
   const meta = document.createElement("span");
   meta.textContent = [
     documentTemplateReferenceDraft.fileType || "datoteka",
     documentTemplateReferenceDraft.updatedAt ? `Ažurirano ${formatDateTime(documentTemplateReferenceDraft.updatedAt)}` : "",
-  ].filter(Boolean).join(" | ");
-  documentTemplateReferenceMeta.append(title, meta);
+  ].filter(Boolean).join(" · ");
+
+  const note = document.createElement("span");
+  note.textContent = "Kasniji zapisnici koriste ovaj spremljeni Word kao referentni predložak.";
+
+  documentTemplateReferenceMeta.append(stateWrap, title, meta, note);
 
   if (documentTemplateReferenceDownloadButton) {
     documentTemplateReferenceDownloadButton.hidden = false;
@@ -16560,6 +16621,13 @@ function renderDocumentTemplatePlaceholderPalette() {
   }
 
   const definitions = getDocumentTemplatePlaceholderDefinitions(buildDocumentTemplateDraft());
+  if (definitions.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Dodaj barem jedno polje ili Excel tablicu pa će se ovdje pojaviti tokeni za Word.";
+    documentTemplatePlaceholderPalette.replaceChildren(empty);
+    return;
+  }
 
   documentTemplatePlaceholderPalette.replaceChildren(...definitions.map((entry) => {
     const button = document.createElement("button");
@@ -16588,6 +16656,25 @@ function renderDocumentTemplateLinkSummary() {
   const template = buildDocumentTemplateDraft();
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
   const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
+  const fields = Array.isArray(template.customFields) ? template.customFields : [];
+  const blockCount = fields.filter((field) => String(field?.type || "").trim().toLowerCase() === "chapter").length;
+  const placeholderCount = fields.filter((field) => String(field?.type || "").trim().toLowerCase() !== "chapter").length;
+
+  const placeholderCard = document.createElement("article");
+  placeholderCard.className = "document-template-link-card";
+  placeholderCard.innerHTML = `
+    <span>Placeholderi</span>
+    <strong>${placeholderCount}</strong>
+    <p>${blockCount > 0 ? `${blockCount} blokova organizira sadržaj predloška.` : "Dodaj blokove za jasnije grupiranje sadržaja."}</p>
+  `;
+
+  const wordCard = document.createElement("article");
+  wordCard.className = `document-template-link-card ${template.referenceDocument?.fileName ? "is-ready" : "is-pending"}`;
+  wordCard.innerHTML = `
+    <span>Word</span>
+    <strong>${template.referenceDocument?.fileName ? "Spreman" : "Čeka upload"}</strong>
+    <p>${template.referenceDocument?.fileName ? escapeHtml(template.referenceDocument.fileName) : "Predložak još nije vraćen u app."}</p>
+  `;
 
   const legalCard = document.createElement("article");
   legalCard.className = "document-template-link-card";
@@ -16605,7 +16692,7 @@ function renderDocumentTemplateLinkSummary() {
     <p>${equipmentItems.length > 0 ? "Povezano kroz Measurement Equipment modul." : "Još nema povezane opreme za ovaj template."}</p>
   `;
 
-  documentTemplateLinkSummary.replaceChildren(legalCard, equipmentCard);
+  documentTemplateLinkSummary.replaceChildren(placeholderCard, wordCard, legalCard, equipmentCard);
 }
 
 function isDocumentTemplateRuntimeVisibleField(field = {}) {
@@ -17144,6 +17231,28 @@ function renderDocumentTemplateFieldRows() {
     }
     head.append(dragHandle, headCopy);
 
+    const tokenValue = field.type === "chapter"
+      ? null
+      : document.createElement("code");
+    let tokenRow = null;
+    if (tokenValue) {
+      tokenRow = document.createElement("div");
+      tokenRow.className = "document-template-item-token-row";
+
+      const tokenLabel = document.createElement("span");
+      tokenLabel.className = "document-template-item-token-label";
+      tokenLabel.textContent = "Placeholder";
+
+      tokenValue.className = "document-template-item-token-value";
+      tokenValue.textContent = getDocumentTemplateFieldToken(field, draftIndex);
+
+      const tokenCopyButton = createActionButton("Kopiraj", "ghost-button document-template-token-copy", () => {
+        void copyDocumentTemplateToken(tokenValue.textContent);
+      });
+
+      tokenRow.append(tokenLabel, tokenValue, tokenCopyButton);
+    }
+
     row.addEventListener("dragover", (event) => {
       if (!draggedDocumentTemplateFieldId || draggedDocumentTemplateFieldId === String(field.id || "")) {
         return;
@@ -17191,7 +17300,7 @@ function renderDocumentTemplateFieldRows() {
     const labelField = document.createElement("label");
     labelField.className = "field";
     const labelSpan = document.createElement("span");
-    labelSpan.textContent = field.type === "chapter" ? "Ime bloka" : "Prikaz u aplikaciji";
+    labelSpan.textContent = field.type === "chapter" ? "Ime bloka" : "Naziv u aplikaciji";
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.value = field.label || "";
@@ -17216,6 +17325,9 @@ function renderDocumentTemplateFieldRows() {
       renderDocumentTemplatePreviewContent();
       title.textContent = nextLabel || getDocumentTemplateFieldTypeLabel(documentTemplateFieldDrafts[draftIndex].type) || `Blok ${draftIndex + 1}`;
       tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
+      if (tokenValue) {
+        tokenValue.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
+      }
       if (shouldSyncWordLabel && field.type !== "chapter") {
         const wordLabelTarget = row.querySelector("[data-template-field-word-label]");
         if (wordLabelTarget instanceof HTMLInputElement) {
@@ -17229,9 +17341,10 @@ function renderDocumentTemplateFieldRows() {
     const wordLabelField = document.createElement("label");
     wordLabelField.className = "field";
     const wordLabelSpan = document.createElement("span");
-    wordLabelSpan.textContent = field.type === "chapter" ? "Naslov u Wordu" : "Naziv u Wordu";
+    wordLabelSpan.textContent = field.type === "chapter" ? "Naslov u Wordu" : "Placeholder u Wordu";
     const wordLabelInput = document.createElement("input");
     wordLabelInput.type = "text";
+    wordLabelInput.placeholder = "Kako se placeholder zove u Wordu";
     wordLabelInput.value = field.wordLabel || field.label || "";
     wordLabelInput.dataset.templateFieldWordLabel = "true";
     wordLabelInput.addEventListener("input", (event) => {
@@ -17243,6 +17356,9 @@ function renderDocumentTemplateFieldRows() {
       renderDocumentTemplatePlaceholderPalette();
       renderDocumentTemplatePreviewContent();
       tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
+      if (tokenValue) {
+        tokenValue.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
+      }
     });
     wordLabelInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(wordLabelInput, `field-word-label:${field.id}`));
     wordLabelField.append(wordLabelSpan, wordLabelInput);
@@ -17251,7 +17367,7 @@ function renderDocumentTemplateFieldRows() {
     sourceField.className = "field";
     sourceField.hidden = isSpecialType;
     const sourceSpan = document.createElement("span");
-    sourceSpan.textContent = "Polje iz baze";
+    sourceSpan.textContent = "Veza iz baze";
     const sourceSelect = document.createElement("select");
     sourceSelect.className = "document-template-source-select";
     replaceSelectOptions(sourceSelect, DOCUMENT_TEMPLATE_SOURCE_OPTIONS, field.source || getDocumentTemplateDefaultFieldSource(field.type));
@@ -17310,8 +17426,8 @@ function renderDocumentTemplateFieldRows() {
       specialInfoValue.className = "document-template-inline-special-value";
       const chapterCount = chapterChildCounts.get(fieldId) || 0;
       specialInfoValue.textContent = chapterCount > 0
-        ? `U ovom bloku je ${chapterCount} ${chapterCount === 1 ? "stavka" : "stavki"}. Sve sljedeće stavke ulaze unutra do novog bloka.`
-        : "Prazan blok. Dodaj polja, tekst ili Excel ispod njega i sve će automatski ući u ovu cjelinu.";
+        ? `Interni blok buildera. U njemu je ${chapterCount} ${chapterCount === 1 ? "stavka" : "stavki"} i sve sljedeće stavke ulaze unutra do novog bloka.`
+        : "Interni blok buildera. Dodaj polja, tekst ili Excel ispod njega i sve će automatski ući u ovu cjelinu.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
@@ -17444,7 +17560,11 @@ function renderDocumentTemplateFieldRows() {
     }
 
     head.append(removeButton);
-    row.append(head, grid);
+    row.append(head);
+    if (tokenRow) {
+      row.append(tokenRow);
+    }
+    row.append(grid);
     if (field.type === "measurement_table") {
       const inlineExcelHost = document.createElement("div");
       inlineExcelHost.className = "document-template-inline-excel-host";
