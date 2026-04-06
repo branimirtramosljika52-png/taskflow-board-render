@@ -247,6 +247,126 @@ function parseJsonArray(value, fallback = []) {
   }
 }
 
+function cloneJsonValue(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeDocumentRecordFieldValues(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : parseJsonObject(value, {});
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, entryValue]) => {
+        const normalizedKey = dbString(key);
+
+        if (!normalizedKey || entryValue === undefined) {
+          return null;
+        }
+
+        if (typeof entryValue === "string") {
+          return dbString(entryValue)
+            ? [normalizedKey, entryValue]
+            : null;
+        }
+
+        if (Array.isArray(entryValue)) {
+          return entryValue.length > 0
+            ? [normalizedKey, cloneJsonValue(entryValue)]
+            : null;
+        }
+
+        if (entryValue && typeof entryValue === "object") {
+          return [normalizedKey, cloneJsonValue(entryValue)];
+        }
+
+        if (typeof entryValue === "boolean" || Number.isFinite(entryValue)) {
+          return [normalizedKey, entryValue];
+        }
+
+        const fallbackValue = dbString(entryValue);
+        return fallbackValue ? [normalizedKey, fallbackValue] : null;
+      })
+      .filter(Boolean),
+  );
+}
+
+function normalizeDocumentRecordFieldSheets(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : parseJsonObject(value, {});
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, snapshot]) => {
+        const normalizedKey = dbString(key);
+        const normalizedSnapshot = normalizeWorkOrderMeasurementSheet(snapshot);
+
+        if (!normalizedKey || !normalizedSnapshot) {
+          return null;
+        }
+
+        return [normalizedKey, normalizedSnapshot];
+      })
+      .filter(Boolean),
+  );
+}
+
+function cloneDocumentRecord(record = {}) {
+  return {
+    ...record,
+    fieldValues: normalizeDocumentRecordFieldValues(record.fieldValues),
+    fieldSheets: normalizeDocumentRecordFieldSheets(record.fieldSheets),
+  };
+}
+
+function createDocumentRecordEntry(input = {}, actor = null, createId = () => crypto.randomUUID(), now = () => new Date().toISOString()) {
+  const timestamp = normalizeTimestamp(now()) ?? new Date().toISOString();
+
+  return {
+    id: dbString(input.id) || createId(),
+    organizationId: dbString(input.organizationId),
+    templateId: dbString(input.templateId),
+    templateTitle: dbString(input.templateTitle),
+    documentType: dbString(input.documentType) || "Zapisnik",
+    companyId: dbString(input.companyId),
+    locationId: dbString(input.locationId),
+    inspectionDate: normalizeDateOnly(input.inspectionDate),
+    issuedDate: normalizeDateOnly(input.issuedDate),
+    fieldValues: normalizeDocumentRecordFieldValues(input.fieldValues),
+    fieldSheets: normalizeDocumentRecordFieldSheets(input.fieldSheets),
+    createdByUserId: dbString(input.createdByUserId || actor?.id),
+    createdByLabel: dbString(input.createdByLabel || actor?.fullName || actor?.username || "Safety360"),
+    createdAt: normalizeTimestamp(input.createdAt) ?? timestamp,
+    updatedAt: normalizeTimestamp(input.updatedAt) ?? timestamp,
+  };
+}
+
+function mapDocumentRecordRow(row = {}) {
+  return createDocumentRecordEntry({
+    id: row.id,
+    organizationId: row.organization_id ?? row.organizationId,
+    templateId: row.template_id ?? row.templateId,
+    templateTitle: row.template_title ?? row.templateTitle,
+    documentType: row.document_type ?? row.documentType,
+    companyId: row.company_id ?? row.companyId,
+    locationId: row.location_id ?? row.locationId,
+    inspectionDate: row.inspection_date ?? row.inspectionDate,
+    issuedDate: row.issued_date ?? row.issuedDate,
+    fieldValues: row.values_json ?? row.fieldValues,
+    fieldSheets: row.measurement_sheets_json ?? row.fieldSheets,
+    createdByUserId: row.created_by_user_id ?? row.createdByUserId,
+    createdByLabel: row.created_by_label ?? row.createdByLabel,
+    createdAt: row.created_at ?? row.createdAt,
+    updatedAt: row.updated_at ?? row.updatedAt,
+  });
+}
+
 function isDataUrlLike(value = "") {
   return dbString(value).startsWith("data:");
 }
@@ -1905,6 +2025,7 @@ export class InMemorySafetyRepository {
       vehicles: [],
       legalFrameworks: [],
       documentTemplates: [],
+      documentRecords: [],
       serviceCatalog: [],
       measurementEquipment: [],
       safetyAuthorizations: [],
@@ -2729,6 +2850,41 @@ export class InMemorySafetyRepository {
     return this.snapshot.documentTemplates.length !== before;
   }
 
+  async listDocumentRecords(filters = {}) {
+    const organizationId = dbString(filters.organizationId);
+    const templateId = dbString(filters.templateId);
+    const companyId = dbString(filters.companyId);
+    const locationId = dbString(filters.locationId);
+    const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+
+    return (this.snapshot.documentRecords ?? [])
+      .filter((item) => (
+        (!organizationId || String(item.organizationId) === organizationId)
+        && (!templateId || String(item.templateId) === templateId)
+        && (!companyId || String(item.companyId) === companyId)
+        && (!locationId || String(item.locationId) === locationId)
+      ))
+      .sort((left, right) => {
+        const leftSortValue = left.inspectionDate || left.issuedDate || left.createdAt || "";
+        const rightSortValue = right.inspectionDate || right.issuedDate || right.createdAt || "";
+        return String(rightSortValue).localeCompare(String(leftSortValue))
+          || String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
+      })
+      .slice(0, limit)
+      .map((item) => cloneDocumentRecord(item));
+  }
+
+  async createDocumentRecord(input, actor = null) {
+    const item = createDocumentRecordEntry(
+      input,
+      actor,
+      () => crypto.randomUUID(),
+      () => new Date().toISOString(),
+    );
+    this.snapshot.documentRecords = [item, ...(this.snapshot.documentRecords ?? [])];
+    return cloneDocumentRecord(item);
+  }
+
   async createDashboardWidget(input) {
     const widget = createDashboardWidget(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.dashboardWidgets = [...this.snapshot.dashboardWidgets, widget];
@@ -3062,6 +3218,27 @@ export class MySqlSafetyRepository {
         INDEX idx_web_document_templates_org_status (organization_id, status),
         INDEX idx_web_document_templates_company (sample_company_id),
         INDEX idx_web_document_templates_location (sample_location_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_document_records (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        template_id BIGINT NOT NULL,
+        template_title VARCHAR(180) NOT NULL,
+        document_type VARCHAR(120) NOT NULL DEFAULT 'Zapisnik',
+        company_id INT NULL,
+        location_id INT NULL,
+        inspection_date DATE NULL,
+        issued_date DATE NULL,
+        values_json LONGTEXT NULL,
+        measurement_sheets_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(180) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_document_records_scope (organization_id, template_id, company_id, location_id),
+        INDEX idx_web_document_records_dates (organization_id, inspection_date, issued_date, created_at)
       )
     `);
     await this.pool.query(`
@@ -5509,6 +5686,109 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listDocumentRecords(filters = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const organizationId = Number(filters.organizationId);
+      const templateId = Number(filters.templateId);
+      const companyId = Number(filters.companyId);
+      const locationId = Number(filters.locationId);
+      const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+
+      const conditions = [];
+      const params = [];
+
+      if (Number.isFinite(organizationId)) {
+        conditions.push("organization_id = ?");
+        params.push(organizationId);
+      }
+      if (Number.isFinite(templateId)) {
+        conditions.push("template_id = ?");
+        params.push(templateId);
+      }
+      if (Number.isFinite(companyId)) {
+        conditions.push("company_id = ?");
+        params.push(companyId);
+      }
+      if (Number.isFinite(locationId)) {
+        conditions.push("location_id = ?");
+        params.push(locationId);
+      }
+
+      const whereClause = conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, organization_id, template_id, template_title, document_type,
+                 company_id, location_id, inspection_date, issued_date,
+                 values_json, measurement_sheets_json,
+                 created_by_user_id, created_by_label, created_at, updated_at
+          FROM web_document_records
+          ${whereClause}
+          ORDER BY COALESCE(inspection_date, issued_date, DATE(created_at)) DESC, created_at DESC, id DESC
+          LIMIT ?
+        `,
+        [...params, limit],
+      );
+
+      return rows.map((row) => mapDocumentRecordRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createDocumentRecord(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const entry = createDocumentRecordEntry(input, actor);
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_document_records
+            (organization_id, template_id, template_title, document_type,
+             company_id, location_id, inspection_date, issued_date,
+             values_json, measurement_sheets_json,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(entry.organizationId),
+          Number(entry.templateId),
+          entry.templateTitle,
+          entry.documentType,
+          entry.companyId ? Number(entry.companyId) : null,
+          entry.locationId ? Number(entry.locationId) : null,
+          entry.inspectionDate || null,
+          entry.issuedDate || null,
+          JSON.stringify(entry.fieldValues ?? {}),
+          JSON.stringify(entry.fieldSheets ?? {}),
+          entry.createdByUserId ? Number(entry.createdByUserId) : null,
+          entry.createdByLabel,
+        ],
+      );
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, organization_id, template_id, template_title, document_type,
+                 company_id, location_id, inspection_date, issued_date,
+                 values_json, measurement_sheets_json,
+                 created_by_user_id, created_by_label, created_at, updated_at
+          FROM web_document_records
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(result.insertId)],
+      );
+
+      return rows[0] ? mapDocumentRecordRow(rows[0]) : entry;
     } finally {
       connection.release();
     }

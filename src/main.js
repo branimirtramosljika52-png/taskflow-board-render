@@ -614,6 +614,8 @@ const state = {
     activeWorkOrderId: "",
     sequenceEntries: [],
     sequenceIndex: -1,
+    previousRecordOptions: {},
+    savedRecordFingerprints: {},
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -12120,6 +12122,177 @@ function formatDocumentTemplateLookupResolvedValue(value) {
   return text;
 }
 
+function hasMeaningfulDocumentRecordValue(value) {
+  if (value === false || value === 0) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+
+  return String(value ?? "").trim() !== "";
+}
+
+function isDocumentTemplatePreviousDocumentLookupField(field = {}) {
+  return String(field?.source || "").trim().toUpperCase() === "DATABASE_LOOKUP"
+    && getDocumentTemplateLookupMode(field) === "PREVIOUS_DOCUMENT_LOCATION";
+}
+
+function getDocumentTemplateRuntimeTemplateId(template = buildDocumentTemplateDraft()) {
+  return String(template?.id || documentTemplateIdInput?.value || state.activeDocumentTemplateId || "").trim();
+}
+
+function getDocumentTemplatePreviousRecordOptionsCacheKey(templateId = "", workOrder = {}) {
+  const normalizedTemplateId = String(templateId || "").trim();
+  const companyId = String(workOrder?.companyId || "").trim();
+  const locationId = String(workOrder?.locationId || "").trim();
+
+  if (!normalizedTemplateId || !companyId || !locationId) {
+    return "";
+  }
+
+  return `${normalizedTemplateId}::${companyId}::${locationId}`;
+}
+
+function getDocumentTemplatePreviousRecordOptionsCacheEntry(templateId = "", workOrder = {}) {
+  const key = getDocumentTemplatePreviousRecordOptionsCacheKey(templateId, workOrder);
+  if (!key) {
+    return null;
+  }
+
+  return state.documentTemplateRuntime.previousRecordOptions?.[key] ?? null;
+}
+
+function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 0) {
+  const anchorDate = String(record.inspectionDate || record.issuedDate || record.createdAt || "").trim();
+  let normalizedDate = "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(anchorDate)) {
+    normalizedDate = anchorDate;
+  } else if (anchorDate) {
+    const parsedDate = new Date(anchorDate);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      normalizedDate = parsedDate.toISOString().slice(0, 10);
+    }
+  }
+  const dateLabel = normalizedDate ? formatCompactDate(normalizedDate) : "bez datuma";
+  return index === 0
+    ? `Stari zapisnik (najnoviji) · ${dateLabel}`
+    : `Stari zapisnik · ${dateLabel}`;
+}
+
+async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocumentTemplateDraft(), workOrder = {}) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  const cacheKey = getDocumentTemplatePreviousRecordOptionsCacheKey(templateId, workOrder);
+
+  if (!cacheKey) {
+    return;
+  }
+
+  const current = state.documentTemplateRuntime.previousRecordOptions?.[cacheKey];
+  if (current?.status === "loading" || current?.status === "loaded") {
+    return;
+  }
+
+  state.documentTemplateRuntime.previousRecordOptions = {
+    ...(state.documentTemplateRuntime.previousRecordOptions ?? {}),
+    [cacheKey]: {
+      status: "loading",
+      items: [],
+      error: "",
+    },
+  };
+
+  renderDocumentTemplateFieldRows();
+
+  try {
+    const payload = await apiRequest(
+      `/document-records?templateId=${encodeURIComponent(templateId)}&companyId=${encodeURIComponent(String(workOrder.companyId || "").trim())}&locationId=${encodeURIComponent(String(workOrder.locationId || "").trim())}&limit=12`,
+    );
+    state.documentTemplateRuntime.previousRecordOptions = {
+      ...(state.documentTemplateRuntime.previousRecordOptions ?? {}),
+      [cacheKey]: {
+        status: "loaded",
+        items: Array.isArray(payload?.items) ? payload.items : [],
+        error: "",
+      },
+    };
+  } catch (error) {
+    state.documentTemplateRuntime.previousRecordOptions = {
+      ...(state.documentTemplateRuntime.previousRecordOptions ?? {}),
+      [cacheKey]: {
+        status: "error",
+        items: [],
+        error: error.message || "Ne mogu ucitati stare zapisnike.",
+      },
+    };
+  }
+
+  if (isDocumentTemplateRuntimeFillMode()) {
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
+function getDocumentTemplatePreviousRecordCandidates(field = {}, workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  const cacheEntry = getDocumentTemplatePreviousRecordOptionsCacheEntry(templateId, workOrder);
+  const fieldKey = String(field?.key || "").trim();
+  const candidates = [];
+
+  if (fieldKey && Array.isArray(cacheEntry?.items)) {
+    cacheEntry.items.forEach((record, index) => {
+      const nextValue = record?.fieldValues?.[fieldKey];
+
+      if (!hasMeaningfulDocumentRecordValue(nextValue)) {
+        return;
+      }
+
+      candidates.push({
+        id: `record:${record.id}`,
+        label: buildDocumentTemplatePreviousRecordCandidateLabel(record, index),
+        meta: record.createdByLabel || "",
+        value: nextValue,
+      });
+    });
+  }
+
+  candidates.push({
+    id: "template",
+    label: "Template",
+    meta: hasMeaningfulDocumentRecordValue(field?.defaultValue)
+      ? "Zadana vrijednost iz predloska"
+      : "Ako nema starog zapisnika, ostaje vrijednost iz templatea",
+    value: field?.defaultValue ?? "",
+  });
+
+  return {
+    status: cacheEntry?.status || "idle",
+    error: cacheEntry?.error || "",
+    candidates,
+  };
+}
+
+function getDocumentTemplatePreviousDocumentFallbackValue(field = {}, workOrderId = "", template = buildDocumentTemplateDraft()) {
+  const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
+
+  if (!workOrder) {
+    return field.defaultValue ?? "";
+  }
+
+  const { candidates } = getDocumentTemplatePreviousRecordCandidates(field, workOrder, template);
+  if (candidates.length > 0) {
+    return candidates[0].value;
+  }
+
+  return field.defaultValue ?? "";
+}
+
 function getDocumentTemplateDefaultFieldSource(type = "text") {
   return isDocumentTemplateSpecialFieldType(type) ? "" : "CUSTOM_VALUE";
 }
@@ -14059,6 +14232,23 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return String(runtimeValue ?? "").trim();
   }
 
+  if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+    const fallbackValue = getDocumentTemplatePreviousDocumentFallbackValue(field, runtimeWorkOrderId, context.template);
+    if (hasMeaningfulDocumentRecordValue(fallbackValue)) {
+      if (field.type === "checkbox" || field.type === "toggle") {
+        return fallbackValue ? "Da" : "Ne";
+      }
+
+      if (field.type === "date") {
+        return String(fallbackValue || "").trim()
+          ? formatCompactDate(String(fallbackValue || "").trim())
+          : "";
+      }
+
+      return String(fallbackValue ?? "").trim();
+    }
+  }
+
   const boundValue = getDocumentTemplateSourcePreviewValue(field, context);
   if (boundValue) {
     return boundValue;
@@ -14821,11 +15011,19 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
   previewWindow.document.close();
 }
 
-function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
+async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   const template = buildDocumentTemplateDraft();
   const fileName = placeholderMode
     ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`
     : `${sanitizeDocumentTemplateFileName(template.title || "zapisnik")}.doc`;
+  if (!placeholderMode) {
+    try {
+      await persistActiveDocumentTemplateRuntimeRecord();
+    } catch (error) {
+      console.error("Ne mogu spremiti runtime zapisnik prije Word exporta.", error);
+      setDocumentTemplateMessage(error?.message || "Ne mogu spremiti vrijednosti zapisnika prije Word exporta.");
+    }
+  }
   const html = placeholderMode
     ? buildDocumentTemplatePlaceholderWordMarkup(template)
     : buildDocumentTemplatePreviewMarkup(template, {
@@ -17074,13 +17272,17 @@ function isDocumentTemplateRuntimeVisibleField(field = {}) {
   }
 
   const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
-  return source === "CUSTOM_VALUE";
+  return source === "CUSTOM_VALUE" || isDocumentTemplatePreviousDocumentLookupField(field);
 }
 
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
   if (runtimeValue !== undefined) {
     return runtimeValue;
+  }
+
+  if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+    return getDocumentTemplatePreviousDocumentFallbackValue(field, workOrderId);
   }
 
   if (field.type === "checkbox" || field.type === "toggle") {
@@ -17219,6 +17421,134 @@ function renderDocumentTemplateRuntimeFieldRows() {
       helper.textContent = field.helpText;
       wrapper.append(helper);
     }
+    return wrapper;
+  };
+
+  const createPreviousDocumentLookupFieldControl = (field, workOrder) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
+
+    const title = document.createElement("span");
+    title.textContent = createFieldTitle(field, 0);
+    wrapper.append(title);
+
+    void ensureDocumentTemplatePreviousRecordOptions(template, workOrder);
+
+    let control = null;
+    const applyRuntimeValue = (nextValue) => {
+      const resolvedValue = field.type === "checkbox" || field.type === "toggle"
+        ? Boolean(nextValue)
+        : field.type === "date"
+          ? String(nextValue ?? "").trim()
+          : String(nextValue ?? "");
+
+      if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+        if (field.type === "checkbox" || field.type === "toggle") {
+          control.checked = Boolean(resolvedValue);
+        } else {
+          control.value = String(resolvedValue ?? "");
+        }
+      }
+
+      setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, resolvedValue, { render: false });
+      renderDocumentTemplatePreviewContent();
+    };
+
+    const picker = document.createElement("div");
+    picker.className = "document-template-runtime-source-picker";
+    const pickerLabel = document.createElement("small");
+    pickerLabel.className = "document-template-runtime-source-label";
+    pickerLabel.textContent = "Varijante iz starog zapisnika";
+    const optionList = document.createElement("div");
+    optionList.className = "document-template-runtime-source-options";
+
+    const suggestionState = getDocumentTemplatePreviousRecordCandidates(field, workOrder, template);
+    if (suggestionState.status === "loading" && suggestionState.candidates.length === 0) {
+      const loading = document.createElement("span");
+      loading.className = "document-template-runtime-source-empty";
+      loading.textContent = "Ucitavam stare zapisnike...";
+      optionList.append(loading);
+    } else if (suggestionState.candidates.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "document-template-runtime-source-empty";
+      empty.textContent = suggestionState.error || "Nema ranijih zapisnika za ovu tvrtku i lokaciju. Ostaje vrijednost iz templatea.";
+      optionList.append(empty);
+    } else {
+      suggestionState.candidates.forEach((candidate, candidateIndex) => {
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "document-template-runtime-source-option";
+        optionButton.title = formatDocumentTemplateLookupResolvedValue(candidate.value);
+        if (candidateIndex === 0 && String(candidate.id || "").startsWith("record:")) {
+          optionButton.classList.add("is-primary");
+        }
+
+        const label = document.createElement("strong");
+        label.textContent = candidate.label;
+        const meta = document.createElement("span");
+        meta.textContent = candidate.meta || formatDocumentTemplateLookupResolvedValue(candidate.value);
+
+        optionButton.append(label, meta);
+        optionButton.addEventListener("click", () => {
+          applyRuntimeValue(candidate.value);
+        });
+        optionList.append(optionButton);
+      });
+    }
+
+    picker.append(pickerLabel, optionList);
+    wrapper.append(picker);
+
+    if (field.type === "longtext") {
+      control = document.createElement("textarea");
+      control.rows = 4;
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    } else if (field.type === "date") {
+      control = document.createElement("input");
+      control.type = "date";
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    } else if (field.type === "checkbox" || field.type === "toggle") {
+      const toggleWrap = document.createElement("label");
+      toggleWrap.className = "document-template-runtime-checkbox";
+      control = document.createElement("input");
+      control.type = "checkbox";
+      control.checked = Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrder.id));
+      control.addEventListener("change", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, Boolean(event.currentTarget.checked), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+      const copy = document.createElement("span");
+      copy.textContent = field.type === "toggle" ? "Oznaceno" : "Potvrdeno";
+      toggleWrap.append(control, copy);
+      wrapper.append(toggleWrap);
+      return wrapper;
+    } else {
+      control = document.createElement("input");
+      control.type = "text";
+      if (field.type === "number") {
+        control.inputMode = "decimal";
+      }
+      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrder.id) ?? "");
+      control.addEventListener("input", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+    }
+
+    wrapper.append(control);
+
+    const helper = document.createElement("small");
+    helper.className = "document-template-runtime-field-help";
+    helper.textContent = "Najprije nudi najnoviji stari zapisnik, zatim starije varijante, pa template fallback.";
+    wrapper.append(helper);
     return wrapper;
   };
 
@@ -17389,6 +17719,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.className = "field field-span-full";
       fieldShell.append(createMeasurementFieldControl(field, activeWorkOrder));
       grid.append(fieldShell);
+    } else if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+      grid.append(createPreviousDocumentLookupFieldControl(field, activeWorkOrder));
     } else if (field.type === "qualified_inspectors") {
       grid.append(createInspectorsFieldControl(field, activeWorkOrder));
     } else if (field.type === "legal_list") {
@@ -29699,6 +30031,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     activeWorkOrderId: "",
     sequenceEntries: [],
     sequenceIndex: -1,
+    previousRecordOptions: {},
+    savedRecordFingerprints: {},
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -29845,6 +30179,8 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     source: ids.length > 0 ? "wizard" : "",
     workOrderIds: ids,
     activeWorkOrderId: ids[0] || "",
+    previousRecordOptions: {},
+    savedRecordFingerprints: {},
     common: {
       inspectionDate: String(state.workOrderDocumentWizard.common?.inspectionDate ?? "").trim(),
       issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
@@ -29888,6 +30224,176 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
         .map(([workOrderId, record]) => [String(workOrderId), normalizeDocumentTemplateRuntimeOverrideRecord(record)]),
     ),
   };
+}
+
+function isDocumentTemplateRuntimePersistedField(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+
+  if (!field || type === "chapter") {
+    return false;
+  }
+
+  if (type === "measurement_table") {
+    return true;
+  }
+
+  if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+    return true;
+  }
+
+  const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
+  return source === "CUSTOM_VALUE";
+}
+
+function getDocumentTemplateRuntimePersistedFieldValue(field = {}, workOrderId = "", template = buildDocumentTemplateDraft()) {
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  if (runtimeValue !== undefined) {
+    return runtimeValue;
+  }
+
+  if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+    return getDocumentTemplatePreviousDocumentFallbackValue(field, workOrderId, template);
+  }
+
+  return getDocumentTemplateRuntimeInitialValue(field, workOrderId);
+}
+
+function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocumentTemplateDraft(), workOrder = getDocumentTemplateRuntimeActiveWorkOrder()) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+
+  if (!templateId || !workOrder?.companyId || !workOrder?.locationId) {
+    return null;
+  }
+
+  const fieldValues = {};
+  const fieldSheets = {};
+
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
+    if (!isDocumentTemplateRuntimePersistedField(field)) {
+      return;
+    }
+
+    const fieldKey = String(field?.key || field?.id || "").trim();
+    if (!fieldKey) {
+      return;
+    }
+
+    if (String(field.type || "").trim().toLowerCase() === "measurement_table") {
+      const sheet = getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field);
+      if (sheet) {
+        fieldSheets[fieldKey] = sheet;
+      }
+      return;
+    }
+
+    const value = getDocumentTemplateRuntimePersistedFieldValue(field, workOrder.id, template);
+    if (hasMeaningfulDocumentRecordValue(value)) {
+      fieldValues[fieldKey] = value;
+    }
+  });
+
+  return {
+    templateId,
+    templateTitle: String(template?.title || getDocumentTemplateTypeLabel(template?.documentType) || "Zapisnik").trim(),
+    documentType: String(template?.documentType || "Zapisnik").trim(),
+    companyId: String(workOrder.companyId || "").trim(),
+    locationId: String(workOrder.locationId || "").trim(),
+    inspectionDate: getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate"),
+    issuedDate: getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate"),
+    fieldValues,
+    fieldSheets,
+  };
+}
+
+function buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload = null) {
+  if (!payload) {
+    return "";
+  }
+
+  return JSON.stringify({
+    templateId: payload.templateId,
+    companyId: payload.companyId,
+    locationId: payload.locationId,
+    inspectionDate: payload.inspectionDate,
+    issuedDate: payload.issuedDate,
+    fieldValues: payload.fieldValues ?? {},
+    fieldSheets: payload.fieldSheets ?? {},
+  });
+}
+
+function upsertDocumentTemplatePreviousRecordCache(record = null) {
+  const normalizedRecord = record && typeof record === "object" ? record : null;
+  if (!normalizedRecord) {
+    return;
+  }
+
+  const cacheKey = getDocumentTemplatePreviousRecordOptionsCacheKey(
+    normalizedRecord.templateId,
+    {
+      companyId: normalizedRecord.companyId,
+      locationId: normalizedRecord.locationId,
+    },
+  );
+
+  if (!cacheKey) {
+    return;
+  }
+
+  const current = state.documentTemplateRuntime.previousRecordOptions?.[cacheKey];
+  const nextItems = [
+    normalizedRecord,
+    ...((Array.isArray(current?.items) ? current.items : [])
+      .filter((item) => String(item?.id || "") !== String(normalizedRecord.id || ""))),
+  ];
+
+  state.documentTemplateRuntime.previousRecordOptions = {
+    ...(state.documentTemplateRuntime.previousRecordOptions ?? {}),
+    [cacheKey]: {
+      status: "loaded",
+      items: nextItems,
+      error: "",
+    },
+  };
+}
+
+async function persistActiveDocumentTemplateRuntimeRecord() {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    return null;
+  }
+
+  const template = buildDocumentTemplateDraft();
+  const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  const payload = buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder);
+
+  if (!payload) {
+    return null;
+  }
+
+  const fingerprint = buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload);
+  const runtimeKey = `${String(payload.templateId || "").trim()}::${String(workOrder?.id || "").trim()}`;
+  if (
+    fingerprint
+    && state.documentTemplateRuntime.savedRecordFingerprints?.[runtimeKey]
+    && state.documentTemplateRuntime.savedRecordFingerprints[runtimeKey] === fingerprint
+  ) {
+    return null;
+  }
+
+  const response = await apiRequest("/document-records", {
+    method: "POST",
+    body: payload,
+  });
+  const item = response?.item ?? null;
+
+  if (item) {
+    upsertDocumentTemplatePreviousRecordCache(item);
+    state.documentTemplateRuntime.savedRecordFingerprints = {
+      ...(state.documentTemplateRuntime.savedRecordFingerprints ?? {}),
+      [runtimeKey]: fingerprint,
+    };
+  }
+
+  return item;
 }
 
 function getWorkOrderServiceTemplateIds(service = {}) {
@@ -33791,11 +34297,11 @@ documentTemplateOpenPdfPreviewButton?.addEventListener("click", () => {
 });
 
 documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
-  exportDocumentTemplateWord({ placeholderMode: true });
+  void exportDocumentTemplateWord({ placeholderMode: true });
 });
 
 documentTemplateExportPreviewButton?.addEventListener("click", () => {
-  exportDocumentTemplateWord({ placeholderMode: false });
+  void exportDocumentTemplateWord({ placeholderMode: false });
 });
 
 documentTemplateForm?.addEventListener("focusin", (event) => {
