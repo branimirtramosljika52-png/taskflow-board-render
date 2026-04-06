@@ -11956,23 +11956,15 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
   },
 };
 
-const DOCUMENT_TEMPLATE_LOOKUP_VALUE_SOURCE_OPTIONS = [
-  { value: "WORK_ORDER_NUMBER", label: "Aktivni RN - broj" },
-  { value: "WORK_ORDER_ID", label: "Aktivni RN - ID" },
-  { value: "COMPANY_ID", label: "Tvrtka - ID" },
-  { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
-  { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
-  { value: "LOCATION_ID", label: "Lokacija - ID" },
-  { value: "LOCATION_NAME", label: "Lokacija - naziv" },
-  { value: "LOCATION_REGION", label: "Lokacija - regija" },
-  { value: "CUSTOM_VALUE", label: "Rucni lookup" },
+const DOCUMENT_TEMPLATE_LOOKUP_MODE_OPTIONS = [
+  { value: "WORK_ORDER_NUMBER", label: "Po broju radnog naloga" },
+  { value: "PREVIOUS_DOCUMENT_LOCATION", label: "Po starom zapisniku (ista tvrtka + ista lokacija)" },
+  { value: "CUSTOM_VALUE", label: "Rucno" },
 ];
 
 const DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS = [
   { value: "NONE", label: "Bez ranijeg zapisnika" },
-  { value: "SAME_TEMPLATE_LOCATION", label: "Zadnji isti template + ista lokacija" },
-  { value: "SAME_TEMPLATE_COMPANY", label: "Zadnji isti template + ista tvrtka" },
-  { value: "SAME_TEMPLATE_WORK_ORDER", label: "Zadnji isti template + isti RN" },
+  { value: "SAME_TEMPLATE_LOCATION", label: "Po starom zapisniku (ista tvrtka + ista lokacija)" },
 ];
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
@@ -12009,6 +12001,33 @@ function getDocumentTemplateDatabaseTableLabel(value) {
 
 function getDocumentTemplatePreviousDocumentLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS, String(value || "").trim().toUpperCase() || "NONE");
+}
+
+function getDocumentTemplateLookupMode(field = {}) {
+  if (String(field?.previousDocumentMode || "").trim().toUpperCase() === "SAME_TEMPLATE_LOCATION") {
+    return "PREVIOUS_DOCUMENT_LOCATION";
+  }
+  if (String(field?.lookupValueSource || "").trim().toUpperCase() === "CUSTOM_VALUE") {
+    return "CUSTOM_VALUE";
+  }
+  return "WORK_ORDER_NUMBER";
+}
+
+function setDocumentTemplateLookupMode(field = {}, mode = "WORK_ORDER_NUMBER") {
+  const safeMode = String(mode || "WORK_ORDER_NUMBER").trim().toUpperCase();
+  if (safeMode === "PREVIOUS_DOCUMENT_LOCATION") {
+    field.previousDocumentMode = "SAME_TEMPLATE_LOCATION";
+    field.lookupValueSource = "WORK_ORDER_NUMBER";
+    return field;
+  }
+  if (safeMode === "CUSTOM_VALUE") {
+    field.previousDocumentMode = "NONE";
+    field.lookupValueSource = "CUSTOM_VALUE";
+    return field;
+  }
+  field.previousDocumentMode = "NONE";
+  field.lookupValueSource = "WORK_ORDER_NUMBER";
+  return field;
 }
 
 function getDocumentTemplateDatabaseTableDefinition(table = "") {
@@ -13932,6 +13951,9 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
 
 function getDocumentTemplateAdvancedLookupPreviewValue(field = {}, context = {}) {
   if (String(field?.source || "").trim().toUpperCase() !== "DATABASE_LOOKUP") {
+    return "";
+  }
+  if (getDocumentTemplateLookupMode(field) === "PREVIOUS_DOCUMENT_LOCATION") {
     return "";
   }
 
@@ -17731,8 +17753,33 @@ function renderDocumentTemplateFieldRows() {
     const sourceConfigGrid = document.createElement("div");
     sourceConfigGrid.className = "form-grid document-template-inline-grid document-template-source-config-grid";
     const isDatabaseLookup = String(field.source || "").trim().toUpperCase() === "DATABASE_LOOKUP";
+    const lookupMode = getDocumentTemplateLookupMode(field);
 
     if (isDatabaseLookup) {
+      const lookupModeField = document.createElement("label");
+      lookupModeField.className = "field field-span-full";
+      const lookupModeSpan = document.createElement("span");
+      lookupModeSpan.textContent = "Trazenje";
+      const lookupModeSelect = document.createElement("select");
+      lookupModeSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        lookupModeSelect,
+        DOCUMENT_TEMPLATE_LOOKUP_MODE_OPTIONS,
+        lookupMode,
+      );
+      lookupModeSelect.addEventListener("change", () => {
+        const draft = documentTemplateFieldDrafts[draftIndex];
+        setDocumentTemplateLookupMode(draft, lookupModeSelect.value || "WORK_ORDER_NUMBER");
+        ensureDocumentTemplateDatabaseLookupDraft(draft);
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePlaceholderPalette();
+        renderDocumentTemplateLinkSummary();
+        renderDocumentTemplatePreviewContent();
+      });
+      lookupModeField.append(lookupModeSpan, lookupModeSelect);
+      sourceConfigGrid.append(lookupModeField);
+
+      if (lookupMode !== "PREVIOUS_DOCUMENT_LOCATION") {
       const tableField = document.createElement("label");
       tableField.className = "field";
       const tableSpan = document.createElement("span");
@@ -17775,24 +17822,6 @@ function renderDocumentTemplateFieldRows() {
       });
       lookupColumnField.append(lookupColumnSpan, lookupColumnSelect);
 
-      const lookupValueField = document.createElement("label");
-      lookupValueField.className = "field";
-      const lookupValueSpan = document.createElement("span");
-      lookupValueSpan.textContent = "Vrijednost za trazenje";
-      const lookupValueSourceSelect = document.createElement("select");
-      lookupValueSourceSelect.className = "document-template-source-select";
-      replaceSelectOptions(
-        lookupValueSourceSelect,
-        DOCUMENT_TEMPLATE_LOOKUP_VALUE_SOURCE_OPTIONS,
-        field.lookupValueSource || "WORK_ORDER_NUMBER",
-      );
-      lookupValueSourceSelect.addEventListener("change", () => {
-        documentTemplateFieldDrafts[draftIndex].lookupValueSource = lookupValueSourceSelect.value || "WORK_ORDER_NUMBER";
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
-      });
-      lookupValueField.append(lookupValueSpan, lookupValueSourceSelect);
-
       const valueColumnField = document.createElement("label");
       valueColumnField.className = "field";
       const valueColumnSpan = document.createElement("span");
@@ -17810,9 +17839,9 @@ function renderDocumentTemplateFieldRows() {
       });
       valueColumnField.append(valueColumnSpan, valueColumnSelect);
 
-      sourceConfigGrid.append(tableField, lookupColumnField, lookupValueField, valueColumnField);
+      sourceConfigGrid.append(tableField, lookupColumnField, valueColumnField);
 
-      if (String(field.lookupValueSource || "").trim().toUpperCase() === "CUSTOM_VALUE") {
+      if (lookupMode === "CUSTOM_VALUE") {
         const lookupCustomValueField = document.createElement("label");
         lookupCustomValueField.className = "field field-span-full";
         const lookupCustomValueSpan = document.createElement("span");
@@ -17828,42 +17857,22 @@ function renderDocumentTemplateFieldRows() {
         lookupCustomValueField.append(lookupCustomValueSpan, lookupCustomValueInput);
         sourceConfigGrid.append(lookupCustomValueField);
       }
+      }
     }
-
-    const previousDocumentField = document.createElement("label");
-    previousDocumentField.className = "field field-span-full";
-    const previousDocumentSpan = document.createElement("span");
-    previousDocumentSpan.textContent = "Raniji zapisnik";
-    const previousDocumentSelect = document.createElement("select");
-    previousDocumentSelect.className = "document-template-source-select";
-    replaceSelectOptions(
-      previousDocumentSelect,
-      DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS,
-      field.previousDocumentMode || "NONE",
-    );
-    previousDocumentSelect.addEventListener("change", () => {
-      documentTemplateFieldDrafts[draftIndex].previousDocumentMode = previousDocumentSelect.value || "NONE";
-      renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplateLinkSummary();
-      renderDocumentTemplatePreviewContent();
-    });
-    previousDocumentField.append(previousDocumentSpan, previousDocumentSelect);
-    sourceConfigGrid.append(previousDocumentField);
 
     const sourceConfigHint = document.createElement("small");
     sourceConfigHint.className = "document-template-source-config-hint";
-    if (isDatabaseLookup) {
+    if (isDatabaseLookup && lookupMode === "PREVIOUS_DOCUMENT_LOCATION") {
+      sourceConfigHint.textContent = "Uzet ce zadnji zapisnik za istu tvrtku i istu lokaciju. Ako ga nema, ostaje vrijednost iz templatea.";
+    } else if (isDatabaseLookup) {
       const tableLabel = field.sourceTable || "radni_nalozi";
       const lookupLabel = field.lookupColumn || "broj_rn";
       const valueLabel = field.valueColumn || "ime_tvrtke";
-      sourceConfigHint.textContent = field.previousDocumentMode && field.previousDocumentMode !== "NONE"
-        ? `Prvo citaj ${tableLabel}.${valueLabel} preko ${tableLabel}.${lookupLabel}, a ako postoji stariji zapisnik koristi zadnji spremljeni unos za isti placeholder.`
-        : `Trazi podatak u tablici ${tableLabel} preko kolone ${lookupLabel} i vraca vrijednost iz kolone ${valueLabel}.`;
-    } else if (field.previousDocumentMode && field.previousDocumentMode !== "NONE") {
-      sourceConfigHint.textContent = "Ako postoji stariji zapisnik po ovom pravilu, uzet ce se isti placeholder iz ranijeg zapisa. Ako ga nema, ostaje vrijednost iz templatea ili baze.";
+      sourceConfigHint.textContent = lookupMode === "CUSTOM_VALUE"
+        ? `Trazi podatak u tablici ${tableLabel} preko kolone ${lookupLabel} i rucno upisane lookup vrijednosti, pa vraca ${valueLabel}.`
+        : `Trazi podatak u tablici ${tableLabel} preko kolone ${lookupLabel} za aktivni broj radnog naloga i vraca ${valueLabel}.`;
     } else {
-      sourceConfigHint.textContent = "Po zelji dodaj pravilo za raniji zapisnik. Ako ga nema, ostaje vrijednost iz templatea.";
+      sourceConfigHint.textContent = "Ostavi na rucni unos ili ukljuci lookup iz baze ako zelis povuci podatak automatski.";
     }
 
     sourceConfigField.append(sourceConfigGrid, sourceConfigHint);
