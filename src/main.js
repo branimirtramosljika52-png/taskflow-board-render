@@ -13210,7 +13210,20 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     );
   }
 
-  if (safeTool === "signature" || safeTool === "digital_signature") {
+  if (safeTool === "signature") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Ispitivači",
+        wordLabel: "Ispitivači panik rasvjete",
+        type: "qualified_inspectors",
+        signatureArea: "elektro",
+        helpText: "Povlači odabrane ispitivače za traženu uslugu i odmah rezervira njihova mjesta potpisa.",
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "digital_signature") {
     return createEmptyDocumentTemplateFieldDraft(
       {
         label: "Potpis",
@@ -13233,7 +13246,7 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         wordLabel: "Ispitivači panik rasvjete",
         type: "qualified_inspectors",
         signatureArea: "elektro",
-        helpText: "Povlači sve odabrane ispitivače za traženi dio i slaže ih u blok s potpisima.",
+        helpText: "Povlači odabrane ispitivače za traženu uslugu i odmah slaže njihove potpise u isti blok.",
       },
       baseIndex,
     );
@@ -20206,7 +20219,7 @@ function renderDocumentTemplateFieldRows() {
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
     } else if (field.type === "qualified_inspectors") {
-      specialInfoSpan.textContent = "Dio";
+      specialInfoSpan.textContent = "Usluga / dio potpisa";
       const signatureAreaSelect = document.createElement("select");
       signatureAreaSelect.className = "document-template-source-select";
       replaceSelectOptions(
@@ -20322,7 +20335,7 @@ function renderDocumentTemplateFieldRows() {
       };
 
       const areaField = createDigitalSelectField(
-        "Dio",
+        "Usluga / dio potpisa",
         DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
         field.signatureArea || "elektro",
         (nextValue) => {
@@ -20339,37 +20352,16 @@ function renderDocumentTemplateFieldRows() {
         },
       );
 
-      const optionsField = document.createElement("label");
-      optionsField.className = "field document-template-inline-special-field";
-      const optionsLabel = document.createElement("span");
-      optionsLabel.textContent = "Opcije";
-      const optionsWrap = document.createElement("div");
-      optionsWrap.className = "document-template-inline-special-value document-template-digital-signature-options";
-
-      const multipleToggle = document.createElement("label");
-      multipleToggle.className = "document-template-inline-toggle";
-      const multipleCheckbox = document.createElement("input");
-      multipleCheckbox.type = "checkbox";
-      multipleCheckbox.checked = field.signatureMultiple !== false;
-      multipleCheckbox.addEventListener("change", () => {
-        documentTemplateFieldDrafts[draftIndex].signatureMultiple = multipleCheckbox.checked;
-        renderDocumentTemplatePreviewContent();
-      });
-      const multipleCopy = document.createElement("span");
-      multipleCopy.textContent = "Više potpisnika";
-      multipleToggle.append(multipleCheckbox, multipleCopy);
-
-      optionsWrap.append(multipleToggle);
-      optionsField.append(optionsLabel, optionsWrap);
+      documentTemplateFieldDrafts[draftIndex].signatureMultiple = true;
 
       const hintField = document.createElement("div");
       hintField.className = "field field-span-full";
       const hint = document.createElement("small");
       hint.className = "document-template-source-config-hint";
-      hint.textContent = "Ovaj blok rezervira mjesto za potpis odabranih osoba. U izradi zapisnika biraš koristiš li scan potpisa ili digitalni potpis.";
+      hint.textContent = "Legacy potpisni blok. Za novi raspored koristi Ispitivače, gdje se potpisi automatski slažu po odabranoj usluzi. U izradi zapisnika biraš koristiš li scan potpisa ili digitalni potpis.";
       hintField.append(hint);
 
-      grid.append(areaField, roleField, optionsField, hintField);
+      grid.append(areaField, roleField, hintField);
     } else {
       specialInfoField.hidden = true;
     }
