@@ -15320,6 +15320,13 @@ body.is-vehicle-reservation-open {
   padding: 0;
 }
 
+.document-template-editor-panel.is-modal-open.is-fill-mode {
+  top: 10px;
+  width: min(1480px, calc(100vw - 20px));
+  height: min(96vh, calc(100vh - 20px));
+  border-radius: 30px;
+}
+
 .legal-framework-editor-body,
 .service-catalog-editor-body,
 .measurement-equipment-editor-body,
@@ -15346,6 +15353,10 @@ body.is-vehicle-reservation-open {
 .document-template-editor-panel.is-workspace-open .document-template-editor-body {
   padding: 0;
   overflow: auto;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-editor-body {
+  padding: 0 20px 18px;
 }
 
 body.is-document-template-editor-open {
@@ -16147,15 +16158,34 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main {
-  gap: 12px;
+  gap: 14px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-block {
-  padding: 16px;
+  padding: 18px;
+  border-radius: 28px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-context {
   margin-top: 0;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-workspace-head {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  margin: 0 -20px;
+  padding: 16px 20px 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 255, 0.98), rgba(255, 246, 252, 0.96));
+  border-bottom: 1px solid rgba(220, 156, 212, 0.24);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-custom-fields {
+  display: grid;
+  gap: 16px;
 }
 
 .document-template-runtime-shell {
@@ -16204,6 +16234,215 @@ body.is-document-template-editor-open {
 .document-template-runtime-block-body {
   display: grid;
   gap: 10px;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .field-span-full,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .document-template-runtime-readonly-card,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .document-template-runtime-legal-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .document-template-runtime-media-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .document-template-runtime-measurement-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block-body > .document-template-runtime-digital-signature-card {
+  grid-column: 1 / -1;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block .field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-readonly-card,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-legal-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-media-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-measurement-field,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-digital-signature-card {
+  padding: 14px 16px;
+  border: 1px solid rgba(220, 156, 212, 0.3);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(255, 247, 252, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 12px 24px rgba(108, 83, 153, 0.05);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block .field > span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #766487;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block input:not([type="checkbox"]):not([type="radio"]),
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block select,
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block textarea {
+  min-height: 48px;
+  border-radius: 16px;
+  border: 1px solid rgba(214, 89, 173, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-block textarea {
+  min-height: 132px;
+  resize: vertical;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-source-picker {
+  border-radius: 20px;
+}
+
+.document-template-runtime-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 9;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(231, 88, 201, 0.22);
+  border-radius: 24px;
+  background: rgba(15, 13, 26, 0.92);
+  box-shadow: 0 22px 44px rgba(14, 11, 26, 0.3);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.document-template-runtime-dock-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.document-template-runtime-dock-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.document-template-runtime-dock-summary strong {
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.document-template-runtime-dock-summary span:last-child {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.document-template-runtime-dock-track {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+}
+
+.document-template-runtime-dock-track::-webkit-scrollbar {
+  height: 8px;
+}
+
+.document-template-runtime-dock-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+}
+
+.document-template-runtime-dock-item {
+  min-width: 196px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.document-template-runtime-dock-item:hover,
+.document-template-runtime-dock-item:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: rgba(240, 79, 151, 0.42);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 28px rgba(113, 67, 196, 0.24);
+}
+
+.document-template-runtime-dock-item.is-active {
+  border-color: rgba(240, 79, 151, 0.44);
+  background: linear-gradient(135deg, rgba(240, 79, 151, 0.9), rgba(123, 92, 255, 0.92));
+  box-shadow: 0 16px 32px rgba(113, 67, 196, 0.32);
+}
+
+.document-template-runtime-dock-item.is-complete {
+  border-color: rgba(123, 92, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.document-template-runtime-dock-step {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.document-template-runtime-dock-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.document-template-runtime-dock-copy strong {
+  color: #ffffff;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.document-template-runtime-dock-copy span {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 960px) {
+  .document-template-editor-panel.is-modal-open.is-fill-mode {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    top: 8px;
+  }
+
+  .document-template-editor-panel.is-fill-mode .document-template-runtime-block-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-dock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-dock-item {
+    min-width: 170px;
+  }
 }
 
 .document-template-runtime-block-toggle {

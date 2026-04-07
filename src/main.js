@@ -1253,6 +1253,10 @@ const documentTemplateRuntimeNextButton = document.querySelector("#document-temp
 const documentTemplateRuntimeSendSignatureButton = document.querySelector("#document-template-runtime-send-signature");
 const documentTemplateRuntimePrintAllButton = document.querySelector("#document-template-runtime-print-all");
 const documentTemplateRuntimeSequenceProgress = document.querySelector("#document-template-runtime-sequence-progress");
+const documentTemplateRuntimeDock = document.querySelector("#document-template-runtime-dock");
+const documentTemplateRuntimeDockTitle = document.querySelector("#document-template-runtime-dock-title");
+const documentTemplateRuntimeDockMeta = document.querySelector("#document-template-runtime-dock-meta");
+const documentTemplateRuntimeDockTrack = document.querySelector("#document-template-runtime-dock-track");
 const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
 const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
@@ -18047,9 +18051,87 @@ function renderDocumentTemplateRuntimeContext() {
       : "";
   }
 
+  const renderRuntimeDock = () => {
+    if (!documentTemplateRuntimeDock || !documentTemplateRuntimeDockTrack || !documentTemplateRuntimeDockTitle || !documentTemplateRuntimeDockMeta) {
+      return;
+    }
+
+    if (!fillMode || !activeWorkOrder) {
+      documentTemplateRuntimeDock.hidden = true;
+      documentTemplateRuntimeDockTrack.replaceChildren();
+      documentTemplateRuntimeDockTitle.textContent = "Aktivni zapisnik";
+      documentTemplateRuntimeDockMeta.textContent = "RN i zapisnik u tijeku";
+      return;
+    }
+
+    const dockEntries = hasSequence
+      ? sequenceState.entries
+      : [{
+        templateId: template.id || "",
+        templateTitle: template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik",
+        workOrderId: activeWorkOrder.id,
+        workOrderNumber: activeWorkOrder.workOrderNumber || "bez broja",
+      }];
+
+    const activeIndex = hasSequence ? sequenceState.index : 0;
+    const activeEntry = dockEntries[activeIndex] || dockEntries[0];
+    documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
+    documentTemplateRuntimeDockTitle.textContent = `${activeEntry?.templateTitle || "Zapisnik"} · RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"}`;
+    documentTemplateRuntimeDockMeta.textContent = dockEntries.length > 1
+      ? `${activeIndex + 1}. zapisnik od ${dockEntries.length} u nizu`
+      : `${activeWorkOrder.companyName || "Aktivni radni nalog"} · ${activeWorkOrder.locationName || "Bez lokacije"}`;
+
+    documentTemplateRuntimeDockTrack.replaceChildren(...dockEntries.map((entry, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "document-template-runtime-dock-item";
+      if (index === activeIndex) {
+        button.classList.add("is-active");
+      } else if (index < activeIndex) {
+        button.classList.add("is-complete");
+      }
+      button.setAttribute(
+        "aria-label",
+        `${index + 1}. ${entry.templateTitle || "Zapisnik"} za RN ${entry.workOrderNumber || "bez broja"}`,
+      );
+
+      const step = document.createElement("span");
+      step.className = "document-template-runtime-dock-step";
+      step.textContent = String(index + 1);
+
+      const copy = document.createElement("span");
+      copy.className = "document-template-runtime-dock-copy";
+
+      const entryTitle = document.createElement("strong");
+      entryTitle.textContent = entry.templateTitle || "Zapisnik";
+
+      const entryMeta = document.createElement("span");
+      entryMeta.textContent = `RN ${entry.workOrderNumber || "bez broja"}`;
+
+      copy.append(entryTitle, entryMeta);
+      button.append(step, copy);
+
+      button.addEventListener("click", () => {
+        if (hasSequence) {
+          if (index !== activeIndex) {
+            openDocumentTemplateRuntimeSequenceIndex(index);
+          }
+          return;
+        }
+
+        if (String(entry.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
+          setDocumentTemplateRuntimeActiveWorkOrder(entry.workOrderId, { render: true });
+        }
+      });
+
+      return button;
+    }));
+  };
+
   if (!hasContext) {
     documentTemplateRuntimeWorkOrders.replaceChildren();
     documentTemplateRuntimeCommon.replaceChildren();
+    renderRuntimeDock();
     return;
   }
 
@@ -18240,6 +18322,7 @@ function renderDocumentTemplateRuntimeContext() {
   }
 
   documentTemplateRuntimeCommon.replaceChildren(...runtimeCommonNodes);
+  renderRuntimeDock();
 }
 
 function syncDocumentTemplateEditorChrome() {
