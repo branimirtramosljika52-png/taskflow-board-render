@@ -18345,9 +18345,9 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
     if (sequenceState?.isSummary) {
       documentTemplateRuntimeDockTitle.textContent = "Summary";
-      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"}`;
+      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"} spremno za završetak`;
     } else {
-      documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"} · ${getDocumentTemplateRuntimeTimelineLabel(activeEntry)}`;
+      documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"}`;
       documentTemplateRuntimeDockMeta.textContent = [
         activeWorkOrder.companyName || "Aktivni radni nalog",
         activeWorkOrder.locationName || "Bez lokacije",
@@ -18368,7 +18368,11 @@ function renderDocumentTemplateRuntimeContext() {
       groupTitle.textContent = `RN ${group.workOrderNumber}`;
 
       const groupMeta = document.createElement("span");
-      groupMeta.textContent = group.items.map((entry) => entry.timelineLabel).join(" · ");
+      const firstItem = group.items[0] || {};
+      groupMeta.textContent = [
+        firstItem.companyName || "",
+        firstItem.locationName || "",
+      ].filter(Boolean).join(" · ") || `${group.items.length} ${group.items.length === 1 ? "zapisnik" : "zapisnika"}`;
 
       groupHead.append(groupTitle, groupMeta);
 
@@ -18418,7 +18422,7 @@ function renderDocumentTemplateRuntimeContext() {
       const summaryTitle = document.createElement("strong");
       summaryTitle.textContent = "Summary";
       const summaryMeta = document.createElement("span");
-      summaryMeta.textContent = "Preuzimanje, potpisi i završetak";
+      summaryMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · završetak`;
       summaryHead.append(summaryTitle, summaryMeta);
 
       const summaryItems = document.createElement("div");
@@ -19964,7 +19968,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
       entryTitle.textContent = `RN ${group.workOrderNumber}`;
       const firstItem = group.items[0] || {};
       const entryMeta = document.createElement("span");
-      entryMeta.textContent = [firstItem.companyName || "", firstItem.locationName || ""].filter(Boolean).join(" · ") || "Povezani zapisnici";
+      entryMeta.textContent = [
+        firstItem.companyName || "",
+        firstItem.locationName || "",
+        `${group.items.length} ${group.items.length === 1 ? "zapisnik" : "zapisnika"}`,
+      ].filter(Boolean).join(" · ") || "Povezani zapisnici";
       const entryChips = document.createElement("div");
       entryChips.className = "document-template-runtime-summary-entry-chips";
       group.items.forEach((entry) => {
