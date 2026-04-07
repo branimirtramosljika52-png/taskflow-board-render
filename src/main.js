@@ -33710,6 +33710,35 @@ function openDocumentTemplateFromWizard(
     return false;
   }
 
+  const ensureRuntimeEditorVisible = ({ allowModuleFallback = true } = {}) => {
+    state.documentTemplateEditorOpen = true;
+    syncDocumentTemplateEditorModal();
+
+    let isVisible = Boolean(
+      state.documentTemplateEditorOpen
+      && isDocumentTemplateRuntimeFillMode()
+      && documentTemplateEditorPanel
+      && !documentTemplateEditorPanel.hidden,
+    );
+
+    if (!isVisible && allowModuleFallback) {
+      state.activeView = "module";
+      state.activeModuleItem = "template-development";
+      renderActiveView();
+      renderModuleView();
+      state.documentTemplateEditorOpen = true;
+      syncDocumentTemplateEditorModal();
+      isVisible = Boolean(
+        state.documentTemplateEditorOpen
+        && isDocumentTemplateRuntimeFillMode()
+        && documentTemplateEditorPanel
+        && !documentTemplateEditorPanel.hidden,
+      );
+    }
+
+    return isVisible;
+  };
+
   const reuseRuntimeContext = preserveRuntimeContext
     && hasDocumentTemplateRuntimeContext()
     && state.documentTemplateRuntime.source === "wizard";
@@ -33752,11 +33781,18 @@ function openDocumentTemplateFromWizard(
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
   }
+
+  const opened = ensureRuntimeEditorVisible({
+    allowModuleFallback: Boolean(keepCurrentRuntimeView),
+  });
+
+  if (!opened) {
+    return false;
+  }
+
   if (closeWizard) {
     state.workOrderDocumentWizard.open = false;
     syncWorkOrderDocumentWizardModal();
-    state.documentTemplateEditorOpen = true;
-    syncDocumentTemplateEditorModal();
   }
   return true;
 }
