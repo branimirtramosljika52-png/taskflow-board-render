@@ -33710,8 +33710,6 @@ function openDocumentTemplateFromWizard(
     return false;
   }
 
-  const shouldCloseWizard = Boolean(closeWizard);
-
   const reuseRuntimeContext = preserveRuntimeContext
     && hasDocumentTemplateRuntimeContext()
     && state.documentTemplateRuntime.source === "wizard";
@@ -33754,11 +33752,11 @@ function openDocumentTemplateFromWizard(
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
   }
-  if (shouldCloseWizard) {
-    requestAnimationFrame(() => {
-      closeWorkOrderDocumentWizard();
-      syncDocumentTemplateEditorModal();
-    });
+  if (closeWizard) {
+    state.workOrderDocumentWizard.open = false;
+    syncWorkOrderDocumentWizardModal();
+    state.documentTemplateEditorOpen = true;
+    syncDocumentTemplateEditorModal();
   }
   return true;
 }
@@ -35492,6 +35490,9 @@ workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
 workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  if (workOrderDocumentWizardError) {
+    workOrderDocumentWizardError.textContent = "";
+  }
   if (state.workOrderDocumentWizard.step !== "details") {
     return;
   }
@@ -35499,6 +35500,9 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
   if (sequence.length === 0) {
     setWorkOrderDocumentWizardStep("templates");
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "Za odabrane RN-ove nema povezanog zapisnika. Poveži template na usluzi pa pokušaj ponovno.";
+    }
     return;
   }
   const firstEntry = sequence[0];
