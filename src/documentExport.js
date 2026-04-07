@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -26,9 +26,22 @@ const SOFFICE_CANDIDATES = [
   "/usr/bin/libreoffice",
   "/app/.apt/usr/bin/soffice",
   "/app/.apt/usr/bin/libreoffice",
+  "/layers/digitalocean_apt/apt/usr/bin/soffice",
+  "/layers/digitalocean_apt/apt/usr/bin/libreoffice",
+  "/layers/digitalocean_apt/apt/bin/soffice",
+  "/layers/digitalocean_apt/apt/bin/libreoffice",
   "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
   "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
 ].filter(Boolean);
+const SOFFICE_DISCOVERY_ROOTS = [
+  "/layers/digitalocean_apt/apt",
+  "/layers",
+  "/app/.apt",
+  "/usr/lib/libreoffice",
+  "C:\\Program Files\\LibreOffice",
+  "C:\\Program Files (x86)\\LibreOffice",
+];
+const SOFFICE_BINARY_NAMES = new Set(["soffice", "libreoffice", "soffice.exe", "libreoffice.exe"]);
 
 function clean(value = "") {
   return String(value ?? "").trim();
@@ -131,6 +144,53 @@ async function resolveSofficeCommand() {
     } catch {
       continue;
     }
+  }
+
+  for (const root of SOFFICE_DISCOVERY_ROOTS) {
+    const discovered = await findSofficeCommandInDirectory(root);
+    if (!discovered) {
+      continue;
+    }
+
+    try {
+      await runCommand(discovered, ["--version"]);
+      return discovered;
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
+}
+
+async function findSofficeCommandInDirectory(rootDirectory = "", depth = 0, maxDepth = 5) {
+  const safeRootDirectory = clean(rootDirectory);
+  if (!safeRootDirectory || depth > maxDepth || !await fileExists(safeRootDirectory)) {
+    return "";
+  }
+
+  try {
+    const entries = await readdir(safeRootDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = join(safeRootDirectory, entry.name);
+
+      if (entry.isFile() && SOFFICE_BINARY_NAMES.has(entry.name.toLowerCase())) {
+        return entryPath;
+      }
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const nested = await findSofficeCommandInDirectory(join(safeRootDirectory, entry.name), depth + 1, maxDepth);
+      if (nested) {
+        return nested;
+      }
+    }
+  } catch {
+    return "";
   }
 
   return "";
