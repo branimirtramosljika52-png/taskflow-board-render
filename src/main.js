@@ -12113,7 +12113,6 @@ function syncLegalFrameworkEditorModal() {
 
 function syncDocumentTemplateEditorModal() {
   const detachedFillMode = state.documentTemplateEditorOpen
-    && hasDocumentTemplateRuntimeContext()
     && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
 
   if (state.documentTemplateEditorOpen && (
