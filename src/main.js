@@ -15548,7 +15548,7 @@ function buildDocumentTemplatePreviewPageMarkup(
       <header class="document-template-preview-header">
         <div>
           <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
-          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Novi template")}</h1>
+          <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Bez naziva")}</h1>
           <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predložak, a ovdje se definira raspored placeholdera i blokova.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
@@ -17980,7 +17980,7 @@ function syncDocumentTemplateEditorChrome() {
       ? `Zapisnik | ${documentTemplateTitleInput?.value?.trim() || "Predložak"}`
       : (documentTemplateIdInput?.value
         ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
-        : "Novi template");
+        : "Template editor");
   }
 
   if (documentTemplateEditorPanel) {
@@ -20941,7 +20941,7 @@ function renderDocumentTemplateModule() {
     const copy = document.createElement("div");
     copy.className = "document-template-card-copy";
     const title = document.createElement("h4");
-    title.textContent = template.title || "Novi template";
+    title.textContent = template.title || "Bez naziva";
     const linkedLegalCount = getDocumentTemplateSelectedLegalFrameworks(template).length;
     const linkedEquipmentCount = getDocumentTemplateLinkedEquipmentItems(template).length;
     const meta = document.createElement("p");
