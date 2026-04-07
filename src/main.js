@@ -35673,6 +35673,12 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const firstEntry = sequence[0];
+  const previousWizardState = {
+    open: state.workOrderDocumentWizard.open,
+    step: state.workOrderDocumentWizard.step,
+  };
+  state.workOrderDocumentWizard.open = false;
+  syncWorkOrderDocumentWizardModal();
   requestAnimationFrame(() => {
     let opened = false;
     try {
@@ -35693,7 +35699,9 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
       }
     }
     if (!opened) {
-      state.workOrderDocumentWizard.open = true;
+      state.workOrderDocumentWizard.open = previousWizardState.open;
+      state.workOrderDocumentWizard.step = previousWizardState.step;
+      renderWorkOrderDocumentWizard();
       syncWorkOrderDocumentWizardModal();
       if (workOrderDocumentWizardError) {
         workOrderDocumentWizardError.textContent = workOrderDocumentWizardError.textContent
@@ -35701,8 +35709,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
       }
       return;
     }
-    state.workOrderDocumentWizard.open = false;
-    syncWorkOrderDocumentWizardModal();
   });
 });
 [
