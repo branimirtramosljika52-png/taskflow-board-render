@@ -15188,6 +15188,145 @@ function getDocumentTemplateAdvancedLookupPreviewValue(field = {}, context = {})
   return formatDocumentTemplateLookupResolvedValue(valueDefinition.getter(match));
 }
 
+function getDocumentTemplateAdvancedLookupRuntimeValue(field = {}, context = {}) {
+  if (String(field?.source || "").trim().toUpperCase() !== "DATABASE_LOOKUP") {
+    return "";
+  }
+  if (getDocumentTemplateLookupMode(field) === "PREVIOUS_DOCUMENT_LOCATION") {
+    return "";
+  }
+
+  ensureDocumentTemplateDatabaseLookupDraft(field);
+  const definition = getDocumentTemplateDatabaseTableDefinition(field.sourceTable || "");
+  const lookupDefinition = getDocumentTemplateDatabaseColumnDefinition(field.sourceTable || "", field.lookupColumn || "");
+  const valueDefinition = getDocumentTemplateDatabaseColumnDefinition(field.sourceTable || "", field.valueColumn || "");
+  if (!definition || !lookupDefinition || !valueDefinition) {
+    return "";
+  }
+
+  const lookupValue = String(
+    String(field.lookupValueSource || "").trim().toUpperCase() === "CUSTOM_VALUE"
+      ? field.lookupValue || ""
+      : getDocumentTemplateLookupSourceRuntimeValue(field.lookupValueSource || "WORK_ORDER_NUMBER", context),
+  ).trim();
+  if (!lookupValue) {
+    return "";
+  }
+
+  const rows = Array.isArray(definition.rows?.()) ? definition.rows() : [];
+  const normalizedLookup = normalizeDocumentTemplateLookupComparable(lookupValue);
+  const match = rows.find((row) => (
+    normalizeDocumentTemplateLookupComparable(lookupDefinition.getter(row)) === normalizedLookup
+  ));
+
+  if (!match) {
+    return "";
+  }
+
+  return valueDefinition.getter(match);
+}
+
+function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
+  const safeSource = String(source || "").trim().toUpperCase();
+  const workOrder = context.sampleWorkOrder;
+  const company = context.company;
+  const location = context.location;
+  const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
+  const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
+  const runtimeIssuedPlace = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "";
+  const runtimeNote = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "note") : "";
+  const runtimeOutsideTemperature = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "outsideTemperature") : "";
+  const runtimeRelativeHumidity = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "relativeHumidity") : "";
+  const runtimeAirflowSpeed = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "airflowSpeed") : "";
+  const runtimeWeather = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "weather") : "";
+  const runtimeGroundCondition = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundCondition") : "";
+  const runtimeGroundResistance = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundResistance") : "";
+  const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
+  const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
+  const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
+    ? workOrder.executors.join(", ")
+    : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
+  const serviceSummary = getDocumentTemplateRuntimeResolvedServiceItems(workOrder)
+    .map((item) => item.serviceName || item.name || item.serviceCode || "")
+    .filter(Boolean)
+    .join(", ");
+  const qualifiedUserValue = getQualifiedUserSourcePreviewValue(safeSource, context);
+
+  if (qualifiedUserValue) {
+    return qualifiedUserValue;
+  }
+
+  const sourceMap = {
+    CUSTOM_VALUE: "",
+    DOCUMENT_TITLE: context.template?.title || "",
+    DOCUMENT_TYPE: context.template?.documentType || "",
+    TODAY: toDateKey(new Date().toISOString()),
+    COMPANY_NAME: company?.name || "",
+    COMPANY_OIB: company?.oib || "",
+    COMPANY_HEADQUARTERS: company?.headquarters || "",
+    LOCATION_NAME: location?.name || "",
+    LOCATION_REGION: location?.region || "",
+    LOCATION_COORDINATES: location?.coordinates || "",
+    WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
+    WORK_ORDER_STATUS: workOrder?.status || "",
+    WORK_ORDER_DUE_DATE: workOrder?.dueDate || "",
+    WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate || "",
+    WORK_ORDER_ISSUED_DATE: runtimeIssuedDate || "",
+    WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace || "",
+    WORK_ORDER_DOCUMENT_NOTE: runtimeNote || "",
+    WORK_ORDER_OUTSIDE_TEMPERATURE: runtimeOutsideTemperature || "",
+    WORK_ORDER_RELATIVE_HUMIDITY: runtimeRelativeHumidity || "",
+    WORK_ORDER_AIRFLOW_SPEED: runtimeAirflowSpeed || "",
+    WORK_ORDER_WEATHER: runtimeWeather || "",
+    WORK_ORDER_GROUND_CONDITION: runtimeGroundCondition || "",
+    WORK_ORDER_GROUND_RESISTANCE: runtimeGroundResistance || "",
+    WORK_ORDER_PANIC_VALIDITY_MONTHS: runtimeElectricalValidityMonths || "",
+    WORK_ORDER_TIPKALO_VALIDITY_MONTHS: runtimeTipkaloValidityMonths || "",
+    WORK_ORDER_EXECUTORS: executorNames,
+    WORK_ORDER_TEAM: workOrder?.assignedTeam || "",
+    SERVICE_SUMMARY: serviceSummary,
+    CONTACT_NAME: workOrder?.contactNameSnapshot || "",
+    CONTACT_PHONE: workOrder?.contactPhone || "",
+    CONTACT_EMAIL: workOrder?.contactEmail || "",
+  };
+
+  return sourceMap[safeSource] ?? "";
+}
+
+function getDocumentTemplateSourceRuntimeValue(fieldOrSource, context = {}) {
+  const field = fieldOrSource && typeof fieldOrSource === "object"
+    ? fieldOrSource
+    : { source: fieldOrSource };
+  const safeSource = String(field?.source || "").trim().toUpperCase();
+
+  if (safeSource === "DATABASE_LOOKUP") {
+    return getDocumentTemplateAdvancedLookupRuntimeValue(field, context);
+  }
+
+  return getDocumentTemplateLookupSourceRuntimeValue(safeSource, context);
+}
+
+function normalizeDocumentTemplateRuntimeFieldValueByType(field = {}, value = "") {
+  const type = String(field?.type || "text").trim().toLowerCase();
+
+  if (type === "checkbox" || type === "toggle") {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    return ["1", "true", "da", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+  }
+
+  if (type === "date") {
+    return toDateKey(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry ?? "").trim()).filter(Boolean).join(", ");
+  }
+
+  return String(value ?? "");
+}
+
 function getDocumentTemplateSourcePreviewValue(fieldOrSource, context = {}) {
   const field = fieldOrSource && typeof fieldOrSource === "object"
     ? fieldOrSource
@@ -19397,26 +19536,7 @@ function renderDocumentTemplateLinkSummary() {
 
 function isDocumentTemplateRuntimeVisibleField(field = {}) {
   const type = String(field?.type || "text").trim().toLowerCase();
-  if (type === "chapter") {
-    return true;
-  }
-
-  if ([
-    "measurement_table",
-    "sketch_upload",
-    "image_upload",
-    "legal_list",
-    "equipment_list",
-    "qualified_inspectors",
-    "inspector_signature",
-    "authorization_holder_signature",
-    "digital_signature",
-  ].includes(type)) {
-    return true;
-  }
-
-  const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
-  return source === "CUSTOM_VALUE" || isDocumentTemplatePreviousDocumentLookupField(field);
+  return type !== "page_break";
 }
 
 function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
@@ -19468,7 +19588,17 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
     }
   }
 
-  return getDocumentTemplateFieldDefaultRuntimeValue(field);
+  if (workOrder) {
+    const boundValue = getDocumentTemplateSourceRuntimeValue(
+      field,
+      buildDocumentTemplatePreviewContext(template, { workOrder }),
+    );
+    if (hasMeaningfulDocumentRecordValue(boundValue)) {
+      return normalizeDocumentTemplateRuntimeFieldValueByType(field, boundValue);
+    }
+  }
+
+  return normalizeDocumentTemplateRuntimeFieldValueByType(field, getDocumentTemplateFieldDefaultRuntimeValue(field));
 }
 
 function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldDrafts) {
