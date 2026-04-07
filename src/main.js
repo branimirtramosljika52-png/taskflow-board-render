@@ -21199,11 +21199,20 @@ function resetDocumentTemplateForm() {
   syncDocumentTemplateEditorChrome();
 }
 
-function hydrateDocumentTemplateForm(template, { preserveRuntimeContext = false, runtimeMode = "builder" } = {}) {
-  state.activeView = "module";
-  state.activeModuleItem = "template-development";
-  renderActiveView();
-  renderModuleView();
+function hydrateDocumentTemplateForm(
+  template,
+  {
+    preserveRuntimeContext = false,
+    runtimeMode = "builder",
+    skipModuleNavigation = false,
+  } = {},
+) {
+  if (!skipModuleNavigation) {
+    state.activeView = "module";
+    state.activeModuleItem = "template-development";
+    renderActiveView();
+    renderModuleView();
+  }
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
   collapsedDocumentTemplateChapterIds = new Set();
@@ -33680,6 +33689,7 @@ function openDocumentTemplateFromWizard(
     activeWorkOrderId = "",
     closeWizard = true,
     preserveRuntimeContext = false,
+    keepCurrentRuntimeView = false,
   } = {},
 ) {
   const template = getDocumentTemplateById(templateId);
@@ -33727,6 +33737,11 @@ function openDocumentTemplateFromWizard(
   hydrateDocumentTemplateForm(template, {
     preserveRuntimeContext: true,
     runtimeMode: "fill",
+    skipModuleNavigation: Boolean(
+      keepCurrentRuntimeView
+      && state.documentTemplateEditorOpen
+      && isDocumentTemplateRuntimeFillMode(),
+    ),
   });
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
@@ -33751,6 +33766,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
     activeWorkOrderId: entry.workOrderId,
     closeWizard,
     preserveRuntimeContext: true,
+    keepCurrentRuntimeView: true,
   });
 }
 
