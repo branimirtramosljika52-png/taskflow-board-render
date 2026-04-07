@@ -33710,6 +33710,8 @@ function openDocumentTemplateFromWizard(
     return false;
   }
 
+  const shouldCloseWizard = Boolean(closeWizard);
+
   const reuseRuntimeContext = preserveRuntimeContext
     && hasDocumentTemplateRuntimeContext()
     && state.documentTemplateRuntime.source === "wizard";
@@ -33744,9 +33746,6 @@ function openDocumentTemplateFromWizard(
     state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrderId || "").trim();
   }
 
-  if (closeWizard) {
-    closeWorkOrderDocumentWizard();
-  }
   hydrateDocumentTemplateForm(template, {
     preserveRuntimeContext: true,
     runtimeMode: "fill",
@@ -33754,6 +33753,12 @@ function openDocumentTemplateFromWizard(
   });
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
+  }
+  if (shouldCloseWizard) {
+    requestAnimationFrame(() => {
+      closeWorkOrderDocumentWizard();
+      syncDocumentTemplateEditorModal();
+    });
   }
   return true;
 }
@@ -35484,7 +35489,9 @@ workOrderDocumentWizardSheetValidityButton?.addEventListener("click", () => {
 workOrderDocumentWizardPrevButton?.addEventListener("click", () => {
   setWorkOrderDocumentWizardStep("details");
 });
-workOrderDocumentWizardNextButton?.addEventListener("click", () => {
+workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
   if (state.workOrderDocumentWizard.step !== "details") {
     return;
   }
@@ -35495,7 +35502,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
     return;
   }
   const firstEntry = sequence[0];
-  openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
+  const opened = openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
     sequenceEntries: sequence,
     sequenceIndex: 0,
     activeWorkOrderId: firstEntry.workOrderId,
@@ -35503,6 +35510,9 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
     preserveRuntimeContext: false,
     keepCurrentRuntimeView: true,
   });
+  if (!opened && workOrderDocumentWizardError) {
+    workOrderDocumentWizardError.textContent = "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
+  }
 });
 [
   [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
