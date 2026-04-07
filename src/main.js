@@ -18216,6 +18216,18 @@ function groupDocumentTemplateRuntimeDockEntries(entries = []) {
   return groups;
 }
 
+function clampDocumentTemplateRuntimeSequenceIndex(targetIndex, entries = getDocumentTemplateRuntimeSequenceEntries()) {
+  const normalizedEntries = Array.isArray(entries) ? entries : [];
+  if (normalizedEntries.length === 0) {
+    return -1;
+  }
+
+  const summaryIndex = normalizedEntries.length;
+  const parsedIndex = Number.parseInt(targetIndex, 10);
+  const safeIndex = Number.isFinite(parsedIndex) ? parsedIndex : 0;
+  return Math.max(0, Math.min(safeIndex, summaryIndex));
+}
+
 function scrollDocumentTemplateRuntimeDockTrack(direction = 1) {
   if (!documentTemplateRuntimeDockTrack) {
     return;
@@ -18240,10 +18252,11 @@ function renderDocumentTemplateRuntimeContext() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   const sequenceState = fillMode ? getDocumentTemplateRuntimeSequenceState() : null;
   const hasSequence = Boolean(sequenceState);
+  const isSummaryStep = Boolean(sequenceState?.isSummary);
   const hasWizardRuntime = fillMode && state.documentTemplateRuntime.source === "wizard";
   const workOrders = hasContext ? getDocumentTemplateRuntimeWorkOrders() : [];
   const activeWorkOrder = hasContext ? getDocumentTemplateRuntimeActiveWorkOrder() : null;
-  documentTemplateRuntimeContext.hidden = !hasContext;
+  documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
   if (documentTemplateRuntimeClearButton) {
     documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
@@ -18274,26 +18287,22 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeDockBackButton.hidden = !hasWizardRuntime;
   }
   if (documentTemplateRuntimeDockPrintAllButton) {
-    const showPrintAll = Boolean(hasSequence && sequenceState.total > 1 && sequenceState.index >= sequenceState.total - 1);
-    documentTemplateRuntimeDockPrintAllButton.hidden = !showPrintAll;
-    documentTemplateRuntimeDockPrintAllButton.disabled = !showPrintAll;
+    documentTemplateRuntimeDockPrintAllButton.hidden = true;
   }
   if (documentTemplateRuntimeDockSendSignatureButton) {
-    const canSendForDigital = Boolean(
-      fillMode
-      && activeWorkOrder
-      && normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode) === "digital",
-    );
-    documentTemplateRuntimeDockSendSignatureButton.hidden = !canSendForDigital;
-    documentTemplateRuntimeDockSendSignatureButton.disabled = !canSendForDigital;
+    documentTemplateRuntimeDockSendSignatureButton.hidden = true;
   }
   if (documentTemplateRuntimeDockSignScanButton) {
-    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
-    documentTemplateRuntimeDockSignScanButton.classList.toggle("is-active", signatureMode === "scan");
+    documentTemplateRuntimeDockSignScanButton.hidden = true;
   }
   if (documentTemplateRuntimeDockSignDigitalButton) {
-    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
-    documentTemplateRuntimeDockSignDigitalButton.classList.toggle("is-active", signatureMode === "digital");
+    documentTemplateRuntimeDockSignDigitalButton.hidden = true;
+  }
+  if (documentTemplateRuntimeDockPdfButton) {
+    documentTemplateRuntimeDockPdfButton.hidden = true;
+  }
+  if (documentTemplateRuntimeDockWordButton) {
+    documentTemplateRuntimeDockWordButton.hidden = true;
   }
   if (documentTemplateRuntimeSidePrevButton) {
     documentTemplateRuntimeSidePrevButton.hidden = !hasSequence;
@@ -18326,20 +18335,29 @@ function renderDocumentTemplateRuntimeContext() {
         workOrderNumber: activeWorkOrder.workOrderNumber || "bez broja",
       }];
 
-    const activeIndex = hasSequence ? sequenceState.index : 0;
-    const activeEntry = dockEntries[activeIndex] || dockEntries[0];
+    const activeIndex = hasSequence
+      ? (sequenceState.isSummary ? sequenceState.itemTotal : sequenceState.index)
+      : 0;
+    const activeEntry = sequenceState?.isSummary
+      ? dockEntries[dockEntries.length - 1]
+      : (dockEntries[activeIndex] || dockEntries[0]);
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(dockEntries);
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
-    documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"} · ${getDocumentTemplateRuntimeTimelineLabel(activeEntry)}`;
-    documentTemplateRuntimeDockMeta.textContent = [
-      activeWorkOrder.companyName || "Aktivni radni nalog",
-      activeWorkOrder.locationName || "Bez lokacije",
-    ].filter(Boolean).join(" · ");
+    if (sequenceState?.isSummary) {
+      documentTemplateRuntimeDockTitle.textContent = "Summary";
+      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"}`;
+    } else {
+      documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"} · ${getDocumentTemplateRuntimeTimelineLabel(activeEntry)}`;
+      documentTemplateRuntimeDockMeta.textContent = [
+        activeWorkOrder.companyName || "Aktivni radni nalog",
+        activeWorkOrder.locationName || "Bez lokacije",
+      ].filter(Boolean).join(" · ");
+    }
 
-    documentTemplateRuntimeDockTrack.replaceChildren(...groupedEntries.map((group) => {
+    const dockNodes = groupedEntries.map((group) => {
       const groupCard = document.createElement("article");
       groupCard.className = "document-template-runtime-dock-group";
-      if (String(group.workOrderId) === String(activeEntry?.workOrderId || "")) {
+      if (!sequenceState?.isSummary && String(group.workOrderId) === String(activeEntry?.workOrderId || "")) {
         groupCard.classList.add("is-active");
       }
 
@@ -18386,10 +18404,52 @@ function renderDocumentTemplateRuntimeContext() {
 
       groupCard.append(groupHead, groupItems);
       return groupCard;
-    }));
+    });
+
+    if (sequenceState) {
+      const summaryCard = document.createElement("article");
+      summaryCard.className = "document-template-runtime-dock-group is-summary";
+      if (sequenceState.isSummary) {
+        summaryCard.classList.add("is-active");
+      }
+
+      const summaryHead = document.createElement("div");
+      summaryHead.className = "document-template-runtime-dock-group-head";
+      const summaryTitle = document.createElement("strong");
+      summaryTitle.textContent = "Summary";
+      const summaryMeta = document.createElement("span");
+      summaryMeta.textContent = "Preuzimanje, potpisi i završetak";
+      summaryHead.append(summaryTitle, summaryMeta);
+
+      const summaryItems = document.createElement("div");
+      summaryItems.className = "document-template-runtime-dock-group-items";
+      const summaryButton = document.createElement("button");
+      summaryButton.type = "button";
+      summaryButton.className = "document-template-runtime-dock-item";
+      if (sequenceState.isSummary) {
+        summaryButton.classList.add("is-active");
+      }
+      summaryButton.textContent = "Summary";
+      summaryButton.addEventListener("click", () => {
+        openDocumentTemplateRuntimeSequenceIndex(sequenceState.summaryIndex);
+      });
+      summaryItems.append(summaryButton);
+
+      summaryCard.append(summaryHead, summaryItems);
+      dockNodes.push(summaryCard);
+    }
+
+    documentTemplateRuntimeDockTrack.replaceChildren(...dockNodes);
   };
 
   if (!hasContext) {
+    documentTemplateRuntimeWorkOrders.replaceChildren();
+    documentTemplateRuntimeCommon.replaceChildren();
+    renderRuntimeDock();
+    return;
+  }
+
+  if (isSummaryStep) {
     documentTemplateRuntimeWorkOrders.replaceChildren();
     documentTemplateRuntimeCommon.replaceChildren();
     renderRuntimeDock();
@@ -19785,8 +19845,154 @@ function renderDocumentTemplateRuntimeFieldRows() {
   const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
   const template = buildDocumentTemplateDraft();
   const context = buildDocumentTemplatePreviewContext(template);
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
   const shell = document.createElement("div");
   shell.className = "document-template-runtime-shell";
+
+  if (sequenceState?.isSummary) {
+    const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
+    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
+
+    const summaryBlock = document.createElement("section");
+    summaryBlock.className = "document-template-runtime-block document-template-runtime-summary-block";
+
+    const summaryHead = document.createElement("div");
+    summaryHead.className = "document-template-runtime-block-head";
+    const summaryHeadCopy = document.createElement("div");
+    const summaryTitle = document.createElement("h4");
+    summaryTitle.textContent = "Summary";
+    const summaryMeta = document.createElement("p");
+    summaryMeta.className = "document-template-runtime-block-meta";
+    summaryMeta.textContent = "Završni korak za pregled batcha, odabir potpisa i preuzimanje gotovih dokumenata.";
+    summaryHeadCopy.append(summaryTitle, summaryMeta);
+    summaryHead.append(summaryHeadCopy);
+
+    const summaryBody = document.createElement("div");
+    summaryBody.className = "document-template-runtime-block-body document-template-runtime-summary-body";
+
+    const batchCard = document.createElement("article");
+    batchCard.className = "document-template-runtime-summary-card";
+    const batchCardTitle = document.createElement("strong");
+    batchCardTitle.textContent = "Pregled batcha";
+    const batchCardMeta = document.createElement("p");
+    batchCardMeta.className = "helper-copy module-copy";
+    batchCardMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"} spremno za završetak.`;
+    batchCard.append(batchCardTitle, batchCardMeta);
+
+    const signatureCard = document.createElement("article");
+    signatureCard.className = "document-template-runtime-summary-card";
+    const signatureCardTitle = document.createElement("strong");
+    signatureCardTitle.textContent = "Način potpisa";
+    const signatureCardMeta = document.createElement("p");
+    signatureCardMeta.className = "helper-copy module-copy";
+    signatureCardMeta.textContent = signatureMode === "digital"
+      ? "Odabran je digitalni potpis za završni export batcha."
+      : "Odabran je scan potpisa za završni export batcha.";
+    const signatureActions = document.createElement("div");
+    signatureActions.className = "document-template-runtime-summary-actions";
+    const scanButton = document.createElement("button");
+    scanButton.type = "button";
+    scanButton.className = "ghost-button";
+    scanButton.textContent = "Scan potpisa";
+    scanButton.classList.toggle("is-active", signatureMode === "scan");
+    scanButton.addEventListener("click", () => {
+      updateDocumentTemplateRuntimeCommon({ signatureMode: "scan" }, { render: true });
+      renderDocumentTemplateRuntimeContext();
+      renderDocumentTemplatePreviewContent();
+    });
+    const digitalButton = document.createElement("button");
+    digitalButton.type = "button";
+    digitalButton.className = "ghost-button";
+    digitalButton.textContent = "Digitalni potpis";
+    digitalButton.classList.toggle("is-active", signatureMode === "digital");
+    digitalButton.addEventListener("click", () => {
+      updateDocumentTemplateRuntimeCommon({ signatureMode: "digital" }, { render: true });
+      renderDocumentTemplateRuntimeContext();
+      renderDocumentTemplatePreviewContent();
+    });
+    signatureActions.append(scanButton, digitalButton);
+    signatureCard.append(signatureCardTitle, signatureCardMeta, signatureActions);
+
+    const exportCard = document.createElement("article");
+    exportCard.className = "document-template-runtime-summary-card";
+    const exportCardTitle = document.createElement("strong");
+    exportCardTitle.textContent = "Preuzimanje";
+    const exportCardMeta = document.createElement("p");
+    exportCardMeta.className = "helper-copy module-copy";
+    exportCardMeta.textContent = "Word i PDF koriste isti Word predložak. Završni export radi tek nakon što pregledaš sve zapisnike.";
+    const exportActions = document.createElement("div");
+    exportActions.className = "document-template-runtime-summary-actions";
+    const wordButton = document.createElement("button");
+    wordButton.type = "button";
+    wordButton.className = "ghost-button";
+    wordButton.textContent = "Preuzmi Word";
+    wordButton.addEventListener("click", () => {
+      void exportDocumentTemplateWord({ placeholderMode: false });
+    });
+    const pdfButton = document.createElement("button");
+    pdfButton.type = "button";
+    pdfButton.className = "ghost-button";
+    pdfButton.textContent = "Preuzmi PDF";
+    pdfButton.addEventListener("click", () => {
+      void exportDocumentTemplatePdf();
+    });
+    const printAllButton = document.createElement("button");
+    printAllButton.type = "button";
+    printAllButton.className = "ghost-button";
+    printAllButton.textContent = "Ispiši sve";
+    printAllButton.hidden = sequenceState.itemTotal <= 1;
+    printAllButton.addEventListener("click", () => {
+      void exportDocumentTemplateBatchPdf({ print: true });
+    });
+    const sendSignatureButton = document.createElement("button");
+    sendSignatureButton.type = "button";
+    sendSignatureButton.className = "ghost-button";
+    sendSignatureButton.textContent = "Pošalji na digitalni potpis";
+    sendSignatureButton.hidden = signatureMode !== "digital";
+    sendSignatureButton.addEventListener("click", () => {
+      void queueDocumentTemplateForDigitalSignature();
+    });
+    exportActions.append(wordButton, pdfButton, printAllButton, sendSignatureButton);
+    exportCard.append(exportCardTitle, exportCardMeta, exportActions);
+
+    const groupedList = document.createElement("div");
+    groupedList.className = "document-template-runtime-summary-list";
+    groupedEntries.forEach((group) => {
+      const entryCard = document.createElement("article");
+      entryCard.className = "document-template-runtime-summary-entry";
+      const entryTitle = document.createElement("strong");
+      entryTitle.textContent = `RN ${group.workOrderNumber}`;
+      const firstItem = group.items[0] || {};
+      const entryMeta = document.createElement("span");
+      entryMeta.textContent = [firstItem.companyName || "", firstItem.locationName || ""].filter(Boolean).join(" · ") || "Povezani zapisnici";
+      const entryChips = document.createElement("div");
+      entryChips.className = "document-template-runtime-summary-entry-chips";
+      group.items.forEach((entry) => {
+        entryChips.append(createBadge(entry.timelineLabel, "document-template-meta-badge"));
+      });
+      entryCard.append(entryTitle, entryMeta, entryChips);
+      groupedList.append(entryCard);
+    });
+
+    summaryBody.append(batchCard, signatureCard, exportCard, groupedList);
+    summaryBlock.append(summaryHead, summaryBody);
+    shell.append(summaryBlock);
+    documentTemplateCustomFields.replaceChildren(shell);
+
+    const shouldCloseRuntimeSheet = state.measurementSheet.ownerKind === "document_template_runtime_field";
+    if (shouldCloseRuntimeSheet) {
+      setMeasurementSheetOpen(false);
+      state.measurementSheet.ownerKind = "work_order";
+      state.measurementSheet.ownerFieldId = "";
+      state.measurementSheet.ownerRuntimeWorkOrderId = "";
+      syncMeasurementToolbar();
+    }
+
+    syncMeasurementSheetPanelMount();
+    syncDocumentTemplateInlineExcelPreviewVisibility();
+    renderDocumentTemplatePreviewContent();
+    return;
+  }
 
   if (!activeWorkOrder) {
     const empty = document.createElement("p");
@@ -33066,12 +33272,9 @@ function pruneDocumentTemplateRuntimeContext() {
   if (state.documentTemplateRuntime.sequenceEntries.length === 0) {
     state.documentTemplateRuntime.sequenceIndex = -1;
   } else {
-    state.documentTemplateRuntime.sequenceIndex = Math.max(
-      0,
-      Math.min(
-        Number.parseInt(state.documentTemplateRuntime.sequenceIndex, 10) || 0,
-        state.documentTemplateRuntime.sequenceEntries.length - 1,
-      ),
+    state.documentTemplateRuntime.sequenceIndex = clampDocumentTemplateRuntimeSequenceIndex(
+      state.documentTemplateRuntime.sequenceIndex,
+      state.documentTemplateRuntime.sequenceEntries,
     );
   }
 }
@@ -33498,16 +33701,18 @@ function getDocumentTemplateRuntimeSequenceState() {
     return null;
   }
 
-  const safeIndex = Math.max(
-    0,
-    Math.min(Number.parseInt(state.documentTemplateRuntime.sequenceIndex, 10) || 0, entries.length - 1),
-  );
+  const safeIndex = clampDocumentTemplateRuntimeSequenceIndex(state.documentTemplateRuntime.sequenceIndex, entries);
+  const summaryIndex = entries.length;
+  const isSummary = safeIndex === summaryIndex;
 
   return {
     entries,
-    entry: entries[safeIndex],
+    entry: isSummary ? entries[entries.length - 1] : entries[safeIndex],
     index: safeIndex,
-    total: entries.length,
+    total: entries.length + 1,
+    itemTotal: entries.length,
+    summaryIndex,
+    isSummary,
   };
 }
 
@@ -33534,6 +33739,8 @@ function buildWorkOrderDocumentWizardSequence(workOrders = getAllSelectedWorkOrd
           workOrderId: String(workOrder.id),
           templateTitle: String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim(),
           workOrderNumber: String(workOrder.workOrderNumber || "Bez broja").trim(),
+          companyName: String(workOrder.companyName || "").trim(),
+          locationName: String(workOrder.locationName || "").trim(),
         });
       });
     });
@@ -34208,7 +34415,7 @@ function openDocumentTemplateFromWizard(
     : normalizeDocumentTemplateRuntimeSequenceEntries(sequenceEntries);
   state.documentTemplateRuntime.sequenceEntries = normalizedSequenceEntries;
   state.documentTemplateRuntime.sequenceIndex = normalizedSequenceEntries.length > 0
-    ? Math.max(0, Math.min(Number.parseInt(sequenceIndex, 10) || 0, normalizedSequenceEntries.length - 1))
+    ? clampDocumentTemplateRuntimeSequenceIndex(sequenceIndex, normalizedSequenceEntries)
     : -1;
   if (activeWorkOrderId) {
     state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrderId || "").trim();
@@ -34244,7 +34451,16 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
     return false;
   }
 
-  const safeIndex = Math.max(0, Math.min(targetIndex, sequenceState.total - 1));
+  const safeIndex = clampDocumentTemplateRuntimeSequenceIndex(targetIndex, sequenceState.entries);
+  if (safeIndex === sequenceState.summaryIndex) {
+    state.documentTemplateRuntime.sequenceIndex = safeIndex;
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+    return true;
+  }
+
   const entry = sequenceState.entries[safeIndex];
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
