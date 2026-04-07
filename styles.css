@@ -16327,6 +16327,38 @@ body.is-document-template-editor-open {
   gap: 8px;
 }
 
+.document-template-runtime-media-field {
+  display: grid;
+  gap: 12px;
+}
+
+.document-template-runtime-media-dropzone {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 92px;
+  border-radius: 22px;
+}
+
+.document-template-runtime-media-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.document-template-runtime-media-row {
+  align-items: start;
+}
+
+.document-template-runtime-media-image {
+  display: block;
+  width: min(100%, 360px);
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 18px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 10px;
+}
+
 .document-template-runtime-excel-trigger {
   justify-self: start;
 }
@@ -17501,6 +17533,41 @@ body.is-document-template-editor-open {
   background: rgba(247, 250, 248, 0.96);
   color: #26493d;
   line-height: 1.55;
+}
+
+.document-template-preview-media-placeholder,
+.document-template-preview-media-frame {
+  border: 1px dashed rgba(47, 104, 84, 0.24);
+  border-radius: 22px;
+  background: rgba(247, 250, 248, 0.98);
+}
+
+.document-template-preview-media-placeholder {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 18px;
+  color: #60796f;
+  line-height: 1.5;
+}
+
+.document-template-preview-media-placeholder.is-file {
+  min-height: 108px;
+  font-weight: 600;
+  color: #22352d;
+}
+
+.document-template-preview-media-frame {
+  padding: 14px;
+}
+
+.document-template-preview-media-image {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 16px;
 }
 
 .document-template-preview-field-value.is-checkbox,

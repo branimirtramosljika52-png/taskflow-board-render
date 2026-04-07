@@ -96,6 +96,8 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "checkbox", label: "Checkbox" },
   { value: "toggle", label: "Toggle" },
   { value: "qualified_inspectors", label: "Ispitivači" },
+  { value: "sketch_upload", label: "Tlocrt / skica" },
+  { value: "image_upload", label: "Slika" },
   { value: "legal_list", label: "Popis propisa" },
   { value: "equipment_list", label: "Popis opreme" },
   { value: "measurement_table", label: "Excel tablica" },

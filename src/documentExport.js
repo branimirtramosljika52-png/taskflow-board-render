@@ -636,6 +636,56 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
   }
 }
 
+async function renderPdfImageBlock(doc, helpers, title, item = {}) {
+  const imageBuffer = await resolvePdfImageBuffer(item.imageUrl || "");
+  if (!imageBuffer) {
+    renderPdfFieldCard(
+      doc,
+      helpers,
+      title,
+      normalizePdfText(item.fileName || item.caption || `Nema dodane datoteke za ${item.imageKind || "sliku"}.`),
+    );
+    return;
+  }
+
+  helpers.ensureSpace(240);
+  doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(title, {
+    width: helpers.availableWidth,
+  });
+  doc.moveDown(0.35);
+
+  const maxHeight = 300;
+  const startX = doc.page.margins.left;
+  const startY = doc.y;
+  const frameWidth = helpers.availableWidth;
+  const frameHeight = maxHeight;
+
+  drawRoundedOutline(doc, startX, startY, frameWidth, frameHeight, 18, "#111111");
+
+  try {
+    doc.image(imageBuffer, startX + 12, startY + 12, {
+      fit: [frameWidth - 24, frameHeight - 24],
+      align: "center",
+      valign: "center",
+    });
+  } catch {
+    doc.font("dejavu").fontSize(10).fillColor("#64748b").text(
+      "Sliku nije moguće prikazati u PDF-u.",
+      startX + 16,
+      startY + 18,
+      { width: frameWidth - 32 },
+    );
+  }
+
+  doc.y = startY + frameHeight + 10;
+  if (clean(item.caption) && clean(item.caption) !== clean(item.fileName)) {
+    doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(item.caption, {
+      width: helpers.availableWidth,
+    });
+    doc.moveDown(0.3);
+  }
+}
+
 export async function buildPdfFromRenderModel(renderModel = {}) {
   const doc = new PDFDocument({
     autoFirstPage: true,
@@ -760,6 +810,11 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
 
       if (itemType === "signature_group") {
         await renderPdfSignatureGroup(doc, helpers, item.title || "Potpisi", item.items || []);
+        continue;
+      }
+
+      if (itemType === "image") {
+        await renderPdfImageBlock(doc, helpers, item.title || "Slika", item);
         continue;
       }
 
