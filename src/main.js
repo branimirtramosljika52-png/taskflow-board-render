@@ -613,6 +613,7 @@ const state = {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
     previousRecordOptions: {},
@@ -12112,15 +12113,13 @@ function syncLegalFrameworkEditorModal() {
 }
 
 function syncDocumentTemplateEditorModal() {
-  const detachedFillMode = state.documentTemplateEditorOpen
+  const runtimeFillMode = state.documentTemplateEditorOpen
     && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
 
   if (state.documentTemplateEditorOpen && (
     !state.user
-    || (!detachedFillMode && (
-      state.activeView !== "module"
-      || state.activeModuleItem !== "template-development"
-    ))
+    || state.activeView !== "module"
+    || state.activeModuleItem !== "template-development"
   )) {
     state.documentTemplateEditorOpen = false;
   }
@@ -12136,17 +12135,17 @@ function syncDocumentTemplateEditorModal() {
   }
 
   if (documentTemplateEditorBackdrop) {
-    documentTemplateEditorBackdrop.hidden = !(isOpen && detachedFillMode);
+    documentTemplateEditorBackdrop.hidden = !(isOpen && runtimeFillMode);
   }
 
   if (templateDevelopmentSummaryGrid) {
-    templateDevelopmentSummaryGrid.hidden = isOpen && !detachedFillMode;
+    templateDevelopmentSummaryGrid.hidden = isOpen;
   }
   if (templateDevelopmentToolbarPanel) {
-    templateDevelopmentToolbarPanel.hidden = isOpen && !detachedFillMode;
+    templateDevelopmentToolbarPanel.hidden = isOpen;
   }
   if (templateDevelopmentListPanel) {
-    templateDevelopmentListPanel.hidden = isOpen && !detachedFillMode;
+    templateDevelopmentListPanel.hidden = isOpen;
   }
 
   if (isOpen) {
@@ -12305,7 +12304,29 @@ function closeDocumentTemplateEditor({ reset = false } = {}) {
 }
 
 function dismissDocumentTemplateEditor() {
+  const shouldRestoreRuntimeView = isDocumentTemplateRuntimeFillMode()
+    && state.documentTemplateRuntime.source === "wizard";
+  const runtimeReturnState = shouldRestoreRuntimeView
+    ? { ...(state.documentTemplateRuntime.returnState ?? {}) }
+    : null;
+
   closeDocumentTemplateEditor({ reset: true });
+
+  if (runtimeReturnState?.activeView) {
+    state.activeView = runtimeReturnState.activeView;
+    state.activeSidebarGroup = runtimeReturnState.activeSidebarGroup || state.activeSidebarGroup;
+    state.activeSidebarItem = runtimeReturnState.activeSidebarItem || state.activeSidebarItem;
+    state.activeModuleItem = runtimeReturnState.activeModuleItem || "";
+    if (runtimeReturnState.activeView === "selfdash" && runtimeReturnState.activeWorkOrderViewMode) {
+      state.activeWorkOrderViewMode = runtimeReturnState.activeWorkOrderViewMode;
+    }
+    renderActiveView();
+    if (state.activeView === "module") {
+      renderModuleView();
+    }
+    return;
+  }
+
   renderDocumentTemplateModule();
 }
 
@@ -32597,6 +32618,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
     previousRecordOptions: {},
@@ -33679,7 +33701,21 @@ function reopenWorkOrderDocumentWizardFromRuntime() {
     return;
   }
 
+  const runtimeReturnState = { ...(state.documentTemplateRuntime.returnState ?? {}) };
   closeDocumentTemplateEditor({ reset: false });
+  if (runtimeReturnState.activeView) {
+    state.activeView = runtimeReturnState.activeView;
+    state.activeSidebarGroup = runtimeReturnState.activeSidebarGroup || state.activeSidebarGroup;
+    state.activeSidebarItem = runtimeReturnState.activeSidebarItem || state.activeSidebarItem;
+    state.activeModuleItem = runtimeReturnState.activeModuleItem || "";
+    if (runtimeReturnState.activeView === "selfdash" && runtimeReturnState.activeWorkOrderViewMode) {
+      state.activeWorkOrderViewMode = runtimeReturnState.activeWorkOrderViewMode;
+    }
+    renderActiveView();
+    if (state.activeView === "module") {
+      renderModuleView();
+    }
+  }
   state.workOrderDocumentWizard.open = true;
   state.workOrderDocumentWizard.step = "details";
   renderWorkOrderDocumentWizard();
@@ -33709,6 +33745,8 @@ function openDocumentTemplateFromWizard(
   if (!template) {
     return false;
   }
+
+  const shouldUseModuleWorkspace = true;
 
   const ensureRuntimeEditorVisible = ({ allowModuleFallback = true } = {}) => {
     state.documentTemplateEditorOpen = true;
@@ -33762,6 +33800,16 @@ function openDocumentTemplateFromWizard(
     state.documentTemplateRuntime.workOrderIds = nextIds;
   }
 
+  if (!state.documentTemplateRuntime.returnState) {
+    state.documentTemplateRuntime.returnState = {
+      activeView: state.activeView,
+      activeSidebarGroup: state.activeSidebarGroup,
+      activeSidebarItem: state.activeSidebarItem,
+      activeModuleItem: state.activeModuleItem,
+      activeWorkOrderViewMode: state.activeWorkOrderViewMode,
+    };
+  }
+
   const normalizedSequenceEntries = sequenceEntries === null
     ? []
     : normalizeDocumentTemplateRuntimeSequenceEntries(sequenceEntries);
@@ -33776,14 +33824,14 @@ function openDocumentTemplateFromWizard(
   hydrateDocumentTemplateForm(template, {
     preserveRuntimeContext: true,
     runtimeMode: "fill",
-    skipModuleNavigation: Boolean(keepCurrentRuntimeView),
+    skipModuleNavigation: !shouldUseModuleWorkspace,
   });
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
   }
 
   const opened = ensureRuntimeEditorVisible({
-    allowModuleFallback: Boolean(keepCurrentRuntimeView),
+    allowModuleFallback: true,
   });
 
   if (!opened) {
@@ -35542,17 +35590,25 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const firstEntry = sequence[0];
-  const opened = openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
-    sequenceEntries: sequence,
-    sequenceIndex: 0,
-    activeWorkOrderId: firstEntry.workOrderId,
-    closeWizard: true,
-    preserveRuntimeContext: false,
-    keepCurrentRuntimeView: true,
+  state.workOrderDocumentWizard.open = false;
+  syncWorkOrderDocumentWizardModal();
+  requestAnimationFrame(() => {
+    const opened = openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
+      sequenceEntries: sequence,
+      sequenceIndex: 0,
+      activeWorkOrderId: firstEntry.workOrderId,
+      closeWizard: false,
+      preserveRuntimeContext: false,
+      keepCurrentRuntimeView: false,
+    });
+    if (!opened) {
+      state.workOrderDocumentWizard.open = true;
+      syncWorkOrderDocumentWizardModal();
+      if (workOrderDocumentWizardError) {
+        workOrderDocumentWizardError.textContent = "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
+      }
+    }
   });
-  if (!opened && workOrderDocumentWizardError) {
-    workOrderDocumentWizardError.textContent = "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
-  }
 });
 [
   [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
