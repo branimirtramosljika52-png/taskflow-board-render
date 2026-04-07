@@ -33806,30 +33806,55 @@ function openDocumentTemplateFromWizard(
 
   const shouldUseModuleWorkspace = false;
 
+  const isRuntimeEditorActuallyVisible = () => {
+    if (!(documentTemplateEditorPanel instanceof HTMLElement) || !(documentTemplateEditorBackdrop instanceof HTMLElement)) {
+      return false;
+    }
+
+    const panelStyle = window.getComputedStyle(documentTemplateEditorPanel);
+    const backdropStyle = window.getComputedStyle(documentTemplateEditorBackdrop);
+    const panelRect = documentTemplateEditorPanel.getBoundingClientRect();
+
+    return Boolean(
+      state.documentTemplateEditorOpen
+      && isDocumentTemplateRuntimeFillMode()
+      && !documentTemplateEditorPanel.hidden
+      && !documentTemplateEditorBackdrop.hidden
+      && documentTemplateEditorPanel.parentNode === document.body
+      && documentTemplateEditorBackdrop.parentNode === document.body
+      && documentTemplateEditorPanel.classList.contains("is-modal-open")
+      && panelStyle.display !== "none"
+      && panelStyle.visibility !== "hidden"
+      && backdropStyle.display !== "none"
+      && backdropStyle.visibility !== "hidden"
+      && panelRect.width > 0
+      && panelRect.height > 0
+    );
+  };
+
   const ensureRuntimeEditorVisible = ({ allowModuleFallback = true } = {}) => {
+    syncDocumentTemplateEditorMountTarget(true);
     state.documentTemplateEditorOpen = true;
     syncDocumentTemplateEditorModal();
 
-    let isVisible = Boolean(
-      state.documentTemplateEditorOpen
-      && isDocumentTemplateRuntimeFillMode()
-      && documentTemplateEditorPanel
-      && !documentTemplateEditorPanel.hidden,
-    );
+    let isVisible = isRuntimeEditorActuallyVisible();
+
+    if (!isVisible) {
+      syncDocumentTemplateEditorMountTarget(true);
+      state.documentTemplateEditorOpen = true;
+      syncDocumentTemplateEditorModal();
+      isVisible = isRuntimeEditorActuallyVisible();
+    }
 
     if (!isVisible && allowModuleFallback && shouldUseModuleWorkspace) {
       state.activeView = "module";
       state.activeModuleItem = "template-development";
       renderActiveView();
       renderModuleView();
+      syncDocumentTemplateEditorMountTarget(true);
       state.documentTemplateEditorOpen = true;
       syncDocumentTemplateEditorModal();
-      isVisible = Boolean(
-        state.documentTemplateEditorOpen
-        && isDocumentTemplateRuntimeFillMode()
-        && documentTemplateEditorPanel
-        && !documentTemplateEditorPanel.hidden,
-      );
+      isVisible = isRuntimeEditorActuallyVisible();
     }
 
     return isVisible;
@@ -35648,24 +35673,36 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const firstEntry = sequence[0];
-  state.workOrderDocumentWizard.open = false;
-  syncWorkOrderDocumentWizardModal();
   requestAnimationFrame(() => {
-    const opened = openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
-      sequenceEntries: sequence,
-      sequenceIndex: 0,
-      activeWorkOrderId: firstEntry.workOrderId,
-      closeWizard: false,
-      preserveRuntimeContext: false,
-      keepCurrentRuntimeView: false,
-    });
+    let opened = false;
+    try {
+      opened = openDocumentTemplateFromWizard(firstEntry.templateId, selectedWorkOrders, {
+        sequenceEntries: sequence,
+        sequenceIndex: 0,
+        activeWorkOrderId: firstEntry.workOrderId,
+        closeWizard: false,
+        preserveRuntimeContext: false,
+        keepCurrentRuntimeView: false,
+      });
+    } catch (error) {
+      console.error("Otvaranje zapisnika iz wizarda nije uspjelo.", error);
+      opened = false;
+      if (workOrderDocumentWizardError) {
+        workOrderDocumentWizardError.textContent = error?.message
+          || "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
+      }
+    }
     if (!opened) {
       state.workOrderDocumentWizard.open = true;
       syncWorkOrderDocumentWizardModal();
       if (workOrderDocumentWizardError) {
-        workOrderDocumentWizardError.textContent = "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
+        workOrderDocumentWizardError.textContent = workOrderDocumentWizardError.textContent
+          || "Zapisnik se nije uspio otvoriti. Provjeri povezani template i pokušaj ponovno.";
       }
+      return;
     }
+    state.workOrderDocumentWizard.open = false;
+    syncWorkOrderDocumentWizardModal();
   });
 });
 [
