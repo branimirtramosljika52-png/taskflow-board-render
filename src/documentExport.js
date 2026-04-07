@@ -125,6 +125,57 @@ function runCommand(command, args = [], options = {}) {
   });
 }
 
+async function resolveSofficeCommandViaShell() {
+  if (process.platform === "win32") {
+    return "";
+  }
+
+  const shellLookups = [
+    "command -v soffice || true",
+    "command -v libreoffice || true",
+    "find /layers /app /workspace /usr -type f \\( -name soffice -o -name libreoffice -o -name soffice.bin -o -name libreoffice.bin \\) 2>/dev/null | head -n 1",
+  ];
+
+  for (const lookup of shellLookups) {
+    try {
+      const { stdout } = await runCommand("sh", ["-lc", lookup], {
+        env: {
+          ...process.env,
+          PATH: [
+            process.env.PATH,
+            "/layers/digitalocean_apt/apt/usr/bin",
+            "/layers/digitalocean_apt/apt/bin",
+            "/app/.apt/usr/bin",
+            "/app/.apt/bin",
+          ].filter(Boolean).join(":"),
+        },
+      });
+      const discovered = clean(String(stdout || "").split(/\r?\n/).find(Boolean) || "");
+      if (!discovered) {
+        continue;
+      }
+
+      await runCommand(discovered, ["--version"], {
+        env: {
+          ...process.env,
+          PATH: [
+            process.env.PATH,
+            "/layers/digitalocean_apt/apt/usr/bin",
+            "/layers/digitalocean_apt/apt/bin",
+            "/app/.apt/usr/bin",
+            "/app/.apt/bin",
+          ].filter(Boolean).join(":"),
+        },
+      });
+      return discovered;
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
+}
+
 async function resolveSofficeCommand() {
   for (const candidate of SOFFICE_CANDIDATES) {
     const safeCandidate = clean(candidate);
@@ -144,6 +195,11 @@ async function resolveSofficeCommand() {
     } catch {
       continue;
     }
+  }
+
+  const shellDiscovered = await resolveSofficeCommandViaShell();
+  if (shellDiscovered) {
+    return shellDiscovered;
   }
 
   for (const root of SOFFICE_DISCOVERY_ROOTS) {
