@@ -561,17 +561,16 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
   });
   doc.moveDown(0.25);
 
-  for (const item of safeItems) {
+  const columnGap = 18;
+  const columnWidth = Math.max(220, (helpers.availableWidth - columnGap) / 2);
+  const drawSignatureCard = async (item, x, y, cardWidth) => {
     const metaLines = normalizePdfLines(item.metaLines ?? []);
     const role = clean(item.role) || "Osoba";
     const name = clean(item.name) || "Nepoznato";
     const isDigital = clean(item.signatureMode).toLowerCase() === "digital";
     const signatureBuffer = await resolvePdfImageBuffer(item.signatureImageUrl || "");
-    const cardWidth = helpers.availableWidth;
     const estimatedHeight = signatureBuffer ? 142 : (isDigital ? 132 : 110);
-    helpers.ensureSpace(estimatedHeight + 8);
-    const x = doc.page.margins.left;
-    const y = doc.y;
+
     drawRoundedOutline(doc, x, y, cardWidth, estimatedHeight, 18, "#111111");
     drawAccentLine(doc, x, y, estimatedHeight, "#c94cc8");
     doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text(role, x + 16, y + 12, {
@@ -615,7 +614,25 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
     doc.moveTo(x + 16, y + estimatedHeight - 12).lineTo(x + cardWidth - 16, y + estimatedHeight - 12);
     doc.lineWidth(0.8).strokeColor("#111111").stroke();
     doc.restore();
-    doc.y = y + estimatedHeight + 10;
+    return estimatedHeight;
+  };
+
+  for (let index = 0; index < safeItems.length; index += 2) {
+    const rowItems = safeItems.slice(index, index + 2);
+    const rowStartY = doc.y;
+    const heights = [];
+    helpers.ensureSpace(152);
+
+    for (let rowIndex = 0; rowIndex < rowItems.length; rowIndex += 1) {
+      const item = rowItems[rowIndex];
+      const isSingleLast = rowItems.length === 1;
+      const x = isSingleLast
+        ? doc.page.margins.left + columnWidth + columnGap
+        : doc.page.margins.left + (rowIndex * (columnWidth + columnGap));
+      heights.push(await drawSignatureCard(item, x, rowStartY, columnWidth));
+    }
+
+    doc.y = rowStartY + Math.max(...heights, 110) + 10;
   }
 }
 

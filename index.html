@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260406r" />
+<link rel="stylesheet" href="/styles.css?v=20260407a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3736,6 +3736,7 @@
                         <button id="document-template-runtime-back" type="button" class="ghost-button" hidden>Vrati se na osnovne podatke</button>
                         <button id="document-template-runtime-prev" type="button" class="ghost-button" hidden>Prethodni</button>
                         <button id="document-template-runtime-next" type="button" class="primary-button" hidden>NEXT</button>
+                        <button id="document-template-runtime-send-signature" type="button" class="ghost-button" hidden>Pošalji na digitalni potpis</button>
                         <button id="document-template-runtime-print-all" type="button" class="ghost-button" hidden>Ispiši sve</button>
                         <button id="document-template-open-pdf-preview" type="button" class="ghost-button" hidden>Preuzmi PDF</button>
                         <button id="document-template-export-preview" type="button" class="ghost-button" hidden>Preuzmi Word</button>
@@ -3874,17 +3875,9 @@
                               <strong>Nositelj</strong>
                               <span>Dodaje podatke o nositelju ovlaštenja</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="inspector_signature">
-                              <strong>Potpis ispitivača</strong>
-                              <span>Dodaje potpis ispitivača panik rasvjete</span>
-                            </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="authorization_holder_signature">
-                              <strong>Potpis nositelja</strong>
-                              <span>Dodaje potpis nositelja ovlaštenja za panik rasvjetu</span>
-                            </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="digital_signature">
-                              <strong>Digitalni potpis</strong>
-                              <span>Rezervira mjesto za jedan ili više kvalificiranih digitalnih potpisa</span>
+                            <button type="button" class="document-template-tool-button" data-template-tool="signature">
+                              <strong>Potpis</strong>
+                              <span>Jedinstveni potpisni slot za scan potpisa ili budući digitalni potpis</span>
                             </button>
                           </div>
                         </section>
@@ -4039,6 +4032,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-<script type="module" src="/src/main.js?v=20260406r"></script>
+<script type="module" src="/src/main.js?v=20260407a"></script>
   </body>
 </html>
