@@ -1257,6 +1257,17 @@ const documentTemplateRuntimeDock = document.querySelector("#document-template-r
 const documentTemplateRuntimeDockTitle = document.querySelector("#document-template-runtime-dock-title");
 const documentTemplateRuntimeDockMeta = document.querySelector("#document-template-runtime-dock-meta");
 const documentTemplateRuntimeDockTrack = document.querySelector("#document-template-runtime-dock-track");
+const documentTemplateRuntimeDockScrollPrevButton = document.querySelector("#document-template-runtime-dock-scroll-prev");
+const documentTemplateRuntimeDockScrollNextButton = document.querySelector("#document-template-runtime-dock-scroll-next");
+const documentTemplateRuntimeDockBackButton = document.querySelector("#document-template-runtime-dock-back");
+const documentTemplateRuntimeDockSignScanButton = document.querySelector("#document-template-runtime-dock-sign-scan");
+const documentTemplateRuntimeDockSignDigitalButton = document.querySelector("#document-template-runtime-dock-sign-digital");
+const documentTemplateRuntimeDockSendSignatureButton = document.querySelector("#document-template-runtime-dock-send-signature");
+const documentTemplateRuntimeDockPrintAllButton = document.querySelector("#document-template-runtime-dock-print-all");
+const documentTemplateRuntimeDockPdfButton = document.querySelector("#document-template-runtime-dock-pdf");
+const documentTemplateRuntimeDockWordButton = document.querySelector("#document-template-runtime-dock-word");
+const documentTemplateRuntimeSidePrevButton = document.querySelector("#document-template-runtime-side-prev");
+const documentTemplateRuntimeSideNextButton = document.querySelector("#document-template-runtime-side-next");
 const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
 const documentTemplateOutputFileNameInput = document.querySelector("#document-template-output-file-name");
 const documentTemplateCompanyIdInput = document.querySelector("#document-template-company-id");
@@ -18157,6 +18168,68 @@ function getDocumentTemplateRuntimeSignatureEntriesFor(template = buildDocumentT
   return items;
 }
 
+function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
+  const rawTitle = String(entry?.templateTitle || "").trim();
+  if (!rawTitle) {
+    return "Zapisnik";
+  }
+
+  const upperTitle = rawTitle.toUpperCase();
+  const knownLabels = ["TZIN", "SPR", "ZNR", "TIPKALO", "PANIK"];
+  const matchedLabel = knownLabels.find((label) => upperTitle.includes(label));
+  if (matchedLabel) {
+    return matchedLabel;
+  }
+
+  const sanitized = upperTitle
+    .replace(/[^A-Z0-9_\s-]+/g, " ")
+    .split(/[\s_-]+/)
+    .map((part) => part.replace(/\d+/g, "").trim())
+    .find(Boolean);
+  return sanitized || rawTitle;
+}
+
+function groupDocumentTemplateRuntimeDockEntries(entries = []) {
+  const groups = [];
+  const groupsByWorkOrderId = new Map();
+
+  (Array.isArray(entries) ? entries : []).forEach((entry, index) => {
+    const workOrderId = String(entry?.workOrderId || `group-${index}`);
+    let group = groupsByWorkOrderId.get(workOrderId);
+    if (!group) {
+      group = {
+        workOrderId,
+        workOrderNumber: String(entry?.workOrderNumber || "").trim() || "bez broja",
+        items: [],
+      };
+      groupsByWorkOrderId.set(workOrderId, group);
+      groups.push(group);
+    }
+
+    group.items.push({
+      ...entry,
+      dockIndex: index,
+      timelineLabel: getDocumentTemplateRuntimeTimelineLabel(entry),
+    });
+  });
+
+  return groups;
+}
+
+function scrollDocumentTemplateRuntimeDockTrack(direction = 1) {
+  if (!documentTemplateRuntimeDockTrack) {
+    return;
+  }
+
+  const safeDirection = direction >= 0 ? 1 : -1;
+  const scrollAmount = Math.max(240, Math.round(documentTemplateRuntimeDockTrack.clientWidth * 0.7));
+  documentTemplateRuntimeDockTrack.scrollBy({
+    left: scrollAmount * safeDirection,
+    top: 0,
+    behavior: "smooth",
+  });
+}
+
 function renderDocumentTemplateRuntimeContext() {
   if (!documentTemplateRuntimeContext || !documentTemplateRuntimeWorkOrders || !documentTemplateRuntimeCommon) {
     return;
@@ -18176,36 +18249,59 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
   }
   if (documentTemplateRuntimeBackButton) {
-    documentTemplateRuntimeBackButton.hidden = !hasWizardRuntime;
+    documentTemplateRuntimeBackButton.hidden = true;
   }
   if (documentTemplateRuntimePrevButton) {
-    documentTemplateRuntimePrevButton.hidden = !hasSequence;
+    documentTemplateRuntimePrevButton.hidden = true;
     documentTemplateRuntimePrevButton.disabled = !hasSequence || sequenceState.index <= 0;
   }
   if (documentTemplateRuntimeNextButton) {
-    documentTemplateRuntimeNextButton.hidden = !hasSequence;
+    documentTemplateRuntimeNextButton.hidden = true;
     documentTemplateRuntimeNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
     documentTemplateRuntimeNextButton.textContent = "NEXT";
   }
   if (documentTemplateRuntimePrintAllButton) {
-    const showPrintAll = Boolean(hasSequence && sequenceState.total > 1 && sequenceState.index >= sequenceState.total - 1);
-    documentTemplateRuntimePrintAllButton.hidden = !showPrintAll;
-    documentTemplateRuntimePrintAllButton.disabled = !showPrintAll;
+    documentTemplateRuntimePrintAllButton.hidden = true;
   }
   if (documentTemplateRuntimeSendSignatureButton) {
+    documentTemplateRuntimeSendSignatureButton.hidden = true;
+  }
+  if (documentTemplateRuntimeSequenceProgress) {
+    documentTemplateRuntimeSequenceProgress.hidden = true;
+    documentTemplateRuntimeSequenceProgress.textContent = "";
+  }
+  if (documentTemplateRuntimeDockBackButton) {
+    documentTemplateRuntimeDockBackButton.hidden = !hasWizardRuntime;
+  }
+  if (documentTemplateRuntimeDockPrintAllButton) {
+    const showPrintAll = Boolean(hasSequence && sequenceState.total > 1 && sequenceState.index >= sequenceState.total - 1);
+    documentTemplateRuntimeDockPrintAllButton.hidden = !showPrintAll;
+    documentTemplateRuntimeDockPrintAllButton.disabled = !showPrintAll;
+  }
+  if (documentTemplateRuntimeDockSendSignatureButton) {
     const canSendForDigital = Boolean(
       fillMode
       && activeWorkOrder
       && normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode) === "digital",
     );
-    documentTemplateRuntimeSendSignatureButton.hidden = !canSendForDigital;
-    documentTemplateRuntimeSendSignatureButton.disabled = !canSendForDigital;
+    documentTemplateRuntimeDockSendSignatureButton.hidden = !canSendForDigital;
+    documentTemplateRuntimeDockSendSignatureButton.disabled = !canSendForDigital;
   }
-  if (documentTemplateRuntimeSequenceProgress) {
-    documentTemplateRuntimeSequenceProgress.hidden = !hasSequence;
-    documentTemplateRuntimeSequenceProgress.textContent = hasSequence
-      ? `${sequenceState.index + 1}/${sequenceState.total} · ${sequenceState.entry.templateTitle || "Zapisnik"} · RN ${sequenceState.entry.workOrderNumber || "bez broja"}`
-      : "";
+  if (documentTemplateRuntimeDockSignScanButton) {
+    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
+    documentTemplateRuntimeDockSignScanButton.classList.toggle("is-active", signatureMode === "scan");
+  }
+  if (documentTemplateRuntimeDockSignDigitalButton) {
+    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
+    documentTemplateRuntimeDockSignDigitalButton.classList.toggle("is-active", signatureMode === "digital");
+  }
+  if (documentTemplateRuntimeSidePrevButton) {
+    documentTemplateRuntimeSidePrevButton.hidden = !hasSequence;
+    documentTemplateRuntimeSidePrevButton.disabled = !hasSequence || sequenceState.index <= 0;
+  }
+  if (documentTemplateRuntimeSideNextButton) {
+    documentTemplateRuntimeSideNextButton.hidden = !hasSequence;
+    documentTemplateRuntimeSideNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
   }
 
   const renderRuntimeDock = () => {
@@ -18232,56 +18328,64 @@ function renderDocumentTemplateRuntimeContext() {
 
     const activeIndex = hasSequence ? sequenceState.index : 0;
     const activeEntry = dockEntries[activeIndex] || dockEntries[0];
+    const groupedEntries = groupDocumentTemplateRuntimeDockEntries(dockEntries);
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
-    documentTemplateRuntimeDockTitle.textContent = `${activeEntry?.templateTitle || "Zapisnik"} · RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"}`;
-    documentTemplateRuntimeDockMeta.textContent = dockEntries.length > 1
-      ? `${activeIndex + 1}. zapisnik od ${dockEntries.length} u nizu`
-      : `${activeWorkOrder.companyName || "Aktivni radni nalog"} · ${activeWorkOrder.locationName || "Bez lokacije"}`;
+    documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"} · ${getDocumentTemplateRuntimeTimelineLabel(activeEntry)}`;
+    documentTemplateRuntimeDockMeta.textContent = [
+      activeWorkOrder.companyName || "Aktivni radni nalog",
+      activeWorkOrder.locationName || "Bez lokacije",
+    ].filter(Boolean).join(" · ");
 
-    documentTemplateRuntimeDockTrack.replaceChildren(...dockEntries.map((entry, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "document-template-runtime-dock-item";
-      if (index === activeIndex) {
-        button.classList.add("is-active");
-      } else if (index < activeIndex) {
-        button.classList.add("is-complete");
+    documentTemplateRuntimeDockTrack.replaceChildren(...groupedEntries.map((group) => {
+      const groupCard = document.createElement("article");
+      groupCard.className = "document-template-runtime-dock-group";
+      if (String(group.workOrderId) === String(activeEntry?.workOrderId || "")) {
+        groupCard.classList.add("is-active");
       }
-      button.setAttribute(
-        "aria-label",
-        `${index + 1}. ${entry.templateTitle || "Zapisnik"} za RN ${entry.workOrderNumber || "bez broja"}`,
-      );
 
-      const step = document.createElement("span");
-      step.className = "document-template-runtime-dock-step";
-      step.textContent = String(index + 1);
+      const groupHead = document.createElement("div");
+      groupHead.className = "document-template-runtime-dock-group-head";
 
-      const copy = document.createElement("span");
-      copy.className = "document-template-runtime-dock-copy";
+      const groupTitle = document.createElement("strong");
+      groupTitle.textContent = `RN ${group.workOrderNumber}`;
 
-      const entryTitle = document.createElement("strong");
-      entryTitle.textContent = entry.templateTitle || "Zapisnik";
+      const groupMeta = document.createElement("span");
+      groupMeta.textContent = group.items.map((entry) => entry.timelineLabel).join(" · ");
 
-      const entryMeta = document.createElement("span");
-      entryMeta.textContent = `RN ${entry.workOrderNumber || "bez broja"}`;
+      groupHead.append(groupTitle, groupMeta);
 
-      copy.append(entryTitle, entryMeta);
-      button.append(step, copy);
+      const groupItems = document.createElement("div");
+      groupItems.className = "document-template-runtime-dock-group-items";
 
-      button.addEventListener("click", () => {
-        if (hasSequence) {
-          if (index !== activeIndex) {
-            openDocumentTemplateRuntimeSequenceIndex(index);
+      group.items.forEach((entry) => {
+        const index = Number(entry.dockIndex);
+        const itemButton = document.createElement("button");
+        itemButton.type = "button";
+        itemButton.className = "document-template-runtime-dock-item";
+        if (index === activeIndex) {
+          itemButton.classList.add("is-active");
+        } else if (index >= 0 && index < activeIndex) {
+          itemButton.classList.add("is-complete");
+        }
+        itemButton.textContent = entry.timelineLabel;
+        itemButton.setAttribute("aria-label", `${entry.timelineLabel} za RN ${group.workOrderNumber}`);
+        itemButton.addEventListener("click", () => {
+          if (hasSequence) {
+            if (index !== activeIndex && index >= 0) {
+              openDocumentTemplateRuntimeSequenceIndex(index);
+            }
+            return;
           }
-          return;
-        }
 
-        if (String(entry.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
-          setDocumentTemplateRuntimeActiveWorkOrder(entry.workOrderId, { render: true });
-        }
+          if (String(entry.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
+            setDocumentTemplateRuntimeActiveWorkOrder(entry.workOrderId, { render: true });
+          }
+        });
+        groupItems.append(itemButton);
       });
 
-      return button;
+      groupCard.append(groupHead, groupItems);
+      return groupCard;
     }));
   };
 
@@ -18297,15 +18401,12 @@ function renderDocumentTemplateRuntimeContext() {
     : workOrders;
 
   if (documentTemplateRuntimeHelper) {
-    documentTemplateRuntimeHelper.textContent = hasSequence
-      ? `Ispunjavaš zapisnike redom po povezanim uslugama. Nakon završetka ovog zapisnika klikni NEXT za sljedeći.`
-      : (fillMode
-        ? (workOrders.length > 1
-          ? "Ispuni samo polja iz predloška. Podaci iz RN-a, zajednički dokument podaci i povezane usluge povlače se automatski."
-          : "Ovdje ispunjavaš samo ono što zapisnik stvarno traži. Sve ostalo se povlači automatski iz RN-a i templatea.")
+    documentTemplateRuntimeHelper.textContent = fillMode
+      ? ""
       : (workOrders.length > 1
         ? "Template trenutno čita zajedničke podatke iz batch odabira. Klikom na RN mijenjaš aktivni preview i Word export."
-        : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka."));
+        : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka.");
+    documentTemplateRuntimeHelper.hidden = fillMode;
   }
 
   documentTemplateRuntimeWorkOrders.replaceChildren(...visibleWorkOrders.map((workOrder) => {
@@ -18443,39 +18544,18 @@ function renderDocumentTemplateRuntimeContext() {
   if (fillMode && activeWorkOrder) {
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
     const signatureEntries = getDocumentTemplateRuntimeSignatureEntriesFor(template, activeWorkOrder);
-    const signatureCard = document.createElement("section");
-    signatureCard.className = "document-template-runtime-signing-card";
-
-    const cardCopy = document.createElement("div");
-    cardCopy.className = "document-template-runtime-signing-copy";
-    const title = document.createElement("strong");
-    title.textContent = "Potpisivanje";
-    const meta = document.createElement("p");
-    meta.className = "helper-copy module-copy";
-    meta.textContent = signatureEntries.length > 0
-      ? `${signatureEntries.length} potpisnika · ${getDocumentTemplateSignatureMethodLabel(signatureMode)}`
-      : `Nema odabranih potpisnika · ${getDocumentTemplateSignatureMethodLabel(signatureMode)}`;
-    cardCopy.append(title, meta);
-
-    const buttonRow = document.createElement("div");
-    buttonRow.className = "document-template-runtime-signing-buttons";
-
-    DOCUMENT_TEMPLATE_SIGNATURE_METHOD_OPTIONS.forEach((option) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "ghost-button document-template-runtime-signing-button";
-      button.classList.toggle("is-active", signatureMode === option.value);
-      button.textContent = option.label;
-      button.addEventListener("click", () => {
-        updateDocumentTemplateRuntimeCommon({ signatureMode: option.value }, { render: true });
-        renderDocumentTemplateRuntimeContext();
-        renderDocumentTemplatePreviewContent();
-      });
-      buttonRow.append(button);
-    });
-
-    signatureCard.append(cardCopy, buttonRow);
-    runtimeCommonNodes.push(signatureCard);
+    if (documentTemplateRuntimeDockSignScanButton) {
+      documentTemplateRuntimeDockSignScanButton.title = signatureEntries.length > 0
+        ? `${signatureEntries.length} potpisnika · Scan potpisa`
+        : "Scan potpisa";
+      documentTemplateRuntimeDockSignScanButton.classList.toggle("is-active", signatureMode === "scan");
+    }
+    if (documentTemplateRuntimeDockSignDigitalButton) {
+      documentTemplateRuntimeDockSignDigitalButton.title = signatureEntries.length > 0
+        ? `${signatureEntries.length} potpisnika · Digitalni potpis`
+        : "Digitalni potpis";
+      documentTemplateRuntimeDockSignDigitalButton.classList.toggle("is-active", signatureMode === "digital");
+    }
   }
 
   documentTemplateRuntimeCommon.replaceChildren(...runtimeCommonNodes);
@@ -18504,14 +18584,13 @@ function syncDocumentTemplateEditorChrome() {
     documentTemplateSaveButton.hidden = fillMode;
   }
   if (documentTemplateOpenPdfPreviewButton) {
-    documentTemplateOpenPdfPreviewButton.hidden = !fillMode;
+    documentTemplateOpenPdfPreviewButton.hidden = true;
   }
   if (documentTemplateExportPreviewButton) {
-    documentTemplateExportPreviewButton.hidden = !fillMode;
+    documentTemplateExportPreviewButton.hidden = true;
   }
   if (documentTemplateRuntimeSendSignatureButton) {
-    documentTemplateRuntimeSendSignatureButton.hidden = !fillMode
-      || normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode) !== "digital";
+    documentTemplateRuntimeSendSignatureButton.hidden = true;
   }
   if (documentTemplateRuntimePrintAllButton) {
     documentTemplateRuntimePrintAllButton.hidden = true;
@@ -37256,7 +37335,17 @@ documentTemplateRuntimeClearButton?.addEventListener("click", () => {
 documentTemplateRuntimeBackButton?.addEventListener("click", () => {
   reopenWorkOrderDocumentWizardFromRuntime();
 });
+documentTemplateRuntimeDockBackButton?.addEventListener("click", () => {
+  reopenWorkOrderDocumentWizardFromRuntime();
+});
 documentTemplateRuntimePrevButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index <= 0) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index - 1);
+});
+documentTemplateRuntimeSidePrevButton?.addEventListener("click", () => {
   const sequenceState = getDocumentTemplateRuntimeSequenceState();
   if (!sequenceState || sequenceState.index <= 0) {
     return;
@@ -37270,11 +37359,46 @@ documentTemplateRuntimeNextButton?.addEventListener("click", () => {
   }
   openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
 });
+documentTemplateRuntimeSideNextButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index >= sequenceState.total - 1) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
+});
 documentTemplateRuntimePrintAllButton?.addEventListener("click", () => {
+  void exportDocumentTemplateBatchPdf({ print: true });
+});
+documentTemplateRuntimeDockPrintAllButton?.addEventListener("click", () => {
   void exportDocumentTemplateBatchPdf({ print: true });
 });
 documentTemplateRuntimeSendSignatureButton?.addEventListener("click", () => {
   void queueDocumentTemplateForDigitalSignature();
+});
+documentTemplateRuntimeDockSendSignatureButton?.addEventListener("click", () => {
+  void queueDocumentTemplateForDigitalSignature();
+});
+documentTemplateRuntimeDockSignScanButton?.addEventListener("click", () => {
+  updateDocumentTemplateRuntimeCommon({ signatureMode: "scan" }, { render: true });
+  renderDocumentTemplateRuntimeContext();
+  renderDocumentTemplatePreviewContent();
+});
+documentTemplateRuntimeDockSignDigitalButton?.addEventListener("click", () => {
+  updateDocumentTemplateRuntimeCommon({ signatureMode: "digital" }, { render: true });
+  renderDocumentTemplateRuntimeContext();
+  renderDocumentTemplatePreviewContent();
+});
+documentTemplateRuntimeDockPdfButton?.addEventListener("click", () => {
+  void exportDocumentTemplatePdf();
+});
+documentTemplateRuntimeDockWordButton?.addEventListener("click", () => {
+  void exportDocumentTemplateWord({ placeholderMode: false });
+});
+documentTemplateRuntimeDockScrollPrevButton?.addEventListener("click", () => {
+  scrollDocumentTemplateRuntimeDockTrack(-1);
+});
+documentTemplateRuntimeDockScrollNextButton?.addEventListener("click", () => {
+  scrollDocumentTemplateRuntimeDockTrack(1);
 });
 
 documentTemplateDeleteButton?.addEventListener("click", () => {

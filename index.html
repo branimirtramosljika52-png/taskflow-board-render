@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260407u" />
+    <link rel="stylesheet" href="/styles.css?v=20260407v" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3915,8 +3915,26 @@
                         <strong id="document-template-runtime-dock-title">Aktivni zapisnik</strong>
                         <span id="document-template-runtime-dock-meta">RN i zapisnik u tijeku</span>
                       </div>
-                      <div id="document-template-runtime-dock-track" class="document-template-runtime-dock-track"></div>
+                      <div class="document-template-runtime-dock-track-shell">
+                        <button id="document-template-runtime-dock-scroll-prev" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni timeline lijevo">&#8592;</button>
+                        <div id="document-template-runtime-dock-track" class="document-template-runtime-dock-track"></div>
+                        <button id="document-template-runtime-dock-scroll-next" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni timeline desno">&#8594;</button>
+                      </div>
+                      <div class="document-template-runtime-dock-actions">
+                        <button id="document-template-runtime-dock-back" type="button" class="ghost-button" hidden>Osnovni podaci</button>
+                        <div class="document-template-runtime-dock-signature-mode">
+                          <button id="document-template-runtime-dock-sign-scan" type="button" class="ghost-button">Scan potpisa</button>
+                          <button id="document-template-runtime-dock-sign-digital" type="button" class="ghost-button">Digitalni potpis</button>
+                        </div>
+                        <button id="document-template-runtime-dock-send-signature" type="button" class="ghost-button" hidden>Pošalji na digitalni potpis</button>
+                        <button id="document-template-runtime-dock-print-all" type="button" class="ghost-button" hidden>Ispiši sve</button>
+                        <button id="document-template-runtime-dock-pdf" type="button" class="ghost-button">Preuzmi PDF</button>
+                        <button id="document-template-runtime-dock-word" type="button" class="ghost-button">Preuzmi Word</button>
+                      </div>
                     </section>
+
+                    <button id="document-template-runtime-side-prev" type="button" class="document-template-runtime-side-nav is-prev" hidden aria-label="Prethodni zapisnik">&#8592;</button>
+                    <button id="document-template-runtime-side-next" type="button" class="document-template-runtime-side-nav is-next" hidden aria-label="Sljedeći zapisnik">&#8594;</button>
 
                     <div class="form-actions">
                       <button id="document-template-reset" type="button" class="ghost-button" hidden>Novi template</button>
@@ -4045,6 +4063,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260407u"></script>
+    <script type="module" src="/src/main.js?v=20260407v"></script>
   </body>
 </html>
