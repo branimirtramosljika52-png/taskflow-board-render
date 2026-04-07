@@ -11537,7 +11537,7 @@ body.is-document-template-editor-open .chat-dock {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 120;
+  z-index: 320;
   display: grid;
 }
 
