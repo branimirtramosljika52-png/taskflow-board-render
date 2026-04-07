@@ -4450,6 +4450,14 @@ button:hover {
   color: var(--danger);
 }
 
+#work-order-document-wizard-error {
+  pointer-events: none;
+}
+
+#work-order-document-wizard-error:empty {
+  display: none;
+}
+
 .form-error.is-success {
   color: #8a3ad8;
 }
@@ -7557,7 +7565,7 @@ body.is-work-order-editor-open {
 
 .work-order-document-wizard-panel {
   position: fixed;
-  z-index: 59;
+  z-index: 230;
   top: 14px;
   left: 50%;
   width: min(1680px, calc(100vw - 40px));
@@ -7584,6 +7592,12 @@ body.is-work-order-editor-open {
 
 body.is-work-order-document-wizard-open {
   overflow: hidden;
+}
+
+body.is-work-order-document-wizard-open .chat-dock,
+body.is-document-template-editor-open .chat-dock {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .work-order-document-wizard-head,
