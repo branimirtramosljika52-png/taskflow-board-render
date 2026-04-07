@@ -1226,6 +1226,10 @@ const documentTemplateEditorBackdrop = document.querySelector("#document-templat
 const documentTemplateEditorPanel = document.querySelector("#document-template-editor-panel");
 const documentTemplateEditorCloseButton = document.querySelector("#document-template-editor-close");
 const documentTemplateEditorBody = documentTemplateEditorPanel?.querySelector(".document-template-editor-body");
+const documentTemplateEditorBackdropHomeParent = documentTemplateEditorBackdrop?.parentNode ?? null;
+const documentTemplateEditorBackdropHomeNextSibling = documentTemplateEditorBackdrop?.nextSibling ?? null;
+const documentTemplateEditorPanelHomeParent = documentTemplateEditorPanel?.parentNode ?? null;
+const documentTemplateEditorPanelHomeNextSibling = documentTemplateEditorPanel?.nextSibling ?? null;
 const documentTemplateEditorTitle = document.querySelector("#document-template-editor-title");
 const documentTemplateWorkspaceHead = documentTemplateEditorPanel?.querySelector(".document-template-workspace-head");
 const documentTemplateHeadActions = documentTemplateEditorPanel?.querySelector(".document-template-head-actions");
@@ -12118,15 +12122,25 @@ function syncDocumentTemplateEditorModal() {
 
   if (state.documentTemplateEditorOpen && (
     !state.user
-    || state.activeView !== "module"
-    || state.activeModuleItem !== "template-development"
+    || (
+      !runtimeFillMode
+      && (
+        state.activeView !== "module"
+        || state.activeModuleItem !== "template-development"
+      )
+    )
   )) {
     state.documentTemplateEditorOpen = false;
   }
 
   const isOpen = state.documentTemplateEditorOpen;
-  documentTemplateEditorPanel?.classList.toggle("is-workspace-open", isOpen);
-  templateDevelopmentModule?.classList.toggle("is-editor-open", isOpen);
+  syncDocumentTemplateEditorMountTarget(isOpen && runtimeFillMode);
+  documentTemplateEditorPanel?.classList.toggle("is-workspace-open", isOpen && !runtimeFillMode);
+  documentTemplateEditorPanel?.classList.toggle("is-modal-open", isOpen && runtimeFillMode);
+  templateDevelopmentModule?.classList.toggle(
+    "is-editor-open",
+    isOpen && !runtimeFillMode && state.activeView === "module" && state.activeModuleItem === "template-development",
+  );
   document.body.classList.toggle("is-document-template-editor-open", isOpen);
 
   if (documentTemplateEditorPanel) {
@@ -12139,13 +12153,13 @@ function syncDocumentTemplateEditorModal() {
   }
 
   if (templateDevelopmentSummaryGrid) {
-    templateDevelopmentSummaryGrid.hidden = isOpen;
+    templateDevelopmentSummaryGrid.hidden = isOpen && !runtimeFillMode;
   }
   if (templateDevelopmentToolbarPanel) {
-    templateDevelopmentToolbarPanel.hidden = isOpen;
+    templateDevelopmentToolbarPanel.hidden = isOpen && !runtimeFillMode;
   }
   if (templateDevelopmentListPanel) {
-    templateDevelopmentListPanel.hidden = isOpen;
+    templateDevelopmentListPanel.hidden = isOpen && !runtimeFillMode;
   }
 
   if (isOpen) {
@@ -13066,6 +13080,50 @@ async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocum
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
   }
+}
+
+function restoreDocumentTemplateEditorNode(node, homeParent, homeNextSibling) {
+  if (!(node instanceof HTMLElement) || !(homeParent instanceof Node)) {
+    return;
+  }
+
+  if (node.parentNode === homeParent) {
+    return;
+  }
+
+  if (homeNextSibling instanceof Node && homeNextSibling.parentNode === homeParent) {
+    homeParent.insertBefore(node, homeNextSibling);
+    return;
+  }
+
+  homeParent.append(node);
+}
+
+function syncDocumentTemplateEditorMountTarget(useBodyMount = false) {
+  if (!(documentTemplateEditorPanel instanceof HTMLElement) || !(documentTemplateEditorBackdrop instanceof HTMLElement)) {
+    return;
+  }
+
+  if (useBodyMount) {
+    if (documentTemplateEditorBackdrop.parentNode !== document.body) {
+      document.body.append(documentTemplateEditorBackdrop);
+    }
+    if (documentTemplateEditorPanel.parentNode !== document.body) {
+      document.body.append(documentTemplateEditorPanel);
+    }
+    return;
+  }
+
+  restoreDocumentTemplateEditorNode(
+    documentTemplateEditorBackdrop,
+    documentTemplateEditorBackdropHomeParent,
+    documentTemplateEditorBackdropHomeNextSibling,
+  );
+  restoreDocumentTemplateEditorNode(
+    documentTemplateEditorPanel,
+    documentTemplateEditorPanelHomeParent,
+    documentTemplateEditorPanelHomeNextSibling,
+  );
 }
 
 function getDocumentTemplatePreviousRecordCandidates(field = {}, workOrder = {}, template = buildDocumentTemplateDraft()) {
@@ -17949,6 +18007,8 @@ function renderDocumentTemplateRuntimeContext() {
   const sequenceState = fillMode ? getDocumentTemplateRuntimeSequenceState() : null;
   const hasSequence = Boolean(sequenceState);
   const hasWizardRuntime = fillMode && state.documentTemplateRuntime.source === "wizard";
+  const workOrders = hasContext ? getDocumentTemplateRuntimeWorkOrders() : [];
+  const activeWorkOrder = hasContext ? getDocumentTemplateRuntimeActiveWorkOrder() : null;
   documentTemplateRuntimeContext.hidden = !hasContext;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
   if (documentTemplateRuntimeClearButton) {
@@ -17993,8 +18053,6 @@ function renderDocumentTemplateRuntimeContext() {
     return;
   }
 
-  const workOrders = getDocumentTemplateRuntimeWorkOrders();
-  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
   const visibleWorkOrders = hasSequence
     ? workOrders.filter((workOrder) => String(workOrder.id) === String(sequenceState.entry.workOrderId))
     : workOrders;
@@ -33746,7 +33804,7 @@ function openDocumentTemplateFromWizard(
     return false;
   }
 
-  const shouldUseModuleWorkspace = true;
+  const shouldUseModuleWorkspace = false;
 
   const ensureRuntimeEditorVisible = ({ allowModuleFallback = true } = {}) => {
     state.documentTemplateEditorOpen = true;
@@ -33759,7 +33817,7 @@ function openDocumentTemplateFromWizard(
       && !documentTemplateEditorPanel.hidden,
     );
 
-    if (!isVisible && allowModuleFallback) {
+    if (!isVisible && allowModuleFallback && shouldUseModuleWorkspace) {
       state.activeView = "module";
       state.activeModuleItem = "template-development";
       renderActiveView();
