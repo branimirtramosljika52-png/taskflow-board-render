@@ -16696,6 +16696,15 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
   };
 }
 
+function doesDocumentTemplateHaveReferenceWordTemplate(template = buildDocumentTemplateDraft()) {
+  return Boolean(
+    template?.referenceDocument?.inlineDataUrl
+    || template?.referenceDocument?.dataUrl
+    || template?.referenceDocument?.storageUrl
+    || template?.referenceDocument?.url,
+  );
+}
+
 async function exportDocumentTemplatePdf() {
   const template = buildDocumentTemplateDraft();
   const templateId = getDocumentTemplateRuntimeTemplateId(template);
@@ -16703,6 +16712,11 @@ async function exportDocumentTemplatePdf() {
 
   if (!templateId || !workOrder) {
     setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije PDF exporta.");
+    return;
+  }
+
+  if (!doesDocumentTemplateHaveReferenceWordTemplate(template)) {
+    setDocumentTemplateMessage("Za PDF i Word export prvo učitaj gotovi .docx/.dotx Word predložak u Template Development.");
     return;
   }
 
@@ -16887,15 +16901,15 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   if (!placeholderMode) {
     const templateId = getDocumentTemplateRuntimeTemplateId(template);
     const workOrder = getDocumentTemplateRuntimeActiveWorkOrder();
-    const hasReferenceTemplate = Boolean(
-      template.referenceDocument?.inlineDataUrl
-      || template.referenceDocument?.dataUrl
-      || template.referenceDocument?.storageUrl
-      || template.referenceDocument?.url,
-    );
+    const hasReferenceTemplate = doesDocumentTemplateHaveReferenceWordTemplate(template);
 
     if (!templateId || !workOrder) {
       setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije Word exporta.");
+      return;
+    }
+
+    if (!hasReferenceTemplate) {
+      setDocumentTemplateMessage("Za Word i PDF export prvo učitaj gotovi .docx/.dotx Word predložak u Template Development.");
       return;
     }
 
@@ -16907,29 +16921,28 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
       return;
     }
 
-    if (hasReferenceTemplate) {
-      try {
-        const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
-        const payload = {
-          fileName: exportEntry?.wordFileName || `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.docx`,
-          placeholders: exportEntry?.placeholders || buildDocumentTemplateRuntimePlaceholderPayload(
-            template,
-            buildDocumentTemplatePreviewContext(template, { workOrder }),
-          ),
-        };
-        const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-word`, {
-          method: "POST",
-          body: payload,
-        });
-        triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.docx");
-        setDocumentTemplateMessage("Word zapisnik je generiran iz spremljenog predloška.", { type: "success" });
-        return;
-      } catch (error) {
-        console.error("Ne mogu generirati DOCX iz Word predloška, koristim fallback export.", error);
-        setDocumentTemplateMessage(
-          error?.message || "Ne mogu generirati Word iz spremljenog predloška. Koristim fallback export.",
-        );
-      }
+    try {
+      const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+      const payload = {
+        fileName: exportEntry?.wordFileName || `${buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder)}.docx`,
+        placeholders: exportEntry?.placeholders || buildDocumentTemplateRuntimePlaceholderPayload(
+          template,
+          buildDocumentTemplatePreviewContext(template, { workOrder }),
+        ),
+      };
+      const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-word`, {
+        method: "POST",
+        body: payload,
+      });
+      triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.docx");
+      setDocumentTemplateMessage("Word zapisnik je generiran iz spremljenog predloška.", { type: "success" });
+      return;
+    } catch (error) {
+      console.error("Ne mogu generirati DOCX iz Word predloška.", error);
+      setDocumentTemplateMessage(
+        error?.message || "Ne mogu generirati Word iz spremljenog predloška.",
+      );
+      return;
     }
   }
 
@@ -16982,6 +16995,11 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
 
       if (!template || !workOrder) {
         continue;
+      }
+
+      if (!doesDocumentTemplateHaveReferenceWordTemplate(template)) {
+        setDocumentTemplateMessage(`Template "${template.title || template.documentType || "Zapisnik"}" nema učitan .docx/.dotx Word predložak. Batch PDF mora koristiti isti Word predložak kao i Word export.`);
+        return;
       }
 
       await persistDocumentTemplateRuntimeRecordFor(template, workOrder);

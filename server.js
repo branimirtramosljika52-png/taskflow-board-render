@@ -11,7 +11,6 @@ import {
 import {
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
-  buildPdfFromRenderModel,
   isWordTemplateFile,
   mergePdfBuffers,
   readStoredDocumentBuffer,
@@ -109,24 +108,19 @@ function sendBinary(response, statusCode, body, {
 
 async function generatePdfBufferForTemplate(template = {}, {
   placeholders = {},
-  renderModel = {},
   fileName = "",
 } = {}) {
-  if (template.referenceDocument && isWordTemplateFile(template.referenceDocument)) {
-    try {
-      const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
-      return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
-        fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
-      });
-    } catch (error) {
-      console.warn("Word -> PDF conversion failed, using render fallback.", error);
-    }
+  if (!template.referenceDocument) {
+    throw new Error("Template još nema učitan Word predložak. PDF i Word moraju koristiti isti .docx predložak.");
   }
 
-  return buildPdfFromRenderModel({
-    ...(renderModel && typeof renderModel === "object" ? renderModel : {}),
-    title: renderModel?.title || template.title || "Zapisnik",
-    documentType: renderModel?.documentType || template.documentType || "Zapisnik",
+  if (!isWordTemplateFile(template.referenceDocument)) {
+    throw new Error("Za PDF export učitaj .docx ili .dotx Word predložak. PDF i Word moraju koristiti isti predložak.");
+  }
+
+  const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+  return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+    fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
   });
 }
 
@@ -1240,16 +1234,8 @@ async function handleApiRequest(request, response, url) {
         "Template nije pronađen.",
       );
 
-      const renderModel = body.renderModel && typeof body.renderModel === "object"
-        ? body.renderModel
-        : {};
       const pdfBuffer = await generatePdfBufferForTemplate(template, {
         placeholders: body.placeholders ?? {},
-        renderModel: {
-          ...renderModel,
-          title: renderModel.title || body.title || template.title || "Zapisnik",
-          documentType: renderModel.documentType || template.documentType || "Zapisnik",
-        },
         fileName: body.fileName || template.outputFileName || template.title || "zapisnik.docx",
       });
       const fileName = sanitizeGeneratedDocumentFileName(
@@ -1290,7 +1276,6 @@ async function handleApiRequest(request, response, url) {
 
         pdfBuffers.push(await generatePdfBufferForTemplate(template, {
           placeholders: entry?.placeholders ?? {},
-          renderModel: entry?.renderModel ?? {},
           fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
         }));
       }
