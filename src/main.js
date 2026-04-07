@@ -1642,6 +1642,14 @@ if (safetyAuthorizationEditorPanel?.parentElement !== document.body) {
   document.body.append(safetyAuthorizationEditorPanel);
 }
 
+if (documentTemplateEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(documentTemplateEditorBackdrop);
+}
+
+if (documentTemplateEditorPanel?.parentElement !== document.body) {
+  document.body.append(documentTemplateEditorPanel);
+}
+
 if (workOrderDocumentWizardBackdrop?.parentElement !== document.body) {
   document.body.append(workOrderDocumentWizardBackdrop);
 }
@@ -12104,10 +12112,16 @@ function syncLegalFrameworkEditorModal() {
 }
 
 function syncDocumentTemplateEditorModal() {
+  const detachedFillMode = state.documentTemplateEditorOpen
+    && hasDocumentTemplateRuntimeContext()
+    && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
+
   if (state.documentTemplateEditorOpen && (
-    state.activeView !== "module"
-    || state.activeModuleItem !== "template-development"
-    || !state.user
+    !state.user
+    || (!detachedFillMode && (
+      state.activeView !== "module"
+      || state.activeModuleItem !== "template-development"
+    ))
   )) {
     state.documentTemplateEditorOpen = false;
   }
@@ -12123,17 +12137,17 @@ function syncDocumentTemplateEditorModal() {
   }
 
   if (documentTemplateEditorBackdrop) {
-    documentTemplateEditorBackdrop.hidden = true;
+    documentTemplateEditorBackdrop.hidden = !(isOpen && detachedFillMode);
   }
 
   if (templateDevelopmentSummaryGrid) {
-    templateDevelopmentSummaryGrid.hidden = isOpen;
+    templateDevelopmentSummaryGrid.hidden = isOpen && !detachedFillMode;
   }
   if (templateDevelopmentToolbarPanel) {
-    templateDevelopmentToolbarPanel.hidden = isOpen;
+    templateDevelopmentToolbarPanel.hidden = isOpen && !detachedFillMode;
   }
   if (templateDevelopmentListPanel) {
-    templateDevelopmentListPanel.hidden = isOpen;
+    templateDevelopmentListPanel.hidden = isOpen && !detachedFillMode;
   }
 
   if (isOpen) {
@@ -33737,11 +33751,7 @@ function openDocumentTemplateFromWizard(
   hydrateDocumentTemplateForm(template, {
     preserveRuntimeContext: true,
     runtimeMode: "fill",
-    skipModuleNavigation: Boolean(
-      keepCurrentRuntimeView
-      && state.documentTemplateEditorOpen
-      && isDocumentTemplateRuntimeFillMode(),
-    ),
+    skipModuleNavigation: Boolean(keepCurrentRuntimeView),
   });
   if (activeWorkOrderId) {
     setDocumentTemplateRuntimeActiveWorkOrder(activeWorkOrderId, { render: true });
@@ -35492,6 +35502,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", () => {
     activeWorkOrderId: firstEntry.workOrderId,
     closeWizard: true,
     preserveRuntimeContext: false,
+    keepCurrentRuntimeView: true,
   });
 });
 [
