@@ -14474,6 +14474,44 @@ function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplat
   return linkedItems.length > 0 ? linkedItems : (template.equipmentItems ?? []);
 }
 
+function getDocumentTemplateRuntimeSelectedEquipmentIds(
+  workOrderId,
+  field = {},
+  template = buildDocumentTemplateDraft(),
+) {
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  if (Array.isArray(runtimeValue)) {
+    return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+
+  return getDocumentTemplateLinkedEquipmentItems(template)
+    .map((item) => String(item?.id || "").trim())
+    .filter(Boolean);
+}
+
+function getDocumentTemplateEquipmentItemsForField(
+  template = buildDocumentTemplateDraft(),
+  field = {},
+  workOrderId = "",
+) {
+  const availableItems = getDocumentTemplateLinkedEquipmentItems(template);
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  if (!normalizedWorkOrderId) {
+    return availableItems;
+  }
+
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
+  if (!Array.isArray(runtimeValue)) {
+    return availableItems;
+  }
+
+  const selectedIds = new Set(
+    runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
+  );
+
+  return availableItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
+}
+
 function getDocumentTemplatePreviewSampleWorkOrder(template = buildDocumentTemplateDraft()) {
   const runtimeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
   if (runtimeWorkOrder) {
@@ -16237,10 +16275,13 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   }
 
   if (field.type === "equipment_list") {
+    const equipmentItems = placeholderMode || !context.sampleWorkOrder?.id
+      ? context.equipmentItems
+      : getDocumentTemplateEquipmentItemsForField(context.template, field, context.sampleWorkOrder.id);
     const rows = placeholderMode
       ? `<tbody><tr><td colspan="4">${escapeHtml(token)}</td></tr></tbody>`
-      : context.equipmentItems.length > 0
-        ? context.equipmentItems.map((item) => (
+      : equipmentItems.length > 0
+        ? equipmentItems.map((item) => (
           `<tr><td>${escapeHtml(item.name || "")}</td><td>${escapeHtml(item.deviceType || item.code || "")}</td><td>${escapeHtml(item.inventoryNumber || "")}</td><td>${escapeHtml(item.note || "")}</td></tr>`
         )).join("")
         : '<tr><td colspan="4">Nema povezane opreme za ovaj template.</td></tr>';
@@ -16546,8 +16587,12 @@ function buildDocumentTemplateLegalExportItems(template = buildDocumentTemplateD
   ));
 }
 
-function buildDocumentTemplateEquipmentExportRows(context = {}) {
-  return (Array.isArray(context.equipmentItems) ? context.equipmentItems : []).map((item) => ([
+function buildDocumentTemplateEquipmentExportRows(field = {}, context = {}) {
+  const items = context.sampleWorkOrder?.id
+    ? getDocumentTemplateEquipmentItemsForField(context.template, field, context.sampleWorkOrder.id)
+    : (Array.isArray(context.equipmentItems) ? context.equipmentItems : []);
+
+  return items.map((item) => ([
     item.name || "",
     item.deviceType || item.code || "",
     item.inventoryNumber || "",
@@ -16613,7 +16658,7 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
   }
 
   if (field.type === "equipment_list") {
-    return buildDocumentTemplateEquipmentExportRows(context)
+    return buildDocumentTemplateEquipmentExportRows(field, context)
       .map((row) => row.filter(Boolean).join(" | "))
       .join("\n");
   }
@@ -16788,7 +16833,7 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
           title,
           columns: ["Oprema", "Tip", "Inv. broj", "Napomena"],
           headerRows: [["Oprema", "Tip", "Inv. broj", "Napomena"]],
-          rows: buildDocumentTemplateEquipmentExportRows(context),
+          rows: buildDocumentTemplateEquipmentExportRows(field, context),
           landscape: false,
         };
       }
@@ -20517,20 +20562,77 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return shellNode;
   };
 
-  const createEquipmentFieldControl = (field, previewContext) => {
+  const createEquipmentFieldControl = (field, workOrder, templateDraft) => {
     const shellNode = document.createElement("div");
-    shellNode.className = "document-template-runtime-readonly-card";
+    shellNode.className = "document-template-runtime-legal-field document-template-runtime-equipment-field";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
-    const meta = document.createElement("p");
-    meta.className = "helper-copy module-copy";
-    meta.textContent = previewContext.equipmentItems.length > 0
-      ? previewContext.equipmentItems
-        .map((item) => item.name || item.inventoryNumber || item.code || "")
-        .filter(Boolean)
-        .join(" · ")
-      : "Povezana oprema povlači se automatski iz Measurement Equipment modula.";
-    shellNode.append(title, meta);
+    shellNode.append(title);
+
+    const equipmentItems = getDocumentTemplateLinkedEquipmentItems(templateDraft);
+    const selectedIds = new Set(
+      getDocumentTemplateRuntimeSelectedEquipmentIds(workOrder.id, field, templateDraft),
+    );
+
+    if (equipmentItems.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Nema ponuđene opreme povezane s ovim templateom.";
+      shellNode.append(empty);
+      return shellNode;
+    }
+
+    const list = document.createElement("div");
+    list.className = "document-template-runtime-checklist";
+
+    const syncSelection = () => {
+      const nextValues = Array.from(list.querySelectorAll('input[type="checkbox"]'))
+        .filter((input) => input instanceof HTMLInputElement && input.checked)
+        .map((input) => String(input.value || "").trim())
+        .filter(Boolean);
+      setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, nextValues, { render: false });
+      renderDocumentTemplatePreviewContent();
+    };
+
+    equipmentItems.forEach((item) => {
+      const option = document.createElement("label");
+      option.className = "document-template-runtime-checklist-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(item.id || "");
+      checkbox.checked = selectedIds.has(String(item.id || ""));
+      checkbox.addEventListener("change", syncSelection);
+
+      const copy = document.createElement("div");
+      copy.className = "document-template-runtime-checklist-item-copy";
+
+      const primary = document.createElement("strong");
+      primary.textContent = item.name || item.inventoryNumber || item.code || "Uređaj";
+
+      const metaParts = [
+        item.deviceType || item.code || "",
+        item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+        item.manufacturer || "",
+      ].filter(Boolean);
+
+      copy.append(primary);
+      if (metaParts.length > 0) {
+        const meta = document.createElement("span");
+        meta.className = "document-template-runtime-checklist-meta";
+        meta.textContent = metaParts.join(" · ");
+        copy.append(meta);
+      }
+
+      option.append(checkbox, copy);
+      list.append(option);
+    });
+
+    shellNode.append(list);
+    const helper = document.createElement("small");
+    helper.className = "document-template-runtime-field-help";
+    helper.textContent = field.helpText || "Odaberi uređaje koji ulaze u ovaj zapisnik.";
+    shellNode.append(helper);
     return shellNode;
   };
 
@@ -20917,7 +21019,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     } else if (field.type === "equipment_list") {
       const fieldShell = document.createElement("div");
       fieldShell.className = "field field-span-full";
-      fieldShell.append(createEquipmentFieldControl(field, context));
+      fieldShell.append(createEquipmentFieldControl(field, activeWorkOrder, template));
       grid.append(fieldShell);
     } else if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
       const fieldShell = document.createElement("div");
@@ -33721,6 +33823,10 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
   }
 
   if (type === "measurement_table") {
+    return true;
+  }
+
+  if (type === "legal_list" || type === "equipment_list") {
     return true;
   }
 
