@@ -153,10 +153,12 @@ export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "te
     third: "3",
     half: "3",
     "two-thirds": "6",
-    full: "9",
   };
   if (legacyMap[normalizedValue]) {
     return legacyMap[normalizedValue];
+  }
+  if (normalizedValue === "full") {
+    return getDocumentTemplateDefaultFieldLayoutWidth(type);
   }
   return getDocumentTemplateDefaultFieldLayoutWidth(type);
 }

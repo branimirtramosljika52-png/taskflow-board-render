@@ -16949,12 +16949,15 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-field-grid {
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   justify-items: stretch;
   align-items: start;
+  gap: 0;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-field-card .field {
+  grid-column: 1 / -1;
   width: 100%;
   display: grid;
   align-content: start;
