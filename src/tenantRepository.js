@@ -804,6 +804,8 @@ function sanitizeUser(row) {
     email: row.email ?? buildLegacyEmail(row.korisnicko_ime ?? row.legacy_username ?? "", row.id),
     firstName,
     lastName,
+    title: row.title ?? "",
+    oib: row.oib ?? "",
     fullName: [firstName, lastName].filter(Boolean).join(" ") || row.ime_prezime || row.korisnicko_ime || row.email || "User",
     organizationId: primaryOrganizationId || organizationIds[0] || "",
     organizationName: row.organization_name ?? "",
@@ -900,6 +902,8 @@ function normalizeUserInput(input = {}) {
   return {
     firstName: dbString(input.firstName),
     lastName: dbString(input.lastName),
+    title: dbString(input.title),
+    oib: normalizeOib(input.oib),
     email: dbString(input.email).toLowerCase(),
     password: dbString(input.password),
     role: normalizeRole(input.role),
@@ -1009,6 +1013,8 @@ async function ensureSchema(connection) {
       organization_ids_csv TEXT NULL,
       first_name VARCHAR(120) NOT NULL DEFAULT '',
       last_name VARCHAR(160) NOT NULL DEFAULT '',
+      title VARCHAR(160) NOT NULL DEFAULT '',
+      oib VARCHAR(32) NOT NULL DEFAULT '',
       avatar_data_url LONGTEXT NULL,
       avatar_storage_provider VARCHAR(32) NULL,
       avatar_storage_bucket VARCHAR(128) NULL,
@@ -1117,6 +1123,18 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
+    "title",
+    "VARCHAR(160) NOT NULL DEFAULT '' AFTER last_name",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "oib",
+    "VARCHAR(32) NOT NULL DEFAULT '' AFTER title",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
     "avatar_storage_provider",
     "VARCHAR(32) NULL AFTER avatar_data_url",
   );
@@ -1198,7 +1216,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const activeOrganizationId = dbString(effectiveOrganizationId);
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
-    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.title, u.oib, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
            u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
@@ -2616,16 +2634,18 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url,
+            (organization_id, organization_ids_csv, first_name, last_name, title, oib, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
              electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
           serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
           normalized.firstName,
           normalized.lastName,
+          normalized.title,
+          normalized.oib,
           preparedAvatar.storedAvatar.dataUrl || null,
           preparedAvatar.storedAvatar.storageProvider || null,
           preparedAvatar.storedAvatar.storageBucket || null,
@@ -2739,6 +2759,8 @@ export class MySqlTenantRepository {
         "organization_ids_csv = ?",
         "first_name = ?",
         "last_name = ?",
+        "title = ?",
+        "oib = ?",
         "avatar_data_url = ?",
         "avatar_storage_provider = ?",
         "avatar_storage_bucket = ?",
@@ -2756,6 +2778,8 @@ export class MySqlTenantRepository {
         serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
         normalized.firstName,
         normalized.lastName,
+        normalized.title,
+        normalized.oib,
         preparedAvatar.storedAvatar.dataUrl || null,
         preparedAvatar.storedAvatar.storageProvider || null,
         preparedAvatar.storedAvatar.storageBucket || null,

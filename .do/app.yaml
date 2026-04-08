@@ -1,14 +1,11 @@
 name: taskflow-board-do
 region: fra
-features:
-  - buildpack-stack=ubuntu-22
 services:
   - name: web
-    environment_slug: node-js
+    dockerfile_path: Dockerfile
     git:
       branch: main
       repo_clone_url: https://github.com/branimirtramosljika52-png/taskflow-board-render.git
-    run_command: npm start
     http_port: 8080
     health_check:
       http_path: /api/health

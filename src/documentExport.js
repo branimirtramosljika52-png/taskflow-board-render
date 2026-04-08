@@ -579,7 +579,6 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     throw new Error("Word predložak je prazan.");
   }
 
-  const specialPlaceholders = new Map();
   const normalizedPlaceholders = Object.fromEntries(
     Object.entries(placeholders && typeof placeholders === "object" ? placeholders : {})
       .map(([key, value], index) => {
@@ -590,9 +589,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
         const specialValue = normalizeDocxSpecialPlaceholderValue(value);
         if (specialValue) {
-          const sentinel = `__DOCX_BLOCK_${safeKey}_${index}__`;
-          specialPlaceholders.set(sentinel, specialValue);
-          return [safeKey, sentinel];
+          return [safeKey, buildDocxSignatureGroupFallbackText(specialValue.items)];
         }
 
         return [safeKey, normalizeTemplatePlaceholderValue(value)];
@@ -615,7 +612,6 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     });
 
     doc.render(normalizedPlaceholders);
-    applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
     return doc.getZip().generate({
       type: "nodebuffer",
       compression: "DEFLATE",

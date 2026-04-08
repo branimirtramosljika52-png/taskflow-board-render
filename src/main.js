@@ -1989,6 +1989,8 @@ const userAvatarFileInput = document.querySelector("#user-avatar-file");
 const userAvatarPreview = document.querySelector("#user-avatar-preview");
 const userRoleInput = document.querySelector("#user-role");
 const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
+const userTitleInput = document.querySelector("#user-title");
+const userOibInput = document.querySelector("#user-oib");
 const userIsActiveInput = document.querySelector("#user-is-active");
 const userDocumentsInput = document.querySelector("#user-documents-input");
 const userDocumentsUploadButton = document.querySelector("#user-documents-upload");
@@ -11003,10 +11005,18 @@ function createUserIdentityCell(user) {
 
   const copy = document.createElement("div");
   copy.className = "people-list-copy";
+  const identityMeta = [
+    user.title ? String(user.title).trim() : "",
+    user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
+  ].filter(Boolean).join(" · ");
+  const organizationMeta = [
+    user.oib ? `OIB ${user.oib}` : "",
+    (user.organizations ?? []).map((organization) => organization.name).join(", ") || "Bez organizacije",
+  ].filter(Boolean).join(" · ");
   copy.append(
     createListLine(user.fullName || user.email || "User", "list-primary"),
-    createListLine(user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account", "list-secondary"),
-    createListLine((user.organizations ?? []).map((organization) => organization.name).join(", ") || "Bez organizacije", "list-tertiary"),
+    createListLine(identityMeta, "list-secondary"),
+    createListLine(organizationMeta, "list-tertiary"),
   );
 
   stack.append(avatar, copy);
@@ -12608,6 +12618,8 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "DATABASE_LOOKUP", label: "Napredno - lookup iz baze" },
   { value: "DOCUMENT_TITLE", label: "Template - naziv" },
   { value: "DOCUMENT_TYPE", label: "Template - vrsta dokumenta" },
+  { value: "WORK_ORDER_DOCUMENT_NUMBER", label: "Dokument - broj zapisnika" },
+  { value: "QUALIFIED_INSPECTOR_LIST_WITH_TITLES", label: "Ispitivači - popis s titulama" },
   { value: "TODAY", label: "Današnji datum" },
   { value: "COMPANY_NAME", label: "Tvrtka - naziv" },
   { value: "COMPANY_OIB", label: "Tvrtka - OIB" },
@@ -12771,6 +12783,8 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
     columns: [
       { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
       { value: "full_name", label: "Ime i prezime", getter: (row) => row?.fullName ?? "" },
+      { value: "title", label: "Titula", getter: (row) => row?.title ?? "" },
+      { value: "oib", label: "OIB", getter: (row) => row?.oib ?? "" },
       { value: "email", label: "Email", getter: (row) => row?.email ?? "" },
       { value: "legacy_username", label: "Legacy username", getter: (row) => row?.legacyUsername ?? "" },
       { value: "role", label: "Rola", getter: (row) => row?.role ?? "" },
@@ -15285,6 +15299,7 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
+  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, context.template);
   const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
   const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
   const runtimeIssuedPlace = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "";
@@ -15322,6 +15337,7 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
     LOCATION_REGION: location?.region || "",
     LOCATION_COORDINATES: location?.coordinates || "",
     WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
+    WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
     WORK_ORDER_STATUS: workOrder?.status || "",
     WORK_ORDER_DUE_DATE: workOrder?.dueDate ? formatCompactDate(workOrder.dueDate) : "",
     WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate ? formatCompactDate(runtimeInspectionDate) : "",
@@ -15428,6 +15444,7 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
+  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, context.template);
   const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
   const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
   const runtimeIssuedPlace = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "";
@@ -15465,6 +15482,7 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
     LOCATION_REGION: location?.region || "",
     LOCATION_COORDINATES: location?.coordinates || "",
     WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
+    WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
     WORK_ORDER_STATUS: workOrder?.status || "",
     WORK_ORDER_DUE_DATE: workOrder?.dueDate || "",
     WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate || "",
@@ -15774,11 +15792,29 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
 function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
   const context = buildDocumentTemplatePreviewContext(template);
-  return (template.customFields ?? []).map((field, index) => ({
+  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
+  const inspectorList = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
+  const systemDefinitions = [
+    {
+      token: "{{BROJ_ZAPISNIKA}}",
+      label: "Broj zapisnika",
+      value: documentNumber,
+    },
+    {
+      token: "{{ISPITIVACI_POPIS}}",
+      label: "Ispitivači - popis s titulama",
+      value: inspectorList,
+    },
+  ];
+
+  return [
+    ...systemDefinitions,
+    ...(template.customFields ?? []).map((field, index) => ({
     token: getDocumentTemplateFieldToken(field, index),
     label: field.wordLabel || field.label || `Polje ${index + 1}`,
     value: getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
-  }));
+    })),
+  ];
 }
 
 function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDraft(), {
@@ -16672,25 +16708,13 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
 }
 
 function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}, index = 0) {
-  if (field.type === "qualified_inspectors") {
-    return {
-      __docxBlockType: "signature_group",
-      items: buildDocumentTemplateQualifiedInspectorEntries(field, context),
-    };
-  }
-
-  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-    return {
-      __docxBlockType: "signature_group",
-      items: [buildDocumentTemplateSignatureEntry(field, context)],
-    };
-  }
-
-  if (field.type === "digital_signature") {
-    return {
-      __docxBlockType: "signature_group",
-      items: buildDocumentTemplateDigitalSignatureEntries(field, context),
-    };
+  if (
+    field.type === "qualified_inspectors"
+    || field.type === "inspector_signature"
+    || field.type === "authorization_holder_signature"
+    || field.type === "digital_signature"
+  ) {
+    return buildDocumentTemplateFieldExportText(field, context, index);
   }
 
   return buildDocumentTemplateFieldExportText(field, context, index);
@@ -16736,6 +16760,11 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
 }
 
 function buildDocumentTemplateRuntimeExportFileBaseName(template = buildDocumentTemplateDraft(), workOrder = null) {
+  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, template);
+  if (documentNumber) {
+    return sanitizeDocumentTemplateFileName(documentNumber, "zapisnik");
+  }
+
   const parts = [
     String(template.outputFileName || template.title || template.documentType || "zapisnik").trim(),
     String(workOrder?.workOrderNumber || "").trim(),
@@ -16754,10 +16783,16 @@ function getDocumentTemplateRuntimeWorkOrderById(workOrderId = "") {
 }
 
 function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
+  const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
   const placeholders = {
     DOCUMENT_TITLE: String(template.title || "").trim(),
     DOCUMENT_TYPE: String(template.documentType || "").trim(),
     REFERENCE_DOCUMENT_NAME: String(template.referenceDocument?.fileName || "").trim(),
+    DOCUMENT_NUMBER: documentNumber,
+    BROJ_ZAPISNIKA: documentNumber,
+    QUALIFIED_INSPECTORS_LIST: inspectorListWithTitles,
+    ISPITIVACI_POPIS: inspectorListWithTitles,
   };
 
   (Array.isArray(template.customFields) ? template.customFields : []).forEach((field, index) => {
@@ -17739,11 +17774,81 @@ function getDocumentTemplateRuntimeResolvedServiceItems(workOrder = {}) {
   return getWorkOrderServiceItems(workOrder);
 }
 
+function getDocumentTemplateRuntimeMatchedServiceItems(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  const normalizedTemplateTitle = String(template?.title || "").trim().toLowerCase();
+
+  return getDocumentTemplateRuntimeResolvedServiceItems(workOrder).filter((service) => {
+    const templateIds = getWorkOrderServiceTemplateIds(service).map((value) => String(value || "").trim());
+    if (runtimeTemplateId && templateIds.includes(runtimeTemplateId)) {
+      return true;
+    }
+
+    if (!normalizedTemplateTitle) {
+      return false;
+    }
+
+    return getResolvedWorkOrderServiceTemplateTitles(service)
+      .map((value) => String(value || "").trim().toLowerCase())
+      .includes(normalizedTemplateTitle);
+  });
+}
+
+function getDocumentTemplateRuntimePrimaryServiceItem(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  return getDocumentTemplateRuntimeMatchedServiceItems(workOrder, template)[0] ?? null;
+}
+
+function getDocumentTemplateRuntimeDocumentNumber(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const workOrderNumber = String(workOrder?.workOrderNumber || "").trim();
+  const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template);
+  const serviceCode = String(
+    primaryService?.serviceCode
+    || primaryService?.name
+    || template?.title
+    || ""
+  ).trim();
+
+  return [workOrderNumber, serviceCode].filter(Boolean).join("-");
+}
+
+function formatQualifiedInspectorNameWithTitle(user = {}) {
+  const name = String(user?.fullName || user?.email || "").trim();
+  const title = String(user?.title || "").trim();
+  return [name, title].filter(Boolean).join(", ");
+}
+
+function getWorkOrderDocumentQualifiedInspectorsWithTitles(workOrder = {}) {
+  const orderedInspectors = [];
+  const seenUserIds = new Set();
+
+  WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS
+    .filter((definition) => definition.capability === "inspect")
+    .forEach((definition) => {
+      getWorkOrderDocumentQualifiedUsers(workOrder, "inspect", definition.signatureArea).forEach((user) => {
+        const key = String(user?.id || user?.email || user?.fullName || "").trim();
+        if (!key || seenUserIds.has(key)) {
+          return;
+        }
+        seenUserIds.add(key);
+        orderedInspectors.push(user);
+      });
+    });
+
+  return orderedInspectors
+    .map((user) => formatQualifiedInspectorNameWithTitle(user))
+    .filter(Boolean)
+    .join(", ");
+}
+
 function getQualifiedUserSourcePreviewValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const normalizedSource = String(source || "").trim().toUpperCase();
   if (!workOrder) {
     return "";
+  }
+
+  if (normalizedSource === "QUALIFIED_INSPECTOR_LIST_WITH_TITLES") {
+    return getWorkOrderDocumentQualifiedInspectorsWithTitles(workOrder);
   }
 
   const sourceMap = {
@@ -23263,6 +23368,8 @@ function buildUserPayload() {
   return {
     firstName: userFirstNameInput.value,
     lastName: userLastNameInput.value,
+    title: userTitleInput?.value || "",
+    oib: userOibInput?.value || "",
     email: userEmailInput.value,
     password: userPasswordInput.value,
     organizationId: primaryOrganizationId,
@@ -23408,6 +23515,12 @@ function resetUserForm() {
   userForm.reset();
   userIdInput.value = "";
   userAvatarDataUrlInput.value = "";
+  if (userTitleInput) {
+    userTitleInput.value = "";
+  }
+  if (userOibInput) {
+    userOibInput.value = "";
+  }
   if (userElectricalSignatureDataUrlInput) {
     userElectricalSignatureDataUrlInput.value = "";
   }
@@ -23587,6 +23700,12 @@ function hydrateUserForm(user) {
   userAvatarDataUrlInput.value = user.avatarDataUrl || "";
   userFirstNameInput.value = user.firstName;
   userLastNameInput.value = user.lastName;
+  if (userTitleInput) {
+    userTitleInput.value = user.title || "";
+  }
+  if (userOibInput) {
+    userOibInput.value = user.oib || "";
+  }
   userEmailInput.value = user.email;
   userPasswordInput.value = "";
   userOrganizationIdInput.value = user.organizationId || state.activeOrganizationId;
