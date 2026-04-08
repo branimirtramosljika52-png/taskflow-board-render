@@ -18256,6 +18256,9 @@ function renderDocumentTemplateRuntimeContext() {
   const hasWizardRuntime = fillMode && state.documentTemplateRuntime.source === "wizard";
   const workOrders = hasContext ? getDocumentTemplateRuntimeWorkOrders() : [];
   const activeWorkOrder = hasContext ? getDocumentTemplateRuntimeActiveWorkOrder() : null;
+  const activeSequenceEntry = hasSequence && !isSummaryStep
+    ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.activeIndex] || sequenceState.entries[0] || null) : null)
+    : null;
   documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
   if (documentTemplateRuntimeClearButton) {
@@ -18492,6 +18495,12 @@ function renderDocumentTemplateRuntimeContext() {
 
   const commonBadges = [
     {
+      label: "Zapisnik",
+      value: activeSequenceEntry?.timelineLabel
+        || documentTemplateTitleInput?.value?.trim()
+        || "",
+    },
+    {
       label: "Datum ispitivanja",
       value: activeWorkOrder ? getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectionDate") : "",
     },
@@ -18583,6 +18592,9 @@ function renderDocumentTemplateRuntimeContext() {
     badgeWrap.append(...commonBadges.map((entry) => {
       const badge = document.createElement("div");
       badge.className = "document-template-runtime-badge";
+      if (String(entry.label || "").trim().toLowerCase() === "zapisnik") {
+        badge.classList.add("is-primary");
+      }
 
       const label = document.createElement("span");
       label.textContent = entry.label;
@@ -18629,19 +18641,12 @@ function syncDocumentTemplateEditorChrome() {
       const activeEntry = sequenceState?.isSummary
         ? null
         : (sequenceEntries[sequenceState?.activeIndex ?? 0] || sequenceEntries[0] || null);
-      const templateLabel = String(
-        activeEntry?.timelineLabel
-        || documentTemplateTitleInput?.value
-        || getDocumentTemplateTypeLabel(buildDocumentTemplateDraft()?.documentType)
-        || "Predložak",
-      ).trim();
 
       documentTemplateEditorTitle.textContent = sequenceState?.isSummary
         ? `Summary · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
         : [
           activeEntry?.workOrderNumber ? `RN ${activeEntry.workOrderNumber}` : "",
           activeWorkOrder?.companyName || "",
-          templateLabel,
         ].filter(Boolean).join(" · ");
     } else {
       documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
