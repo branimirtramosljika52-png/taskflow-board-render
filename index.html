@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260408n" />
+  <link rel="stylesheet" href="/styles.css?v=20260408o" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3436,7 +3436,7 @@
                 <div class="measurement-equipment-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="measurement-equipment-search" type="search" placeholder="Ime, proizvođač, tip, inv. broj..." />
+                    <input id="measurement-equipment-search" type="search" placeholder="Ime, proizvođač, tip, serijski broj, inv. broj..." />
                   </label>
                   <label class="field">
                     <span>Vrsta</span>
@@ -3479,7 +3479,7 @@
                         <span>Ime opreme</span>
                         <input id="measurement-equipment-name" maxlength="180" placeholder="Mjerni instrument, uređaj..." required />
                       </label>
-                      <label class="field">
+                      <label class="field measurement-equipment-kind-field" hidden>
                         <span>Vrsta</span>
                         <select id="measurement-equipment-kind"></select>
                       </label>
@@ -3492,6 +3492,10 @@
                         <input id="measurement-equipment-type" maxlength="160" placeholder="Model, tip, serija..." />
                       </label>
                       <label class="field">
+                        <span>Serijski broj</span>
+                        <input id="measurement-equipment-serial-number" maxlength="120" placeholder="Serijski broj uređaja" />
+                      </label>
+                      <label class="field">
                         <span>Inv. broj</span>
                         <input id="measurement-equipment-inventory-number" maxlength="80" placeholder="INV-001" />
                       </label>
@@ -3502,15 +3506,15 @@
                           <option value="false">Ne</option>
                         </select>
                       </label>
-                      <label class="field">
+                      <label class="field measurement-equipment-calibration-field">
                         <span>Datum umjeravanja</span>
                         <input id="measurement-equipment-calibration-date" type="date" />
                       </label>
-                      <label class="field">
+                      <label class="field measurement-equipment-calibration-field">
                         <span>Periodika umjeravanja</span>
                         <input id="measurement-equipment-calibration-period" maxlength="80" placeholder="12 mjeseci" />
                       </label>
-                      <label class="field">
+                      <label class="field measurement-equipment-calibration-field">
                         <span>Vrijedi do</span>
                         <input id="measurement-equipment-valid-until" type="date" />
                       </label>
@@ -4064,6 +4068,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260408n"></script>
+  <script type="module" src="/src/main.js?v=20260408o"></script>
   </body>
 </html>

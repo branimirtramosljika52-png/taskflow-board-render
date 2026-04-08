@@ -2553,6 +2553,11 @@ export function createMeasurementEquipmentItem(
   const timestamp = now();
   const organizationId = requireText(input.organizationId, "Organizacija");
   const inventoryNumber = normalizeText(input.inventoryNumber);
+  const serialNumber = normalizeText(input.serialNumber);
+  const hasCalibrationData = Boolean(input.calibrationDate || input.calibrationPeriod || input.validUntil);
+  const requiresCalibration = hasOwn(input, "requiresCalibration")
+    ? normalizeBoolean(input.requiresCalibration, hasCalibrationData)
+    : hasCalibrationData;
   const templateSnapshot = normalizeLinkedTemplateSnapshot(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
@@ -2575,11 +2580,12 @@ export function createMeasurementEquipmentItem(
     equipmentKind: normalizeMeasurementEquipmentKind(input.equipmentKind),
     manufacturer: normalizeText(input.manufacturer),
     deviceType: normalizeText(input.deviceType ?? input.type),
+    serialNumber,
     inventoryNumber,
-    requiresCalibration: normalizeBoolean(input.requiresCalibration, false),
-    calibrationDate: normalizeOptionalDate(input.calibrationDate),
-    calibrationPeriod: normalizeText(input.calibrationPeriod),
-    validUntil: normalizeOptionalDate(input.validUntil),
+    requiresCalibration,
+    calibrationDate: requiresCalibration ? normalizeOptionalDate(input.calibrationDate) : null,
+    calibrationPeriod: requiresCalibration ? normalizeText(input.calibrationPeriod) : "",
+    validUntil: requiresCalibration ? normalizeOptionalDate(input.validUntil) : null,
     note: normalizeText(input.note),
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
@@ -2593,9 +2599,16 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
   const inventoryNumber = hasOwn(patch, "inventoryNumber")
     ? normalizeText(patch.inventoryNumber)
     : current.inventoryNumber;
+  const serialNumber = hasOwn(patch, "serialNumber")
+    ? normalizeText(patch.serialNumber)
+    : current.serialNumber;
   const organizationId = hasOwn(patch, "organizationId")
     ? requireText(patch.organizationId, "Organizacija")
     : current.organizationId;
+  const hasCalibrationData = hasOwn(patch, "calibrationDate") || hasOwn(patch, "calibrationPeriod") || hasOwn(patch, "validUntil");
+  const requiresCalibration = hasOwn(patch, "requiresCalibration")
+    ? normalizeBoolean(patch.requiresCalibration, current.requiresCalibration || hasCalibrationData)
+    : current.requiresCalibration;
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
     : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
@@ -2622,19 +2635,24 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     deviceType: hasOwn(patch, "deviceType") || hasOwn(patch, "type")
       ? normalizeText(patch.deviceType ?? patch.type)
       : current.deviceType,
+    serialNumber,
     inventoryNumber,
-    requiresCalibration: hasOwn(patch, "requiresCalibration")
-      ? normalizeBoolean(patch.requiresCalibration, false)
-      : current.requiresCalibration,
-    calibrationDate: hasOwn(patch, "calibrationDate")
-      ? normalizeOptionalDate(patch.calibrationDate)
-      : current.calibrationDate,
-    calibrationPeriod: hasOwn(patch, "calibrationPeriod")
-      ? normalizeText(patch.calibrationPeriod)
-      : current.calibrationPeriod,
-    validUntil: hasOwn(patch, "validUntil")
-      ? normalizeOptionalDate(patch.validUntil)
-      : current.validUntil,
+    requiresCalibration,
+    calibrationDate: requiresCalibration
+      ? (hasOwn(patch, "calibrationDate")
+        ? normalizeOptionalDate(patch.calibrationDate)
+        : current.calibrationDate)
+      : null,
+    calibrationPeriod: requiresCalibration
+      ? (hasOwn(patch, "calibrationPeriod")
+        ? normalizeText(patch.calibrationPeriod)
+        : current.calibrationPeriod)
+      : "",
+    validUntil: requiresCalibration
+      ? (hasOwn(patch, "validUntil")
+        ? normalizeOptionalDate(patch.validUntil)
+        : current.validUntil)
+      : null,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
@@ -2660,6 +2678,7 @@ export function filterMeasurementEquipmentItems(
       item.name,
       item.manufacturer,
       item.deviceType,
+      item.serialNumber,
       item.inventoryNumber,
       item.note,
       item.calibrationPeriod,
@@ -2689,7 +2708,10 @@ export function sortMeasurementEquipmentItems(items) {
       return 1;
     }
 
-    return `${left.name} ${left.inventoryNumber}`.localeCompare(`${right.name} ${right.inventoryNumber}`, "hr");
+    return `${left.name} ${left.serialNumber ?? ""} ${left.inventoryNumber}`.localeCompare(
+      `${right.name} ${right.serialNumber ?? ""} ${right.inventoryNumber}`,
+      "hr",
+    );
   });
 }
 

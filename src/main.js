@@ -1351,6 +1351,7 @@ const measurementEquipmentNameInput = document.querySelector("#measurement-equip
 const measurementEquipmentKindInput = document.querySelector("#measurement-equipment-kind");
 const measurementEquipmentManufacturerInput = document.querySelector("#measurement-equipment-manufacturer");
 const measurementEquipmentTypeInput = document.querySelector("#measurement-equipment-type");
+const measurementEquipmentSerialNumberInput = document.querySelector("#measurement-equipment-serial-number");
 const measurementEquipmentInventoryNumberInput = document.querySelector("#measurement-equipment-inventory-number");
 const measurementEquipmentRequiresCalibrationInput = document.querySelector("#measurement-equipment-requires-calibration");
 const measurementEquipmentCalibrationDateInput = document.querySelector("#measurement-equipment-calibration-date");
@@ -12741,9 +12742,9 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
     columns: [
       { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
       { value: "name", label: "Naziv", getter: (row) => row?.name ?? "" },
-      { value: "equipment_kind", label: "Vrsta", getter: (row) => row?.equipmentKind ?? "" },
       { value: "manufacturer", label: "Proizvodjac", getter: (row) => row?.manufacturer ?? "" },
       { value: "device_type", label: "Tip", getter: (row) => row?.deviceType ?? "" },
+      { value: "serial_number", label: "Serijski broj", getter: (row) => row?.serialNumber ?? "" },
       { value: "inventory_number", label: "Inv. broj", getter: (row) => row?.inventoryNumber ?? "" },
       { value: "calibration_date", label: "Datum umjeravanja", getter: (row) => row?.calibrationDate ?? "" },
       { value: "valid_until", label: "Vrijedi do", getter: (row) => row?.validUntil ?? "" },
@@ -19548,18 +19549,37 @@ function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
   });
 }
 
+function syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled = false } = {}) {
+  const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
+  [
+    measurementEquipmentCalibrationDateInput,
+    measurementEquipmentCalibrationPeriodInput,
+    measurementEquipmentValidUntilInput,
+  ].forEach((input) => {
+    const field = input?.closest(".measurement-equipment-calibration-field");
+    if (field) {
+      field.hidden = !requiresCalibration;
+    }
+    if (!requiresCalibration && clearWhenDisabled && input) {
+      input.value = "";
+    }
+  });
+}
+
 function buildMeasurementEquipmentPayload() {
+  const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
   return {
     organizationId: state.activeOrganizationId || "",
     name: measurementEquipmentNameInput?.value || "",
-    equipmentKind: measurementEquipmentKindInput?.value || "measurement",
+    equipmentKind: measurementEquipmentKindInput?.value || "combined",
     manufacturer: measurementEquipmentManufacturerInput?.value || "",
     deviceType: measurementEquipmentTypeInput?.value || "",
+    serialNumber: measurementEquipmentSerialNumberInput?.value || "",
     inventoryNumber: measurementEquipmentInventoryNumberInput?.value || "",
-    requiresCalibration: measurementEquipmentRequiresCalibrationInput?.value === "true",
-    calibrationDate: measurementEquipmentCalibrationDateInput?.value || "",
-    calibrationPeriod: measurementEquipmentCalibrationPeriodInput?.value || "",
-    validUntil: measurementEquipmentValidUntilInput?.value || "",
+    requiresCalibration,
+    calibrationDate: requiresCalibration ? (measurementEquipmentCalibrationDateInput?.value || "") : "",
+    calibrationPeriod: requiresCalibration ? (measurementEquipmentCalibrationPeriodInput?.value || "") : "",
+    validUntil: requiresCalibration ? (measurementEquipmentValidUntilInput?.value || "") : "",
     linkedTemplateIds: getMeasurementEquipmentTemplateSelectionIds(),
     documents: measurementEquipmentDocumentDrafts.map((item) => ({ ...item })),
     note: measurementEquipmentNoteInput?.value || "",
@@ -19589,10 +19609,13 @@ function resetMeasurementEquipmentForm() {
     measurementEquipmentIdInput.value = "";
   }
   if (measurementEquipmentKindInput) {
-    measurementEquipmentKindInput.value = "measurement";
+    measurementEquipmentKindInput.value = "combined";
   }
   if (measurementEquipmentRequiresCalibrationInput) {
     measurementEquipmentRequiresCalibrationInput.value = "true";
+  }
+  if (measurementEquipmentSerialNumberInput) {
+    measurementEquipmentSerialNumberInput.value = "";
   }
   if (measurementEquipmentError) {
     measurementEquipmentError.textContent = "";
@@ -19600,6 +19623,7 @@ function resetMeasurementEquipmentForm() {
   setMeasurementEquipmentDocumentDrafts([]);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentTemplateChecklist([]);
+  syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorChrome();
 }
 
@@ -19611,9 +19635,10 @@ function hydrateMeasurementEquipmentForm(item) {
   state.activeMeasurementEquipmentId = item.id;
   measurementEquipmentIdInput.value = item.id || "";
   measurementEquipmentNameInput.value = item.name || "";
-  measurementEquipmentKindInput.value = item.equipmentKind || "measurement";
+  measurementEquipmentKindInput.value = item.equipmentKind || "combined";
   measurementEquipmentManufacturerInput.value = item.manufacturer || "";
   measurementEquipmentTypeInput.value = item.deviceType || "";
+  measurementEquipmentSerialNumberInput.value = item.serialNumber || "";
   measurementEquipmentInventoryNumberInput.value = item.inventoryNumber || "";
   measurementEquipmentRequiresCalibrationInput.value = item.requiresCalibration ? "true" : "false";
   measurementEquipmentCalibrationDateInput.value = item.calibrationDate || "";
@@ -19626,6 +19651,7 @@ function hydrateMeasurementEquipmentForm(item) {
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
+  syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorChrome();
   openMeasurementEquipmentEditor();
   requestAnimationFrame(() => {
@@ -19699,6 +19725,7 @@ function renderMeasurementEquipmentModule() {
     meta.textContent = [
       item.manufacturer || "",
       item.deviceType || "",
+      item.serialNumber ? `Ser. ${item.serialNumber}` : "",
       item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
     ].filter(Boolean).join(" | ") || "Bez dodatnih podataka";
     copy.append(title, meta);
@@ -19706,8 +19733,7 @@ function renderMeasurementEquipmentModule() {
     const badges = document.createElement("div");
     badges.className = "measurement-equipment-card-badges";
     badges.append(
-      createBadge(getOptionLabel(MEASUREMENT_EQUIPMENT_KIND_OPTIONS, item.equipmentKind || "measurement"), "document-template-meta-badge"),
-      createBadge(item.requiresCalibration ? "Umjerava se" : "Bez umjeravanja", item.requiresCalibration ? "document-template-status-badge is-active" : "document-template-status-badge is-archived"),
+      createBadge(item.requiresCalibration ? "Umjerava se" : "Ne umjerava se", item.requiresCalibration ? "document-template-status-badge is-active" : "document-template-status-badge is-archived"),
     );
     head.append(copy, badges);
 
@@ -19716,11 +19742,13 @@ function renderMeasurementEquipmentModule() {
 
     const dates = document.createElement("div");
     dates.className = "measurement-equipment-card-chips";
-    dates.append(
-      createBadge(item.calibrationDate ? `Umj. ${formatCompactDate(item.calibrationDate)}` : "Bez datuma umj.", "measurement-equipment-chip"),
-      createBadge(item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Bez roka", isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"),
-    );
-    if (item.calibrationPeriod) {
+    if (item.requiresCalibration && item.calibrationDate) {
+      dates.append(createBadge(`Umj. ${formatCompactDate(item.calibrationDate)}`, "measurement-equipment-chip"));
+    }
+    if (item.requiresCalibration && item.validUntil) {
+      dates.append(createBadge(`Vrijedi do ${formatCompactDate(item.validUntil)}`, isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"));
+    }
+    if (item.requiresCalibration && item.calibrationPeriod) {
       dates.append(createBadge(item.calibrationPeriod, "measurement-equipment-chip"));
     }
 
@@ -19740,7 +19768,10 @@ function renderMeasurementEquipmentModule() {
       ? `${item.documents.length} datotek${item.documents.length === 1 ? "a" : "e"} spremljeno`
       : "Bez dodatne napomene.");
 
-    footer.append(dates, templates);
+    if (dates.childElementCount > 0) {
+      footer.append(dates);
+    }
+    footer.append(templates);
     card.append(head, note, footer);
 
     const openItem = () => {
@@ -28187,7 +28218,7 @@ function renderSharedOptions() {
     ], state.serviceCatalogFilters.status || "all");
   }
   if (measurementEquipmentKindInput) {
-    replaceSelectOptions(measurementEquipmentKindInput, MEASUREMENT_EQUIPMENT_KIND_OPTIONS, measurementEquipmentKindInput.value || "measurement");
+    replaceSelectOptions(measurementEquipmentKindInput, MEASUREMENT_EQUIPMENT_KIND_OPTIONS, measurementEquipmentKindInput.value || "combined");
   }
   if (measurementEquipmentFilterKindInput) {
     replaceSelectOptions(measurementEquipmentFilterKindInput, [
@@ -37842,6 +37873,10 @@ measurementEquipmentDeleteButton?.addEventListener("click", () => {
 
 measurementEquipmentForm?.addEventListener("input", () => {
   syncMeasurementEquipmentEditorChrome();
+});
+
+measurementEquipmentRequiresCalibrationInput?.addEventListener("change", () => {
+  syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled: true });
 });
 
 measurementEquipmentDocumentsUploadButton?.addEventListener("click", () => {

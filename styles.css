@@ -15213,6 +15213,22 @@ body.is-vehicle-reservation-open {
   width: 100%;
 }
 
+.measurement-equipment-card-head {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.measurement-equipment-card-footer {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.measurement-equipment-card-copy,
+.measurement-equipment-card-note,
+.measurement-equipment-card-meta {
+  text-align: left;
+}
+
 .legal-framework-card-heading,
 .service-catalog-card-copy,
 .measurement-equipment-card-copy,
