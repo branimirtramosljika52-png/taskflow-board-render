@@ -16670,6 +16670,31 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
   }));
 }
 
+function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}, index = 0) {
+  if (field.type === "qualified_inspectors") {
+    return {
+      __docxBlockType: "signature_group",
+      items: buildDocumentTemplateQualifiedInspectorEntries(field, context),
+    };
+  }
+
+  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+    return {
+      __docxBlockType: "signature_group",
+      items: [buildDocumentTemplateSignatureEntry(field, context)],
+    };
+  }
+
+  if (field.type === "digital_signature") {
+    return {
+      __docxBlockType: "signature_group",
+      items: buildDocumentTemplateDigitalSignatureEntries(field, context),
+    };
+  }
+
+  return buildDocumentTemplateFieldExportText(field, context, index);
+}
+
 function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 0) {
   if (field.type === "measurement_table") {
     return buildDocumentTemplateMeasurementTableText(field, context);
@@ -16739,7 +16764,7 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
       return;
     }
 
-    placeholders[getDocumentTemplateFieldTokenKey(field, index)] = buildDocumentTemplateFieldExportText(field, context, index);
+    placeholders[getDocumentTemplateFieldTokenKey(field, index)] = buildDocumentTemplateFieldWordPlaceholderValue(field, context, index);
   });
 
   return placeholders;

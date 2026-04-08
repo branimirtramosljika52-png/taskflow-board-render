@@ -316,6 +316,249 @@ function normalizeTemplatePlaceholderValue(value) {
   return String(value);
 }
 
+function escapeWordXmlText(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function escapeRegex(value = "") {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeDocxSpecialPlaceholderValue(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
+  if (blockType !== "signature_group") {
+    return null;
+  }
+
+  const items = (Array.isArray(value.items) ? value.items : [])
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      return {
+        role: clean(item.role) || "Osoba",
+        name: clean(item.name) || "Potpisnik",
+        metaLines: (Array.isArray(item.metaLines) ? item.metaLines : [])
+          .map((entry) => clean(entry))
+          .filter(Boolean),
+        signatureMode: clean(item.signatureMode).toLowerCase() || "scan",
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    type: "signature_group",
+    items,
+  };
+}
+
+function buildDocxSignatureGroupFallbackText(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => [
+      clean(item?.role),
+      clean(item?.name),
+      ...((Array.isArray(item?.metaLines) ? item.metaLines : []).map((entry) => clean(entry)).filter(Boolean)),
+    ].filter(Boolean).join("\n"))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function buildWordParagraphXml(text = "", {
+  align = "left",
+  bold = false,
+  italic = false,
+  color = "",
+  size = 20,
+  spacingBefore = 0,
+  spacingAfter = 60,
+} = {}) {
+  const safeText = clean(text);
+  const runProperties = [
+    bold ? "<w:b/>" : "",
+    italic ? "<w:i/>" : "",
+    color ? `<w:color w:val="${escapeWordXmlText(color)}"/>` : "",
+    size ? `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>` : "",
+  ].filter(Boolean).join("");
+  const paragraphProperties = [
+    `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
+    `<w:spacing w:before="${Math.max(0, spacingBefore)}" w:after="${Math.max(0, spacingAfter)}"/>`,
+  ].join("");
+
+  if (!safeText) {
+    return `<w:p><w:pPr>${paragraphProperties}</w:pPr></w:p>`;
+  }
+
+  return `
+    <w:p>
+      <w:pPr>${paragraphProperties}</w:pPr>
+      <w:r>
+        <w:rPr>${runProperties}</w:rPr>
+        <w:t xml:space="preserve">${escapeWordXmlText(safeText)}</w:t>
+      </w:r>
+    </w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordSignatureCellXml(item = null) {
+  const emptyParagraph = buildWordParagraphXml("", { spacingAfter: 0 });
+  if (!item) {
+    return `
+      <w:tc>
+        <w:tcPr>
+          <w:tcW w:w="4680" w:type="dxa"/>
+          <w:vAlign w:val="top"/>
+          <w:tcBorders>
+            <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>
+          </w:tcBorders>
+        </w:tcPr>
+        ${emptyParagraph}
+      </w:tc>
+    `.replace(/\n\s+/g, "");
+  }
+
+  const signatureLabel = item.signatureMode === "digital" ? "Digitalni potpis" : "Scan potpisa";
+  const paragraphs = [
+    buildWordParagraphXml(item.role, { align: "right", size: 18, spacingAfter: 40 }),
+    buildWordParagraphXml(item.name, { align: "right", bold: true, size: 22, spacingAfter: 40 }),
+    ...((Array.isArray(item.metaLines) ? item.metaLines : []).map((line) => (
+      buildWordParagraphXml(line, { align: "right", size: 18, spacingAfter: 20 })
+    ))),
+    buildWordParagraphXml("______________________________", { align: "right", color: "7B61FF", size: 20, spacingBefore: 120, spacingAfter: 20 }),
+    buildWordParagraphXml(signatureLabel, { align: "right", italic: true, color: "6B7280", size: 18, spacingAfter: 0 }),
+  ].join("");
+
+  return `
+    <w:tc>
+      <w:tcPr>
+        <w:tcW w:w="4680" w:type="dxa"/>
+        <w:vAlign w:val="top"/>
+        <w:tcMar>
+          <w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/>
+        </w:tcMar>
+        <w:tcBorders>
+          <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>
+        </w:tcBorders>
+      </w:tcPr>
+      ${paragraphs}
+    </w:tc>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordSignatureGroupXml(items = []) {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (safeItems.length === 0) {
+    return buildWordParagraphXml("Nema odabranih osoba.", {
+      align: "right",
+      italic: true,
+      color: "6B7280",
+      size: 18,
+      spacingAfter: 80,
+    });
+  }
+
+  const rows = [];
+  for (let index = 0; index < safeItems.length; index += 2) {
+    const rowItems = safeItems.slice(index, index + 2);
+    const leftItem = rowItems.length === 1 ? null : rowItems[0];
+    const rightItem = rowItems.length === 1 ? rowItems[0] : rowItems[1];
+    rows.push(`
+      <w:tr>
+        ${buildWordSignatureCellXml(leftItem)}
+        ${buildWordSignatureCellXml(rightItem)}
+      </w:tr>
+    `.replace(/\n\s+/g, ""));
+  }
+
+  return `
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="9360" w:type="dxa"/>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblCellMar>
+          <w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/>
+        </w:tblCellMar>
+        <w:tblBorders>
+          <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>
+        </w:tblBorders>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="4680"/>
+        <w:gridCol w:w="4680"/>
+      </w:tblGrid>
+      ${rows.join("")}
+    </w:tbl>
+    ${buildWordParagraphXml("", { spacingAfter: 0 })}
+  `.replace(/\n\s+/g, "");
+}
+
+function buildDocxSpecialPlaceholderXml(value) {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  if (value.type === "signature_group") {
+    return buildWordSignatureGroupXml(value.items);
+  }
+
+  return "";
+}
+
+function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
+  if (!zip || !(specialPlaceholders instanceof Map) || specialPlaceholders.size === 0) {
+    return;
+  }
+
+  const xmlFileNames = Object.keys(zip.files ?? {}).filter((fileName) => (
+    /^word\/(document|header\d+|footer\d+)\.xml$/i.test(fileName)
+  ));
+
+  xmlFileNames.forEach((fileName) => {
+    const file = zip.file(fileName);
+    if (!file) {
+      return;
+    }
+
+    let xml = file.asText();
+    let changed = false;
+
+    specialPlaceholders.forEach((value, sentinel) => {
+      if (!xml.includes(sentinel)) {
+        return;
+      }
+
+      const replacementXml = buildDocxSpecialPlaceholderXml(value);
+      if (!replacementXml) {
+        return;
+      }
+
+      const paragraphPattern = new RegExp(`<w:p\\b[\\s\\S]*?${escapeRegex(sentinel)}[\\s\\S]*?<\\/w:p>`, "g");
+      if (paragraphPattern.test(xml)) {
+        xml = xml.replace(paragraphPattern, replacementXml);
+        changed = true;
+        return;
+      }
+
+      const fallbackText = escapeWordXmlText(buildDocxSignatureGroupFallbackText(value.items));
+      xml = xml.replace(new RegExp(escapeRegex(sentinel), "g"), fallbackText);
+      changed = true;
+    });
+
+    if (changed) {
+      zip.file(fileName, xml);
+    }
+  });
+}
+
 function formatDocxRenderError(error) {
   if (Array.isArray(error?.properties?.errors) && error.properties.errors.length > 0) {
     return error.properties.errors
@@ -336,10 +579,25 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     throw new Error("Word predložak je prazan.");
   }
 
+  const specialPlaceholders = new Map();
   const normalizedPlaceholders = Object.fromEntries(
     Object.entries(placeholders && typeof placeholders === "object" ? placeholders : {})
-      .map(([key, value]) => [clean(key), normalizeTemplatePlaceholderValue(value)])
-      .filter(([key]) => key),
+      .map(([key, value], index) => {
+        const safeKey = clean(key);
+        if (!safeKey) {
+          return null;
+        }
+
+        const specialValue = normalizeDocxSpecialPlaceholderValue(value);
+        if (specialValue) {
+          const sentinel = `__DOCX_BLOCK_${safeKey}_${index}__`;
+          specialPlaceholders.set(sentinel, specialValue);
+          return [safeKey, sentinel];
+        }
+
+        return [safeKey, normalizeTemplatePlaceholderValue(value)];
+      })
+      .filter(Boolean),
   );
 
   try {
@@ -357,6 +615,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     });
 
     doc.render(normalizedPlaceholders);
+    applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
     return doc.getZip().generate({
       type: "nodebuffer",
       compression: "DEFLATE",
