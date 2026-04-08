@@ -106,6 +106,47 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "digital_signature", label: "Digitalni potpis" },
 ];
 
+export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
+  { value: "quarter", label: "1/4 širine" },
+  { value: "third", label: "1/3 širine" },
+  { value: "half", label: "1/2 širine" },
+  { value: "two-thirds", label: "2/3 širine" },
+  { value: "full", label: "Puna širina" },
+];
+
+const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
+  "chapter",
+  "longtext",
+  "qualified_inspectors",
+  "sketch_upload",
+  "image_upload",
+  "legal_list",
+  "equipment_list",
+  "measurement_table",
+  "inspector_signature",
+  "authorization_holder_signature",
+  "digital_signature",
+]);
+
+export function getDocumentTemplateDefaultFieldLayoutWidth(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  if (DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES.has(normalizedType)) {
+    return "full";
+  }
+  if (normalizedType === "checkbox" || normalizedType === "toggle") {
+    return "third";
+  }
+  return "half";
+}
+
+export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "text") {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS.some((option) => option.value === normalizedValue)) {
+    return normalizedValue;
+  }
+  return getDocumentTemplateDefaultFieldLayoutWidth(type);
+}
+
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
   "Flat plan",
   "One-Time",
@@ -1086,6 +1127,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       label,
       wordLabel,
       type,
+      layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       sourceTable: normalizeText(field?.sourceTable).toLowerCase().slice(0, 80),
       lookupColumn: normalizeText(field?.lookupColumn).toLowerCase().slice(0, 80),

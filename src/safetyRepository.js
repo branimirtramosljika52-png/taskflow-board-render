@@ -1781,6 +1781,7 @@ async function fetchSnapshotFromConnection(connection) {
       label: dbString(field.label),
       wordLabel: dbString(field.wordLabel),
       type: dbString(field.type) || "text",
+      layoutWidth: dbString(field.layoutWidth),
       source: dbString(field.source ?? field.bindingSource),
       sourceTable: dbString(field.sourceTable),
       lookupColumn: dbString(field.lookupColumn),

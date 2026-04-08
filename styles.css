@@ -16129,6 +16129,27 @@ body.is-document-template-editor-open {
   font-size: 0.82rem;
 }
 
+.document-template-runtime-badge-select-wrap {
+  min-width: 248px;
+}
+
+.document-template-runtime-badge-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 28px 0 0;
+  border: 0;
+  background: transparent;
+  color: #22352d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.document-template-runtime-badge-select:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 .document-template-runtime-signing-card {
   flex: 1 1 100%;
   border: 1px solid rgba(220, 156, 212, 0.4);
@@ -16180,7 +16201,7 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main {
-  gap: 12px;
+  gap: 8px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main .section-kicker {
@@ -16251,7 +16272,7 @@ body.is-document-template-editor-open {
   top: 0;
   z-index: 8;
   margin: 0 -20px;
-  padding: 12px 18px 10px;
+  padding: 8px 16px 8px;
   background:
     linear-gradient(180deg, rgba(255, 252, 255, 0.98), rgba(255, 246, 252, 0.96));
   border-bottom: 1px solid rgba(220, 156, 212, 0.24);
@@ -16265,11 +16286,11 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges {
-  gap: 6px;
+  gap: 5px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges > .document-template-runtime-chip {
-  min-width: 180px;
+  min-width: 260px;
   width: auto;
 }
 
@@ -16279,12 +16300,12 @@ body.is-document-template-editor-open {
 
 .document-template-editor-panel.is-fill-mode .document-template-custom-fields {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .document-template-runtime-shell {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .document-template-runtime-block {
@@ -16331,7 +16352,7 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block-body {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 10px;
   align-items: start;
 }
@@ -16476,7 +16497,7 @@ body.is-document-template-editor-open {
   display: grid;
   grid-template-columns: minmax(124px, 168px) minmax(0, 1fr) auto;
   gap: 6px;
-  align-items: stretch;
+  align-items: center;
   margin-top: 2px;
   padding: 6px 8px;
   border: 1px solid rgba(231, 88, 201, 0.22);
@@ -16492,6 +16513,8 @@ body.is-document-template-editor-open {
   gap: 1px;
   min-width: 0;
   align-content: center;
+  justify-items: center;
+  text-align: center;
 }
 
 .document-template-runtime-dock-kicker {
@@ -16524,6 +16547,7 @@ body.is-document-template-editor-open {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
+  justify-items: center;
 }
 
 .document-template-runtime-dock-track {
@@ -16595,6 +16619,8 @@ body.is-document-template-editor-open {
 .document-template-runtime-dock-group-head {
   display: grid;
   gap: 1px;
+  justify-items: center;
+  text-align: center;
 }
 
 .document-template-runtime-dock-group-head strong {
@@ -16616,6 +16642,7 @@ body.is-document-template-editor-open {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  justify-content: center;
 }
 
 .document-template-runtime-dock-item {
@@ -16659,7 +16686,7 @@ body.is-document-template-editor-open {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -16829,6 +16856,19 @@ body.is-document-template-editor-open {
 
 .document-template-runtime-field-card {
   background: rgba(255, 255, 255, 0.94);
+  min-width: 0;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-card {
+  grid-column: span var(--document-template-runtime-span, 6);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-card[data-field-width="full"] {
+  grid-column: 1 / -1;
+}
+
+.document-template-runtime-field-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .document-template-runtime-checkbox {
