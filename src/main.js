@@ -18721,6 +18721,19 @@ function renderDocumentTemplateRuntimeContext() {
       || recordSourceState.candidates[0]?.id
       || "template";
 
+    if (
+      !getDocumentTemplateRuntimeRecordSource(activeWorkOrder.id)
+      && recordSourceState.status !== "loading"
+      && selectedRecordSourceId
+      && selectedRecordSourceId !== "template"
+    ) {
+      requestAnimationFrame(() => {
+        applyDocumentTemplateRuntimeRecordCandidate(activeWorkOrder.id, selectedRecordSourceId, template, {
+          render: true,
+        });
+      });
+    }
+
     const workOrderChip = document.createElement("div");
     workOrderChip.className = "document-template-runtime-chip is-active";
 
@@ -18728,15 +18741,21 @@ function renderDocumentTemplateRuntimeContext() {
     workOrderTitle.textContent = activeWorkOrder.workOrderNumber || "Bez broja RN";
 
     const workOrderMeta = document.createElement("span");
-    workOrderMeta.textContent = [
-      activeWorkOrder.companyName || "Bez tvrtke",
-      activeWorkOrder.locationName || "",
-    ].filter(Boolean).join(" · ");
+    workOrderMeta.textContent = activeWorkOrder.companyName || "Bez tvrtke";
 
     workOrderChip.append(workOrderTitle, workOrderMeta);
+    const headerCards = [workOrderChip];
 
-    const headerBadgeWrap = document.createElement("div");
-    headerBadgeWrap.className = "document-template-runtime-common-badges";
+    if (String(activeWorkOrder.locationName || "").trim()) {
+      const locationBadge = document.createElement("div");
+      locationBadge.className = "document-template-runtime-badge is-primary";
+      const locationLabel = document.createElement("span");
+      locationLabel.textContent = "Lokacija";
+      const locationValue = document.createElement("strong");
+      locationValue.textContent = activeWorkOrder.locationName;
+      locationBadge.append(locationLabel, locationValue);
+      headerCards.push(locationBadge);
+    }
 
     const recordBadge = document.createElement("label");
     recordBadge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap";
@@ -18760,6 +18779,7 @@ function renderDocumentTemplateRuntimeContext() {
       });
     });
     recordBadge.append(recordBadgeLabel, recordBadgeSelect);
+    headerCards.push(recordBadge);
 
     const headerBadges = [
       {
@@ -18772,26 +18792,23 @@ function renderDocumentTemplateRuntimeContext() {
       },
     ].filter((entry) => String(entry.value || "").trim());
 
-    headerBadgeWrap.append(
-      recordBadge,
-      ...headerBadges.map((entry) => {
-        const badge = document.createElement("div");
-        badge.className = "document-template-runtime-badge";
+    headerCards.push(...headerBadges.map((entry) => {
+      const badge = document.createElement("div");
+      badge.className = "document-template-runtime-badge";
 
-        const label = document.createElement("span");
-        label.textContent = entry.label;
+      const label = document.createElement("span");
+      label.textContent = entry.label;
 
-        const value = document.createElement("strong");
-        value.textContent = entry.label.toLowerCase().includes("datum")
-          ? formatCompactDate(entry.value)
-          : entry.value;
+      const value = document.createElement("strong");
+      value.textContent = entry.label.toLowerCase().includes("datum")
+        ? formatCompactDate(entry.value)
+        : entry.value;
 
-        badge.append(label, value);
-        return badge;
-      }),
-    );
+      badge.append(label, value);
+      return badge;
+    }));
 
-    documentTemplateRuntimeHeaderBadges.replaceChildren(workOrderChip, headerBadgeWrap);
+    documentTemplateRuntimeHeaderBadges.replaceChildren(...headerCards);
   }
 
   const runtimeCommonNodes = [];

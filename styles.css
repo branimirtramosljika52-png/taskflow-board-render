@@ -15195,19 +15195,21 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-runtime-header-badges {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
   align-items: stretch;
 }
 
 .document-template-runtime-header-badges > .document-template-runtime-chip {
-  min-width: 220px;
+  min-width: 0;
   cursor: default;
+  width: 100%;
 }
 
-.document-template-runtime-header-badges > .document-template-runtime-common-badges {
-  flex: 1 1 auto;
+.document-template-runtime-header-badges > .document-template-runtime-badge,
+.document-template-runtime-header-badges > .document-template-runtime-chip {
+  width: 100%;
 }
 
 .legal-framework-card-heading,
@@ -16130,7 +16132,7 @@ body.is-document-template-editor-open {
 }
 
 .document-template-runtime-badge-select-wrap {
-  min-width: 248px;
+  min-width: 0;
 }
 
 .document-template-runtime-badge-select {
@@ -16201,7 +16203,7 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main {
-  gap: 8px;
+  gap: 6px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main .section-kicker {
@@ -16224,8 +16226,13 @@ body.is-document-template-editor-open {
   display: none !important;
 }
 
+.document-template-editor-panel.is-fill-mode .document-template-builder-main > .document-template-block > .section-kicker,
+.document-template-editor-panel.is-fill-mode .document-template-builder-main > .document-template-block > h3 {
+  display: none !important;
+}
+
 .document-template-editor-panel.is-fill-mode .document-template-block {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 20px;
 }
 
@@ -16272,7 +16279,7 @@ body.is-document-template-editor-open {
   top: 0;
   z-index: 8;
   margin: 0 -20px;
-  padding: 8px 16px 8px;
+  padding: 6px 14px 6px;
   background:
     linear-gradient(180deg, rgba(255, 252, 255, 0.98), rgba(255, 246, 252, 0.96));
   border-bottom: 1px solid rgba(220, 156, 212, 0.24);
@@ -16286,21 +16293,13 @@ body.is-document-template-editor-open {
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges {
-  gap: 5px;
-}
-
-.document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges > .document-template-runtime-chip {
-  min-width: 260px;
-  width: auto;
-}
-
-.document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges > .document-template-runtime-common-badges {
   gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-custom-fields {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .document-template-runtime-shell {
@@ -16311,10 +16310,10 @@ body.is-document-template-editor-open {
 .document-template-runtime-block {
   border: 1px solid rgba(220, 156, 212, 0.56);
   border-radius: 24px;
-  padding: 14px;
+  padding: 12px;
   background: linear-gradient(180deg, rgba(255, 248, 253, 0.98), rgba(255, 255, 255, 0.98));
   display: grid;
-  gap: 12px;
+  gap: 10px;
   box-shadow:
     inset 0 0 0 1px rgba(240, 79, 151, 0.04),
     0 12px 24px rgba(108, 83, 153, 0.05);
@@ -16349,11 +16348,12 @@ body.is-document-template-editor-open {
 .document-template-runtime-block-body {
   display: grid;
   gap: 10px;
+  grid-auto-flow: dense;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block-body {
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   align-items: start;
 }
 
@@ -16372,7 +16372,7 @@ body.is-document-template-editor-open {
 .document-template-editor-panel.is-fill-mode .document-template-runtime-media-field,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-measurement-field,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-digital-signature-card {
-  padding: 10px 12px;
+  padding: 9px 10px;
   border: 1px solid rgba(188, 119, 172, 0.44);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(255, 249, 253, 0.98));
@@ -16393,7 +16393,7 @@ body.is-document-template-editor-open {
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block select,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 40px;
   border-radius: 14px;
   border: 1px solid rgba(179, 95, 156, 0.4);
   background: rgba(255, 255, 255, 1);
@@ -16495,11 +16495,11 @@ body.is-document-template-editor-open {
   bottom: 0;
   z-index: 9;
   display: grid;
-  grid-template-columns: minmax(124px, 168px) minmax(0, 1fr) auto;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
   margin-top: 2px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 1px solid rgba(231, 88, 201, 0.22);
   border-radius: 16px;
   background: rgba(15, 13, 26, 0.92);
@@ -16509,12 +16509,7 @@ body.is-document-template-editor-open {
 }
 
 .document-template-runtime-dock-summary {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  align-content: center;
-  justify-items: center;
-  text-align: center;
+  display: none;
 }
 
 .document-template-runtime-dock-kicker {
@@ -16548,6 +16543,8 @@ body.is-document-template-editor-open {
   align-items: center;
   gap: 6px;
   justify-items: center;
+  width: min(100%, 980px);
+  margin-inline: auto;
 }
 
 .document-template-runtime-dock-track {
@@ -16558,6 +16555,7 @@ body.is-document-template-editor-open {
   padding-bottom: 2px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  justify-content: center;
 }
 
 .document-template-runtime-dock-track::-webkit-scrollbar {
@@ -16602,13 +16600,13 @@ body.is-document-template-editor-open {
 }
 
 .document-template-runtime-dock-group {
-  min-width: 148px;
-  padding: 5px 8px;
+  min-width: 132px;
+  padding: 4px 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .document-template-runtime-dock-group.is-active {
@@ -16625,12 +16623,12 @@ body.is-document-template-editor-open {
 
 .document-template-runtime-dock-group-head strong {
   color: #ffffff;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
 }
 
 .document-template-runtime-dock-group-head span {
   color: rgba(255, 255, 255, 0.68);
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   line-height: 1.2;
 }
 
@@ -16647,16 +16645,16 @@ body.is-document-template-editor-open {
 
 .document-template-runtime-dock-item {
   min-width: 0;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.06);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 26px;
+  min-height: 24px;
   color: #ffffff;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   text-align: center;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
@@ -16688,6 +16686,7 @@ body.is-document-template-editor-open {
   align-items: center;
   justify-content: center;
   gap: 4px;
+  align-self: center;
 }
 
 .document-template-runtime-dock-signature-mode {
@@ -16861,6 +16860,7 @@ body.is-document-template-editor-open {
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-field-card {
   grid-column: span var(--document-template-runtime-span, 6);
+  align-content: start;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-field-card[data-field-width="full"] {
@@ -16869,6 +16869,16 @@ body.is-document-template-editor-open {
 
 .document-template-runtime-field-grid {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-card .field {
+  width: 100%;
+  display: grid;
+  align-content: start;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-card .field > span {
+  margin-bottom: 6px;
 }
 
 .document-template-runtime-checkbox {
