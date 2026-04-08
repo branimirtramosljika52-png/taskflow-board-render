@@ -17131,6 +17131,21 @@ body.is-document-template-editor-open {
   accent-color: #c640ac;
 }
 
+.document-template-runtime-checklist-item input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+}
+
+.document-template-runtime-checklist-item span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  line-height: 1.35;
+}
+
 .document-template-runtime-excel-preview {
   border-style: dashed;
   color: #6d6280;
