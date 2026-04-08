@@ -18257,10 +18257,7 @@ function renderMeasurementEquipmentDocuments() {
   }
 
   if (measurementEquipmentDocumentDrafts.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema dodanih datoteka za ovaj uređaj.";
-    measurementEquipmentDocumentsList.replaceChildren(empty);
+    measurementEquipmentDocumentsList.replaceChildren();
     return;
   }
 
