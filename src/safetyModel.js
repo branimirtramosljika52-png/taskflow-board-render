@@ -107,11 +107,15 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
 ];
 
 export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
-  { value: "quarter", label: "1/4 širine" },
-  { value: "third", label: "1/3 širine" },
-  { value: "half", label: "1/2 širine" },
-  { value: "two-thirds", label: "2/3 širine" },
-  { value: "full", label: "Puna širina" },
+  { value: "1", label: "1 polje" },
+  { value: "2", label: "2 polja" },
+  { value: "3", label: "3 polja" },
+  { value: "4", label: "4 polja" },
+  { value: "5", label: "5 polja" },
+  { value: "6", label: "6 polja" },
+  { value: "7", label: "7 polja" },
+  { value: "8", label: "8 polja" },
+  { value: "9", label: "9 polja" },
 ];
 
 const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
@@ -131,18 +135,28 @@ const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
 export function getDocumentTemplateDefaultFieldLayoutWidth(type = "text") {
   const normalizedType = String(type || "text").trim().toLowerCase();
   if (DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES.has(normalizedType)) {
-    return "full";
+    return "9";
   }
   if (normalizedType === "checkbox" || normalizedType === "toggle") {
-    return "third";
+    return "2";
   }
-  return "half";
+  return "3";
 }
 
 export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "text") {
   const normalizedValue = String(value || "").trim().toLowerCase();
   if (DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS.some((option) => option.value === normalizedValue)) {
     return normalizedValue;
+  }
+  const legacyMap = {
+    quarter: "2",
+    third: "3",
+    half: "3",
+    "two-thirds": "6",
+    full: "9",
+  };
+  if (legacyMap[normalizedValue]) {
+    return legacyMap[normalizedValue];
   }
   return getDocumentTemplateDefaultFieldLayoutWidth(type);
 }
@@ -5549,3 +5563,4 @@ export function syncLocationFieldsFromWorkOrder(location, workOrder, now = isoNo
     updatedAt: now(),
   };
 }
+

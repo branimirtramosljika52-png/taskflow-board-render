@@ -12820,11 +12820,15 @@ const DOCUMENT_TEMPLATE_RUNTIME_FORCE_FULL_WIDTH_TYPES = new Set([
 ]);
 
 const DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS = {
-  quarter: 3,
-  third: 4,
-  half: 6,
-  "two-thirds": 8,
-  full: 12,
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 5,
+  6: 6,
+  7: 7,
+  8: 8,
+  9: 9,
 };
 
 function getDocumentTemplateFieldTypeLabel(value) {
@@ -12850,7 +12854,7 @@ function getDocumentTemplateRuntimeFieldLayoutWidth(field = {}) {
 
 function getDocumentTemplateRuntimeFieldLayoutSpan(field = {}) {
   const width = getDocumentTemplateRuntimeFieldLayoutWidth(field);
-  return DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS[width] || DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS.half;
+  return DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS[width] || DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS[3];
 }
 
 function isDocumentTemplateMediaFieldType(value) {
@@ -13081,9 +13085,7 @@ function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 
     }
   }
   const dateLabel = normalizedDate ? formatCompactDate(normalizedDate) : "bez datuma";
-  return index === 0
-    ? `Stari zapisnik (najnoviji) · ${dateLabel}`
-    : `Stari zapisnik · ${dateLabel}`;
+  return dateLabel;
 }
 
 async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocumentTemplateDraft(), workOrder = {}) {
@@ -14182,7 +14184,7 @@ function buildDocumentTemplateDraft() {
           lookupValue: "",
           valueColumn: "",
           previousDocumentMode: "NONE",
-          layoutWidth: "full",
+          layoutWidth: "9",
           columns: sheet.columns.map((column) => column.label),
           rowCount: sheet.rows.length,
           sheet,
@@ -18760,14 +18762,16 @@ function renderDocumentTemplateRuntimeContext() {
     const recordBadge = document.createElement("label");
     recordBadge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap";
     const recordBadgeLabel = document.createElement("span");
-    recordBadgeLabel.textContent = "Zapisnik";
+    recordBadgeLabel.textContent = String(template?.title || getDocumentTemplateTypeLabel(template?.documentType) || "Zapisnik").trim() || "Zapisnik";
     const recordBadgeSelect = document.createElement("select");
     recordBadgeSelect.className = "document-template-runtime-badge-select";
     replaceSelectOptions(
       recordBadgeSelect,
       recordSourceState.candidates.map((candidate) => ({
         value: candidate.id,
-        label: candidate.label,
+        label: candidate.id === "template"
+          ? "Template"
+          : candidate.label,
       })),
       selectedRecordSourceId,
     );
