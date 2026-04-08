@@ -15194,6 +15194,22 @@ body.is-vehicle-reservation-open {
   min-width: 0;
 }
 
+.document-template-runtime-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.document-template-runtime-header-badges > .document-template-runtime-chip {
+  min-width: 220px;
+  cursor: default;
+}
+
+.document-template-runtime-header-badges > .document-template-runtime-common-badges {
+  flex: 1 1 auto;
+}
+
 .legal-framework-card-heading,
 .service-catalog-card-copy,
 .measurement-equipment-card-copy,
@@ -16242,6 +16258,19 @@ body.is-document-template-editor-open {
 .document-template-editor-panel.is-fill-mode .document-template-workspace-head-copy h3 {
   font-size: 0.98rem;
   line-height: 1.2;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges {
+  gap: 6px;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges > .document-template-runtime-chip {
+  min-width: 180px;
+  width: auto;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges > .document-template-runtime-common-badges {
+  gap: 6px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-custom-fields {

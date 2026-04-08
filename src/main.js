@@ -1232,6 +1232,7 @@ const documentTemplateEditorPanelHomeParent = documentTemplateEditorPanel?.paren
 const documentTemplateEditorPanelHomeNextSibling = documentTemplateEditorPanel?.nextSibling ?? null;
 const documentTemplateEditorTitle = document.querySelector("#document-template-editor-title");
 const documentTemplateWorkspaceHead = documentTemplateEditorPanel?.querySelector(".document-template-workspace-head");
+const documentTemplateRuntimeHeaderBadges = document.querySelector("#document-template-runtime-header-badges");
 const documentTemplateHeadActions = documentTemplateEditorPanel?.querySelector(".document-template-head-actions");
 const documentTemplateOpenPdfPreviewButton = document.querySelector("#document-template-open-pdf-preview");
 const documentTemplateExportPlaceholderButton = document.querySelector("#document-template-export-placeholder");
@@ -18259,8 +18260,12 @@ function renderDocumentTemplateRuntimeContext() {
   const activeSequenceEntry = hasSequence && !isSummaryStep
     ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.activeIndex] || sequenceState.entries[0] || null) : null)
     : null;
-  documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep;
+  documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep || fillMode;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
+  if (documentTemplateRuntimeHeaderBadges) {
+    documentTemplateRuntimeHeaderBadges.hidden = !fillMode || !hasContext || isSummaryStep || !activeWorkOrder;
+    documentTemplateRuntimeHeaderBadges.replaceChildren();
+  }
   if (documentTemplateRuntimeClearButton) {
     documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
   }
@@ -18579,6 +18584,49 @@ function renderDocumentTemplateRuntimeContext() {
     },
   ].filter((entry) => String(entry.value || "").trim());
 
+  if (fillMode && activeWorkOrder && documentTemplateRuntimeHeaderBadges) {
+    const workOrderChip = document.createElement("div");
+    workOrderChip.className = "document-template-runtime-chip is-active";
+
+    const workOrderTitle = document.createElement("strong");
+    workOrderTitle.textContent = activeWorkOrder.workOrderNumber || "Bez broja RN";
+
+    const workOrderMeta = document.createElement("span");
+    workOrderMeta.textContent = activeWorkOrder.companyName || "Bez tvrtke";
+
+    workOrderChip.append(workOrderTitle, workOrderMeta);
+
+    const headerBadgeWrap = document.createElement("div");
+    headerBadgeWrap.className = "document-template-runtime-common-badges";
+
+    const headerBadges = [
+      commonBadges.find((entry) => entry.label === "Zapisnik"),
+      commonBadges.find((entry) => entry.label === "Datum ispitivanja"),
+      commonBadges.find((entry) => entry.label === "Datum izdavanja"),
+    ].filter(Boolean);
+
+    headerBadgeWrap.append(...headerBadges.map((entry) => {
+      const badge = document.createElement("div");
+      badge.className = "document-template-runtime-badge";
+      if (String(entry.label || "").trim().toLowerCase() === "zapisnik") {
+        badge.classList.add("is-primary");
+      }
+
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+
+      const value = document.createElement("strong");
+      value.textContent = entry.label.toLowerCase().includes("datum")
+        ? formatCompactDate(entry.value)
+        : entry.value;
+
+      badge.append(label, value);
+      return badge;
+    }));
+
+    documentTemplateRuntimeHeaderBadges.replaceChildren(workOrderChip, headerBadgeWrap);
+  }
+
   const runtimeCommonNodes = [];
 
   if (commonBadges.length === 0) {
@@ -18648,10 +18696,12 @@ function syncDocumentTemplateEditorChrome() {
           activeEntry?.workOrderNumber ? `RN ${activeEntry.workOrderNumber}` : "",
           activeWorkOrder?.companyName || "",
         ].filter(Boolean).join(" · ");
+      documentTemplateEditorTitle.hidden = !sequenceState?.isSummary;
     } else {
       documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
         ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
         : "Template editor";
+      documentTemplateEditorTitle.hidden = false;
     }
   }
 
