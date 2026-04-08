@@ -18345,13 +18345,10 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
     if (sequenceState?.isSummary) {
       documentTemplateRuntimeDockTitle.textContent = "Summary";
-      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"} spremno za završetak`;
+      documentTemplateRuntimeDockMeta.textContent = "Završetak";
     } else {
       documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"}`;
-      documentTemplateRuntimeDockMeta.textContent = [
-        activeWorkOrder.companyName || "Aktivni radni nalog",
-        activeWorkOrder.locationName || "Bez lokacije",
-      ].filter(Boolean).join(" · ");
+      documentTemplateRuntimeDockMeta.textContent = activeWorkOrder.companyName || "";
     }
 
     const dockNodes = groupedEntries.map((group) => {
@@ -18368,11 +18365,7 @@ function renderDocumentTemplateRuntimeContext() {
       groupTitle.textContent = `RN ${group.workOrderNumber}`;
 
       const groupMeta = document.createElement("span");
-      const firstItem = group.items[0] || {};
-      groupMeta.textContent = [
-        firstItem.companyName || "",
-        firstItem.locationName || "",
-      ].filter(Boolean).join(" · ") || `${group.items.length} ${group.items.length === 1 ? "zapisnik" : "zapisnika"}`;
+      groupMeta.textContent = "";
 
       groupHead.append(groupTitle, groupMeta);
 
@@ -18422,7 +18415,7 @@ function renderDocumentTemplateRuntimeContext() {
       const summaryTitle = document.createElement("strong");
       summaryTitle.textContent = "Summary";
       const summaryMeta = document.createElement("span");
-      summaryMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · završetak`;
+      summaryMeta.textContent = "";
       summaryHead.append(summaryTitle, summaryMeta);
 
       const summaryItems = document.createElement("div");
@@ -18629,11 +18622,32 @@ function renderDocumentTemplateRuntimeContext() {
 function syncDocumentTemplateEditorChrome() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   if (documentTemplateEditorTitle) {
-    documentTemplateEditorTitle.textContent = fillMode
-      ? `Zapisnik | ${documentTemplateTitleInput?.value?.trim() || "Predložak"}`
-      : (documentTemplateIdInput?.value
+    if (fillMode) {
+      const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+      const sequenceState = getDocumentTemplateRuntimeSequenceState();
+      const sequenceEntries = Array.isArray(sequenceState?.entries) ? sequenceState.entries : [];
+      const activeEntry = sequenceState?.isSummary
+        ? null
+        : (sequenceEntries[sequenceState?.activeIndex ?? 0] || sequenceEntries[0] || null);
+      const templateLabel = String(
+        activeEntry?.timelineLabel
+        || documentTemplateTitleInput?.value
+        || getDocumentTemplateTypeLabel(buildDocumentTemplateDraft()?.documentType)
+        || "Predložak",
+      ).trim();
+
+      documentTemplateEditorTitle.textContent = sequenceState?.isSummary
+        ? `Summary · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
+        : [
+          activeEntry?.workOrderNumber ? `RN ${activeEntry.workOrderNumber}` : "",
+          activeWorkOrder?.companyName || "",
+          templateLabel,
+        ].filter(Boolean).join(" · ");
+    } else {
+      documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
         ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
-        : "Template editor");
+        : "Template editor";
+    }
   }
 
   if (documentTemplateEditorPanel) {
