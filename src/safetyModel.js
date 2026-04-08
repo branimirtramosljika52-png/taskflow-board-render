@@ -163,6 +163,14 @@ export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "te
   return getDocumentTemplateDefaultFieldLayoutWidth(type);
 }
 
+export function normalizeDocumentTemplateFieldHeight(value = 0, type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  if (normalizedType !== "longtext") {
+    return 0;
+  }
+  return Math.max(3, Math.min(18, Math.round(normalizeFiniteNumber(value, 4))));
+}
+
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
   "Flat plan",
   "One-Time",
@@ -1144,6 +1152,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       wordLabel,
       type,
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
+      fieldHeight: normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type),
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       sourceTable: normalizeText(field?.sourceTable).toLowerCase().slice(0, 80),
       lookupColumn: normalizeText(field?.lookupColumn).toLowerCase().slice(0, 80),

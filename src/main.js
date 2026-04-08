@@ -44,6 +44,7 @@
   getWorkOrderExecutors,
   normalizeWorkOrderMeasurementSheet,
   normalizeDocumentTemplateFieldLayoutWidth,
+  normalizeDocumentTemplateFieldHeight,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
   getVehicleAvailabilityStatus,
@@ -12831,6 +12832,14 @@ const DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS = {
   9: 9,
 };
 
+const DOCUMENT_TEMPLATE_LONGTEXT_HEIGHT_OPTIONS = Array.from({ length: 10 }, (_, index) => {
+  const rows = index + 3;
+  return {
+    value: String(rows),
+    label: `${rows} red${rows === 1 ? "" : rows >= 2 && rows <= 4 ? "a" : "ova"}`,
+  };
+});
+
 function getDocumentTemplateFieldTypeLabel(value) {
   return getOptionLabel(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS, value || "text");
 }
@@ -13669,6 +13678,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     key: normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey),
     type,
     layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(initial.layoutWidth, type),
+    fieldHeight: normalizeDocumentTemplateFieldHeight(initial.fieldHeight, type),
     source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
     sourceTable: String(initial.sourceTable ?? "").trim().toLowerCase(),
     lookupColumn: String(initial.lookupColumn ?? "").trim().toLowerCase(),
@@ -14143,6 +14153,7 @@ function buildDocumentTemplateDraft() {
       wordLabel: String(field.wordLabel || field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
+      fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
       source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
       sourceTable: String(field.sourceTable || "").trim().toLowerCase(),
       lookupColumn: String(field.lookupColumn || "").trim().toLowerCase(),
@@ -14185,6 +14196,7 @@ function buildDocumentTemplateDraft() {
           valueColumn: "",
           previousDocumentMode: "NONE",
           layoutWidth: "9",
+          fieldHeight: 0,
           columns: sheet.columns.map((column) => column.label),
           rowCount: sheet.rows.length,
           sheet,
@@ -14212,6 +14224,7 @@ function buildDocumentTemplateDraft() {
           signatureMultiple: Boolean(field.signatureMultiple ?? true),
           signatureIncludeScan: Boolean(field.signatureIncludeScan),
           layoutWidth: getDocumentTemplateRuntimeFieldLayoutWidth(field),
+          fieldHeight: 0,
           legalFrameworkIds,
           defaultLegalFrameworkIds,
           columns: [],
@@ -14224,6 +14237,7 @@ function buildDocumentTemplateDraft() {
           ...field,
           source: field.source || "CUSTOM_VALUE",
           layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
+          fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
           sourceTable: field.source === "DATABASE_LOOKUP" ? field.sourceTable : "",
           lookupColumn: field.source === "DATABASE_LOOKUP" ? field.lookupColumn : "",
           lookupValueSource: field.source === "DATABASE_LOOKUP" ? field.lookupValueSource : "WORK_ORDER_NUMBER",
@@ -16600,6 +16614,22 @@ function buildDocumentTemplateEquipmentExportRows(field = {}, context = {}) {
   ]));
 }
 
+function buildDocumentTemplateEquipmentExportItems(field = {}, context = {}) {
+  return buildDocumentTemplateEquipmentExportRows(field, context)
+    .map((row) => {
+      const [name, deviceType, inventoryNumber, note] = row;
+      return [
+        String(name || "").trim(),
+        String(deviceType || "").trim(),
+        String(inventoryNumber ? `Inv. broj: ${inventoryNumber}` : "").trim(),
+        String(note || "").trim(),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    })
+    .filter(Boolean);
+}
+
 function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}) {
   const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
   return getWorkOrderDocumentQualifiedUsers(
@@ -16658,9 +16688,7 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
   }
 
   if (field.type === "equipment_list") {
-    return buildDocumentTemplateEquipmentExportRows(field, context)
-      .map((row) => row.filter(Boolean).join(" | "))
-      .join("\n");
+    return buildDocumentTemplateEquipmentExportItems(field, context).join("\n");
   }
 
   if (field.type === "qualified_inspectors") {
@@ -16829,12 +16857,9 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
 
       if (field.type === "equipment_list") {
         return {
-          type: "table",
+          type: "list",
           title,
-          columns: ["Oprema", "Tip", "Inv. broj", "Napomena"],
-          headerRows: [["Oprema", "Tip", "Inv. broj", "Napomena"]],
-          rows: buildDocumentTemplateEquipmentExportRows(field, context),
-          landscape: false,
+          items: buildDocumentTemplateEquipmentExportItems(field, context),
         };
       }
 
@@ -20419,8 +20444,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     let control;
     if (field.type === "longtext") {
+      const fieldHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
       control = document.createElement("textarea");
-      control.rows = 4;
+      control.rows = fieldHeight;
+      control.style.minHeight = `${Math.max(120, fieldHeight * 28)}px`;
       control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
       control.addEventListener("input", (event) => {
         setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
@@ -21389,6 +21416,28 @@ function renderDocumentTemplateFieldRows() {
     });
     widthField.append(widthSpan, widthSelect);
 
+    const heightField = document.createElement("label");
+    heightField.className = "field";
+    heightField.hidden = field.type !== "longtext";
+    const heightSpan = document.createElement("span");
+    heightSpan.textContent = "Visina polja";
+    const heightSelect = document.createElement("select");
+    heightSelect.className = "document-template-source-select";
+    replaceSelectOptions(
+      heightSelect,
+      DOCUMENT_TEMPLATE_LONGTEXT_HEIGHT_OPTIONS,
+      String(normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")),
+    );
+    heightSelect.addEventListener("change", () => {
+      documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(
+        heightSelect.value || "",
+        documentTemplateFieldDrafts[draftIndex].type || "longtext",
+      );
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePreviewContent();
+    });
+    heightField.append(heightSpan, heightSelect);
+
     const sourceField = document.createElement("label");
     sourceField.className = "field";
     sourceField.hidden = isSpecialType;
@@ -21584,6 +21633,9 @@ function renderDocumentTemplateFieldRows() {
       grid.append(wordLabelField);
       if (!widthField.hidden) {
         grid.append(widthField);
+      }
+      if (!heightField.hidden) {
+        grid.append(heightField);
       }
     }
 
