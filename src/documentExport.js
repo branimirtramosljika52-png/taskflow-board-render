@@ -335,30 +335,148 @@ function normalizeDocxSpecialPlaceholderValue(value) {
   }
 
   const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
-  if (blockType !== "signature_group") {
+  if (blockType === "signature_group") {
+    const items = (Array.isArray(value.items) ? value.items : [])
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        return {
+          role: clean(item.role) || "Osoba",
+          name: clean(item.name) || "Potpisnik",
+          metaLines: (Array.isArray(item.metaLines) ? item.metaLines : [])
+            .map((entry) => clean(entry))
+            .filter(Boolean),
+          signatureMode: clean(item.signatureMode).toLowerCase() || "scan",
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      type: "signature_group",
+      items,
+    };
+  }
+
+  if (blockType !== "table") {
     return null;
   }
 
-  const items = (Array.isArray(value.items) ? value.items : [])
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
+  const columns = (Array.isArray(value.columns) ? value.columns : [])
+    .map((column, index) => {
+      if (column && typeof column === "object" && !Array.isArray(column)) {
+        const width = Number(column.width);
+        return {
+          id: clean(column.id) || `column-${index + 1}`,
+          label: clean(column.label) || clean(column.id) || `Kolona ${index + 1}`,
+          width: Number.isFinite(width) ? Math.max(90, width) : 140,
+        };
       }
 
       return {
-        role: clean(item.role) || "Osoba",
-        name: clean(item.name) || "Potpisnik",
-        metaLines: (Array.isArray(item.metaLines) ? item.metaLines : [])
-          .map((entry) => clean(entry))
-          .filter(Boolean),
-        signatureMode: clean(item.signatureMode).toLowerCase() || "scan",
+        id: `column-${index + 1}`,
+        label: clean(column) || `Kolona ${index + 1}`,
+        width: 140,
+      };
+    })
+    .filter((column) => clean(column.label));
+
+  const rows = (Array.isArray(value.rows) ? value.rows : [])
+    .map((row, rowIndex) => {
+      if (!row || typeof row !== "object") {
+        return null;
+      }
+
+      const cells = Array.isArray(row.cells)
+        ? row.cells
+        : (Array.isArray(row.values) ? row.values : []);
+
+      return {
+        id: clean(row.id) || `row-${rowIndex + 1}`,
+        header: Boolean(row.header),
+        cells: Array.from({ length: columns.length }, (_, columnIndex) => {
+          const cell = cells[columnIndex];
+          if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+            const format = cell.format && typeof cell.format === "object"
+              ? cell.format
+              : {};
+            return {
+              text: String(cell.text ?? cell.value ?? "").replace(/\r\n/g, "\n"),
+              format: {
+                align: ["left", "center", "right", "auto"].includes(clean(format.align).toLowerCase())
+                  ? clean(format.align).toLowerCase()
+                  : "auto",
+                type: ["general", "number", "integer", "percent", "text"].includes(clean(format.type).toLowerCase())
+                  ? clean(format.type).toLowerCase()
+                  : "general",
+                fontFamily: clean(format.fontFamily).toLowerCase(),
+                fontSize: Number.isFinite(Number(format.fontSize)) ? Math.max(10, Math.min(40, Number(format.fontSize))) : 14,
+                bold: Boolean(format.bold),
+                italic: Boolean(format.italic),
+                underline: Boolean(format.underline),
+                fillColor: /^#[0-9a-f]{6}$/i.test(clean(format.fillColor)) ? clean(format.fillColor).toUpperCase() : "",
+                border: {
+                  top: Boolean(format.border?.top),
+                  right: Boolean(format.border?.right),
+                  bottom: Boolean(format.border?.bottom),
+                  left: Boolean(format.border?.left),
+                },
+              },
+            };
+          }
+
+          return {
+            text: String(cell ?? "").replace(/\r\n/g, "\n"),
+            format: {
+              align: "auto",
+              type: "general",
+              fontFamily: "default",
+              fontSize: 14,
+              bold: false,
+              italic: false,
+              underline: false,
+              fillColor: "",
+              border: {
+                top: false,
+                right: false,
+                bottom: false,
+                left: false,
+              },
+            },
+          };
+        }),
       };
     })
     .filter(Boolean);
 
+  const headerRows = (Array.isArray(value.headerRows) ? value.headerRows : [])
+    .map((entry) => clean(entry))
+    .filter(Boolean);
+  const merges = (Array.isArray(value.merges) ? value.merges : [])
+    .map((merge) => {
+      if (!merge || typeof merge !== "object") {
+        return null;
+      }
+      return {
+        rowId: clean(merge.rowId),
+        columnId: clean(merge.columnId),
+        rowSpan: Math.max(1, Number.parseInt(merge.rowSpan, 10) || 1),
+        colSpan: Math.max(1, Number.parseInt(merge.colSpan, 10) || 1),
+      };
+    })
+    .filter((merge) => merge?.rowId && merge?.columnId);
+
+  if (columns.length === 0) {
+    return null;
+  }
+
   return {
-    type: "signature_group",
-    items,
+    type: "table",
+    columns,
+    rows,
+    headerRows,
+    merges,
   };
 }
 
@@ -371,6 +489,20 @@ function buildDocxSignatureGroupFallbackText(items = []) {
     ].filter(Boolean).join("\n"))
     .filter(Boolean)
     .join("\n\n");
+}
+
+function buildDocxTableFallbackText(table = {}) {
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  return rows
+    .map((row) => {
+      const cells = Array.isArray(row?.cells) ? row.cells : [];
+      return cells
+        .map((cell) => clean(cell?.text ?? cell?.value ?? ""))
+        .filter((value) => value.length > 0)
+        .join(" | ");
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildWordParagraphXml(text = "", {
@@ -406,6 +538,244 @@ function buildWordParagraphXml(text = "", {
         <w:t xml:space="preserve">${escapeWordXmlText(safeText)}</w:t>
       </w:r>
     </w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function normalizeWordHexColor(value = "", fallback = "") {
+  const normalized = clean(value).replace(/^#/, "").toUpperCase();
+  if (/^[0-9A-F]{6}$/.test(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function getWordFontFamilyValue(fontFamily = "default") {
+  const safeFontFamily = clean(fontFamily).toLowerCase();
+  const fontMap = {
+    default: "Calibri",
+    calibri: "Calibri",
+    arial: "Arial",
+    georgia: "Georgia",
+    times: "Times New Roman",
+    verdana: "Verdana",
+    courier: "Courier New",
+  };
+  return fontMap[safeFontFamily] || fontMap.default;
+}
+
+function getWordTableCellAlign(format = {}) {
+  const safeAlign = clean(format.align).toLowerCase();
+  if (safeAlign === "left" || safeAlign === "center" || safeAlign === "right") {
+    return safeAlign;
+  }
+  return ["number", "integer", "percent"].includes(clean(format.type).toLowerCase()) ? "right" : "left";
+}
+
+function getWordTableCellFontSize(format = {}, columnCount = 1) {
+  const explicitSize = Number(format.fontSize);
+  if (Number.isFinite(explicitSize)) {
+    return Math.max(16, Math.min(44, Math.round(explicitSize * 1.6)));
+  }
+  if (columnCount >= 8) {
+    return 16;
+  }
+  if (columnCount >= 6) {
+    return 18;
+  }
+  return 20;
+}
+
+function buildWordTableCellBordersXml(format = {}, { header = false } = {}) {
+  const border = format?.border && typeof format.border === "object"
+    ? format.border
+    : {};
+  const hasCustomBorder = Boolean(border.top || border.right || border.bottom || border.left);
+  const buildBorderTag = (side, enabled) => (
+    enabled
+      ? `<w:${side} w:val="single" w:sz="8" w:space="0" w:color="111111"/>`
+      : `<w:${side} w:val="nil"/>`
+  );
+
+  if (!hasCustomBorder) {
+    return `
+      <w:top w:val="single" w:sz="8" w:space="0" w:color="111111"/>
+      <w:left w:val="single" w:sz="8" w:space="0" w:color="111111"/>
+      <w:bottom w:val="single" w:sz="8" w:space="0" w:color="111111"/>
+      <w:right w:val="single" w:sz="8" w:space="0" w:color="111111"/>
+    `.replace(/\n\s+/g, "");
+  }
+
+  return `
+    ${buildBorderTag("top", border.top)}
+    ${buildBorderTag("left", border.left)}
+    ${buildBorderTag("bottom", border.bottom)}
+    ${buildBorderTag("right", border.right)}
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordTableCellParagraphsXml(text = "", format = {}, { header = false, columnCount = 1 } = {}) {
+  const safeText = String(text ?? "").replace(/\r\n/g, "\n");
+  const lines = safeText.length > 0 ? safeText.split("\n") : [""];
+  const fontSize = getWordTableCellFontSize(format, columnCount);
+  const align = getWordTableCellAlign(format);
+  const fontFamily = getWordFontFamilyValue(format.fontFamily);
+  const runProperties = [
+    `<w:rFonts w:ascii="${escapeWordXmlText(fontFamily)}" w:hAnsi="${escapeWordXmlText(fontFamily)}" w:cs="${escapeWordXmlText(fontFamily)}"/>`,
+    format.bold || header ? "<w:b/>" : "",
+    format.italic ? "<w:i/>" : "",
+    format.underline ? '<w:u w:val="single"/>' : "",
+    `<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/>`,
+    '<w:color w:val="1F2333"/>',
+  ].filter(Boolean).join("");
+
+  return lines.map((line, lineIndex) => {
+    const paragraphProperties = [
+      `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
+      `<w:spacing w:before="0" w:after="${lineIndex === lines.length - 1 ? 0 : 20}"/>`,
+    ].join("");
+
+    return line
+      ? `
+        <w:p>
+          <w:pPr>${paragraphProperties}</w:pPr>
+          <w:r>
+            <w:rPr>${runProperties}</w:rPr>
+            <w:t xml:space="preserve">${escapeWordXmlText(line)}</w:t>
+          </w:r>
+        </w:p>
+      `.replace(/\n\s+/g, "")
+      : `<w:p><w:pPr>${paragraphProperties}</w:pPr></w:p>`;
+  }).join("");
+}
+
+function buildWordTableXml(table = {}) {
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  if (columns.length === 0) {
+    return buildWordParagraphXml("", { spacingAfter: 0 });
+  }
+
+  const totalGridWidth = 9360;
+  const rawWidths = columns.map((column) => Math.max(90, Number(column.width) || 140));
+  const rawTotalWidth = rawWidths.reduce((sum, value) => sum + value, 0) || (columns.length * 140);
+  const columnWidths = rawWidths.map((value) => Math.max(480, Math.round((value / rawTotalWidth) * totalGridWidth)));
+  const widthAdjustment = totalGridWidth - columnWidths.reduce((sum, value) => sum + value, 0);
+  if (widthAdjustment !== 0 && columnWidths.length > 0) {
+    columnWidths[columnWidths.length - 1] = Math.max(480, columnWidths[columnWidths.length - 1] + widthAdjustment);
+  }
+
+  const rowIndexById = new Map(rows.map((row, rowIndex) => [clean(row.id), rowIndex]));
+  const columnIndexById = new Map(columns.map((column, columnIndex) => [clean(column.id), columnIndex]));
+  const headerRowSet = new Set(
+    (Array.isArray(table.headerRows) ? table.headerRows : [])
+      .map((entry) => clean(entry))
+      .filter(Boolean),
+  );
+  rows.forEach((row) => {
+    if (row.header) {
+      headerRowSet.add(clean(row.id));
+    }
+  });
+
+  const mergeAnchors = new Map();
+  const mergeContinuations = new Map();
+  const skipCells = new Set();
+
+  (Array.isArray(table.merges) ? table.merges : []).forEach((merge) => {
+    const rowIndex = rowIndexById.get(clean(merge.rowId));
+    const columnIndex = columnIndexById.get(clean(merge.columnId));
+    if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex)) {
+      return;
+    }
+
+    const rowSpan = Math.max(1, Math.min(Number.parseInt(merge.rowSpan, 10) || 1, rows.length - rowIndex));
+    const colSpan = Math.max(1, Math.min(Number.parseInt(merge.colSpan, 10) || 1, columns.length - columnIndex));
+    if (rowSpan <= 1 && colSpan <= 1) {
+      return;
+    }
+
+    mergeAnchors.set(`${rowIndex}:${columnIndex}`, { rowSpan, colSpan });
+    for (let currentRow = rowIndex; currentRow < rowIndex + rowSpan; currentRow += 1) {
+      for (let currentColumn = columnIndex; currentColumn < columnIndex + colSpan; currentColumn += 1) {
+        if (currentRow === rowIndex && currentColumn === columnIndex) {
+          continue;
+        }
+        if (currentColumn === columnIndex) {
+          mergeContinuations.set(`${currentRow}:${currentColumn}`, { colSpan });
+        } else {
+          skipCells.add(`${currentRow}:${currentColumn}`);
+        }
+      }
+    }
+  });
+
+  const sumColumnWidth = (startIndex, span = 1) => (
+    columnWidths.slice(startIndex, startIndex + Math.max(1, span)).reduce((sum, value) => sum + value, 0)
+  );
+
+  const rowsXml = rows.map((row, rowIndex) => {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    const cellsXml = [];
+
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
+      const cellKey = `${rowIndex}:${columnIndex}`;
+      if (skipCells.has(cellKey)) {
+        continue;
+      }
+
+      const mergeAnchor = mergeAnchors.get(cellKey);
+      const mergeContinuation = mergeContinuations.get(cellKey);
+      const rawCell = cells[columnIndex] && typeof cells[columnIndex] === "object"
+        ? cells[columnIndex]
+        : { text: String(cells[columnIndex] ?? ""), format: {} };
+      const format = rawCell.format && typeof rawCell.format === "object"
+        ? rawCell.format
+        : {};
+      const isHeader = headerRowSet.has(clean(row.id));
+      const gridSpan = mergeAnchor?.colSpan || mergeContinuation?.colSpan || 1;
+      const width = sumColumnWidth(columnIndex, gridSpan);
+      const fillColor = normalizeWordHexColor(format.fillColor, isHeader ? "F1F7F4" : "");
+      const bordersXml = buildWordTableCellBordersXml(format, { header: isHeader });
+      const cellParagraphs = mergeContinuation
+        ? buildWordParagraphXml("", { spacingAfter: 0 })
+        : buildWordTableCellParagraphsXml(rawCell.text || "", format, { header: isHeader, columnCount: columns.length });
+
+      cellsXml.push(`
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="${Math.max(480, width)}" w:type="dxa"/>
+            ${gridSpan > 1 ? `<w:gridSpan w:val="${gridSpan}"/>` : ""}
+            ${mergeAnchor?.rowSpan > 1 ? '<w:vMerge w:val="restart"/>' : mergeContinuation ? '<w:vMerge/>' : ""}
+            <w:vAlign w:val="top"/>
+            <w:tcMar>
+              <w:top w:w="72" w:type="dxa"/><w:left w:w="72" w:type="dxa"/><w:bottom w:w="72" w:type="dxa"/><w:right w:w="72" w:type="dxa"/>
+            </w:tcMar>
+            ${fillColor ? `<w:shd w:val="clear" w:color="auto" w:fill="${fillColor}"/>` : ""}
+            <w:tcBorders>${bordersXml}</w:tcBorders>
+          </w:tcPr>
+          ${cellParagraphs}
+        </w:tc>
+      `.replace(/\n\s+/g, ""));
+    }
+
+    return `<w:tr>${cellsXml.join("")}</w:tr>`;
+  }).join("");
+
+  const gridXml = columnWidths.map((width) => `<w:gridCol w:w="${width}"/>`).join("");
+
+  return `
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="5000" w:type="pct"/>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblCellMar>
+          <w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/>
+        </w:tblCellMar>
+      </w:tblPr>
+      <w:tblGrid>${gridXml}</w:tblGrid>
+      ${rowsXml}
+    </w:tbl>
+    ${buildWordParagraphXml("", { spacingAfter: 0 })}
   `.replace(/\n\s+/g, "");
 }
 
@@ -510,6 +880,10 @@ function buildDocxSpecialPlaceholderXml(value) {
     return buildWordSignatureGroupXml(value.items);
   }
 
+  if (value.type === "table") {
+    return buildWordTableXml(value);
+  }
+
   return "";
 }
 
@@ -548,7 +922,11 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
         return;
       }
 
-      const fallbackText = escapeWordXmlText(buildDocxSignatureGroupFallbackText(value.items));
+      const fallbackText = escapeWordXmlText(
+        value.type === "table"
+          ? buildDocxTableFallbackText(value)
+          : buildDocxSignatureGroupFallbackText(value.items),
+      );
       xml = xml.replace(new RegExp(escapeRegex(sentinel), "g"), fallbackText);
       changed = true;
     });
@@ -579,6 +957,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     throw new Error("Word predložak je prazan.");
   }
 
+  const specialPlaceholders = new Map();
   const normalizedPlaceholders = Object.fromEntries(
     Object.entries(placeholders && typeof placeholders === "object" ? placeholders : {})
       .map(([key, value], index) => {
@@ -589,6 +968,11 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
         const specialValue = normalizeDocxSpecialPlaceholderValue(value);
         if (specialValue) {
+          if (specialValue.type === "table") {
+            const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
+            specialPlaceholders.set(sentinel, specialValue);
+            return [safeKey, sentinel];
+          }
           return [safeKey, buildDocxSignatureGroupFallbackText(specialValue.items)];
         }
 
@@ -612,6 +996,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     });
 
     doc.render(normalizedPlaceholders);
+    applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
     return doc.getZip().generate({
       type: "nodebuffer",
       compression: "DEFLATE",
@@ -868,7 +1253,11 @@ function renderPdfTable(doc, helpers, table = {}) {
   const fontSize = columns.length > 7 ? 7.5 : columns.length > 5 ? 8.25 : 9;
   const paddingX = 6;
   const paddingY = 5;
-  const columnWidth = helpers.availableWidth / columns.length;
+  const rawColumnWidths = Array.isArray(table.columnWidths) && table.columnWidths.length === columns.length
+    ? table.columnWidths.map((width) => Math.max(1, Number(width) || 1))
+    : Array.from({ length: columns.length }, () => 1);
+  const totalColumnWidth = rawColumnWidths.reduce((sum, width) => sum + width, 0) || columns.length;
+  const columnWidths = rawColumnWidths.map((width) => (helpers.availableWidth * width) / totalColumnWidth);
   const headerRows = Array.isArray(table.headerRows) && table.headerRows.length > 0
     ? table.headerRows
     : [columns];
@@ -876,17 +1265,19 @@ function renderPdfTable(doc, helpers, table = {}) {
   const drawRow = (cells, { header = false } = {}) => {
     const safeCells = Array.from({ length: columns.length }, (_, columnIndex) => normalizePdfText(cells[columnIndex] ?? ""));
     doc.font(header ? "dejavu-bold" : "dejavu").fontSize(fontSize);
-    const heights = safeCells.map((cell) => doc.heightOfString(cell, {
-      width: columnWidth - paddingX * 2,
+    const heights = safeCells.map((cell, columnIndex) => doc.heightOfString(cell, {
+      width: Math.max(28, columnWidths[columnIndex] - paddingX * 2),
       lineGap: 1,
     }));
     const rowHeight = Math.max(...heights, 14) + paddingY * 2;
     helpers.ensureSpace(rowHeight + 4, { layout: preferredLayout });
     const startY = doc.y;
     const startX = doc.page.margins.left;
+    let currentX = startX;
 
     safeCells.forEach((cell, columnIndex) => {
-      const x = startX + columnIndex * columnWidth;
+      const columnWidth = columnWidths[columnIndex];
+      const x = currentX;
       const y = startY;
       doc.save();
       doc.rect(x, y, columnWidth, rowHeight);
@@ -903,6 +1294,7 @@ function renderPdfTable(doc, helpers, table = {}) {
         width: columnWidth - paddingX * 2,
         lineGap: 1,
       });
+      currentX += columnWidth;
     });
 
     doc.y = startY + rowHeight;

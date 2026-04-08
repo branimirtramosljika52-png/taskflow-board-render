@@ -16570,6 +16570,7 @@ function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = 
     return {
       title: field.label || field.wordLabel || "Excel tablica",
       columns: fallbackColumns,
+      columnWidths: fallbackColumns.map(() => 140),
       headerRows: [fallbackColumns],
       rows: [],
       landscape: fallbackColumns.length > 5,
@@ -16601,11 +16602,71 @@ function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = 
   return {
     title: field.label || field.wordLabel || "Excel tablica",
     columns: previewTable.columns.map((column) => column.label || column.id),
+    columnWidths: previewTable.columns.map((column) => Math.max(90, Number(column.width) || 140)),
     headerRows: headerRows.length > 0
       ? headerRows
       : [previewTable.columns.map((column) => column.label || column.id)],
     rows: bodyRows,
     landscape: previewTable.columns.length > 5,
+  };
+}
+
+function buildDocumentTemplateMeasurementTableWordPlaceholder(field = {}, context = {}) {
+  const previewTable = buildMeasurementSheetPreviewTable(field, context);
+  if (!previewTable?.columns?.length) {
+    const fallbackColumns = (field.columns ?? []).length > 0
+      ? field.columns
+      : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+    return {
+      __docxBlockType: "table",
+      columns: fallbackColumns.map((label, index) => ({
+        id: `column-${index + 1}`,
+        label,
+        width: 140,
+      })),
+      rows: [
+        {
+          id: "row-1",
+          header: true,
+          cells: fallbackColumns.map((label) => ({
+            text: label,
+            format: normalizeMeasurementCellFormat({
+              bold: true,
+              fillColor: "#F1F7F4",
+              border: "all",
+            }),
+          })),
+        },
+      ],
+      headerRows: ["row-1"],
+      merges: [],
+    };
+  }
+
+  const headerRowIds = normalizeMeasurementSheetHeaderRowsSnapshotLocal(previewTable.headerRows, previewTable.rows);
+
+  return {
+    __docxBlockType: "table",
+    columns: previewTable.columns.map((column, index) => ({
+      id: column.id || `column-${index + 1}`,
+      label: column.label || column.id || `Kolona ${index + 1}`,
+      width: Math.max(90, Number(column.width) || 140),
+    })),
+    rows: previewTable.rows.map((row, rowIndex) => ({
+      id: row.id || `row-${rowIndex + 1}`,
+      header: headerRowIds.includes(row.id),
+      cells: previewTable.columns.map((column, columnIndex) => ({
+        text: getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex),
+        format: normalizeMeasurementCellFormat(row.formats?.[column.id]),
+      })),
+    })),
+    headerRows: headerRowIds,
+    merges: (previewTable.merges ?? []).map((merge) => ({
+      rowId: merge.rowId,
+      columnId: merge.columnId,
+      rowSpan: Math.max(1, Number(merge.rowSpan) || 1),
+      colSpan: Math.max(1, Number(merge.colSpan) || 1),
+    })),
   };
 }
 
@@ -16708,13 +16769,8 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
 }
 
 function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}, index = 0) {
-  if (
-    field.type === "qualified_inspectors"
-    || field.type === "inspector_signature"
-    || field.type === "authorization_holder_signature"
-    || field.type === "digital_signature"
-  ) {
-    return buildDocumentTemplateFieldExportText(field, context, index);
+  if (field.type === "measurement_table") {
+    return buildDocumentTemplateMeasurementTableWordPlaceholder(field, context);
   }
 
   return buildDocumentTemplateFieldExportText(field, context, index);
