@@ -28651,6 +28651,23 @@ function renderSharedOptions() {
   if (measurementEquipmentKindInput) {
     replaceSelectOptions(measurementEquipmentKindInput, MEASUREMENT_EQUIPMENT_KIND_OPTIONS, measurementEquipmentKindInput.value || "combined");
   }
+  if (measurementEquipmentDeviceCodeInput) {
+    const measurementEquipmentDeviceCodeOptions = [
+      { value: "", label: "Bez oznake" },
+      ...Array.from({ length: 13 }, (_, index) => {
+        const letter = String.fromCharCode(65 + index);
+        return {
+          value: `Grupa ${letter}`,
+          label: `Grupa ${letter}`,
+        };
+      }),
+    ];
+    replaceSelectOptions(
+      measurementEquipmentDeviceCodeInput,
+      measurementEquipmentDeviceCodeOptions,
+      measurementEquipmentDeviceCodeInput.value || "",
+    );
+  }
   if (measurementEquipmentFilterKindInput) {
     replaceSelectOptions(measurementEquipmentFilterKindInput, [
       { value: "all", label: "Sva oprema" },
