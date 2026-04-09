@@ -15945,7 +15945,7 @@ body.is-document-template-editor-open {
 .measurement-equipment-document-preview-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 74;
+  z-index: 238;
   background: rgba(17, 21, 31, 0.42);
   backdrop-filter: blur(7px);
 }
@@ -15954,7 +15954,7 @@ body.is-document-template-editor-open {
   position: fixed;
   top: 20px;
   left: 50%;
-  z-index: 75;
+  z-index: 239;
   width: min(1220px, calc(100vw - 40px));
   height: calc(100vh - 40px);
   transform: translateX(-50%);
