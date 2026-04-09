@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -45,6 +45,27 @@ const SOFFICE_BINARY_NAMES = new Set(["soffice", "libreoffice", "soffice.exe", "
 
 function clean(value = "") {
   return String(value ?? "").trim();
+}
+
+function stripInvalidXmlChars(value = "") {
+  const source = String(value ?? "");
+  let normalized = "";
+
+  for (const character of source) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isAllowed = codePoint === 0x09
+      || codePoint === 0x0A
+      || codePoint === 0x0D
+      || (codePoint >= 0x20 && codePoint <= 0xD7FF)
+      || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
+      || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
+
+    if (isAllowed) {
+      normalized += character;
+    }
+  }
+
+  return normalized;
 }
 
 function sanitizeFileBaseName(value = "", fallback = "zapisnik") {
@@ -174,6 +195,32 @@ async function resolveSofficeCommandViaShell() {
   }
 
   return "";
+}
+
+function buildSofficeRuntimeEnv(tempRoot = "") {
+  const additionalPathEntries = process.platform === "win32"
+    ? []
+    : [
+      "/usr/bin",
+      "/usr/local/bin",
+      "/app/.apt/usr/bin",
+      "/app/.apt/bin",
+      "/layers/digitalocean_apt/apt/usr/bin",
+      "/layers/digitalocean_apt/apt/bin",
+    ];
+  const pathDelimiter = process.platform === "win32" ? ";" : ":";
+
+  return {
+    ...process.env,
+    PATH: [process.env.PATH, ...additionalPathEntries].filter(Boolean).join(pathDelimiter),
+    HOME: process.env.HOME || tempRoot || process.cwd(),
+    TMPDIR: tempRoot || process.env.TMPDIR || process.cwd(),
+    TMP: tempRoot || process.env.TMP || process.cwd(),
+    TEMP: tempRoot || process.env.TEMP || process.cwd(),
+    SAL_USE_VCLPLUGIN: process.env.SAL_USE_VCLPLUGIN || "svp",
+    LANG: process.env.LANG || "C.UTF-8",
+    LC_ALL: process.env.LC_ALL || "C.UTF-8",
+  };
 }
 
 async function resolveSofficeCommand() {
@@ -307,17 +354,17 @@ function normalizeTemplatePlaceholderValue(value) {
 
   if (typeof value === "object") {
     try {
-      return JSON.stringify(value, null, 2);
+      return stripInvalidXmlChars(JSON.stringify(value, null, 2));
     } catch {
       return "";
     }
   }
 
-  return String(value);
+  return stripInvalidXmlChars(String(value));
 }
 
 function escapeWordXmlText(value = "") {
-  return String(value ?? "")
+  return stripInvalidXmlChars(String(value ?? ""))
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -1030,8 +1077,9 @@ export async function convertDocxBufferToPdfBuffer(docxBuffer, {
   );
 
   try {
+    await mkdir(officeProfileDir, { recursive: true });
     await writeFile(inputPath, Buffer.isBuffer(docxBuffer) ? docxBuffer : Buffer.from(docxBuffer ?? []));
-    await runCommand(sofficeCommand, [
+    const commandResult = await runCommand(sofficeCommand, [
       "--headless",
       "--nologo",
       "--nodefault",
@@ -1044,17 +1092,34 @@ export async function convertDocxBufferToPdfBuffer(docxBuffer, {
       inputPath,
     ], {
       cwd: tempRoot,
-      env: {
-        ...process.env,
-        HOME: process.env.HOME || tempRoot,
-      },
+      env: buildSofficeRuntimeEnv(tempRoot),
     });
 
-    if (!await fileExists(outputPath)) {
-      throw new Error("LibreOffice nije vratio PDF datoteku.");
+    let resolvedOutputPath = outputPath;
+    if (!await fileExists(resolvedOutputPath)) {
+      const generatedPdfEntries = (await readdir(tempRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".pdf")
+        .map((entry) => join(tempRoot, entry.name));
+      const baseName = sanitizeFileBaseName(inputBaseName.replace(/\.docx$/i, ""), "")
+        .toLowerCase();
+      const matchedOutputPath = generatedPdfEntries.find((candidatePath) => (
+        sanitizeFileBaseName(candidatePath, "").toLowerCase().includes(baseName)
+      ));
+      resolvedOutputPath = matchedOutputPath || generatedPdfEntries[0] || "";
     }
 
-    return await readFile(outputPath);
+    if (!resolvedOutputPath || !await fileExists(resolvedOutputPath)) {
+      const directoryEntries = await readdir(tempRoot).catch(() => []);
+      const details = [
+        "LibreOffice nije vratio PDF datoteku.",
+        clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
+        clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
+        directoryEntries.length > 0 ? `Sadržaj temp direktorija: ${directoryEntries.join(", ")}` : "",
+      ].filter(Boolean).join(" ");
+      throw new Error(details || "LibreOffice nije vratio PDF datoteku.");
+    }
+
+    return await readFile(resolvedOutputPath);
   } finally {
     await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
   }
