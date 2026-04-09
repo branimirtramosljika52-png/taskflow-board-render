@@ -15793,12 +15793,18 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
   const context = buildDocumentTemplatePreviewContext(template);
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
+  const workOrderNumber = String(context.sampleWorkOrder?.workOrderNumber || "").trim();
   const inspectorList = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
   const systemDefinitions = [
     {
       token: "{{BROJ_ZAPISNIKA}}",
       label: "Broj zapisnika",
       value: documentNumber,
+    },
+    {
+      token: "{{BROJ_RADNOG_NALOGA}}",
+      label: "Broj radnog naloga",
+      value: workOrderNumber,
     },
     {
       token: "{{ISPITIVACI_POPIS}}",
@@ -16840,6 +16846,7 @@ function getDocumentTemplateRuntimeWorkOrderById(workOrderId = "") {
 
 function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
+  const workOrderNumber = String(context.sampleWorkOrder?.workOrderNumber || "").trim();
   const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
   const placeholders = {
     DOCUMENT_TITLE: String(template.title || "").trim(),
@@ -16847,6 +16854,8 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
     REFERENCE_DOCUMENT_NAME: String(template.referenceDocument?.fileName || "").trim(),
     DOCUMENT_NUMBER: documentNumber,
     BROJ_ZAPISNIKA: documentNumber,
+    WORK_ORDER_NUMBER: workOrderNumber,
+    BROJ_RADNOG_NALOGA: workOrderNumber,
     QUALIFIED_INSPECTORS_LIST: inspectorListWithTitles,
     ISPITIVACI_POPIS: inspectorListWithTitles,
   };
