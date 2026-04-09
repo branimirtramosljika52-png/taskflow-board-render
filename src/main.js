@@ -4354,6 +4354,8 @@ function getWorkOrderIconMarkup(iconName) {
     measurement: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25h10.5v9.5H2.75zM2.75 6.25h10.5M6 3.25v9.5M9.5 3.25v9.5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.1"/></svg>',
     reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 7.75a4.5 4.5 0 1 0 1.32-3.18L3 6.25M3 2.75v3.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    download: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    trash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.25h9M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25M5 4.25l.45 7.15c.03.5.45.89.95.89h3.2c.5 0 .92-.39.95-.89L11 4.25M6.75 6.25v3.75M9.25 6.25v3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
   };
 
   return icons[iconName] ?? icons.service;
@@ -10896,6 +10898,16 @@ function createActionButton(label, className, onClick) {
   button.setAttribute("aria-label", label);
   button.title = label;
   button.addEventListener("click", onClick);
+  return button;
+}
+
+function createIconActionButton(label, iconName, className = "", onClick) {
+  const button = createActionButton(
+    label,
+    ["card-button", "module-attachment-action-button", "is-icon-only", className].filter(Boolean).join(" "),
+    onClick,
+  );
+  button.innerHTML = getWorkOrderIconMarkup(iconName);
   return button;
 }
 
@@ -17507,12 +17519,14 @@ function renderTemplateSelectionChecklist(
 }
 
 function createModuleAttachmentDraft(document = {}) {
+  const documentCategory = String(document.documentCategory || document.category || "").trim();
   return {
     id: String(document.id || crypto.randomUUID()),
     fileName: String(document.fileName || "").trim(),
     fileType: String(document.fileType || "").trim(),
     fileSize: Number(document.fileSize || 0) || 0,
-    documentCategory: String(document.documentCategory || document.category || "").trim(),
+    documentCategory,
+    documentCategoryLocked: Boolean(document.documentCategoryLocked) || (Boolean(document.isPersisted || document.persisted) && Boolean(documentCategory)),
     description: String(document.description || "").trim(),
     dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
     storageProvider: String(document.storageProvider || "").trim(),
@@ -18375,7 +18389,10 @@ async function queueUserElectricalDocuments(files) {
 
 function setMeasurementEquipmentDocumentDrafts(items = []) {
   measurementEquipmentDocumentDrafts = (Array.isArray(items) ? items : [])
-    .map((item) => createModuleAttachmentDraft(item))
+    .map((item) => createModuleAttachmentDraft({
+      ...item,
+      isPersisted: true,
+    }))
     .filter((item) => item.fileName && item.dataUrl);
 }
 
@@ -18384,7 +18401,13 @@ function updateMeasurementEquipmentDocumentDraft(documentId, patch = {}) {
     item.id === documentId
       ? {
         ...item,
-        ...patch,
+        ...(
+          item.documentCategoryLocked
+            ? Object.fromEntries(
+              Object.entries(patch).filter(([key]) => !["documentCategory", "documentCategoryMode", "documentCategoryLocked"].includes(key)),
+            )
+            : patch
+        ),
       }
       : item
   ));
@@ -18461,20 +18484,27 @@ function renderMeasurementEquipmentDocuments() {
     categoryLabel.className = "module-attachment-field-label";
     categoryLabel.textContent = "Što je ovo?";
 
-    const categorySelect = document.createElement("select");
-    categorySelect.className = "module-attachment-category-select";
-    categorySelect.dataset.documentId = entry.id;
-    replaceSelectOptions(
-      categorySelect,
-      MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
-      entry.documentCategory || "",
-    );
-    categorySelect.addEventListener("change", () => {
-      const nextValue = categorySelect.value || "";
-      updateMeasurementEquipmentDocumentDraft(entry.id, { documentCategory: nextValue });
-      row.classList.toggle("is-unclassified", !nextValue);
-    });
-    categoryField.append(categoryLabel, categorySelect);
+    if (entry.documentCategoryLocked && entry.documentCategory) {
+      const categoryValue = document.createElement("div");
+      categoryValue.className = "module-attachment-category-value is-locked";
+      categoryValue.textContent = entry.documentCategory;
+      categoryField.append(categoryLabel, categoryValue);
+    } else {
+      const categorySelect = document.createElement("select");
+      categorySelect.className = "module-attachment-category-select";
+      categorySelect.dataset.documentId = entry.id;
+      replaceSelectOptions(
+        categorySelect,
+        MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
+        entry.documentCategory || "",
+      );
+      categorySelect.addEventListener("change", () => {
+        const nextValue = categorySelect.value || "";
+        updateMeasurementEquipmentDocumentDraft(entry.id, { documentCategory: nextValue });
+        row.classList.toggle("is-unclassified", !nextValue);
+      });
+      categoryField.append(categoryLabel, categorySelect);
+    }
     fieldWrap.append(categoryField);
     copy.append(fieldWrap);
 
@@ -18488,10 +18518,10 @@ function renderMeasurementEquipmentDocuments() {
     const actions = document.createElement("div");
     actions.className = "module-attachment-actions";
 
-    const openButton = createActionButton("Preuzmi", "card-button", () => {
+    const openButton = createIconActionButton("Preuzmi", "download", "", () => {
       triggerModuleAttachmentDownload(entry);
     });
-    const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+    const removeButton = createIconActionButton("Makni", "trash", "card-danger", () => {
       measurementEquipmentDocumentDrafts = measurementEquipmentDocumentDrafts.filter((item) => item.id !== entry.id);
       renderMeasurementEquipmentDocuments();
     });
@@ -19748,7 +19778,10 @@ function buildMeasurementEquipmentPayload() {
     calibrationPeriod: requiresCalibration ? (measurementEquipmentCalibrationPeriodInput?.value || "") : "",
     validUntil: requiresCalibration ? (measurementEquipmentValidUntilInput?.value || "") : "",
     linkedTemplateIds: getMeasurementEquipmentTemplateSelectionIds(),
-    documents: measurementEquipmentDocumentDrafts.map((item) => ({ ...item })),
+    documents: measurementEquipmentDocumentDrafts.map((item) => {
+      const { documentCategoryLocked, ...payload } = item;
+      return { ...payload };
+    }),
     note: measurementEquipmentNoteInput?.value || "",
   };
 }
