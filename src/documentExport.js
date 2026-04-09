@@ -70,6 +70,7 @@ function stripInvalidXmlChars(value = "") {
 
 function sanitizeFileBaseName(value = "", fallback = "zapisnik") {
   const normalized = clean(value)
+    .replace(/\.(docx|dotx|doc|dot|pdf)$/i, "")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/[^A-Za-z0-9._-]+/gu, "-")
@@ -962,7 +963,10 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
         return;
       }
 
-      const paragraphPattern = new RegExp(`<w:p\\b[\\s\\S]*?${escapeRegex(sentinel)}[\\s\\S]*?<\\/w:p>`, "g");
+      const paragraphPattern = new RegExp(
+        `<w:p\\b(?:(?!<w:p\\b|<\\/w:p>).|[\\r\\n])*?${escapeRegex(sentinel)}(?:(?!<w:p\\b|<\\/w:p>).|[\\r\\n])*?<\\/w:p>`,
+        "g",
+      );
       if (paragraphPattern.test(xml)) {
         xml = xml.replace(paragraphPattern, replacementXml);
         changed = true;
