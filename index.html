@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260409b" />
+  <link rel="stylesheet" href="/styles.css?v=20260409c" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3521,6 +3521,10 @@
                         <input id="measurement-equipment-type" maxlength="160" placeholder="Model, tip, serija..." />
                       </label>
                       <label class="field">
+                        <span>Oznaka uređaja</span>
+                        <input id="measurement-equipment-device-code" maxlength="120" placeholder="Npr. MET-01, TIP-02..." />
+                      </label>
+                      <label class="field">
                         <span>Serijski broj</span>
                         <input id="measurement-equipment-serial-number" maxlength="120" placeholder="Serijski broj uređaja" />
                       </label>
@@ -3555,9 +3559,20 @@
                           <p class="section-kicker">Templates</p>
                           <h3>Koristi se u zapisnicima</h3>
                         </div>
+                        <button
+                          id="measurement-equipment-template-toggle"
+                          type="button"
+                          class="ghost-button module-collapse-button"
+                          aria-expanded="false"
+                          aria-controls="measurement-equipment-template-body"
+                        >
+                          +
+                        </button>
                       </div>
-                      <p class="helper-copy module-copy">Označi zapisnike u kojima se ova oprema koristi ili navodi.</p>
-                      <div id="measurement-equipment-template-list" class="service-catalog-template-list"></div>
+                      <div id="measurement-equipment-template-body" class="measurement-equipment-collapsible-body" hidden>
+                        <p class="helper-copy module-copy">Označi zapisnike u kojima se ova oprema koristi ili navodi.</p>
+                        <div id="measurement-equipment-template-list" class="service-catalog-template-list"></div>
+                      </div>
                     </section>
 
                     <section class="service-catalog-template-block">
@@ -3569,9 +3584,20 @@
                         <div class="document-template-reference-actions">
                           <input id="measurement-equipment-documents-input" type="file" multiple hidden />
                           <button id="measurement-equipment-documents-upload" type="button" class="ghost-button">Dodaj datoteke</button>
+                          <button
+                            id="measurement-equipment-documents-toggle"
+                            type="button"
+                            class="ghost-button module-collapse-button"
+                            aria-expanded="false"
+                            aria-controls="measurement-equipment-documents-body"
+                          >
+                            +
+                          </button>
                         </div>
                       </div>
-                      <div id="measurement-equipment-documents-list" class="module-attachment-list"></div>
+                      <div id="measurement-equipment-documents-body" class="measurement-equipment-collapsible-body" hidden>
+                        <div id="measurement-equipment-documents-list" class="module-attachment-list"></div>
+                      </div>
                     </section>
 
                     <label class="field field-span-full">
@@ -4096,6 +4122,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260409b"></script>
+  <script type="module" src="/src/main.js?v=20260409c"></script>
   </body>
 </html>

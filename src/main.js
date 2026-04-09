@@ -520,6 +520,8 @@ const state = {
   serviceCatalogEditorOpen: false,
   measurementEquipmentEditorOpen: false,
   measurementEquipmentDocumentPreviewOpen: false,
+  measurementEquipmentTemplateSectionExpanded: false,
+  measurementEquipmentDocumentsSectionExpanded: false,
   safetyAuthorizationEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
@@ -1352,15 +1354,20 @@ const measurementEquipmentNameInput = document.querySelector("#measurement-equip
 const measurementEquipmentKindInput = document.querySelector("#measurement-equipment-kind");
 const measurementEquipmentManufacturerInput = document.querySelector("#measurement-equipment-manufacturer");
 const measurementEquipmentTypeInput = document.querySelector("#measurement-equipment-type");
+const measurementEquipmentDeviceCodeInput = document.querySelector("#measurement-equipment-device-code");
 const measurementEquipmentSerialNumberInput = document.querySelector("#measurement-equipment-serial-number");
 const measurementEquipmentInventoryNumberInput = document.querySelector("#measurement-equipment-inventory-number");
 const measurementEquipmentRequiresCalibrationInput = document.querySelector("#measurement-equipment-requires-calibration");
 const measurementEquipmentCalibrationDateInput = document.querySelector("#measurement-equipment-calibration-date");
 const measurementEquipmentCalibrationPeriodInput = document.querySelector("#measurement-equipment-calibration-period");
 const measurementEquipmentValidUntilInput = document.querySelector("#measurement-equipment-valid-until");
+const measurementEquipmentTemplateToggleButton = document.querySelector("#measurement-equipment-template-toggle");
+const measurementEquipmentTemplateBody = document.querySelector("#measurement-equipment-template-body");
 const measurementEquipmentTemplateList = document.querySelector("#measurement-equipment-template-list");
 const measurementEquipmentDocumentsInput = document.querySelector("#measurement-equipment-documents-input");
 const measurementEquipmentDocumentsUploadButton = document.querySelector("#measurement-equipment-documents-upload");
+const measurementEquipmentDocumentsToggleButton = document.querySelector("#measurement-equipment-documents-toggle");
+const measurementEquipmentDocumentsBody = document.querySelector("#measurement-equipment-documents-body");
 const measurementEquipmentDocumentsList = document.querySelector("#measurement-equipment-documents-list");
 const measurementEquipmentNoteInput = document.querySelector("#measurement-equipment-note");
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
@@ -12456,6 +12463,7 @@ function syncMeasurementEquipmentEditorModal() {
     activeMeasurementEquipmentDocumentPreview = null;
   }
   syncMeasurementEquipmentDocumentPreviewModal();
+  syncMeasurementEquipmentEditorSections();
 
   if (isOpen) {
     requestAnimationFrame(() => {
@@ -12948,6 +12956,7 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
       { value: "name", label: "Naziv", getter: (row) => row?.name ?? "" },
       { value: "manufacturer", label: "Proizvodjac", getter: (row) => row?.manufacturer ?? "" },
       { value: "device_type", label: "Tip", getter: (row) => row?.deviceType ?? "" },
+      { value: "device_code", label: "Oznaka uređaja", getter: (row) => row?.deviceCode ?? "" },
       { value: "serial_number", label: "Serijski broj", getter: (row) => row?.serialNumber ?? "" },
       { value: "inventory_number", label: "Inv. broj", getter: (row) => row?.inventoryNumber ?? "" },
       { value: "calibration_date", label: "Datum umjeravanja", getter: (row) => row?.calibrationDate ?? "" },
@@ -19938,6 +19947,27 @@ function syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled = false }
   });
 }
 
+function syncMeasurementEquipmentEditorSections() {
+  const templateExpanded = Boolean(state.measurementEquipmentTemplateSectionExpanded);
+  const documentsExpanded = Boolean(state.measurementEquipmentDocumentsSectionExpanded);
+
+  if (measurementEquipmentTemplateBody) {
+    measurementEquipmentTemplateBody.hidden = !templateExpanded;
+  }
+  if (measurementEquipmentTemplateToggleButton) {
+    measurementEquipmentTemplateToggleButton.textContent = templateExpanded ? "−" : "+";
+    measurementEquipmentTemplateToggleButton.setAttribute("aria-expanded", String(templateExpanded));
+  }
+
+  if (measurementEquipmentDocumentsBody) {
+    measurementEquipmentDocumentsBody.hidden = !documentsExpanded;
+  }
+  if (measurementEquipmentDocumentsToggleButton) {
+    measurementEquipmentDocumentsToggleButton.textContent = documentsExpanded ? "−" : "+";
+    measurementEquipmentDocumentsToggleButton.setAttribute("aria-expanded", String(documentsExpanded));
+  }
+}
+
 function buildMeasurementEquipmentPayload() {
   const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
   return {
@@ -19946,6 +19976,7 @@ function buildMeasurementEquipmentPayload() {
     equipmentKind: measurementEquipmentKindInput?.value || "combined",
     manufacturer: measurementEquipmentManufacturerInput?.value || "",
     deviceType: measurementEquipmentTypeInput?.value || "",
+    deviceCode: measurementEquipmentDeviceCodeInput?.value || "",
     serialNumber: measurementEquipmentSerialNumberInput?.value || "",
     inventoryNumber: measurementEquipmentInventoryNumberInput?.value || "",
     requiresCalibration,
@@ -19986,9 +20017,14 @@ function resetMeasurementEquipmentForm() {
   if (measurementEquipmentKindInput) {
     measurementEquipmentKindInput.value = "combined";
   }
+  if (measurementEquipmentDeviceCodeInput) {
+    measurementEquipmentDeviceCodeInput.value = "";
+  }
   if (measurementEquipmentRequiresCalibrationInput) {
     measurementEquipmentRequiresCalibrationInput.value = "true";
   }
+  state.measurementEquipmentTemplateSectionExpanded = false;
+  state.measurementEquipmentDocumentsSectionExpanded = false;
   if (measurementEquipmentSerialNumberInput) {
     measurementEquipmentSerialNumberInput.value = "";
   }
@@ -19999,6 +20035,7 @@ function resetMeasurementEquipmentForm() {
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentTemplateChecklist([]);
   syncMeasurementEquipmentCalibrationFields();
+  syncMeasurementEquipmentEditorSections();
   syncMeasurementEquipmentEditorChrome();
 }
 
@@ -20013,6 +20050,7 @@ function hydrateMeasurementEquipmentForm(item) {
   measurementEquipmentKindInput.value = item.equipmentKind || "combined";
   measurementEquipmentManufacturerInput.value = item.manufacturer || "";
   measurementEquipmentTypeInput.value = item.deviceType || "";
+  measurementEquipmentDeviceCodeInput.value = item.deviceCode || "";
   measurementEquipmentSerialNumberInput.value = item.serialNumber || "";
   measurementEquipmentInventoryNumberInput.value = item.inventoryNumber || "";
   measurementEquipmentRequiresCalibrationInput.value = item.requiresCalibration ? "true" : "false";
@@ -20026,7 +20064,10 @@ function hydrateMeasurementEquipmentForm(item) {
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
+  state.measurementEquipmentTemplateSectionExpanded = false;
+  state.measurementEquipmentDocumentsSectionExpanded = false;
   syncMeasurementEquipmentCalibrationFields();
+  syncMeasurementEquipmentEditorSections();
   syncMeasurementEquipmentEditorChrome();
   openMeasurementEquipmentEditor();
   requestAnimationFrame(() => {
@@ -20100,6 +20141,7 @@ function renderMeasurementEquipmentModule() {
     meta.textContent = [
       item.manufacturer || "",
       item.deviceType || "",
+      item.deviceCode ? `Ozn. ${item.deviceCode}` : "",
       item.serialNumber ? `Ser. ${item.serialNumber}` : "",
       item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
     ].filter(Boolean).join(" | ") || "Bez dodatnih podataka";
@@ -38274,6 +38316,16 @@ measurementEquipmentForm?.addEventListener("input", () => {
 
 measurementEquipmentRequiresCalibrationInput?.addEventListener("change", () => {
   syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled: true });
+});
+
+measurementEquipmentTemplateToggleButton?.addEventListener("click", () => {
+  state.measurementEquipmentTemplateSectionExpanded = !state.measurementEquipmentTemplateSectionExpanded;
+  syncMeasurementEquipmentEditorSections();
+});
+
+measurementEquipmentDocumentsToggleButton?.addEventListener("click", () => {
+  state.measurementEquipmentDocumentsSectionExpanded = !state.measurementEquipmentDocumentsSectionExpanded;
+  syncMeasurementEquipmentEditorSections();
 });
 
 measurementEquipmentDocumentsUploadButton?.addEventListener("click", () => {

@@ -16088,6 +16088,21 @@ body.is-measurement-equipment-document-preview-open {
   gap: 12px;
 }
 
+.module-collapse-button {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.measurement-equipment-collapsible-body {
+  display: grid;
+  gap: 12px;
+}
+
 .service-catalog-template-list {
   display: grid;
   gap: 10px;

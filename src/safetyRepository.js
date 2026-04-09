@@ -1882,7 +1882,7 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [measurementEquipmentRows] = await connection.query(`
-    SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, serial_number, inventory_number,
+    SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
            linked_template_ids_json, documents_json, created_at, updated_at
     FROM web_measurement_equipment
@@ -1905,6 +1905,7 @@ async function fetchSnapshotFromConnection(connection) {
       equipmentKind: row.equipment_kind ?? "measurement",
       manufacturer: row.manufacturer ?? "",
       deviceType: row.device_type ?? "",
+      deviceCode: row.device_code ?? "",
       serialNumber: row.serial_number ?? "",
       inventoryNumber: row.inventory_number ?? "",
       requiresCalibration: Boolean(Number(row.requires_calibration ?? 0)),
@@ -3262,6 +3263,7 @@ export class MySqlSafetyRepository {
         equipment_kind VARCHAR(24) NOT NULL DEFAULT 'measurement',
         manufacturer VARCHAR(160) NOT NULL DEFAULT '',
         device_type VARCHAR(160) NOT NULL DEFAULT '',
+        device_code VARCHAR(120) NOT NULL DEFAULT '',
         serial_number VARCHAR(120) NOT NULL DEFAULT '',
         inventory_number VARCHAR(80) NOT NULL DEFAULT '',
         requires_calibration TINYINT(1) NOT NULL DEFAULT 0,
@@ -3324,6 +3326,7 @@ export class MySqlSafetyRepository {
         INDEX idx_web_document_templates_location (sample_location_id)
       )
     `);
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
@@ -5199,13 +5202,13 @@ export class MySqlSafetyRepository {
       const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents, {
         keyPrefix: `measurement-equipment/${dbString(draft.organizationId) || "shared"}`,
       });
-      const [result] = await connection.query(
+        const [result] = await connection.query(
         `
           INSERT INTO web_measurement_equipment
-            (organization_id, name, equipment_kind, manufacturer, device_type, serial_number, inventory_number,
+            (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
              linked_template_ids_json, documents_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5213,6 +5216,7 @@ export class MySqlSafetyRepository {
           draft.equipmentKind,
           draft.manufacturer,
           draft.deviceType,
+          draft.deviceCode,
           draft.serialNumber,
           draft.inventoryNumber,
           draft.requiresCalibration ? 1 : 0,
@@ -5259,10 +5263,10 @@ export class MySqlSafetyRepository {
         currentDocuments: current.documents,
       });
 
-      await connection.query(
+        await connection.query(
         `
           UPDATE web_measurement_equipment
-          SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, serial_number = ?, inventory_number = ?,
+          SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
               note = ?, linked_template_ids_json = ?, documents_json = ?
           WHERE id = ?
@@ -5272,6 +5276,7 @@ export class MySqlSafetyRepository {
           next.equipmentKind,
           next.manufacturer,
           next.deviceType,
+          next.deviceCode,
           next.serialNumber,
           next.inventoryNumber,
           next.requiresCalibration ? 1 : 0,

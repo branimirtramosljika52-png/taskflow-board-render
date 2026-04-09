@@ -2150,6 +2150,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
       equipmentKind: "measurement",
       manufacturer: "Fluke",
       deviceType: "Tester",
+      deviceCode: "MET-01",
       inventoryNumber: "INV-001",
       requiresCalibration: true,
       calibrationDate: "2026-03-01",
@@ -2181,6 +2182,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
       equipmentKind: "testing",
       manufacturer: "Sonel",
       deviceType: "PAT tester",
+      deviceCode: "TIP-02",
       inventoryNumber: "INV-002",
       validUntil: "2026-08-01",
       linkedTemplateIds: ["template-b"],
@@ -2194,6 +2196,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
     second,
     {
       note: "Koristi se za redovni pregled.",
+      deviceCode: "TIP-03",
       linkedTemplateIds: ["template-b"],
       documents: [
         {
@@ -2216,12 +2219,14 @@ test("measurement equipment supports templates, documents, filters and sorting",
   assert.deepEqual(first.linkedTemplateTitles, ["Zapisnik A"]);
   assert.equal(first.documents.length, 1);
   assert.equal(first.documents[0].documentCategory, "umjernica");
+  assert.equal(first.deviceCode, "MET-01");
+  assert.equal(updatedSecond.deviceCode, "TIP-03");
   assert.equal(updatedSecond.linkedTemplateTitles[0], "Zapisnik B");
   assert.equal(updatedSecond.documents[0].fileName, "karton.jpg");
   assert.equal(updatedSecond.documents[0].documentCategory, "karton_uredaja");
 
   const filtered = filterMeasurementEquipmentItems([first, updatedSecond], {
-    query: "zapisnik b",
+    query: "tip-03",
   });
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "equipment-2");

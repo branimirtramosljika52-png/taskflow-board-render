@@ -2552,6 +2552,7 @@ export function createMeasurementEquipmentItem(
 ) {
   const timestamp = now();
   const organizationId = requireText(input.organizationId, "Organizacija");
+  const deviceCode = normalizeText(input.deviceCode);
   const inventoryNumber = normalizeText(input.inventoryNumber);
   const serialNumber = normalizeText(input.serialNumber);
   const hasCalibrationData = Boolean(input.calibrationDate || input.calibrationPeriod || input.validUntil);
@@ -2580,6 +2581,7 @@ export function createMeasurementEquipmentItem(
     equipmentKind: normalizeMeasurementEquipmentKind(input.equipmentKind),
     manufacturer: normalizeText(input.manufacturer),
     deviceType: normalizeText(input.deviceType ?? input.type),
+    deviceCode,
     serialNumber,
     inventoryNumber,
     requiresCalibration,
@@ -2596,6 +2598,9 @@ export function createMeasurementEquipmentItem(
 }
 
 export function updateMeasurementEquipmentItem(current, patch, state, now = isoNow) {
+  const deviceCode = hasOwn(patch, "deviceCode")
+    ? normalizeText(patch.deviceCode)
+    : current.deviceCode;
   const inventoryNumber = hasOwn(patch, "inventoryNumber")
     ? normalizeText(patch.inventoryNumber)
     : current.inventoryNumber;
@@ -2635,6 +2640,7 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     deviceType: hasOwn(patch, "deviceType") || hasOwn(patch, "type")
       ? normalizeText(patch.deviceType ?? patch.type)
       : current.deviceType,
+    deviceCode,
     serialNumber,
     inventoryNumber,
     requiresCalibration,
@@ -2678,6 +2684,7 @@ export function filterMeasurementEquipmentItems(
       item.name,
       item.manufacturer,
       item.deviceType,
+      item.deviceCode,
       item.serialNumber,
       item.inventoryNumber,
       item.note,
@@ -2708,8 +2715,8 @@ export function sortMeasurementEquipmentItems(items) {
       return 1;
     }
 
-    return `${left.name} ${left.serialNumber ?? ""} ${left.inventoryNumber}`.localeCompare(
-      `${right.name} ${right.serialNumber ?? ""} ${right.inventoryNumber}`,
+    return `${left.name} ${left.deviceCode ?? ""} ${left.serialNumber ?? ""} ${left.inventoryNumber}`.localeCompare(
+      `${right.name} ${right.deviceCode ?? ""} ${right.serialNumber ?? ""} ${right.inventoryNumber}`,
       "hr",
     );
   });
