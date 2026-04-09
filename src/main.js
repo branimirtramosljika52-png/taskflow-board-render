@@ -519,6 +519,7 @@ const state = {
   legalFrameworkEditorOpen: false,
   serviceCatalogEditorOpen: false,
   measurementEquipmentEditorOpen: false,
+  measurementEquipmentDocumentPreviewOpen: false,
   safetyAuthorizationEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
@@ -1365,6 +1366,12 @@ const measurementEquipmentNoteInput = document.querySelector("#measurement-equip
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
 const measurementEquipmentResetButton = document.querySelector("#measurement-equipment-reset");
 const measurementEquipmentDeleteButton = document.querySelector("#measurement-equipment-delete");
+const measurementEquipmentDocumentPreviewBackdrop = document.querySelector("#measurement-equipment-document-preview-backdrop");
+const measurementEquipmentDocumentPreviewPanel = document.querySelector("#measurement-equipment-document-preview-panel");
+const measurementEquipmentDocumentPreviewTitle = document.querySelector("#measurement-equipment-document-preview-title");
+const measurementEquipmentDocumentPreviewMeta = document.querySelector("#measurement-equipment-document-preview-meta");
+const measurementEquipmentDocumentPreviewBody = document.querySelector("#measurement-equipment-document-preview-body");
+const measurementEquipmentDocumentPreviewCloseButton = document.querySelector("#measurement-equipment-document-preview-close");
 const safetyAuthorizationModule = document.querySelector("#safety-authorization-module");
 const safetyAuthorizationTotalCount = document.querySelector("#safety-authorization-total-count");
 const safetyAuthorizationActiveCount = document.querySelector("#safety-authorization-active-count");
@@ -1403,6 +1410,7 @@ let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
 let measurementEquipmentDocumentDrafts = [];
+let activeMeasurementEquipmentDocumentPreview = null;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
@@ -1659,6 +1667,14 @@ if (measurementEquipmentEditorPanel?.parentElement !== document.body) {
   document.body.append(measurementEquipmentEditorPanel);
 }
 
+if (measurementEquipmentDocumentPreviewBackdrop?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentDocumentPreviewBackdrop);
+}
+
+if (measurementEquipmentDocumentPreviewPanel?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentDocumentPreviewPanel);
+}
+
 if (safetyAuthorizationEditorBackdrop?.parentElement !== document.body) {
   document.body.append(safetyAuthorizationEditorBackdrop);
 }
@@ -1735,6 +1751,15 @@ if (measurementEquipmentEditorBackdrop) {
 if (measurementEquipmentEditorPanel) {
   measurementEquipmentEditorPanel.hidden = true;
   measurementEquipmentEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (measurementEquipmentDocumentPreviewBackdrop) {
+  measurementEquipmentDocumentPreviewBackdrop.hidden = true;
+}
+
+if (measurementEquipmentDocumentPreviewPanel) {
+  measurementEquipmentDocumentPreviewPanel.hidden = true;
+  measurementEquipmentDocumentPreviewPanel.setAttribute("aria-hidden", "true");
 }
 
 if (safetyAuthorizationEditorBackdrop) {
@@ -4376,6 +4401,7 @@ function getWorkOrderIconMarkup(iconName) {
     measurement: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25h10.5v9.5H2.75zM2.75 6.25h10.5M6 3.25v9.5M9.5 3.25v9.5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.1"/></svg>',
     reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 7.75a4.5 4.5 0 1 0 1.32-3.18L3 6.25M3 2.75v3.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    preview: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10 10 2.75 2.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     download: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     trash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.25h9M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25M5 4.25l.45 7.15c.03.5.45.89.95.89h3.2c.5 0 .92-.39.95-.89L11 4.25M6.75 6.25v3.75M9.25 6.25v3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
   };
@@ -12139,6 +12165,131 @@ function scrollMeasurementEquipmentEditorToTop() {
   measurementEquipmentEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+function getMeasurementEquipmentDocumentPreviewUrl(document = {}) {
+  return String(document?.storageUrl || document?.dataUrl || "").trim();
+}
+
+function getMeasurementEquipmentDocumentPreviewKind(document = {}) {
+  const fileName = String(document?.fileName || "").trim().toLowerCase();
+  const fileType = String(document?.fileType || "").trim().toLowerCase();
+  const previewUrl = getMeasurementEquipmentDocumentPreviewUrl(document);
+
+  if (!previewUrl) {
+    return "unavailable";
+  }
+
+  if (
+    fileType.startsWith("image/")
+    || /\.(png|jpe?g|gif|webp|bmp|svg)($|\?)/i.test(fileName)
+  ) {
+    return "image";
+  }
+
+  if (
+    fileType === "application/pdf"
+    || /\.pdf($|\?)/i.test(fileName)
+    || /^data:application\/pdf/i.test(previewUrl)
+  ) {
+    return "pdf";
+  }
+
+  return "unsupported";
+}
+
+function closeMeasurementEquipmentDocumentPreview() {
+  state.measurementEquipmentDocumentPreviewOpen = false;
+  activeMeasurementEquipmentDocumentPreview = null;
+  syncMeasurementEquipmentDocumentPreviewModal();
+}
+
+function openMeasurementEquipmentDocumentPreview(document = null) {
+  activeMeasurementEquipmentDocumentPreview = document ? createModuleAttachmentDraft(document) : null;
+  state.measurementEquipmentDocumentPreviewOpen = Boolean(activeMeasurementEquipmentDocumentPreview);
+  syncMeasurementEquipmentDocumentPreviewModal();
+}
+
+function syncMeasurementEquipmentDocumentPreviewModal() {
+  const isOpen = Boolean(
+    state.measurementEquipmentDocumentPreviewOpen
+    && state.measurementEquipmentEditorOpen
+    && state.user
+    && activeMeasurementEquipmentDocumentPreview,
+  );
+
+  measurementEquipmentDocumentPreviewPanel?.classList.toggle("is-open", isOpen);
+  document.body.classList.toggle("is-measurement-equipment-document-preview-open", isOpen);
+
+  if (measurementEquipmentDocumentPreviewPanel) {
+    measurementEquipmentDocumentPreviewPanel.hidden = !isOpen;
+    measurementEquipmentDocumentPreviewPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (measurementEquipmentDocumentPreviewBackdrop) {
+    measurementEquipmentDocumentPreviewBackdrop.hidden = !isOpen;
+  }
+
+  if (!measurementEquipmentDocumentPreviewBody || !measurementEquipmentDocumentPreviewTitle || !measurementEquipmentDocumentPreviewMeta) {
+    return;
+  }
+
+  if (!isOpen || !activeMeasurementEquipmentDocumentPreview) {
+    measurementEquipmentDocumentPreviewTitle.textContent = "Pregled datoteke";
+    measurementEquipmentDocumentPreviewMeta.textContent = "";
+    measurementEquipmentDocumentPreviewBody.replaceChildren();
+    return;
+  }
+
+  const previewDocument = activeMeasurementEquipmentDocumentPreview;
+  const previewKind = getMeasurementEquipmentDocumentPreviewKind(previewDocument);
+  const previewUrl = getMeasurementEquipmentDocumentPreviewUrl(previewDocument);
+
+  measurementEquipmentDocumentPreviewTitle.textContent = previewDocument.fileName || "Pregled datoteke";
+  measurementEquipmentDocumentPreviewMeta.textContent = [
+    previewDocument.documentCategory || "",
+    getWorkOrderDocumentExtension(previewDocument.fileName, previewDocument.fileType),
+    formatFileSize(previewDocument.fileSize),
+    previewDocument.updatedAt ? formatCompactDateTime(previewDocument.updatedAt) : "",
+  ].filter(Boolean).join(" | ");
+
+  measurementEquipmentDocumentPreviewBody.replaceChildren();
+
+  if (previewKind === "image") {
+    const image = document.createElement("img");
+    image.className = "measurement-equipment-document-preview-image";
+    image.src = previewUrl;
+    image.alt = previewDocument.fileName || "Preview slike";
+    measurementEquipmentDocumentPreviewBody.append(image);
+  } else if (previewKind === "pdf") {
+    const frame = document.createElement("iframe");
+    frame.className = "measurement-equipment-document-preview-frame";
+    frame.src = previewUrl;
+    frame.title = previewDocument.fileName || "PDF preview";
+    measurementEquipmentDocumentPreviewBody.append(frame);
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "measurement-equipment-document-preview-empty";
+
+    const title = document.createElement("strong");
+    title.textContent = "Pregled nije dostupan u aplikaciji.";
+
+    const description = document.createElement("p");
+    description.textContent = "PDF i slike prikazuju se direktno ovdje. Za ostale formate koristi preuzimanje dokumenta.";
+
+    const actions = document.createElement("div");
+    actions.className = "measurement-equipment-document-preview-empty-actions";
+    actions.append(createActionButton("Preuzmi datoteku", "ghost-button", () => {
+      triggerModuleAttachmentDownload(previewDocument);
+    }));
+
+    empty.append(title, description, actions);
+    measurementEquipmentDocumentPreviewBody.append(empty);
+  }
+
+  requestAnimationFrame(() => {
+    measurementEquipmentDocumentPreviewCloseButton?.focus({ preventScroll: true });
+  });
+}
+
 function scrollSafetyAuthorizationEditorToTop() {
   safetyAuthorizationEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
@@ -12300,6 +12451,12 @@ function syncMeasurementEquipmentEditorModal() {
     measurementEquipmentEditorCloseButton.hidden = !isOpen;
   }
 
+  if (!isOpen && state.measurementEquipmentDocumentPreviewOpen) {
+    state.measurementEquipmentDocumentPreviewOpen = false;
+    activeMeasurementEquipmentDocumentPreview = null;
+  }
+  syncMeasurementEquipmentDocumentPreviewModal();
+
   if (isOpen) {
     requestAnimationFrame(() => {
       scrollMeasurementEquipmentEditorToTop();
@@ -12433,6 +12590,7 @@ function openMeasurementEquipmentEditor() {
 }
 
 function closeMeasurementEquipmentEditor({ reset = false } = {}) {
+  closeMeasurementEquipmentDocumentPreview();
   state.measurementEquipmentEditorOpen = false;
   syncMeasurementEquipmentEditorModal();
 
@@ -18532,6 +18690,9 @@ function renderMeasurementEquipmentDocuments() {
     const actions = document.createElement("div");
     actions.className = "module-attachment-actions";
 
+    const previewButton = createIconActionButton("Pregled", "preview", "", () => {
+      openMeasurementEquipmentDocumentPreview(entry);
+    });
     const openButton = createIconActionButton("Preuzmi", "download", "", () => {
       triggerModuleAttachmentDownload(entry);
     });
@@ -18540,7 +18701,7 @@ function renderMeasurementEquipmentDocuments() {
       renderMeasurementEquipmentDocuments();
     });
 
-    actions.append(openButton, removeButton);
+    actions.append(previewButton, openButton, removeButton);
     row.append(copy, categorySlot, actions);
     return row;
   }));
@@ -38074,6 +38235,14 @@ measurementEquipmentEditorCloseButton?.addEventListener("click", () => {
 
 measurementEquipmentEditorBackdrop?.addEventListener("click", () => {
   dismissMeasurementEquipmentEditor();
+});
+
+measurementEquipmentDocumentPreviewCloseButton?.addEventListener("click", () => {
+  closeMeasurementEquipmentDocumentPreview();
+});
+
+measurementEquipmentDocumentPreviewBackdrop?.addEventListener("click", () => {
+  closeMeasurementEquipmentDocumentPreview();
 });
 
 measurementEquipmentResetButton?.addEventListener("click", () => {
