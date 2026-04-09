@@ -4177,6 +4177,18 @@ function formatCompactDate(value) {
   return `${day}.${month}.${year}.`;
 }
 
+function formatCompactTime(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "";
+  }
+
+  const hours = String(parsedDate.getHours()).padStart(2, "0");
+  const minutes = String(parsedDate.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 function formatCompactDueDate(value) {
   if (!value) {
     return "Bez roka";
@@ -18469,30 +18481,25 @@ function renderMeasurementEquipmentDocuments() {
     meta.textContent = [
       entry.fileType || "",
       formatFileSize(entry.fileSize),
-      entry.updatedAt ? formatCompactDate(entry.updatedAt) : "",
+      entry.updatedAt ? formatCompactTime(entry.updatedAt) : "",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
 
-    const fieldWrap = document.createElement("div");
-    fieldWrap.className = "module-attachment-fields";
-
-    const categoryField = document.createElement("label");
-    categoryField.className = "module-attachment-field";
-
-    const categoryLabel = document.createElement("span");
-    categoryLabel.className = "module-attachment-field-label";
-    categoryLabel.textContent = "Što je ovo?";
+    const categorySlot = document.createElement("div");
+    categorySlot.className = "module-attachment-middle";
 
     if (entry.documentCategoryLocked && entry.documentCategory) {
       const categoryValue = document.createElement("div");
       categoryValue.className = "module-attachment-category-value is-locked";
       categoryValue.textContent = entry.documentCategory;
-      categoryField.append(categoryLabel, categoryValue);
+      categoryValue.setAttribute("aria-label", "Vrsta dokumenta");
+      categorySlot.append(categoryValue);
     } else {
       const categorySelect = document.createElement("select");
       categorySelect.className = "module-attachment-category-select";
       categorySelect.dataset.documentId = entry.id;
+      categorySelect.setAttribute("aria-label", "Vrsta dokumenta");
       replaceSelectOptions(
         categorySelect,
         MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
@@ -18503,10 +18510,8 @@ function renderMeasurementEquipmentDocuments() {
         updateMeasurementEquipmentDocumentDraft(entry.id, { documentCategory: nextValue });
         row.classList.toggle("is-unclassified", !nextValue);
       });
-      categoryField.append(categoryLabel, categorySelect);
+      categorySlot.append(categorySelect);
     }
-    fieldWrap.append(categoryField);
-    copy.append(fieldWrap);
 
     if (entry.description) {
       const description = document.createElement("p");
@@ -18527,7 +18532,7 @@ function renderMeasurementEquipmentDocuments() {
     });
 
     actions.append(openButton, removeButton);
-    row.append(copy, actions);
+    row.append(copy, categorySlot, actions);
     return row;
   }));
 }

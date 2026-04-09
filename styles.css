@@ -15835,9 +15835,9 @@ body.is-document-template-editor-open {
   background: rgba(247, 250, 248, 0.92);
   padding: 12px 14px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
-  align-items: start;
+  align-items: center;
 }
 
 .module-attachment-row.is-unclassified {
@@ -15872,6 +15872,13 @@ body.is-document-template-editor-open {
   margin-top: 6px;
 }
 
+.module-attachment-middle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 180px;
+}
+
 .module-attachment-field {
   display: grid;
   gap: 6px;
@@ -15891,6 +15898,7 @@ body.is-document-template-editor-open {
   border-radius: 12px;
   border: 1px solid rgba(47, 104, 84, 0.18);
   background: #ffffff;
+  min-width: 180px;
 }
 
 .module-attachment-category-value {
@@ -15903,6 +15911,8 @@ body.is-document-template-editor-open {
   padding: 0 14px;
   color: #264f41;
   font-weight: 700;
+  min-width: 180px;
+  justify-content: center;
 }
 
 .module-attachment-category-value.is-locked {
@@ -15930,6 +15940,18 @@ body.is-document-template-editor-open {
 .module-attachment-action-button svg {
   width: 16px;
   height: 16px;
+}
+
+@media (max-width: 720px) {
+  .module-attachment-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .module-attachment-middle,
+  .module-attachment-actions {
+    justify-content: flex-start;
+  }
 }
 
 .document-template-preview-signature strong {
