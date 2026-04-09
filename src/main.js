@@ -4189,6 +4189,16 @@ function formatCompactTime(value) {
   return `${hours}:${minutes}`;
 }
 
+function formatCompactDateTime(value) {
+  const parsedDate = parseDateValue(value);
+
+  if (!parsedDate) {
+    return "";
+  }
+
+  return [formatCompactDate(parsedDate), formatCompactTime(parsedDate)].filter(Boolean).join(" | ");
+}
+
 function formatCompactDueDate(value) {
   if (!value) {
     return "Bez roka";
@@ -18479,9 +18489,8 @@ function renderMeasurementEquipmentDocuments() {
 
     const meta = document.createElement("span");
     meta.textContent = [
-      entry.fileType || "",
       formatFileSize(entry.fileSize),
-      entry.updatedAt ? formatCompactTime(entry.updatedAt) : "",
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
