@@ -20781,6 +20781,57 @@ function buildLearningTestPayload() {
   };
 }
 
+async function saveLearningTestDraft({ openQuestionsAfterSave = false } = {}) {
+  const title = learningTestTitleInput?.value?.trim() || "";
+  if (!title) {
+    if (learningTestError) {
+      learningTestError.textContent = "Upiši naziv grupe edukacije prije spremanja.";
+    }
+    learningTestTitleInput?.focus({ preventScroll: true });
+    return false;
+  }
+
+  const previousIds = new Set((state.learningTests ?? []).map((item) => String(item.id)));
+  const previousEditingId = learningTestIdInput?.value || "";
+  const isEditing = Boolean(previousEditingId);
+  const path = isEditing ? `/learning-tests/${previousEditingId}` : "/learning-tests";
+  const method = isEditing ? "PATCH" : "POST";
+
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildLearningTestPayload(),
+  }), learningTestError);
+
+  if (!success) {
+    return false;
+  }
+
+  let resolvedId = previousEditingId;
+  if (!resolvedId) {
+    const createdCandidate = (state.learningTests ?? []).find((item) => !previousIds.has(String(item.id)))
+      || (state.learningTests ?? []).find((item) => (
+        String(item.title || "").trim() === title
+        && String(item.description || "").trim() === String(learningTestDescriptionInput?.value || "").trim()
+      ));
+    resolvedId = createdCandidate?.id || "";
+  }
+
+  if (resolvedId) {
+    state.activeLearningTestId = resolvedId;
+    if (learningTestIdInput) {
+      learningTestIdInput.value = resolvedId;
+    }
+  }
+
+  syncLearningTestEditorChrome();
+
+  if (openQuestionsAfterSave) {
+    setLearningTestEditorStep("questions");
+  }
+
+  return true;
+}
+
 function setLearningTestEditorStep(step = "group") {
   learningTestEditorStep = step === "questions" ? "questions" : "group";
 
@@ -38835,11 +38886,11 @@ learningTestStepGroupButton?.addEventListener("click", () => {
 });
 
 learningTestStepQuestionsButton?.addEventListener("click", () => {
-  setLearningTestEditorStep("questions");
+  void saveLearningTestDraft({ openQuestionsAfterSave: true });
 });
 
 learningTestNextStepButton?.addEventListener("click", () => {
-  setLearningTestEditorStep("questions");
+  void saveLearningTestDraft({ openQuestionsAfterSave: true });
 });
 
 learningTestBackStepButton?.addEventListener("click", () => {
@@ -38909,15 +38960,7 @@ learningTestForm?.addEventListener("input", () => {
 
 learningTestForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-
-  const isEditing = Boolean(learningTestIdInput?.value);
-  const path = isEditing ? `/learning-tests/${learningTestIdInput.value}` : "/learning-tests";
-  const method = isEditing ? "PATCH" : "POST";
-
-  void runMutation(() => apiRequest(path, {
-    method,
-    body: buildLearningTestPayload(),
-  }), learningTestError).then((success) => {
+  void saveLearningTestDraft().then((success) => {
     if (success) {
       closeLearningTestEditor({ reset: true });
       renderLearningTestsModule();
