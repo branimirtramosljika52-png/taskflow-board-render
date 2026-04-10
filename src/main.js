@@ -20845,6 +20845,15 @@ function buildLearningTestPayload() {
   };
 }
 
+function setLearningTestStepNavigationBusy(isBusy) {
+  if (!learningTestNextStepButton) {
+    return;
+  }
+  learningTestNextStepButton.disabled = Boolean(isBusy);
+  learningTestNextStepButton.toggleAttribute("aria-busy", Boolean(isBusy));
+  learningTestNextStepButton.textContent = isBusy ? "Otvaram pitanja..." : "Dalje na pitanja";
+}
+
 async function saveLearningTestDraft({ openQuestionsAfterSave = false } = {}) {
   const title = learningTestTitleInput?.value?.trim() || "";
   if (!title) {
@@ -20853,6 +20862,12 @@ async function saveLearningTestDraft({ openQuestionsAfterSave = false } = {}) {
     }
     learningTestTitleInput?.focus({ preventScroll: true });
     return false;
+  }
+
+  const previousStep = learningTestEditorStep;
+  if (openQuestionsAfterSave) {
+    setLearningTestEditorStep("questions");
+    setLearningTestStepNavigationBusy(true);
   }
 
   const previousIds = new Set((state.learningTests ?? []).map((item) => String(item.id)));
@@ -20866,7 +20881,14 @@ async function saveLearningTestDraft({ openQuestionsAfterSave = false } = {}) {
     body: buildLearningTestPayload(),
   }), learningTestError);
 
+  if (openQuestionsAfterSave) {
+    setLearningTestStepNavigationBusy(false);
+  }
+
   if (!success) {
+    if (openQuestionsAfterSave) {
+      setLearningTestEditorStep(previousStep);
+    }
     return false;
   }
 
@@ -20888,10 +20910,6 @@ async function saveLearningTestDraft({ openQuestionsAfterSave = false } = {}) {
   }
 
   syncLearningTestEditorChrome();
-
-  if (openQuestionsAfterSave) {
-    setLearningTestEditorStep("questions");
-  }
 
   return true;
 }
@@ -21018,7 +21036,9 @@ function syncLearningTestEditorChrome() {
     learningTestDeleteButton.hidden = !learningTestIdInput?.value;
   }
   if (learningTestNextStepButton) {
-    learningTestNextStepButton.textContent = "Dalje na pitanja";
+    if (!learningTestNextStepButton.disabled) {
+      learningTestNextStepButton.textContent = "Dalje na pitanja";
+    }
   }
 }
 
@@ -39195,7 +39215,6 @@ learningTestQuestionList?.addEventListener("change", (event) => {
     if (question.correctOptionKeys.length === 0) {
       question.correctOptionKeys = ["A"];
     }
-    renderLearningQuestionGroupList();
     return;
   }
 
@@ -39223,7 +39242,7 @@ learningTestQuestionList?.addEventListener("change", (event) => {
   question[questionField] = target.value;
 });
 
-learningTestForm?.addEventListener("input", () => {
+learningTestTitleInput?.addEventListener("input", () => {
   syncLearningTestEditorChrome();
 });
 
