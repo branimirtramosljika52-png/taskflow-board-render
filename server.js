@@ -694,6 +694,7 @@ async function handleApiRequest(request, response, url) {
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
+    const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
@@ -993,6 +994,22 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body, "linkedTemplateIds");
       await domainRepository.createLegalFramework({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/learning-tests") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati eLearning testovima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createLearningTestItem({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -1638,6 +1655,29 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (learningTestMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati eLearning testovima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.learningTests ?? [], learningTestMatch[1], "Test nije pronađen.");
+      const updated = await domainRepository.updateLearningTestItem(learningTestMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Test nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (measurementEquipmentMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati mjernom opremom.");
@@ -1907,6 +1947,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Propis nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (learningTestMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo brisati eLearning testove.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.learningTests ?? [], learningTestMatch[1], "Test nije pronađen.");
+      const deleted = await domainRepository.deleteLearningTestItem(learningTestMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Test nije pronađen.");
         return true;
       }
 

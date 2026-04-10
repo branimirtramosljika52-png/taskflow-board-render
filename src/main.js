@@ -8,6 +8,7 @@
   DASHBOARD_WIDGET_VISUALIZATION_OPTIONS,
   DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS,
+  LEARNING_TEST_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
@@ -31,6 +32,7 @@
   deriveOfferInitials,
   filterDocumentTemplates,
   filterLegalFrameworks,
+  filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
   filterReminders,
@@ -59,6 +61,7 @@
   sortDashboardWidgets,
   sortDocumentTemplates,
   sortLegalFrameworks,
+  sortLearningTests,
   sortMeasurementEquipmentItems,
   sortTodoTasks,
   sortSafetyAuthorizations,
@@ -66,6 +69,8 @@
   sortVehicleReservations,
   sortVehicles,
   sortWorkOrders,
+  createLearningTest,
+  updateLearningTest,
   updateDashboardWidget,
 } from "./safetyModel.js";
 import {
@@ -494,6 +499,7 @@ const state = {
   offers: [],
   vehicles: [],
   legalFrameworks: [],
+  learningTests: [],
   documentTemplates: [],
   serviceCatalog: [],
   measurementEquipment: [],
@@ -507,6 +513,7 @@ const state = {
   activeVehicleId: "",
   activeVehicleReservationId: "",
   activeLegalFrameworkId: "",
+  activeLearningTestId: "",
   activeServiceCatalogId: "",
   activeMeasurementEquipmentId: "",
   activeSafetyAuthorizationId: "",
@@ -517,6 +524,7 @@ const state = {
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
   legalFrameworkEditorOpen: false,
+  learningTestEditorOpen: false,
   serviceCatalogEditorOpen: false,
   measurementEquipmentEditorOpen: false,
   measurementEquipmentDocumentPreviewOpen: false,
@@ -535,6 +543,10 @@ const state = {
     status: "all",
   },
   serviceCatalogFilters: {
+    query: "",
+    status: "all",
+  },
+  learningTestsFilters: {
     query: "",
     status: "all",
   },
@@ -1404,6 +1416,35 @@ const safetyAuthorizationNoteInput = document.querySelector("#safety-authorizati
 const safetyAuthorizationError = document.querySelector("#safety-authorization-error");
 const safetyAuthorizationResetButton = document.querySelector("#safety-authorization-reset");
 const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
+const learningTestsModule = document.querySelector("#learning-tests-module");
+const learningTestsTotalCount = document.querySelector("#learning-tests-total-count");
+const learningTestsActiveCount = document.querySelector("#learning-tests-active-count");
+const learningTestsAssignmentCount = document.querySelector("#learning-tests-assignment-count");
+const learningTestsCompletedCount = document.querySelector("#learning-tests-completed-count");
+const learningTestsSearchInput = document.querySelector("#learning-tests-search");
+const learningTestsFilterStatusInput = document.querySelector("#learning-tests-filter-status");
+const learningTestsHelper = document.querySelector("#learning-tests-helper");
+const learningTestsList = document.querySelector("#learning-tests-list");
+const learningTestsEmpty = document.querySelector("#learning-tests-empty");
+const learningTestOpenFormButton = document.querySelector("#learning-test-open-form");
+const learningTestEditorBackdrop = document.querySelector("#learning-test-editor-backdrop");
+const learningTestEditorPanel = document.querySelector("#learning-test-editor-panel");
+const learningTestEditorCloseButton = document.querySelector("#learning-test-editor-close");
+const learningTestEditorBody = learningTestEditorPanel?.querySelector(".learning-test-editor-body");
+const learningTestEditorTitle = document.querySelector("#learning-test-editor-title");
+const learningTestForm = document.querySelector("#learning-test-form");
+const learningTestIdInput = document.querySelector("#learning-test-id");
+const learningTestTitleInput = document.querySelector("#learning-test-title");
+const learningTestStatusInput = document.querySelector("#learning-test-status");
+const learningTestDescriptionInput = document.querySelector("#learning-test-description");
+const learningTestAddGroupButton = document.querySelector("#learning-test-add-group");
+const learningTestQuestionList = document.querySelector("#learning-test-question-list");
+const learningTestError = document.querySelector("#learning-test-error");
+const learningTestResetButton = document.querySelector("#learning-test-reset");
+const learningTestDeleteButton = document.querySelector("#learning-test-delete");
+const learningPeopleModule = document.querySelector("#learning-people-module");
+const learningPeopleList = document.querySelector("#learning-people-list");
+const learningPeopleEmpty = document.querySelector("#learning-people-empty");
 
 let offerFormItems = [];
 let documentTemplateFieldDrafts = [];
@@ -1421,6 +1462,7 @@ let activeMeasurementEquipmentDocumentPreview = null;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
+let learningTestQuestionGroupDrafts = [];
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -2514,6 +2556,7 @@ function applySnapshot(payload) {
   state.offers = payload.offers ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
+  state.learningTests = payload.learningTests ?? [];
   state.serviceCatalog = payload.serviceCatalog ?? [];
   state.measurementEquipment = payload.measurementEquipment ?? [];
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
@@ -2560,6 +2603,11 @@ function applySnapshot(payload) {
     state.legalFrameworkEditorOpen = false;
     syncLegalFrameworkEditorModal();
     resetLegalFrameworkForm();
+  }
+  if (learningTestIdInput?.value && !state.learningTests.some((item) => String(item.id) === String(learningTestIdInput.value))) {
+    state.learningTestEditorOpen = false;
+    syncLearningTestEditorModal();
+    resetLearningTestForm();
   }
   if (serviceCatalogIdInput?.value && !state.serviceCatalog.some((item) => String(item.id) === String(serviceCatalogIdInput.value))) {
     state.serviceCatalogEditorOpen = false;
@@ -3812,6 +3860,8 @@ function renderModuleView() {
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
+  const isLearningTestsModule = state.activeModuleItem === "tests";
+  const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
@@ -3854,6 +3904,14 @@ function renderModuleView() {
     measurementEquipmentModule.hidden = !isMeasurementEquipmentModule;
   }
 
+  if (learningTestsModule) {
+    learningTestsModule.hidden = !isLearningTestsModule;
+  }
+
+  if (learningPeopleModule) {
+    learningPeopleModule.hidden = !isLearningPeopleModule;
+  }
+
   if (offersModule) {
     offersModule.hidden = !isOffersModule;
   }
@@ -3880,6 +3938,14 @@ function renderModuleView() {
 
   if (isMeasurementEquipmentModule) {
     renderMeasurementEquipmentModule();
+  }
+
+  if (isLearningTestsModule) {
+    renderLearningTestsModule();
+  }
+
+  if (isLearningPeopleModule) {
+    renderLearningPeopleModule();
   }
 
   if (isOffersModule) {
@@ -13904,6 +13970,8 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     previousDocumentMode: String(initial.previousDocumentMode ?? "").trim().toUpperCase() || "NONE",
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
+    toggleTrueLabel: String(initial.toggleTrueLabel ?? "").trim(),
+    toggleFalseLabel: String(initial.toggleFalseLabel ?? "").trim(),
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
     signatureRole: String(initial.signatureRole ?? "inspect").trim().toLowerCase() || "inspect",
     signatureMultiple: initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true,
@@ -15891,6 +15959,13 @@ function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
   ].filter(Boolean).join("\n"))).join("\n\n");
 }
 
+function getDocumentTemplateBooleanDisplayValue(field = {}, value = false) {
+  const truthy = Boolean(value);
+  const trueLabel = String(field?.toggleTrueLabel || "").trim();
+  const falseLabel = String(field?.toggleFalseLabel || "").trim();
+  return truthy ? (trueLabel || "Da") : (falseLabel || "Ne");
+}
+
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
   const token = getDocumentTemplateFieldToken(field, index);
 
@@ -15931,7 +16006,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     : undefined;
   if (runtimeValue !== undefined) {
     if (field.type === "checkbox" || field.type === "toggle") {
-      return runtimeValue ? "Da" : "Ne";
+      return getDocumentTemplateBooleanDisplayValue(field, runtimeValue);
     }
 
     if (field.type === "date") {
@@ -15947,7 +16022,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     const fallbackValue = getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId);
     if (hasMeaningfulDocumentRecordValue(fallbackValue)) {
       if (field.type === "checkbox" || field.type === "toggle") {
-        return fallbackValue ? "Da" : "Ne";
+        return getDocumentTemplateBooleanDisplayValue(field, fallbackValue);
       }
 
       if (field.type === "date") {
@@ -15981,7 +16056,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
   }
 
   if (field.type === "checkbox" || field.type === "toggle") {
-    return "Da";
+    return getDocumentTemplateBooleanDisplayValue(field, true);
   }
 
   if (field.type === "longtext") {
@@ -20632,6 +20707,471 @@ function setDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0, co
   }
 }
 
+function createEmptyLearningQuestionDraft(initial = {}, index = 0) {
+  const letters = ["A", "B", "C", "D"];
+  const normalizedOptions = Array.isArray(initial.options) ? initial.options : [];
+  const correctLetter = letters.find((letter, optionIndex) => Boolean(normalizedOptions[optionIndex]?.isCorrect))
+    || String(initial.correctOptionKey || "").trim().toUpperCase()
+    || "A";
+
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    code: String(initial.code || `P${index + 1}`).trim() || `P${index + 1}`,
+    prompt: String(initial.prompt || "").trim(),
+    correctOptionKey: letters.includes(correctLetter) ? correctLetter : "A",
+    optionA: String(initial.optionA || normalizedOptions[0]?.text || "").trim(),
+    optionB: String(initial.optionB || normalizedOptions[1]?.text || "").trim(),
+    optionC: String(initial.optionC || normalizedOptions[2]?.text || "").trim(),
+    optionD: String(initial.optionD || normalizedOptions[3]?.text || "").trim(),
+  };
+}
+
+function createEmptyLearningQuestionGroupDraft(initial = {}, index = 0) {
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    title: String(initial.title || initial.groupLabel || `Grupa ${index + 1}`).trim() || `Grupa ${index + 1}`,
+    questions: (Array.isArray(initial.questions) ? initial.questions : [])
+      .map((question, questionIndex) => createEmptyLearningQuestionDraft(question, questionIndex)),
+  };
+}
+
+function buildLearningQuestionGroupDraftsFromItems(items = []) {
+  const grouped = new Map();
+  (Array.isArray(items) ? items : []).forEach((question, index) => {
+    const groupLabel = String(question?.groupLabel || `Grupa ${index + 1}`).trim() || `Grupa ${index + 1}`;
+    if (!grouped.has(groupLabel)) {
+      grouped.set(groupLabel, []);
+    }
+    grouped.get(groupLabel).push(question);
+  });
+
+  return Array.from(grouped.entries()).map(([title, questions], index) => (
+    createEmptyLearningQuestionGroupDraft({
+      title,
+      questions,
+    }, index)
+  ));
+}
+
+function serializeLearningQuestionGroupDrafts() {
+  return learningTestQuestionGroupDrafts.flatMap((group, groupIndex) => (
+    (group.questions ?? []).map((question, questionIndex) => ({
+      id: question.id || crypto.randomUUID(),
+      code: String(question.code || `G${groupIndex + 1}-P${questionIndex + 1}`).trim() || `G${groupIndex + 1}-P${questionIndex + 1}`,
+      groupLabel: String(group.title || `Grupa ${groupIndex + 1}`).trim() || `Grupa ${groupIndex + 1}`,
+      prompt: String(question.prompt || "").trim(),
+      explanation: "",
+      options: ["A", "B", "C", "D"].map((letter) => ({
+        id: crypto.randomUUID(),
+        text: String(question[`option${letter}`] || "").trim(),
+        isCorrect: String(question.correctOptionKey || "A").trim().toUpperCase() === letter,
+      })),
+    }))
+  )).filter((question) => question.prompt && question.options.some((option) => option.text));
+}
+
+function buildLearningTestPayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    title: learningTestTitleInput?.value || "",
+    status: learningTestStatusInput?.value || "draft",
+    description: learningTestDescriptionInput?.value || "",
+    handbookDocuments: [],
+    videoItems: [],
+    questionItems: serializeLearningQuestionGroupDrafts(),
+    assignmentItems: [],
+  };
+}
+
+function syncLearningTestEditorModal() {
+  if (state.learningTestEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "tests"
+    || !state.user
+  )) {
+    state.learningTestEditorOpen = false;
+  }
+
+  const isOpen = state.learningTestEditorOpen;
+  learningTestEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-learning-test-editor-open", isOpen);
+
+  if (learningTestEditorPanel) {
+    learningTestEditorPanel.hidden = !isOpen;
+    learningTestEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (learningTestEditorBackdrop) {
+    learningTestEditorBackdrop.hidden = !isOpen;
+  }
+  if (learningTestEditorCloseButton) {
+    learningTestEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      learningTestEditorBody?.scrollTo({ top: 0, behavior: "auto" });
+      learningTestEditorBody?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function openLearningTestEditor() {
+  state.learningTestEditorOpen = true;
+  syncLearningTestEditorModal();
+}
+
+function closeLearningTestEditor({ reset = false } = {}) {
+  state.learningTestEditorOpen = false;
+  syncLearningTestEditorModal();
+  if (reset) {
+    resetLearningTestForm();
+  }
+}
+
+function dismissLearningTestEditor() {
+  closeLearningTestEditor({ reset: true });
+  renderLearningTestsModule();
+}
+
+function resetLearningTestForm() {
+  learningTestForm?.reset();
+  state.activeLearningTestId = "";
+  if (learningTestIdInput) {
+    learningTestIdInput.value = "";
+  }
+  if (learningTestStatusInput) {
+    learningTestStatusInput.value = "draft";
+  }
+  if (learningTestError) {
+    learningTestError.textContent = "";
+  }
+  learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
+  renderLearningQuestionGroupList();
+  syncLearningTestEditorChrome();
+}
+
+function hydrateLearningTestForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "tests";
+  renderActiveView();
+  renderModuleView();
+  state.activeLearningTestId = item.id;
+  if (learningTestIdInput) {
+    learningTestIdInput.value = item.id || "";
+  }
+  if (learningTestTitleInput) {
+    learningTestTitleInput.value = item.title || "";
+  }
+  if (learningTestStatusInput) {
+    learningTestStatusInput.value = item.status || "draft";
+  }
+  if (learningTestDescriptionInput) {
+    learningTestDescriptionInput.value = item.description || "";
+  }
+  if (learningTestError) {
+    learningTestError.textContent = "";
+  }
+  learningTestQuestionGroupDrafts = buildLearningQuestionGroupDraftsFromItems(item.questionItems ?? []);
+  if (learningTestQuestionGroupDrafts.length === 0) {
+    learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
+  }
+  renderLearningQuestionGroupList();
+  syncLearningTestEditorChrome();
+  openLearningTestEditor();
+  requestAnimationFrame(() => {
+    learningTestTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+function syncLearningTestEditorChrome() {
+  if (learningTestEditorTitle) {
+    learningTestEditorTitle.textContent = learningTestIdInput?.value
+      ? `Uredi test | ${learningTestTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novi test";
+  }
+  if (learningTestDeleteButton) {
+    learningTestDeleteButton.hidden = !learningTestIdInput?.value;
+  }
+}
+
+function renderLearningQuestionGroupList() {
+  if (!learningTestQuestionList) {
+    return;
+  }
+
+  learningTestQuestionGroupDrafts = (learningTestQuestionGroupDrafts ?? []).map((group, groupIndex) => {
+    const nextGroup = createEmptyLearningQuestionGroupDraft(group, groupIndex);
+    if (!Array.isArray(nextGroup.questions) || nextGroup.questions.length === 0) {
+      nextGroup.questions = [createEmptyLearningQuestionDraft({}, 0)];
+    }
+    return nextGroup;
+  });
+
+  if (learningTestQuestionGroupDrafts.length === 0) {
+    learningTestQuestionList.replaceChildren();
+    return;
+  }
+
+  learningTestQuestionList.replaceChildren(...learningTestQuestionGroupDrafts.map((group, groupIndex) => {
+    const groupCard = document.createElement("article");
+    groupCard.className = "learning-test-group-card";
+
+    const groupHeader = document.createElement("div");
+    groupHeader.className = "learning-test-group-header";
+
+    const groupTitleWrap = document.createElement("label");
+    groupTitleWrap.className = "field field-span-full";
+    const groupTitleLabel = document.createElement("span");
+    groupTitleLabel.textContent = `Grupa ${groupIndex + 1}`;
+    const groupTitleInput = document.createElement("input");
+    groupTitleInput.type = "text";
+    groupTitleInput.value = group.title || "";
+    groupTitleInput.placeholder = "Naziv grupe pitanja";
+    groupTitleInput.dataset.learningGroupIndex = String(groupIndex);
+    groupTitleInput.dataset.learningGroupField = "title";
+    groupTitleWrap.append(groupTitleLabel, groupTitleInput);
+
+    const groupActions = document.createElement("div");
+    groupActions.className = "learning-test-group-actions";
+    const addQuestionButton = createActionButton("+ Pitanje", "ghost-button", () => {
+      const nextGroups = [...learningTestQuestionGroupDrafts];
+      const targetGroup = nextGroups[groupIndex];
+      targetGroup.questions = [
+        ...(targetGroup.questions ?? []),
+        createEmptyLearningQuestionDraft({}, targetGroup.questions?.length ?? 0),
+      ];
+      learningTestQuestionGroupDrafts = nextGroups;
+      renderLearningQuestionGroupList();
+    });
+    const removeGroupButton = createActionButton("Ukloni grupu", "card-button card-danger", () => {
+      learningTestQuestionGroupDrafts = learningTestQuestionGroupDrafts.filter((_, index) => index !== groupIndex);
+      if (learningTestQuestionGroupDrafts.length === 0) {
+        learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
+      }
+      renderLearningQuestionGroupList();
+    });
+    groupActions.append(addQuestionButton, removeGroupButton);
+    groupHeader.append(groupTitleWrap, groupActions);
+
+    const questionList = document.createElement("div");
+    questionList.className = "learning-test-question-stack";
+
+    (group.questions ?? []).forEach((question, questionIndex) => {
+      const questionCard = document.createElement("div");
+      questionCard.className = "learning-test-question-card";
+
+      const promptField = document.createElement("label");
+      promptField.className = "field field-span-full";
+      const promptLabel = document.createElement("span");
+      promptLabel.textContent = `Pitanje ${questionIndex + 1}`;
+      const promptInput = document.createElement("textarea");
+      promptInput.rows = 2;
+      promptInput.value = question.prompt || "";
+      promptInput.placeholder = "Upiši pitanje";
+      promptInput.dataset.learningGroupIndex = String(groupIndex);
+      promptInput.dataset.learningQuestionIndex = String(questionIndex);
+      promptInput.dataset.learningQuestionField = "prompt";
+      promptField.append(promptLabel, promptInput);
+
+      const answersGrid = document.createElement("div");
+      answersGrid.className = "learning-test-answer-grid";
+
+      ["A", "B", "C", "D"].forEach((letter) => {
+        const optionField = document.createElement("label");
+        optionField.className = "field";
+        const optionLabel = document.createElement("span");
+        optionLabel.textContent = `Odgovor ${letter}`;
+        const optionInput = document.createElement("input");
+        optionInput.type = "text";
+        optionInput.value = question[`option${letter}`] || "";
+        optionInput.placeholder = `Tekst odgovora ${letter}`;
+        optionInput.dataset.learningGroupIndex = String(groupIndex);
+        optionInput.dataset.learningQuestionIndex = String(questionIndex);
+        optionInput.dataset.learningQuestionField = `option${letter}`;
+        optionField.append(optionLabel, optionInput);
+        answersGrid.append(optionField);
+      });
+
+      const footer = document.createElement("div");
+      footer.className = "learning-test-question-footer";
+
+      const correctField = document.createElement("label");
+      correctField.className = "field";
+      const correctLabel = document.createElement("span");
+      correctLabel.textContent = "Točan odgovor";
+      const correctSelect = document.createElement("select");
+      replaceSelectOptions(correctSelect, [
+        { value: "A", label: "A" },
+        { value: "B", label: "B" },
+        { value: "C", label: "C" },
+        { value: "D", label: "D" },
+      ], question.correctOptionKey || "A");
+      correctSelect.dataset.learningGroupIndex = String(groupIndex);
+      correctSelect.dataset.learningQuestionIndex = String(questionIndex);
+      correctSelect.dataset.learningQuestionField = "correctOptionKey";
+      correctField.append(correctLabel, correctSelect);
+
+      const removeQuestionButton = createActionButton("Ukloni pitanje", "card-button card-danger", () => {
+        const nextGroups = [...learningTestQuestionGroupDrafts];
+        nextGroups[groupIndex].questions = (nextGroups[groupIndex].questions ?? []).filter((_, index) => index !== questionIndex);
+        if (nextGroups[groupIndex].questions.length === 0) {
+          nextGroups[groupIndex].questions = [createEmptyLearningQuestionDraft({}, 0)];
+        }
+        learningTestQuestionGroupDrafts = nextGroups;
+        renderLearningQuestionGroupList();
+      });
+
+      footer.append(correctField, removeQuestionButton);
+      questionCard.append(promptField, answersGrid, footer);
+      questionList.append(questionCard);
+    });
+
+    groupCard.append(groupHeader, questionList);
+    return groupCard;
+  }));
+}
+
+function renderLearningTestsModule() {
+  if (!learningTestsModule || !learningTestsList || !learningTestsEmpty) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const filters = {
+    query: learningTestsSearchInput?.value?.trim() || state.learningTestsFilters.query || "",
+    status: learningTestsFilterStatusInput?.value || state.learningTestsFilters.status || "all",
+  };
+  state.learningTestsFilters = filters;
+
+  const allItems = sortLearningTests(state.learningTests ?? []);
+  const visibleItems = sortLearningTests(filterLearningTests(state.learningTests ?? [], filters));
+
+  if (learningTestOpenFormButton) {
+    learningTestOpenFormButton.hidden = !canManageMasterData;
+  }
+  if (learningTestsTotalCount) {
+    learningTestsTotalCount.textContent = String(allItems.length);
+  }
+  if (learningTestsActiveCount) {
+    learningTestsActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
+  }
+  if (learningTestsAssignmentCount) {
+    learningTestsAssignmentCount.textContent = String(allItems.reduce((total, item) => {
+      const groupCount = new Set((item.questionItems ?? []).map((question) => String(question.groupLabel || "").trim()).filter(Boolean)).size;
+      return total + groupCount;
+    }, 0));
+  }
+  if (learningTestsCompletedCount) {
+    learningTestsCompletedCount.textContent = String(allItems.reduce((total, item) => total + (item.questionItems?.length ?? 0), 0));
+  }
+  if (learningTestsHelper) {
+    learningTestsHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} testova.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} testova.`;
+  }
+
+  learningTestsList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = "learning-test-card";
+    if (String(item.id) === String(learningTestIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+    if (canManageMasterData) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
+
+    const head = document.createElement("div");
+    head.className = "learning-test-card-head";
+    const copy = document.createElement("div");
+    copy.className = "learning-test-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Bez naziva";
+    const meta = document.createElement("p");
+    meta.className = "learning-test-card-meta";
+    const groupCount = new Set((item.questionItems ?? []).map((question) => question.groupLabel).filter(Boolean)).size;
+    meta.textContent = [
+      `${groupCount} ${groupCount === 1 ? "grupa" : "grupa"}`,
+      `${item.questionItems?.length ?? 0} pitanja`,
+    ].join(" · ");
+    copy.append(title, meta);
+
+    const badges = document.createElement("div");
+    badges.className = "learning-test-card-badges";
+    badges.append(createBadge(
+      LEARNING_TEST_STATUS_OPTIONS.find((option) => option.value === item.status)?.label || item.status || "Skica",
+      item.status === "active" ? "document-template-status-badge is-active" : "document-template-status-badge is-draft",
+    ));
+    head.append(copy, badges);
+
+    const description = document.createElement("p");
+    description.className = "learning-test-card-description";
+    description.textContent = item.description || "Bez dodatnog opisa.";
+
+    const openItem = () => {
+      if (!canManageMasterData) {
+        return;
+      }
+      hydrateLearningTestForm(item);
+    };
+
+    if (canManageMasterData) {
+      card.addEventListener("click", openItem);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openItem();
+      });
+    }
+
+    card.append(head, description);
+    return card;
+  }));
+
+  learningTestsEmpty.hidden = visibleItems.length !== 0;
+  if (visibleItems.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = canManageMasterData
+      ? "Nema testova za odabrane filtere. Dodaj prvi test i složi grupe pitanja."
+      : "Nema testova za prikaz u odabranoj organizaciji.";
+    learningTestsList.replaceChildren(empty);
+  }
+}
+
+function renderLearningPeopleModule() {
+  if (!learningPeopleModule || !learningPeopleList || !learningPeopleEmpty) {
+    return;
+  }
+
+  const rows = (state.learningTests ?? []).flatMap((test) => (
+    (test.assignmentItems ?? []).map((assignment) => ({
+      testTitle: test.title || "Bez naziva testa",
+      userLabel: assignment.userLabel || assignment.email || "Nepoznat korisnik",
+      status: assignment.status || "pending",
+      scorePercent: assignment.scorePercent ?? 0,
+    }))
+  ));
+
+  learningPeopleList.replaceChildren(...rows.map((entry) => {
+    const card = document.createElement("article");
+    card.className = "learning-person-card";
+    const title = document.createElement("strong");
+    title.textContent = entry.userLabel;
+    const meta = document.createElement("span");
+    meta.textContent = `${entry.testTitle} · ${entry.status} · ${entry.scorePercent}%`;
+    card.append(title, meta);
+    return card;
+  }));
+
+  learningPeopleEmpty.hidden = rows.length !== 0;
+  if (rows.length === 0) {
+    learningPeopleList.replaceChildren();
+  }
+}
+
 function toggleDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0) {
   setDocumentTemplateRuntimeBlockCollapsed(
     block,
@@ -20945,7 +21485,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
         renderDocumentTemplatePreviewContent();
       });
       const copy = document.createElement("span");
-      copy.textContent = field.type === "toggle" ? "Označeno" : "Potvrđeno";
+      copy.textContent = getDocumentTemplateBooleanDisplayValue(field, checkbox.checked);
+      checkbox.addEventListener("change", () => {
+        copy.textContent = getDocumentTemplateBooleanDisplayValue(field, checkbox.checked);
+      });
       toggleWrap.append(checkbox, copy);
       control = toggleWrap;
     } else {
@@ -28632,6 +29175,15 @@ function renderSharedOptions() {
   }
   if (legalFrameworkStatusInput) {
     replaceSelectOptions(legalFrameworkStatusInput, LEGAL_FRAMEWORK_STATUS_OPTIONS, legalFrameworkStatusInput.value || "active");
+  }
+  if (learningTestStatusInput) {
+    replaceSelectOptions(learningTestStatusInput, LEARNING_TEST_STATUS_OPTIONS, learningTestStatusInput.value || "draft");
+  }
+  if (learningTestsFilterStatusInput) {
+    replaceSelectOptions(learningTestsFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...LEARNING_TEST_STATUS_OPTIONS,
+    ], state.learningTestsFilters.status || "all");
   }
   if (legalFrameworkFilterStatusInput) {
     replaceSelectOptions(legalFrameworkFilterStatusInput, [
@@ -38265,6 +38817,132 @@ legalFrameworkForm?.addEventListener("submit", (event) => {
     if (success) {
       closeLegalFrameworkEditor({ reset: true });
       renderLegalFrameworkModule();
+    }
+  });
+});
+
+learningTestsSearchInput?.addEventListener("input", () => {
+  state.learningTestsFilters.query = learningTestsSearchInput.value.trim();
+  renderLearningTestsModule();
+});
+
+learningTestsFilterStatusInput?.addEventListener("change", () => {
+  state.learningTestsFilters.status = learningTestsFilterStatusInput.value || "all";
+  renderLearningTestsModule();
+});
+
+learningTestOpenFormButton?.addEventListener("click", () => {
+  resetLearningTestForm();
+  renderLearningTestsModule();
+  openLearningTestEditor();
+  requestAnimationFrame(() => {
+    learningTestTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+learningTestEditorCloseButton?.addEventListener("click", () => {
+  dismissLearningTestEditor();
+});
+
+learningTestEditorBackdrop?.addEventListener("click", () => {
+  dismissLearningTestEditor();
+});
+
+learningTestResetButton?.addEventListener("click", () => {
+  resetLearningTestForm();
+  renderLearningTestsModule();
+  openLearningTestEditor();
+});
+
+learningTestDeleteButton?.addEventListener("click", () => {
+  const learningTestId = learningTestIdInput?.value || "";
+
+  if (!learningTestId || !window.confirm("Obrisati ovaj test?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/learning-tests/${learningTestId}`, {
+    method: "DELETE",
+  }), learningTestError).then((success) => {
+    if (success) {
+      closeLearningTestEditor({ reset: true });
+      renderLearningTestsModule();
+    }
+  });
+});
+
+learningTestAddGroupButton?.addEventListener("click", () => {
+  learningTestQuestionGroupDrafts = [
+    ...learningTestQuestionGroupDrafts,
+    createEmptyLearningQuestionGroupDraft({}, learningTestQuestionGroupDrafts.length),
+  ];
+  renderLearningQuestionGroupList();
+});
+
+learningTestQuestionList?.addEventListener("input", (event) => {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  const groupIndex = Number.parseInt(target.dataset.learningGroupIndex || "-1", 10);
+  if (!Number.isFinite(groupIndex) || groupIndex < 0 || !learningTestQuestionGroupDrafts[groupIndex]) {
+    return;
+  }
+
+  const groupField = target.dataset.learningGroupField || "";
+  if (groupField === "title") {
+    learningTestQuestionGroupDrafts[groupIndex].title = target.value;
+    return;
+  }
+
+  const questionIndex = Number.parseInt(target.dataset.learningQuestionIndex || "-1", 10);
+  const questionField = target.dataset.learningQuestionField || "";
+  if (!Number.isFinite(questionIndex) || questionIndex < 0 || !learningTestQuestionGroupDrafts[groupIndex].questions?.[questionIndex]) {
+    return;
+  }
+
+  learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex][questionField] = target.value;
+});
+
+learningTestQuestionList?.addEventListener("change", (event) => {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const groupIndex = Number.parseInt(target.dataset.learningGroupIndex || "-1", 10);
+  const questionIndex = Number.parseInt(target.dataset.learningQuestionIndex || "-1", 10);
+  const questionField = target.dataset.learningQuestionField || "";
+  if (!Number.isFinite(groupIndex) || groupIndex < 0 || !Number.isFinite(questionIndex) || questionIndex < 0) {
+    return;
+  }
+  if (!learningTestQuestionGroupDrafts[groupIndex]?.questions?.[questionIndex]) {
+    return;
+  }
+
+  learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex][questionField] = target.value;
+});
+
+learningTestForm?.addEventListener("input", () => {
+  syncLearningTestEditorChrome();
+});
+
+learningTestForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(learningTestIdInput?.value);
+  const path = isEditing ? `/learning-tests/${learningTestIdInput.value}` : "/learning-tests";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildLearningTestPayload(),
+  }), learningTestError).then((success) => {
+    if (success) {
+      closeLearningTestEditor({ reset: true });
+      renderLearningTestsModule();
+      renderLearningPeopleModule();
     }
   });
 });

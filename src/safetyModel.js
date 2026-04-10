@@ -118,6 +118,12 @@ export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
   { value: "9", label: "9 polja" },
 ];
 
+export const LEARNING_TEST_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "active", label: "Aktivan" },
+  { value: "archived", label: "Arhiviran" },
+];
+
 const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
   "chapter",
   "longtext",
@@ -697,6 +703,84 @@ function normalizeMeasurementSheetCellFormatSnapshot(format = {}) {
   });
 }
 
+function normalizeLearningTestStatus(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return LEARNING_TEST_STATUS_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : "draft";
+}
+
+function normalizeLearningTestOptionItems(items = []) {
+  const source = Array.isArray(items) ? items : [];
+  return source.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    text: normalizeText(item?.text || item?.label || `Opcija ${index + 1}`),
+    isCorrect: normalizeBoolean(item?.isCorrect, false),
+  })).filter((item) => item.text);
+}
+
+function normalizeLearningQuestionItems(items = []) {
+  const source = Array.isArray(items) ? items : [];
+  return source.map((item, index) => {
+    const options = normalizeLearningTestOptionItems(item?.options ?? []);
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      code: normalizeText(item?.code || `P${index + 1}`),
+      groupLabel: normalizeText(item?.groupLabel || item?.group || item?.category || "Opća grupa"),
+      prompt: normalizeText(item?.prompt || item?.question || item?.title),
+      explanation: normalizeText(item?.explanation),
+      imageDocument: normalizeAttachmentDocuments(item?.imageDocument ? [item.imageDocument] : [])[0] ?? null,
+      options,
+    };
+  }).filter((item) => item.prompt && item.options.length > 0);
+}
+
+function normalizeLearningVideoItems(items = []) {
+  const source = Array.isArray(items) ? items : [];
+  return source.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    title: normalizeText(item?.title || `Video ${index + 1}`),
+    url: normalizeText(item?.url),
+    description: normalizeText(item?.description),
+  })).filter((item) => item.title || item.url);
+}
+
+function normalizeLearningAssignmentItems(items = [], users = []) {
+  const source = Array.isArray(items) ? items : [];
+  const userIndex = new Map((users ?? []).map((user) => [String(user.id), user]));
+  return source.map((item) => {
+    const userId = normalizeId(item?.userId);
+    const user = userIndex.get(String(userId));
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      userId,
+      userLabel: normalizeText(item?.userLabel || user?.fullName || user?.email || user?.username),
+      email: normalizeText(item?.email || user?.email),
+      accessToken: normalizeText(item?.accessToken) || crypto.randomUUID(),
+      status: ["pending", "in_progress", "completed"].includes(normalizeText(item?.status).toLowerCase())
+        ? normalizeText(item?.status).toLowerCase()
+        : "pending",
+      assignedAt: normalizeOptionalDateTime(item?.assignedAt) ?? isoNow(),
+      startedAt: normalizeOptionalDateTime(item?.startedAt),
+      completedAt: normalizeOptionalDateTime(item?.completedAt),
+      scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
+    };
+  }).filter((item) => item.userId || item.email);
+}
+
+function normalizeLearningAttemptItems(items = []) {
+  const source = Array.isArray(items) ? items : [];
+  return source.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    assignmentId: normalizeId(item?.assignmentId),
+    userId: normalizeId(item?.userId),
+    userLabel: normalizeText(item?.userLabel),
+    answers: cloneJsonArray(item?.answers ?? []),
+    scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
+    submittedAt: normalizeOptionalDateTime(item?.submittedAt) ?? isoNow(),
+  })).filter((item) => item.assignmentId);
+}
+
 function normalizeMeasurementSheetValidationOptions(values = []) {
   return Array.from(new Set((Array.isArray(values) ? values : String(values ?? "")
     .split(/[\n,;|]/))
@@ -1168,6 +1252,8 @@ function normalizeDocumentTemplateFields(fields = []) {
       defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
+      toggleTrueLabel: normalizeText(field?.toggleTrueLabel).slice(0, 120),
+      toggleFalseLabel: normalizeText(field?.toggleFalseLabel).slice(0, 120),
       columns: type === "measurement_table"
         ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)
           ?? (columns.length > 0 ? columns.slice(0, 16) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]))
@@ -2719,6 +2805,95 @@ export function sortMeasurementEquipmentItems(items) {
       `${right.name} ${right.deviceCode ?? ""} ${right.serialNumber ?? ""} ${right.inventoryNumber}`,
       "hr",
     );
+  });
+}
+
+export function createLearningTest(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  return {
+    id: createId(),
+    organizationId,
+    title: requireText(input.title, "Naziv testa"),
+    status: normalizeLearningTestStatus(input.status),
+    description: normalizeText(input.description),
+    handbookDocuments: normalizeAttachmentDocuments(input.handbookDocuments),
+    videoItems: normalizeLearningVideoItems(input.videoItems),
+    questionItems: normalizeLearningQuestionItems(input.questionItems),
+    assignmentItems: normalizeLearningAssignmentItems(input.assignmentItems, state.users ?? []),
+    attemptItems: normalizeLearningAttemptItems(input.attemptItems),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateLearningTest(current, patch, state, now = isoNow) {
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : current.organizationId,
+    title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv testa") : current.title,
+    status: hasOwn(patch, "status") ? normalizeLearningTestStatus(patch.status) : current.status,
+    description: hasOwn(patch, "description") ? normalizeText(patch.description) : current.description,
+    handbookDocuments: hasOwn(patch, "handbookDocuments")
+      ? normalizeAttachmentDocuments(patch.handbookDocuments)
+      : normalizeAttachmentDocuments(current.handbookDocuments),
+    videoItems: hasOwn(patch, "videoItems")
+      ? normalizeLearningVideoItems(patch.videoItems)
+      : normalizeLearningVideoItems(current.videoItems),
+    questionItems: hasOwn(patch, "questionItems")
+      ? normalizeLearningQuestionItems(patch.questionItems)
+      : normalizeLearningQuestionItems(current.questionItems),
+    assignmentItems: hasOwn(patch, "assignmentItems")
+      ? normalizeLearningAssignmentItems(patch.assignmentItems, state.users ?? [])
+      : normalizeLearningAssignmentItems(current.assignmentItems, state.users ?? []),
+    attemptItems: hasOwn(patch, "attemptItems")
+      ? normalizeLearningAttemptItems(patch.attemptItems)
+      : normalizeLearningAttemptItems(current.attemptItems),
+    updatedAt: now(),
+  };
+}
+
+export function filterLearningTests(items, { query = "", status = "all" } = {}) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  return (items ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    const haystack = [
+      item.title,
+      item.description,
+      ...(item.videoItems ?? []).flatMap((video) => [video.title, video.url]),
+      ...(item.questionItems ?? []).flatMap((question) => [
+        question.groupLabel,
+        question.code,
+        question.prompt,
+        question.explanation,
+        ...(question.options ?? []).map((option) => option.text),
+      ]),
+      ...(item.assignmentItems ?? []).flatMap((assignment) => [assignment.userLabel, assignment.email]),
+    ].join(" ").toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortLearningTests(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftRank = LEARNING_TEST_STATUS_OPTIONS.findIndex((option) => option.value === left.status);
+    const rightRank = LEARNING_TEST_STATUS_OPTIONS.findIndex((option) => option.value === right.status);
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
   });
 }
 

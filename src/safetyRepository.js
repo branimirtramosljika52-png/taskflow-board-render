@@ -6,6 +6,7 @@ import {
   createCompany,
   createDashboardWidget,
   createDocumentTemplate,
+  createLearningTest,
   createLegalFramework,
   createLocation,
   createMeasurementEquipmentItem,
@@ -29,6 +30,7 @@ import {
   updateCompany,
   updateDashboardWidget,
   updateDocumentTemplate,
+  updateLearningTest,
   updateLegalFramework,
   updateLocation,
   updateMeasurementEquipmentItem,
@@ -253,6 +255,142 @@ function cloneJsonValue(value) {
   }
 
   return JSON.parse(JSON.stringify(value));
+}
+
+function cloneLearningTest(test = {}) {
+  return {
+    ...test,
+    handbookDocuments: cloneJsonValue(test.handbookDocuments ?? []),
+    videoItems: cloneJsonValue(test.videoItems ?? []),
+    questionItems: cloneJsonValue(test.questionItems ?? []),
+    assignmentItems: cloneJsonValue(test.assignmentItems ?? []),
+    attemptItems: cloneJsonValue(test.attemptItems ?? []),
+  };
+}
+
+function sanitizeLearningTestAccess(test = {}, assignment = {}) {
+  return {
+    test: {
+      id: String(test.id ?? ""),
+      title: String(test.title ?? ""),
+      description: String(test.description ?? ""),
+      handbookDocuments: cloneJsonValue(test.handbookDocuments ?? []),
+      videoItems: cloneJsonValue(test.videoItems ?? []),
+      questionItems: (test.questionItems ?? []).map((question) => ({
+        ...cloneJsonValue(question),
+        options: (question.options ?? []).map((option) => ({
+          id: String(option.id ?? ""),
+          text: String(option.text ?? ""),
+        })),
+      })),
+    },
+    assignment: {
+      id: String(assignment.id ?? ""),
+      userId: String(assignment.userId ?? ""),
+      userLabel: String(assignment.userLabel ?? ""),
+      email: String(assignment.email ?? ""),
+      status: String(assignment.status ?? "pending"),
+      assignedAt: normalizeTimestamp(assignment.assignedAt),
+      startedAt: normalizeTimestamp(assignment.startedAt),
+      completedAt: normalizeTimestamp(assignment.completedAt),
+      scorePercent: Number(assignment.scorePercent ?? 0) || 0,
+      accessToken: String(assignment.accessToken ?? ""),
+    },
+  };
+}
+
+function normalizeLearningAnswerSnapshot(answers = []) {
+  return (Array.isArray(answers) ? answers : []).map((answer) => ({
+    questionId: dbString(answer?.questionId),
+    optionId: dbString(answer?.optionId),
+  })).filter((answer) => answer.questionId);
+}
+
+function scoreLearningTestSubmission(test = {}, answers = []) {
+  const answerMap = new Map(
+    normalizeLearningAnswerSnapshot(answers)
+      .filter((answer) => answer.optionId)
+      .map((answer) => [String(answer.questionId), String(answer.optionId)]),
+  );
+  const questions = Array.isArray(test.questionItems) ? test.questionItems : [];
+  const totalQuestions = questions.length;
+
+  if (totalQuestions === 0) {
+    return {
+      answers: [],
+      scorePercent: 0,
+    };
+  }
+
+  let correctCount = 0;
+  const normalizedAnswers = questions.map((question) => {
+    const selectedOptionId = answerMap.get(String(question.id || "")) || "";
+    const correctOption = (question.options ?? []).find((option) => option.isCorrect);
+    const isCorrect = Boolean(correctOption?.id) && String(correctOption.id) === selectedOptionId;
+    if (isCorrect) {
+      correctCount += 1;
+    }
+    return {
+      questionId: String(question.id ?? ""),
+      optionId: selectedOptionId,
+      isCorrect,
+    };
+  });
+
+  return {
+    answers: normalizedAnswers,
+    scorePercent: Math.round((correctCount / totalQuestions) * 100),
+  };
+}
+
+function buildLearningAssignmentAccessUrl(accessToken = "") {
+  const safeToken = dbString(accessToken);
+
+  if (!safeToken) {
+    return "";
+  }
+
+  const publicBase = dbString(process.env.PUBLIC_APP_URL) || dbString(process.env.APP_URL) || "";
+  if (!publicBase) {
+    return `/learning-test.html?token=${encodeURIComponent(safeToken)}`;
+  }
+
+  return `${publicBase.replace(/\/$/, "")}/learning-test.html?token=${encodeURIComponent(safeToken)}`;
+}
+
+async function prepareStoredLearningTestAssets(test = {}, currentTest = null) {
+  const organizationId = dbString(test.organizationId) || dbString(currentTest?.organizationId) || "shared";
+  const preparedHandbook = await prepareStoredAttachmentDocuments(test.handbookDocuments, {
+    keyPrefix: `learning-tests/${organizationId}/handbook`,
+    currentDocuments: currentTest?.handbookDocuments ?? [],
+  });
+  const staleDocuments = [...(preparedHandbook.staleDocuments ?? [])];
+  const currentQuestionMap = new Map(
+    (currentTest?.questionItems ?? []).map((question) => [String(question.id ?? ""), question]),
+  );
+  const preparedQuestions = [];
+
+  for (const question of Array.isArray(test.questionItems) ? test.questionItems : []) {
+    const currentQuestion = currentQuestionMap.get(String(question.id ?? "")) ?? null;
+    const preparedImage = await prepareStoredAttachmentDocuments(
+      question?.imageDocument ? [question.imageDocument] : [],
+      {
+        keyPrefix: `learning-tests/${organizationId}/question-images`,
+        currentDocuments: currentQuestion?.imageDocument ? [currentQuestion.imageDocument] : [],
+      },
+    );
+    staleDocuments.push(...(preparedImage.staleDocuments ?? []));
+    preparedQuestions.push({
+      ...question,
+      imageDocument: preparedImage.nextDocuments[0] ?? null,
+    });
+  }
+
+  return {
+    handbookDocuments: preparedHandbook.nextDocuments ?? [],
+    questionItems: preparedQuestions,
+    staleDocuments,
+  };
 }
 
 function normalizeDocumentRecordFieldValues(value = {}) {
@@ -1782,6 +1920,7 @@ async function fetchSnapshotFromConnection(connection) {
       wordLabel: dbString(field.wordLabel),
       type: dbString(field.type) || "text",
       layoutWidth: dbString(field.layoutWidth),
+      fieldHeight: Number(field.fieldHeight ?? 0) || 0,
       source: dbString(field.source ?? field.bindingSource),
       sourceTable: dbString(field.sourceTable),
       lookupColumn: dbString(field.lookupColumn),
@@ -1795,6 +1934,8 @@ async function fetchSnapshotFromConnection(connection) {
       signatureIncludeScan: field.signatureIncludeScan === undefined ? undefined : Boolean(field.signatureIncludeScan),
       defaultValue: dbString(field.defaultValue),
       helpText: dbString(field.helpText),
+      toggleTrueLabel: dbString(field.toggleTrueLabel),
+      toggleFalseLabel: dbString(field.toggleFalseLabel),
       columns: parseJsonArray(field.columns).map((entry) => dbString(entry)).filter(Boolean),
       rowCount: Number(field.rowCount ?? 0) || 0,
       sheet: normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet),
@@ -1839,6 +1980,40 @@ async function fetchSnapshotFromConnection(connection) {
     })(),
     createdByUserId: dbString(row.created_by_user_id),
     createdByLabel: row.created_by_label ?? "",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
+  const [learningTestRows] = await connection.query(`
+    SELECT id, organization_id, title, status, description,
+           handbook_documents_json, video_items_json, question_items_json,
+           assignment_items_json, attempt_items_json, created_at, updated_at
+    FROM web_learning_tests
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'draft' THEN 1
+        WHEN 'archived' THEN 2
+        ELSE 9
+      END ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const learningTests = learningTestRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: dbString(row.title),
+    status: dbString(row.status) || "draft",
+    description: dbString(row.description),
+    handbookDocuments: parseJsonArray(row.handbook_documents_json).map((document) => mapStoredAttachmentDocument(document)),
+    videoItems: parseJsonArray(row.video_items_json),
+    questionItems: parseJsonArray(row.question_items_json).map((question) => ({
+      ...question,
+      imageDocument: question?.imageDocument ? mapStoredAttachmentDocument(question.imageDocument) : null,
+    })),
+    assignmentItems: parseJsonArray(row.assignment_items_json),
+    attemptItems: parseJsonArray(row.attempt_items_json),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
@@ -1991,6 +2166,7 @@ async function fetchSnapshotFromConnection(connection) {
     vehicles,
     legalFrameworks,
     documentTemplates,
+    learningTests,
     serviceCatalog,
     measurementEquipment,
     safetyAuthorizations,
@@ -2076,6 +2252,7 @@ export class InMemorySafetyRepository {
       legalFrameworks: [],
       documentTemplates: [],
       documentRecords: [],
+      learningTests: [],
       serviceCatalog: [],
       measurementEquipment: [],
       safetyAuthorizations: [],
@@ -2204,6 +2381,7 @@ export class InMemorySafetyRepository {
           ? { ...item.referenceDocument }
           : null,
       })),
+      learningTests: this.snapshot.learningTests.map((item) => cloneLearningTest(item)),
       serviceCatalog: this.snapshot.serviceCatalog.map((item) => ({
         ...item,
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
@@ -2790,6 +2968,143 @@ export class InMemorySafetyRepository {
     return this.snapshot.serviceCatalog.length !== before;
   }
 
+  async createLearningTestItem(input) {
+    const item = createLearningTest(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.learningTests = [item, ...(this.snapshot.learningTests ?? [])];
+    return cloneLearningTest(item);
+  }
+
+  async updateLearningTestItem(id, patch) {
+    const current = (this.snapshot.learningTests ?? []).find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateLearningTest(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.learningTests = (this.snapshot.learningTests ?? []).map((item) => (item.id === id ? next : item));
+    return cloneLearningTest(next);
+  }
+
+  async deleteLearningTestItem(id) {
+    const before = this.snapshot.learningTests.length;
+    this.snapshot.learningTests = this.snapshot.learningTests.filter((item) => item.id !== id);
+    return this.snapshot.learningTests.length !== before;
+  }
+
+  async getLearningAccessByToken(token) {
+    const safeToken = dbString(token);
+
+    if (!safeToken) {
+      return null;
+    }
+
+    for (const test of this.snapshot.learningTests ?? []) {
+      const assignment = (test.assignmentItems ?? []).find((item) => String(item.accessToken ?? "") === safeToken);
+
+      if (assignment) {
+        return sanitizeLearningTestAccess(test, {
+          ...assignment,
+          accessUrl: buildLearningAssignmentAccessUrl(assignment.accessToken),
+        });
+      }
+    }
+
+    return null;
+  }
+
+  async startLearningTestAccess(token) {
+    const safeToken = dbString(token);
+    const timestamp = new Date().toISOString();
+
+    let result = null;
+    this.snapshot.learningTests = (this.snapshot.learningTests ?? []).map((test) => {
+      const assignmentItems = (test.assignmentItems ?? []).map((assignment) => {
+        if (String(assignment.accessToken ?? "") !== safeToken) {
+          return assignment;
+        }
+
+        const nextAssignment = {
+          ...assignment,
+          status: assignment.status === "completed" ? "completed" : "in_progress",
+          startedAt: assignment.startedAt || timestamp,
+        };
+        result = sanitizeLearningTestAccess(test, {
+          ...nextAssignment,
+          accessUrl: buildLearningAssignmentAccessUrl(nextAssignment.accessToken),
+        });
+        return nextAssignment;
+      });
+
+      return result
+        ? {
+          ...test,
+          assignmentItems,
+          updatedAt: timestamp,
+        }
+        : test;
+    });
+
+    return result;
+  }
+
+  async submitLearningTestAccess(token, answers = []) {
+    const safeToken = dbString(token);
+    const timestamp = new Date().toISOString();
+    let result = null;
+
+    this.snapshot.learningTests = (this.snapshot.learningTests ?? []).map((test) => {
+      const assignment = (test.assignmentItems ?? []).find((item) => String(item.accessToken ?? "") === safeToken);
+      if (!assignment) {
+        return test;
+      }
+
+      const scoring = scoreLearningTestSubmission(test, answers);
+      const attempt = {
+        id: crypto.randomUUID(),
+        assignmentId: String(assignment.id ?? ""),
+        userId: String(assignment.userId ?? ""),
+        userLabel: String(assignment.userLabel ?? ""),
+        answers: scoring.answers,
+        scorePercent: scoring.scorePercent,
+        submittedAt: timestamp,
+      };
+
+      const assignmentItems = (test.assignmentItems ?? []).map((item) => (
+        String(item.id ?? "") === String(assignment.id ?? "")
+          ? {
+            ...item,
+            status: "completed",
+            startedAt: item.startedAt || timestamp,
+            completedAt: timestamp,
+            scorePercent: scoring.scorePercent,
+          }
+          : item
+      ));
+      const attemptItems = [...(test.attemptItems ?? []), attempt];
+      const updatedTest = {
+        ...test,
+        assignmentItems,
+        attemptItems,
+        updatedAt: timestamp,
+      };
+      const updatedAssignment = assignmentItems.find((item) => String(item.id ?? "") === String(assignment.id ?? ""));
+      result = {
+        ...sanitizeLearningTestAccess(updatedTest, {
+          ...updatedAssignment,
+          accessUrl: buildLearningAssignmentAccessUrl(updatedAssignment?.accessToken),
+        }),
+        submission: {
+          scorePercent: scoring.scorePercent,
+          submittedAt: timestamp,
+        },
+      };
+      return updatedTest;
+    });
+
+    return result;
+  }
+
   async createMeasurementEquipmentItem(input) {
     const item = createMeasurementEquipmentItem(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
     this.snapshot.measurementEquipment = [item, ...this.snapshot.measurementEquipment];
@@ -3324,6 +3639,24 @@ export class MySqlSafetyRepository {
         INDEX idx_web_document_templates_org_status (organization_id, status),
         INDEX idx_web_document_templates_company (sample_company_id),
         INDEX idx_web_document_templates_location (sample_location_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_learning_tests (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'draft',
+        description TEXT NULL,
+        handbook_documents_json LONGTEXT NULL,
+        video_items_json LONGTEXT NULL,
+        question_items_json LONGTEXT NULL,
+        assignment_items_json LONGTEXT NULL,
+        attempt_items_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_learning_tests_org_status (organization_id, status),
+        INDEX idx_web_learning_tests_updated (organization_id, updated_at)
       )
     `);
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
@@ -5814,6 +6147,281 @@ export class MySqlSafetyRepository {
       await connection.commit();
       await cleanupStoredObjects([currentReferenceDocument].filter(Boolean));
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createLearningTestItem(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createLearningTest(input, snapshot, () => "pending-learning-test", () => new Date().toISOString());
+      const preparedAssets = await prepareStoredLearningTestAssets(draft, null);
+      const storedTest = {
+        ...draft,
+        handbookDocuments: preparedAssets.handbookDocuments,
+        questionItems: preparedAssets.questionItems,
+      };
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_learning_tests
+            (organization_id, title, status, description, handbook_documents_json, video_items_json,
+             question_items_json, assignment_items_json, attempt_items_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(storedTest.organizationId),
+          storedTest.title,
+          storedTest.status,
+          storedTest.description,
+          JSON.stringify(storedTest.handbookDocuments ?? []),
+          JSON.stringify(storedTest.videoItems ?? []),
+          JSON.stringify(storedTest.questionItems ?? []),
+          JSON.stringify(storedTest.assignmentItems ?? []),
+          JSON.stringify(storedTest.attemptItems ?? []),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...storedTest,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateLearningTestItem(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.learningTests.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateLearningTest(current, patch, snapshot, () => new Date().toISOString());
+      const preparedAssets = await prepareStoredLearningTestAssets(next, current);
+      const storedTest = {
+        ...next,
+        handbookDocuments: preparedAssets.handbookDocuments,
+        questionItems: preparedAssets.questionItems,
+      };
+
+      await connection.query(
+        `
+          UPDATE web_learning_tests
+          SET organization_id = ?, title = ?, status = ?, description = ?,
+              handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
+              assignment_items_json = ?, attempt_items_json = ?
+          WHERE id = ?
+        `,
+        [
+          Number(storedTest.organizationId),
+          storedTest.title,
+          storedTest.status,
+          storedTest.description,
+          JSON.stringify(storedTest.handbookDocuments ?? []),
+          JSON.stringify(storedTest.videoItems ?? []),
+          JSON.stringify(storedTest.questionItems ?? []),
+          JSON.stringify(storedTest.assignmentItems ?? []),
+          JSON.stringify(storedTest.attemptItems ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(preparedAssets.staleDocuments ?? []);
+      return storedTest;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteLearningTestItem(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.learningTests.find((item) => item.id === id);
+      staleDocuments = [
+        ...(current?.handbookDocuments ?? []),
+        ...((current?.questionItems ?? []).map((question) => question?.imageDocument).filter(Boolean)),
+      ];
+      const [result] = await connection.query("DELETE FROM web_learning_tests WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getLearningAccessByToken(token) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const safeToken = dbString(token);
+      for (const test of snapshot.learningTests ?? []) {
+        const assignment = (test.assignmentItems ?? []).find((item) => String(item.accessToken ?? "") === safeToken);
+
+        if (assignment) {
+          return sanitizeLearningTestAccess(test, {
+            ...assignment,
+            accessUrl: buildLearningAssignmentAccessUrl(assignment.accessToken),
+          });
+        }
+      }
+      return null;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async startLearningTestAccess(token) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const safeToken = dbString(token);
+      const current = snapshot.learningTests.find((test) => (
+        (test.assignmentItems ?? []).some((item) => String(item.accessToken ?? "") === safeToken)
+      ));
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const timestamp = new Date().toISOString();
+      const assignmentItems = (current.assignmentItems ?? []).map((assignment) => (
+        String(assignment.accessToken ?? "") === safeToken
+          ? {
+            ...assignment,
+            status: assignment.status === "completed" ? "completed" : "in_progress",
+            startedAt: assignment.startedAt || timestamp,
+          }
+          : assignment
+      ));
+      await connection.query(
+        "UPDATE web_learning_tests SET assignment_items_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [JSON.stringify(assignmentItems), Number(current.id)],
+      );
+
+      await connection.commit();
+      const nextAssignment = assignmentItems.find((assignment) => String(assignment.accessToken ?? "") === safeToken);
+      return sanitizeLearningTestAccess({
+        ...current,
+        assignmentItems,
+        updatedAt: timestamp,
+      }, {
+        ...nextAssignment,
+        accessUrl: buildLearningAssignmentAccessUrl(nextAssignment?.accessToken),
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async submitLearningTestAccess(token, answers = []) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const safeToken = dbString(token);
+      const current = snapshot.learningTests.find((test) => (
+        (test.assignmentItems ?? []).some((item) => String(item.accessToken ?? "") === safeToken)
+      ));
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const currentAssignment = (current.assignmentItems ?? []).find((assignment) => String(assignment.accessToken ?? "") === safeToken);
+      const scoring = scoreLearningTestSubmission(current, answers);
+      const timestamp = new Date().toISOString();
+      const assignmentItems = (current.assignmentItems ?? []).map((assignment) => (
+        String(assignment.accessToken ?? "") === safeToken
+          ? {
+            ...assignment,
+            status: "completed",
+            startedAt: assignment.startedAt || timestamp,
+            completedAt: timestamp,
+            scorePercent: scoring.scorePercent,
+          }
+          : assignment
+      ));
+      const attemptItems = [
+        ...(current.attemptItems ?? []),
+        {
+          id: crypto.randomUUID(),
+          assignmentId: String(currentAssignment?.id ?? ""),
+          userId: String(currentAssignment?.userId ?? ""),
+          userLabel: String(currentAssignment?.userLabel ?? ""),
+          answers: scoring.answers,
+          scorePercent: scoring.scorePercent,
+          submittedAt: timestamp,
+        },
+      ];
+
+      await connection.query(
+        `
+          UPDATE web_learning_tests
+          SET assignment_items_json = ?, attempt_items_json = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [JSON.stringify(assignmentItems), JSON.stringify(attemptItems), Number(current.id)],
+      );
+
+      await connection.commit();
+      const nextAssignment = assignmentItems.find((assignment) => String(assignment.accessToken ?? "") === safeToken);
+      return {
+        ...sanitizeLearningTestAccess({
+          ...current,
+          assignmentItems,
+          attemptItems,
+          updatedAt: timestamp,
+        }, {
+          ...nextAssignment,
+          accessUrl: buildLearningAssignmentAccessUrl(nextAssignment?.accessToken),
+        }),
+        submission: {
+          scorePercent: scoring.scorePercent,
+          submittedAt: timestamp,
+        },
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
