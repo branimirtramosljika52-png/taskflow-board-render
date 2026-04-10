@@ -1437,6 +1437,8 @@ const learningTestIdInput = document.querySelector("#learning-test-id");
 const learningTestTitleInput = document.querySelector("#learning-test-title");
 const learningTestStatusInput = document.querySelector("#learning-test-status");
 const learningTestDescriptionInput = document.querySelector("#learning-test-description");
+const learningTestAddMaterialButton = document.querySelector("#learning-test-add-material");
+const learningTestMaterialList = document.querySelector("#learning-test-material-list");
 const learningTestStepGroupButton = document.querySelector("#learning-test-step-group");
 const learningTestStepQuestionsButton = document.querySelector("#learning-test-step-questions");
 const learningTestGroupStep = document.querySelector("#learning-test-group-step");
@@ -1444,10 +1446,19 @@ const learningTestQuestionsStep = document.querySelector("#learning-test-questio
 const learningTestNextStepButton = document.querySelector("#learning-test-next-step");
 const learningTestBackStepButton = document.querySelector("#learning-test-back-step");
 const learningTestAddQuestionButton = document.querySelector("#learning-test-add-question");
+const learningTestAddQuestionBottomButton = document.querySelector("#learning-test-add-question-bottom");
+const learningTestOpenPreviewGroupButton = document.querySelector("#learning-test-open-preview-group");
+const learningTestOpenPreviewQuestionsButton = document.querySelector("#learning-test-open-preview-questions");
+const learningTestOpenPreviewBottomButton = document.querySelector("#learning-test-open-preview-bottom");
 const learningTestQuestionList = document.querySelector("#learning-test-question-list");
 const learningTestError = document.querySelector("#learning-test-error");
 const learningTestResetButton = document.querySelector("#learning-test-reset");
 const learningTestDeleteButton = document.querySelector("#learning-test-delete");
+const learningTestPreviewBackdrop = document.querySelector("#learning-test-preview-backdrop");
+const learningTestPreviewPanel = document.querySelector("#learning-test-preview-panel");
+const learningTestPreviewCloseButton = document.querySelector("#learning-test-preview-close");
+const learningTestPreviewStage = document.querySelector("#learning-test-preview-stage");
+const learningTestPreviewTitle = document.querySelector("#learning-test-preview-title");
 const learningPeopleModule = document.querySelector("#learning-people-module");
 const learningPeopleList = document.querySelector("#learning-people-list");
 const learningPeopleEmpty = document.querySelector("#learning-people-empty");
@@ -1463,6 +1474,9 @@ let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
+let learningTestMaterialDrafts = [];
+let learningTestPreviewSlideIndex = 0;
+let learningTestPreviewOpen = false;
 let measurementEquipmentDocumentDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let userDocumentDrafts = [];
@@ -20720,12 +20734,69 @@ const LEARNING_QUESTION_TYPE_OPTIONS = [
   { value: "multiple_choice", label: "Višestruki odgovor" },
   { value: "ordered_text", label: "Pisanje brojeva ispred teksta" },
 ];
+const LEARNING_TEST_MATERIAL_MAX_SIZE_BYTES = 30 * 1024 * 1024;
+const LEARNING_TEST_MATERIAL_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.ppt,.pptx,.pps,.ppsx,.doc,.docx,.xls,.xlsx,.txt,.mp4,.webm,.mov,.m4v";
+const LEARNING_TEST_MATERIAL_ALLOWED_EXTENSIONS = new Set([
+  ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".tif", ".tiff", ".heic",
+  ".ppt", ".pptx", ".pps", ".ppsx", ".doc", ".docx", ".xls", ".xlsx", ".txt",
+  ".mp4", ".webm", ".mov", ".m4v",
+]);
+const LEARNING_TEST_MATERIAL_CATEGORY_OPTIONS = [
+  { value: "Materijal", label: "Materijal" },
+  { value: "PDF", label: "PDF" },
+  { value: "Slika", label: "Slika" },
+  { value: "Video", label: "Video" },
+  { value: "Prezentacija", label: "Prezentacija" },
+  { value: "Priručnik", label: "Priručnik" },
+];
+
+function getLearningQuestionTypeLabel(value = "") {
+  return LEARNING_QUESTION_TYPE_OPTIONS.find((option) => option.value === String(value || "").trim().toLowerCase())?.label
+    || "Jedan točan odgovor";
+}
 
 function normalizeLearningQuestionTypeClient(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   return LEARNING_QUESTION_TYPE_OPTIONS.some((option) => option.value === normalized)
     ? normalized
     : "single_choice";
+}
+
+function inferLearningTestMaterialCategory(fileName = "", fileType = "") {
+  const normalizedType = String(fileType || "").trim().toLowerCase();
+  const normalizedName = String(fileName || "").trim().toLowerCase();
+  if (normalizedType.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|tiff?|heic)$/i.test(normalizedName)) {
+    return "Slika";
+  }
+  if (normalizedType.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(normalizedName)) {
+    return "Video";
+  }
+  if (normalizedType.includes("pdf") || /\.pdf$/i.test(normalizedName)) {
+    return "PDF";
+  }
+  if (/\.(ppt|pptx|pps|ppsx)$/i.test(normalizedName)) {
+    return "Prezentacija";
+  }
+  if (/\.(doc|docx)$/i.test(normalizedName)) {
+    return "Priručnik";
+  }
+  return "Materijal";
+}
+
+function isLearningTestMaterialFileAllowed(file) {
+  if (!(file instanceof File)) {
+    return false;
+  }
+  const normalizedName = String(file.name || "").trim().toLowerCase();
+  return [...LEARNING_TEST_MATERIAL_ALLOWED_EXTENSIONS].some((extension) => normalizedName.endsWith(extension));
+}
+
+function createLearningTestMaterialDraft(document = {}) {
+  return createModuleAttachmentDraft({
+    ...document,
+    documentCategory: String(document.documentCategory || "").trim()
+      || inferLearningTestMaterialCategory(document.fileName, document.fileType),
+  });
 }
 
 function normalizeLearningQuestionCorrectKeysClient(values = [], fallbackValue = "A") {
@@ -20832,13 +20903,441 @@ function serializeLearningQuestionGroupDrafts() {
   ));
 }
 
+function setLearningTestMaterialDrafts(items = []) {
+  learningTestMaterialDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createLearningTestMaterialDraft(item))
+    .filter((item) => item.fileName && (item.dataUrl || item.storageUrl));
+}
+
+function updateLearningTestMaterialDraft(documentId, patch = {}) {
+  learningTestMaterialDrafts = learningTestMaterialDrafts.map((item) => (
+    item.id === documentId
+      ? {
+        ...item,
+        ...patch,
+      }
+      : item
+  ));
+}
+
+function getLearningTestMaterialPreviewUrl(entry = {}) {
+  return String(entry.storageUrl || entry.dataUrl || "").trim();
+}
+
+function getLearningTestMaterialPreviewKind(entry = {}) {
+  const fileType = String(entry.fileType || "").trim().toLowerCase();
+  const fileName = String(entry.fileName || "").trim().toLowerCase();
+  if (fileType.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|tiff?|heic)$/i.test(fileName)) {
+    return "image";
+  }
+  if (fileType.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(fileName)) {
+    return "video";
+  }
+  if (fileType.includes("pdf") || /\.pdf$/i.test(fileName)) {
+    return "pdf";
+  }
+  return "download";
+}
+
+async function queueLearningTestMaterials(files) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  if (uploadFiles.length === 0) {
+    return;
+  }
+
+  for (const file of uploadFiles) {
+    if (!isLearningTestMaterialFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podržan. Dozvoljeno: ${LEARNING_TEST_MATERIAL_ACCEPT_LABEL}`);
+    }
+    if (file.size > LEARNING_TEST_MATERIAL_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 30 MB.`);
+    }
+  }
+
+  const uploads = await Promise.all(uploadFiles.map(async (file) => createLearningTestMaterialDraft({
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  learningTestMaterialDrafts = [
+    ...learningTestMaterialDrafts,
+    ...uploads,
+  ];
+  renderLearningTestMaterialList();
+}
+
+function renderLearningTestMaterialList() {
+  if (!learningTestMaterialList) {
+    return;
+  }
+
+  if (learningTestMaterialDrafts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "learning-test-material-empty";
+    const strong = document.createElement("strong");
+    strong.textContent = "Dodaj materijale za polaznika";
+    const copy = document.createElement("p");
+    copy.textContent = "PDF, slike, prezentacije i video prikazat će se u live previewu kao slajdovi prije pitanja.";
+    empty.append(strong, copy);
+    learningTestMaterialList.replaceChildren(empty);
+    return;
+  }
+
+  learningTestMaterialList.replaceChildren(...learningTestMaterialDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row learning-test-material-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName;
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const categorySlot = document.createElement("div");
+    categorySlot.className = "module-attachment-middle";
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "module-attachment-category-select";
+    categorySelect.setAttribute("aria-label", "Vrsta materijala");
+    replaceSelectOptions(
+      categorySelect,
+      LEARNING_TEST_MATERIAL_CATEGORY_OPTIONS,
+      entry.documentCategory || inferLearningTestMaterialCategory(entry.fileName, entry.fileType),
+    );
+    categorySelect.addEventListener("change", () => {
+      updateLearningTestMaterialDraft(entry.id, {
+        documentCategory: categorySelect.value || inferLearningTestMaterialCategory(entry.fileName, entry.fileType),
+      });
+    });
+    categorySlot.append(categorySelect);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    const previewButton = createIconActionButton("Live preview", "preview", "", () => {
+      const slides = buildLearningTestPreviewSlides();
+      const slideIndex = slides.findIndex((slide) => (
+        slide.type === "material" && String(slide.document?.id || "") === String(entry.id)
+      ));
+      openLearningTestPreview(slideIndex >= 0 ? slideIndex : 0);
+    });
+    const removeButton = createIconActionButton("Makni materijal", "trash", "card-danger", () => {
+      learningTestMaterialDrafts = learningTestMaterialDrafts.filter((item) => item.id !== entry.id);
+      renderLearningTestMaterialList();
+    });
+    actions.append(previewButton, removeButton);
+
+    row.append(copy, categorySlot, actions);
+    return row;
+  }));
+
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
+}
+
+function buildLearningTestPreviewSlides() {
+  const slides = [];
+  const title = String(learningTestTitleInput?.value || "").trim() || "Nova grupa edukacije";
+  const description = String(learningTestDescriptionInput?.value || "").trim();
+
+  slides.push({
+    id: "intro",
+    type: "intro",
+    title,
+    description,
+  });
+
+  learningTestMaterialDrafts.forEach((entry, index) => {
+    slides.push({
+      id: String(entry.id || `material-${index + 1}`),
+      type: "material",
+      title: entry.fileName || `Materijal ${index + 1}`,
+      category: entry.documentCategory || inferLearningTestMaterialCategory(entry.fileName, entry.fileType),
+      description: entry.description || "",
+      previewKind: getLearningTestMaterialPreviewKind(entry),
+      previewUrl: getLearningTestMaterialPreviewUrl(entry),
+      fileType: entry.fileType || "",
+      fileSize: entry.fileSize || 0,
+      document: entry,
+    });
+  });
+
+  learningTestQuestionGroupDrafts.forEach((group, groupIndex) => {
+    (group.questions ?? []).forEach((question, questionIndex) => {
+      const questionType = normalizeLearningQuestionTypeClient(question.questionType);
+      const normalizedOptions = LEARNING_QUESTION_OPTION_KEYS.map((letter) => ({
+        key: letter,
+        text: String(question[`option${letter}`] || "").trim(),
+        orderIndex: String(question[`order${letter}`] || "").trim(),
+      })).filter((option) => option.text);
+      const prompt = String(question.prompt || "").trim();
+      if (!prompt && normalizedOptions.length === 0) {
+        return;
+      }
+      slides.push({
+        id: String(question.id || `question-${groupIndex + 1}-${questionIndex + 1}`),
+        type: "question",
+        title: `Pitanje ${questionIndex + 1}`,
+        groupTitle: String(group.title || `Grupa ${groupIndex + 1}`).trim() || `Grupa ${groupIndex + 1}`,
+        questionType,
+        questionTypeLabel: getLearningQuestionTypeLabel(questionType),
+        prompt,
+        imageDocument: question.imageDocument?.fileName ? question.imageDocument : null,
+        options: normalizedOptions,
+      });
+    });
+  });
+
+  return slides;
+}
+
+function syncLearningTestPreviewModal() {
+  const isOpen = Boolean(learningTestPreviewOpen);
+  if (learningTestPreviewPanel) {
+    learningTestPreviewPanel.hidden = !isOpen;
+    learningTestPreviewPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (learningTestPreviewBackdrop) {
+    learningTestPreviewBackdrop.hidden = !isOpen;
+  }
+  document.body.classList.toggle("is-learning-test-preview-open", isOpen);
+}
+
+function renderLearningTestPreview() {
+  if (!learningTestPreviewStage) {
+    return;
+  }
+
+  const slides = buildLearningTestPreviewSlides();
+  const safeIndex = Math.max(0, Math.min(learningTestPreviewSlideIndex, Math.max(0, slides.length - 1)));
+  learningTestPreviewSlideIndex = safeIndex;
+  const slide = slides[safeIndex] || slides[0] || {
+    type: "intro",
+    title: "Nova grupa edukacije",
+    description: "",
+  };
+
+  if (learningTestPreviewTitle) {
+    learningTestPreviewTitle.textContent = `${safeIndex + 1}/${slides.length || 1} · ${String(learningTestTitleInput?.value || "").trim() || "Preview edukacije"}`;
+  }
+
+  const frame = document.createElement("div");
+  frame.className = "learning-test-preview-frame";
+
+  const header = document.createElement("div");
+  header.className = "learning-test-preview-slide-head";
+
+  const headerCopy = document.createElement("div");
+  headerCopy.className = "learning-test-preview-slide-copy";
+  const kicker = document.createElement("span");
+  kicker.className = "learning-test-preview-slide-kicker";
+  kicker.textContent = slide.type === "question"
+    ? `${slide.groupTitle || "Pitanja"} · ${slide.questionTypeLabel || "Pitanje"}`
+    : (slide.type === "material" ? (slide.category || "Materijal") : "Pregled edukacije");
+  const title = document.createElement("h4");
+  title.textContent = slide.title || "Pregled";
+  headerCopy.append(kicker, title);
+  if (slide.description) {
+    const description = document.createElement("p");
+    description.textContent = slide.description;
+    headerCopy.append(description);
+  } else if (slide.prompt && slide.type === "question") {
+    const prompt = document.createElement("p");
+    prompt.textContent = slide.prompt;
+    headerCopy.append(prompt);
+  }
+
+  const position = document.createElement("span");
+  position.className = "learning-test-preview-position";
+  position.textContent = `${safeIndex + 1} / ${slides.length || 1}`;
+  header.append(headerCopy, position);
+
+  const stageBody = document.createElement("div");
+  stageBody.className = "learning-test-preview-slide-body";
+
+  if (slide.type === "intro") {
+    const introCard = document.createElement("article");
+    introCard.className = "learning-test-preview-slide-card is-intro";
+    const introTitle = document.createElement("h5");
+    introTitle.textContent = slide.title || "Grupa edukacije";
+    const introCopy = document.createElement("p");
+    introCopy.textContent = slide.description || "Materijali i pitanja prikazat će se polazniku kao niz slajdova prije završnog slanja testa.";
+    introCard.append(introTitle, introCopy);
+    if (learningTestMaterialDrafts.length > 0 || slides.some((item) => item.type === "question")) {
+      const stats = document.createElement("div");
+      stats.className = "learning-test-preview-stats";
+      [
+        `${learningTestMaterialDrafts.length} materijala`,
+        `${slides.filter((item) => item.type === "question").length} pitanja`,
+      ].forEach((label) => {
+        const badge = document.createElement("span");
+        badge.className = "document-template-status-badge";
+        badge.textContent = label;
+        stats.append(badge);
+      });
+      introCard.append(stats);
+    }
+    stageBody.append(introCard);
+  } else if (slide.type === "material") {
+    const materialCard = document.createElement("article");
+    materialCard.className = "learning-test-preview-slide-card is-material";
+    const previewKind = slide.previewKind;
+    const previewUrl = String(slide.previewUrl || "").trim();
+    if (previewUrl && previewKind === "image") {
+      const image = document.createElement("img");
+      image.className = "learning-test-preview-image";
+      image.src = previewUrl;
+      image.alt = slide.title || "Materijal";
+      materialCard.append(image);
+    } else if (previewUrl && previewKind === "video") {
+      const video = document.createElement("video");
+      video.className = "learning-test-preview-video";
+      video.src = previewUrl;
+      video.controls = true;
+      video.preload = "metadata";
+      materialCard.append(video);
+    } else if (previewUrl && previewKind === "pdf") {
+      const embed = document.createElement("iframe");
+      embed.className = "learning-test-preview-pdf";
+      embed.src = previewUrl;
+      embed.title = slide.title || "PDF materijal";
+      materialCard.append(embed);
+    } else {
+      const fallback = document.createElement("div");
+      fallback.className = "learning-test-preview-download";
+      const label = document.createElement("strong");
+      label.textContent = slide.title || "Materijal";
+      const copy = document.createElement("p");
+      copy.textContent = "Ovaj format će se polazniku ponuditi kao datoteka za pregled ili preuzimanje.";
+      const link = document.createElement("a");
+      link.className = "ghost-button";
+      link.href = previewUrl || "#";
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Otvori materijal";
+      fallback.append(label, copy);
+      if (previewUrl) {
+        fallback.append(link);
+      }
+      materialCard.append(fallback);
+    }
+    stageBody.append(materialCard);
+  } else if (slide.type === "question") {
+    const questionCard = document.createElement("article");
+    questionCard.className = "learning-test-preview-slide-card is-question";
+    const prompt = document.createElement("p");
+    prompt.className = "learning-test-preview-question-prompt";
+    prompt.textContent = slide.prompt || "Pitanje bez teksta";
+    questionCard.append(prompt);
+
+    if (slide.imageDocument?.fileName) {
+      const imagePreview = document.createElement("div");
+      imagePreview.className = "learning-test-preview-question-image";
+      const image = document.createElement("img");
+      image.src = String(slide.imageDocument.storageUrl || slide.imageDocument.dataUrl || "").trim();
+      image.alt = slide.imageDocument.fileName || "Slika pitanja";
+      imagePreview.append(image);
+      questionCard.append(imagePreview);
+    }
+
+    const list = document.createElement("div");
+    list.className = "learning-test-preview-answer-list";
+    (slide.options ?? []).forEach((option, optionIndex) => {
+      const item = document.createElement("div");
+      item.className = "learning-test-preview-answer";
+      const badge = document.createElement("span");
+      badge.className = "learning-test-preview-answer-key";
+      badge.textContent = slide.questionType === "ordered_text"
+        ? `${option.orderIndex || optionIndex + 1}.`
+        : option.key;
+      const text = document.createElement("span");
+      text.textContent = option.text || `Odgovor ${option.key}`;
+      item.append(badge, text);
+      list.append(item);
+    });
+    questionCard.append(list);
+    stageBody.append(questionCard);
+  }
+
+  const nav = document.createElement("div");
+  nav.className = "learning-test-preview-nav";
+  const prevButton = document.createElement("button");
+  prevButton.type = "button";
+  prevButton.className = "ghost-button";
+  prevButton.textContent = "Prethodni slajd";
+  prevButton.disabled = safeIndex <= 0;
+  prevButton.addEventListener("click", () => {
+    learningTestPreviewSlideIndex = Math.max(0, learningTestPreviewSlideIndex - 1);
+    renderLearningTestPreview();
+  });
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "primary-button";
+  nextButton.textContent = safeIndex >= slides.length - 1 ? "Zatvori preview" : "Sljedeći slajd";
+  nextButton.addEventListener("click", () => {
+    if (learningTestPreviewSlideIndex >= slides.length - 1) {
+      closeLearningTestPreview();
+      return;
+    }
+    learningTestPreviewSlideIndex = Math.min(slides.length - 1, learningTestPreviewSlideIndex + 1);
+    renderLearningTestPreview();
+  });
+  nav.append(prevButton, nextButton);
+
+  frame.append(header, stageBody, nav);
+  learningTestPreviewStage.replaceChildren(frame);
+}
+
+function closeLearningTestPreview() {
+  learningTestPreviewOpen = false;
+  syncLearningTestPreviewModal();
+}
+
+function openLearningTestPreview(startIndex = 0) {
+  learningTestPreviewSlideIndex = Math.max(0, Number(startIndex) || 0);
+  learningTestPreviewOpen = true;
+  syncLearningTestPreviewModal();
+  renderLearningTestPreview();
+}
+
+function addLearningTestQuestion({ scrollIntoView = false } = {}) {
+  const nextGroups = [...learningTestQuestionGroupDrafts];
+  const targetGroup = nextGroups[0] || createEmptyLearningQuestionGroupDraft({}, 0);
+  targetGroup.questions = [
+    ...(targetGroup.questions ?? []),
+    createEmptyLearningQuestionDraft({}, targetGroup.questions?.length ?? 0),
+  ];
+  nextGroups[0] = targetGroup;
+  learningTestQuestionGroupDrafts = nextGroups;
+  renderLearningQuestionGroupList();
+
+  if (scrollIntoView) {
+    requestAnimationFrame(() => {
+      const lastCard = learningTestQuestionList?.querySelector(".learning-test-question-card:last-of-type");
+      if (lastCard instanceof HTMLElement) {
+        lastCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  }
+}
+
 function buildLearningTestPayload() {
   return {
     organizationId: state.activeOrganizationId || "",
     title: learningTestTitleInput?.value || "",
     status: learningTestStatusInput?.value || "draft",
     description: learningTestDescriptionInput?.value || "",
-    handbookDocuments: [],
+    handbookDocuments: learningTestMaterialDrafts.map((item) => createModuleAttachmentDraft(item)),
     videoItems: [],
     questionItems: serializeLearningQuestionGroupDrafts(),
     assignmentItems: [],
@@ -20952,6 +21451,8 @@ function syncLearningTestEditorModal() {
       learningTestEditorBody?.scrollTo({ top: 0, behavior: "auto" });
       learningTestEditorBody?.focus({ preventScroll: true });
     });
+  } else {
+    closeLearningTestPreview();
   }
 }
 
@@ -20977,6 +21478,8 @@ function resetLearningTestForm() {
   learningTestForm?.reset();
   state.activeLearningTestId = "";
   learningTestEditorStep = "group";
+  learningTestPreviewSlideIndex = 0;
+  learningTestPreviewOpen = false;
   if (learningTestIdInput) {
     learningTestIdInput.value = "";
   }
@@ -20986,8 +21489,11 @@ function resetLearningTestForm() {
   if (learningTestError) {
     learningTestError.textContent = "";
   }
+  setLearningTestMaterialDrafts([]);
   learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
+  renderLearningTestMaterialList();
   renderLearningQuestionGroupList();
+  syncLearningTestPreviewModal();
   syncLearningTestEditorChrome();
   setLearningTestEditorStep("group");
 }
@@ -21013,11 +21519,14 @@ function hydrateLearningTestForm(item) {
   if (learningTestError) {
     learningTestError.textContent = "";
   }
+  setLearningTestMaterialDrafts(item.handbookDocuments ?? []);
   learningTestQuestionGroupDrafts = buildLearningQuestionGroupDraftsFromItems(item.questionItems ?? []);
   if (learningTestQuestionGroupDrafts.length === 0) {
     learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
   }
+  renderLearningTestMaterialList();
   renderLearningQuestionGroupList();
+  syncLearningTestPreviewModal();
   syncLearningTestEditorChrome();
   setLearningTestEditorStep("group");
   openLearningTestEditor();
@@ -21061,6 +21570,18 @@ function renderLearningQuestionGroupList() {
     questionCard.className = "learning-test-question-card";
 
     const questionType = normalizeLearningQuestionTypeClient(question.questionType);
+
+    const cardHeader = document.createElement("div");
+    cardHeader.className = "learning-test-question-card-head";
+    const cardHeaderCopy = document.createElement("div");
+    cardHeaderCopy.className = "learning-test-question-card-copy";
+    const cardTitle = document.createElement("strong");
+    cardTitle.textContent = `Pitanje ${questionIndex + 1}`;
+    const cardMeta = document.createElement("span");
+    cardMeta.textContent = getLearningQuestionTypeLabel(questionType);
+    cardHeaderCopy.append(cardTitle, cardMeta);
+    const cardBadge = createBadge(question.code || `P${questionIndex + 1}`, "document-template-status-badge");
+    cardHeader.append(cardHeaderCopy, cardBadge);
 
     const setupGrid = document.createElement("div");
     setupGrid.className = "learning-test-question-setup";
@@ -21285,11 +21806,15 @@ function renderLearningQuestionGroupList() {
     });
 
     footer.append(correctField, removeQuestionButton);
-    questionCard.append(setupGrid, mediaRow, answersGrid, footer);
+    questionCard.append(cardHeader, setupGrid, mediaRow, answersGrid, footer);
     questionList.append(questionCard);
   });
 
   learningTestQuestionList.replaceChildren(questionList);
+
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
 }
 
 function renderLearningTestsModule() {
@@ -39145,15 +39670,50 @@ learningTestBackStepButton?.addEventListener("click", () => {
 });
 
 learningTestAddQuestionButton?.addEventListener("click", () => {
-  const nextGroups = [...learningTestQuestionGroupDrafts];
-  const targetGroup = nextGroups[0] || createEmptyLearningQuestionGroupDraft({}, 0);
-  targetGroup.questions = [
-    ...(targetGroup.questions ?? []),
-    createEmptyLearningQuestionDraft({}, targetGroup.questions?.length ?? 0),
-  ];
-  nextGroups[0] = targetGroup;
-  learningTestQuestionGroupDrafts = nextGroups;
-  renderLearningQuestionGroupList();
+  addLearningTestQuestion({ scrollIntoView: true });
+});
+
+learningTestAddQuestionBottomButton?.addEventListener("click", () => {
+  addLearningTestQuestion({ scrollIntoView: true });
+});
+
+learningTestAddMaterialButton?.addEventListener("click", () => {
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = LEARNING_TEST_MATERIAL_ACCEPT_LABEL;
+  fileInput.multiple = true;
+  fileInput.addEventListener("change", () => {
+    const files = Array.from(fileInput.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    void queueLearningTestMaterials(files).catch((error) => {
+      if (learningTestError) {
+        learningTestError.textContent = error.message;
+      }
+    });
+  });
+  fileInput.click();
+});
+
+learningTestOpenPreviewGroupButton?.addEventListener("click", () => {
+  openLearningTestPreview(0);
+});
+
+learningTestOpenPreviewQuestionsButton?.addEventListener("click", () => {
+  openLearningTestPreview(Math.max(0, learningTestMaterialDrafts.length));
+});
+
+learningTestOpenPreviewBottomButton?.addEventListener("click", () => {
+  openLearningTestPreview(Math.max(0, learningTestMaterialDrafts.length));
+});
+
+learningTestPreviewCloseButton?.addEventListener("click", () => {
+  closeLearningTestPreview();
+});
+
+learningTestPreviewBackdrop?.addEventListener("click", () => {
+  closeLearningTestPreview();
 });
 
 learningTestQuestionList?.addEventListener("input", (event) => {
@@ -39184,6 +39744,9 @@ learningTestQuestionList?.addEventListener("input", (event) => {
   }
 
   learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex][questionField] = target.value;
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
 });
 
 learningTestQuestionList?.addEventListener("change", (event) => {
@@ -39215,6 +39778,9 @@ learningTestQuestionList?.addEventListener("change", (event) => {
     if (question.correctOptionKeys.length === 0) {
       question.correctOptionKeys = ["A"];
     }
+    if (learningTestPreviewOpen) {
+      renderLearningTestPreview();
+    }
     return;
   }
 
@@ -39236,14 +39802,29 @@ learningTestQuestionList?.addEventListener("change", (event) => {
   if (target instanceof HTMLSelectElement && questionField === "correctOptionKey") {
     question.correctOptionKey = target.value;
     question.correctOptionKeys = [target.value];
+    if (learningTestPreviewOpen) {
+      renderLearningTestPreview();
+    }
     return;
   }
 
   question[questionField] = target.value;
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
 });
 
 learningTestTitleInput?.addEventListener("input", () => {
   syncLearningTestEditorChrome();
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
+});
+
+learningTestDescriptionInput?.addEventListener("input", () => {
+  if (learningTestPreviewOpen) {
+    renderLearningTestPreview();
+  }
 });
 
 learningTestForm?.addEventListener("submit", (event) => {

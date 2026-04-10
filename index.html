@@ -3809,6 +3809,21 @@
                         </label>
                       </div>
 
+                      <section class="learning-test-materials-panel">
+                        <div class="section-heading offers-section-heading">
+                          <div>
+                            <p class="section-kicker">Slides</p>
+                            <h3>Materijali za polaznika</h3>
+                          </div>
+                          <div class="learning-tests-toolbar-actions">
+                            <button id="learning-test-add-material" type="button" class="ghost-button">+ Materijal</button>
+                            <button id="learning-test-open-preview-group" type="button" class="ghost-button">Live preview</button>
+                          </div>
+                        </div>
+                        <p class="helper-copy module-copy">Dodaj PDF, slike, video, prezentacije i ostale materijale koji će se polazniku prikazivati kao slajdovi prije pitanja.</p>
+                        <div id="learning-test-material-list" class="module-attachment-list"></div>
+                      </section>
+
                       <div class="form-actions learning-test-step-actions">
                         <button id="learning-test-next-step" type="button" class="primary-button">Dalje na pitanja</button>
                       </div>
@@ -3822,10 +3837,15 @@
                         </div>
                         <div class="learning-tests-toolbar-actions">
                           <button id="learning-test-add-question" type="button" class="ghost-button">+ Pitanje</button>
+                          <button id="learning-test-open-preview-questions" type="button" class="ghost-button">Live preview</button>
                         </div>
                       </div>
                       <p class="helper-copy module-copy">Dodaj pitanja i odredi točan odgovor medju A, B, C i D.</p>
                       <div id="learning-test-question-list" class="learning-test-question-list"></div>
+                      <div class="learning-test-bottom-actions">
+                        <button id="learning-test-add-question-bottom" type="button" class="primary-button">+ Dodaj novo pitanje</button>
+                        <button id="learning-test-open-preview-bottom" type="button" class="ghost-button">Live preview</button>
+                      </div>
 
                       <div class="form-actions learning-test-step-actions">
                         <button id="learning-test-back-step" type="button" class="ghost-button">Natrag na grupu</button>
@@ -3840,6 +3860,22 @@
                       <button id="learning-test-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
+                </div>
+              </section>
+
+              <div id="learning-test-preview-backdrop" class="learning-test-preview-backdrop" hidden></div>
+              <section id="learning-test-preview-panel" class="panel learning-test-preview-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Preview</p>
+                      <h3 id="learning-test-preview-title">Kako će polaznik vidjeti edukaciju</h3>
+                    </div>
+                    <button id="learning-test-preview-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+                <div class="learning-test-preview-body">
+                  <div id="learning-test-preview-stage" class="learning-test-preview-stage"></div>
                 </div>
               </section>
             </section>
