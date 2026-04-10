@@ -1033,6 +1033,33 @@ function deriveServiceTemplateSnapshot(state, templateIds = [], fallbackTitles =
   };
 }
 
+function deriveServiceLearningTestSnapshot(state, learningTestIds = [], fallbackTitles = []) {
+  const learningTestIdList = normalizeIdList(learningTestIds);
+  const learningTestsById = new Map(
+    (state.learningTests ?? []).map((item) => [String(item.id), item]),
+  );
+  const linkedLearningTestTitles = [];
+
+  learningTestIdList.forEach((testId) => {
+    const test = learningTestsById.get(String(testId));
+    if (test?.title) {
+      linkedLearningTestTitles.push(normalizeText(test.title));
+    }
+  });
+
+  if (linkedLearningTestTitles.length === 0 && Array.isArray(fallbackTitles)) {
+    fallbackTitles
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .forEach((value) => linkedLearningTestTitles.push(value));
+  }
+
+  return {
+    linkedLearningTestIds: learningTestIdList,
+    linkedLearningTestTitles: Array.from(new Set(linkedLearningTestTitles)),
+  };
+}
+
 function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const name = normalizeText(item.name);
   const serviceCode = normalizeText(item.serviceCode);
@@ -1045,6 +1072,10 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const linkedTemplateTitles = Array.isArray(item.linkedTemplateTitles)
     ? item.linkedTemplateTitles.map((value) => normalizeText(value)).filter(Boolean)
     : [];
+  const linkedLearningTestIds = normalizeIdList(item.linkedLearningTestIds);
+  const linkedLearningTestTitles = Array.isArray(item.linkedLearningTestTitles)
+    ? item.linkedLearningTestTitles.map((value) => normalizeText(value)).filter(Boolean)
+    : [];
 
   return {
     serviceId: normalizeId(item.serviceId || item.id),
@@ -1052,6 +1083,8 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
     serviceCode,
     linkedTemplateIds,
     linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+    linkedLearningTestIds,
+    linkedLearningTestTitles: Array.from(new Set(linkedLearningTestTitles)),
     isTraining: normalizeBoolean(item.isTraining, false),
     isCompleted: normalizeBoolean(item.isCompleted, false),
   };
@@ -1095,12 +1128,18 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       service?.linkedTemplateIds ?? entry?.linkedTemplateIds ?? current?.linkedTemplateIds ?? [],
       service?.linkedTemplateTitles ?? entry?.linkedTemplateTitles ?? current?.linkedTemplateTitles ?? [],
     );
+    const learningTestSnapshot = deriveServiceLearningTestSnapshot(
+      state,
+      service?.linkedLearningTestIds ?? entry?.linkedLearningTestIds ?? current?.linkedLearningTestIds ?? [],
+      service?.linkedLearningTestTitles ?? entry?.linkedLearningTestTitles ?? current?.linkedLearningTestTitles ?? [],
+    );
 
     const normalizedItem = {
       serviceId: serviceId || current?.serviceId || "",
       name: name || current?.name || "",
       serviceCode: serviceCode || current?.serviceCode || "",
       ...templateSnapshot,
+      ...learningTestSnapshot,
       isTraining: normalizeBoolean(
         service?.isTraining,
         normalizeBoolean(entry?.isTraining, normalizeBoolean(current?.isTraining, false)),
@@ -2459,6 +2498,10 @@ export function createServiceCatalogItem(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
   );
+  const normalizedLearningTestIds = deriveServiceLearningTestSnapshot(
+    state,
+    hasOwn(input, "linkedLearningTestIds") ? input.linkedLearningTestIds : [],
+  );
 
   if ((state.serviceCatalog ?? []).some((item) => (
     String(item.organizationId) === String(organizationId)
@@ -2476,6 +2519,8 @@ export function createServiceCatalogItem(
     isTraining: normalizeBoolean(input.isTraining, false),
     linkedTemplateIds: normalizedTemplateIds.linkedTemplateIds,
     linkedTemplateTitles: normalizedTemplateIds.linkedTemplateTitles,
+    linkedLearningTestIds: normalizedLearningTestIds.linkedLearningTestIds,
+    linkedLearningTestTitles: normalizedLearningTestIds.linkedLearningTestTitles,
     note: normalizeText(input.note),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -2492,6 +2537,9 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? deriveServiceTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
     : deriveServiceTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+  const learningTestSnapshot = hasOwn(patch, "linkedLearningTestIds")
+    ? deriveServiceLearningTestSnapshot(state, patch.linkedLearningTestIds, current.linkedLearningTestTitles)
+    : deriveServiceLearningTestSnapshot(state, current.linkedLearningTestIds, current.linkedLearningTestTitles);
 
   if ((state.serviceCatalog ?? []).some((item) => (
     String(item.id) !== String(current.id)
@@ -2510,6 +2558,8 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     isTraining: hasOwn(patch, "isTraining") ? normalizeBoolean(patch.isTraining, false) : normalizeBoolean(current.isTraining, false),
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+    linkedLearningTestIds: learningTestSnapshot.linkedLearningTestIds,
+    linkedLearningTestTitles: learningTestSnapshot.linkedLearningTestTitles,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     updatedAt: now(),
   };

@@ -1340,7 +1340,9 @@ const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
 const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
 const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
 const serviceCatalogIsTrainingInput = document.querySelector("#service-catalog-is-training");
+const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
+const serviceCatalogLearningTestList = document.querySelector("#service-catalog-learning-test-list");
 const serviceCatalogNoteInput = document.querySelector("#service-catalog-note");
 const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
@@ -2989,6 +2991,11 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
     : (service?.linkedTemplateIds ?? [])
       .map((templateId) => state.documentTemplates.find((item) => String(item.id) === String(templateId))?.title ?? "")
       .filter(Boolean);
+  const linkedLearningTestTitles = Array.isArray(service?.linkedLearningTestTitles) && service.linkedLearningTestTitles.length > 0
+    ? service.linkedLearningTestTitles
+    : (service?.linkedLearningTestIds ?? [])
+      .map((testId) => state.learningTests.find((item) => String(item.id) === String(testId))?.title ?? "")
+      .filter(Boolean);
 
   return {
     serviceId: String(service?.id ?? current?.serviceId ?? ""),
@@ -3000,6 +3007,12 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
         ? current.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
     linkedTemplateTitles: linkedTemplateTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
+    linkedLearningTestIds: Array.isArray(service?.linkedLearningTestIds)
+      ? service.linkedLearningTestIds.map((value) => String(value ?? "").trim()).filter(Boolean)
+      : Array.isArray(current?.linkedLearningTestIds)
+        ? current.linkedLearningTestIds.map((value) => String(value ?? "").trim()).filter(Boolean)
+        : [],
+    linkedLearningTestTitles: linkedLearningTestTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
     isTraining: Boolean(service?.isTraining ?? current?.isTraining),
     isCompleted: Boolean(current?.isCompleted),
   };
@@ -19786,12 +19799,19 @@ function buildServiceCatalogPayload() {
     status: serviceCatalogStatusInput?.value || "active",
     isTraining: Boolean(serviceCatalogIsTrainingInput?.checked),
     linkedTemplateIds: getServiceCatalogTemplateSelectionIds(),
+    linkedLearningTestIds: getServiceCatalogLearningTestSelectionIds(),
     note: serviceCatalogNoteInput?.value || "",
   };
 }
 
 function getServiceCatalogTemplateSelectionIds() {
   return Array.from(serviceCatalogTemplateList?.querySelectorAll('input[name="service-catalog-template-id"]:checked') ?? [])
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
+function getServiceCatalogLearningTestSelectionIds() {
+  return Array.from(serviceCatalogLearningTestList?.querySelectorAll('input[name="service-catalog-learning-test-id"]:checked') ?? [])
     .map((input) => String(input.value || "").trim())
     .filter(Boolean);
 }
@@ -19843,6 +19863,59 @@ function renderServiceCatalogTemplateChecklist(selectedIds = []) {
   }));
 }
 
+function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
+  if (!serviceCatalogLearningTestList) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const selectedSet = new Set(selectedIds.map((value) => String(value)));
+  const tests = sortLearningTests(state.learningTests ?? []);
+
+  if (tests.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Prvo pripremi grupe edukacije u Learning > Testovi pa ih ovdje poveži s uslugom osposobljavanja.";
+    serviceCatalogLearningTestList.replaceChildren(empty);
+    return;
+  }
+
+  serviceCatalogLearningTestList.replaceChildren(...tests.map((test) => {
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "service-catalog-learning-test-id";
+    checkbox.value = test.id;
+    checkbox.checked = selectedSet.has(String(test.id));
+    checkbox.disabled = !canManageMasterData;
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = test.title || "Grupa edukacije";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      LEARNING_TEST_STATUS_OPTIONS.find((option) => option.value === test.status)?.label || test.status || "Skica",
+      `${Array.isArray(test.questionItems) ? test.questionItems.length : 0} pitanja`,
+    ].join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
+function syncServiceCatalogTrainingSections() {
+  if (!serviceCatalogLearningTestSection) {
+    return;
+  }
+  serviceCatalogLearningTestSection.hidden = !Boolean(serviceCatalogIsTrainingInput?.checked);
+}
+
 function resetServiceCatalogForm() {
   if (!serviceCatalogForm) {
     return;
@@ -19869,6 +19942,8 @@ function resetServiceCatalogForm() {
     serviceCatalogEditorTitle.textContent = "Nova usluga";
   }
   renderServiceCatalogTemplateChecklist([]);
+  renderServiceCatalogLearningTestChecklist([]);
+  syncServiceCatalogTrainingSections();
 }
 
 function hydrateServiceCatalogForm(item) {
@@ -19907,6 +19982,8 @@ function hydrateServiceCatalogForm(item) {
   }
 
   renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
+  renderServiceCatalogLearningTestChecklist(item.linkedLearningTestIds ?? []);
+  syncServiceCatalogTrainingSections();
   openServiceCatalogEditor();
   requestAnimationFrame(() => {
     serviceCatalogNameInput?.focus({ preventScroll: true });
@@ -19981,6 +20058,9 @@ function renderServiceCatalogModule() {
     const templateTitles = (item.linkedTemplateTitles ?? [])
       .map((value) => String(value ?? "").trim())
       .filter(Boolean);
+    const learningTestTitles = (item.linkedLearningTestTitles ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
 
     const title = document.createElement("h4");
     title.textContent = item.name || "Bez naziva";
@@ -19990,6 +20070,9 @@ function renderServiceCatalogModule() {
     meta.textContent = [
       item.serviceCode || "Bez sifre",
       templateTitles.length > 0 ? `${templateTitles.length} zapisnika` : "Bez zapisnika",
+      item.isTraining
+        ? (learningTestTitles.length > 0 ? `${learningTestTitles.length} ispita` : "Bez ispita")
+        : "",
     ].join(" | ");
 
     copy.append(title, meta);
@@ -20013,6 +20096,18 @@ function renderServiceCatalogModule() {
       }
     } else {
       templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
+    }
+    if (item.isTraining) {
+      if (learningTestTitles.length > 0) {
+        learningTestTitles.slice(0, 2).forEach((titleText) => {
+          templates.append(createBadge(titleText, "service-catalog-template-badge"));
+        });
+        if (learningTestTitles.length > 2) {
+          templates.append(createBadge(`+${learningTestTitles.length - 2} ispita`, "service-catalog-template-badge is-muted"));
+        }
+      } else {
+        templates.append(createBadge("Bez povezanih ispita", "service-catalog-template-badge is-muted"));
+      }
     }
 
     const footer = document.createElement("div");
@@ -36016,6 +36111,109 @@ function getWorkOrderServiceTemplateIds(service = {}) {
   return [...resolvedIds];
 }
 
+function getWorkOrderServiceLearningTestIds(service = {}) {
+  const resolvedIds = new Set(
+    (Array.isArray(service?.linkedLearningTestIds) ? service.linkedLearningTestIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+  const linkedServiceCatalogItem = getServiceCatalogItemForWorkOrderService(service);
+
+  (Array.isArray(linkedServiceCatalogItem?.linkedLearningTestIds) ? linkedServiceCatalogItem.linkedLearningTestIds : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .forEach((value) => resolvedIds.add(value));
+
+  if (resolvedIds.size > 0) {
+    return [...resolvedIds];
+  }
+
+  const titleSet = new Set(
+    [
+      ...(Array.isArray(service?.linkedLearningTestTitles) ? service.linkedLearningTestTitles : []),
+      ...(Array.isArray(linkedServiceCatalogItem?.linkedLearningTestTitles) ? linkedServiceCatalogItem.linkedLearningTestTitles : []),
+    ]
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  if (titleSet.size === 0) {
+    return [];
+  }
+
+  (state.learningTests ?? []).forEach((test) => {
+    const normalizedTitle = String(test?.title ?? "").trim().toLowerCase();
+    if (normalizedTitle && titleSet.has(normalizedTitle)) {
+      resolvedIds.add(String(test.id));
+    }
+  });
+
+  return [...resolvedIds];
+}
+
+function getWorkOrderLearningTestRecommendations(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const recommendationMap = new Map();
+  const unmatchedTrainingWorkOrders = [];
+
+  workOrders.forEach((workOrder) => {
+    const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
+    let hasTrainingTests = false;
+
+    serviceItems.forEach((service) => {
+      if (!service?.isTraining) {
+        return;
+      }
+      const resolvedTestIds = getWorkOrderServiceLearningTestIds(service);
+      if (resolvedTestIds.length === 0) {
+        return;
+      }
+
+      hasTrainingTests = true;
+
+      resolvedTestIds.forEach((testId) => {
+        const test = (state.learningTests ?? []).find((item) => String(item.id) === String(testId));
+        if (!test) {
+          return;
+        }
+
+        const existing = recommendationMap.get(String(test.id)) ?? {
+          test,
+          workOrders: [],
+          serviceLabels: new Set(),
+        };
+
+        if (!existing.workOrders.some((item) => String(item.id) === String(workOrder.id))) {
+          existing.workOrders.push(workOrder);
+        }
+
+        const serviceLabel = service.name || service.serviceCode || "";
+        if (serviceLabel) {
+          existing.serviceLabels.add(serviceLabel);
+        }
+
+        recommendationMap.set(String(test.id), existing);
+      });
+    });
+
+    if (!hasTrainingTests && serviceItems.some((service) => Boolean(service?.isTraining))) {
+      unmatchedTrainingWorkOrders.push(workOrder);
+    }
+  });
+
+  const recommendations = [...recommendationMap.values()]
+    .map((item) => ({
+      test: item.test,
+      workOrders: sortWorkOrders(item.workOrders),
+      serviceLabels: [...item.serviceLabels].sort((left, right) => left.localeCompare(right, "hr")),
+    }))
+    .sort((left, right) => String(left.test.title || "").localeCompare(String(right.test.title || ""), "hr"));
+
+  return {
+    recommendations,
+    unmatchedTrainingWorkOrders,
+  };
+}
+
 function getWorkOrderDocumentTemplateRecommendations(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
   const recommendationMap = new Map();
   const unmatchedWorkOrders = [];
@@ -36157,10 +36355,12 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
 
   const companyCount = new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size;
   const templateCount = getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length;
+  const learningTestCount = getWorkOrderLearningTestRecommendations(workOrders).recommendations.length;
   const summaryPills = [
     `${workOrders.length} RN`,
     `${companyCount} tvrtki`,
     `${templateCount} zapisnika`,
+    learningTestCount > 0 ? `${learningTestCount} ispita` : "",
   ];
 
   workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryPills.map((text) => {
@@ -36242,6 +36442,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const grid = document.createElement("div");
   grid.className = "form-grid work-order-document-selection-grid";
+  let learningSectionNode = null;
 
   const companyBlock = document.createElement("section");
   companyBlock.className = "work-order-document-selection-company-block field-span-full";
@@ -36487,6 +36688,98 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   servicesSection.bodyNode.append(servicesToolbar, serviceList);
 
+  const learningTestRecommendations = getWorkOrderLearningTestRecommendations([workOrder]).recommendations;
+  const trainingContext = workOrder.trainingContext ?? {};
+  const hasTrainingService = resolvedServiceItems.some((service) => Boolean(service?.isTraining));
+
+  if (
+    hasTrainingService
+    || learningTestRecommendations.length > 0
+    || trainingContext.name
+    || trainingContext.role
+    || trainingContext.phone
+    || trainingContext.email
+  ) {
+    const learningSection = createCollapsibleSection({
+      sectionKey: "learning",
+      titleText: "Ispiti i osposobljavanje",
+      descriptionText: learningTestRecommendations.length > 0
+        ? `${learningTestRecommendations.length} povezanih grupa edukacije za ovaj RN.`
+        : "Za uslugu osposobljavanja ovdje se nude povezani ispiti i kontakt odgovorne osobe klijenta.",
+      className: "work-order-document-selection-learning-block",
+    });
+
+    if (trainingContext.name || trainingContext.role || trainingContext.phone || trainingContext.email) {
+      const trainingAdmin = document.createElement("article");
+      trainingAdmin.className = "work-order-document-learning-admin-card";
+
+      const adminTitle = document.createElement("strong");
+      adminTitle.textContent = trainingContext.name || "Odgovorna osoba klijenta";
+
+      const adminMeta = document.createElement("span");
+      adminMeta.textContent = [
+        trainingContext.role || "",
+        trainingContext.phone || "",
+        trainingContext.email || "",
+      ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+
+      trainingAdmin.append(adminTitle, adminMeta);
+      learningSection.bodyNode.append(trainingAdmin);
+    }
+
+    const testList = document.createElement("div");
+    testList.className = "work-order-document-learning-test-list";
+
+    if (learningTestRecommendations.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = hasTrainingService
+        ? "Ova usluga je označena kao osposobljavanje, ali još nema povezanih ispita. Poveži ih u Organisation > List Of Services."
+        : "Bez povezanih grupa edukacije.";
+      testList.append(empty);
+    } else {
+      learningTestRecommendations.forEach((entry) => {
+        const card = document.createElement("article");
+        card.className = "work-order-document-learning-test-card";
+
+        const head = document.createElement("div");
+        head.className = "work-order-document-learning-test-head";
+
+        const copy = document.createElement("div");
+        copy.className = "work-order-document-learning-test-copy";
+
+        const title = document.createElement("strong");
+        title.textContent = entry.test.title || "Grupa edukacije";
+
+        const meta = document.createElement("span");
+        meta.textContent = [
+          `${Array.isArray(entry.test.questionItems) ? entry.test.questionItems.length : 0} pitanja`,
+          LEARNING_TEST_STATUS_OPTIONS.find((option) => option.value === entry.test.status)?.label || entry.test.status || "Skica",
+        ].filter(Boolean).join(" · ");
+
+        copy.append(title, meta);
+
+        const badges = document.createElement("div");
+        badges.className = "work-order-document-learning-test-badges";
+        entry.serviceLabels.forEach((labelText) => {
+          badges.append(createBadge(labelText, "document-template-meta-badge"));
+        });
+
+        head.append(copy, badges);
+
+        const note = document.createElement("p");
+        note.className = "work-order-document-learning-test-note";
+        note.textContent = entry.test.description || "Grupa edukacije bit će ponuđena uz ovaj RN jer je vezana na uslugu osposobljavanja.";
+
+        card.append(head, note);
+        testList.append(card);
+      });
+    }
+
+    learningSection.bodyNode.append(testList);
+    learningSectionNode = learningSection.section;
+  }
+
   const peopleSection = createCollapsibleSection({
     sectionKey: "people",
     titleText: "Ispitivači i odgovorne osobe",
@@ -36582,6 +36875,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     companyBlock,
     basicSection.section,
     servicesSection.section,
+    ...(learningSectionNode ? [learningSectionNode] : []),
     peopleSection.section,
     environmentSection.section,
   );
@@ -40062,6 +40356,10 @@ serviceCatalogResetButton?.addEventListener("click", () => {
   resetServiceCatalogForm();
   renderServiceCatalogModule();
   openServiceCatalogEditor();
+});
+
+serviceCatalogIsTrainingInput?.addEventListener("change", () => {
+  syncServiceCatalogTrainingSections();
 });
 
 serviceCatalogDeleteButton?.addEventListener("click", () => {
