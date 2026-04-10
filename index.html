@@ -3726,7 +3726,7 @@
                   <strong id="learning-tests-active-count" class="learning-tests-stat-value">0</strong>
                 </article>
                 <article class="learning-tests-stat-card is-assigned">
-                  <span class="learning-tests-stat-label">Grupe pitanja</span>
+                  <span class="learning-tests-stat-label">Skice</span>
                   <strong id="learning-tests-assignment-count" class="learning-tests-stat-value">0</strong>
                 </article>
                 <article class="learning-tests-stat-card is-completed">
@@ -3739,10 +3739,10 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Elearning</p>
-                    <h3>Testovi po grupama pitanja</h3>
+                    <h3>Grupe edukacija i testova</h3>
                   </div>
                   <div class="learning-tests-toolbar-actions">
-                    <button id="learning-test-open-form" type="button" class="primary-button">+ Novi test</button>
+                    <button id="learning-test-open-form" type="button" class="primary-button">+ Nova grupa</button>
                   </div>
                 </div>
 
@@ -3766,7 +3766,7 @@
                   </div>
                 </div>
                 <p id="learning-tests-helper" class="helper-copy module-copy">
-                  Dodaj grupe pitanja i unutar njih pitanja s ponudjenim odgovorima A, B, C i D.
+                  Prvo otvori grupu edukacije ili testa, a zatim u drugom koraku dodaj pitanja s odgovorima A, B, C i D.
                 </p>
                 <div id="learning-tests-list" class="learning-tests-list"></div>
                 <p id="learning-tests-empty" class="helper-copy" hidden>Nema testova za prikaz u odabranoj organizaciji.</p>
@@ -3788,33 +3788,48 @@
                   <form id="learning-test-form" class="entity-form learning-test-form">
                     <input id="learning-test-id" type="hidden" />
 
-                    <div class="form-grid learning-test-form-grid">
-                      <label class="field field-span-full">
-                        <span>Naziv testa</span>
-                        <input id="learning-test-title" maxlength="180" placeholder="Ispitivanje znanja zaštite od požara" required />
-                      </label>
-                      <label class="field">
-                        <span>Status</span>
-                        <select id="learning-test-status"></select>
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Opis</span>
-                        <textarea id="learning-test-description" rows="3" placeholder="Kratki opis testa, tko ga polaže i kada."></textarea>
-                      </label>
+                    <div class="learning-test-editor-steps" role="tablist" aria-label="Koraci uređivanja">
+                      <button id="learning-test-step-group" type="button" class="ghost-button is-active">1. Grupa edukacije</button>
+                      <button id="learning-test-step-questions" type="button" class="ghost-button">2. Pitanja</button>
                     </div>
 
-                    <section class="service-catalog-template-block">
+                    <section id="learning-test-group-step" class="learning-test-editor-step">
+                      <div class="form-grid learning-test-form-grid">
+                        <label class="field field-span-full">
+                          <span>Naziv grupe / edukacije</span>
+                          <input id="learning-test-title" maxlength="180" placeholder="Npr. Zaštita od požara - početna edukacija" required />
+                        </label>
+                        <label class="field">
+                          <span>Status</span>
+                          <select id="learning-test-status"></select>
+                        </label>
+                        <label class="field field-span-full">
+                          <span>Opis</span>
+                          <textarea id="learning-test-description" rows="3" placeholder="Kratki opis vrste edukacije ili testa."></textarea>
+                        </label>
+                      </div>
+
+                      <div class="form-actions learning-test-step-actions">
+                        <button id="learning-test-next-step" type="button" class="primary-button">Dalje na pitanja</button>
+                      </div>
+                    </section>
+
+                    <section id="learning-test-questions-step" class="learning-test-editor-step" hidden>
                       <div class="section-heading offers-section-heading">
                         <div>
                           <p class="section-kicker">Questions</p>
-                          <h3>Grupe i pitanja</h3>
+                          <h3>Pitanja za ovu grupu</h3>
                         </div>
                         <div class="learning-tests-toolbar-actions">
-                          <button id="learning-test-add-group" type="button" class="ghost-button">+ Grupa</button>
+                          <button id="learning-test-add-question" type="button" class="ghost-button">+ Pitanje</button>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Za svaku grupu dodaj pitanja i odredi točan odgovor medju A, B, C i D.</p>
+                      <p class="helper-copy module-copy">Dodaj pitanja i odredi točan odgovor medju A, B, C i D.</p>
                       <div id="learning-test-question-list" class="learning-test-question-list"></div>
+
+                      <div class="form-actions learning-test-step-actions">
+                        <button id="learning-test-back-step" type="button" class="ghost-button">Natrag na grupu</button>
+                      </div>
                     </section>
 
                     <p id="learning-test-error" class="form-error" aria-live="polite"></p>

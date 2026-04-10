@@ -19018,6 +19018,28 @@ body.is-measurement-equipment-document-preview-open {
   gap: 14px;
 }
 
+.learning-test-editor-steps {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.learning-test-editor-steps .ghost-button.is-active {
+  background: linear-gradient(135deg, rgba(231, 243, 236, 0.96), rgba(213, 236, 219, 0.92));
+  border-color: rgba(101, 161, 121, 0.38);
+  color: #214d2e;
+}
+
+.learning-test-editor-step {
+  display: grid;
+  gap: 16px;
+}
+
+.learning-test-step-actions {
+  justify-content: flex-start;
+}
+
 .learning-test-question-list {
   display: grid;
   gap: 16px;

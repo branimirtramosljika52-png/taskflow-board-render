@@ -1437,7 +1437,13 @@ const learningTestIdInput = document.querySelector("#learning-test-id");
 const learningTestTitleInput = document.querySelector("#learning-test-title");
 const learningTestStatusInput = document.querySelector("#learning-test-status");
 const learningTestDescriptionInput = document.querySelector("#learning-test-description");
-const learningTestAddGroupButton = document.querySelector("#learning-test-add-group");
+const learningTestStepGroupButton = document.querySelector("#learning-test-step-group");
+const learningTestStepQuestionsButton = document.querySelector("#learning-test-step-questions");
+const learningTestGroupStep = document.querySelector("#learning-test-group-step");
+const learningTestQuestionsStep = document.querySelector("#learning-test-questions-step");
+const learningTestNextStepButton = document.querySelector("#learning-test-next-step");
+const learningTestBackStepButton = document.querySelector("#learning-test-back-step");
+const learningTestAddQuestionButton = document.querySelector("#learning-test-add-question");
 const learningTestQuestionList = document.querySelector("#learning-test-question-list");
 const learningTestError = document.querySelector("#learning-test-error");
 const learningTestResetButton = document.querySelector("#learning-test-reset");
@@ -1463,6 +1469,7 @@ let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
 let learningTestQuestionGroupDrafts = [];
+let learningTestEditorStep = "group";
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -20736,21 +20743,12 @@ function createEmptyLearningQuestionGroupDraft(initial = {}, index = 0) {
 }
 
 function buildLearningQuestionGroupDraftsFromItems(items = []) {
-  const grouped = new Map();
-  (Array.isArray(items) ? items : []).forEach((question, index) => {
-    const groupLabel = String(question?.groupLabel || `Grupa ${index + 1}`).trim() || `Grupa ${index + 1}`;
-    if (!grouped.has(groupLabel)) {
-      grouped.set(groupLabel, []);
-    }
-    grouped.get(groupLabel).push(question);
-  });
-
-  return Array.from(grouped.entries()).map(([title, questions], index) => (
+  return [
     createEmptyLearningQuestionGroupDraft({
-      title,
-      questions,
-    }, index)
-  ));
+      title: "Pitanja",
+      questions: Array.isArray(items) ? items : [],
+    }, 0),
+  ];
 }
 
 function serializeLearningQuestionGroupDrafts() {
@@ -20781,6 +20779,15 @@ function buildLearningTestPayload() {
     questionItems: serializeLearningQuestionGroupDrafts(),
     assignmentItems: [],
   };
+}
+
+function setLearningTestEditorStep(step = "group") {
+  learningTestEditorStep = step === "questions" ? "questions" : "group";
+
+  learningTestGroupStep?.toggleAttribute("hidden", learningTestEditorStep !== "group");
+  learningTestQuestionsStep?.toggleAttribute("hidden", learningTestEditorStep !== "questions");
+  learningTestStepGroupButton?.classList.toggle("is-active", learningTestEditorStep === "group");
+  learningTestStepQuestionsButton?.classList.toggle("is-active", learningTestEditorStep === "questions");
 }
 
 function syncLearningTestEditorModal() {
@@ -20836,6 +20843,7 @@ function dismissLearningTestEditor() {
 function resetLearningTestForm() {
   learningTestForm?.reset();
   state.activeLearningTestId = "";
+  learningTestEditorStep = "group";
   if (learningTestIdInput) {
     learningTestIdInput.value = "";
   }
@@ -20848,6 +20856,7 @@ function resetLearningTestForm() {
   learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
   renderLearningQuestionGroupList();
   syncLearningTestEditorChrome();
+  setLearningTestEditorStep("group");
 }
 
 function hydrateLearningTestForm(item) {
@@ -20877,6 +20886,7 @@ function hydrateLearningTestForm(item) {
   }
   renderLearningQuestionGroupList();
   syncLearningTestEditorChrome();
+  setLearningTestEditorStep("group");
   openLearningTestEditor();
   requestAnimationFrame(() => {
     learningTestTitleInput?.focus({ preventScroll: true });
@@ -20886,11 +20896,14 @@ function hydrateLearningTestForm(item) {
 function syncLearningTestEditorChrome() {
   if (learningTestEditorTitle) {
     learningTestEditorTitle.textContent = learningTestIdInput?.value
-      ? `Uredi test | ${learningTestTitleInput?.value?.trim() || "Bez naziva"}`
-      : "Novi test";
+      ? `Uredi grupu edukacije | ${learningTestTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Nova grupa edukacije";
   }
   if (learningTestDeleteButton) {
     learningTestDeleteButton.hidden = !learningTestIdInput?.value;
+  }
+  if (learningTestNextStepButton) {
+    learningTestNextStepButton.textContent = "Dalje na pitanja";
   }
 }
 
@@ -20899,136 +20912,86 @@ function renderLearningQuestionGroupList() {
     return;
   }
 
-  learningTestQuestionGroupDrafts = (learningTestQuestionGroupDrafts ?? []).map((group, groupIndex) => {
-    const nextGroup = createEmptyLearningQuestionGroupDraft(group, groupIndex);
-    if (!Array.isArray(nextGroup.questions) || nextGroup.questions.length === 0) {
-      nextGroup.questions = [createEmptyLearningQuestionDraft({}, 0)];
-    }
-    return nextGroup;
-  });
-
-  if (learningTestQuestionGroupDrafts.length === 0) {
-    learningTestQuestionList.replaceChildren();
-    return;
+  const baseGroup = createEmptyLearningQuestionGroupDraft(learningTestQuestionGroupDrafts?.[0] || {}, 0);
+  if (!Array.isArray(baseGroup.questions) || baseGroup.questions.length === 0) {
+    baseGroup.questions = [createEmptyLearningQuestionDraft({}, 0)];
   }
+  learningTestQuestionGroupDrafts = [baseGroup];
 
-  learningTestQuestionList.replaceChildren(...learningTestQuestionGroupDrafts.map((group, groupIndex) => {
-    const groupCard = document.createElement("article");
-    groupCard.className = "learning-test-group-card";
+  const questionList = document.createElement("div");
+  questionList.className = "learning-test-question-stack";
 
-    const groupHeader = document.createElement("div");
-    groupHeader.className = "learning-test-group-header";
+  (baseGroup.questions ?? []).forEach((question, questionIndex) => {
+    const questionCard = document.createElement("div");
+    questionCard.className = "learning-test-question-card";
 
-    const groupTitleWrap = document.createElement("label");
-    groupTitleWrap.className = "field field-span-full";
-    const groupTitleLabel = document.createElement("span");
-    groupTitleLabel.textContent = `Grupa ${groupIndex + 1}`;
-    const groupTitleInput = document.createElement("input");
-    groupTitleInput.type = "text";
-    groupTitleInput.value = group.title || "";
-    groupTitleInput.placeholder = "Naziv grupe pitanja";
-    groupTitleInput.dataset.learningGroupIndex = String(groupIndex);
-    groupTitleInput.dataset.learningGroupField = "title";
-    groupTitleWrap.append(groupTitleLabel, groupTitleInput);
+    const promptField = document.createElement("label");
+    promptField.className = "field field-span-full";
+    const promptLabel = document.createElement("span");
+    promptLabel.textContent = `Pitanje ${questionIndex + 1}`;
+    const promptInput = document.createElement("textarea");
+    promptInput.rows = 2;
+    promptInput.value = question.prompt || "";
+    promptInput.placeholder = "Upiši pitanje";
+    promptInput.dataset.learningGroupIndex = "0";
+    promptInput.dataset.learningQuestionIndex = String(questionIndex);
+    promptInput.dataset.learningQuestionField = "prompt";
+    promptField.append(promptLabel, promptInput);
 
-    const groupActions = document.createElement("div");
-    groupActions.className = "learning-test-group-actions";
-    const addQuestionButton = createActionButton("+ Pitanje", "ghost-button", () => {
+    const answersGrid = document.createElement("div");
+    answersGrid.className = "learning-test-answer-grid";
+
+    ["A", "B", "C", "D"].forEach((letter) => {
+      const optionField = document.createElement("label");
+      optionField.className = "field";
+      const optionLabel = document.createElement("span");
+      optionLabel.textContent = `Odgovor ${letter}`;
+      const optionInput = document.createElement("input");
+      optionInput.type = "text";
+      optionInput.value = question[`option${letter}`] || "";
+      optionInput.placeholder = `Tekst odgovora ${letter}`;
+      optionInput.dataset.learningGroupIndex = "0";
+      optionInput.dataset.learningQuestionIndex = String(questionIndex);
+      optionInput.dataset.learningQuestionField = `option${letter}`;
+      optionField.append(optionLabel, optionInput);
+      answersGrid.append(optionField);
+    });
+
+    const footer = document.createElement("div");
+    footer.className = "learning-test-question-footer";
+
+    const correctField = document.createElement("label");
+    correctField.className = "field";
+    const correctLabel = document.createElement("span");
+    correctLabel.textContent = "Točan odgovor";
+    const correctSelect = document.createElement("select");
+    replaceSelectOptions(correctSelect, [
+      { value: "A", label: "A" },
+      { value: "B", label: "B" },
+      { value: "C", label: "C" },
+      { value: "D", label: "D" },
+    ], question.correctOptionKey || "A");
+    correctSelect.dataset.learningGroupIndex = "0";
+    correctSelect.dataset.learningQuestionIndex = String(questionIndex);
+    correctSelect.dataset.learningQuestionField = "correctOptionKey";
+    correctField.append(correctLabel, correctSelect);
+
+    const removeQuestionButton = createActionButton("Ukloni pitanje", "card-button card-danger", () => {
       const nextGroups = [...learningTestQuestionGroupDrafts];
-      const targetGroup = nextGroups[groupIndex];
-      targetGroup.questions = [
-        ...(targetGroup.questions ?? []),
-        createEmptyLearningQuestionDraft({}, targetGroup.questions?.length ?? 0),
-      ];
+      nextGroups[0].questions = (nextGroups[0].questions ?? []).filter((_, index) => index !== questionIndex);
+      if (nextGroups[0].questions.length === 0) {
+        nextGroups[0].questions = [createEmptyLearningQuestionDraft({}, 0)];
+      }
       learningTestQuestionGroupDrafts = nextGroups;
       renderLearningQuestionGroupList();
     });
-    const removeGroupButton = createActionButton("Ukloni grupu", "card-button card-danger", () => {
-      learningTestQuestionGroupDrafts = learningTestQuestionGroupDrafts.filter((_, index) => index !== groupIndex);
-      if (learningTestQuestionGroupDrafts.length === 0) {
-        learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
-      }
-      renderLearningQuestionGroupList();
-    });
-    groupActions.append(addQuestionButton, removeGroupButton);
-    groupHeader.append(groupTitleWrap, groupActions);
 
-    const questionList = document.createElement("div");
-    questionList.className = "learning-test-question-stack";
+    footer.append(correctField, removeQuestionButton);
+    questionCard.append(promptField, answersGrid, footer);
+    questionList.append(questionCard);
+  });
 
-    (group.questions ?? []).forEach((question, questionIndex) => {
-      const questionCard = document.createElement("div");
-      questionCard.className = "learning-test-question-card";
-
-      const promptField = document.createElement("label");
-      promptField.className = "field field-span-full";
-      const promptLabel = document.createElement("span");
-      promptLabel.textContent = `Pitanje ${questionIndex + 1}`;
-      const promptInput = document.createElement("textarea");
-      promptInput.rows = 2;
-      promptInput.value = question.prompt || "";
-      promptInput.placeholder = "Upiši pitanje";
-      promptInput.dataset.learningGroupIndex = String(groupIndex);
-      promptInput.dataset.learningQuestionIndex = String(questionIndex);
-      promptInput.dataset.learningQuestionField = "prompt";
-      promptField.append(promptLabel, promptInput);
-
-      const answersGrid = document.createElement("div");
-      answersGrid.className = "learning-test-answer-grid";
-
-      ["A", "B", "C", "D"].forEach((letter) => {
-        const optionField = document.createElement("label");
-        optionField.className = "field";
-        const optionLabel = document.createElement("span");
-        optionLabel.textContent = `Odgovor ${letter}`;
-        const optionInput = document.createElement("input");
-        optionInput.type = "text";
-        optionInput.value = question[`option${letter}`] || "";
-        optionInput.placeholder = `Tekst odgovora ${letter}`;
-        optionInput.dataset.learningGroupIndex = String(groupIndex);
-        optionInput.dataset.learningQuestionIndex = String(questionIndex);
-        optionInput.dataset.learningQuestionField = `option${letter}`;
-        optionField.append(optionLabel, optionInput);
-        answersGrid.append(optionField);
-      });
-
-      const footer = document.createElement("div");
-      footer.className = "learning-test-question-footer";
-
-      const correctField = document.createElement("label");
-      correctField.className = "field";
-      const correctLabel = document.createElement("span");
-      correctLabel.textContent = "Točan odgovor";
-      const correctSelect = document.createElement("select");
-      replaceSelectOptions(correctSelect, [
-        { value: "A", label: "A" },
-        { value: "B", label: "B" },
-        { value: "C", label: "C" },
-        { value: "D", label: "D" },
-      ], question.correctOptionKey || "A");
-      correctSelect.dataset.learningGroupIndex = String(groupIndex);
-      correctSelect.dataset.learningQuestionIndex = String(questionIndex);
-      correctSelect.dataset.learningQuestionField = "correctOptionKey";
-      correctField.append(correctLabel, correctSelect);
-
-      const removeQuestionButton = createActionButton("Ukloni pitanje", "card-button card-danger", () => {
-        const nextGroups = [...learningTestQuestionGroupDrafts];
-        nextGroups[groupIndex].questions = (nextGroups[groupIndex].questions ?? []).filter((_, index) => index !== questionIndex);
-        if (nextGroups[groupIndex].questions.length === 0) {
-          nextGroups[groupIndex].questions = [createEmptyLearningQuestionDraft({}, 0)];
-        }
-        learningTestQuestionGroupDrafts = nextGroups;
-        renderLearningQuestionGroupList();
-      });
-
-      footer.append(correctField, removeQuestionButton);
-      questionCard.append(promptField, answersGrid, footer);
-      questionList.append(questionCard);
-    });
-
-    groupCard.append(groupHeader, questionList);
-    return groupCard;
-  }));
+  learningTestQuestionList.replaceChildren(questionList);
 }
 
 function renderLearningTestsModule() {
@@ -21056,18 +21019,15 @@ function renderLearningTestsModule() {
     learningTestsActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
   }
   if (learningTestsAssignmentCount) {
-    learningTestsAssignmentCount.textContent = String(allItems.reduce((total, item) => {
-      const groupCount = new Set((item.questionItems ?? []).map((question) => String(question.groupLabel || "").trim()).filter(Boolean)).size;
-      return total + groupCount;
-    }, 0));
+    learningTestsAssignmentCount.textContent = String(allItems.filter((item) => item.status === "draft").length);
   }
   if (learningTestsCompletedCount) {
     learningTestsCompletedCount.textContent = String(allItems.reduce((total, item) => total + (item.questionItems?.length ?? 0), 0));
   }
   if (learningTestsHelper) {
     learningTestsHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} testova.`
-      : `Prikazano ${visibleItems.length} od ${allItems.length} testova.`;
+      ? `Prikazano ${visibleItems.length} grupa edukacije.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} grupa edukacije.`;
   }
 
   learningTestsList.replaceChildren(...visibleItems.map((item) => {
@@ -21089,9 +21049,8 @@ function renderLearningTestsModule() {
     title.textContent = item.title || "Bez naziva";
     const meta = document.createElement("p");
     meta.className = "learning-test-card-meta";
-    const groupCount = new Set((item.questionItems ?? []).map((question) => question.groupLabel).filter(Boolean)).size;
     meta.textContent = [
-      `${groupCount} ${groupCount === 1 ? "grupa" : "grupa"}`,
+      "1 grupa edukacije",
       `${item.questionItems?.length ?? 0} pitanja`,
     ].join(" · ");
     copy.append(title, meta);
@@ -21135,8 +21094,8 @@ function renderLearningTestsModule() {
     const empty = document.createElement("div");
     empty.className = "offers-empty-card";
     empty.textContent = canManageMasterData
-      ? "Nema testova za odabrane filtere. Dodaj prvi test i složi grupe pitanja."
-      : "Nema testova za prikaz u odabranoj organizaciji.";
+      ? "Nema grupa edukacije za odabrane filtere. Dodaj prvu grupu i u drugom koraku složi pitanja."
+      : "Nema grupa edukacije za prikaz u odabranoj organizaciji.";
     learningTestsList.replaceChildren(empty);
   }
 }
@@ -38871,11 +38830,31 @@ learningTestDeleteButton?.addEventListener("click", () => {
   });
 });
 
-learningTestAddGroupButton?.addEventListener("click", () => {
-  learningTestQuestionGroupDrafts = [
-    ...learningTestQuestionGroupDrafts,
-    createEmptyLearningQuestionGroupDraft({}, learningTestQuestionGroupDrafts.length),
+learningTestStepGroupButton?.addEventListener("click", () => {
+  setLearningTestEditorStep("group");
+});
+
+learningTestStepQuestionsButton?.addEventListener("click", () => {
+  setLearningTestEditorStep("questions");
+});
+
+learningTestNextStepButton?.addEventListener("click", () => {
+  setLearningTestEditorStep("questions");
+});
+
+learningTestBackStepButton?.addEventListener("click", () => {
+  setLearningTestEditorStep("group");
+});
+
+learningTestAddQuestionButton?.addEventListener("click", () => {
+  const nextGroups = [...learningTestQuestionGroupDrafts];
+  const targetGroup = nextGroups[0] || createEmptyLearningQuestionGroupDraft({}, 0);
+  targetGroup.questions = [
+    ...(targetGroup.questions ?? []),
+    createEmptyLearningQuestionDraft({}, targetGroup.questions?.length ?? 0),
   ];
+  nextGroups[0] = targetGroup;
+  learningTestQuestionGroupDrafts = nextGroups;
   renderLearningQuestionGroupList();
 });
 
