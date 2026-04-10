@@ -1052,6 +1052,7 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
     serviceCode,
     linkedTemplateIds,
     linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+    isTraining: normalizeBoolean(item.isTraining, false),
     isCompleted: normalizeBoolean(item.isCompleted, false),
   };
 }
@@ -1100,6 +1101,10 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       name: name || current?.name || "",
       serviceCode: serviceCode || current?.serviceCode || "",
       ...templateSnapshot,
+      isTraining: normalizeBoolean(
+        service?.isTraining,
+        normalizeBoolean(entry?.isTraining, normalizeBoolean(current?.isTraining, false)),
+      ),
       isCompleted: hasOwn(entry ?? {}, "isCompleted")
         ? normalizeBoolean(entry.isCompleted, false)
         : normalizeBoolean(current?.isCompleted, false),
@@ -2468,6 +2473,7 @@ export function createServiceCatalogItem(
     name: requireText(input.name, "Ime usluge"),
     serviceCode,
     status: normalizeServiceCatalogStatus(input.status),
+    isTraining: normalizeBoolean(input.isTraining, false),
     linkedTemplateIds: normalizedTemplateIds.linkedTemplateIds,
     linkedTemplateTitles: normalizedTemplateIds.linkedTemplateTitles,
     note: normalizeText(input.note),
@@ -2501,6 +2507,7 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     name: hasOwn(patch, "name") ? requireText(patch.name, "Ime usluge") : current.name,
     serviceCode,
     status: hasOwn(patch, "status") ? normalizeServiceCatalogStatus(patch.status) : current.status,
+    isTraining: hasOwn(patch, "isTraining") ? normalizeBoolean(patch.isTraining, false) : normalizeBoolean(current.isTraining, false),
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
@@ -3222,6 +3229,12 @@ function hydrateWorkOrderCore(base, company, location) {
     ? getWorkOrderServiceItems(base)
     : getWorkOrderServiceItems(base);
   const measurementSheet = normalizeWorkOrderMeasurementSheet(base?.measurementSheet);
+  const trainingContext = {
+    name: normalizeText(base?.trainingContext?.name),
+    role: normalizeText(base?.trainingContext?.role),
+    phone: normalizeText(base?.trainingContext?.phone),
+    email: normalizeText(base?.trainingContext?.email),
+  };
 
   return {
     ...base,
@@ -3230,6 +3243,7 @@ function hydrateWorkOrderCore(base, company, location) {
     executors,
     measurementSheet,
     serviceItems,
+    trainingContext,
     serviceLine: serviceItems.length > 0
       ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
       : normalizeText(base?.serviceLine),
@@ -3293,6 +3307,12 @@ export function createWorkOrder(
     contactPhone: normalizeText(input.contactPhone) || selectedContact.phone,
     contactEmail: normalizeText(input.contactEmail) || selectedContact.email,
     serviceItems,
+    trainingContext: {
+      name: normalizeText(input.trainingContext?.name),
+      role: normalizeText(input.trainingContext?.role),
+      phone: normalizeText(input.trainingContext?.phone),
+      email: normalizeText(input.trainingContext?.email),
+    },
     serviceLine: serviceItems.length > 0
       ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
       : normalizeText(input.serviceLine),
@@ -3388,6 +3408,19 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
         ? selectedContact.email
         : current.contactEmail,
     serviceItems: nextServiceItems,
+    trainingContext: hasOwn(patch, "trainingContext")
+      ? {
+        name: normalizeText(patch.trainingContext?.name),
+        role: normalizeText(patch.trainingContext?.role),
+        phone: normalizeText(patch.trainingContext?.phone),
+        email: normalizeText(patch.trainingContext?.email),
+      }
+      : {
+        name: normalizeText(current.trainingContext?.name),
+        role: normalizeText(current.trainingContext?.role),
+        phone: normalizeText(current.trainingContext?.phone),
+        email: normalizeText(current.trainingContext?.email),
+      },
     serviceLine: hasOwn(patch, "serviceItems")
       ? nextServiceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
       : hasOwn(patch, "serviceLine")

@@ -4370,6 +4370,34 @@ button.dashboard-widget-list-row {
   grid-column: 1 / -1;
 }
 
+.field-span-2 {
+  grid-column: span 2;
+}
+
+.field-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: end;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid rgba(220, 156, 212, 0.44);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.field-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.field-checkbox span {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
 input,
 select,
 textarea {
@@ -5107,6 +5135,10 @@ body.is-work-order-editor-open {
 
 .form-grid-service-main {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid-service-training {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .form-grid-notes {
@@ -11955,6 +11987,7 @@ body.is-document-template-editor-open .chat-dock {
   .form-grid-client-location,
   .form-grid-client-contact,
   .form-grid-service-main,
+  .form-grid-service-training,
   .form-grid-service-meta,
   .form-grid-notes,
   .filter-row,
@@ -12071,6 +12104,7 @@ body.is-document-template-editor-open .chat-dock {
   .form-grid-client-location,
   .form-grid-client-contact,
   .form-grid-service-main,
+  .form-grid-service-training,
   .form-grid-service-meta,
   .form-grid-notes,
   .filter-row,
@@ -15462,6 +15496,14 @@ body.is-document-template-editor-open {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 10px;
+}
+
+.service-catalog-card-head-badges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .service-catalog-card-copy {

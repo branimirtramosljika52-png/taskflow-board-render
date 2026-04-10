@@ -1339,6 +1339,7 @@ const serviceCatalogIdInput = document.querySelector("#service-catalog-id");
 const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
 const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
 const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
+const serviceCatalogIsTrainingInput = document.querySelector("#service-catalog-is-training");
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
 const serviceCatalogNoteInput = document.querySelector("#service-catalog-note");
 const serviceCatalogError = document.querySelector("#service-catalog-error");
@@ -1878,6 +1879,11 @@ const workOrderServiceItemsDataInput = document.querySelector("#work-order-servi
 const workOrderServicePicker = document.querySelector("#work-order-service-picker");
 const workOrderServiceSelection = document.querySelector("#work-order-service-selection");
 const workOrderServiceTemplateHint = document.querySelector("#work-order-service-template-hint");
+const workOrderTrainingSection = document.querySelector("#work-order-training-section");
+const workOrderTrainingAdminNameInput = document.querySelector("#work-order-training-admin-name");
+const workOrderTrainingAdminRoleInput = document.querySelector("#work-order-training-admin-role");
+const workOrderTrainingAdminPhoneInput = document.querySelector("#work-order-training-admin-phone");
+const workOrderTrainingAdminEmailInput = document.querySelector("#work-order-training-admin-email");
 const workOrderDepartmentInput = document.querySelector("#work-order-department");
 const workOrderLinkReferenceInput = document.querySelector("#work-order-link-reference");
 const workOrderWeightInput = document.querySelector("#work-order-weight");
@@ -2994,13 +3000,60 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
         ? current.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
     linkedTemplateTitles: linkedTemplateTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
+    isTraining: Boolean(service?.isTraining ?? current?.isTraining),
     isCompleted: Boolean(current?.isCompleted),
   };
 }
 
+function readWorkOrderTrainingAdminDraft() {
+  return {
+    name: workOrderTrainingAdminNameInput?.value?.trim() || "",
+    role: workOrderTrainingAdminRoleInput?.value?.trim() || "",
+    phone: workOrderTrainingAdminPhoneInput?.value?.trim() || "",
+    email: workOrderTrainingAdminEmailInput?.value?.trim() || "",
+  };
+}
+
+function writeWorkOrderTrainingAdminDraft(value = {}) {
+  if (workOrderTrainingAdminNameInput) {
+    workOrderTrainingAdminNameInput.value = String(value?.name ?? "").trim();
+  }
+  if (workOrderTrainingAdminRoleInput) {
+    workOrderTrainingAdminRoleInput.value = String(value?.role ?? "").trim();
+  }
+  if (workOrderTrainingAdminPhoneInput) {
+    workOrderTrainingAdminPhoneInput.value = String(value?.phone ?? "").trim();
+  }
+  if (workOrderTrainingAdminEmailInput) {
+    workOrderTrainingAdminEmailInput.value = String(value?.email ?? "").trim();
+  }
+}
+
+function hasSelectedTrainingWorkOrderService(items = readWorkOrderServiceSelection()) {
+  return (Array.isArray(items) ? items : []).some((item) => Boolean(item?.isTraining));
+}
+
+function syncWorkOrderTrainingSection(items = readWorkOrderServiceSelection()) {
+  if (!workOrderTrainingSection) {
+    return;
+  }
+
+  const hasTrainingService = hasSelectedTrainingWorkOrderService(items);
+  workOrderTrainingSection.hidden = !hasTrainingService;
+
+  if (!hasTrainingService) {
+    writeWorkOrderTrainingAdminDraft({});
+  }
+}
+
 function writeWorkOrderServiceSelection(items = [], { dispatchEventName = "", renderPicker = true, renderSelection = true } = {}) {
+  const hydratedItems = Array.isArray(items)
+    ? items
+      .map((item) => buildWorkOrderServiceItemSnapshot(getServiceCatalogItemForWorkOrderService(item) ?? item, item))
+      .filter(Boolean)
+    : [];
   const normalized = getWorkOrderServiceItems({
-    serviceItems: Array.isArray(items) ? items : [],
+    serviceItems: hydratedItems,
   });
 
   if (workOrderServiceItemsDataInput) {
@@ -3022,6 +3075,8 @@ function writeWorkOrderServiceSelection(items = [], { dispatchEventName = "", re
   if (renderSelection) {
     renderWorkOrderServiceSelection();
   }
+
+  syncWorkOrderTrainingSection(normalized);
 }
 
 function getSelectedOptionText(select) {
@@ -5356,6 +5411,7 @@ function getWorkOrderServiceCatalogOptions(currentItems = []) {
       serviceCode: item.serviceCode,
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+      isTraining: Boolean(item.isTraining),
       status: "inactive",
       isSnapshot: true,
     });
@@ -5486,6 +5542,10 @@ function renderWorkOrderServiceSelection() {
     const templates = document.createElement("div");
     templates.className = "work-order-service-item-templates";
     const templateTitles = (item.linkedTemplateTitles ?? []).filter(Boolean);
+
+    if (item.isTraining) {
+      templates.append(createBadge("Osposobljavanje", "work-order-service-template-badge"));
+    }
 
     if (templateTitles.length > 0) {
       templateTitles.forEach((templateTitle) => {
@@ -5696,6 +5756,7 @@ function renderWorkOrderServicePicker() {
           const meta = document.createElement("span");
           meta.textContent = [
             option.serviceCode || "",
+            option.isTraining ? "Osposobljavanje" : "",
             option.status === "inactive" ? "Neaktivna" : "Aktivna",
             (option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "",
           ].filter(Boolean).join(" · ");
@@ -19723,6 +19784,7 @@ function buildServiceCatalogPayload() {
     name: serviceCatalogNameInput?.value || "",
     serviceCode: serviceCatalogCodeInput?.value || "",
     status: serviceCatalogStatusInput?.value || "active",
+    isTraining: Boolean(serviceCatalogIsTrainingInput?.checked),
     linkedTemplateIds: getServiceCatalogTemplateSelectionIds(),
     note: serviceCatalogNoteInput?.value || "",
   };
@@ -19794,6 +19856,9 @@ function resetServiceCatalogForm() {
   if (serviceCatalogStatusInput) {
     serviceCatalogStatusInput.value = "active";
   }
+  if (serviceCatalogIsTrainingInput) {
+    serviceCatalogIsTrainingInput.checked = false;
+  }
   if (serviceCatalogError) {
     serviceCatalogError.textContent = "";
   }
@@ -19824,6 +19889,9 @@ function hydrateServiceCatalogForm(item) {
   }
   if (serviceCatalogStatusInput) {
     serviceCatalogStatusInput.value = item.status || "active";
+  }
+  if (serviceCatalogIsTrainingInput) {
+    serviceCatalogIsTrainingInput.checked = Boolean(item.isTraining);
   }
   if (serviceCatalogNoteInput) {
     serviceCatalogNoteInput.value = item.note || "";
@@ -19925,7 +19993,13 @@ function renderServiceCatalogModule() {
     ].join(" | ");
 
     copy.append(title, meta);
-    head.append(copy, createServiceCatalogStatusBadge(item.status));
+    const headBadges = document.createElement("div");
+    headBadges.className = "service-catalog-card-head-badges";
+    if (item.isTraining) {
+      headBadges.append(createBadge("Osposobljavanje", "service-catalog-template-badge"));
+    }
+    headBadges.append(createServiceCatalogStatusBadge(item.status));
+    head.append(copy, headBadges);
 
     const templates = document.createElement("div");
     templates.className = "service-catalog-card-templates";
@@ -24762,6 +24836,10 @@ function applySelectedLocationDefaults() {
 function buildWorkOrderPayload() {
   const executors = readWorkOrderExecutorSelection();
   const serviceItems = readWorkOrderServiceSelection();
+  const hasTrainingService = hasSelectedTrainingWorkOrderService(serviceItems);
+  const trainingContext = hasTrainingService
+    ? readWorkOrderTrainingAdminDraft()
+    : { name: "", role: "", phone: "", email: "" };
 
   return {
     status: workOrderStatusInput.value,
@@ -24782,6 +24860,7 @@ function buildWorkOrderPayload() {
     executor2: executors[1] ?? "",
     measurementSheet: buildMeasurementSheetSnapshot(),
     serviceItems,
+    trainingContext,
     serviceLine: getWorkOrderServiceSummary({
       serviceItems,
       serviceLine: workOrderServiceLineInput.value,
@@ -25102,6 +25181,8 @@ function resetWorkOrderForm() {
   applyMeasurementSheetSnapshot(null);
   writeWorkOrderExecutorSelection([]);
   writeWorkOrderServiceSelection([]);
+  writeWorkOrderTrainingAdminDraft({});
+  syncWorkOrderTrainingSection([]);
   resetWorkOrderDocumentsState();
   renderWorkOrderEditorSummary();
   setWorkOrderSaveState("blocked");
@@ -25286,11 +25367,13 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   writeWorkOrderExecutorSelection(getWorkOrderExecutors(workOrder));
   const serviceItems = getWorkOrderServiceItems(workOrder);
   writeWorkOrderServiceSelection(serviceItems);
+  writeWorkOrderTrainingAdminDraft(workOrder.trainingContext);
   if (serviceItems.length === 0) {
     workOrderServiceLineInput.value = workOrder.serviceLine;
     renderWorkOrderServiceSelection();
     renderWorkOrderServicePicker();
   }
+  syncWorkOrderTrainingSection(serviceItems);
   workOrderDepartmentInput.value = workOrder.department;
   workOrderLinkReferenceInput.value = workOrder.linkReference;
   workOrderWeightInput.value = workOrder.weight;

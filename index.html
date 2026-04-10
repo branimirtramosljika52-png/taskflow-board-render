@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260410g" />
+  <link rel="stylesheet" href="/styles.css?v=20260410h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -758,6 +758,31 @@
                               </p>
                             </div>
                           </div>
+                        </div>
+
+                        <div id="work-order-training-section" class="work-order-editor-subsection" hidden>
+                          <div class="work-order-editor-subsection-head">Osposobljavanje</div>
+                          <div class="form-grid form-grid-service-training">
+                            <label class="field field-span-2">
+                              <span>Odgovorna osoba klijenta</span>
+                              <input id="work-order-training-admin-name" type="text" maxlength="160" placeholder="Ime i prezime" />
+                            </label>
+                            <label class="field">
+                              <span>Funkcija</span>
+                              <input id="work-order-training-admin-role" type="text" maxlength="120" placeholder="npr. Poslovođa" />
+                            </label>
+                            <label class="field">
+                              <span>Telefon</span>
+                              <input id="work-order-training-admin-phone" type="text" maxlength="80" placeholder="+385..." />
+                            </label>
+                            <label class="field field-span-2">
+                              <span>Email</span>
+                              <input id="work-order-training-admin-email" type="email" maxlength="180" placeholder="odgovorna.osoba@tvrtka.hr" />
+                            </label>
+                          </div>
+                          <p class="helper-copy module-copy">
+                            Ovaj dio se prikazuje samo kad je barem jedna odabrana usluga označena kao osposobljavanje.
+                          </p>
                         </div>
 
                         <div class="work-order-editor-subsection">
@@ -3392,6 +3417,10 @@
                         <span>Aktivnost</span>
                         <select id="service-catalog-status"></select>
                       </label>
+                      <label class="field field-checkbox service-catalog-training-field">
+                        <input id="service-catalog-is-training" type="checkbox" />
+                        <span>Osposobljavanje</span>
+                      </label>
                     </div>
 
                     <section class="service-catalog-template-block">
@@ -4276,6 +4305,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-  <script type="module" src="/src/main.js?v=20260410g"></script>
+  <script type="module" src="/src/main.js?v=20260410h"></script>
   </body>
 </html>

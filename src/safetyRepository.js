@@ -1519,6 +1519,7 @@ async function fetchSnapshotFromConnection(connection) {
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
+           training_admin_name, training_admin_role, training_admin_phone, training_admin_email,
            usluge_json, mjerenja_json
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
@@ -1538,6 +1539,7 @@ async function fetchSnapshotFromConnection(connection) {
         serviceCode: dbString(item.serviceCode),
         linkedTemplateIds: parseJsonArray(item.linkedTemplateIds).map((value) => dbString(value)).filter(Boolean),
         linkedTemplateTitles: parseJsonArray(item.linkedTemplateTitles).map((value) => dbString(value)).filter(Boolean),
+        isTraining: Boolean(item.isTraining),
         isCompleted: Boolean(item.isCompleted),
       }))
       .filter((item) => item.name || item.serviceCode);
@@ -1575,6 +1577,12 @@ async function fetchSnapshotFromConnection(connection) {
       contactName: row.kontakt_osoba ?? "",
       contactPhone: row.kontakt_broj ?? "",
       contactEmail: row.kontakt_email ?? "",
+      trainingContext: {
+        name: row.training_admin_name ?? "",
+        role: row.training_admin_role ?? "",
+        phone: row.training_admin_phone ?? "",
+        email: row.training_admin_email ?? "",
+      },
       measurementSheet: normalizeWorkOrderMeasurementSheet(parseJsonObject(row.mjerenja_json)),
       serviceItems,
       serviceLine: row.usluge ?? "",
@@ -2023,7 +2031,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, linked_template_ids_json, note, created_at, updated_at
+    SELECT id, organization_id, name, service_code, status, is_training, linked_template_ids_json, note, created_at, updated_at
     FROM web_service_catalog
     ORDER BY
       CASE status
@@ -2048,6 +2056,7 @@ async function fetchSnapshotFromConnection(connection) {
       name: row.name ?? "",
       serviceCode: row.service_code ?? "",
       status: row.status ?? "active",
+      isTraining: Boolean(row.is_training),
       linkedTemplateIds: templateIds,
       linkedTemplateTitles,
       note: row.note ?? "",
@@ -3708,6 +3717,7 @@ export class MySqlSafetyRepository {
         name VARCHAR(180) NOT NULL,
         service_code VARCHAR(80) NOT NULL,
         status VARCHAR(16) NOT NULL DEFAULT 'active',
+        is_training TINYINT(1) NOT NULL DEFAULT 0,
         linked_template_ids_json LONGTEXT NULL,
         note TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -3743,6 +3753,11 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "radni_nalozi", "mjerenja_json", "LONGTEXT NULL AFTER usluge_json");
+    await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER rn_zavrsio");
+    await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_role", "VARCHAR(120) NOT NULL DEFAULT '' AFTER training_admin_name");
+    await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER training_admin_role");
+    await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER training_admin_phone");
+    await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "firme", "logo_storage_provider", "VARCHAR(32) NULL AFTER logo_data_url");
     await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
@@ -4354,8 +4369,9 @@ export class MySqlSafetyRepository {
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
              izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
-             odjel, koordinate, usluge, usluge_json, mjerenja_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             odjel, koordinate, usluge, usluge_json, mjerenja_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
+             training_admin_name, training_admin_role, training_admin_phone, training_admin_email)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -4389,6 +4405,10 @@ export class MySqlSafetyRepository {
           draft.invoiceDate,
           parseNullableDecimal(draft.weight),
           draft.completedBy,
+          draft.trainingContext?.name ?? "",
+          draft.trainingContext?.role ?? "",
+          draft.trainingContext?.phone ?? "",
+          draft.trainingContext?.email ?? "",
         ],
       );
 
@@ -4442,7 +4462,7 @@ export class MySqlSafetyRepository {
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
               izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
               odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, mjerenja_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
-              tezina = ?, rn_zavrsio = ?
+              tezina = ?, rn_zavrsio = ?, training_admin_name = ?, training_admin_role = ?, training_admin_phone = ?, training_admin_email = ?
           WHERE id = ?
         `,
         [
@@ -4474,6 +4494,10 @@ export class MySqlSafetyRepository {
           next.invoiceDate,
           parseNullableDecimal(next.weight),
           next.completedBy,
+          next.trainingContext?.name ?? "",
+          next.trainingContext?.role ?? "",
+          next.trainingContext?.phone ?? "",
+          next.trainingContext?.email ?? "",
           Number(id),
         ],
       );
@@ -5444,14 +5468,15 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_service_catalog
-            (organization_id, name, service_code, status, linked_template_ids_json, note)
-          VALUES (?, ?, ?, ?, ?, ?)
+            (organization_id, name, service_code, status, is_training, linked_template_ids_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           draft.name,
           draft.serviceCode,
           draft.status,
+          draft.isTraining ? 1 : 0,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           draft.note,
         ],
@@ -5489,7 +5514,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_service_catalog
-          SET organization_id = ?, name = ?, service_code = ?, status = ?, linked_template_ids_json = ?, note = ?
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, is_training = ?, linked_template_ids_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -5497,6 +5522,7 @@ export class MySqlSafetyRepository {
           next.name,
           next.serviceCode,
           next.status,
+          next.isTraining ? 1 : 0,
           JSON.stringify(next.linkedTemplateIds ?? []),
           next.note,
           Number(id),
