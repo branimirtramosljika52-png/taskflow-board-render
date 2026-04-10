@@ -1334,6 +1334,20 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       })),
       referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
     })),
+    learningTests: (rawSnapshot.learningTests ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      handbookDocuments: (item.handbookDocuments ?? []).map((document) => ({ ...document })),
+      videoItems: (item.videoItems ?? []).map((video) => ({ ...video })),
+      questionItems: (item.questionItems ?? []).map((question) => ({
+        ...question,
+        imageDocument: question.imageDocument ? { ...question.imageDocument } : null,
+        options: (question.options ?? []).map((option) => ({ ...option })),
+      })),
+      assignmentItems: (item.assignmentItems ?? []).map((assignment) => ({ ...assignment })),
+      attemptItems: (item.attemptItems ?? []).map((attempt) => ({ ...attempt })),
+    })),
     serviceCatalog: (rawSnapshot.serviceCatalog ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -1795,6 +1809,7 @@ export class MemoryTenantRepository {
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
+    learningTests: [],
     serviceCatalog: [],
     measurementEquipment: [],
     safetyAuthorizations: [],
@@ -2441,6 +2456,7 @@ export class MySqlTenantRepository {
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
+    learningTests: [],
     serviceCatalog: [],
     measurementEquipment: [],
     safetyAuthorizations: [],
@@ -2463,6 +2479,7 @@ export class MySqlTenantRepository {
         vehicles: [],
         legalFrameworks: [],
         documentTemplates: [],
+        learningTests: [],
         serviceCatalog: [],
         measurementEquipment: [],
         safetyAuthorizations: [],
