@@ -1080,7 +1080,7 @@
               <div class="workspace-list-actions">
                 <button id="work-order-batch-clear" type="button" class="ghost-button" hidden>Očisti odabir</button>
                 <button id="work-order-open-documents" type="button" class="ghost-button work-order-batch-launch" disabled>
-                  Zapisnici
+                  <span id="work-order-open-documents-label">Zapisnici</span>
                   <span id="work-order-open-documents-count" class="work-order-batch-count" hidden>0</span>
                 </button>
                 <button id="work-order-open-form" type="button" class="primary-button workspace-add-button">+ RN</button>
@@ -1157,7 +1157,7 @@
                   <div id="work-order-bulk-executors-picker" class="work-order-bulk-picker-slot"></div>
 
                   <button id="work-order-bulk-open-documents" type="button" class="work-order-bulk-action-button is-primary">
-                    Izrada zapisnika
+                    <span id="work-order-bulk-open-documents-label">Izrada zapisnika</span>
                   </button>
 
                   <button id="work-order-bulk-clear" type="button" class="work-order-bulk-action-button">
@@ -1241,7 +1241,7 @@
           <div class="work-order-document-wizard-head">
             <div class="work-order-document-wizard-head-copy">
               <p class="section-kicker">Batch zapisnici</p>
-              <h2>Izrada zapisnika</h2>
+              <h2 id="work-order-document-wizard-title">Izrada zapisnika</h2>
               <p id="work-order-document-wizard-helper" class="helper-copy" hidden>
                 Gore postavi zajedničke podatke za sve, a dolje po RN-u prepravi samo ono što odskače.
               </p>
@@ -3417,13 +3417,13 @@
                         <span>Aktivnost</span>
                         <select id="service-catalog-status"></select>
                       </label>
-                      <label class="field field-checkbox service-catalog-training-field">
-                        <input id="service-catalog-is-training" type="checkbox" />
-                        <span>Osposobljavanje</span>
+                      <label class="field">
+                        <span>Vrsta usluge</span>
+                        <select id="service-catalog-type"></select>
                       </label>
                     </div>
 
-                    <section class="service-catalog-template-block">
+                    <section id="service-catalog-template-section" class="service-catalog-template-block">
                       <div class="section-heading offers-section-heading">
                         <div>
                           <p class="section-kicker">Templates</p>

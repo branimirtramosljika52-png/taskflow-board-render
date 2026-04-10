@@ -18,6 +18,7 @@
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   SERVICE_CATALOG_STATUS_OPTIONS,
+  SERVICE_CATALOG_TYPE_OPTIONS,
   TODO_TASK_STATUS_OPTIONS,
   VEHICLE_RESERVATION_STATUS_OPTIONS,
   VEHICLE_STATUS_OPTIONS,
@@ -587,6 +588,7 @@ const state = {
   },
   workOrderDocumentWizard: {
     open: false,
+    mode: "",
     step: "details",
     selectedIds: new Set(),
     commonCollapsed: false,
@@ -1339,7 +1341,8 @@ const serviceCatalogIdInput = document.querySelector("#service-catalog-id");
 const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
 const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
 const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
-const serviceCatalogIsTrainingInput = document.querySelector("#service-catalog-is-training");
+const serviceCatalogTypeInput = document.querySelector("#service-catalog-type");
+const serviceCatalogTemplateSection = document.querySelector("#service-catalog-template-section");
 const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
 const serviceCatalogLearningTestList = document.querySelector("#service-catalog-learning-test-list");
@@ -1605,6 +1608,7 @@ const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
 const workOrderOpenFormButton = document.querySelector("#work-order-open-form");
 const workOrderOpenDocumentsButton = document.querySelector("#work-order-open-documents");
+const workOrderOpenDocumentsLabel = document.querySelector("#work-order-open-documents-label");
 const workOrderOpenDocumentsCount = document.querySelector("#work-order-open-documents-count");
 const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
 const workOrderBulkBar = document.querySelector("#work-order-bulk-bar");
@@ -1615,6 +1619,7 @@ const workOrderBulkPrioritySlot = document.querySelector("#work-order-bulk-prior
 const workOrderBulkDueDateInput = document.querySelector("#work-order-bulk-due-date");
 const workOrderBulkExecutorsPicker = document.querySelector("#work-order-bulk-executors-picker");
 const workOrderBulkOpenDocumentsButton = document.querySelector("#work-order-bulk-open-documents");
+const workOrderBulkOpenDocumentsLabel = document.querySelector("#work-order-bulk-open-documents-label");
 const workOrderBulkClearButton = document.querySelector("#work-order-bulk-clear");
 const workOrderOpenReminderButton = document.querySelector("#work-order-open-reminder");
 const workOrderOpenTodoButton = document.querySelector("#work-order-open-todo");
@@ -1642,6 +1647,7 @@ const workOrderActivityDocumentCount = document.querySelector("#work-order-activ
 const workOrderDocumentWizardBackdrop = document.querySelector("#work-order-document-wizard-backdrop");
 const workOrderDocumentWizardPanel = document.querySelector("#work-order-document-wizard-panel");
 const workOrderDocumentWizardCloseButton = document.querySelector("#work-order-document-wizard-close");
+const workOrderDocumentWizardTitle = document.querySelector("#work-order-document-wizard-title");
 const workOrderDocumentWizardHelper = document.querySelector("#work-order-document-wizard-helper");
 const workOrderDocumentWizardStepDetailsButton = document.querySelector("#work-order-document-wizard-step-details");
 const workOrderDocumentWizardStepTemplatesButton = document.querySelector("#work-order-document-wizard-step-templates");
@@ -3001,6 +3007,7 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
     serviceId: String(service?.id ?? current?.serviceId ?? ""),
     name: String(service?.name ?? current?.name ?? "").trim(),
     serviceCode: String(service?.serviceCode ?? current?.serviceCode ?? "").trim(),
+    serviceType: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() || "inspection",
     linkedTemplateIds: Array.isArray(service?.linkedTemplateIds)
       ? service.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
       : Array.isArray(current?.linkedTemplateIds)
@@ -3013,8 +3020,48 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
         ? current.linkedLearningTestIds.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
     linkedLearningTestTitles: linkedLearningTestTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
-    isTraining: Boolean(service?.isTraining ?? current?.isTraining),
+    isTraining: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() === "znr",
     isCompleted: Boolean(current?.isCompleted),
+  };
+}
+
+function normalizeServiceCatalogTypeUi(value = "", fallback = "inspection") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (SERVICE_CATALOG_TYPE_OPTIONS.some((option) => option.value === normalized)) {
+    return normalized;
+  }
+  return String(fallback || "inspection").trim().toLowerCase() || "inspection";
+}
+
+function getServiceCatalogTypeLabel(value = "") {
+  return getOptionLabel(SERVICE_CATALOG_TYPE_OPTIONS, normalizeServiceCatalogTypeUi(value));
+}
+
+function getWorkOrderServiceType(item = null) {
+  return normalizeServiceCatalogTypeUi(item?.serviceType, item?.isTraining ? "znr" : "inspection");
+}
+
+function getWorkOrderSelectionServiceType(items = []) {
+  const normalizedTypes = Array.from(new Set(
+    (Array.isArray(items) ? items : [])
+      .map((item) => getWorkOrderServiceType(item))
+      .filter(Boolean),
+  ));
+  return normalizedTypes.length === 1 ? normalizedTypes[0] : "";
+}
+
+function getWorkOrderDocumentSelectionState(workOrders = []) {
+  const serviceTypes = Array.from(new Set(
+    (Array.isArray(workOrders) ? workOrders : [])
+      .flatMap((workOrder) => getWorkOrderServiceItems(workOrder))
+      .map((item) => getWorkOrderServiceType(item))
+      .filter(Boolean),
+  ));
+  return {
+    serviceTypes,
+    mode: serviceTypes.length === 1 ? serviceTypes[0] : "",
+    hasMixedTypes: serviceTypes.length > 1,
+    hasServices: serviceTypes.length > 0,
   };
 }
 
@@ -3043,7 +3090,7 @@ function writeWorkOrderTrainingAdminDraft(value = {}) {
 }
 
 function hasSelectedTrainingWorkOrderService(items = readWorkOrderServiceSelection()) {
-  return (Array.isArray(items) ? items : []).some((item) => Boolean(item?.isTraining));
+  return getWorkOrderSelectionServiceType(Array.isArray(items) ? items : []) === "znr";
 }
 
 function syncWorkOrderTrainingSection(items = readWorkOrderServiceSelection()) {
@@ -5422,8 +5469,11 @@ function getWorkOrderServiceCatalogOptions(currentItems = []) {
       id: item.serviceId || key,
       name: item.name,
       serviceCode: item.serviceCode,
+      serviceType: getWorkOrderServiceType(item),
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+      linkedLearningTestIds: [...(item.linkedLearningTestIds ?? [])],
+      linkedLearningTestTitles: [...(item.linkedLearningTestTitles ?? [])],
       isTraining: Boolean(item.isTraining),
       status: "inactive",
       isSnapshot: true,
@@ -5454,7 +5504,9 @@ function matchesWorkOrderServiceSearch(option, query = "") {
   const haystack = [
     option.name,
     option.serviceCode,
+    getServiceCatalogTypeLabel(option.serviceType),
     ...(option.linkedTemplateTitles ?? []),
+    ...(option.linkedLearningTestTitles ?? []),
   ]
     .join(" ")
     .toLowerCase();
@@ -5483,6 +5535,44 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
     meta.textContent = `${getWorkOrderCompletedServiceCount({ serviceItems: selectedItems })}/${selectedItems.length} odrađeno`;
     trigger.append(meta);
   }
+}
+
+function getWorkOrderSelectionModeFromWorkOrders(workOrders = []) {
+  return getWorkOrderDocumentSelectionState(workOrders).mode;
+}
+
+function getSelectedWorkOrderDocumentMode() {
+  return getWorkOrderSelectionModeFromWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+}
+
+function getWorkOrderDocumentActionCopy(mode = "") {
+  if (mode === "znr") {
+    return {
+      single: "Ispiti",
+      bulk: "Ispiti i edukacija",
+      helper: "odabrano za ispite i edukaciju.",
+      title: "Ispiti i edukacija",
+      wizardHelper: "Za ZNR usluge ovdje pregledaj povezane ispite i osposobljavanje po odabranim RN-ovima.",
+    };
+  }
+
+  if (mode === "other") {
+    return {
+      single: "Usluge",
+      bulk: "Pregled usluga",
+      helper: "odabrano za pregled usluga.",
+      title: "Pregled usluga",
+      wizardHelper: "Za usluge vrste Ostalo još nema poseban tok kroz zapisnike ili ispite.",
+    };
+  }
+
+  return {
+    single: "Zapisnici",
+    bulk: "Izrada zapisnika",
+    helper: "odabrano za zapisnike.",
+    title: "Izrada zapisnika",
+    wizardHelper: "Gore postavi zajedničke podatke za sve, a dolje po RN-u prepravi samo ono što odskače.",
+  };
 }
 
 function renderWorkOrderServiceSelection() {
@@ -5528,11 +5618,23 @@ function renderWorkOrderServiceSelection() {
   const templateNames = Array.from(new Set(
     selectedItems.flatMap((item) => item.linkedTemplateTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
   ));
+  const learningTestNames = Array.from(new Set(
+    selectedItems.flatMap((item) => item.linkedLearningTestTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
+  ));
+  const selectionType = getWorkOrderSelectionServiceType(selectedItems);
 
   if (workOrderServiceTemplateHint) {
-    workOrderServiceTemplateHint.textContent = templateNames.length > 0
-      ? `Povezani templatei: ${templateNames.join(" · ")}`
-      : "Odabrane usluge trenutno nemaju povezan template.";
+    if (selectionType === "znr") {
+      workOrderServiceTemplateHint.textContent = learningTestNames.length > 0
+        ? `Povezani ispiti: ${learningTestNames.join(" · ")}`
+        : "Odabrane ZNR usluge trenutno nemaju povezan ispit.";
+    } else if (selectionType === "other") {
+      workOrderServiceTemplateHint.textContent = "Za usluge vrste Ostalo trenutno nema posebnog toka kroz zapisnike ili ispite.";
+    } else {
+      workOrderServiceTemplateHint.textContent = templateNames.length > 0
+        ? `Povezani templatei: ${templateNames.join(" · ")}`
+        : "Odabrane usluge trenutno nemaju povezan template.";
+    }
   }
 
   workOrderServiceSelection.replaceChildren(...selectedItems.map((item) => {
@@ -5551,21 +5653,29 @@ function renderWorkOrderServiceSelection() {
     if (item.serviceCode) {
       titleRow.append(createBadge(item.serviceCode, "work-order-service-code-badge"));
     }
+    titleRow.append(createBadge(getServiceCatalogTypeLabel(getWorkOrderServiceType(item)), "work-order-service-template-badge"));
 
     const templates = document.createElement("div");
     templates.className = "work-order-service-item-templates";
     const templateTitles = (item.linkedTemplateTitles ?? []).filter(Boolean);
 
-    if (item.isTraining) {
-      templates.append(createBadge("Osposobljavanje", "work-order-service-template-badge"));
-    }
-
-    if (templateTitles.length > 0) {
+    if (getWorkOrderServiceType(item) === "inspection" && templateTitles.length > 0) {
       templateTitles.forEach((templateTitle) => {
         templates.append(createBadge(templateTitle, "work-order-service-template-badge"));
       });
-    } else {
+    } else if (getWorkOrderServiceType(item) === "inspection") {
       templates.append(createBadge("Bez templatea", "work-order-service-template-badge is-muted"));
+    }
+
+    if (getWorkOrderServiceType(item) === "znr") {
+      const learningTitles = (item.linkedLearningTestTitles ?? []).filter(Boolean);
+      if (learningTitles.length > 0) {
+        learningTitles.forEach((learningTitle) => {
+          templates.append(createBadge(learningTitle, "work-order-service-template-badge"));
+        });
+      } else {
+        templates.append(createBadge("Bez ispita", "work-order-service-template-badge is-muted"));
+      }
     }
 
     copy.append(titleRow, templates);
@@ -5705,9 +5815,15 @@ function renderWorkOrderServicePicker() {
     const toggleService = (service) => {
       const normalizedId = String(service.id || "").trim();
       const existing = draftItems.find((item) => String(item.serviceId) === normalizedId);
+      const nextType = getWorkOrderServiceType(service);
+      const lockedType = getWorkOrderSelectionServiceType(draftItems);
 
       if (existing) {
         draftItems = draftItems.filter((item) => String(item.serviceId) !== normalizedId);
+        return;
+      }
+
+      if (lockedType && nextType && lockedType !== nextType) {
         return;
       }
 
@@ -5756,11 +5872,15 @@ function renderWorkOrderServicePicker() {
         empty.textContent = "Nema usluga za ovaj pojam.";
         optionsList.append(empty);
       } else {
+        const lockedType = getWorkOrderSelectionServiceType(draftItems);
         visibleOptions.forEach((option) => {
+          const optionType = getWorkOrderServiceType(option);
           const isSelected = draftItems.some((item) => String(item.serviceId) === String(option.id));
+          const isLockedOut = Boolean(lockedType && optionType && lockedType !== optionType && !isSelected);
           const optionButton = document.createElement("button");
           optionButton.type = "button";
-          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}`;
+          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}${isLockedOut ? " is-disabled" : ""}`;
+          optionButton.disabled = isLockedOut;
 
           const copy = document.createElement("div");
           copy.className = "work-order-service-picker-option-copy";
@@ -5769,9 +5889,13 @@ function renderWorkOrderServicePicker() {
           const meta = document.createElement("span");
           meta.textContent = [
             option.serviceCode || "",
-            option.isTraining ? "Osposobljavanje" : "",
+            getServiceCatalogTypeLabel(optionType),
             option.status === "inactive" ? "Neaktivna" : "Aktivna",
-            (option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "",
+            optionType === "znr"
+              ? ((option.linkedLearningTestTitles ?? []).length > 0 ? `${option.linkedLearningTestTitles.length} ispita` : "Bez ispita")
+              : optionType === "inspection"
+                ? ((option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "Bez templatea")
+                : "",
           ].filter(Boolean).join(" · ");
           copy.append(title, meta);
 
@@ -5794,9 +5918,10 @@ function renderWorkOrderServicePicker() {
         });
       }
 
+      const selectionType = getWorkOrderSelectionServiceType(draftItems);
       helper.textContent = draftItems.length > 0
-        ? `${draftItems.length} odabranih usluga · ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.`
-        : "Odaberi usluge iz kataloga i kasnije ih označavaj kvačicom ili X.";
+        ? `${draftItems.length} odabranih usluga · ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.${selectionType ? ` Zaključano na vrstu: ${getServiceCatalogTypeLabel(selectionType)}.` : ""}`
+        : "Odaberi usluge iz kataloga. Na jednom RN-u može biti samo jedna vrsta usluge.";
       clearButton.disabled = draftItems.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -5990,10 +6115,15 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     const toggleService = (service) => {
       const normalizedId = String(service?.id || service?.serviceId || "").trim();
       const existing = draftItems.find((item) => String(item.serviceId || "") === normalizedId);
+      const nextType = getWorkOrderServiceType(service);
+      const lockedType = getWorkOrderSelectionServiceType(draftItems);
 
       if (existing) {
         draftItems = draftItems.filter((item) => String(item.serviceId || "") !== normalizedId);
       } else {
+        if (lockedType && nextType && lockedType !== nextType) {
+          return;
+        }
         draftItems = [
           ...draftItems,
           buildWorkOrderServiceItemSnapshot(service, service),
@@ -6038,12 +6168,16 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
         empty.textContent = "Nema usluga za ovaj pojam.";
         optionsList.append(empty);
       } else {
+        const lockedType = getWorkOrderSelectionServiceType(draftItems);
         visibleOptions.forEach((option) => {
           const normalizedOptionId = String(option.id || option.serviceId || "").trim();
           const isSelected = draftItems.some((item) => String(item.serviceId || "") === normalizedOptionId);
+          const optionType = getWorkOrderServiceType(option);
+          const isLockedOut = Boolean(lockedType && optionType && lockedType !== optionType && !isSelected);
           const optionButton = document.createElement("button");
           optionButton.type = "button";
-          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}`;
+          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}${isLockedOut ? " is-disabled" : ""}`;
+          optionButton.disabled = isLockedOut;
 
           const copy = document.createElement("div");
           copy.className = "work-order-service-picker-option-copy";
@@ -6054,8 +6188,13 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
           const meta = document.createElement("span");
           meta.textContent = [
             option.serviceCode || "",
+            getServiceCatalogTypeLabel(optionType),
             option.status === "inactive" ? "Neaktivna" : "Aktivna",
-            (option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "",
+            optionType === "znr"
+              ? ((option.linkedLearningTestTitles ?? []).length > 0 ? `${option.linkedLearningTestTitles.length} ispita` : "Bez ispita")
+              : optionType === "inspection"
+                ? ((option.linkedTemplateTitles ?? []).length > 0 ? `${option.linkedTemplateTitles.length} templatea` : "Bez templatea")
+                : "",
           ].filter(Boolean).join(", ");
 
           copy.append(title, meta);
@@ -6073,9 +6212,10 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
         });
       }
 
+      const selectionType = getWorkOrderSelectionServiceType(draftItems);
       helper.textContent = draftItems.length > 0
-        ? `${draftItems.length} odabranih usluga, ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.`
-        : "Dodaj ili makni usluge iz kataloga za ovaj RN.";
+        ? `${draftItems.length} odabranih usluga, ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.${selectionType ? ` Vrsta: ${getServiceCatalogTypeLabel(selectionType)}.` : ""}`
+        : "Dodaj ili makni usluge iz kataloga za ovaj RN. Miješanje vrsta nije dopušteno.";
       clearButton.disabled = draftItems.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -19792,14 +19932,16 @@ function renderLegalFrameworkModule() {
 }
 
 function buildServiceCatalogPayload() {
+  const serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
   return {
     organizationId: state.activeOrganizationId,
     name: serviceCatalogNameInput?.value || "",
     serviceCode: serviceCatalogCodeInput?.value || "",
     status: serviceCatalogStatusInput?.value || "active",
-    isTraining: Boolean(serviceCatalogIsTrainingInput?.checked),
-    linkedTemplateIds: getServiceCatalogTemplateSelectionIds(),
-    linkedLearningTestIds: getServiceCatalogLearningTestSelectionIds(),
+    serviceType,
+    isTraining: serviceType === "znr",
+    linkedTemplateIds: serviceType === "inspection" ? getServiceCatalogTemplateSelectionIds() : [],
+    linkedLearningTestIds: serviceType === "znr" ? getServiceCatalogLearningTestSelectionIds() : [],
     note: serviceCatalogNoteInput?.value || "",
   };
 }
@@ -19910,10 +20052,13 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
 }
 
 function syncServiceCatalogTrainingSections() {
-  if (!serviceCatalogLearningTestSection) {
-    return;
+  const serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
+  if (serviceCatalogTemplateSection) {
+    serviceCatalogTemplateSection.hidden = serviceType !== "inspection";
   }
-  serviceCatalogLearningTestSection.hidden = !Boolean(serviceCatalogIsTrainingInput?.checked);
+  if (serviceCatalogLearningTestSection) {
+    serviceCatalogLearningTestSection.hidden = serviceType !== "znr";
+  }
 }
 
 function resetServiceCatalogForm() {
@@ -19929,8 +20074,8 @@ function resetServiceCatalogForm() {
   if (serviceCatalogStatusInput) {
     serviceCatalogStatusInput.value = "active";
   }
-  if (serviceCatalogIsTrainingInput) {
-    serviceCatalogIsTrainingInput.checked = false;
+  if (serviceCatalogTypeInput) {
+    serviceCatalogTypeInput.value = "inspection";
   }
   if (serviceCatalogError) {
     serviceCatalogError.textContent = "";
@@ -19965,8 +20110,8 @@ function hydrateServiceCatalogForm(item) {
   if (serviceCatalogStatusInput) {
     serviceCatalogStatusInput.value = item.status || "active";
   }
-  if (serviceCatalogIsTrainingInput) {
-    serviceCatalogIsTrainingInput.checked = Boolean(item.isTraining);
+  if (serviceCatalogTypeInput) {
+    serviceCatalogTypeInput.value = normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection");
   }
   if (serviceCatalogNoteInput) {
     serviceCatalogNoteInput.value = item.note || "";
@@ -20069,35 +20214,38 @@ function renderServiceCatalogModule() {
     meta.className = "service-catalog-card-meta";
     meta.textContent = [
       item.serviceCode || "Bez sifre",
-      templateTitles.length > 0 ? `${templateTitles.length} zapisnika` : "Bez zapisnika",
-      item.isTraining
-        ? (learningTestTitles.length > 0 ? `${learningTestTitles.length} ispita` : "Bez ispita")
-        : "",
+      getServiceCatalogTypeLabel(item.serviceType || (item.isTraining ? "znr" : "inspection")),
+      normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "inspection"
+        ? (templateTitles.length > 0 ? `${templateTitles.length} zapisnika` : "Bez zapisnika")
+        : normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr"
+          ? (learningTestTitles.length > 0 ? `${learningTestTitles.length} ispita` : "Bez ispita")
+          : "",
     ].join(" | ");
 
     copy.append(title, meta);
     const headBadges = document.createElement("div");
     headBadges.className = "service-catalog-card-head-badges";
-    if (item.isTraining) {
-      headBadges.append(createBadge("Osposobljavanje", "service-catalog-template-badge"));
-    }
+    headBadges.append(createBadge(
+      getServiceCatalogTypeLabel(item.serviceType || (item.isTraining ? "znr" : "inspection")),
+      "service-catalog-template-badge",
+    ));
     headBadges.append(createServiceCatalogStatusBadge(item.status));
     head.append(copy, headBadges);
 
     const templates = document.createElement("div");
     templates.className = "service-catalog-card-templates";
 
-    if (templateTitles.length > 0) {
+    if (normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "inspection" && templateTitles.length > 0) {
       templateTitles.slice(0, 3).forEach((templateTitle) => {
         templates.append(createBadge(templateTitle, "service-catalog-template-badge"));
       });
       if (templateTitles.length > 3) {
         templates.append(createBadge(`+${templateTitles.length - 3}`, "service-catalog-template-badge is-muted"));
       }
-    } else {
+    } else if (normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "inspection") {
       templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
     }
-    if (item.isTraining) {
+    if (normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr") {
       if (learningTestTitles.length > 0) {
         learningTestTitles.slice(0, 2).forEach((titleText) => {
           templates.append(createBadge(titleText, "service-catalog-template-badge"));
@@ -20108,6 +20256,9 @@ function renderServiceCatalogModule() {
       } else {
         templates.append(createBadge("Bez povezanih ispita", "service-catalog-template-badge is-muted"));
       }
+    }
+    if (templates.childNodes.length === 0) {
+      templates.append(createBadge("Bez dodatnih veza", "service-catalog-template-badge is-muted"));
     }
 
     const footer = document.createElement("div");
@@ -30154,6 +30305,9 @@ function renderSharedOptions() {
   if (serviceCatalogStatusInput) {
     replaceSelectOptions(serviceCatalogStatusInput, SERVICE_CATALOG_STATUS_OPTIONS, serviceCatalogStatusInput.value || "active");
   }
+  if (serviceCatalogTypeInput) {
+    replaceSelectOptions(serviceCatalogTypeInput, SERVICE_CATALOG_TYPE_OPTIONS, serviceCatalogTypeInput.value || "inspection");
+  }
   if (serviceCatalogFilterStatusInput) {
     replaceSelectOptions(serviceCatalogFilterStatusInput, [
       { value: "all", label: "Svi statusi" },
@@ -34480,7 +34634,14 @@ function renderWorkOrderBatchBar() {
   }
 
   if (workOrderBulkOpenDocumentsButton) {
-    workOrderBulkOpenDocumentsButton.disabled = state.workOrderBatch.pending;
+    const selectionState = getWorkOrderDocumentSelectionState(selectedWorkOrders);
+    const hasUnsupportedMode = selectionState.mode === "other";
+    const hasNoTypedServices = selectedCount > 0 && !selectionState.hasServices;
+    workOrderBulkOpenDocumentsButton.disabled = state.workOrderBatch.pending
+      || selectedCount === 0
+      || selectionState.hasMixedTypes
+      || hasUnsupportedMode
+      || hasNoTypedServices;
     decorateWorkOrderActionButton(workOrderBulkOpenDocumentsButton, "document");
   }
 
@@ -34504,10 +34665,22 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
   const selectedCount = state.workOrderDocumentWizard.selectedIds.size;
   const isListMode = state.activeWorkOrderViewMode === "list";
   const showBatchBar = isListMode && selectedCount >= 1;
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const selectionState = getWorkOrderDocumentSelectionState(selectedWorkOrders);
+  const mode = selectionState.mode;
+  const copy = getWorkOrderDocumentActionCopy(mode || "inspection");
+  const hasUnsupportedMode = mode === "other";
+  const hasMixedTypes = selectionState.hasMixedTypes;
+  const hasNoTypedServices = selectedCount > 0 && !selectionState.hasServices;
+  const canOpen = selectedCount > 0 && !hasMixedTypes && !hasUnsupportedMode && !hasNoTypedServices;
 
   if (workOrderOpenDocumentsButton) {
-    workOrderOpenDocumentsButton.disabled = selectedCount === 0;
+    workOrderOpenDocumentsButton.disabled = !canOpen;
     workOrderOpenDocumentsButton.hidden = !isListMode || showBatchBar;
+  }
+
+  if (workOrderOpenDocumentsLabel) {
+    workOrderOpenDocumentsLabel.textContent = copy.single;
   }
 
   if (workOrderBatchClearButton) {
@@ -34521,7 +34694,15 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
 
   if (workOrdersHelper && isListMode) {
     const currentText = workOrdersHelper.dataset.baseText || workOrdersHelper.textContent || "";
-    const selectionText = selectedCount > 0 ? `${selectedCount} odabrano za zapisnike.` : "";
+    const selectionText = selectedCount === 0
+      ? ""
+      : hasMixedTypes
+        ? `${selectedCount} odabrano, ali RN-ovi imaju različite vrste usluga.`
+        : hasUnsupportedMode
+          ? `${selectedCount} odabrano, ali vrsta "Ostalo" nema poseban tok.`
+          : hasNoTypedServices
+            ? `${selectedCount} odabrano, ali RN-ovi nemaju uslugu s vrstom.`
+            : `${selectedCount} ${copy.helper}`;
     workOrdersHelper.textContent = [currentText, selectionText].filter(Boolean).join(" ");
     workOrdersHelper.hidden = false;
   }
@@ -34542,12 +34723,33 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
     }
   }
 
+  if (workOrderBulkOpenDocumentsButton) {
+    workOrderBulkOpenDocumentsButton.disabled = state.workOrderBatch.pending || !canOpen;
+  }
+  if (workOrderBulkOpenDocumentsLabel) {
+    workOrderBulkOpenDocumentsLabel.textContent = copy.bulk;
+  }
+  if (workOrderDocumentWizardTitle) {
+    workOrderDocumentWizardTitle.textContent = copy.title;
+  }
+  if (workOrderDocumentWizardHelper) {
+    workOrderDocumentWizardHelper.textContent = hasMixedTypes
+      ? "Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno."
+      : hasUnsupportedMode
+        ? "Za usluge vrste Ostalo još nema poseban tok kroz zapisnike ili ispite."
+        : hasNoTypedServices
+          ? "Odabrani RN-ovi nemaju vrstu usluge koja pokreće zapisnike ili ispite."
+          : copy.wizardHelper;
+    workOrderDocumentWizardHelper.hidden = false;
+  }
+
   renderWorkOrderBatchBar();
 }
 
 function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.selectedIds = new Set();
   state.workOrderDocumentWizard.overrides = {};
+  state.workOrderDocumentWizard.mode = "";
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.commonCollapsed = false;
   state.workOrderDocumentWizard.commonPeopleCollapsed = false;
@@ -34947,7 +35149,11 @@ function setWorkOrderDocumentWizardStep(step = "details", { render = true } = {}
   }
 }
 
-function openWorkOrderDocumentWizard() {
+function openWorkOrderDocumentWizard(requestedMode = "") {
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const selectionState = getWorkOrderDocumentSelectionState(selectedWorkOrders);
+  const mode = normalizeServiceCatalogTypeUi(requestedMode || selectionState.mode || "", selectionState.mode || "inspection");
+
   if (state.workOrderDocumentWizard.selectedIds.size === 0) {
     if (workOrderDocumentWizardError) {
       workOrderDocumentWizardError.textContent = "Odaberi barem jedan RN u listi.";
@@ -34955,8 +35161,32 @@ function openWorkOrderDocumentWizard() {
     return;
   }
 
+  if (selectionState.hasMixedTypes) {
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno.";
+    }
+    return;
+  }
+
+  if (!selectionState.hasServices) {
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "Odabrani RN-ovi nemaju uslugu s definiranom vrstom.";
+    }
+    return;
+  }
+
+  if (mode === "other") {
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "Za usluge vrste Ostalo još nema poseban tok.";
+    }
+    return;
+  }
+
   state.workOrderDocumentWizard.open = true;
-  state.workOrderDocumentWizard.step = normalizeWorkOrderDocumentWizardStep(state.workOrderDocumentWizard.step);
+  state.workOrderDocumentWizard.mode = mode;
+  state.workOrderDocumentWizard.step = mode === "znr"
+    ? "templates"
+    : normalizeWorkOrderDocumentWizardStep(state.workOrderDocumentWizard.step);
   if (workOrderDocumentWizardError) {
     workOrderDocumentWizardError.textContent = "";
   }
@@ -34974,6 +35204,7 @@ function openWorkOrderDocumentWizard() {
 function closeWorkOrderDocumentWizard() {
   state.workOrderDocumentWizard.open = false;
   state.workOrderDocumentWizard.step = "details";
+  state.workOrderDocumentWizard.mode = "";
   syncWorkOrderDocumentWizardModal();
 }
 
@@ -36356,11 +36587,11 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
   const companyCount = new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size;
   const templateCount = getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length;
   const learningTestCount = getWorkOrderLearningTestRecommendations(workOrders).recommendations.length;
+  const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
   const summaryPills = [
     `${workOrders.length} RN`,
     `${companyCount} tvrtki`,
-    `${templateCount} zapisnika`,
-    learningTestCount > 0 ? `${learningTestCount} ispita` : "",
+    mode === "znr" ? `${learningTestCount} ispita` : `${templateCount} zapisnika`,
   ];
 
   workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryPills.map((text) => {
@@ -37227,6 +37458,91 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     return;
   }
 
+  const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
+  if (mode === "znr") {
+    const { recommendations, unmatchedTrainingWorkOrders } = getWorkOrderLearningTestRecommendations(workOrders);
+    const selectedTestCount = recommendations.length;
+
+    workOrderDocumentWizardTemplateSummary.replaceChildren();
+    const summary = document.createElement("div");
+    summary.className = "work-order-document-template-summary-card";
+    summary.innerHTML = `
+      <strong>${selectedTestCount} ispita</strong>
+      <span>${selectedTestCount > 0 ? "Pronađeni su iz ZNR usluga na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih ispita."}</span>
+    `;
+    workOrderDocumentWizardTemplateSummary.append(summary);
+
+    if (unmatchedTrainingWorkOrders.length > 0) {
+      const warning = document.createElement("div");
+      warning.className = "work-order-document-template-summary-card is-warning";
+      warning.innerHTML = `
+        <strong>${unmatchedTrainingWorkOrders.length} RN bez ispita</strong>
+        <span>Poveži ispit u Organisation > List Of Services da bi se ovdje automatski pojavio.</span>
+      `;
+      workOrderDocumentWizardTemplateSummary.append(warning);
+    }
+
+    if (recommendations.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Za odabrane RN-ove još nema povezanih ispita. Poveži ih na usluzi označenoj kao ZNR.";
+      workOrderDocumentWizardTemplateList.replaceChildren(empty);
+      renderWorkOrderDocumentWizardTemplateDock([]);
+      return;
+    }
+
+    workOrderDocumentWizardTemplateList.replaceChildren(...recommendations.map((entry) => {
+      const card = document.createElement("article");
+      card.className = "work-order-document-template-card";
+
+      const head = document.createElement("div");
+      head.className = "work-order-document-template-card-head";
+
+      const copy = document.createElement("div");
+      copy.className = "work-order-document-template-card-copy";
+
+      const title = document.createElement("strong");
+      title.textContent = entry.test.title || "Grupa edukacije";
+
+      const meta = document.createElement("span");
+      meta.textContent = [
+        `${entry.workOrders.length} RN`,
+        `${Array.isArray(entry.test.questionItems) ? entry.test.questionItems.length : 0} pitanja`,
+        LEARNING_TEST_STATUS_OPTIONS.find((option) => option.value === entry.test.status)?.label || entry.test.status || "Skica",
+      ].filter(Boolean).join(" | ");
+
+      copy.append(title, meta);
+
+      const badges = document.createElement("div");
+      badges.className = "work-order-document-template-card-badges";
+      badges.append(createBadge("ZNR", "document-template-meta-badge"));
+      entry.serviceLabels.forEach((label) => {
+        badges.append(createBadge(label, "document-template-meta-badge"));
+      });
+
+      head.append(copy, badges);
+
+      const workOrderList = document.createElement("div");
+      workOrderList.className = "work-order-document-template-card-work-orders";
+      entry.workOrders.forEach((workOrder) => {
+        const chip = document.createElement("span");
+        chip.className = "work-order-document-template-work-order-chip";
+        chip.textContent = workOrder.workOrderNumber || "Bez broja";
+        workOrderList.append(chip);
+      });
+
+      const note = document.createElement("span");
+      note.className = "work-order-document-template-card-note";
+      note.textContent = entry.test.description || "Ispit je povezan preko odabrane ZNR usluge.";
+
+      card.append(head, workOrderList, note);
+      return card;
+    }));
+
+    renderWorkOrderDocumentWizardTemplateDock([]);
+    return;
+  }
+
   const { recommendations, unmatchedWorkOrders } = getWorkOrderDocumentTemplateRecommendations(workOrders);
   const selectedTemplateCount = recommendations.length;
 
@@ -37335,7 +37651,21 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
 
 function renderWorkOrderDocumentWizard() {
   const workOrders = getAllSelectedWorkOrdersForDocumentWizard();
-  const { recommendations } = getWorkOrderDocumentTemplateRecommendations(workOrders);
+  const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
+  const copy = getWorkOrderDocumentActionCopy(mode);
+  const isInspectionMode = mode === "inspection";
+  const { recommendations } = isInspectionMode
+    ? getWorkOrderDocumentTemplateRecommendations(workOrders)
+    : { recommendations: [] };
+  state.workOrderDocumentWizard.mode = mode;
+
+  if (workOrderDocumentWizardTitle) {
+    workOrderDocumentWizardTitle.textContent = copy.title;
+  }
+  if (workOrderDocumentWizardHelper) {
+    workOrderDocumentWizardHelper.textContent = copy.wizardHelper;
+    workOrderDocumentWizardHelper.hidden = false;
+  }
   syncWorkOrderDocumentWizardCommonInputs();
   renderWorkOrderDocumentWizardCommonSection();
 
@@ -37357,11 +37687,13 @@ function renderWorkOrderDocumentWizard() {
   }
   if (workOrderDocumentWizardPrevButton) {
     workOrderDocumentWizardPrevButton.hidden = state.workOrderDocumentWizard.step === "details";
-    workOrderDocumentWizardPrevButton.textContent = "Vrati se na osnovne podatke";
+    workOrderDocumentWizardPrevButton.textContent = isInspectionMode
+      ? "Vrati se na osnovne podatke"
+      : "Vrati se na pregled RN-ova";
   }
   if (workOrderDocumentWizardNextButton) {
-    workOrderDocumentWizardNextButton.textContent = "NEXT";
-    workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
+    workOrderDocumentWizardNextButton.textContent = isInspectionMode ? "NEXT" : "Prikaži ispite";
+    workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates" || !isInspectionMode;
   }
 
   renderWorkOrderDocumentWizardSelectionSummary(workOrders);
@@ -38817,13 +39149,13 @@ workOrderSearchInput?.addEventListener("input", () => {
   syncWorkOrderFilterResults();
 });
 workOrderOpenDocumentsButton?.addEventListener("click", () => {
-  openWorkOrderDocumentWizard();
+  openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
 });
 workOrderBatchClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
 });
 workOrderBulkOpenDocumentsButton?.addEventListener("click", () => {
-  openWorkOrderDocumentWizard();
+  openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
 });
 workOrderBulkClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
@@ -40358,7 +40690,7 @@ serviceCatalogResetButton?.addEventListener("click", () => {
   openServiceCatalogEditor();
 });
 
-serviceCatalogIsTrainingInput?.addEventListener("change", () => {
+serviceCatalogTypeInput?.addEventListener("change", () => {
   syncServiceCatalogTrainingSections();
 });
 

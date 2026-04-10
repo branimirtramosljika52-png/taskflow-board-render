@@ -2031,7 +2031,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, is_training, linked_template_ids_json, linked_learning_test_ids_json, note, created_at, updated_at
+    SELECT id, organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, note, created_at, updated_at
     FROM web_service_catalog
     ORDER BY
       CASE status
@@ -2060,6 +2060,7 @@ async function fetchSnapshotFromConnection(connection) {
       name: row.name ?? "",
       serviceCode: row.service_code ?? "",
       status: row.status ?? "active",
+      serviceType: dbString(row.service_type) || (row.is_training ? "znr" : "inspection"),
       isTraining: Boolean(row.is_training),
       linkedTemplateIds: templateIds,
       linkedTemplateTitles,
@@ -3723,6 +3724,7 @@ export class MySqlSafetyRepository {
         name VARCHAR(180) NOT NULL,
         service_code VARCHAR(80) NOT NULL,
         status VARCHAR(16) NOT NULL DEFAULT 'active',
+        service_type VARCHAR(24) NOT NULL DEFAULT 'inspection',
         is_training TINYINT(1) NOT NULL DEFAULT 0,
         linked_template_ids_json LONGTEXT NULL,
         linked_learning_test_ids_json LONGTEXT NULL,
@@ -3765,7 +3767,17 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER training_admin_role");
     await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER training_admin_phone");
     await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
+    await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
+    await this.pool.query(`
+      UPDATE web_service_catalog
+      SET service_type = CASE
+        WHEN is_training = 1 THEN 'znr'
+        ELSE 'inspection'
+      END
+      WHERE service_type IS NULL
+        OR service_type = ''
+    `);
     await ensureColumnExists(this.pool, "firme", "logo_data_url", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "firme", "logo_storage_provider", "VARCHAR(32) NULL AFTER logo_data_url");
     await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
@@ -5476,14 +5488,15 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_service_catalog
-            (organization_id, name, service_code, status, is_training, linked_template_ids_json, linked_learning_test_ids_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           draft.name,
           draft.serviceCode,
           draft.status,
+          draft.serviceType || (draft.isTraining ? "znr" : "inspection"),
           draft.isTraining ? 1 : 0,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(draft.linkedLearningTestIds ?? []),
@@ -5523,7 +5536,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_service_catalog
-          SET organization_id = ?, name = ?, service_code = ?, status = ?, is_training = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, note = ?
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -5531,6 +5544,7 @@ export class MySqlSafetyRepository {
           next.name,
           next.serviceCode,
           next.status,
+          next.serviceType || (next.isTraining ? "znr" : "inspection"),
           next.isTraining ? 1 : 0,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(next.linkedLearningTestIds ?? []),

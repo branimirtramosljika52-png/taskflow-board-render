@@ -12,6 +12,7 @@ import {
   createDashboardWidget,
   createDocumentTemplate,
   createLegalFramework,
+  createLearningTest,
   createLocation,
   createMeasurementEquipmentItem,
   createOffer,
@@ -497,6 +498,73 @@ test("service catalog keeps linked templates and supports filtering and sorting"
   assert.equal(sorted[0].serviceCode, "ZNR-200");
 });
 
+test("service catalog supports service types and clears incompatible links", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "SPR zapisnik",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-1",
+    () => "2026-03-31T08:00:00.000Z",
+  );
+  const learningTest = createLearningTest(
+    {
+      organizationId: "org-1",
+      title: "Osposobljavanje ZNR",
+      status: "active",
+    },
+    state,
+    () => "test-1",
+    () => "2026-03-31T08:10:00.000Z",
+  );
+  state.documentTemplates = [template];
+  state.learningTests = [learningTest];
+
+  const inspectionService = createServiceCatalogItem(
+    {
+      organizationId: "org-1",
+      name: "Ispitivanje panik rasvjete",
+      serviceCode: "SPR",
+      status: "active",
+      serviceType: "inspection",
+      linkedTemplateIds: ["template-1"],
+      linkedLearningTestIds: ["test-1"],
+    },
+    state,
+    () => "service-1",
+    () => "2026-03-31T08:20:00.000Z",
+  );
+
+  assert.equal(inspectionService.serviceType, "inspection");
+  assert.equal(inspectionService.isTraining, false);
+  assert.deepEqual(inspectionService.linkedTemplateIds, ["template-1"]);
+  assert.deepEqual(inspectionService.linkedLearningTestIds, []);
+
+  const znrService = updateServiceCatalogItem(
+    inspectionService,
+    {
+      serviceType: "znr",
+      linkedLearningTestIds: ["test-1"],
+    },
+    {
+      ...state,
+      serviceCatalog: [inspectionService],
+    },
+    () => "2026-03-31T09:00:00.000Z",
+  );
+
+  assert.equal(znrService.serviceType, "znr");
+  assert.equal(znrService.isTraining, true);
+  assert.deepEqual(znrService.linkedTemplateIds, []);
+  assert.deepEqual(znrService.linkedLearningTestIds, ["test-1"]);
+});
+
 test("measurement sheet normalization keeps validation metadata on editable columns", () => {
   const normalized = normalizeWorkOrderMeasurementSheet({
     columns: [
@@ -845,6 +913,83 @@ test("work orders can store service catalog items with completion state", () => 
 
   assert.equal(getWorkOrderCompletedServiceCount(updated), 1);
   assert.equal(getWorkOrderServiceItems(updated)[0].linkedTemplateTitles[0], "Zapisnik panik rasvjete");
+});
+
+test("work orders block mixing different service types on one RN", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "SPR zapisnik",
+      documentType: "Zapisnik",
+      status: "active",
+      sampleCompanyId: "company-1",
+      sampleLocationId: "location-1",
+    },
+    state,
+    () => "template-1",
+    () => "2026-03-31T09:00:00.000Z",
+  );
+  const learningTest = createLearningTest(
+    {
+      organizationId: "org-1",
+      title: "ZNR test",
+      status: "active",
+    },
+    state,
+    () => "test-1",
+    () => "2026-03-31T09:05:00.000Z",
+  );
+
+  const scopedState = {
+    ...state,
+    documentTemplates: [template],
+    learningTests: [learningTest],
+  };
+
+  const inspectionService = createServiceCatalogItem(
+    {
+      organizationId: "org-1",
+      name: "Panik rasvjeta",
+      serviceCode: "SPR",
+      serviceType: "inspection",
+      linkedTemplateIds: ["template-1"],
+    },
+    scopedState,
+    () => "service-1",
+    () => "2026-03-31T09:10:00.000Z",
+  );
+  const znrService = createServiceCatalogItem(
+    {
+      organizationId: "org-1",
+      name: "Osposobljavanje za rad na siguran način",
+      serviceCode: "ZNR-001",
+      serviceType: "znr",
+      linkedLearningTestIds: ["test-1"],
+    },
+    scopedState,
+    () => "service-2",
+    () => "2026-03-31T09:15:00.000Z",
+  );
+
+  assert.throws(() => createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      description: "Mijesani RN",
+      serviceItems: [
+        { serviceId: "service-1", isCompleted: false },
+        { serviceId: "service-2", isCompleted: false },
+      ],
+    },
+    {
+      ...scopedState,
+      serviceCatalog: [inspectionService, znrService],
+    },
+    () => "work-order-mixed",
+    "RN-99999",
+    () => "2026-03-31T09:20:00.000Z",
+  ), /različitih vrsta|razlicitih vrsta/i);
 });
 
 test("groupWorkOrdersByExecutorSet merges work orders with the same executor combination", () => {

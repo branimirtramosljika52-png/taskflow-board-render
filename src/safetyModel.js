@@ -60,6 +60,12 @@ export const SERVICE_CATALOG_STATUS_OPTIONS = [
   { value: "inactive", label: "Neaktivna" },
 ];
 
+export const SERVICE_CATALOG_TYPE_OPTIONS = [
+  { value: "inspection", label: "Ispitivanje" },
+  { value: "znr", label: "ZNR" },
+  { value: "other", label: "Ostalo" },
+];
+
 export const MEASUREMENT_EQUIPMENT_KIND_OPTIONS = [
   { value: "measurement", label: "Mjerna oprema" },
   { value: "testing", label: "Ispitna oprema" },
@@ -318,6 +324,7 @@ const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
 const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((option) => option.value));
+const SERVICE_CATALOG_TYPE_SET = new Set(SERVICE_CATALOG_TYPE_OPTIONS.map((option) => option.value));
 const MEASUREMENT_EQUIPMENT_KIND_SET = new Set(MEASUREMENT_EQUIPMENT_KIND_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
@@ -995,6 +1002,16 @@ function normalizeServiceCatalogStatus(value) {
   return SERVICE_CATALOG_STATUS_SET.has(status) ? status : "active";
 }
 
+function normalizeServiceCatalogType(value, fallback = "inspection") {
+  const type = normalizeText(value).toLowerCase();
+  if (SERVICE_CATALOG_TYPE_SET.has(type)) {
+    return type;
+  }
+
+  const fallbackType = normalizeText(fallback).toLowerCase();
+  return SERVICE_CATALOG_TYPE_SET.has(fallbackType) ? fallbackType : "inspection";
+}
+
 function findServiceCatalogItem(state, serviceId = "", organizationId = "") {
   if (!serviceId) {
     return null;
@@ -1081,11 +1098,18 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
     serviceId: normalizeId(item.serviceId || item.id),
     name,
     serviceCode,
+    serviceType: normalizeServiceCatalogType(
+      item.serviceType,
+      normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
+    ),
     linkedTemplateIds,
     linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
     linkedLearningTestIds,
     linkedLearningTestTitles: Array.from(new Set(linkedLearningTestTitles)),
-    isTraining: normalizeBoolean(item.isTraining, false),
+    isTraining: normalizeServiceCatalogType(
+      item.serviceType,
+      normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
+    ) === "znr",
     isCompleted: normalizeBoolean(item.isCompleted, false),
   };
 }
@@ -1133,17 +1157,24 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       service?.linkedLearningTestIds ?? entry?.linkedLearningTestIds ?? current?.linkedLearningTestIds ?? [],
       service?.linkedLearningTestTitles ?? entry?.linkedLearningTestTitles ?? current?.linkedLearningTestTitles ?? [],
     );
+    const serviceType = normalizeServiceCatalogType(
+      service?.serviceType,
+      normalizeText(entry?.serviceType)
+        || normalizeText(current?.serviceType)
+        || (normalizeBoolean(
+          service?.isTraining,
+          normalizeBoolean(entry?.isTraining, normalizeBoolean(current?.isTraining, false)),
+        ) ? "znr" : "inspection"),
+    );
 
     const normalizedItem = {
       serviceId: serviceId || current?.serviceId || "",
       name: name || current?.name || "",
       serviceCode: serviceCode || current?.serviceCode || "",
+      serviceType,
       ...templateSnapshot,
       ...learningTestSnapshot,
-      isTraining: normalizeBoolean(
-        service?.isTraining,
-        normalizeBoolean(entry?.isTraining, normalizeBoolean(current?.isTraining, false)),
-      ),
+      isTraining: serviceType === "znr",
       isCompleted: hasOwn(entry ?? {}, "isCompleted")
         ? normalizeBoolean(entry.isCompleted, false)
         : normalizeBoolean(current?.isCompleted, false),
@@ -1157,6 +1188,16 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
     seen.add(dedupeKey);
     normalizedItems.push(normalizedItem);
   });
+
+  const serviceTypes = Array.from(new Set(
+    normalizedItems
+      .map((item) => normalizeServiceCatalogType(item.serviceType, item.isTraining ? "znr" : "inspection"))
+      .filter(Boolean),
+  ));
+
+  if (serviceTypes.length > 1) {
+    throw new Error("Na istom radnom nalogu ne mogu biti usluge različitih vrsta.");
+  }
 
   return normalizedItems;
 }
@@ -2494,6 +2535,10 @@ export function createServiceCatalogItem(
   const timestamp = now();
   const organizationId = requireText(input.organizationId, "Organizacija");
   const serviceCode = requireText(input.serviceCode, "Šifra usluge");
+  const serviceType = normalizeServiceCatalogType(
+    input.serviceType,
+    normalizeBoolean(input.isTraining, false) ? "znr" : "inspection",
+  );
   const normalizedTemplateIds = deriveServiceTemplateSnapshot(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
@@ -2516,11 +2561,12 @@ export function createServiceCatalogItem(
     name: requireText(input.name, "Ime usluge"),
     serviceCode,
     status: normalizeServiceCatalogStatus(input.status),
-    isTraining: normalizeBoolean(input.isTraining, false),
-    linkedTemplateIds: normalizedTemplateIds.linkedTemplateIds,
-    linkedTemplateTitles: normalizedTemplateIds.linkedTemplateTitles,
-    linkedLearningTestIds: normalizedLearningTestIds.linkedLearningTestIds,
-    linkedLearningTestTitles: normalizedLearningTestIds.linkedLearningTestTitles,
+    serviceType,
+    isTraining: serviceType === "znr",
+    linkedTemplateIds: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateIds : [],
+    linkedTemplateTitles: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateTitles : [],
+    linkedLearningTestIds: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestIds : [],
+    linkedLearningTestTitles: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestTitles : [],
     note: normalizeText(input.note),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -2534,6 +2580,21 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
   const serviceCode = hasOwn(patch, "serviceCode")
     ? requireText(patch.serviceCode, "Šifra usluge")
     : current.serviceCode;
+  const serviceType = hasOwn(patch, "serviceType")
+    ? normalizeServiceCatalogType(
+      patch.serviceType,
+      normalizeBoolean(
+        hasOwn(patch, "isTraining") ? patch.isTraining : current.isTraining,
+        normalizeText(current.serviceType) === "znr",
+      ) ? "znr" : (current.serviceType || "inspection"),
+    )
+    : normalizeServiceCatalogType(
+      current.serviceType,
+      normalizeBoolean(
+        hasOwn(patch, "isTraining") ? patch.isTraining : current.isTraining,
+        false,
+      ) ? "znr" : "inspection",
+    );
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? deriveServiceTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
     : deriveServiceTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
@@ -2555,11 +2616,12 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     name: hasOwn(patch, "name") ? requireText(patch.name, "Ime usluge") : current.name,
     serviceCode,
     status: hasOwn(patch, "status") ? normalizeServiceCatalogStatus(patch.status) : current.status,
-    isTraining: hasOwn(patch, "isTraining") ? normalizeBoolean(patch.isTraining, false) : normalizeBoolean(current.isTraining, false),
-    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
-    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
-    linkedLearningTestIds: learningTestSnapshot.linkedLearningTestIds,
-    linkedLearningTestTitles: learningTestSnapshot.linkedLearningTestTitles,
+    serviceType,
+    isTraining: serviceType === "znr",
+    linkedTemplateIds: serviceType === "inspection" ? templateSnapshot.linkedTemplateIds : [],
+    linkedTemplateTitles: serviceType === "inspection" ? templateSnapshot.linkedTemplateTitles : [],
+    linkedLearningTestIds: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestIds : [],
+    linkedLearningTestTitles: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestTitles : [],
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     updatedAt: now(),
   };
