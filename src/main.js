@@ -20714,22 +20714,66 @@ function setDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0, co
   }
 }
 
+const LEARNING_QUESTION_OPTION_KEYS = ["A", "B", "C", "D"];
+const LEARNING_QUESTION_TYPE_OPTIONS = [
+  { value: "single_choice", label: "Jedan točan odgovor" },
+  { value: "multiple_choice", label: "Višestruki odgovor" },
+  { value: "ordered_text", label: "Pisanje brojeva ispred teksta" },
+];
+
+function normalizeLearningQuestionTypeClient(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return LEARNING_QUESTION_TYPE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : "single_choice";
+}
+
+function normalizeLearningQuestionCorrectKeysClient(values = [], fallbackValue = "A") {
+  const fallback = String(fallbackValue || "A").trim().toUpperCase() || "A";
+  return Array.from(new Set(
+    (Array.isArray(values) ? values : [values])
+      .map((value) => String(value || "").trim().toUpperCase())
+      .filter((value) => LEARNING_QUESTION_OPTION_KEYS.includes(value)),
+  )).filter(Boolean).length
+    ? Array.from(new Set(
+      (Array.isArray(values) ? values : [values])
+        .map((value) => String(value || "").trim().toUpperCase())
+        .filter((value) => LEARNING_QUESTION_OPTION_KEYS.includes(value)),
+    ))
+    : [fallback];
+}
+
 function createEmptyLearningQuestionDraft(initial = {}, index = 0) {
-  const letters = ["A", "B", "C", "D"];
   const normalizedOptions = Array.isArray(initial.options) ? initial.options : [];
-  const correctLetter = letters.find((letter, optionIndex) => Boolean(normalizedOptions[optionIndex]?.isCorrect))
+  const questionType = normalizeLearningQuestionTypeClient(initial.questionType);
+  const correctLetter = LEARNING_QUESTION_OPTION_KEYS.find((letter, optionIndex) => Boolean(normalizedOptions[optionIndex]?.isCorrect))
     || String(initial.correctOptionKey || "").trim().toUpperCase()
     || "A";
+  const correctOptionKeys = normalizeLearningQuestionCorrectKeysClient(
+    initial.correctOptionKeys
+      || normalizedOptions
+        .filter((option, optionIndex) => Boolean(option?.isCorrect) && LEARNING_QUESTION_OPTION_KEYS[optionIndex])
+        .map((option, optionIndex) => LEARNING_QUESTION_OPTION_KEYS[optionIndex]),
+    correctLetter,
+  );
+  const imageDocument = initial.imageDocument ? createModuleAttachmentDraft(initial.imageDocument) : null;
 
   return {
     id: String(initial.id || crypto.randomUUID()),
     code: String(initial.code || `P${index + 1}`).trim() || `P${index + 1}`,
     prompt: String(initial.prompt || "").trim(),
-    correctOptionKey: letters.includes(correctLetter) ? correctLetter : "A",
+    questionType,
+    correctOptionKey: LEARNING_QUESTION_OPTION_KEYS.includes(correctLetter) ? correctLetter : "A",
+    correctOptionKeys: questionType === "ordered_text" ? [] : correctOptionKeys,
     optionA: String(initial.optionA || normalizedOptions[0]?.text || "").trim(),
     optionB: String(initial.optionB || normalizedOptions[1]?.text || "").trim(),
     optionC: String(initial.optionC || normalizedOptions[2]?.text || "").trim(),
     optionD: String(initial.optionD || normalizedOptions[3]?.text || "").trim(),
+    orderA: String(initial.orderA || normalizedOptions[0]?.orderIndex || "").trim(),
+    orderB: String(initial.orderB || normalizedOptions[1]?.orderIndex || "").trim(),
+    orderC: String(initial.orderC || normalizedOptions[2]?.orderIndex || "").trim(),
+    orderD: String(initial.orderD || normalizedOptions[3]?.orderIndex || "").trim(),
+    imageDocument: imageDocument?.fileName ? imageDocument : null,
   };
 }
 
@@ -20759,13 +20803,33 @@ function serializeLearningQuestionGroupDrafts() {
       groupLabel: String(group.title || `Grupa ${groupIndex + 1}`).trim() || `Grupa ${groupIndex + 1}`,
       prompt: String(question.prompt || "").trim(),
       explanation: "",
-      options: ["A", "B", "C", "D"].map((letter) => ({
+      questionType: normalizeLearningQuestionTypeClient(question.questionType),
+      correctOptionKeys: normalizeLearningQuestionTypeClient(question.questionType) === "ordered_text"
+        ? []
+        : normalizeLearningQuestionCorrectKeysClient(
+          question.correctOptionKeys,
+          question.correctOptionKey || "A",
+        ),
+      imageDocument: question.imageDocument?.fileName ? createModuleAttachmentDraft(question.imageDocument) : null,
+      options: LEARNING_QUESTION_OPTION_KEYS.map((letter) => ({
         id: crypto.randomUUID(),
         text: String(question[`option${letter}`] || "").trim(),
-        isCorrect: String(question.correctOptionKey || "A").trim().toUpperCase() === letter,
+        isCorrect: normalizeLearningQuestionTypeClient(question.questionType) === "multiple_choice"
+          ? normalizeLearningQuestionCorrectKeysClient(question.correctOptionKeys, question.correctOptionKey || "A").includes(letter)
+          : (normalizeLearningQuestionTypeClient(question.questionType) === "single_choice"
+            ? String(question.correctOptionKey || "A").trim().toUpperCase() === letter
+            : false),
+        orderIndex: normalizeLearningQuestionTypeClient(question.questionType) === "ordered_text"
+          ? (Number.isFinite(Number(question[`order${letter}`]))
+            ? Math.max(1, Math.round(Number(question[`order${letter}`])))
+            : null)
+          : null,
       })),
     }))
-  )).filter((question) => question.prompt && question.options.some((option) => option.text));
+  )).filter((question) => (
+    question.prompt
+    && question.options.some((option) => option.text)
+  ));
 }
 
 function buildLearningTestPayload() {
@@ -20976,6 +21040,22 @@ function renderLearningQuestionGroupList() {
     const questionCard = document.createElement("div");
     questionCard.className = "learning-test-question-card";
 
+    const questionType = normalizeLearningQuestionTypeClient(question.questionType);
+
+    const setupGrid = document.createElement("div");
+    setupGrid.className = "learning-test-question-setup";
+
+    const typeField = document.createElement("label");
+    typeField.className = "field";
+    const typeLabel = document.createElement("span");
+    typeLabel.textContent = "Vrsta pitanja";
+    const typeSelect = document.createElement("select");
+    replaceSelectOptions(typeSelect, LEARNING_QUESTION_TYPE_OPTIONS, questionType);
+    typeSelect.dataset.learningGroupIndex = "0";
+    typeSelect.dataset.learningQuestionIndex = String(questionIndex);
+    typeSelect.dataset.learningQuestionField = "questionType";
+    typeField.append(typeLabel, typeSelect);
+
     const promptField = document.createElement("label");
     promptField.className = "field field-span-full";
     const promptLabel = document.createElement("span");
@@ -20988,44 +21068,191 @@ function renderLearningQuestionGroupList() {
     promptInput.dataset.learningQuestionIndex = String(questionIndex);
     promptInput.dataset.learningQuestionField = "prompt";
     promptField.append(promptLabel, promptInput);
+    setupGrid.append(typeField, promptField);
+
+    const mediaRow = document.createElement("div");
+    mediaRow.className = "learning-test-question-media";
+    const mediaMeta = document.createElement("div");
+    mediaMeta.className = "learning-test-question-media-meta";
+    const mediaLabel = document.createElement("span");
+    mediaLabel.className = "learning-test-question-media-label";
+    mediaLabel.textContent = "Slika pitanja";
+    const mediaSummary = document.createElement("span");
+    mediaSummary.className = "learning-test-question-media-summary";
+    mediaSummary.textContent = question.imageDocument?.fileName
+      ? question.imageDocument.fileName
+      : "Bez dodane slike";
+    mediaMeta.append(mediaLabel, mediaSummary);
+
+    const mediaActions = document.createElement("div");
+    mediaActions.className = "learning-test-question-media-actions";
+    const uploadImageButton = createActionButton(
+      question.imageDocument?.fileName ? "Promijeni sliku" : "Dodaj sliku",
+      "ghost-button",
+      () => {
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files?.[0];
+          if (!file) {
+            return;
+          }
+          void readFileAsDataUrl(file, `Ne mogu učitati sliku ${file.name}.`)
+            .then((dataUrl) => {
+              const nextGroups = [...learningTestQuestionGroupDrafts];
+              const targetQuestion = nextGroups[0]?.questions?.[questionIndex];
+              if (!targetQuestion) {
+                return;
+              }
+              targetQuestion.imageDocument = createModuleAttachmentDraft({
+                fileName: file.name,
+                fileType: file.type || "image/*",
+                fileSize: file.size || 0,
+                documentCategory: "Slika pitanja",
+                dataUrl,
+                updatedAt: new Date().toISOString(),
+              });
+              learningTestQuestionGroupDrafts = nextGroups;
+              renderLearningQuestionGroupList();
+            })
+            .catch((error) => {
+              if (learningTestError) {
+                learningTestError.textContent = error.message;
+              }
+            });
+        });
+        fileInput.click();
+      },
+    );
+    mediaActions.append(uploadImageButton);
+
+    if (question.imageDocument?.fileName) {
+      const removeImageButton = createActionButton("Makni sliku", "card-button card-danger", () => {
+        const nextGroups = [...learningTestQuestionGroupDrafts];
+        const targetQuestion = nextGroups[0]?.questions?.[questionIndex];
+        if (!targetQuestion) {
+          return;
+        }
+        targetQuestion.imageDocument = null;
+        learningTestQuestionGroupDrafts = nextGroups;
+        renderLearningQuestionGroupList();
+      });
+      mediaActions.append(removeImageButton);
+    }
+
+    mediaRow.append(mediaMeta, mediaActions);
+
+    if (question.imageDocument?.fileName) {
+      const mediaPreview = document.createElement("div");
+      mediaPreview.className = "learning-test-question-image-preview";
+      const image = document.createElement("img");
+      image.src = String(question.imageDocument.storageUrl || question.imageDocument.dataUrl || "").trim();
+      image.alt = `Slika pitanja ${questionIndex + 1}`;
+      mediaPreview.append(image);
+      mediaRow.append(mediaPreview);
+    }
 
     const answersGrid = document.createElement("div");
     answersGrid.className = "learning-test-answer-grid";
 
-    ["A", "B", "C", "D"].forEach((letter) => {
+    LEARNING_QUESTION_OPTION_KEYS.forEach((letter) => {
       const optionField = document.createElement("label");
       optionField.className = "field";
       const optionLabel = document.createElement("span");
       optionLabel.textContent = `Odgovor ${letter}`;
-      const optionInput = document.createElement("input");
-      optionInput.type = "text";
-      optionInput.value = question[`option${letter}`] || "";
-      optionInput.placeholder = `Tekst odgovora ${letter}`;
-      optionInput.dataset.learningGroupIndex = "0";
-      optionInput.dataset.learningQuestionIndex = String(questionIndex);
-      optionInput.dataset.learningQuestionField = `option${letter}`;
-      optionField.append(optionLabel, optionInput);
+
+      if (questionType === "ordered_text") {
+        const row = document.createElement("div");
+        row.className = "learning-test-ordered-answer-row";
+
+        const orderInput = document.createElement("input");
+        orderInput.type = "number";
+        orderInput.min = "1";
+        orderInput.step = "1";
+        orderInput.value = question[`order${letter}`] || "";
+        orderInput.placeholder = "#";
+        orderInput.dataset.learningGroupIndex = "0";
+        orderInput.dataset.learningQuestionIndex = String(questionIndex);
+        orderInput.dataset.learningQuestionField = `order${letter}`;
+        orderInput.className = "learning-test-order-input";
+
+        const optionInput = document.createElement("input");
+        optionInput.type = "text";
+        optionInput.value = question[`option${letter}`] || "";
+        optionInput.placeholder = `Tekst odgovora ${letter}`;
+        optionInput.dataset.learningGroupIndex = "0";
+        optionInput.dataset.learningQuestionIndex = String(questionIndex);
+        optionInput.dataset.learningQuestionField = `option${letter}`;
+        row.append(orderInput, optionInput);
+        optionField.append(optionLabel, row);
+      } else {
+        const optionInput = document.createElement("input");
+        optionInput.type = "text";
+        optionInput.value = question[`option${letter}`] || "";
+        optionInput.placeholder = `Tekst odgovora ${letter}`;
+        optionInput.dataset.learningGroupIndex = "0";
+        optionInput.dataset.learningQuestionIndex = String(questionIndex);
+        optionInput.dataset.learningQuestionField = `option${letter}`;
+        optionField.append(optionLabel, optionInput);
+      }
       answersGrid.append(optionField);
     });
 
     const footer = document.createElement("div");
     footer.className = "learning-test-question-footer";
 
-    const correctField = document.createElement("label");
-    correctField.className = "field";
-    const correctLabel = document.createElement("span");
-    correctLabel.textContent = "Točan odgovor";
-    const correctSelect = document.createElement("select");
-    replaceSelectOptions(correctSelect, [
-      { value: "A", label: "A" },
-      { value: "B", label: "B" },
-      { value: "C", label: "C" },
-      { value: "D", label: "D" },
-    ], question.correctOptionKey || "A");
-    correctSelect.dataset.learningGroupIndex = "0";
-    correctSelect.dataset.learningQuestionIndex = String(questionIndex);
-    correctSelect.dataset.learningQuestionField = "correctOptionKey";
-    correctField.append(correctLabel, correctSelect);
+    let correctField = null;
+    if (questionType === "single_choice") {
+      correctField = document.createElement("label");
+      correctField.className = "field";
+      const correctLabel = document.createElement("span");
+      correctLabel.textContent = "Točan odgovor";
+      const correctSelect = document.createElement("select");
+      replaceSelectOptions(correctSelect, LEARNING_QUESTION_OPTION_KEYS.map((letter) => ({
+        value: letter,
+        label: letter,
+      })), question.correctOptionKey || "A");
+      correctSelect.dataset.learningGroupIndex = "0";
+      correctSelect.dataset.learningQuestionIndex = String(questionIndex);
+      correctSelect.dataset.learningQuestionField = "correctOptionKey";
+      correctField.append(correctLabel, correctSelect);
+    } else if (questionType === "multiple_choice") {
+      correctField = document.createElement("div");
+      correctField.className = "field learning-test-multi-correct-field";
+      const correctLabel = document.createElement("span");
+      correctLabel.textContent = "Točni odgovori";
+      const list = document.createElement("div");
+      list.className = "learning-test-correct-multi";
+      const selectedKeys = normalizeLearningQuestionCorrectKeysClient(
+        question.correctOptionKeys,
+        question.correctOptionKey || "A",
+      );
+      LEARNING_QUESTION_OPTION_KEYS.forEach((letter) => {
+        const label = document.createElement("label");
+        label.className = "learning-test-correct-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = letter;
+        checkbox.checked = selectedKeys.includes(letter);
+        checkbox.dataset.learningGroupIndex = "0";
+        checkbox.dataset.learningQuestionIndex = String(questionIndex);
+        checkbox.dataset.learningQuestionField = "correctOptionKeys";
+        const text = document.createElement("span");
+        text.textContent = letter;
+        label.append(checkbox, text);
+        list.append(label);
+      });
+      correctField.append(correctLabel, list);
+    } else {
+      correctField = document.createElement("div");
+      correctField.className = "field learning-test-ordering-help";
+      const helpLabel = document.createElement("span");
+      helpLabel.textContent = "Redoslijed odgovora";
+      const helpCopy = document.createElement("small");
+      helpCopy.textContent = "Za ovu vrstu pitanja upiši broj ispred svakog odgovora.";
+      correctField.append(helpLabel, helpCopy);
+    }
 
     const removeQuestionButton = createActionButton("Ukloni pitanje", "card-button card-danger", () => {
       const nextGroups = [...learningTestQuestionGroupDrafts];
@@ -21038,7 +21265,7 @@ function renderLearningQuestionGroupList() {
     });
 
     footer.append(correctField, removeQuestionButton);
-    questionCard.append(promptField, answersGrid, footer);
+    questionCard.append(setupGrid, mediaRow, answersGrid, footer);
     questionList.append(questionCard);
   });
 
@@ -38932,12 +39159,16 @@ learningTestQuestionList?.addEventListener("input", (event) => {
     return;
   }
 
+  if (target instanceof HTMLInputElement && target.type === "checkbox") {
+    return;
+  }
+
   learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex][questionField] = target.value;
 });
 
 learningTestQuestionList?.addEventListener("change", (event) => {
   const target = event.target instanceof HTMLElement ? event.target : null;
-  if (!(target instanceof HTMLSelectElement)) {
+  if (!(target instanceof HTMLSelectElement) && !(target instanceof HTMLInputElement)) {
     return;
   }
 
@@ -38950,8 +39181,46 @@ learningTestQuestionList?.addEventListener("change", (event) => {
   if (!learningTestQuestionGroupDrafts[groupIndex]?.questions?.[questionIndex]) {
     return;
   }
+  const question = learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex];
 
-  learningTestQuestionGroupDrafts[groupIndex].questions[questionIndex][questionField] = target.value;
+  if (target instanceof HTMLInputElement && target.type === "checkbox" && questionField === "correctOptionKeys") {
+    const optionKey = String(target.value || "").trim().toUpperCase();
+    const nextKeys = new Set(normalizeLearningQuestionCorrectKeysClient(question.correctOptionKeys, question.correctOptionKey || "A"));
+    if (target.checked) {
+      nextKeys.add(optionKey);
+    } else {
+      nextKeys.delete(optionKey);
+    }
+    question.correctOptionKeys = Array.from(nextKeys).filter((value) => LEARNING_QUESTION_OPTION_KEYS.includes(value));
+    if (question.correctOptionKeys.length === 0) {
+      question.correctOptionKeys = ["A"];
+    }
+    renderLearningQuestionGroupList();
+    return;
+  }
+
+  if (target instanceof HTMLSelectElement && questionField === "questionType") {
+    question.questionType = normalizeLearningQuestionTypeClient(target.value);
+    if (question.questionType === "single_choice") {
+      question.correctOptionKey = normalizeLearningQuestionCorrectKeysClient(question.correctOptionKeys, question.correctOptionKey || "A")[0] || "A";
+      question.correctOptionKeys = [question.correctOptionKey];
+    } else if (question.questionType === "multiple_choice") {
+      question.correctOptionKeys = normalizeLearningQuestionCorrectKeysClient(question.correctOptionKeys, question.correctOptionKey || "A");
+    } else {
+      question.correctOptionKeys = [];
+      question.correctOptionKey = "";
+    }
+    renderLearningQuestionGroupList();
+    return;
+  }
+
+  if (target instanceof HTMLSelectElement && questionField === "correctOptionKey") {
+    question.correctOptionKey = target.value;
+    question.correctOptionKeys = [target.value];
+    return;
+  }
+
+  question[questionField] = target.value;
 });
 
 learningTestForm?.addEventListener("input", () => {

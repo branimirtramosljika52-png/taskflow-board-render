@@ -710,12 +710,22 @@ function normalizeLearningTestStatus(value) {
     : "draft";
 }
 
+function normalizeLearningQuestionType(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return ["single_choice", "multiple_choice", "ordered_text"].includes(normalized)
+    ? normalized
+    : "single_choice";
+}
+
 function normalizeLearningTestOptionItems(items = []) {
   const source = Array.isArray(items) ? items : [];
   return source.map((item, index) => ({
     id: normalizeId(item?.id) || crypto.randomUUID(),
     text: normalizeText(item?.text || item?.label || `Opcija ${index + 1}`),
     isCorrect: normalizeBoolean(item?.isCorrect, false),
+    orderIndex: Number.isFinite(Number(item?.orderIndex))
+      ? Math.max(1, Math.round(Number(item.orderIndex)))
+      : null,
   })).filter((item) => item.text);
 }
 
@@ -723,12 +733,21 @@ function normalizeLearningQuestionItems(items = []) {
   const source = Array.isArray(items) ? items : [];
   return source.map((item, index) => {
     const options = normalizeLearningTestOptionItems(item?.options ?? []);
+    const questionType = normalizeLearningQuestionType(item?.questionType);
+    const correctOptionKeys = Array.from(new Set([
+      ...(Array.isArray(item?.correctOptionKeys) ? item.correctOptionKeys : []),
+      ...options
+        .filter((option) => option.isCorrect)
+        .map((option, optionIndex) => ["A", "B", "C", "D"][optionIndex] || ""),
+    ].map((value) => normalizeText(value).toUpperCase()).filter(Boolean)));
     return {
       id: normalizeId(item?.id) || crypto.randomUUID(),
       code: normalizeText(item?.code || `P${index + 1}`),
       groupLabel: normalizeText(item?.groupLabel || item?.group || item?.category || "Opća grupa"),
       prompt: normalizeText(item?.prompt || item?.question || item?.title),
       explanation: normalizeText(item?.explanation),
+      questionType,
+      correctOptionKeys,
       imageDocument: normalizeAttachmentDocuments(item?.imageDocument ? [item.imageDocument] : [])[0] ?? null,
       options,
     };

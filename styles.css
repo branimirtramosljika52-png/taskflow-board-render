@@ -19079,11 +19079,106 @@ body.is-measurement-equipment-document-preview-open {
   background: rgba(252, 250, 255, 0.88);
 }
 
+.learning-test-question-setup {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 12px;
+}
+
 .learning-test-answer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
+}
+
+.learning-test-ordered-answer-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.learning-test-order-input {
+  text-align: center;
+}
+
+.learning-test-question-media {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(214, 120, 184, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.learning-test-question-media-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.learning-test-question-media-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7d6d92;
+}
+
+.learning-test-question-media-summary {
+  font-size: 0.92rem;
+  color: #28324f;
+}
+
+.learning-test-question-media-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.learning-test-question-image-preview {
+  width: min(100%, 320px);
+  overflow: hidden;
+  border: 1px solid rgba(214, 120, 184, 0.2);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.learning-test-question-image-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.learning-test-multi-correct-field,
+.learning-test-ordering-help {
+  min-width: min(100%, 420px);
+}
+
+.learning-test-correct-multi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.learning-test-correct-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 120, 184, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+  color: #28324f;
+}
+
+.learning-test-ordering-help small {
+  display: block;
+  margin-top: 8px;
+  color: #6f6782;
 }
 
 .learning-test-question-footer {
@@ -19109,6 +19204,7 @@ body.is-measurement-equipment-document-preview-open {
   .learning-tests-filters,
   .learning-test-form-grid,
   .learning-test-group-header,
+  .learning-test-question-setup,
   .learning-test-answer-grid,
   .learning-test-question-footer {
     grid-template-columns: minmax(0, 1fr);
