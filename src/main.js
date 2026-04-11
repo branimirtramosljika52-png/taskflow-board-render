@@ -37600,7 +37600,27 @@ function renderWorkOrderDocumentWizardWorkOrders(workOrders = []) {
     return;
   }
 
-  const cards = workOrders.map((workOrder) => buildWorkOrderDocumentWizardSelectionCard(workOrder));
+  const cards = [];
+  workOrders.forEach((workOrder) => {
+    try {
+      cards.push(buildWorkOrderDocumentWizardSelectionCard(workOrder));
+    } catch (error) {
+      console.error("Greška pri renderu RN kartice u wizardu.", {
+        workOrderId: workOrder?.id,
+        workOrderNumber: workOrder?.workOrderNumber,
+        error,
+      });
+      const fallbackCard = document.createElement("article");
+      fallbackCard.className = "work-order-document-selection-card";
+      const title = document.createElement("strong");
+      title.textContent = workOrder?.workOrderNumber || "Bez broja";
+      const copy = document.createElement("p");
+      copy.className = "helper-copy module-copy";
+      copy.textContent = "RN se ne može prikazati zbog greške u podacima. Nastavi s ostalima ili osvježi stranicu.";
+      fallbackCard.append(title, copy);
+      cards.push(fallbackCard);
+    }
+  });
 
   if (workOrders.length <= 3) {
     const layout = workOrders.length === 1 ? "single" : workOrders.length === 2 ? "double" : "triple";
@@ -39621,7 +39641,10 @@ workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {
     openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
   } catch (error) {
     console.error("Otvaranje Ispiti i edukacija wizarda nije uspjelo.", error);
-    state.workOrderBatch.message = "Ispiti i edukacija se nisu otvorili. Osvježi stranicu (Ctrl+F5) i pokušaj ponovno.";
+    const details = String(error?.message || "").trim();
+    state.workOrderBatch.message = details
+      ? `Ispiti i edukacija se nisu otvorili: ${details}`
+      : "Ispiti i edukacija se nisu otvorili. Osvježi stranicu (Ctrl+F5) i pokušaj ponovno.";
     state.workOrderBatch.tone = "error";
     renderWorkOrderBatchBar();
   }
