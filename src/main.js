@@ -35410,41 +35410,40 @@ function openWorkOrderDocumentWizard(requestedMode = "") {
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const selectionState = getWorkOrderDocumentSelectionState(selectedWorkOrders);
   const mode = normalizeServiceCatalogTypeUi(requestedMode || selectionState.mode || "", selectionState.mode || "inspection");
+  const failOpen = (message) => {
+    const nextMessage = String(message || "").trim();
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = nextMessage;
+    }
+    state.workOrderBatch.message = nextMessage;
+    state.workOrderBatch.tone = nextMessage ? "error" : "";
+    renderWorkOrderBatchBar();
+  };
 
   if (state.workOrderDocumentWizard.selectedIds.size === 0) {
-    if (workOrderDocumentWizardError) {
-      workOrderDocumentWizardError.textContent = "Odaberi barem jedan RN u listi.";
-    }
+    failOpen("Odaberi barem jedan RN u listi.");
     return;
   }
 
   if (selectionState.hasMixedTypes) {
-    if (workOrderDocumentWizardError) {
-      workOrderDocumentWizardError.textContent = "Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno.";
-    }
+    failOpen("Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno.");
     return;
   }
 
   if (!selectionState.hasServices) {
-    if (workOrderDocumentWizardError) {
-      workOrderDocumentWizardError.textContent = "Odabrani RN-ovi nemaju uslugu s definiranom vrstom.";
-    }
+    failOpen("Odabrani RN-ovi nemaju uslugu s definiranom vrstom.");
     return;
   }
 
   if (mode === "other") {
-    if (workOrderDocumentWizardError) {
-      workOrderDocumentWizardError.textContent = "Za usluge vrste Ostalo još nema poseban tok.";
-    }
+    failOpen("Za usluge vrste Ostalo još nema poseban tok.");
     return;
   }
 
   state.workOrderDocumentWizard.open = true;
   state.workOrderDocumentWizard.mode = mode;
   state.workOrderDocumentWizard.step = "details";
-  if (workOrderDocumentWizardError) {
-    workOrderDocumentWizardError.textContent = "";
-  }
+  failOpen("");
   renderWorkOrderDocumentWizard();
   syncWorkOrderDocumentWizardModal();
   requestAnimationFrame(() => {
@@ -39616,8 +39615,17 @@ workOrderOpenDocumentsButton?.addEventListener("click", () => {
 workOrderBatchClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
 });
-workOrderBulkOpenDocumentsButton?.addEventListener("click", () => {
-  openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
+workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  try {
+    openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
+  } catch (error) {
+    console.error("Otvaranje Ispiti i edukacija wizarda nije uspjelo.", error);
+    state.workOrderBatch.message = "Ispiti i edukacija se nisu otvorili. Osvježi stranicu (Ctrl+F5) i pokušaj ponovno.";
+    state.workOrderBatch.tone = "error";
+    renderWorkOrderBatchBar();
+  }
 });
 workOrderBulkClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
