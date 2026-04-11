@@ -1125,7 +1125,7 @@ async function handleApiRequest(request, response, url) {
       const templateId = String(url.searchParams.get("templateId") ?? "").trim();
       const companyId = String(url.searchParams.get("companyId") ?? "").trim();
       const locationId = String(url.searchParams.get("locationId") ?? "").trim();
-      const limit = String(url.searchParams.get("limit") ?? "12").trim();
+      const limit = String(url.searchParams.get("limit") ?? "200").trim();
 
       if (templateId) {
         assertInScope(scopedSnapshot.documentTemplates ?? [], templateId, "Template nije dostupan za odabranu organizaciju.");

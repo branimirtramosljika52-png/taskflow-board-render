@@ -128,6 +128,26 @@ const CHAT_POLL_INTERVAL_MS = 7_000;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
+const DOCUMENTS_EXPLORER_MAX_RECORDS = 500;
+const DOCUMENTS_EXPLORER_WORK_ORDER_KEY_HINTS = Object.freeze([
+  "WORKORDERNUMBER",
+  "BROJRADNOGNALOGA",
+  "BROJRN",
+  "RADNINALOG",
+  "WORKORDER",
+  "RN",
+]);
+const DOCUMENTS_EXPLORER_DEPARTMENT_KEY_HINTS = Object.freeze([
+  "ODJEL",
+  "DEPARTMENT",
+]);
+const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
+  "USLUGA",
+  "SERVICE",
+  "VRSTAISPITIVANJA",
+  "OPISRADOVA",
+  "RADILOSE",
+]);
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
@@ -561,6 +581,17 @@ const state = {
   documentTemplateFilters: {
     query: "",
     status: "all",
+  },
+  documentsExplorer: {
+    organizationId: "",
+    query: "",
+    scope: "all",
+    loading: false,
+    loaded: false,
+    error: "",
+    records: [],
+    expandedCompanyIds: new Set(),
+    expandedLocationIds: new Set(),
   },
   workOrderCalendar: {
     weekStart: new Date().toISOString().slice(0, 10),
@@ -1077,6 +1108,17 @@ const moduleViewKicker = document.querySelector("#module-view-kicker");
 const moduleViewTitle = document.querySelector("#module-view-title");
 const moduleViewDescription = document.querySelector("#module-view-description");
 const moduleViewChips = document.querySelector("#module-view-chips");
+const documentsModule = document.querySelector("#documents-module");
+const documentsCompanyCount = document.querySelector("#documents-company-count");
+const documentsLocationCount = document.querySelector("#documents-location-count");
+const documentsRnCount = document.querySelector("#documents-rn-count");
+const documentsFileCount = document.querySelector("#documents-file-count");
+const documentsSearchInput = document.querySelector("#documents-search");
+const documentsFilterScopeInput = document.querySelector("#documents-filter-scope");
+const documentsRefreshButton = document.querySelector("#documents-refresh");
+const documentsHelper = document.querySelector("#documents-helper");
+const documentsExplorerList = document.querySelector("#documents-explorer-list");
+const documentsExplorerEmpty = document.querySelector("#documents-explorer-empty");
 const vehiclesModule = document.querySelector("#vehicles-module");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
@@ -3996,6 +4038,7 @@ function persistRailHidden() {
 
 function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
+  const isDocumentsModule = state.activeModuleItem === "documents";
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
@@ -4040,6 +4083,10 @@ function renderModuleView() {
     vehiclesModule.hidden = !isVehiclesModule;
   }
 
+  if (documentsModule) {
+    documentsModule.hidden = !isDocumentsModule;
+  }
+
   if (measurementEquipmentModule) {
     measurementEquipmentModule.hidden = !isMeasurementEquipmentModule;
   }
@@ -4074,6 +4121,10 @@ function renderModuleView() {
 
   if (isVehiclesModule) {
     renderVehiclesModule();
+  }
+
+  if (isDocumentsModule) {
+    renderDocumentsModule();
   }
 
   if (isMeasurementEquipmentModule) {
@@ -6382,6 +6433,759 @@ function getLocationsForCompany(companyId) {
   return state.locations
     .filter((item) => item.companyId === companyId)
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+}
+
+function normalizeDocumentsExplorerKey(value = "") {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .toUpperCase();
+}
+
+function flattenDocumentsExplorerFieldValue(value) {
+  if (value == null) {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => flattenDocumentsExplorerFieldValue(entry))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value)
+      .map((entry) => flattenDocumentsExplorerFieldValue(entry))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Da" : "Ne";
+  }
+
+  return String(value).trim();
+}
+
+function extractDocumentsExplorerWorkOrderNumberFromText(value = "") {
+  const rawValue = String(value || "").trim().toUpperCase();
+  if (!rawValue) {
+    return "";
+  }
+
+  const directMatch = rawValue.match(/\b\d{1,4}-\d{1,6}\b/);
+  return directMatch?.[0] || "";
+}
+
+function extractDocumentsExplorerFieldValueByHints(record = {}, keyHints = []) {
+  const normalizedHints = (Array.isArray(keyHints) ? keyHints : [])
+    .map((entry) => normalizeDocumentsExplorerKey(entry))
+    .filter(Boolean);
+  if (normalizedHints.length === 0) {
+    return "";
+  }
+
+  const entries = Object.entries(record?.fieldValues ?? {});
+  for (let index = 0; index < entries.length; index += 1) {
+    const [fieldKey, fieldValue] = entries[index];
+    const normalizedKey = normalizeDocumentsExplorerKey(fieldKey);
+    if (!normalizedKey) {
+      continue;
+    }
+    if (!normalizedHints.some((hint) => normalizedKey.includes(hint))) {
+      continue;
+    }
+    const candidate = flattenDocumentsExplorerFieldValue(fieldValue);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function extractDocumentsExplorerWorkOrderNumber(record = {}) {
+  const directFieldMatch = extractDocumentsExplorerFieldValueByHints(
+    record,
+    DOCUMENTS_EXPLORER_WORK_ORDER_KEY_HINTS,
+  );
+  const directCandidate = extractDocumentsExplorerWorkOrderNumberFromText(directFieldMatch);
+  if (directCandidate) {
+    return directCandidate;
+  }
+
+  const entries = Object.entries(record?.fieldValues ?? {});
+  for (let index = 0; index < entries.length; index += 1) {
+    const [fieldKey, fieldValue] = entries[index];
+    const normalizedKey = normalizeDocumentsExplorerKey(fieldKey);
+    if (!normalizedKey || !normalizedKey.includes("BROJ")) {
+      continue;
+    }
+    const candidate = extractDocumentsExplorerWorkOrderNumberFromText(
+      flattenDocumentsExplorerFieldValue(fieldValue),
+    );
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function resolveDocumentsExplorerWorkOrder(record = {}, explicitWorkOrderNumber = "") {
+  const normalizedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumberFromText(explicitWorkOrderNumber);
+  if (normalizedWorkOrderNumber) {
+    const directMatch = state.workOrders.find(
+      (item) => String(item?.workOrderNumber || "").trim().toUpperCase() === normalizedWorkOrderNumber,
+    );
+    if (directMatch) {
+      return directMatch;
+    }
+  }
+
+  const companyId = String(record?.companyId || "").trim();
+  const locationId = String(record?.locationId || "").trim();
+  const templateNeedle = normalizeLooseName(record?.templateTitle || record?.documentType || "");
+  const recordDate = String(record?.inspectionDate || record?.issuedDate || "").trim().slice(0, 10);
+
+  const scopedCandidates = state.workOrders.filter((item) => (
+    (!companyId || String(item?.companyId || "") === companyId)
+    && (!locationId || String(item?.locationId || "") === locationId)
+  ));
+  if (scopedCandidates.length === 1) {
+    return scopedCandidates[0];
+  }
+  if (scopedCandidates.length > 1) {
+    const scoredCandidates = scopedCandidates
+      .map((item) => {
+        let score = 0;
+        const serviceText = normalizeLooseName(getWorkOrderServiceSummary(item) || item?.serviceLine || "");
+        if (templateNeedle && serviceText.includes(templateNeedle)) {
+          score += 4;
+        }
+        if (
+          recordDate
+          && (
+            String(item?.openedDate || "").slice(0, 10) === recordDate
+            || String(item?.dueDate || "").slice(0, 10) === recordDate
+          )
+        ) {
+          score += 2;
+        }
+        return { item, score };
+      })
+      .sort((left, right) => (
+        right.score - left.score
+        || String(right.item?.updatedAt || "").localeCompare(String(left.item?.updatedAt || ""))
+      ));
+
+    if (
+      scoredCandidates[0]?.score > 0
+      && (
+        scoredCandidates.length === 1
+        || scoredCandidates[0].score > scoredCandidates[1].score
+      )
+    ) {
+      return scoredCandidates[0].item;
+    }
+  }
+
+  if (!locationId && companyId) {
+    const companyCandidates = state.workOrders.filter((item) => String(item?.companyId || "") === companyId);
+    if (companyCandidates.length === 1) {
+      return companyCandidates[0];
+    }
+  }
+
+  return null;
+}
+
+function getDocumentsExplorerLocationKey(companyKey = "", locationId = "", locationName = "") {
+  const normalizedLocationId = String(locationId || "").trim() || normalizeLooseName(locationName || "bez-lokacije");
+  return `${String(companyKey || "").trim()}::${normalizedLocationId}`;
+}
+
+function buildDocumentsExplorerTree(records = state.documentsExplorer.records) {
+  const queryNeedle = normalizeLooseName(state.documentsExplorer.query || "");
+  const scope = String(state.documentsExplorer.scope || "all").trim().toLowerCase();
+  const companyBuckets = new Map();
+
+  (Array.isArray(records) ? records : []).forEach((recordEntry) => {
+    const record = recordEntry && typeof recordEntry === "object" ? recordEntry : {};
+    const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
+    const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
+    const hasLinkedWorkOrder = Boolean(linkedWorkOrder?.id);
+
+    if (scope === "linked" && !hasLinkedWorkOrder) {
+      return;
+    }
+    if (scope === "unlinked" && hasLinkedWorkOrder) {
+      return;
+    }
+
+    const companyId = String(linkedWorkOrder?.companyId || record.companyId || "").trim();
+    const company = getCompany(companyId);
+    const companyName = String(
+      company?.name
+      || linkedWorkOrder?.companyName
+      || linkedWorkOrder?.company
+      || "Bez tvrtke",
+    ).trim() || "Bez tvrtke";
+    const companyKey = `company:${companyId || normalizeLooseName(companyName || "bez-tvrtke")}`;
+
+    const locationId = String(linkedWorkOrder?.locationId || record.locationId || "").trim();
+    const location = getLocation(locationId);
+    const locationName = String(
+      location?.name
+      || createCompactLocationLabel(linkedWorkOrder?.locationName || "")
+      || "Bez lokacije",
+    ).trim() || "Bez lokacije";
+    const locationKey = getDocumentsExplorerLocationKey(companyKey, locationId, locationName);
+
+    const workOrderNumber = String(
+      linkedWorkOrder?.workOrderNumber
+      || extractedWorkOrderNumber
+      || "Bez RN",
+    ).trim() || "Bez RN";
+    const rnKey = linkedWorkOrder?.id
+      ? `wo:${linkedWorkOrder.id}`
+      : `${locationKey}::${workOrderNumber}::${String(record.id || crypto.randomUUID())}`;
+
+    if (!companyBuckets.has(companyKey)) {
+      companyBuckets.set(companyKey, {
+        key: companyKey,
+        id: companyId,
+        name: companyName,
+        locations: new Map(),
+      });
+    }
+    const companyBucket = companyBuckets.get(companyKey);
+
+    if (!companyBucket.locations.has(locationKey)) {
+      companyBucket.locations.set(locationKey, {
+        key: locationKey,
+        id: locationId,
+        name: locationName,
+        region: String(location?.region || linkedWorkOrder?.region || "").trim(),
+        workOrders: new Map(),
+      });
+    }
+    const locationBucket = companyBucket.locations.get(locationKey);
+
+    if (!locationBucket.workOrders.has(rnKey)) {
+      locationBucket.workOrders.set(rnKey, {
+        key: rnKey,
+        workOrderId: String(linkedWorkOrder?.id || "").trim(),
+        workOrderNumber,
+        department: String(linkedWorkOrder?.department || "").trim(),
+        serviceSummary: String(getWorkOrderServiceSummary(linkedWorkOrder) || linkedWorkOrder?.serviceLine || "").trim(),
+        status: String(linkedWorkOrder?.status || "").trim(),
+        templateTitles: new Set(),
+        searchTerms: new Set([
+          companyName,
+          locationName,
+          workOrderNumber,
+        ]),
+        records: [],
+        latestTimestamp: 0,
+        latestDateRaw: "",
+        workOrder: linkedWorkOrder ?? null,
+      });
+    }
+    const workOrderBucket = locationBucket.workOrders.get(rnKey);
+
+    const departmentFromRecord = extractDocumentsExplorerFieldValueByHints(record, DOCUMENTS_EXPLORER_DEPARTMENT_KEY_HINTS);
+    const serviceFromRecord = extractDocumentsExplorerFieldValueByHints(record, DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS);
+    if (!workOrderBucket.department && departmentFromRecord) {
+      workOrderBucket.department = departmentFromRecord;
+    }
+    if (!workOrderBucket.serviceSummary && serviceFromRecord) {
+      workOrderBucket.serviceSummary = serviceFromRecord;
+    }
+
+    const templateLabel = String(record.templateTitle || record.documentType || "Dokument").trim();
+    if (templateLabel) {
+      workOrderBucket.templateTitles.add(templateLabel);
+      workOrderBucket.searchTerms.add(templateLabel);
+    }
+    if (workOrderBucket.department) {
+      workOrderBucket.searchTerms.add(workOrderBucket.department);
+    }
+    if (workOrderBucket.serviceSummary) {
+      workOrderBucket.searchTerms.add(workOrderBucket.serviceSummary);
+    }
+
+    workOrderBucket.records.push(record);
+
+    const latestDate = parseDateValue(
+      record.inspectionDate
+      || record.issuedDate
+      || record.updatedAt
+      || record.createdAt,
+    );
+    const latestTimestamp = latestDate ? latestDate.getTime() : 0;
+    if (latestTimestamp >= workOrderBucket.latestTimestamp) {
+      workOrderBucket.latestTimestamp = latestTimestamp;
+      workOrderBucket.latestDateRaw = String(
+        record.inspectionDate
+        || record.issuedDate
+        || record.updatedAt
+        || record.createdAt
+        || "",
+      ).trim();
+    }
+  });
+
+  const companies = [...companyBuckets.values()]
+    .map((companyBucket) => {
+      const locations = [...companyBucket.locations.values()]
+        .map((locationBucket) => {
+          const workOrders = [...locationBucket.workOrders.values()]
+            .map((workOrderBucket) => ({
+              ...workOrderBucket,
+              templateTitles: [...workOrderBucket.templateTitles].filter(Boolean),
+              searchBlob: normalizeLooseName([...workOrderBucket.searchTerms].join(" ")),
+              recordCount: workOrderBucket.records.length,
+              latestLabel: workOrderBucket.latestDateRaw ? formatCompactDate(workOrderBucket.latestDateRaw) : "Bez datuma",
+              department: workOrderBucket.department || "Bez odjela",
+              serviceSummary: workOrderBucket.serviceSummary || "Bez usluge",
+            }))
+            .filter((workOrderBucket) => (
+              !queryNeedle
+              || workOrderBucket.searchBlob.includes(queryNeedle)
+            ))
+            .sort((left, right) => (
+              String(right.workOrderNumber || "").localeCompare(String(left.workOrderNumber || ""), "hr", {
+                numeric: true,
+                sensitivity: "base",
+              })
+              || right.latestTimestamp - left.latestTimestamp
+            ));
+
+          if (workOrders.length === 0) {
+            return null;
+          }
+
+          return {
+            ...locationBucket,
+            workOrders,
+            totalWorkOrders: workOrders.length,
+            totalDocuments: workOrders.reduce((sum, item) => sum + item.recordCount, 0),
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.name.localeCompare(right.name, "hr", { sensitivity: "base" }));
+
+      if (locations.length === 0) {
+        return null;
+      }
+
+      return {
+        ...companyBucket,
+        locations,
+        totalLocations: locations.length,
+        totalWorkOrders: locations.reduce((sum, item) => sum + item.totalWorkOrders, 0),
+        totalDocuments: locations.reduce((sum, item) => sum + item.totalDocuments, 0),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.name.localeCompare(right.name, "hr", { sensitivity: "base" }));
+
+  return {
+    companies,
+    totals: {
+      companies: companies.length,
+      locations: companies.reduce((sum, company) => sum + company.totalLocations, 0),
+      workOrders: companies.reduce((sum, company) => sum + company.totalWorkOrders, 0),
+      records: companies.reduce((sum, company) => sum + company.totalDocuments, 0),
+    },
+  };
+}
+
+function syncDocumentsExplorerDefaultExpansion(tree = { companies: [] }) {
+  const nextCompanySet = state.documentsExplorer.expandedCompanyIds instanceof Set
+    ? new Set(state.documentsExplorer.expandedCompanyIds)
+    : new Set();
+  const nextLocationSet = state.documentsExplorer.expandedLocationIds instanceof Set
+    ? new Set(state.documentsExplorer.expandedLocationIds)
+    : new Set();
+
+  if (nextCompanySet.size === 0) {
+    (tree.companies ?? []).forEach((company) => {
+      nextCompanySet.add(company.key);
+    });
+  }
+
+  if (nextLocationSet.size === 0) {
+    (tree.companies ?? []).forEach((company) => {
+      (company.locations ?? []).forEach((location) => {
+        nextLocationSet.add(location.key);
+      });
+    });
+  }
+
+  state.documentsExplorer.expandedCompanyIds = nextCompanySet;
+  state.documentsExplorer.expandedLocationIds = nextLocationSet;
+}
+
+function toggleDocumentsExplorerCompany(companyKey = "") {
+  const normalizedKey = String(companyKey || "").trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  const nextSet = new Set(state.documentsExplorer.expandedCompanyIds ?? []);
+  if (nextSet.has(normalizedKey)) {
+    nextSet.delete(normalizedKey);
+  } else {
+    nextSet.add(normalizedKey);
+  }
+  state.documentsExplorer.expandedCompanyIds = nextSet;
+  renderDocumentsModule();
+}
+
+function toggleDocumentsExplorerLocation(locationKey = "") {
+  const normalizedKey = String(locationKey || "").trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  const nextSet = new Set(state.documentsExplorer.expandedLocationIds ?? []);
+  if (nextSet.has(normalizedKey)) {
+    nextSet.delete(normalizedKey);
+  } else {
+    nextSet.add(normalizedKey);
+  }
+  state.documentsExplorer.expandedLocationIds = nextSet;
+  renderDocumentsModule();
+}
+
+function createDocumentsExplorerIcon(iconName = "service", className = "") {
+  const icon = document.createElement("span");
+  icon.className = ["documents-explorer-icon", className].filter(Boolean).join(" ");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+  return icon;
+}
+
+function createDocumentsExplorerChip(iconName, value, label = "") {
+  const chip = document.createElement("span");
+  chip.className = "documents-explorer-chip";
+  if (label) {
+    chip.title = `${label}: ${value}`;
+  }
+
+  const icon = createDocumentsExplorerIcon(iconName, "is-chip");
+  const copy = document.createElement("span");
+  copy.className = "documents-explorer-chip-value";
+  copy.textContent = String(value || "-").trim() || "-";
+  chip.append(icon, copy);
+  return chip;
+}
+
+function renderDocumentsExplorerTree(tree = { companies: [] }) {
+  if (!documentsExplorerList) {
+    return;
+  }
+
+  const nodes = [];
+  const expandedCompanies = state.documentsExplorer.expandedCompanyIds ?? new Set();
+  const expandedLocations = state.documentsExplorer.expandedLocationIds ?? new Set();
+
+  (tree.companies ?? []).forEach((company) => {
+    const companyExpanded = expandedCompanies.has(company.key);
+    const companyRow = document.createElement("button");
+    companyRow.type = "button";
+    companyRow.className = "documents-explorer-row is-company";
+    companyRow.setAttribute("aria-expanded", companyExpanded ? "true" : "false");
+
+    const companyMain = document.createElement("div");
+    companyMain.className = "documents-explorer-row-main";
+
+    const companyToggle = document.createElement("span");
+    companyToggle.className = "documents-explorer-toggle";
+    companyToggle.textContent = companyExpanded ? "▾" : "▸";
+
+    const companyTitle = document.createElement("strong");
+    companyTitle.className = "documents-explorer-title";
+    companyTitle.textContent = company.name;
+
+    companyMain.append(
+      companyToggle,
+      createDocumentsExplorerIcon("company"),
+      companyTitle,
+    );
+
+    const companyMeta = document.createElement("div");
+    companyMeta.className = "documents-explorer-meta";
+    companyMeta.append(
+      createDocumentsExplorerChip("location", company.totalLocations, "Lokacije"),
+      createDocumentsExplorerChip("number", company.totalWorkOrders, "RN"),
+      createDocumentsExplorerChip("document", company.totalDocuments, "Dokumenti"),
+    );
+
+    companyRow.append(companyMain, companyMeta);
+    companyRow.addEventListener("click", () => {
+      toggleDocumentsExplorerCompany(company.key);
+    });
+    nodes.push(companyRow);
+
+    if (!companyExpanded) {
+      return;
+    }
+
+    (company.locations ?? []).forEach((location) => {
+      const locationExpanded = expandedLocations.has(location.key);
+      const locationRow = document.createElement("button");
+      locationRow.type = "button";
+      locationRow.className = "documents-explorer-row is-location";
+      locationRow.setAttribute("aria-expanded", locationExpanded ? "true" : "false");
+
+      const locationMain = document.createElement("div");
+      locationMain.className = "documents-explorer-row-main";
+
+      const locationToggle = document.createElement("span");
+      locationToggle.className = "documents-explorer-toggle";
+      locationToggle.textContent = locationExpanded ? "▾" : "▸";
+
+      const locationTitle = document.createElement("strong");
+      locationTitle.className = "documents-explorer-title";
+      locationTitle.textContent = location.name;
+
+      locationMain.append(
+        locationToggle,
+        createDocumentsExplorerIcon("location"),
+        locationTitle,
+      );
+
+      const locationMeta = document.createElement("div");
+      locationMeta.className = "documents-explorer-meta";
+      locationMeta.append(
+        createDocumentsExplorerChip("service", location.region || "Bez regije", "Regija"),
+        createDocumentsExplorerChip("number", location.totalWorkOrders, "RN"),
+        createDocumentsExplorerChip("document", location.totalDocuments, "Dokumenti"),
+      );
+
+      locationRow.append(locationMain, locationMeta);
+      locationRow.addEventListener("click", () => {
+        toggleDocumentsExplorerLocation(location.key);
+      });
+      nodes.push(locationRow);
+
+      if (!locationExpanded) {
+        return;
+      }
+
+      (location.workOrders ?? []).forEach((workOrderBucket) => {
+        const row = document.createElement("article");
+        row.className = "documents-explorer-row is-rn";
+        if (workOrderBucket.workOrder?.id) {
+          row.classList.add("is-clickable");
+          row.tabIndex = 0;
+          row.setAttribute("role", "button");
+        }
+
+        const main = document.createElement("div");
+        main.className = "documents-explorer-row-main";
+
+        const title = document.createElement("strong");
+        title.className = "documents-explorer-title";
+        title.textContent = workOrderBucket.workOrderNumber;
+
+        main.append(
+          createDocumentsExplorerIcon("number"),
+          title,
+        );
+
+        const metadata = document.createElement("div");
+        metadata.className = "documents-explorer-meta";
+        metadata.append(
+          createDocumentsExplorerChip("service", workOrderBucket.department, "Odjel"),
+          createDocumentsExplorerChip("service", workOrderBucket.serviceSummary, "Radovi / usluga"),
+          createDocumentsExplorerChip("document", workOrderBucket.recordCount, "Dokumenti"),
+          createDocumentsExplorerChip("dates", workOrderBucket.latestLabel, "Zadnji dokument"),
+        );
+
+        const templates = document.createElement("div");
+        templates.className = "documents-explorer-template-tags";
+        (workOrderBucket.templateTitles ?? []).slice(0, 4).forEach((label) => {
+          const tag = document.createElement("span");
+          tag.className = "documents-explorer-template-tag";
+          tag.textContent = label;
+          templates.append(tag);
+        });
+        if ((workOrderBucket.templateTitles ?? []).length > 4) {
+          const extraTag = document.createElement("span");
+          extraTag.className = "documents-explorer-template-tag";
+          extraTag.textContent = `+${workOrderBucket.templateTitles.length - 4}`;
+          templates.append(extraTag);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "documents-explorer-actions";
+        if (workOrderBucket.workOrder?.id) {
+          const openButton = document.createElement("button");
+          openButton.type = "button";
+          openButton.className = "card-button documents-explorer-open-button";
+          openButton.title = "Otvori RN";
+          openButton.innerHTML = getWorkOrderIconMarkup("preview");
+          openButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            hydrateWorkOrderForm(workOrderBucket.workOrder, { loadActivity: true });
+          });
+          actions.append(openButton);
+        }
+
+        row.append(main, metadata, templates, actions);
+        if (workOrderBucket.workOrder?.id) {
+          row.addEventListener("click", () => {
+            hydrateWorkOrderForm(workOrderBucket.workOrder, { loadActivity: true });
+          });
+          row.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              hydrateWorkOrderForm(workOrderBucket.workOrder, { loadActivity: true });
+            }
+          });
+        }
+        nodes.push(row);
+      });
+    });
+  });
+
+  documentsExplorerList.replaceChildren(...nodes);
+}
+
+function renderDocumentsModule() {
+  if (!documentsModule) {
+    return;
+  }
+
+  if (documentsSearchInput && documentsSearchInput.value !== state.documentsExplorer.query) {
+    documentsSearchInput.value = state.documentsExplorer.query;
+  }
+  if (documentsFilterScopeInput && documentsFilterScopeInput.value !== state.documentsExplorer.scope) {
+    documentsFilterScopeInput.value = state.documentsExplorer.scope;
+  }
+
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const recordsLoadedForOrganization = String(state.documentsExplorer.organizationId || "").trim();
+  if (
+    recordsLoadedForOrganization
+    && activeOrganizationId
+    && recordsLoadedForOrganization !== activeOrganizationId
+  ) {
+    state.documentsExplorer.loaded = false;
+    state.documentsExplorer.records = [];
+    state.documentsExplorer.error = "";
+    state.documentsExplorer.expandedCompanyIds = new Set();
+    state.documentsExplorer.expandedLocationIds = new Set();
+  }
+
+  if (
+    !state.documentsExplorer.loading
+    && (
+      !state.documentsExplorer.loaded
+      || !recordsLoadedForOrganization
+      || recordsLoadedForOrganization !== activeOrganizationId
+    )
+  ) {
+    void loadDocumentsExplorerRecords();
+  }
+
+  const tree = buildDocumentsExplorerTree(state.documentsExplorer.records);
+  syncDocumentsExplorerDefaultExpansion(tree);
+  renderDocumentsExplorerTree(tree);
+
+  if (documentsCompanyCount) {
+    documentsCompanyCount.textContent = String(tree.totals.companies);
+  }
+  if (documentsLocationCount) {
+    documentsLocationCount.textContent = String(tree.totals.locations);
+  }
+  if (documentsRnCount) {
+    documentsRnCount.textContent = String(tree.totals.workOrders);
+  }
+  if (documentsFileCount) {
+    documentsFileCount.textContent = String(tree.totals.records);
+  }
+
+  if (documentsHelper) {
+    if (state.documentsExplorer.loading) {
+      documentsHelper.textContent = "Učitavanje dokumenata...";
+    } else if (state.documentsExplorer.error) {
+      documentsHelper.textContent = state.documentsExplorer.error;
+    } else {
+      documentsHelper.textContent = `Prikazano ${tree.totals.records} dokumenata kroz ${tree.totals.workOrders} RN redaka.`;
+    }
+  }
+
+  if (documentsExplorerEmpty) {
+    documentsExplorerEmpty.hidden = state.documentsExplorer.loading || Boolean(state.documentsExplorer.error) || tree.totals.records > 0;
+  }
+}
+
+async function loadDocumentsExplorerRecords({ force = false } = {}) {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  if (!activeOrganizationId || state.documentsExplorer.loading) {
+    return;
+  }
+
+  const isSameOrganization = String(state.documentsExplorer.organizationId || "").trim() === activeOrganizationId;
+  if (!force && state.documentsExplorer.loaded && isSameOrganization) {
+    return;
+  }
+
+  state.documentsExplorer.loading = true;
+  state.documentsExplorer.error = "";
+  if (state.activeView === "module" && state.activeModuleItem === "documents") {
+    renderDocumentsModule();
+  }
+
+  try {
+    const response = await apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`);
+    state.documentsExplorer.records = Array.isArray(response?.items) ? response.items : [];
+    state.documentsExplorer.loaded = true;
+    state.documentsExplorer.organizationId = activeOrganizationId;
+    state.documentsExplorer.expandedCompanyIds = new Set();
+    state.documentsExplorer.expandedLocationIds = new Set();
+  } catch (error) {
+    state.documentsExplorer.error = error.message;
+  } finally {
+    state.documentsExplorer.loading = false;
+    if (state.activeView === "module" && state.activeModuleItem === "documents") {
+      renderDocumentsModule();
+    }
+  }
+}
+
+function upsertDocumentsExplorerRecord(record = null) {
+  if (!record || typeof record !== "object") {
+    return;
+  }
+
+  const normalizedId = String(record.id || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const currentItems = Array.isArray(state.documentsExplorer.records)
+    ? state.documentsExplorer.records
+    : [];
+
+  state.documentsExplorer.records = [
+    record,
+    ...currentItems.filter((item) => String(item?.id || "").trim() !== normalizedId),
+  ];
+  state.documentsExplorer.loaded = true;
+  state.documentsExplorer.organizationId = String(state.activeOrganizationId || "").trim();
+
+  if (state.activeView === "module" && state.activeModuleItem === "documents") {
+    renderDocumentsModule();
+  }
 }
 
 function getWorkOrderTeamOptions() {
@@ -36553,6 +37357,7 @@ async function persistDocumentTemplateRuntimeRecordFor(
 
   if (item) {
     upsertDocumentTemplatePreviousRecordCache(item);
+    upsertDocumentsExplorerRecord(item);
     state.documentTemplateRuntime.savedRecordFingerprints = {
       ...(state.documentTemplateRuntime.savedRecordFingerprints ?? {}),
       [runtimeKey]: fingerprint,
@@ -40632,6 +41437,20 @@ offerOpenFormButton?.addEventListener("click", () => {
   });
 });
 
+documentsSearchInput?.addEventListener("input", () => {
+  state.documentsExplorer.query = documentsSearchInput.value.trim();
+  renderDocumentsModule();
+});
+
+documentsFilterScopeInput?.addEventListener("change", () => {
+  state.documentsExplorer.scope = documentsFilterScopeInput.value || "all";
+  renderDocumentsModule();
+});
+
+documentsRefreshButton?.addEventListener("click", () => {
+  void loadDocumentsExplorerRecords({ force: true });
+});
+
 offersSearchInput?.addEventListener("input", () => {
   renderOffersModule();
 });
@@ -42250,6 +43069,17 @@ logoutButton?.addEventListener("click", () => {
     state.dashboardWidgets = [];
     state.companies = [];
     state.locations = [];
+    state.documentsExplorer = {
+      organizationId: "",
+      query: "",
+      scope: "all",
+      loading: false,
+      loaded: false,
+      error: "",
+      records: [],
+      expandedCompanyIds: new Set(),
+      expandedLocationIds: new Set(),
+    };
     state.users = [];
     state.signupRequests = [];
     state.loginContentItems = [];
