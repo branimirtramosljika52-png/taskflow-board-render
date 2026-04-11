@@ -4049,6 +4049,7 @@ function renderModuleView() {
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
+  const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule && !isDocumentsModule;
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -4059,17 +4060,17 @@ function renderModuleView() {
   }
 
   if (moduleHeading) {
-    moduleHeading.hidden = isTemplateDevelopmentModule;
+    moduleHeading.hidden = !shouldShowGenericModuleHeader;
   }
 
   if (moduleViewDescription) {
-    const shouldShowDescription = !isTemplateDevelopmentModule && Boolean(moduleDefinition.description);
+    const shouldShowDescription = shouldShowGenericModuleHeader && Boolean(moduleDefinition.description);
     moduleViewDescription.hidden = !shouldShowDescription;
     moduleViewDescription.textContent = shouldShowDescription ? moduleDefinition.description : "";
   }
 
   if (moduleViewChips) {
-    const chipValues = isTemplateDevelopmentModule ? [] : (moduleDefinition.chips ?? []);
+    const chipValues = shouldShowGenericModuleHeader ? (moduleDefinition.chips ?? []) : [];
     moduleViewChips.hidden = chipValues.length === 0;
     moduleViewChips.replaceChildren(...chipValues.map((chip) => {
       const chipElement = document.createElement("span");
