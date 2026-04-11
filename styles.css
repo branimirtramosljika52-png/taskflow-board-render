@@ -19666,10 +19666,10 @@ body.is-measurement-equipment-document-preview-open {
 }
 
 .work-order-document-training-row-controls {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(240px, 1fr) auto;
+  display: flex;
+  justify-content: flex-end;
   gap: 0.55rem;
-  align-items: end;
+  align-items: center;
 }
 
 .work-order-document-training-row-controls .field {
@@ -19705,7 +19705,11 @@ body.is-measurement-equipment-document-preview-open {
 
 @media (max-width: 760px) {
   .work-order-document-training-row-controls {
-    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .work-order-document-training-row-controls .primary-button {
+    width: 100%;
   }
 
   .work-order-document-training-external-grid {
