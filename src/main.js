@@ -36995,7 +36995,7 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
           }
         }
       });
-      controls.append(assigneeField, assignButton);
+      controls.append(assignButton);
 
       const assignments = getLearningAssignmentsForWorkOrder(entry.test, workOrder);
       const assignmentList = document.createElement("div");
@@ -37033,7 +37033,6 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
         });
       }
 
-      controls.append(assignButton);
       row.append(rowHead, controls, externalFields, assignmentList);
       testsShell.append(row);
     });
