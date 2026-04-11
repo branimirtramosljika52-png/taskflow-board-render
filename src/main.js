@@ -417,6 +417,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Centralni dokumentni sloj za priloge, obrasce i datoteke vezane uz organizaciju, klijenta ili lokaciju.",
     chips: ["Files", "Templates", "Evidence"],
   },
+  cloud: {
+    kicker: "Documents",
+    title: "Cloud",
+    description: "Cloud modul za pregled i upravljanje sinkronizacijom dokumenata i storage resursa.",
+    chips: ["Storage", "Sync", "Spaces"],
+  },
   tests: {
     kicker: "Learning",
     title: "Tests",
@@ -451,6 +457,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "list-location": { group: "locations", view: "locations", focus: "list" },
   "add-location": { group: "locations", view: "locations", focus: "form" },
   documents: { group: "documents", view: "module", module: "documents" },
+  cloud: { group: "documents", view: "module", module: "cloud" },
   tests: { group: "learning", view: "module", module: "tests" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
@@ -493,6 +500,7 @@ const SIDEBAR_ITEM_LABELS = {
   "list-location": "List Location",
   "add-location": "Add New",
   documents: "Documents",
+  cloud: "Cloud",
   tests: "Test",
   "learning-people": "People",
 };
@@ -1109,6 +1117,7 @@ const moduleViewTitle = document.querySelector("#module-view-title");
 const moduleViewDescription = document.querySelector("#module-view-description");
 const moduleViewChips = document.querySelector("#module-view-chips");
 const documentsModule = document.querySelector("#documents-module");
+const cloudModule = document.querySelector("#cloud-module");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
 const documentsRnCount = document.querySelector("#documents-rn-count");
@@ -4039,6 +4048,7 @@ function persistRailHidden() {
 function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isDocumentsModule = state.activeModuleItem === "documents";
+  const isCloudModule = state.activeModuleItem === "cloud";
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
@@ -4088,6 +4098,10 @@ function renderModuleView() {
     documentsModule.hidden = !isDocumentsModule;
   }
 
+  if (cloudModule) {
+    cloudModule.hidden = !isCloudModule;
+  }
+
   if (measurementEquipmentModule) {
     measurementEquipmentModule.hidden = !isMeasurementEquipmentModule;
   }
@@ -4126,6 +4140,10 @@ function renderModuleView() {
 
   if (isDocumentsModule) {
     renderDocumentsModule();
+  }
+
+  if (isCloudModule) {
+    // Cloud modul trenutno koristi statični prikaz.
   }
 
   if (isMeasurementEquipmentModule) {

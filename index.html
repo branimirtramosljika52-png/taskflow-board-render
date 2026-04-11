@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260411b" />
+    <link rel="stylesheet" href="/styles.css?v=20260411c" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -449,7 +449,16 @@
                 <span class="sidebar-group-label">Documents</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
-              <div class="tab-strip sidebar-group-items"></div>
+              <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="cloud">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.4-1.8A3.5 3.5 0 1 1 18.5 18H7Z"></path>
+                    </svg>
+                  </span>
+                  <strong>Cloud</strong>
+                </button>
+              </div>
             </section>
 
             <section class="sidebar-group" data-sidebar-group-panel="learning">
@@ -2798,6 +2807,37 @@
               </section>
             </section>
 
+            <section id="cloud-module" class="cloud-module" hidden>
+              <div class="documents-summary-grid">
+                <article class="documents-stat-card">
+                  <span class="documents-stat-label">Cloud</span>
+                  <strong class="documents-stat-value">☁</strong>
+                </article>
+                <article class="documents-stat-card">
+                  <span class="documents-stat-label">Spaces</span>
+                  <strong class="documents-stat-value">S3</strong>
+                </article>
+                <article class="documents-stat-card">
+                  <span class="documents-stat-label">Sync</span>
+                  <strong class="documents-stat-value">Live</strong>
+                </article>
+                <article class="documents-stat-card">
+                  <span class="documents-stat-label">Status</span>
+                  <strong class="documents-stat-value">OK</strong>
+                </article>
+              </div>
+
+              <section class="panel documents-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Cloud</p>
+                    <h3>Cloud pregled</h3>
+                  </div>
+                </div>
+                <p class="helper-copy module-copy">Modul je spreman za cloud funkcije i daljnju razradu.</p>
+              </section>
+            </section>
+
             <section id="vehicles-module" class="vehicles-module" hidden>
               <div class="vehicles-summary-grid">
                 <article class="vehicles-stat-card is-total">
@@ -4376,6 +4416,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260411c"></script>
+    <script type="module" src="/src/main.js?v=20260411d"></script>
   </body>
 </html>
