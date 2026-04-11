@@ -8,6 +8,7 @@ await rm(distDir, { recursive: true, force: true });
 await mkdir(resolve(distDir, "src"), { recursive: true });
 
 await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
+await cp(resolve(rootDir, "learning-test.html"), resolve(distDir, "learning-test.html"));
 await cp(resolve(rootDir, "request-access.html"), resolve(distDir, "request-access.html"));
 await cp(resolve(rootDir, "styles.css"), resolve(distDir, "styles.css"));
 await cp(resolve(rootDir, "src", "main.js"), resolve(distDir, "src", "main.js"));
@@ -15,4 +16,5 @@ await cp(resolve(rootDir, "src", "auth-transitions.js"), resolve(distDir, "src",
 await cp(resolve(rootDir, "src", "measurementFormatting.js"), resolve(distDir, "src", "measurementFormatting.js"));
 await cp(resolve(rootDir, "src", "measurementFormula.js"), resolve(distDir, "src", "measurementFormula.js"));
 await cp(resolve(rootDir, "src", "request-access.js"), resolve(distDir, "src", "request-access.js"));
+await cp(resolve(rootDir, "src", "learning-test.js"), resolve(distDir, "src", "learning-test.js"));
 await cp(resolve(rootDir, "src", "safetyModel.js"), resolve(distDir, "src", "safetyModel.js"));

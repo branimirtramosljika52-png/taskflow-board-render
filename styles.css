@@ -19622,3 +19622,88 @@ body.is-measurement-equipment-document-preview-open {
     max-height: 48vh;
   }
 }
+
+.work-order-document-training-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.work-order-document-training-specialist {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.work-order-document-training-tests {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.work-order-document-training-row {
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 0.72rem;
+  background: color-mix(in srgb, var(--surface-soft) 92%, white 8%);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.work-order-document-training-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.work-order-document-training-row-head strong {
+  font-size: 0.96rem;
+}
+
+.work-order-document-training-row-head span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.work-order-document-training-row-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.work-order-document-training-row-controls .field {
+  margin: 0;
+}
+
+.work-order-document-training-assignment-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.work-order-document-training-assignment-item {
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.52rem 0.62rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: var(--surface);
+}
+
+.work-order-document-training-assignment-item span {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .work-order-document-training-row-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-training-assignment-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

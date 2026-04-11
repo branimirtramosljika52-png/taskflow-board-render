@@ -782,6 +782,14 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
       userId,
       userLabel: normalizeText(item?.userLabel || user?.fullName || user?.email || user?.username),
       email: normalizeText(item?.email || user?.email),
+      workOrderId: normalizeId(item?.workOrderId),
+      workOrderNumber: normalizeText(item?.workOrderNumber),
+      serviceId: normalizeId(item?.serviceId),
+      serviceName: normalizeText(item?.serviceName),
+      assignedByUserId: normalizeId(item?.assignedByUserId),
+      assignedByLabel: normalizeText(item?.assignedByLabel),
+      safetySpecialistUserId: normalizeId(item?.safetySpecialistUserId),
+      safetySpecialistLabel: normalizeText(item?.safetySpecialistLabel),
       accessToken: normalizeText(item?.accessToken) || crypto.randomUUID(),
       status: ["pending", "in_progress", "completed"].includes(normalizeText(item?.status).toLowerCase())
         ? normalizeText(item?.status).toLowerCase()
@@ -791,7 +799,7 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
       completedAt: normalizeOptionalDateTime(item?.completedAt),
       scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
     };
-  }).filter((item) => item.userId || item.email);
+  }).filter((item) => item.userId || item.email || item.userLabel);
 }
 
 function normalizeLearningAttemptItems(items = []) {

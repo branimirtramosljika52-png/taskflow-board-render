@@ -658,6 +658,53 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/public/learning-tests/access") {
+      const token = String(url.searchParams.get("token") ?? "").trim();
+      if (!token) {
+        sendError(response, 400, "Token je obavezan.");
+        return true;
+      }
+      const item = await domainRepository.getLearningAccessByToken(token);
+      if (!item) {
+        sendError(response, 404, "Pristup testu nije pronađen.");
+        return true;
+      }
+      sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/public/learning-tests/access/start") {
+      const body = await readJsonBody(request);
+      const token = String(body?.token ?? "").trim();
+      if (!token) {
+        sendError(response, 400, "Token je obavezan.");
+        return true;
+      }
+      const item = await domainRepository.startLearningTestAccess(token);
+      if (!item) {
+        sendError(response, 404, "Pristup testu nije pronađen.");
+        return true;
+      }
+      sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/public/learning-tests/access/submit") {
+      const body = await readJsonBody(request);
+      const token = String(body?.token ?? "").trim();
+      if (!token) {
+        sendError(response, 400, "Token je obavezan.");
+        return true;
+      }
+      const item = await domainRepository.submitLearningTestAccess(token, body?.answers ?? []);
+      if (!item) {
+        sendError(response, 404, "Pristup testu nije pronađen.");
+        return true;
+      }
+      sendJson(response, 200, { item });
+      return true;
+    }
+
     const user = await getRequestUser(request, response);
 
     if (!user) {
