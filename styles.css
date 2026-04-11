@@ -19667,7 +19667,7 @@ body.is-measurement-equipment-document-preview-open {
 
 .work-order-document-training-row-controls {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(240px, 1fr) auto;
   gap: 0.55rem;
   align-items: end;
 }
@@ -19679,6 +19679,12 @@ body.is-measurement-equipment-document-preview-open {
 .work-order-document-training-assignment-list {
   display: grid;
   gap: 0.45rem;
+}
+
+.work-order-document-training-external-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 0.55rem;
 }
 
 .work-order-document-training-assignment-item {
@@ -19699,6 +19705,10 @@ body.is-measurement-equipment-document-preview-open {
 
 @media (max-width: 760px) {
   .work-order-document-training-row-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-training-external-grid {
     grid-template-columns: 1fr;
   }
 

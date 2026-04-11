@@ -777,11 +777,23 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
   return source.map((item) => {
     const userId = normalizeId(item?.userId);
     const user = userIndex.get(String(userId));
+    const assigneeType = normalizeText(item?.assigneeType).toLowerCase() === "external" ? "external" : "user";
+    const externalFullName = normalizeText(item?.externalFullName);
+    const externalEmail = normalizeText(item?.externalEmail);
+    const externalPhone = normalizeText(item?.externalPhone);
+    const externalCompany = normalizeText(item?.externalCompany);
+    const externalOib = normalizeText(item?.externalOib);
     return {
       id: normalizeId(item?.id) || crypto.randomUUID(),
+      assigneeType,
       userId,
       userLabel: normalizeText(item?.userLabel || user?.fullName || user?.email || user?.username),
       email: normalizeText(item?.email || user?.email),
+      externalFullName,
+      externalEmail,
+      externalPhone,
+      externalCompany,
+      externalOib,
       workOrderId: normalizeId(item?.workOrderId),
       workOrderNumber: normalizeText(item?.workOrderNumber),
       serviceId: normalizeId(item?.serviceId),
@@ -799,7 +811,7 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
       completedAt: normalizeOptionalDateTime(item?.completedAt),
       scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
     };
-  }).filter((item) => item.userId || item.email || item.userLabel);
+  }).filter((item) => item.userId || item.email || item.userLabel || item.externalFullName);
 }
 
 function normalizeLearningAttemptItems(items = []) {

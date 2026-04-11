@@ -15210,23 +15210,69 @@ function getWorkOrderDocumentWizardLearningDraft(workOrderId = "", testId = "") 
   const normalizedWorkOrderId = String(workOrderId || "").trim();
   const normalizedTestId = String(testId || "").trim();
   if (!normalizedWorkOrderId || !normalizedTestId) {
-    return "";
+    return {
+      assigneeType: "user",
+      userId: "",
+      fullName: "",
+      email: "",
+      phone: "",
+      company: "",
+      oib: "",
+    };
   }
   const workOrderDraft = state.workOrderDocumentWizard.learningDrafts?.[normalizedWorkOrderId] ?? {};
-  return String(workOrderDraft?.[normalizedTestId] || "").trim();
+  const rawDraft = workOrderDraft?.[normalizedTestId];
+  if (typeof rawDraft === "string") {
+    return {
+      assigneeType: "user",
+      userId: String(rawDraft || "").trim(),
+      fullName: "",
+      email: "",
+      phone: "",
+      company: "",
+      oib: "",
+    };
+  }
+  const source = rawDraft && typeof rawDraft === "object" ? rawDraft : {};
+  const assigneeType = String(source.assigneeType || "").trim().toLowerCase() === "external" ? "external" : "user";
+  return {
+    assigneeType,
+    userId: String(source.userId || "").trim(),
+    fullName: String(source.fullName || "").trim(),
+    email: String(source.email || "").trim(),
+    phone: String(source.phone || "").trim(),
+    company: String(source.company || "").trim(),
+    oib: String(source.oib || "").trim(),
+  };
 }
 
-function setWorkOrderDocumentWizardLearningDraft(workOrderId = "", testId = "", userId = "") {
+function setWorkOrderDocumentWizardLearningDraft(workOrderId = "", testId = "", draftPatch = {}) {
   const normalizedWorkOrderId = String(workOrderId || "").trim();
   const normalizedTestId = String(testId || "").trim();
   if (!normalizedWorkOrderId || !normalizedTestId) {
     return;
   }
+  const current = getWorkOrderDocumentWizardLearningDraft(normalizedWorkOrderId, normalizedTestId);
+  const patch = draftPatch && typeof draftPatch === "object"
+    ? draftPatch
+    : { userId: String(draftPatch || "").trim() };
+  const assigneeType = String(patch.assigneeType ?? current.assigneeType ?? "user").trim().toLowerCase() === "external"
+    ? "external"
+    : "user";
+  const nextDraft = {
+    assigneeType,
+    userId: String(patch.userId ?? current.userId ?? "").trim(),
+    fullName: String(patch.fullName ?? current.fullName ?? "").trim(),
+    email: String(patch.email ?? current.email ?? "").trim(),
+    phone: String(patch.phone ?? current.phone ?? "").trim(),
+    company: String(patch.company ?? current.company ?? "").trim(),
+    oib: String(patch.oib ?? current.oib ?? "").trim(),
+  };
   state.workOrderDocumentWizard.learningDrafts = {
     ...(state.workOrderDocumentWizard.learningDrafts ?? {}),
     [normalizedWorkOrderId]: {
       ...(state.workOrderDocumentWizard.learningDrafts?.[normalizedWorkOrderId] ?? {}),
-      [normalizedTestId]: String(userId || "").trim(),
+      [normalizedTestId]: nextDraft,
     },
   };
 }
@@ -15240,14 +15286,32 @@ function getLearningAssignmentsForWorkOrder(test = {}, workOrder = {}) {
     .filter((assignment) => String(assignment?.workOrderId || "").trim() === normalizedWorkOrderId);
 }
 
-async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, service = {}, userId = "") {
-  const normalizedUserId = String(userId || "").trim();
-  if (!normalizedUserId) {
-    throw new Error("Odaberi osobu kojoj dodjeljuješ ispit.");
+async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, service = {}, assigneeDraft = {}) {
+  const source = assigneeDraft && typeof assigneeDraft === "object"
+    ? assigneeDraft
+    : { userId: String(assigneeDraft || "").trim() };
+  const assigneeType = String(source.assigneeType || "").trim().toLowerCase() === "external" ? "external" : "user";
+  const normalizedUserId = String(source.userId || "").trim();
+
+  let assignee = null;
+  if (assigneeType === "user") {
+    if (!normalizedUserId) {
+      throw new Error("Odaberi osobu kojoj dodjeljuješ ispit.");
+    }
+    assignee = (state.users ?? []).find((user) => String(user?.id) === normalizedUserId);
+    if (!assignee) {
+      throw new Error("Odabrana osoba nije pronađena.");
+    }
   }
-  const assignee = (state.users ?? []).find((user) => String(user?.id) === normalizedUserId);
-  if (!assignee) {
-    throw new Error("Odabrana osoba nije pronađena.");
+
+  const externalFullName = String(source.fullName || "").trim();
+  const externalEmail = String(source.email || "").trim();
+  const externalPhone = String(source.phone || "").trim();
+  const externalCompany = String(source.company || "").trim();
+  const externalOib = String(source.oib || "").trim();
+
+  if (assigneeType === "external" && !externalFullName) {
+    throw new Error("Za vanjsku osobu upiši ime i prezime.");
   }
 
   const specialistUserId = String(state.workOrderDocumentWizard.common.safetySpecialistUserId || "").trim();
@@ -15257,17 +15321,34 @@ async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, se
 
   const timestamp = new Date().toISOString();
   const assignmentItems = Array.isArray(test?.assignmentItems) ? test.assignmentItems : [];
-  const matchKey = `${String(workOrder?.id || "").trim()}::${normalizedUserId}`;
+  const identityKey = assigneeType === "external"
+    ? `${externalEmail.toLowerCase()}::${externalFullName.toLowerCase()}`
+    : normalizedUserId;
+  const matchKey = `${String(workOrder?.id || "").trim()}::${assigneeType}::${identityKey}`;
   const existingAssignment = assignmentItems.find((item) => (
-    `${String(item?.workOrderId || "").trim()}::${String(item?.userId || "").trim()}` === matchKey
+    `${String(item?.workOrderId || "").trim()}::${String(item?.assigneeType || "").trim() || "user"}::${
+      String(item?.assigneeType || "").trim() === "external"
+        ? `${String(item?.externalEmail || "").trim().toLowerCase()}::${String(item?.externalFullName || "").trim().toLowerCase()}`
+        : String(item?.userId || "").trim()
+    }` === matchKey
   ));
 
   const nextAssignment = {
     ...(existingAssignment ?? {}),
     id: String(existingAssignment?.id || crypto.randomUUID()),
-    userId: normalizedUserId,
-    userLabel: String(assignee.fullName || assignee.email || assignee.username || "Korisnik").trim(),
-    email: String(assignee.email || "").trim(),
+    assigneeType,
+    userId: assigneeType === "user" ? normalizedUserId : "",
+    userLabel: assigneeType === "external"
+      ? externalFullName
+      : String(assignee.fullName || assignee.email || assignee.username || "Korisnik").trim(),
+    email: assigneeType === "external"
+      ? externalEmail
+      : String(assignee.email || "").trim(),
+    externalFullName: assigneeType === "external" ? externalFullName : "",
+    externalEmail: assigneeType === "external" ? externalEmail : "",
+    externalPhone: assigneeType === "external" ? externalPhone : "",
+    externalCompany: assigneeType === "external" ? externalCompany : "",
+    externalOib: assigneeType === "external" ? externalOib : "",
     accessToken: String(existingAssignment?.accessToken || crypto.randomUUID()),
     status: String(existingAssignment?.status || "pending"),
     assignedAt: String(existingAssignment?.assignedAt || timestamp),
@@ -15284,7 +15365,11 @@ async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, se
   };
 
   const remaining = assignmentItems.filter((item) => (
-    `${String(item?.workOrderId || "").trim()}::${String(item?.userId || "").trim()}` !== matchKey
+    `${String(item?.workOrderId || "").trim()}::${String(item?.assigneeType || "").trim() || "user"}::${
+      String(item?.assigneeType || "").trim() === "external"
+        ? `${String(item?.externalEmail || "").trim().toLowerCase()}::${String(item?.externalFullName || "").trim().toLowerCase()}`
+        : String(item?.userId || "").trim()
+    }` !== matchKey
   ));
   const nextAssignmentItems = [...remaining, nextAssignment];
 
@@ -36876,24 +36961,80 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
 
       const controls = document.createElement("div");
       controls.className = "work-order-document-training-row-controls";
+      const selectedDraft = getWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id);
+
+      const assigneeTypeField = document.createElement("label");
+      assigneeTypeField.className = "field";
+      const assigneeTypeLabel = document.createElement("span");
+      assigneeTypeLabel.textContent = "Tip osobe";
+      const assigneeTypeSelect = document.createElement("select");
+      assigneeTypeSelect.append(
+        createOption("user", "Korisnik aplikacije", selectedDraft.assigneeType || "user"),
+        createOption("external", "Vanjska osoba (klijent)", selectedDraft.assigneeType || "user"),
+      );
+      assigneeTypeField.append(assigneeTypeLabel, assigneeTypeSelect);
+
       const assigneeField = document.createElement("label");
       assigneeField.className = "field";
       const assigneeLabel = document.createElement("span");
       assigneeLabel.textContent = "Dodijeli osobi";
       const assigneeSelect = document.createElement("select");
-      const selectedDraft = getWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id);
-      assigneeSelect.append(createOption("", "Odaberi osobu", selectedDraft));
+      assigneeSelect.append(createOption("", "Odaberi osobu", selectedDraft.userId || ""));
       users.forEach((user) => {
         assigneeSelect.append(createOption(
           String(user.id),
           String(user.fullName || user.email || user.username || "Korisnik").trim(),
-          selectedDraft,
+          selectedDraft.userId || "",
         ));
       });
       assigneeSelect.addEventListener("change", () => {
-        setWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id, assigneeSelect.value);
+        setWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id, {
+          userId: assigneeSelect.value,
+        });
       });
       assigneeField.append(assigneeLabel, assigneeSelect);
+
+      const externalFields = document.createElement("div");
+      externalFields.className = "work-order-document-training-external-grid";
+
+      const createExternalField = (labelText = "", key = "", placeholder = "") => {
+        const wrapper = document.createElement("label");
+        wrapper.className = "field";
+        const label = document.createElement("span");
+        label.textContent = labelText;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = placeholder;
+        input.value = String(selectedDraft[key] || "").trim();
+        input.addEventListener("input", () => {
+          setWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id, {
+            [key]: input.value,
+          });
+        });
+        wrapper.append(label, input);
+        return wrapper;
+      };
+
+      externalFields.append(
+        createExternalField("Ime i prezime", "fullName", "npr. Ivan Horvat"),
+        createExternalField("Email", "email", "npr. ivan@tvrtka.hr"),
+        createExternalField("Mobitel", "phone", "npr. +385 91 123 4567"),
+        createExternalField("Tvrtka", "company", "npr. Klijent d.o.o."),
+        createExternalField("OIB", "oib", "npr. 12345678901"),
+      );
+
+      const syncAssigneeMode = () => {
+        const isExternal = String(assigneeTypeSelect.value || "").trim() === "external";
+        assigneeField.hidden = isExternal;
+        externalFields.hidden = !isExternal;
+      };
+      assigneeTypeSelect.addEventListener("change", () => {
+        setWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id, {
+          assigneeType: assigneeTypeSelect.value,
+        });
+        syncAssigneeMode();
+      });
+      syncAssigneeMode();
 
       const assignButton = document.createElement("button");
       assignButton.type = "button";
@@ -36904,7 +37045,12 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
           workOrderDocumentWizardError.textContent = "";
         }
         try {
-          await assignLearningTestToWorkOrderPerson(workOrder, entry.test, entry.service, assigneeSelect.value);
+          await assignLearningTestToWorkOrderPerson(
+            workOrder,
+            entry.test,
+            entry.service,
+            getWorkOrderDocumentWizardLearningDraft(workOrder.id, entry.test.id),
+          );
           renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
         } catch (error) {
           if (workOrderDocumentWizardError) {
@@ -36930,6 +37076,9 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
           assignee.textContent = assignment.userLabel || assignment.email || "Osoba";
           const details = document.createElement("span");
           details.textContent = [
+            assignment.assigneeType === "external" && assignment.externalCompany
+              ? assignment.externalCompany
+              : "",
             assignment.status || "pending",
             assignment.assignedAt ? formatDate(String(assignment.assignedAt).slice(0, 10)) : "",
           ].filter(Boolean).join(" · ");
@@ -36947,7 +37096,8 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
         });
       }
 
-      row.append(rowHead, controls, assignmentList);
+      controls.append(assigneeTypeField, assigneeField, assignButton);
+      row.append(rowHead, controls, externalFields, assignmentList);
       testsShell.append(row);
     });
   }
