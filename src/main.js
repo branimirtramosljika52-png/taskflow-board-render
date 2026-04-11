@@ -39679,6 +39679,10 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
+  if (mode === "znr") {
+    setWorkOrderDocumentWizardStep("templates");
+    return;
+  }
   if (mode !== "inspection") {
     return;
   }
