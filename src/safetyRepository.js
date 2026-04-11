@@ -2075,7 +2075,7 @@ async function fetchSnapshotFromConnection(connection) {
   const [measurementEquipmentRows] = await connection.query(`
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
-           linked_template_ids_json, documents_json, created_at, updated_at
+           linked_template_ids_json, documents_json, activity_items_json, created_at, updated_at
     FROM web_measurement_equipment
     ORDER BY
       valid_until ASC,
@@ -2107,6 +2107,7 @@ async function fetchSnapshotFromConnection(connection) {
       linkedTemplateIds,
       linkedTemplateTitles,
       documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
+      activityItems: parseJsonArray(row.activity_items_json),
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
     };
@@ -2408,6 +2409,7 @@ export class InMemorySafetyRepository {
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
+        activityItems: (item.activityItems ?? []).map((entry) => ({ ...entry })),
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
         ...item,
@@ -3604,6 +3606,7 @@ export class MySqlSafetyRepository {
         note TEXT NULL,
         linked_template_ids_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
+        activity_items_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_measurement_equipment_org_valid (organization_id, valid_until),
@@ -3677,6 +3680,7 @@ export class MySqlSafetyRepository {
     `);
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -5590,8 +5594,8 @@ export class MySqlSafetyRepository {
           INSERT INTO web_measurement_equipment
             (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
-             linked_template_ids_json, documents_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             linked_template_ids_json, documents_json, activity_items_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5609,6 +5613,7 @@ export class MySqlSafetyRepository {
           draft.note,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          JSON.stringify(draft.activityItems ?? []),
         ],
       );
 
@@ -5651,7 +5656,7 @@ export class MySqlSafetyRepository {
           UPDATE web_measurement_equipment
           SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
-              note = ?, linked_template_ids_json = ?, documents_json = ?
+              note = ?, linked_template_ids_json = ?, documents_json = ?, activity_items_json = ?
           WHERE id = ?
         `,
         [
@@ -5669,6 +5674,7 @@ export class MySqlSafetyRepository {
           next.note,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          JSON.stringify(next.activityItems ?? []),
           Number(id),
         ],
       );

@@ -16411,6 +16411,84 @@ body.is-measurement-equipment-document-preview-open {
   gap: 12px;
 }
 
+.measurement-equipment-activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.measurement-equipment-activity-row {
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  border-radius: 16px;
+  background: rgba(247, 250, 248, 0.94);
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.measurement-equipment-activity-row.is-pending {
+  border-color: rgba(214, 113, 62, 0.34);
+  box-shadow: 0 0 0 1px rgba(214, 113, 62, 0.08);
+}
+
+.measurement-equipment-activity-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #415a4f;
+  padding-top: 26px;
+}
+
+.measurement-equipment-activity-check input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.measurement-equipment-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.measurement-equipment-activity-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.measurement-equipment-activity-field.is-wide {
+  grid-column: span 2;
+}
+
+.measurement-equipment-activity-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #61776d;
+}
+
+.measurement-equipment-activity-row-meta {
+  grid-column: 2 / 3;
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  color: #60796f;
+}
+
+.measurement-equipment-activity-remove {
+  align-self: center;
+}
+
+.measurement-equipment-card-activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .service-catalog-template-list {
   display: grid;
   gap: 10px;
@@ -19051,6 +19129,14 @@ body.is-measurement-equipment-document-preview-open {
   .work-order-document-carousel-track .work-order-document-selection-card {
     flex-basis: calc((100% - 12px) / 2);
   }
+
+  .measurement-equipment-activity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .measurement-equipment-activity-field.is-wide {
+    grid-column: span 2;
+  }
 }
 
 @media (max-width: 760px) {
@@ -19128,6 +19214,30 @@ body.is-measurement-equipment-document-preview-open {
   .user-documents-block .module-attachment-actions {
     flex-direction: row;
     justify-content: flex-start;
+  }
+
+  .measurement-equipment-activity-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .measurement-equipment-activity-check {
+    padding-top: 0;
+  }
+
+  .measurement-equipment-activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .measurement-equipment-activity-field.is-wide {
+    grid-column: auto;
+  }
+
+  .measurement-equipment-activity-row-meta {
+    grid-column: auto;
+  }
+
+  .measurement-equipment-activity-remove {
+    justify-self: start;
   }
 
   .work-order-document-carousel-shell {

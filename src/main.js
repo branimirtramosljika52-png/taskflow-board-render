@@ -13,6 +13,7 @@
   DOCUMENT_TEMPLATE_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
   LEGAL_FRAMEWORK_STATUS_OPTIONS,
+  MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
   MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
   OFFER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
@@ -558,6 +559,7 @@ const state = {
   measurementEquipmentEditorOpen: false,
   measurementEquipmentDocumentPreviewOpen: false,
   measurementEquipmentTemplateSectionExpanded: false,
+  measurementEquipmentActivitySectionExpanded: false,
   measurementEquipmentDocumentsSectionExpanded: false,
   safetyAuthorizationEditorOpen: false,
   documentTemplateEditorOpen: false,
@@ -1435,6 +1437,10 @@ const measurementEquipmentValidUntilInput = document.querySelector("#measurement
 const measurementEquipmentTemplateToggleButton = document.querySelector("#measurement-equipment-template-toggle");
 const measurementEquipmentTemplateBody = document.querySelector("#measurement-equipment-template-body");
 const measurementEquipmentTemplateList = document.querySelector("#measurement-equipment-template-list");
+const measurementEquipmentActivityAddButton = document.querySelector("#measurement-equipment-activity-add");
+const measurementEquipmentActivityToggleButton = document.querySelector("#measurement-equipment-activity-toggle");
+const measurementEquipmentActivityBody = document.querySelector("#measurement-equipment-activity-body");
+const measurementEquipmentActivityList = document.querySelector("#measurement-equipment-activity-list");
 const measurementEquipmentDocumentsInput = document.querySelector("#measurement-equipment-documents-input");
 const measurementEquipmentDocumentsUploadButton = document.querySelector("#measurement-equipment-documents-upload");
 const measurementEquipmentDocumentsToggleButton = document.querySelector("#measurement-equipment-documents-toggle");
@@ -1537,6 +1543,7 @@ let learningTestMaterialDrafts = [];
 let learningTestPreviewSlideIndex = 0;
 let learningTestPreviewOpen = false;
 let measurementEquipmentDocumentDrafts = [];
+let measurementEquipmentActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
@@ -13904,6 +13911,9 @@ const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "upute", label: "Upute / dokumentacija" },
   { value: "ostalo", label: "Ostalo" },
 ];
+const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE = new Map(
+  MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
+);
 
 const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
@@ -21379,6 +21389,270 @@ function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
   });
 }
 
+function normalizeMeasurementEquipmentActivityDate(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const parsed = parseDateValue(raw);
+  return parsed ? parsed.toISOString().slice(0, 10) : "";
+}
+
+function normalizeMeasurementEquipmentActivityTypeValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE.has(normalized)
+    ? normalized
+    : "pregled";
+}
+
+function parseMeasurementEquipmentActivityCompleted(value, fallback = true) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (["false", "0", "ne", "no"].includes(normalized)) {
+    return false;
+  }
+  if (["true", "1", "da", "yes"].includes(normalized)) {
+    return true;
+  }
+  return fallback;
+}
+
+function createMeasurementEquipmentActivityDraft(entry = {}, { applyDefaultDate = false } = {}) {
+  return {
+    id: String(entry.id || crypto.randomUUID()),
+    activityType: normalizeMeasurementEquipmentActivityTypeValue(entry.activityType || entry.type),
+    completed: parseMeasurementEquipmentActivityCompleted(entry.completed, true),
+    performedOn: normalizeMeasurementEquipmentActivityDate(entry.performedOn || entry.date)
+      || (applyDefaultDate ? new Date().toISOString().slice(0, 10) : ""),
+    performedBy: String(entry.performedBy || entry.actor || "").trim().slice(0, 180),
+    calibrationPeriod: String(entry.calibrationPeriod || entry.period || "").trim().slice(0, 80),
+    validUntil: normalizeMeasurementEquipmentActivityDate(entry.validUntil),
+    note: String(entry.note || "").trim(),
+    createdAt: String(entry.createdAt || new Date().toISOString()),
+    updatedAt: String(entry.updatedAt || entry.createdAt || new Date().toISOString()),
+  };
+}
+
+function setMeasurementEquipmentActivityDrafts(items = []) {
+  measurementEquipmentActivityDrafts = (Array.isArray(items) ? items : [])
+    .map((entry) => createMeasurementEquipmentActivityDraft(entry))
+    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.note);
+}
+
+function getMeasurementEquipmentActivityTypeLabel(value = "") {
+  return MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE.get(String(value || "").trim().toLowerCase()) || "Aktivnost";
+}
+
+function compareMeasurementEquipmentActivityDraftRecency(left = {}, right = {}) {
+  const leftDate = String(left.performedOn || "").trim();
+  const rightDate = String(right.performedOn || "").trim();
+  if (leftDate && rightDate && leftDate !== rightDate) {
+    return rightDate.localeCompare(leftDate);
+  }
+  if (leftDate && !rightDate) {
+    return -1;
+  }
+  if (!leftDate && rightDate) {
+    return 1;
+  }
+  const leftUpdated = String(left.updatedAt || left.createdAt || "").trim();
+  const rightUpdated = String(right.updatedAt || right.createdAt || "").trim();
+  return rightUpdated.localeCompare(leftUpdated);
+}
+
+function buildMeasurementEquipmentActivityPayload() {
+  return [...measurementEquipmentActivityDrafts]
+    .map((entry) => ({
+      id: String(entry.id || "").trim() || crypto.randomUUID(),
+      activityType: normalizeMeasurementEquipmentActivityTypeValue(entry.activityType),
+      completed: parseMeasurementEquipmentActivityCompleted(entry.completed, true),
+      performedOn: normalizeMeasurementEquipmentActivityDate(entry.performedOn),
+      performedBy: String(entry.performedBy || "").trim().slice(0, 180),
+      calibrationPeriod: String(entry.calibrationPeriod || "").trim().slice(0, 80),
+      validUntil: normalizeMeasurementEquipmentActivityDate(entry.validUntil),
+      note: String(entry.note || "").trim(),
+      createdAt: String(entry.createdAt || new Date().toISOString()),
+      updatedAt: String(new Date().toISOString()),
+    }))
+    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.note)
+    .sort(compareMeasurementEquipmentActivityDraftRecency);
+}
+
+function syncMeasurementEquipmentCalibrationFromActivities() {
+  const latestCalibration = [...measurementEquipmentActivityDrafts]
+    .filter((entry) => entry.activityType === "umjeravanje" && entry.completed !== false)
+    .sort(compareMeasurementEquipmentActivityDraftRecency)[0];
+
+  if (!latestCalibration) {
+    return;
+  }
+
+  if (measurementEquipmentRequiresCalibrationInput) {
+    measurementEquipmentRequiresCalibrationInput.value = "true";
+  }
+  if (measurementEquipmentCalibrationDateInput && latestCalibration.performedOn) {
+    measurementEquipmentCalibrationDateInput.value = latestCalibration.performedOn;
+  }
+  if (measurementEquipmentCalibrationPeriodInput && latestCalibration.calibrationPeriod) {
+    measurementEquipmentCalibrationPeriodInput.value = latestCalibration.calibrationPeriod;
+  }
+  if (measurementEquipmentValidUntilInput && latestCalibration.validUntil) {
+    measurementEquipmentValidUntilInput.value = latestCalibration.validUntil;
+  }
+  syncMeasurementEquipmentCalibrationFields();
+}
+
+function updateMeasurementEquipmentActivityDraft(activityId, patch = {}, { syncCalibration = true } = {}) {
+  measurementEquipmentActivityDrafts = measurementEquipmentActivityDrafts.map((entry) => {
+    if (String(entry.id) !== String(activityId)) {
+      return entry;
+    }
+    return createMeasurementEquipmentActivityDraft(
+      {
+        ...entry,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      },
+      { applyDefaultDate: false },
+    );
+  });
+
+  if (syncCalibration) {
+    syncMeasurementEquipmentCalibrationFromActivities();
+  }
+}
+
+function renderMeasurementEquipmentActivities() {
+  if (!measurementEquipmentActivityList) {
+    return;
+  }
+
+  if (measurementEquipmentActivityDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema aktivnosti. Dodaj pregled, umjeravanje, servis ili popravak.";
+    measurementEquipmentActivityList.replaceChildren(empty);
+    return;
+  }
+
+  const rows = measurementEquipmentActivityDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "measurement-equipment-activity-row";
+    row.classList.toggle("is-pending", entry.completed === false);
+
+    const completionField = document.createElement("label");
+    completionField.className = "measurement-equipment-activity-check";
+    const completionInput = document.createElement("input");
+    completionInput.type = "checkbox";
+    completionInput.checked = entry.completed !== false;
+    const completionLabel = document.createElement("span");
+    completionLabel.textContent = "Odrađeno";
+    completionField.append(completionInput, completionLabel);
+
+    const fieldsGrid = document.createElement("div");
+    fieldsGrid.className = "measurement-equipment-activity-grid";
+
+    const createField = (labelText, control, className = "") => {
+      const field = document.createElement("label");
+      field.className = ["measurement-equipment-activity-field", className].filter(Boolean).join(" ");
+      const label = document.createElement("span");
+      label.className = "measurement-equipment-activity-label";
+      label.textContent = labelText;
+      field.append(label, control);
+      return field;
+    };
+
+    const typeInput = document.createElement("select");
+    replaceSelectOptions(typeInput, MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS, entry.activityType || "pregled");
+    typeInput.addEventListener("change", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, { activityType: typeInput.value || "pregled" });
+      renderMeasurementEquipmentActivities();
+    });
+
+    const performedOnInput = document.createElement("input");
+    performedOnInput.type = "date";
+    performedOnInput.value = entry.performedOn || "";
+    performedOnInput.addEventListener("change", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        performedOn: normalizeMeasurementEquipmentActivityDate(performedOnInput.value),
+      });
+    });
+
+    const performedByInput = document.createElement("input");
+    performedByInput.type = "text";
+    performedByInput.maxLength = 180;
+    performedByInput.placeholder = "Tko je radio";
+    performedByInput.value = entry.performedBy || "";
+    performedByInput.addEventListener("input", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        performedBy: performedByInput.value || "",
+      }, { syncCalibration: false });
+    });
+
+    const periodInput = document.createElement("input");
+    periodInput.type = "text";
+    periodInput.maxLength = 80;
+    periodInput.placeholder = "Npr. 12 mjeseci";
+    periodInput.value = entry.calibrationPeriod || "";
+    periodInput.addEventListener("input", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        calibrationPeriod: periodInput.value || "",
+      });
+    });
+
+    const validUntilInput = document.createElement("input");
+    validUntilInput.type = "date";
+    validUntilInput.value = entry.validUntil || "";
+    validUntilInput.addEventListener("change", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        validUntil: normalizeMeasurementEquipmentActivityDate(validUntilInput.value),
+      });
+    });
+
+    completionInput.addEventListener("change", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, { completed: completionInput.checked });
+      renderMeasurementEquipmentActivities();
+    });
+
+    const removeButton = createIconActionButton("Makni aktivnost", "trash", "card-danger", () => {
+      measurementEquipmentActivityDrafts = measurementEquipmentActivityDrafts.filter((item) => item.id !== entry.id);
+      renderMeasurementEquipmentActivities();
+      syncMeasurementEquipmentCalibrationFromActivities();
+    });
+    removeButton.classList.add("measurement-equipment-activity-remove");
+
+    fieldsGrid.append(
+      createField("Aktivnost", typeInput),
+      createField("Datum", performedOnInput),
+      createField("Izvršio", performedByInput, "is-wide"),
+      createField("Periodika", periodInput),
+      createField("Vrijedi do", validUntilInput),
+    );
+
+    const meta = document.createElement("div");
+    meta.className = "measurement-equipment-activity-row-meta";
+    meta.textContent = `${getMeasurementEquipmentActivityTypeLabel(entry.activityType)} · ${entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma"}`;
+
+    row.append(completionField, fieldsGrid, removeButton, meta);
+    return row;
+  });
+
+  measurementEquipmentActivityList.replaceChildren(...rows);
+}
+
 function syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled = false } = {}) {
   const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
   [
@@ -21398,6 +21672,7 @@ function syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled = false }
 
 function syncMeasurementEquipmentEditorSections() {
   const templateExpanded = Boolean(state.measurementEquipmentTemplateSectionExpanded);
+  const activityExpanded = Boolean(state.measurementEquipmentActivitySectionExpanded);
   const documentsExpanded = Boolean(state.measurementEquipmentDocumentsSectionExpanded);
 
   if (measurementEquipmentTemplateBody) {
@@ -21406,6 +21681,14 @@ function syncMeasurementEquipmentEditorSections() {
   if (measurementEquipmentTemplateToggleButton) {
     measurementEquipmentTemplateToggleButton.textContent = templateExpanded ? "−" : "+";
     measurementEquipmentTemplateToggleButton.setAttribute("aria-expanded", String(templateExpanded));
+  }
+
+  if (measurementEquipmentActivityBody) {
+    measurementEquipmentActivityBody.hidden = !activityExpanded;
+  }
+  if (measurementEquipmentActivityToggleButton) {
+    measurementEquipmentActivityToggleButton.textContent = activityExpanded ? "−" : "+";
+    measurementEquipmentActivityToggleButton.setAttribute("aria-expanded", String(activityExpanded));
   }
 
   if (measurementEquipmentDocumentsBody) {
@@ -21437,6 +21720,7 @@ function buildMeasurementEquipmentPayload() {
       const { documentCategoryLocked, ...payload } = item;
       return { ...payload };
     }),
+    activityItems: buildMeasurementEquipmentActivityPayload(),
     note: measurementEquipmentNoteInput?.value || "",
   };
 }
@@ -21473,6 +21757,7 @@ function resetMeasurementEquipmentForm() {
     measurementEquipmentRequiresCalibrationInput.value = "true";
   }
   state.measurementEquipmentTemplateSectionExpanded = false;
+  state.measurementEquipmentActivitySectionExpanded = false;
   state.measurementEquipmentDocumentsSectionExpanded = false;
   if (measurementEquipmentSerialNumberInput) {
     measurementEquipmentSerialNumberInput.value = "";
@@ -21481,7 +21766,9 @@ function resetMeasurementEquipmentForm() {
     measurementEquipmentError.textContent = "";
   }
   setMeasurementEquipmentDocumentDrafts([]);
+  setMeasurementEquipmentActivityDrafts([]);
   renderMeasurementEquipmentDocuments();
+  renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentTemplateChecklist([]);
   syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorSections();
@@ -21511,9 +21798,12 @@ function hydrateMeasurementEquipmentForm(item) {
     measurementEquipmentError.textContent = "";
   }
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
+  setMeasurementEquipmentActivityDrafts(item.activityItems ?? []);
   renderMeasurementEquipmentDocuments();
+  renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
   state.measurementEquipmentTemplateSectionExpanded = false;
+  state.measurementEquipmentActivitySectionExpanded = (item.activityItems ?? []).length > 0;
   state.measurementEquipmentDocumentsSectionExpanded = false;
   syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorSections();
@@ -21634,11 +21924,30 @@ function renderMeasurementEquipmentModule() {
       ? `${item.documents.length} datotek${item.documents.length === 1 ? "a" : "e"} spremljeno`
       : "Bez dodatne napomene.");
 
+    const activityWrap = document.createElement("div");
+    activityWrap.className = "measurement-equipment-card-activity";
+    const activityItems = Array.isArray(item.activityItems) ? item.activityItems : [];
+    activityItems.slice(0, 3).forEach((activityEntry) => {
+      const parts = [
+        getMeasurementEquipmentActivityTypeLabel(activityEntry.activityType),
+        activityEntry.performedOn ? formatCompactDate(activityEntry.performedOn) : "",
+        activityEntry.performedBy || "",
+      ].filter(Boolean);
+      activityWrap.append(createBadge(parts.join(" · "), "measurement-equipment-chip"));
+    });
+    if (activityItems.length > 3) {
+      activityWrap.append(createBadge(`+${activityItems.length - 3}`, "measurement-equipment-chip"));
+    }
+
     if (dates.childElementCount > 0) {
       footer.append(dates);
     }
     footer.append(templates);
-    card.append(head, note, footer);
+    if (activityWrap.childElementCount > 0) {
+      card.append(head, note, activityWrap, footer);
+    } else {
+      card.append(head, note, footer);
+    }
 
     const openItem = () => {
       if (!canManageMasterData) {
@@ -41953,6 +42262,21 @@ measurementEquipmentRequiresCalibrationInput?.addEventListener("change", () => {
 
 measurementEquipmentTemplateToggleButton?.addEventListener("click", () => {
   state.measurementEquipmentTemplateSectionExpanded = !state.measurementEquipmentTemplateSectionExpanded;
+  syncMeasurementEquipmentEditorSections();
+});
+
+measurementEquipmentActivityToggleButton?.addEventListener("click", () => {
+  state.measurementEquipmentActivitySectionExpanded = !state.measurementEquipmentActivitySectionExpanded;
+  syncMeasurementEquipmentEditorSections();
+});
+
+measurementEquipmentActivityAddButton?.addEventListener("click", () => {
+  state.measurementEquipmentActivitySectionExpanded = true;
+  measurementEquipmentActivityDrafts = [
+    createMeasurementEquipmentActivityDraft({}, { applyDefaultDate: true }),
+    ...measurementEquipmentActivityDrafts,
+  ];
+  renderMeasurementEquipmentActivities();
   syncMeasurementEquipmentEditorSections();
 });
 

@@ -72,6 +72,15 @@ export const MEASUREMENT_EQUIPMENT_KIND_OPTIONS = [
   { value: "combined", label: "Mjerna + ispitna" },
 ];
 
+export const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS = [
+  { value: "pregled", label: "Pregled" },
+  { value: "umjeravanje", label: "Umjeravanje" },
+  { value: "servis", label: "Servis" },
+  { value: "popravak", label: "Popravak" },
+  { value: "odrzavanje", label: "Odrzavanje" },
+  { value: "ostalo", label: "Ostalo" },
+];
+
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -326,6 +335,7 @@ const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((o
 const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((option) => option.value));
 const SERVICE_CATALOG_TYPE_SET = new Set(SERVICE_CATALOG_TYPE_OPTIONS.map((option) => option.value));
 const MEASUREMENT_EQUIPMENT_KIND_SET = new Set(MEASUREMENT_EQUIPMENT_KIND_OPTIONS.map((option) => option.value));
+const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_SET = new Set(MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
@@ -547,6 +557,11 @@ function normalizeMeasurementEquipmentKind(value) {
   return MEASUREMENT_EQUIPMENT_KIND_SET.has(type) ? type : "measurement";
 }
 
+function normalizeMeasurementEquipmentActivityType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_SET.has(type) ? type : "pregled";
+}
+
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
@@ -651,6 +666,101 @@ function normalizeAttachmentDocuments(items = []) {
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? isoNow(),
     };
   }).filter(Boolean);
+}
+
+function compareMeasurementEquipmentActivityRecency(left = {}, right = {}) {
+  const leftDate = normalizeText(left.performedOn);
+  const rightDate = normalizeText(right.performedOn);
+
+  if (leftDate && rightDate && leftDate !== rightDate) {
+    return rightDate.localeCompare(leftDate);
+  }
+
+  if (leftDate && !rightDate) {
+    return -1;
+  }
+
+  if (!leftDate && rightDate) {
+    return 1;
+  }
+
+  const leftUpdated = normalizeText(left.updatedAt ?? left.createdAt);
+  const rightUpdated = normalizeText(right.updatedAt ?? right.createdAt);
+
+  if (leftUpdated && rightUpdated && leftUpdated !== rightUpdated) {
+    return rightUpdated.localeCompare(leftUpdated);
+  }
+
+  return normalizeText(right.id).localeCompare(normalizeText(left.id));
+}
+
+function normalizeMeasurementEquipmentActivityItems(items = [], now = isoNow) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const timestamp = now();
+
+  return items.map((item) => {
+    const activityTypeInput = normalizeText(item?.activityType ?? item?.type);
+    const performedOn = normalizeOptionalDate(item?.performedOn ?? item?.date);
+    const performedBy = normalizeText(item?.performedBy ?? item?.actor).slice(0, 180);
+    const calibrationPeriod = normalizeText(item?.calibrationPeriod ?? item?.period).slice(0, 80);
+    const validUntil = normalizeOptionalDate(item?.validUntil);
+    const note = normalizeText(item?.note);
+    const hasAnyData = Boolean(
+      activityTypeInput
+      || normalizeText(item?.performedOn ?? item?.date)
+      || performedBy
+      || calibrationPeriod
+      || normalizeText(item?.validUntil)
+      || note,
+    );
+
+    if (!hasAnyData) {
+      return null;
+    }
+
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      activityType: normalizeMeasurementEquipmentActivityType(activityTypeInput),
+      completed: normalizeBoolean(item?.completed, true),
+      performedOn,
+      performedBy,
+      calibrationPeriod,
+      validUntil,
+      note,
+      createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
+      updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,
+    };
+  }).filter(Boolean).sort(compareMeasurementEquipmentActivityRecency);
+}
+
+function applyMeasurementEquipmentCalibrationFromActivities(activityItems = [], {
+  requiresCalibration = false,
+  calibrationDate = null,
+  calibrationPeriod = "",
+  validUntil = null,
+} = {}) {
+  const latestCalibrationActivity = [...(Array.isArray(activityItems) ? activityItems : [])]
+    .filter((entry) => entry.activityType === "umjeravanje" && entry.completed !== false)
+    .sort(compareMeasurementEquipmentActivityRecency)[0];
+
+  if (!latestCalibrationActivity) {
+    return {
+      requiresCalibration: normalizeBoolean(requiresCalibration, false),
+      calibrationDate: normalizeOptionalDate(calibrationDate),
+      calibrationPeriod: normalizeText(calibrationPeriod),
+      validUntil: normalizeOptionalDate(validUntil),
+    };
+  }
+
+  return {
+    requiresCalibration: true,
+    calibrationDate: normalizeOptionalDate(latestCalibrationActivity.performedOn) || normalizeOptionalDate(calibrationDate),
+    calibrationPeriod: normalizeText(latestCalibrationActivity.calibrationPeriod) || normalizeText(calibrationPeriod),
+    validUntil: normalizeOptionalDate(latestCalibrationActivity.validUntil) || normalizeOptionalDate(validUntil),
+  };
 }
 
 function normalizeWorkOrderExecutors(values = [], fallbackValues = []) {
@@ -2800,9 +2910,28 @@ export function createMeasurementEquipmentItem(
   const inventoryNumber = normalizeText(input.inventoryNumber);
   const serialNumber = normalizeText(input.serialNumber);
   const hasCalibrationData = Boolean(input.calibrationDate || input.calibrationPeriod || input.validUntil);
-  const requiresCalibration = hasOwn(input, "requiresCalibration")
+  let requiresCalibration = hasOwn(input, "requiresCalibration")
     ? normalizeBoolean(input.requiresCalibration, hasCalibrationData)
     : hasCalibrationData;
+  let calibrationDate = requiresCalibration ? normalizeOptionalDate(input.calibrationDate) : null;
+  let calibrationPeriod = requiresCalibration ? normalizeText(input.calibrationPeriod) : "";
+  let validUntil = requiresCalibration ? normalizeOptionalDate(input.validUntil) : null;
+  const activityItems = normalizeMeasurementEquipmentActivityItems(
+    hasOwn(input, "activityItems") ? input.activityItems : [],
+    now,
+  );
+  if (hasOwn(input, "activityItems")) {
+    const syncFromActivities = applyMeasurementEquipmentCalibrationFromActivities(activityItems, {
+      requiresCalibration,
+      calibrationDate,
+      calibrationPeriod,
+      validUntil,
+    });
+    requiresCalibration = syncFromActivities.requiresCalibration;
+    calibrationDate = syncFromActivities.calibrationDate;
+    calibrationPeriod = syncFromActivities.calibrationPeriod;
+    validUntil = syncFromActivities.validUntil;
+  }
   const templateSnapshot = normalizeLinkedTemplateSnapshot(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
@@ -2829,13 +2958,14 @@ export function createMeasurementEquipmentItem(
     serialNumber,
     inventoryNumber,
     requiresCalibration,
-    calibrationDate: requiresCalibration ? normalizeOptionalDate(input.calibrationDate) : null,
-    calibrationPeriod: requiresCalibration ? normalizeText(input.calibrationPeriod) : "",
-    validUntil: requiresCalibration ? normalizeOptionalDate(input.validUntil) : null,
+    calibrationDate: requiresCalibration ? calibrationDate : null,
+    calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
+    validUntil: requiresCalibration ? validUntil : null,
     note: normalizeText(input.note),
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: normalizeAttachmentDocuments(input.documents),
+    activityItems,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -2855,9 +2985,39 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     ? requireText(patch.organizationId, "Organizacija")
     : current.organizationId;
   const hasCalibrationData = hasOwn(patch, "calibrationDate") || hasOwn(patch, "calibrationPeriod") || hasOwn(patch, "validUntil");
-  const requiresCalibration = hasOwn(patch, "requiresCalibration")
+  let requiresCalibration = hasOwn(patch, "requiresCalibration")
     ? normalizeBoolean(patch.requiresCalibration, current.requiresCalibration || hasCalibrationData)
     : current.requiresCalibration;
+  let calibrationDate = requiresCalibration
+    ? (hasOwn(patch, "calibrationDate")
+      ? normalizeOptionalDate(patch.calibrationDate)
+      : current.calibrationDate)
+    : null;
+  let calibrationPeriod = requiresCalibration
+    ? (hasOwn(patch, "calibrationPeriod")
+      ? normalizeText(patch.calibrationPeriod)
+      : current.calibrationPeriod)
+    : "";
+  let validUntil = requiresCalibration
+    ? (hasOwn(patch, "validUntil")
+      ? normalizeOptionalDate(patch.validUntil)
+      : current.validUntil)
+    : null;
+  const activityItems = hasOwn(patch, "activityItems")
+    ? normalizeMeasurementEquipmentActivityItems(patch.activityItems, now)
+    : normalizeMeasurementEquipmentActivityItems(current.activityItems ?? [], now);
+  if (hasOwn(patch, "activityItems")) {
+    const syncFromActivities = applyMeasurementEquipmentCalibrationFromActivities(activityItems, {
+      requiresCalibration,
+      calibrationDate,
+      calibrationPeriod,
+      validUntil,
+    });
+    requiresCalibration = syncFromActivities.requiresCalibration;
+    calibrationDate = syncFromActivities.calibrationDate;
+    calibrationPeriod = syncFromActivities.calibrationPeriod;
+    validUntil = syncFromActivities.validUntil;
+  }
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
     : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
@@ -2888,27 +3048,16 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     serialNumber,
     inventoryNumber,
     requiresCalibration,
-    calibrationDate: requiresCalibration
-      ? (hasOwn(patch, "calibrationDate")
-        ? normalizeOptionalDate(patch.calibrationDate)
-        : current.calibrationDate)
-      : null,
-    calibrationPeriod: requiresCalibration
-      ? (hasOwn(patch, "calibrationPeriod")
-        ? normalizeText(patch.calibrationPeriod)
-        : current.calibrationPeriod)
-      : "",
-    validUntil: requiresCalibration
-      ? (hasOwn(patch, "validUntil")
-        ? normalizeOptionalDate(patch.validUntil)
-        : current.validUntil)
-      : null,
+    calibrationDate: requiresCalibration ? calibrationDate : null,
+    calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
+    validUntil: requiresCalibration ? validUntil : null,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: hasOwn(patch, "documents")
       ? normalizeAttachmentDocuments(patch.documents)
       : normalizeAttachmentDocuments(current.documents),
+    activityItems,
     updatedAt: now(),
   };
 }
@@ -2938,6 +3087,14 @@ export function filterMeasurementEquipmentItems(
         document.fileName,
         document.description,
         document.documentCategory,
+      ]),
+      ...(item.activityItems ?? []).flatMap((entry) => [
+        entry.activityType,
+        entry.performedOn,
+        entry.performedBy,
+        entry.calibrationPeriod,
+        entry.validUntil,
+        entry.note,
       ]),
     ].join(" ").toLowerCase();
 

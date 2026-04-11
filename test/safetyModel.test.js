@@ -2343,6 +2343,22 @@ test("measurement equipment supports templates, documents, filters and sorting",
       note: "Koristi se za redovni pregled.",
       deviceCode: "TIP-03",
       linkedTemplateIds: ["template-b"],
+      activityItems: [
+        {
+          id: "activity-1",
+          activityType: "pregled",
+          performedOn: "2026-03-29",
+          performedBy: "Ana",
+        },
+        {
+          id: "activity-2",
+          activityType: "umjeravanje",
+          performedOn: "2026-04-02",
+          performedBy: "Marko",
+          calibrationPeriod: "24 mjeseca",
+          validUntil: "2028-04-02",
+        },
+      ],
       documents: [
         {
           fileName: "karton.jpg",
@@ -2369,15 +2385,21 @@ test("measurement equipment supports templates, documents, filters and sorting",
   assert.equal(updatedSecond.linkedTemplateTitles[0], "Zapisnik B");
   assert.equal(updatedSecond.documents[0].fileName, "karton.jpg");
   assert.equal(updatedSecond.documents[0].documentCategory, "karton_uredaja");
+  assert.equal(updatedSecond.activityItems.length, 2);
+  assert.equal(updatedSecond.requiresCalibration, true);
+  assert.equal(updatedSecond.calibrationDate, "2026-04-02");
+  assert.equal(updatedSecond.calibrationPeriod, "24 mjeseca");
+  assert.equal(updatedSecond.validUntil, "2028-04-02");
 
   const filtered = filterMeasurementEquipmentItems([first, updatedSecond], {
-    query: "tip-03",
+    query: "marko",
   });
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "equipment-2");
 
   const sorted = sortMeasurementEquipmentItems([first, updatedSecond]);
-  assert.equal(sorted[0].id, "equipment-2");
+  assert.equal(sorted[0].id, "equipment-1");
+  assert.equal(sorted[1].id, "equipment-2");
 });
 
 test("safety authorizations support template links, filters and sorting", () => {
