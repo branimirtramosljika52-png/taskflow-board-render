@@ -16427,6 +16427,11 @@ body.is-measurement-equipment-document-preview-open {
   align-items: center;
 }
 
+.measurement-equipment-activity-row.is-locked {
+  border-color: rgba(47, 104, 84, 0.28);
+  background: rgba(240, 247, 243, 0.92);
+}
+
 .measurement-equipment-activity-row.is-pending {
   border-color: rgba(214, 113, 62, 0.34);
   box-shadow: 0 0 0 1px rgba(214, 113, 62, 0.08);
@@ -16437,6 +16442,23 @@ body.is-measurement-equipment-document-preview-open {
   align-items: start;
   gap: 8px;
   min-width: 0;
+}
+
+.measurement-equipment-activity-grid.is-service-layout {
+  grid-template-columns:
+    minmax(132px, 0.92fr)
+    minmax(118px, 0.62fr)
+    minmax(154px, 0.92fr)
+    minmax(206px, 1.2fr);
+}
+
+.measurement-equipment-activity-grid.is-calibration-layout {
+  grid-template-columns:
+    minmax(132px, 0.84fr)
+    minmax(118px, 0.58fr)
+    minmax(132px, 0.7fr)
+    minmax(118px, 0.58fr)
+    minmax(116px, 0.56fr);
 }
 
 .measurement-equipment-activity-field {
@@ -16453,6 +16475,10 @@ body.is-measurement-equipment-document-preview-open {
   min-width: 0;
 }
 
+.measurement-equipment-activity-field.is-date input[type="date"] {
+  width: min(100%, 154px);
+}
+
 .measurement-equipment-activity-label {
   font-size: 0.66rem;
   letter-spacing: 0.1em;
@@ -16462,13 +16488,83 @@ body.is-measurement-equipment-document-preview-open {
 
 .measurement-equipment-activity-row-meta {
   grid-column: 1 / -1;
-  margin: 2px 0 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.measurement-equipment-activity-meta-text {
+  margin: 0;
   font-size: 0.72rem;
   color: #60796f;
 }
 
-.measurement-equipment-activity-remove {
+.measurement-equipment-activity-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 142, 133, 0.26);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.measurement-equipment-activity-status.is-saved {
+  color: #1f6f4b;
+  background: rgba(222, 245, 231, 0.86);
+  border-color: rgba(31, 111, 75, 0.24);
+}
+
+.measurement-equipment-activity-status.is-ready {
+  color: #6b4a16;
+  background: rgba(248, 239, 212, 0.9);
+  border-color: rgba(176, 136, 69, 0.28);
+}
+
+.measurement-equipment-activity-status.is-draft {
+  color: #8a4f1a;
+  background: rgba(255, 239, 224, 0.9);
+  border-color: rgba(196, 114, 45, 0.28);
+}
+
+.measurement-equipment-activity-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.measurement-equipment-activity-action {
   align-self: center;
+  justify-self: end;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.measurement-equipment-activity-action svg {
+  width: 17px;
+  height: 17px;
+}
+
+.measurement-equipment-activity-remove.card-danger {
+  color: #c44a66;
+  background: #fff3f6;
+  border-color: rgba(196, 74, 102, 0.24);
+}
+
+.measurement-equipment-activity-edit {
+  color: #556f66;
+  background: #f0f5f2;
+  border-color: rgba(85, 111, 102, 0.24);
 }
 
 .measurement-equipment-card-activity {
@@ -19208,8 +19304,8 @@ body.is-measurement-equipment-document-preview-open {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .measurement-equipment-activity-remove {
-    justify-self: start;
+  .measurement-equipment-activity-actions {
+    justify-content: flex-start;
   }
 
   .work-order-document-carousel-shell {
