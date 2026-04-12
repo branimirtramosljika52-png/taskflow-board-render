@@ -21585,13 +21585,17 @@ function renderMeasurementEquipmentActivities() {
     const typeInput = document.createElement("select");
     replaceSelectOptions(typeInput, MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS, entry.activityType || "pregled");
     typeInput.addEventListener("change", () => {
+      const previousType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType || "pregled");
       const nextType = typeInput.value || "pregled";
       const isCalibrationType = nextType === "umjeravanje";
       updateMeasurementEquipmentActivityDraft(entry.id, {
         activityType: nextType,
         performedBy: isCalibrationType ? "" : entry.performedBy,
         note: isCalibrationType ? "" : entry.note,
-      });
+      }, { syncCalibration: false });
+      if (previousType === "umjeravanje" || isCalibrationType) {
+        syncMeasurementEquipmentCalibrationFromActivities();
+      }
       renderMeasurementEquipmentActivities();
     });
 
@@ -21599,9 +21603,10 @@ function renderMeasurementEquipmentActivities() {
     performedOnInput.type = "date";
     performedOnInput.value = entry.performedOn || "";
     performedOnInput.addEventListener("change", () => {
+      const isCalibrationType = normalizeMeasurementEquipmentActivityTypeValue(typeInput.value) === "umjeravanje";
       updateMeasurementEquipmentActivityDraft(entry.id, {
         performedOn: normalizeMeasurementEquipmentActivityDate(performedOnInput.value),
-      });
+      }, { syncCalibration: isCalibrationType });
     });
 
     const performedByInput = document.createElement("input");
@@ -21673,7 +21678,6 @@ function renderMeasurementEquipmentActivities() {
     const activityFields = [
       createField("Aktivnost", typeInput),
       createField("Datum", performedOnInput),
-      createField("Izvršio", performedByInput),
     ];
 
     if (isCalibration) {

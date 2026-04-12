@@ -76,9 +76,6 @@ export const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS = [
   { value: "pregled", label: "Pregled" },
   { value: "umjeravanje", label: "Umjeravanje" },
   { value: "servis", label: "Servis" },
-  { value: "popravak", label: "Popravak" },
-  { value: "odrzavanje", label: "Odrzavanje" },
-  { value: "ostalo", label: "Ostalo" },
 ];
 
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [

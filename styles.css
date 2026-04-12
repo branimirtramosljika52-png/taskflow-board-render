@@ -16434,7 +16434,7 @@ body.is-measurement-equipment-document-preview-open {
 
 .measurement-equipment-activity-grid {
   display: grid;
-  align-items: end;
+  align-items: start;
   gap: 8px;
   min-width: 0;
 }
