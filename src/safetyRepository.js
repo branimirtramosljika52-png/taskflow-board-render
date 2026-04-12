@@ -2074,6 +2074,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [measurementEquipmentRows] = await connection.query(`
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
+           entered_by, approved_by, entry_date,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
            linked_template_ids_json, documents_json, activity_items_json, created_at, updated_at
     FROM web_measurement_equipment
@@ -2099,6 +2100,9 @@ async function fetchSnapshotFromConnection(connection) {
       deviceCode: row.device_code ?? "",
       serialNumber: row.serial_number ?? "",
       inventoryNumber: row.inventory_number ?? "",
+      enteredBy: row.entered_by ?? "",
+      approvedBy: row.approved_by ?? "",
+      entryDate: normalizeDateOnly(row.entry_date),
       requiresCalibration: Boolean(Number(row.requires_calibration ?? 0)),
       calibrationDate: normalizeDateOnly(row.calibration_date),
       calibrationPeriod: row.calibration_period ?? "",
@@ -3599,6 +3603,9 @@ export class MySqlSafetyRepository {
         device_code VARCHAR(120) NOT NULL DEFAULT '',
         serial_number VARCHAR(120) NOT NULL DEFAULT '',
         inventory_number VARCHAR(80) NOT NULL DEFAULT '',
+        entered_by VARCHAR(180) NOT NULL DEFAULT '',
+        approved_by VARCHAR(180) NOT NULL DEFAULT '',
+        entry_date DATE NULL,
         requires_calibration TINYINT(1) NOT NULL DEFAULT 0,
         calibration_date DATE NULL,
         calibration_period VARCHAR(80) NOT NULL DEFAULT '',
@@ -3680,6 +3687,9 @@ export class MySqlSafetyRepository {
     `);
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "entered_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER inventory_number");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "approved_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER entered_by");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "entry_date", "DATE NULL AFTER approved_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
@@ -5593,9 +5603,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_measurement_equipment
             (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
+             entered_by, approved_by, entry_date,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
              linked_template_ids_json, documents_json, activity_items_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5606,6 +5617,9 @@ export class MySqlSafetyRepository {
           draft.deviceCode,
           draft.serialNumber,
           draft.inventoryNumber,
+          draft.enteredBy,
+          draft.approvedBy,
+          draft.entryDate,
           draft.requiresCalibration ? 1 : 0,
           draft.calibrationDate,
           draft.calibrationPeriod,
@@ -5655,6 +5669,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_measurement_equipment
           SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
+              entered_by = ?, approved_by = ?, entry_date = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
               note = ?, linked_template_ids_json = ?, documents_json = ?, activity_items_json = ?
           WHERE id = ?
@@ -5667,6 +5682,9 @@ export class MySqlSafetyRepository {
           next.deviceCode,
           next.serialNumber,
           next.inventoryNumber,
+          next.enteredBy,
+          next.approvedBy,
+          next.entryDate,
           next.requiresCalibration ? 1 : 0,
           next.calibrationDate,
           next.calibrationPeriod,

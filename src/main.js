@@ -1430,6 +1430,9 @@ const measurementEquipmentTypeInput = document.querySelector("#measurement-equip
 const measurementEquipmentDeviceCodeInput = document.querySelector("#measurement-equipment-device-code");
 const measurementEquipmentSerialNumberInput = document.querySelector("#measurement-equipment-serial-number");
 const measurementEquipmentInventoryNumberInput = document.querySelector("#measurement-equipment-inventory-number");
+const measurementEquipmentEnteredByInput = document.querySelector("#measurement-equipment-entered-by");
+const measurementEquipmentApprovedByInput = document.querySelector("#measurement-equipment-approved-by");
+const measurementEquipmentEntryDateInput = document.querySelector("#measurement-equipment-entry-date");
 const measurementEquipmentRequiresCalibrationInput = document.querySelector("#measurement-equipment-requires-calibration");
 const measurementEquipmentCalibrationDateInput = document.querySelector("#measurement-equipment-calibration-date");
 const measurementEquipmentCalibrationPeriodInput = document.querySelector("#measurement-equipment-calibration-period");
@@ -13916,6 +13919,12 @@ const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE = new Map(
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
 );
 
+const MEASUREMENT_EQUIPMENT_ACTIVITY_DOCUMENT_CATEGORY_BY_TYPE = Object.freeze({
+  umjeravanje: "umjernica",
+  servis: "servisni_zapis",
+  pregled: "karton_uređaja",
+});
+
 const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
   { value: "dokaz_ispitivac", label: "Dokaz ispitivača" },
@@ -20070,15 +20079,32 @@ function renderMeasurementEquipmentDocuments() {
   }));
 }
 
-async function queueMeasurementEquipmentDocuments(files) {
+async function queueMeasurementEquipmentDocuments(
+  files,
+  {
+    defaultCategory = "",
+    defaultDescription = "",
+    lockCategory = false,
+    focusCategory = true,
+  } = {},
+) {
   const uploads = await buildWorkOrderDocumentUploadPayload(files);
-  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
+  const normalizedCategory = String(defaultCategory || "").trim();
+  const normalizedDescription = String(defaultDescription || "").trim();
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft({
+    ...file,
+    documentCategory: normalizedCategory || file.documentCategory || "",
+    description: normalizedDescription || file.description || "",
+    documentCategoryLocked: Boolean(lockCategory && normalizedCategory),
+  }));
   measurementEquipmentDocumentDrafts = [
     ...measurementEquipmentDocumentDrafts,
     ...nextDocuments,
   ];
   renderMeasurementEquipmentDocuments();
-  focusMeasurementEquipmentDocumentCategory(nextDocuments[0]?.id || "");
+  if (focusCategory) {
+    focusMeasurementEquipmentDocumentCategory(nextDocuments[0]?.id || "");
+  }
 }
 
 function syncLegalFrameworkEditorChrome() {
@@ -21490,6 +21516,11 @@ function getMeasurementEquipmentActivityTypeLabel(value = "") {
   return MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE.get(String(value || "").trim().toLowerCase()) || "Aktivnost";
 }
 
+function getMeasurementEquipmentDocumentCategoryForActivityType(activityType = "") {
+  const normalizedType = normalizeMeasurementEquipmentActivityTypeValue(activityType);
+  return MEASUREMENT_EQUIPMENT_ACTIVITY_DOCUMENT_CATEGORY_BY_TYPE[normalizedType] || "ostalo";
+}
+
 function compareMeasurementEquipmentActivityDraftRecency(left = {}, right = {}) {
   const leftDate = String(left.performedOn || "").trim();
   const rightDate = String(right.performedOn || "").trim();
@@ -21656,6 +21687,7 @@ function renderMeasurementEquipmentActivities() {
       }
       applyActivityMode(isCalibrationType);
       updateMetaText();
+      updateActivityDocumentDropzoneCopy();
     });
 
     const performedOnInput = document.createElement("input");
@@ -21729,6 +21761,102 @@ function renderMeasurementEquipmentActivities() {
       });
     });
 
+    const activityDocumentInput = document.createElement("input");
+    activityDocumentInput.type = "file";
+    activityDocumentInput.hidden = true;
+    activityDocumentInput.multiple = true;
+
+    const activityDropzone = document.createElement("button");
+    activityDropzone.type = "button";
+    activityDropzone.className = "work-order-document-dropzone is-compact measurement-equipment-activity-dropzone";
+
+    const activityDropzoneMark = document.createElement("span");
+    activityDropzoneMark.className = "work-order-document-dropzone-mark";
+    activityDropzoneMark.textContent = "+";
+
+    const activityDropzoneCopy = document.createElement("span");
+    activityDropzoneCopy.className = "work-order-document-dropzone-copy";
+    const activityDropzoneTitle = document.createElement("strong");
+    const activityDropzoneSubtitle = document.createElement("span");
+    activityDropzoneCopy.append(activityDropzoneTitle, activityDropzoneSubtitle);
+    activityDropzone.append(activityDropzoneMark, activityDropzoneCopy);
+
+    const queueActivityFiles = (fileList) => {
+      const selectedFiles = Array.from(fileList ?? []);
+      if (selectedFiles.length === 0) {
+        return;
+      }
+      const current = getCurrentDraft();
+      const currentType = normalizeMeasurementEquipmentActivityTypeValue(current.activityType || typeInput.value || "pregled");
+      const currentTypeLabel = getMeasurementEquipmentActivityTypeLabel(currentType);
+      const currentDate = normalizeMeasurementEquipmentActivityDate(current.performedOn || performedOnInput.value || "");
+      const defaultDescription = [
+        `Aktivnost: ${currentTypeLabel}`,
+        currentDate ? formatCompactDate(currentDate) : "bez datuma",
+      ].join(" · ");
+
+      void runMutation(() => queueMeasurementEquipmentDocuments(selectedFiles, {
+        defaultCategory: getMeasurementEquipmentDocumentCategoryForActivityType(currentType),
+        defaultDescription,
+        focusCategory: false,
+      }), measurementEquipmentError).then((success) => {
+        if (!success) {
+          return;
+        }
+        state.measurementEquipmentDocumentsSectionExpanded = true;
+        syncMeasurementEquipmentEditorSections();
+      });
+    };
+
+    activityDocumentInput.addEventListener("change", () => {
+      queueActivityFiles(activityDocumentInput.files);
+      activityDocumentInput.value = "";
+    });
+
+    activityDropzone.addEventListener("click", () => {
+      activityDocumentInput.click();
+    });
+
+    let activityDragDepth = 0;
+    activityDropzone.addEventListener("dragenter", (event) => {
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      activityDragDepth += 1;
+      activityDropzone.classList.add("is-drag-over");
+    });
+    activityDropzone.addEventListener("dragover", (event) => {
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      activityDropzone.classList.add("is-drag-over");
+    });
+    activityDropzone.addEventListener("dragleave", (event) => {
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      activityDragDepth = Math.max(0, activityDragDepth - 1);
+      if (activityDragDepth === 0) {
+        activityDropzone.classList.remove("is-drag-over");
+      }
+    });
+    activityDropzone.addEventListener("drop", (event) => {
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      activityDragDepth = 0;
+      activityDropzone.classList.remove("is-drag-over");
+      queueActivityFiles(event.dataTransfer?.files);
+    });
+
     const removeButton = createIconActionButton("Makni aktivnost", "trash", "card-danger", () => {
       measurementEquipmentActivityDrafts = measurementEquipmentActivityDrafts.filter((item) => item.id !== entry.id);
       renderMeasurementEquipmentActivities();
@@ -21751,6 +21879,10 @@ function renderMeasurementEquipmentActivities() {
     const validUntilField = createField("Vrijedi do", validUntilInput, "is-date");
     const satisfiesField = createField("Zadovoljava", satisfiesInput);
     const noteField = createField("Napomena", noteInput, "is-note");
+    const activityDocumentControl = document.createElement("div");
+    activityDocumentControl.className = "measurement-equipment-activity-document-control";
+    activityDocumentControl.append(activityDropzone, activityDocumentInput);
+    const activityDocumentField = createField("Dokument aktivnosti", activityDocumentControl, "is-doc");
 
     const performerLabel = performerField.querySelector(".measurement-equipment-activity-label");
 
@@ -21766,8 +21898,15 @@ function renderMeasurementEquipmentActivities() {
       performedByInput.placeholder = isCalibrationMode ? "Tko je umjerio" : "Tko je radio";
     };
 
-    fieldsGrid.append(typeField, dateField, performerField, validUntilField, satisfiesField, noteField);
+    const updateActivityDocumentDropzoneCopy = () => {
+      const currentTypeLabel = getMeasurementEquipmentActivityTypeLabel(typeInput.value || "pregled");
+      activityDropzoneTitle.textContent = `Dokument: ${currentTypeLabel}`;
+      activityDropzoneSubtitle.textContent = "Klikni ili povuci datoteke. Prikazat će se kasnije u Datotekama.";
+    };
+
+    fieldsGrid.append(typeField, dateField, performerField, validUntilField, satisfiesField, noteField, activityDocumentField);
     applyActivityMode(isCalibration);
+    updateActivityDocumentDropzoneCopy();
 
     const isComplete = isMeasurementEquipmentActivityDraftComplete(entry);
     const statusChip = document.createElement("span");
@@ -21862,6 +22001,9 @@ function buildMeasurementEquipmentPayload() {
     deviceCode: measurementEquipmentDeviceCodeInput?.value || "",
     serialNumber: measurementEquipmentSerialNumberInput?.value || "",
     inventoryNumber: measurementEquipmentInventoryNumberInput?.value || "",
+    enteredBy: measurementEquipmentEnteredByInput?.value || "",
+    approvedBy: measurementEquipmentApprovedByInput?.value || "",
+    entryDate: measurementEquipmentEntryDateInput?.value || "",
     requiresCalibration,
     calibrationDate: requiresCalibration ? (measurementEquipmentCalibrationDateInput?.value || "") : "",
     calibrationPeriod: requiresCalibration ? (measurementEquipmentCalibrationPeriodInput?.value || "") : "",
@@ -21913,6 +22055,15 @@ function resetMeasurementEquipmentForm() {
   if (measurementEquipmentSerialNumberInput) {
     measurementEquipmentSerialNumberInput.value = "";
   }
+  if (measurementEquipmentEnteredByInput) {
+    measurementEquipmentEnteredByInput.value = "";
+  }
+  if (measurementEquipmentApprovedByInput) {
+    measurementEquipmentApprovedByInput.value = "";
+  }
+  if (measurementEquipmentEntryDateInput) {
+    measurementEquipmentEntryDateInput.value = "";
+  }
   if (measurementEquipmentError) {
     measurementEquipmentError.textContent = "";
   }
@@ -21940,6 +22091,9 @@ function hydrateMeasurementEquipmentForm(item) {
   measurementEquipmentDeviceCodeInput.value = item.deviceCode || "";
   measurementEquipmentSerialNumberInput.value = item.serialNumber || "";
   measurementEquipmentInventoryNumberInput.value = item.inventoryNumber || "";
+  measurementEquipmentEnteredByInput.value = item.enteredBy || "";
+  measurementEquipmentApprovedByInput.value = item.approvedBy || "";
+  measurementEquipmentEntryDateInput.value = item.entryDate || "";
   measurementEquipmentRequiresCalibrationInput.value = item.requiresCalibration ? "true" : "false";
   measurementEquipmentCalibrationDateInput.value = item.calibrationDate || "";
   measurementEquipmentCalibrationPeriodInput.value = item.calibrationPeriod || "";

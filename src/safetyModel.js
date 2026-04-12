@@ -2910,6 +2910,9 @@ export function createMeasurementEquipmentItem(
   const deviceCode = normalizeText(input.deviceCode);
   const inventoryNumber = normalizeText(input.inventoryNumber);
   const serialNumber = normalizeText(input.serialNumber);
+  const enteredBy = normalizeText(input.enteredBy).slice(0, 180);
+  const approvedBy = normalizeText(input.approvedBy).slice(0, 180);
+  const entryDate = normalizeOptionalDate(input.entryDate);
   const hasCalibrationData = Boolean(input.calibrationDate || input.calibrationPeriod || input.validUntil);
   let requiresCalibration = hasOwn(input, "requiresCalibration")
     ? normalizeBoolean(input.requiresCalibration, hasCalibrationData)
@@ -2958,6 +2961,9 @@ export function createMeasurementEquipmentItem(
     deviceCode,
     serialNumber,
     inventoryNumber,
+    enteredBy,
+    approvedBy,
+    entryDate,
     requiresCalibration,
     calibrationDate: requiresCalibration ? calibrationDate : null,
     calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
@@ -2982,6 +2988,15 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
   const serialNumber = hasOwn(patch, "serialNumber")
     ? normalizeText(patch.serialNumber)
     : current.serialNumber;
+  const enteredBy = hasOwn(patch, "enteredBy")
+    ? normalizeText(patch.enteredBy).slice(0, 180)
+    : normalizeText(current.enteredBy).slice(0, 180);
+  const approvedBy = hasOwn(patch, "approvedBy")
+    ? normalizeText(patch.approvedBy).slice(0, 180)
+    : normalizeText(current.approvedBy).slice(0, 180);
+  const entryDate = hasOwn(patch, "entryDate")
+    ? normalizeOptionalDate(patch.entryDate)
+    : normalizeOptionalDate(current.entryDate);
   const organizationId = hasOwn(patch, "organizationId")
     ? requireText(patch.organizationId, "Organizacija")
     : current.organizationId;
@@ -3048,6 +3063,9 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     deviceCode,
     serialNumber,
     inventoryNumber,
+    enteredBy,
+    approvedBy,
+    entryDate,
     requiresCalibration,
     calibrationDate: requiresCalibration ? calibrationDate : null,
     calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
@@ -3081,6 +3099,9 @@ export function filterMeasurementEquipmentItems(
       item.deviceCode,
       item.serialNumber,
       item.inventoryNumber,
+      item.enteredBy,
+      item.approvedBy,
+      item.entryDate,
       item.note,
       item.calibrationPeriod,
       ...(item.linkedTemplateTitles ?? []),

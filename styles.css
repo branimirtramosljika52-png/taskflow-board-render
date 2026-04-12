@@ -16524,8 +16524,38 @@ body.is-measurement-equipment-document-preview-open {
   min-width: 0;
 }
 
+.measurement-equipment-activity-field.is-doc {
+  grid-column: 1 / -1;
+}
+
 .measurement-equipment-activity-field.is-date input[type="date"] {
   width: min(100%, 154px);
+}
+
+.measurement-equipment-activity-document-control {
+  min-width: 0;
+}
+
+.measurement-equipment-activity-dropzone {
+  padding: 10px 12px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  border-radius: 14px;
+}
+
+.measurement-equipment-activity-dropzone .work-order-document-dropzone-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 1rem;
+}
+
+.measurement-equipment-activity-dropzone .work-order-document-dropzone-copy strong {
+  font-size: 0.8rem;
+}
+
+.measurement-equipment-activity-dropzone .work-order-document-dropzone-copy span {
+  font-size: 0.72rem;
 }
 
 .measurement-equipment-activity-label {
