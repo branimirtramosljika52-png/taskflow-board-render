@@ -16422,7 +16422,7 @@ body.is-measurement-equipment-document-preview-open {
   background: rgba(247, 250, 248, 0.94);
   padding: 10px 12px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
 }
@@ -16432,37 +16432,17 @@ body.is-measurement-equipment-document-preview-open {
   box-shadow: 0 0 0 1px rgba(214, 113, 62, 0.08);
 }
 
-.measurement-equipment-activity-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: #415a4f;
-  padding-top: 0;
-}
-
-.measurement-equipment-activity-check input {
-  margin: 0;
-  width: 16px;
-  height: 16px;
-}
-
 .measurement-equipment-activity-grid {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  display: grid;
+  align-items: end;
   gap: 8px;
   min-width: 0;
-  padding-bottom: 2px;
 }
 
 .measurement-equipment-activity-field {
   display: grid;
   gap: 4px;
-  min-width: 150px;
-  flex: 0 0 150px;
+  min-width: 0;
 }
 
 .measurement-equipment-activity-field.is-wide {
@@ -16470,8 +16450,7 @@ body.is-measurement-equipment-document-preview-open {
 }
 
 .measurement-equipment-activity-field.is-note {
-  min-width: 280px;
-  flex-basis: 280px;
+  min-width: 0;
 }
 
 .measurement-equipment-activity-label {
@@ -19226,12 +19205,11 @@ body.is-measurement-equipment-document-preview-open {
   }
 
   .measurement-equipment-activity-row {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .measurement-equipment-activity-remove {
-    grid-column: 2 / 3;
-    justify-self: end;
+    justify-self: start;
   }
 
   .work-order-document-carousel-shell {

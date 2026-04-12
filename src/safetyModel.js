@@ -747,7 +747,7 @@ function applyMeasurementEquipmentCalibrationFromActivities(activityItems = [], 
   validUntil = null,
 } = {}) {
   const latestCalibrationActivity = [...(Array.isArray(activityItems) ? activityItems : [])]
-    .filter((entry) => entry.activityType === "umjeravanje" && entry.completed !== false)
+    .filter((entry) => entry.activityType === "umjeravanje")
     .sort(compareMeasurementEquipmentActivityRecency)[0];
 
   if (!latestCalibrationActivity) {

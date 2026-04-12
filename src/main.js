@@ -21493,13 +21493,13 @@ function buildMeasurementEquipmentActivityPayload() {
       return {
         id: String(entry.id || "").trim() || crypto.randomUUID(),
         activityType,
-        completed: parseMeasurementEquipmentActivityCompleted(entry.completed, true),
+        completed: true,
         performedOn: normalizeMeasurementEquipmentActivityDate(entry.performedOn),
-        performedBy: String(entry.performedBy || "").trim().slice(0, 180),
+        performedBy: isCalibration ? "" : String(entry.performedBy || "").trim().slice(0, 180),
         calibrationPeriod: isCalibration ? String(entry.calibrationPeriod || "").trim().slice(0, 80) : "",
         validUntil: isCalibration ? normalizeMeasurementEquipmentActivityDate(entry.validUntil) : "",
         satisfies: isCalibration ? normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies) : "",
-        note: String(entry.note || "").trim(),
+        note: isCalibration ? "" : String(entry.note || "").trim(),
         createdAt: String(entry.createdAt || new Date().toISOString()),
         updatedAt: String(new Date().toISOString()),
       };
@@ -21510,7 +21510,7 @@ function buildMeasurementEquipmentActivityPayload() {
 
 function syncMeasurementEquipmentCalibrationFromActivities() {
   const latestCalibration = [...measurementEquipmentActivityDrafts]
-    .filter((entry) => entry.activityType === "umjeravanje" && entry.completed !== false)
+    .filter((entry) => entry.activityType === "umjeravanje")
     .sort(compareMeasurementEquipmentActivityDraftRecency)[0];
 
   if (!latestCalibration) {
@@ -21568,16 +21568,6 @@ function renderMeasurementEquipmentActivities() {
   const rows = measurementEquipmentActivityDrafts.map((entry) => {
     const row = document.createElement("article");
     row.className = "measurement-equipment-activity-row";
-    row.classList.toggle("is-pending", entry.completed === false);
-
-    const completionField = document.createElement("label");
-    completionField.className = "measurement-equipment-activity-check";
-    const completionInput = document.createElement("input");
-    completionInput.type = "checkbox";
-    completionInput.checked = entry.completed !== false;
-    const completionLabel = document.createElement("span");
-    completionLabel.textContent = "Odrađeno";
-    completionField.append(completionInput, completionLabel);
 
     const fieldsGrid = document.createElement("div");
     fieldsGrid.className = "measurement-equipment-activity-grid";
@@ -21595,7 +21585,13 @@ function renderMeasurementEquipmentActivities() {
     const typeInput = document.createElement("select");
     replaceSelectOptions(typeInput, MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS, entry.activityType || "pregled");
     typeInput.addEventListener("change", () => {
-      updateMeasurementEquipmentActivityDraft(entry.id, { activityType: typeInput.value || "pregled" });
+      const nextType = typeInput.value || "pregled";
+      const isCalibrationType = nextType === "umjeravanje";
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        activityType: nextType,
+        performedBy: isCalibrationType ? "" : entry.performedBy,
+        note: isCalibrationType ? "" : entry.note,
+      });
       renderMeasurementEquipmentActivities();
     });
 
@@ -21666,11 +21662,6 @@ function renderMeasurementEquipmentActivities() {
       }, { syncCalibration: false });
     });
 
-    completionInput.addEventListener("change", () => {
-      updateMeasurementEquipmentActivityDraft(entry.id, { completed: completionInput.checked });
-      renderMeasurementEquipmentActivities();
-    });
-
     const removeButton = createIconActionButton("Makni aktivnost", "trash", "card-danger", () => {
       measurementEquipmentActivityDrafts = measurementEquipmentActivityDrafts.filter((item) => item.id !== entry.id);
       renderMeasurementEquipmentActivities();
@@ -21691,9 +21682,14 @@ function renderMeasurementEquipmentActivities() {
         createField("Vrijedi do", validUntilInput),
         createField("Zadovoljava", satisfiesInput),
       );
+    } else {
+      activityFields.push(
+        createField("Izvršio", performedByInput),
+        createField("Napomena", noteInput, "is-note"),
+      );
     }
 
-    activityFields.push(createField("Napomena", noteInput, "is-note"));
+    fieldsGrid.style.gridTemplateColumns = `repeat(${Math.max(activityFields.length, 1)}, minmax(0, 1fr))`;
 
     fieldsGrid.append(...activityFields);
 
@@ -21707,7 +21703,7 @@ function renderMeasurementEquipmentActivities() {
         : "",
     ].filter(Boolean).join(" · ");
 
-    row.append(completionField, fieldsGrid, removeButton, meta);
+    row.append(fieldsGrid, removeButton, meta);
     return row;
   });
 
