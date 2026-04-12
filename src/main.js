@@ -21531,9 +21531,15 @@ function buildMeasurementEquipmentActivityPayload() {
 }
 
 function syncMeasurementEquipmentCalibrationFromActivities() {
-  const latestCalibration = [...measurementEquipmentActivityDrafts]
-    .filter((entry) => entry.activityType === "umjeravanje")
-    .sort(compareMeasurementEquipmentActivityDraftRecency)[0];
+  let latestCalibration = null;
+  for (const entry of measurementEquipmentActivityDrafts) {
+    if (normalizeMeasurementEquipmentActivityTypeValue(entry.activityType) !== "umjeravanje") {
+      continue;
+    }
+    if (!latestCalibration || compareMeasurementEquipmentActivityDraftRecency(entry, latestCalibration) < 0) {
+      latestCalibration = entry;
+    }
+  }
 
   if (!latestCalibration) {
     return;
@@ -21555,19 +21561,20 @@ function syncMeasurementEquipmentCalibrationFromActivities() {
 }
 
 function updateMeasurementEquipmentActivityDraft(activityId, patch = {}, { syncCalibration = true } = {}) {
-  measurementEquipmentActivityDrafts = measurementEquipmentActivityDrafts.map((entry) => {
-    if (String(entry.id) !== String(activityId)) {
-      return entry;
-    }
-    return createMeasurementEquipmentActivityDraft(
-      {
-        ...entry,
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      },
-      { applyDefaultDate: false },
-    );
-  });
+  const activityKey = String(activityId);
+  const draftIndex = measurementEquipmentActivityDrafts.findIndex((entry) => String(entry.id) === activityKey);
+  if (draftIndex < 0) {
+    return;
+  }
+
+  measurementEquipmentActivityDrafts[draftIndex] = createMeasurementEquipmentActivityDraft(
+    {
+      ...measurementEquipmentActivityDrafts[draftIndex],
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    },
+    { applyDefaultDate: false },
+  );
 
   if (syncCalibration) {
     syncMeasurementEquipmentCalibrationFromActivities();
@@ -21622,24 +21629,33 @@ function renderMeasurementEquipmentActivities() {
       );
     };
 
+    const getCurrentDraft = () => (
+      measurementEquipmentActivityDrafts.find((item) => String(item.id) === String(entry.id)) || entry
+    );
+
     const typeInput = document.createElement("select");
     replaceSelectOptions(typeInput, MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS, entry.activityType || "pregled");
     typeInput.disabled = isLocked;
     typeInput.addEventListener("change", () => {
-      const previousType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType || "pregled");
+      const previousType = normalizeMeasurementEquipmentActivityTypeValue(getCurrentDraft().activityType || "pregled");
       const nextType = typeInput.value || "pregled";
+      if (nextType === previousType) {
+        return;
+      }
       const isCalibrationType = nextType === "umjeravanje";
+      const shouldSyncCalibration = previousType === "umjeravanje" || isCalibrationType;
       updateDraft(
         {
           activityType: nextType,
-          note: isCalibrationType ? "" : entry.note,
+          note: isCalibrationType ? "" : String(getCurrentDraft().note || ""),
         },
-        { syncCalibration: isCalibrationType },
+        { syncCalibration: false },
       );
-      if (previousType === "umjeravanje" || isCalibrationType) {
+      if (shouldSyncCalibration) {
         syncMeasurementEquipmentCalibrationFromActivities();
       }
-      renderMeasurementEquipmentActivities();
+      applyActivityMode(isCalibrationType);
+      updateMetaText();
     });
 
     const performedOnInput = document.createElement("input");
@@ -21729,28 +21745,29 @@ function renderMeasurementEquipmentActivities() {
     });
     editButton.classList.add("measurement-equipment-activity-edit", "measurement-equipment-activity-action");
 
-    const activityFields = [
-      createField("Aktivnost", typeInput),
-      createField("Datum", performedOnInput, "is-date"),
-    ];
+    const typeField = createField("Aktivnost", typeInput);
+    const dateField = createField("Datum", performedOnInput, "is-date");
+    const performerField = createField(isCalibration ? "Tko je umjerio" : "Izvršio", performedByInput);
+    const validUntilField = createField("Vrijedi do", validUntilInput, "is-date");
+    const satisfiesField = createField("Zadovoljava", satisfiesInput);
+    const noteField = createField("Napomena", noteInput, "is-note");
 
-    if (isCalibration) {
-      activityFields.push(
-        createField("Tko je umjerio", performedByInput),
-        createField("Vrijedi do", validUntilInput, "is-date"),
-        createField("Zadovoljava", satisfiesInput),
-      );
-    } else {
-      activityFields.push(
-        createField("Izvršio", performedByInput),
-        createField("Napomena", noteInput, "is-note"),
-      );
-    }
+    const performerLabel = performerField.querySelector(".measurement-equipment-activity-label");
 
-    fieldsGrid.classList.toggle("is-calibration-layout", isCalibration);
-    fieldsGrid.classList.toggle("is-service-layout", !isCalibration);
+    const applyActivityMode = (isCalibrationMode) => {
+      fieldsGrid.classList.toggle("is-calibration-layout", isCalibrationMode);
+      fieldsGrid.classList.toggle("is-service-layout", !isCalibrationMode);
+      validUntilField.hidden = !isCalibrationMode;
+      satisfiesField.hidden = !isCalibrationMode;
+      noteField.hidden = isCalibrationMode;
+      if (performerLabel) {
+        performerLabel.textContent = isCalibrationMode ? "Tko je umjerio" : "Izvršio";
+      }
+      performedByInput.placeholder = isCalibrationMode ? "Tko je umjerio" : "Tko je radio";
+    };
 
-    fieldsGrid.append(...activityFields);
+    fieldsGrid.append(typeField, dateField, performerField, validUntilField, satisfiesField, noteField);
+    applyActivityMode(isCalibration);
 
     const isComplete = isMeasurementEquipmentActivityDraftComplete(entry);
     const statusChip = document.createElement("span");
@@ -21764,20 +21781,21 @@ function renderMeasurementEquipmentActivities() {
 
     const meta = document.createElement("div");
     meta.className = "measurement-equipment-activity-row-meta";
-    meta.append(
-      statusChip,
-      createListLine(
-        [
-          getMeasurementEquipmentActivityTypeLabel(entry.activityType),
-          entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma",
-          entry.performedBy ? `izvršio: ${entry.performedBy}` : "",
-          isCalibration && normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies)
-            ? `zadovoljava: ${normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies).toUpperCase()}`
-            : "",
-        ].filter(Boolean).join(" · "),
-        "measurement-equipment-activity-meta-text",
-      ),
-    );
+    const metaText = createListLine("", "measurement-equipment-activity-meta-text");
+    const updateMetaText = () => {
+      const current = getCurrentDraft();
+      const currentIsCalibration = normalizeMeasurementEquipmentActivityTypeValue(current.activityType) === "umjeravanje";
+      metaText.textContent = [
+        getMeasurementEquipmentActivityTypeLabel(current.activityType),
+        current.performedOn ? formatCompactDate(current.performedOn) : "bez datuma",
+        current.performedBy ? `izvršio: ${current.performedBy}` : "",
+        currentIsCalibration && normalizeMeasurementEquipmentSatisfiesValue(current.satisfies)
+          ? `zadovoljava: ${normalizeMeasurementEquipmentSatisfiesValue(current.satisfies).toUpperCase()}`
+          : "",
+      ].filter(Boolean).join(" · ");
+    };
+    updateMetaText();
+    meta.append(statusChip, metaText);
 
     row.append(fieldsGrid, actions, meta);
     return row;
@@ -42385,7 +42403,11 @@ measurementEquipmentDeleteButton?.addEventListener("click", () => {
   });
 });
 
-measurementEquipmentForm?.addEventListener("input", () => {
+measurementEquipmentForm?.addEventListener("input", (event) => {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (target?.closest(".measurement-equipment-activity-list")) {
+    return;
+  }
   syncMeasurementEquipmentEditorChrome();
 });
 
