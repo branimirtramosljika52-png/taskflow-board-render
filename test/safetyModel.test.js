@@ -2357,6 +2357,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
           performedBy: "Marko",
           calibrationPeriod: "24 mjeseca",
           validUntil: "2028-04-02",
+          satisfies: "da",
         },
       ],
       documents: [
@@ -2390,6 +2391,7 @@ test("measurement equipment supports templates, documents, filters and sorting",
   assert.equal(updatedSecond.calibrationDate, "2026-04-02");
   assert.equal(updatedSecond.calibrationPeriod, "24 mjeseca");
   assert.equal(updatedSecond.validUntil, "2028-04-02");
+  assert.equal(updatedSecond.activityItems[0].satisfies, "da");
 
   const filtered = filterMeasurementEquipmentItems([first, updatedSecond], {
     query: "marko",

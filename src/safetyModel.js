@@ -707,6 +707,8 @@ function normalizeMeasurementEquipmentActivityItems(items = [], now = isoNow) {
     const performedBy = normalizeText(item?.performedBy ?? item?.actor).slice(0, 180);
     const calibrationPeriod = normalizeText(item?.calibrationPeriod ?? item?.period).slice(0, 80);
     const validUntil = normalizeOptionalDate(item?.validUntil);
+    const satisfiesInput = normalizeText(item?.satisfies ?? item?.zadovoljava).toLowerCase();
+    const satisfies = satisfiesInput === "da" ? "da" : (satisfiesInput === "ne" ? "ne" : "");
     const note = normalizeText(item?.note);
     const hasAnyData = Boolean(
       activityTypeInput
@@ -714,6 +716,7 @@ function normalizeMeasurementEquipmentActivityItems(items = [], now = isoNow) {
       || performedBy
       || calibrationPeriod
       || normalizeText(item?.validUntil)
+      || satisfies
       || note,
     );
 
@@ -729,6 +732,7 @@ function normalizeMeasurementEquipmentActivityItems(items = [], now = isoNow) {
       performedBy,
       calibrationPeriod,
       validUntil,
+      satisfies,
       note,
       createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,
@@ -3094,6 +3098,7 @@ export function filterMeasurementEquipmentItems(
         entry.performedBy,
         entry.calibrationPeriod,
         entry.validUntil,
+        entry.satisfies,
         entry.note,
       ]),
     ].join(" ").toLowerCase();

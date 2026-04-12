@@ -16424,7 +16424,7 @@ body.is-measurement-equipment-document-preview-open {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: start;
+  align-items: center;
 }
 
 .measurement-equipment-activity-row.is-pending {
@@ -16439,7 +16439,7 @@ body.is-measurement-equipment-document-preview-open {
   font-size: 0.76rem;
   font-weight: 700;
   color: #415a4f;
-  padding-top: 26px;
+  padding-top: 0;
 }
 
 .measurement-equipment-activity-check input {
@@ -16449,20 +16449,29 @@ body.is-measurement-equipment-document-preview-open {
 }
 
 .measurement-equipment-activity-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   gap: 8px;
   min-width: 0;
+  padding-bottom: 2px;
 }
 
 .measurement-equipment-activity-field {
   display: grid;
   gap: 4px;
-  min-width: 0;
+  min-width: 150px;
+  flex: 0 0 150px;
 }
 
 .measurement-equipment-activity-field.is-wide {
   grid-column: span 2;
+}
+
+.measurement-equipment-activity-field.is-note {
+  min-width: 280px;
+  flex-basis: 280px;
 }
 
 .measurement-equipment-activity-label {
@@ -16473,7 +16482,7 @@ body.is-measurement-equipment-document-preview-open {
 }
 
 .measurement-equipment-activity-row-meta {
-  grid-column: 2 / 3;
+  grid-column: 1 / -1;
   margin: 2px 0 0;
   font-size: 0.72rem;
   color: #60796f;
@@ -19217,27 +19226,12 @@ body.is-measurement-equipment-document-preview-open {
   }
 
   .measurement-equipment-activity-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .measurement-equipment-activity-check {
-    padding-top: 0;
-  }
-
-  .measurement-equipment-activity-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .measurement-equipment-activity-field.is-wide {
-    grid-column: auto;
-  }
-
-  .measurement-equipment-activity-row-meta {
-    grid-column: auto;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .measurement-equipment-activity-remove {
-    justify-self: start;
+    grid-column: 2 / 3;
+    justify-self: end;
   }
 
   .work-order-document-carousel-shell {

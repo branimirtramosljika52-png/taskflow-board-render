@@ -21410,6 +21410,17 @@ function normalizeMeasurementEquipmentActivityTypeValue(value = "") {
     : "pregled";
 }
 
+function normalizeMeasurementEquipmentSatisfiesValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "da") {
+    return "da";
+  }
+  if (normalized === "ne") {
+    return "ne";
+  }
+  return "";
+}
+
 function parseMeasurementEquipmentActivityCompleted(value, fallback = true) {
   if (typeof value === "boolean") {
     return value;
@@ -21440,6 +21451,7 @@ function createMeasurementEquipmentActivityDraft(entry = {}, { applyDefaultDate 
     performedBy: String(entry.performedBy || entry.actor || "").trim().slice(0, 180),
     calibrationPeriod: String(entry.calibrationPeriod || entry.period || "").trim().slice(0, 80),
     validUntil: normalizeMeasurementEquipmentActivityDate(entry.validUntil),
+    satisfies: normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies || entry.zadovoljava),
     note: String(entry.note || "").trim(),
     createdAt: String(entry.createdAt || new Date().toISOString()),
     updatedAt: String(entry.updatedAt || entry.createdAt || new Date().toISOString()),
@@ -21449,7 +21461,7 @@ function createMeasurementEquipmentActivityDraft(entry = {}, { applyDefaultDate 
 function setMeasurementEquipmentActivityDrafts(items = []) {
   measurementEquipmentActivityDrafts = (Array.isArray(items) ? items : [])
     .map((entry) => createMeasurementEquipmentActivityDraft(entry))
-    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.note);
+    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note);
 }
 
 function getMeasurementEquipmentActivityTypeLabel(value = "") {
@@ -21475,19 +21487,24 @@ function compareMeasurementEquipmentActivityDraftRecency(left = {}, right = {}) 
 
 function buildMeasurementEquipmentActivityPayload() {
   return [...measurementEquipmentActivityDrafts]
-    .map((entry) => ({
-      id: String(entry.id || "").trim() || crypto.randomUUID(),
-      activityType: normalizeMeasurementEquipmentActivityTypeValue(entry.activityType),
-      completed: parseMeasurementEquipmentActivityCompleted(entry.completed, true),
-      performedOn: normalizeMeasurementEquipmentActivityDate(entry.performedOn),
-      performedBy: String(entry.performedBy || "").trim().slice(0, 180),
-      calibrationPeriod: String(entry.calibrationPeriod || "").trim().slice(0, 80),
-      validUntil: normalizeMeasurementEquipmentActivityDate(entry.validUntil),
-      note: String(entry.note || "").trim(),
-      createdAt: String(entry.createdAt || new Date().toISOString()),
-      updatedAt: String(new Date().toISOString()),
-    }))
-    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.note)
+    .map((entry) => {
+      const activityType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
+      const isCalibration = activityType === "umjeravanje";
+      return {
+        id: String(entry.id || "").trim() || crypto.randomUUID(),
+        activityType,
+        completed: parseMeasurementEquipmentActivityCompleted(entry.completed, true),
+        performedOn: normalizeMeasurementEquipmentActivityDate(entry.performedOn),
+        performedBy: String(entry.performedBy || "").trim().slice(0, 180),
+        calibrationPeriod: isCalibration ? String(entry.calibrationPeriod || "").trim().slice(0, 80) : "",
+        validUntil: isCalibration ? normalizeMeasurementEquipmentActivityDate(entry.validUntil) : "",
+        satisfies: isCalibration ? normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies) : "",
+        note: String(entry.note || "").trim(),
+        createdAt: String(entry.createdAt || new Date().toISOString()),
+        updatedAt: String(new Date().toISOString()),
+      };
+    })
+    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note)
     .sort(compareMeasurementEquipmentActivityDraftRecency);
 }
 
@@ -21622,6 +21639,33 @@ function renderMeasurementEquipmentActivities() {
       });
     });
 
+    const satisfiesInput = document.createElement("select");
+    replaceSelectOptions(
+      satisfiesInput,
+      [
+        { value: "", label: "Odaberi" },
+        { value: "da", label: "DA" },
+        { value: "ne", label: "NE" },
+      ],
+      normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies),
+    );
+    satisfiesInput.addEventListener("change", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        satisfies: normalizeMeasurementEquipmentSatisfiesValue(satisfiesInput.value),
+      });
+    });
+
+    const noteInput = document.createElement("input");
+    noteInput.type = "text";
+    noteInput.maxLength = 240;
+    noteInput.placeholder = "Napomena";
+    noteInput.value = entry.note || "";
+    noteInput.addEventListener("input", () => {
+      updateMeasurementEquipmentActivityDraft(entry.id, {
+        note: noteInput.value || "",
+      }, { syncCalibration: false });
+    });
+
     completionInput.addEventListener("change", () => {
       updateMeasurementEquipmentActivityDraft(entry.id, { completed: completionInput.checked });
       renderMeasurementEquipmentActivities();
@@ -21634,17 +21678,34 @@ function renderMeasurementEquipmentActivities() {
     });
     removeButton.classList.add("measurement-equipment-activity-remove");
 
-    fieldsGrid.append(
+    const isCalibration = (entry.activityType || "pregled") === "umjeravanje";
+    const activityFields = [
       createField("Aktivnost", typeInput),
       createField("Datum", performedOnInput),
-      createField("Izvršio", performedByInput, "is-wide"),
-      createField("Periodika", periodInput),
-      createField("Vrijedi do", validUntilInput),
-    );
+      createField("Izvršio", performedByInput),
+    ];
+
+    if (isCalibration) {
+      activityFields.push(
+        createField("Periodika", periodInput),
+        createField("Vrijedi do", validUntilInput),
+        createField("Zadovoljava", satisfiesInput),
+      );
+    }
+
+    activityFields.push(createField("Napomena", noteInput, "is-note"));
+
+    fieldsGrid.append(...activityFields);
 
     const meta = document.createElement("div");
     meta.className = "measurement-equipment-activity-row-meta";
-    meta.textContent = `${getMeasurementEquipmentActivityTypeLabel(entry.activityType)} · ${entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma"}`;
+    meta.textContent = [
+      getMeasurementEquipmentActivityTypeLabel(entry.activityType),
+      entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma",
+      isCalibration && normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies)
+        ? `zadovoljava: ${normalizeMeasurementEquipmentSatisfiesValue(entry.satisfies).toUpperCase()}`
+        : "",
+    ].filter(Boolean).join(" · ");
 
     row.append(completionField, fieldsGrid, removeButton, meta);
     return row;
