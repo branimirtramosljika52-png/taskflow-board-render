@@ -534,6 +534,7 @@ const state = {
   documentTemplates: [],
   serviceCatalog: [],
   measurementEquipment: [],
+  measurementEquipmentCardTemplate: null,
   safetyAuthorizations: [],
   dashboardWidgets: [],
   activeView: "selfdash",
@@ -1438,6 +1439,7 @@ const measurementEquipmentRequiresCalibrationInput = document.querySelector("#me
 const measurementEquipmentCalibrationDateInput = document.querySelector("#measurement-equipment-calibration-date");
 const measurementEquipmentCalibrationPeriodInput = document.querySelector("#measurement-equipment-calibration-period");
 const measurementEquipmentValidUntilInput = document.querySelector("#measurement-equipment-valid-until");
+const measurementEquipmentSpecsList = document.querySelector("#measurement-equipment-specs-list");
 const measurementEquipmentTemplateToggleButton = document.querySelector("#measurement-equipment-template-toggle");
 const measurementEquipmentTemplateBody = document.querySelector("#measurement-equipment-template-body");
 const measurementEquipmentTemplateList = document.querySelector("#measurement-equipment-template-list");
@@ -1553,6 +1555,7 @@ let learningTestPreviewSlideIndex = 0;
 let learningTestPreviewOpen = false;
 let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
+let measurementEquipmentSpecDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let userDocumentDrafts = [];
@@ -2666,6 +2669,7 @@ function applySnapshot(payload) {
   state.learningTests = payload.learningTests ?? [];
   state.serviceCatalog = payload.serviceCatalog ?? [];
   state.measurementEquipment = payload.measurementEquipment ?? [];
+  state.measurementEquipmentCardTemplate = payload.measurementEquipmentCardTemplate ?? null;
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
@@ -13915,7 +13919,6 @@ function getDocumentTemplateSectionTypeLabel(value) {
 
 const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
-  { value: "karton_template", label: "Template kartona (.docx/.dotx)" },
   { value: "racun", label: "Račun" },
   { value: "umjernica", label: "Umjernica" },
   { value: "karton_uređaja", label: "Karton uređaja" },
@@ -19955,7 +19958,11 @@ function setMeasurementEquipmentDocumentDrafts(items = []) {
       ...item,
       isPersisted: true,
     }))
-    .filter((item) => item.fileName && item.dataUrl);
+    .filter((item) => (
+      item.fileName
+      && item.dataUrl
+      && normalizeMeasurementEquipmentDocumentCategoryValue(item.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY
+    ));
 }
 
 function updateMeasurementEquipmentDocumentDraft(documentId, patch = {}) {
@@ -20027,25 +20034,30 @@ function isMeasurementEquipmentWordTemplateDocument(entry = {}) {
     || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
 }
 
-function getMeasurementEquipmentCardTemplateDocuments() {
-  return measurementEquipmentDocumentDrafts.filter((entry) => (
-    normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) === MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY
-    && isMeasurementEquipmentWordTemplateDocument(entry)
-  ));
-}
-
 function getMeasurementEquipmentCardTemplateDocument() {
-  return [...getMeasurementEquipmentCardTemplateDocuments()].sort((left, right) => {
-    const leftUpdatedAt = String(left?.updatedAt || left?.createdAt || "").trim();
-    const rightUpdatedAt = String(right?.updatedAt || right?.createdAt || "").trim();
-    return rightUpdatedAt.localeCompare(leftUpdatedAt);
-  })[0] ?? null;
+  const templateDocument = state.measurementEquipmentCardTemplate;
+  if (!templateDocument || typeof templateDocument !== "object") {
+    return null;
+  }
+  return {
+    ...templateDocument,
+    documentCategory: MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY,
+  };
 }
 
-function buildMeasurementEquipmentExportActivityLines(type = "") {
+function buildMeasurementEquipmentExportActivityLines(type = "", { limit = 0 } = {}) {
   const normalizedType = normalizeMeasurementEquipmentActivityTypeValue(type);
-  return buildMeasurementEquipmentActivityPayload()
-    .filter((entry) => (normalizedType ? normalizeMeasurementEquipmentActivityTypeValue(entry.activityType) === normalizedType : true))
+  const safeLimit = Number.isFinite(Number(limit)) && Number(limit) > 0
+    ? Math.max(1, Math.min(24, Math.round(Number(limit))))
+    : 0;
+
+  let entries = buildMeasurementEquipmentActivityPayload()
+    .filter((entry) => (normalizedType ? normalizeMeasurementEquipmentActivityTypeValue(entry.activityType) === normalizedType : true));
+  if (safeLimit > 0) {
+    entries = entries.slice(0, safeLimit);
+  }
+
+  return entries
     .map((entry) => {
       const safeType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
       const base = [
@@ -20066,7 +20078,76 @@ function buildMeasurementEquipmentExportActivityLines(type = "") {
         base.push(entry.note);
       }
       return base.filter(Boolean).join(" - ");
-    });
+    })
+    .filter(Boolean);
+}
+
+function normalizeMeasurementEquipmentSpecDraftEntry(entry = {}) {
+  return {
+    id: String(entry.id || crypto.randomUUID()),
+    quantity: String(entry.quantity || entry.measurementQuantity || entry.mjernaVelicina || "").trim().slice(0, 140),
+    range: String(entry.range || entry.raspon || "").trim().slice(0, 140),
+    remark: String(entry.remark || entry.opaska || "").trim().slice(0, 220),
+  };
+}
+
+function setMeasurementEquipmentSpecDrafts(items = []) {
+  measurementEquipmentSpecDrafts = (Array.isArray(items) ? items : [])
+    .map((entry) => normalizeMeasurementEquipmentSpecDraftEntry(entry))
+    .filter((entry) => entry.quantity || entry.range || entry.remark)
+    .slice(0, 6);
+
+  if (measurementEquipmentSpecDrafts.length === 0) {
+    measurementEquipmentSpecDrafts = [normalizeMeasurementEquipmentSpecDraftEntry({})];
+    return;
+  }
+
+  if (
+    measurementEquipmentSpecDrafts.length < 6
+    && measurementEquipmentSpecDrafts.every((entry) => entry.quantity || entry.range || entry.remark)
+  ) {
+    measurementEquipmentSpecDrafts.push(normalizeMeasurementEquipmentSpecDraftEntry({}));
+  }
+}
+
+function updateMeasurementEquipmentSpecDraft(specId = "", patch = {}) {
+  const targetId = String(specId || "").trim();
+  if (!targetId) {
+    return;
+  }
+
+  const index = measurementEquipmentSpecDrafts.findIndex((entry) => String(entry.id) === targetId);
+  if (index < 0) {
+    return;
+  }
+
+  measurementEquipmentSpecDrafts[index] = normalizeMeasurementEquipmentSpecDraftEntry({
+    ...measurementEquipmentSpecDrafts[index],
+    ...patch,
+  });
+
+  const hasBlank = measurementEquipmentSpecDrafts.some((entry) => !(entry.quantity || entry.range || entry.remark));
+  if (!hasBlank && measurementEquipmentSpecDrafts.length < 6) {
+    measurementEquipmentSpecDrafts.push(normalizeMeasurementEquipmentSpecDraftEntry({}));
+  }
+}
+
+function buildMeasurementEquipmentSpecPayload() {
+  return measurementEquipmentSpecDrafts
+    .map((entry) => normalizeMeasurementEquipmentSpecDraftEntry(entry))
+    .filter((entry) => entry.quantity || entry.range || entry.remark)
+    .slice(0, 6);
+}
+
+function buildMeasurementEquipmentExportSpecLines() {
+  return buildMeasurementEquipmentSpecPayload()
+    .map((entry, index) => {
+      const values = [entry.quantity, entry.range, entry.remark].filter(Boolean);
+      return values.length > 0
+        ? `${index + 1}. ${values.join(" | ")}`
+        : "";
+    })
+    .filter(Boolean);
 }
 
 function buildMeasurementEquipmentExportDocumentLines() {
@@ -20083,43 +20164,48 @@ function buildMeasurementEquipmentExportPlaceholders() {
   const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
   const linkedTemplateTitles = getTemplateTitlesByIds(getMeasurementEquipmentTemplateSelectionIds());
   const activityAll = buildMeasurementEquipmentExportActivityLines();
-  const activityCalibration = buildMeasurementEquipmentExportActivityLines("umjeravanje");
-  const activityReview = buildMeasurementEquipmentExportActivityLines("pregled");
-  const activityService = buildMeasurementEquipmentExportActivityLines("servis");
+  const activityCalibration = buildMeasurementEquipmentExportActivityLines("umjeravanje", { limit: 6 });
+  const activityReview = buildMeasurementEquipmentExportActivityLines("pregled", { limit: 6 });
+  const activityService = buildMeasurementEquipmentExportActivityLines("servis", { limit: 6 });
   const documentLines = buildMeasurementEquipmentExportDocumentLines();
+  const specItems = buildMeasurementEquipmentSpecPayload();
+  const specLines = buildMeasurementEquipmentExportSpecLines();
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  return {
+  const placeholders = {
     NAZIV_UREDJAJA: measurementEquipmentNameInput?.value || "",
-    NAZIV_OPREME: measurementEquipmentNameInput?.value || "",
-    OPREMA_NAZIV: measurementEquipmentNameInput?.value || "",
     PROIZVODAC: measurementEquipmentManufacturerInput?.value || "",
     TIP_MODEL: measurementEquipmentTypeInput?.value || "",
-    TIP: measurementEquipmentTypeInput?.value || "",
     OZNAKA_UREDAJA: measurementEquipmentDeviceCodeInput?.value || "",
     SERIJSKI_BROJ: measurementEquipmentSerialNumberInput?.value || "",
-    SN: measurementEquipmentSerialNumberInput?.value || "",
     INV_BROJ: measurementEquipmentInventoryNumberInput?.value || "",
-    INVENTARNI_BROJ: measurementEquipmentInventoryNumberInput?.value || "",
     MJERNU_OPREMU_UNIO: measurementEquipmentEnteredByInput?.value || "",
-    IZRADIO: measurementEquipmentEnteredByInput?.value || "",
     ODOBRIO: measurementEquipmentApprovedByInput?.value || "",
     DATUM_UNOSA: measurementEquipmentEntryDateInput?.value ? formatCompactDate(measurementEquipmentEntryDateInput.value) : "",
     UMJERAVA_SE: requiresCalibration ? "DA" : "NE",
     DATUM_UMJERAVANJA: measurementEquipmentCalibrationDateInput?.value ? formatCompactDate(measurementEquipmentCalibrationDateInput.value) : "",
     PERIODIKA_UMJERAVANJA: measurementEquipmentCalibrationPeriodInput?.value || "",
     VRIJEDI_DO: measurementEquipmentValidUntilInput?.value ? formatCompactDate(measurementEquipmentValidUntilInput.value) : "",
-    KORISTI_SE_U_ZAPISNICIMA: linkedTemplateTitles.join(", "),
     ZAPISNICI: linkedTemplateTitles.join(", "),
     AKTIVNOSTI: activityAll.join("\n"),
     AKTIVNOSTI_UMJERAVANJE: activityCalibration.join("\n"),
     AKTIVNOSTI_PREGLED: activityReview.join("\n"),
     AKTIVNOSTI_SERVIS: activityService.join("\n"),
     DOKUMENTI: documentLines.join("\n"),
+    MJERNE_STAVKE: specLines.join("\n"),
     NAPOMENA: measurementEquipmentNoteInput?.value || "",
     DATUM_GENERIRANJA: formatCompactDate(todayIso),
     DANAS: formatCompactDate(todayIso),
   };
+
+  for (let index = 0; index < 6; index += 1) {
+    const entry = specItems[index] ?? {};
+    placeholders[`MJERNA_VELICINA_${index + 1}`] = entry.quantity || "";
+    placeholders[`RASPON_${index + 1}`] = entry.range || "";
+    placeholders[`OPASKA_${index + 1}`] = entry.remark || "";
+  }
+
+  return placeholders;
 }
 
 function buildMeasurementEquipmentCardExportFileBaseName() {
@@ -20133,8 +20219,8 @@ function buildMeasurementEquipmentCardExportFileBaseName() {
 function syncMeasurementEquipmentCardTemplateControls() {
   const templateDocument = getMeasurementEquipmentCardTemplateDocument();
   if (measurementEquipmentCardTemplateMeta) {
-    measurementEquipmentCardTemplateMeta.textContent = templateDocument
-      ? `Template: ${templateDocument.fileName || "karton-template.docx"}`
+    measurementEquipmentCardTemplateMeta.textContent = templateDocument?.fileName
+      ? `Template: ${templateDocument.fileName}${templateDocument.updatedAt ? ` · ažurirano ${formatCompactDateTime(templateDocument.updatedAt)}` : ""}`
       : "Nema učitanog templatea kartona. Učitaj .docx/.dotx pa preuzmi Word/PDF.";
   }
 
@@ -20170,15 +20256,19 @@ async function queueMeasurementEquipmentCardTemplate(files = []) {
     documentCategoryLocked: true,
     description: "Template kartona uređaja",
   });
-  measurementEquipmentDocumentDrafts = [
-    nextTemplate,
-    ...measurementEquipmentDocumentDrafts.filter((entry) => (
-      normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY
-    )),
-  ];
-  state.measurementEquipmentDocumentsSectionExpanded = true;
-  renderMeasurementEquipmentDocuments();
-  syncMeasurementEquipmentEditorSections();
+  const payload = await apiRequest("/measurement-equipment/card-template", {
+    method: "POST",
+    body: {
+      templateDocument: nextTemplate,
+    },
+  });
+
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+    applySnapshot(payload);
+  } else {
+    state.measurementEquipmentCardTemplate = nextTemplate;
+  }
+  syncMeasurementEquipmentCardTemplateControls();
 }
 
 async function exportMeasurementEquipmentCardDocument(format = "word") {
@@ -21635,6 +21725,55 @@ function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
   });
 }
 
+function renderMeasurementEquipmentSpecs() {
+  if (!measurementEquipmentSpecsList) {
+    return;
+  }
+
+  if (measurementEquipmentSpecDrafts.length === 0) {
+    setMeasurementEquipmentSpecDrafts([]);
+  }
+
+  const rows = measurementEquipmentSpecDrafts.map((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "measurement-equipment-spec-row";
+    row.dataset.specId = entry.id;
+
+    const counter = document.createElement("span");
+    counter.className = "measurement-equipment-spec-index";
+    counter.textContent = String(index + 1);
+    row.append(counter);
+
+    const createInputField = (labelText, fieldKey, placeholder, maxLength) => {
+      const field = document.createElement("label");
+      field.className = "field measurement-equipment-spec-field";
+      const label = document.createElement("span");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = maxLength;
+      input.placeholder = placeholder;
+      input.value = String(entry[fieldKey] || "");
+      input.addEventListener("input", () => {
+        updateMeasurementEquipmentSpecDraft(entry.id, { [fieldKey]: input.value || "" });
+        renderMeasurementEquipmentSpecs();
+      });
+      field.append(label, input);
+      return field;
+    };
+
+    row.append(
+      createInputField("Mjerne veličine", "quantity", "Npr. otpor petlje kvara", 140),
+      createInputField("Raspon", "range", "Npr. 0.20 - 0.45 Ω", 140),
+      createInputField("Opaska", "remark", "Kratka napomena", 220),
+    );
+
+    return row;
+  });
+
+  measurementEquipmentSpecsList.replaceChildren(...rows);
+}
+
 function normalizeMeasurementEquipmentActivityDate(value = "") {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -22233,6 +22372,7 @@ function buildMeasurementEquipmentPayload() {
       return { ...payload };
     }),
     activityItems: buildMeasurementEquipmentActivityPayload(),
+    measurementSpecs: buildMeasurementEquipmentSpecPayload(),
     note: measurementEquipmentNoteInput?.value || "",
   };
 }
@@ -22288,8 +22428,10 @@ function resetMeasurementEquipmentForm() {
   }
   setMeasurementEquipmentDocumentDrafts([]);
   setMeasurementEquipmentActivityDrafts([]);
+  setMeasurementEquipmentSpecDrafts([]);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
+  renderMeasurementEquipmentSpecs();
   renderMeasurementEquipmentTemplateChecklist([]);
   syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorSections();
@@ -22323,8 +22465,10 @@ function hydrateMeasurementEquipmentForm(item) {
   }
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   setMeasurementEquipmentActivityDrafts(item.activityItems ?? []);
+  setMeasurementEquipmentSpecDrafts(item.measurementSpecs ?? []);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
+  renderMeasurementEquipmentSpecs();
   renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
   state.measurementEquipmentTemplateSectionExpanded = false;
   state.measurementEquipmentActivitySectionExpanded = (item.activityItems ?? []).length > 0;
@@ -22489,6 +22633,8 @@ function renderMeasurementEquipmentModule() {
       : "Nema opreme za prikaz u odabranoj organizaciji.";
     measurementEquipmentList.replaceChildren(empty);
   }
+
+  syncMeasurementEquipmentCardTemplateControls();
 }
 
 function getSafetyAuthorizationTemplateSelectionIds() {
@@ -43947,6 +44093,7 @@ logoutButton?.addEventListener("click", () => {
     state.legalFrameworks = [];
     state.serviceCatalog = [];
     state.measurementEquipment = [];
+    state.measurementEquipmentCardTemplate = null;
     state.safetyAuthorizations = [];
     state.documentTemplates = [];
     state.dashboardWidgets = [];

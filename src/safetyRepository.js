@@ -1187,6 +1187,58 @@ function mapStoredAttachmentDocument(document = {}) {
   };
 }
 
+function normalizeMeasurementEquipmentSpecRow(entry = {}) {
+  const quantity = dbString(entry.quantity ?? entry.measurementQuantity ?? entry.mjernaVelicina).slice(0, 140);
+  const range = dbString(entry.range ?? entry.raspon).slice(0, 140);
+  const remark = dbString(entry.remark ?? entry.opaska).slice(0, 220);
+
+  if (!quantity && !range && !remark) {
+    return null;
+  }
+
+  return {
+    id: dbString(entry.id) || crypto.randomUUID(),
+    quantity,
+    range,
+    remark,
+  };
+}
+
+function normalizeMeasurementEquipmentSpecRows(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((entry) => normalizeMeasurementEquipmentSpecRow(entry))
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function mapMeasurementEquipmentCardTemplateEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const templateRaw = parseJsonObject(row.card_template_json);
+  const templateDocument = mapStoredAttachmentDocument(templateRaw);
+  if (!templateDocument.fileName || !templateDocument.dataUrl) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    templateDocument: {
+      ...templateDocument,
+      documentCategory: "karton_template",
+      documentCategoryLocked: true,
+    },
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -2076,7 +2128,7 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
            entered_by, approved_by, entry_date,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
-           linked_template_ids_json, documents_json, activity_items_json, created_at, updated_at
+           linked_template_ids_json, documents_json, activity_items_json, measurement_specs_json, created_at, updated_at
     FROM web_measurement_equipment
     ORDER BY
       valid_until ASC,
@@ -2112,10 +2164,21 @@ async function fetchSnapshotFromConnection(connection) {
       linkedTemplateTitles,
       documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
       activityItems: parseJsonArray(row.activity_items_json),
+      measurementSpecs: normalizeMeasurementEquipmentSpecRows(parseJsonArray(row.measurement_specs_json)),
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
     };
   });
+
+  const [measurementEquipmentTemplateRows] = await connection.query(`
+    SELECT organization_id, card_template_json, created_at, updated_at
+    FROM web_measurement_equipment_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const measurementEquipmentCardTemplates = measurementEquipmentTemplateRows
+    .map((row) => mapMeasurementEquipmentCardTemplateEntry(row))
+    .filter(Boolean);
 
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, note,
@@ -2190,6 +2253,7 @@ async function fetchSnapshotFromConnection(connection) {
     learningTests,
     serviceCatalog,
     measurementEquipment,
+    measurementEquipmentCardTemplates,
     safetyAuthorizations,
     dashboardWidgets,
   };
@@ -2276,6 +2340,7 @@ export class InMemorySafetyRepository {
       learningTests: [],
       serviceCatalog: [],
       measurementEquipment: [],
+      measurementEquipmentCardTemplates: [],
       safetyAuthorizations: [],
       dashboardWidgets: [],
     };
@@ -2414,6 +2479,11 @@ export class InMemorySafetyRepository {
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
         activityItems: (item.activityItems ?? []).map((entry) => ({ ...entry })),
+        measurementSpecs: (item.measurementSpecs ?? []).map((entry) => ({ ...entry })),
+      })),
+      measurementEquipmentCardTemplates: this.snapshot.measurementEquipmentCardTemplates.map((item) => ({
+        ...item,
+        templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
         ...item,
@@ -3133,6 +3203,49 @@ export class InMemorySafetyRepository {
     return item;
   }
 
+  async upsertMeasurementEquipmentCardTemplate({ organizationId = "", templateDocument = null } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za karton template.");
+    }
+
+    const normalizedTemplate = mapStoredAttachmentDocument(templateDocument ?? {});
+    if (!normalizedTemplate.fileName || !normalizedTemplate.dataUrl) {
+      throw new Error("Karton template mora biti valjana .docx/.dotx datoteka.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      templateDocument: {
+        ...normalizedTemplate,
+        documentCategory: "karton_template",
+        documentCategoryLocked: true,
+        updatedAt: timestamp,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.measurementEquipmentCardTemplates.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.measurementEquipmentCardTemplates[currentIndex];
+      this.snapshot.measurementEquipmentCardTemplates[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.measurementEquipmentCardTemplates.push(nextEntry);
+    }
+
+    return this.snapshot.measurementEquipmentCardTemplates.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async updateMeasurementEquipmentItem(id, patch) {
     const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
 
@@ -3614,10 +3727,21 @@ export class MySqlSafetyRepository {
         linked_template_ids_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
         activity_items_json LONGTEXT NULL,
+        measurement_specs_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_measurement_equipment_org_valid (organization_id, valid_until),
         INDEX idx_web_measurement_equipment_inventory (organization_id, inventory_number)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_measurement_equipment_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        card_template_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_measurement_equipment_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -3691,6 +3815,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_measurement_equipment", "approved_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER entered_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entry_date", "DATE NULL AFTER approved_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "measurement_specs_json", "LONGTEXT NULL AFTER activity_items_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -5605,8 +5730,8 @@ export class MySqlSafetyRepository {
             (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
              entered_by, approved_by, entry_date,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
-             linked_template_ids_json, documents_json, activity_items_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             linked_template_ids_json, documents_json, activity_items_json, measurement_specs_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5628,6 +5753,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(draft.activityItems ?? []),
+          JSON.stringify(draft.measurementSpecs ?? []),
         ],
       );
 
@@ -5636,6 +5762,77 @@ export class MySqlSafetyRepository {
         ...draft,
         id: String(result.insertId),
         documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async upsertMeasurementEquipmentCardTemplate({ organizationId = "", templateDocument = null } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za karton template.");
+    }
+
+    const normalizedTemplate = mapStoredAttachmentDocument(templateDocument ?? {});
+    if (!normalizedTemplate.fileName || !normalizedTemplate.dataUrl) {
+      throw new Error("Karton template mora biti valjana .docx/.dotx datoteka.");
+    }
+
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT card_template_json
+          FROM web_measurement_equipment_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.card_template_json));
+      const preparedTemplate = await prepareStoredAttachmentDocuments([normalizedTemplate], {
+        keyPrefix: `measurement-equipment/${safeOrganizationId}/card-template`,
+        currentDocuments: currentTemplate.fileName && currentTemplate.dataUrl ? [currentTemplate] : [],
+      });
+      const nextTemplate = preparedTemplate.nextDocuments[0];
+      if (!nextTemplate?.fileName || !nextTemplate?.dataUrl) {
+        throw new Error("Ne mogu spremiti karton template.");
+      }
+      staleDocuments = preparedTemplate.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          INSERT INTO web_measurement_equipment_settings
+            (organization_id, card_template_json)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE
+            card_template_json = VALUES(card_template_json),
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          safeOrganizationId,
+          JSON.stringify(nextTemplate),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        organizationId: String(safeOrganizationId),
+        templateDocument: {
+          ...nextTemplate,
+          documentCategory: "karton_template",
+          documentCategoryLocked: true,
+        },
       };
     } catch (error) {
       await connection.rollback();
@@ -5671,7 +5868,7 @@ export class MySqlSafetyRepository {
           SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
               entered_by = ?, approved_by = ?, entry_date = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
-              note = ?, linked_template_ids_json = ?, documents_json = ?, activity_items_json = ?
+              note = ?, linked_template_ids_json = ?, documents_json = ?, activity_items_json = ?, measurement_specs_json = ?
           WHERE id = ?
         `,
         [
@@ -5693,6 +5890,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(next.activityItems ?? []),
+          JSON.stringify(next.measurementSpecs ?? []),
           Number(id),
         ],
       );

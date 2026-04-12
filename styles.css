@@ -15871,6 +15871,46 @@ body.is-document-template-editor-open {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.measurement-equipment-specs-list {
+  display: grid;
+  gap: 8px;
+}
+
+.measurement-equipment-spec-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 14px;
+  background: rgba(247, 250, 248, 0.88);
+}
+
+.measurement-equipment-spec-index {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(47, 104, 84, 0.18);
+  color: #426c5a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.measurement-equipment-spec-field {
+  min-width: 0;
+  gap: 4px;
+}
+
+.measurement-equipment-spec-field span {
+  font-size: 0.66rem;
+  letter-spacing: 0.11em;
+}
+
 .user-editor-modules {
   display: grid;
   grid-template-areas:
@@ -16447,6 +16487,21 @@ body.is-measurement-equipment-document-preview-open {
 
 .measurement-equipment-export-block .document-template-reference-actions {
   flex-wrap: wrap;
+}
+
+.measurement-equipment-export-block--global {
+  margin-top: 4px;
+  border-color: rgba(127, 105, 255, 0.24);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 247, 255, 0.96));
+}
+
+.measurement-equipment-export-block--global .section-kicker {
+  color: #9a31c5;
+}
+
+.measurement-equipment-export-block--global .document-template-reference-actions {
+  justify-content: flex-end;
 }
 
 .measurement-equipment-export-block .ghost-button[disabled] {
@@ -19350,6 +19405,7 @@ body.is-measurement-equipment-document-preview-open {
   .user-editor-modules,
   .user-electrical-grid,
   .measurement-equipment-form-grid,
+  .measurement-equipment-spec-row,
   .safety-authorization-form-grid,
   .document-template-meta-grid,
   .document-template-builder-shell,
@@ -19414,6 +19470,15 @@ body.is-measurement-equipment-document-preview-open {
 
   .measurement-equipment-activity-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .measurement-equipment-spec-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .measurement-equipment-spec-index {
+    margin-top: 0;
   }
 
   .measurement-equipment-activity-actions {

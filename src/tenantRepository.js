@@ -1362,7 +1362,16 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
       documents: (item.documents ?? []).map((document) => ({ ...document })),
+      measurementSpecs: (item.measurementSpecs ?? []).map((entry) => ({ ...entry })),
     })),
+    measurementEquipmentCardTemplate: (() => {
+      const templateEntry = (rawSnapshot.measurementEquipmentCardTemplates ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      return templateEntry?.templateDocument
+        ? { ...templateEntry.templateDocument }
+        : null;
+    })(),
     safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({

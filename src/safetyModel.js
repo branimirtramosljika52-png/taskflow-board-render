@@ -737,6 +737,29 @@ function normalizeMeasurementEquipmentActivityItems(items = [], now = isoNow) {
   }).filter(Boolean).sort(compareMeasurementEquipmentActivityRecency);
 }
 
+function normalizeMeasurementEquipmentSpecItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => {
+    const quantity = normalizeText(item?.quantity ?? item?.measurementQuantity ?? item?.mjernaVelicina).slice(0, 140);
+    const range = normalizeText(item?.range ?? item?.raspon).slice(0, 140);
+    const remark = normalizeText(item?.remark ?? item?.opaska).slice(0, 220);
+
+    if (!quantity && !range && !remark) {
+      return null;
+    }
+
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      quantity,
+      range,
+      remark,
+    };
+  }).filter(Boolean).slice(0, 6);
+}
+
 function applyMeasurementEquipmentCalibrationFromActivities(activityItems = [], {
   requiresCalibration = false,
   calibrationDate = null,
@@ -2924,6 +2947,9 @@ export function createMeasurementEquipmentItem(
     hasOwn(input, "activityItems") ? input.activityItems : [],
     now,
   );
+  const measurementSpecs = normalizeMeasurementEquipmentSpecItems(
+    hasOwn(input, "measurementSpecs") ? input.measurementSpecs : [],
+  );
   if (hasOwn(input, "activityItems")) {
     const syncFromActivities = applyMeasurementEquipmentCalibrationFromActivities(activityItems, {
       requiresCalibration,
@@ -2973,6 +2999,7 @@ export function createMeasurementEquipmentItem(
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: normalizeAttachmentDocuments(input.documents),
     activityItems,
+    measurementSpecs,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -3022,6 +3049,9 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
   const activityItems = hasOwn(patch, "activityItems")
     ? normalizeMeasurementEquipmentActivityItems(patch.activityItems, now)
     : normalizeMeasurementEquipmentActivityItems(current.activityItems ?? [], now);
+  const measurementSpecs = hasOwn(patch, "measurementSpecs")
+    ? normalizeMeasurementEquipmentSpecItems(patch.measurementSpecs)
+    : normalizeMeasurementEquipmentSpecItems(current.measurementSpecs ?? []);
   if (hasOwn(patch, "activityItems")) {
     const syncFromActivities = applyMeasurementEquipmentCalibrationFromActivities(activityItems, {
       requiresCalibration,
@@ -3077,6 +3107,7 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
       ? normalizeAttachmentDocuments(patch.documents)
       : normalizeAttachmentDocuments(current.documents),
     activityItems,
+    measurementSpecs,
     updatedAt: now(),
   };
 }
@@ -3118,6 +3149,11 @@ export function filterMeasurementEquipmentItems(
         entry.validUntil,
         entry.satisfies,
         entry.note,
+      ]),
+      ...(item.measurementSpecs ?? []).flatMap((entry) => [
+        entry.quantity,
+        entry.range,
+        entry.remark,
       ]),
     ].join(" ").toLowerCase();
 

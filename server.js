@@ -1117,6 +1117,36 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/measurement-equipment/card-template") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati karton template.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const templateDocument = body?.templateDocument && typeof body.templateDocument === "object"
+        ? body.templateDocument
+        : null;
+
+      if (!templateDocument) {
+        sendError(response, 400, "Priloži .docx/.dotx karton template.");
+        return true;
+      }
+
+      if (!isWordTemplateFile(templateDocument)) {
+        sendError(response, 400, "Karton template mora biti .docx ili .dotx datoteka.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertMeasurementEquipmentCardTemplate({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        templateDocument,
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/document-records") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo pregledavati zapisnike.");
