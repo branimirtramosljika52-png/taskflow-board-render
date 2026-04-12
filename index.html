@@ -3721,6 +3721,45 @@
                       </div>
                     </section>
 
+                    <section class="service-catalog-template-block measurement-equipment-export-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Karton</p>
+                          <h3>Template i generiranje kartona</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input
+                            id="measurement-equipment-card-template-input"
+                            type="file"
+                            accept=".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+                            hidden
+                          />
+                          <button id="measurement-equipment-card-template-upload" type="button" class="ghost-button">Upload templatea</button>
+                          <button id="measurement-equipment-card-export-word" type="button" class="ghost-button">Preuzmi Word</button>
+                          <button id="measurement-equipment-card-export-pdf" type="button" class="ghost-button">Preuzmi PDF</button>
+                        </div>
+                      </div>
+                      <p id="measurement-equipment-card-template-meta" class="helper-copy module-copy">
+                        Učitaj .docx/.dotx karton template i koristi placeholdere za automatsko popunjavanje.
+                      </p>
+                      <p class="helper-copy module-copy measurement-equipment-export-placeholders">
+                        Placeholderi:
+                        <code>{{NAZIV_UREDJAJA}}</code>,
+                        <code>{{PROIZVODAC}}</code>,
+                        <code>{{TIP_MODEL}}</code>,
+                        <code>{{SERIJSKI_BROJ}}</code>,
+                        <code>{{INV_BROJ}}</code>,
+                        <code>{{OZNAKA_UREDAJA}}</code>,
+                        <code>{{MJERNU_OPREMU_UNIO}}</code>,
+                        <code>{{ODOBRIO}}</code>,
+                        <code>{{DATUM_UNOSA}}</code>,
+                        <code>{{DATUM_UMJERAVANJA}}</code>,
+                        <code>{{VRIJEDI_DO}}</code>,
+                        <code>{{AKTIVNOSTI}}</code>,
+                        <code>{{DOKUMENTI}}</code>
+                      </p>
+                    </section>
+
                     <section class="service-catalog-template-block">
                       <div class="section-heading offers-section-heading">
                         <div>

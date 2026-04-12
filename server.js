@@ -745,11 +745,13 @@ async function handleApiRequest(request, response, url) {
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
-  const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
-  const documentTemplateWordExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-word$/);
-  const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
-  const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
-  const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
+    const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
+    const measurementEquipmentPdfExportMatch = url.pathname === "/api/measurement-equipment/export-pdf";
+    const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
+    const documentTemplateWordExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-word$/);
+    const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
+    const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
+    const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
@@ -1243,6 +1245,88 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (measurementEquipmentWordExportMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo generirati karton uređaja.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const templateDocument = body?.templateDocument && typeof body.templateDocument === "object"
+        ? body.templateDocument
+        : null;
+
+      if (!templateDocument) {
+        sendError(response, 400, "Prvo učitaj karton template (.docx/.dotx).");
+        return true;
+      }
+
+      if (!isWordTemplateFile(templateDocument)) {
+        sendError(response, 400, "Karton template mora biti .docx ili .dotx datoteka.");
+        return true;
+      }
+
+      const placeholders = body?.placeholders && typeof body.placeholders === "object" && !Array.isArray(body.placeholders)
+        ? body.placeholders
+        : {};
+      const referenceDocument = await readStoredDocumentBuffer(templateDocument);
+      const generatedWord = await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders);
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || templateDocument.fileName || "karton-uredaja",
+        { fallback: "karton-uredaja", extension: "docx" },
+      );
+
+      sendBinary(response, 200, generatedWord, {
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileName,
+      });
+      return true;
+    }
+
+    if (measurementEquipmentPdfExportMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo generirati karton uređaja.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const templateDocument = body?.templateDocument && typeof body.templateDocument === "object"
+        ? body.templateDocument
+        : null;
+
+      if (!templateDocument) {
+        sendError(response, 400, "Prvo učitaj karton template (.docx/.dotx).");
+        return true;
+      }
+
+      if (!isWordTemplateFile(templateDocument)) {
+        sendError(response, 400, "Karton template mora biti .docx ili .dotx datoteka.");
+        return true;
+      }
+
+      const placeholders = body?.placeholders && typeof body.placeholders === "object" && !Array.isArray(body.placeholders)
+        ? body.placeholders
+        : {};
+      const referenceDocument = await readStoredDocumentBuffer(templateDocument);
+      const pdfWordName = sanitizeGeneratedDocumentFileName(
+        body.fileName || templateDocument.fileName || "karton-uredaja",
+        { fallback: "karton-uredaja", extension: "docx" },
+      );
+      const pdfBuffer = await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+        fileName: pdfWordName,
+      });
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || templateDocument.fileName || "karton-uredaja",
+        { fallback: "karton-uredaja", extension: "pdf" },
+      );
+
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
       return true;
     }
 

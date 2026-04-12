@@ -95,13 +95,14 @@ const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
-const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
+const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
   "bmp",
   "csv",
   "doc",
   "docx",
+  "dotx",
   "eml",
   "gif",
   "heic",
@@ -1449,6 +1450,11 @@ const measurementEquipmentDocumentsUploadButton = document.querySelector("#measu
 const measurementEquipmentDocumentsToggleButton = document.querySelector("#measurement-equipment-documents-toggle");
 const measurementEquipmentDocumentsBody = document.querySelector("#measurement-equipment-documents-body");
 const measurementEquipmentDocumentsList = document.querySelector("#measurement-equipment-documents-list");
+const measurementEquipmentCardTemplateInput = document.querySelector("#measurement-equipment-card-template-input");
+const measurementEquipmentCardTemplateUploadButton = document.querySelector("#measurement-equipment-card-template-upload");
+const measurementEquipmentCardExportWordButton = document.querySelector("#measurement-equipment-card-export-word");
+const measurementEquipmentCardExportPdfButton = document.querySelector("#measurement-equipment-card-export-pdf");
+const measurementEquipmentCardTemplateMeta = document.querySelector("#measurement-equipment-card-template-meta");
 const measurementEquipmentNoteInput = document.querySelector("#measurement-equipment-note");
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
 const measurementEquipmentResetButton = document.querySelector("#measurement-equipment-reset");
@@ -1548,6 +1554,7 @@ let learningTestPreviewOpen = false;
 let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
+let measurementEquipmentCardExporting = false;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
@@ -12727,6 +12734,7 @@ function isWorkOrderDocumentFileAllowed(file) {
     || mimeType === "application/vnd.ms-outlook"
     || mimeType === "application/msword"
     || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.template"
     || mimeType === "application/vnd.ms-excel"
     || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     || mimeType === "text/csv"
@@ -13907,6 +13915,7 @@ function getDocumentTemplateSectionTypeLabel(value) {
 
 const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
+  { value: "karton_template", label: "Template kartona (.docx/.dotx)" },
   { value: "racun", label: "Račun" },
   { value: "umjernica", label: "Umjernica" },
   { value: "karton_uređaja", label: "Karton uređaja" },
@@ -13915,6 +13924,7 @@ const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "upute", label: "Upute / dokumentacija" },
   { value: "ostalo", label: "Ostalo" },
 ];
+const MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY = "karton_template";
 const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_LABEL_BY_VALUE = new Map(
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
 );
@@ -19996,6 +20006,212 @@ function triggerModuleAttachmentDownload(fileDocument) {
   link.remove();
 }
 
+function normalizeMeasurementEquipmentDocumentCategoryValue(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getMeasurementEquipmentDocumentCategoryLabel(value = "") {
+  const normalized = normalizeMeasurementEquipmentDocumentCategoryValue(value);
+  if (!normalized) {
+    return "";
+  }
+  return getOptionLabel(MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS, normalized)
+    || normalized.replace(/_/g, " ");
+}
+
+function isMeasurementEquipmentWordTemplateDocument(entry = {}) {
+  const fileName = String(entry?.fileName || "").trim().toLowerCase();
+  const fileType = String(entry?.fileType || "").trim().toLowerCase();
+  return fileName.endsWith(".docx")
+    || fileName.endsWith(".dotx")
+    || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
+}
+
+function getMeasurementEquipmentCardTemplateDocuments() {
+  return measurementEquipmentDocumentDrafts.filter((entry) => (
+    normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) === MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY
+    && isMeasurementEquipmentWordTemplateDocument(entry)
+  ));
+}
+
+function getMeasurementEquipmentCardTemplateDocument() {
+  return [...getMeasurementEquipmentCardTemplateDocuments()].sort((left, right) => {
+    const leftUpdatedAt = String(left?.updatedAt || left?.createdAt || "").trim();
+    const rightUpdatedAt = String(right?.updatedAt || right?.createdAt || "").trim();
+    return rightUpdatedAt.localeCompare(leftUpdatedAt);
+  })[0] ?? null;
+}
+
+function buildMeasurementEquipmentExportActivityLines(type = "") {
+  const normalizedType = normalizeMeasurementEquipmentActivityTypeValue(type);
+  return buildMeasurementEquipmentActivityPayload()
+    .filter((entry) => (normalizedType ? normalizeMeasurementEquipmentActivityTypeValue(entry.activityType) === normalizedType : true))
+    .map((entry) => {
+      const safeType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
+      const base = [
+        getMeasurementEquipmentActivityTypeLabel(safeType),
+        entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma",
+      ];
+      if (entry.performedBy) {
+        base.push(entry.performedBy);
+      }
+      if (safeType === "umjeravanje") {
+        if (entry.validUntil) {
+          base.push(`vrijedi do ${formatCompactDate(entry.validUntil)}`);
+        }
+        if (entry.satisfies) {
+          base.push(`zadovoljava: ${String(entry.satisfies || "").toUpperCase()}`);
+        }
+      } else if (entry.note) {
+        base.push(entry.note);
+      }
+      return base.filter(Boolean).join(" - ");
+    });
+}
+
+function buildMeasurementEquipmentExportDocumentLines() {
+  return measurementEquipmentDocumentDrafts
+    .filter((entry) => normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY)
+    .map((entry) => [
+      getMeasurementEquipmentDocumentCategoryLabel(entry.documentCategory) || "Dokument",
+      entry.fileName || "",
+    ].filter(Boolean).join(": "))
+    .filter(Boolean);
+}
+
+function buildMeasurementEquipmentExportPlaceholders() {
+  const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
+  const linkedTemplateTitles = getTemplateTitlesByIds(getMeasurementEquipmentTemplateSelectionIds());
+  const activityAll = buildMeasurementEquipmentExportActivityLines();
+  const activityCalibration = buildMeasurementEquipmentExportActivityLines("umjeravanje");
+  const activityReview = buildMeasurementEquipmentExportActivityLines("pregled");
+  const activityService = buildMeasurementEquipmentExportActivityLines("servis");
+  const documentLines = buildMeasurementEquipmentExportDocumentLines();
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  return {
+    NAZIV_UREDJAJA: measurementEquipmentNameInput?.value || "",
+    NAZIV_OPREME: measurementEquipmentNameInput?.value || "",
+    OPREMA_NAZIV: measurementEquipmentNameInput?.value || "",
+    PROIZVODAC: measurementEquipmentManufacturerInput?.value || "",
+    TIP_MODEL: measurementEquipmentTypeInput?.value || "",
+    TIP: measurementEquipmentTypeInput?.value || "",
+    OZNAKA_UREDAJA: measurementEquipmentDeviceCodeInput?.value || "",
+    SERIJSKI_BROJ: measurementEquipmentSerialNumberInput?.value || "",
+    SN: measurementEquipmentSerialNumberInput?.value || "",
+    INV_BROJ: measurementEquipmentInventoryNumberInput?.value || "",
+    INVENTARNI_BROJ: measurementEquipmentInventoryNumberInput?.value || "",
+    MJERNU_OPREMU_UNIO: measurementEquipmentEnteredByInput?.value || "",
+    IZRADIO: measurementEquipmentEnteredByInput?.value || "",
+    ODOBRIO: measurementEquipmentApprovedByInput?.value || "",
+    DATUM_UNOSA: measurementEquipmentEntryDateInput?.value ? formatCompactDate(measurementEquipmentEntryDateInput.value) : "",
+    UMJERAVA_SE: requiresCalibration ? "DA" : "NE",
+    DATUM_UMJERAVANJA: measurementEquipmentCalibrationDateInput?.value ? formatCompactDate(measurementEquipmentCalibrationDateInput.value) : "",
+    PERIODIKA_UMJERAVANJA: measurementEquipmentCalibrationPeriodInput?.value || "",
+    VRIJEDI_DO: measurementEquipmentValidUntilInput?.value ? formatCompactDate(measurementEquipmentValidUntilInput.value) : "",
+    KORISTI_SE_U_ZAPISNICIMA: linkedTemplateTitles.join(", "),
+    ZAPISNICI: linkedTemplateTitles.join(", "),
+    AKTIVNOSTI: activityAll.join("\n"),
+    AKTIVNOSTI_UMJERAVANJE: activityCalibration.join("\n"),
+    AKTIVNOSTI_PREGLED: activityReview.join("\n"),
+    AKTIVNOSTI_SERVIS: activityService.join("\n"),
+    DOKUMENTI: documentLines.join("\n"),
+    NAPOMENA: measurementEquipmentNoteInput?.value || "",
+    DATUM_GENERIRANJA: formatCompactDate(todayIso),
+    DANAS: formatCompactDate(todayIso),
+  };
+}
+
+function buildMeasurementEquipmentCardExportFileBaseName() {
+  const inventoryNumber = String(measurementEquipmentInventoryNumberInput?.value || "").trim();
+  const equipmentName = String(measurementEquipmentNameInput?.value || "").trim();
+  const fallbackName = inventoryNumber || equipmentName || "karton-uredaja";
+  const datePart = new Date().toISOString().slice(0, 10);
+  return `${sanitizeDocumentTemplateFileName(fallbackName, "karton-uredaja")}-${datePart}`;
+}
+
+function syncMeasurementEquipmentCardTemplateControls() {
+  const templateDocument = getMeasurementEquipmentCardTemplateDocument();
+  if (measurementEquipmentCardTemplateMeta) {
+    measurementEquipmentCardTemplateMeta.textContent = templateDocument
+      ? `Template: ${templateDocument.fileName || "karton-template.docx"}`
+      : "Nema učitanog templatea kartona. Učitaj .docx/.dotx pa preuzmi Word/PDF.";
+  }
+
+  const isDisabled = !templateDocument || measurementEquipmentCardExporting;
+  if (measurementEquipmentCardExportWordButton) {
+    measurementEquipmentCardExportWordButton.disabled = isDisabled;
+  }
+  if (measurementEquipmentCardExportPdfButton) {
+    measurementEquipmentCardExportPdfButton.disabled = isDisabled;
+  }
+}
+
+async function queueMeasurementEquipmentCardTemplate(files = []) {
+  const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  if (selectedFiles.length === 0) {
+    return;
+  }
+  const templateFile = selectedFiles[0];
+  const templateName = String(templateFile.name || "").trim().toLowerCase();
+  if (!(templateName.endsWith(".docx") || templateName.endsWith(".dotx"))) {
+    throw new Error("Karton template mora biti .docx ili .dotx datoteka.");
+  }
+
+  const uploads = await buildWorkOrderDocumentUploadPayload([templateFile]);
+  const upload = uploads[0];
+  if (!upload) {
+    throw new Error("Ne mogu učitati karton template.");
+  }
+
+  const nextTemplate = createModuleAttachmentDraft({
+    ...upload,
+    documentCategory: MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY,
+    documentCategoryLocked: true,
+    description: "Template kartona uređaja",
+  });
+  measurementEquipmentDocumentDrafts = [
+    nextTemplate,
+    ...measurementEquipmentDocumentDrafts.filter((entry) => (
+      normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY
+    )),
+  ];
+  state.measurementEquipmentDocumentsSectionExpanded = true;
+  renderMeasurementEquipmentDocuments();
+  syncMeasurementEquipmentEditorSections();
+}
+
+async function exportMeasurementEquipmentCardDocument(format = "word") {
+  const templateDocument = getMeasurementEquipmentCardTemplateDocument();
+  if (!templateDocument) {
+    throw new Error("Prvo učitaj karton template (.docx/.dotx).");
+  }
+
+  const safeFormat = String(format || "").trim().toLowerCase() === "pdf" ? "pdf" : "word";
+  const endpoint = safeFormat === "pdf"
+    ? "/measurement-equipment/export-pdf"
+    : "/measurement-equipment/export-word";
+  const extension = safeFormat === "pdf" ? "pdf" : "docx";
+  const fileName = `${buildMeasurementEquipmentCardExportFileBaseName()}.${extension}`;
+
+  measurementEquipmentCardExporting = true;
+  syncMeasurementEquipmentCardTemplateControls();
+  try {
+    const response = await apiBinaryRequest(endpoint, {
+      method: "POST",
+      body: {
+        templateDocument,
+        placeholders: buildMeasurementEquipmentExportPlaceholders(),
+        fileName,
+      },
+    });
+    triggerBlobDownload(response.blob, response.fileName || fileName);
+  } finally {
+    measurementEquipmentCardExporting = false;
+    syncMeasurementEquipmentCardTemplateControls();
+  }
+}
+
 function renderMeasurementEquipmentDocuments() {
   if (!measurementEquipmentDocumentsList) {
     return;
@@ -20003,6 +20219,7 @@ function renderMeasurementEquipmentDocuments() {
 
   if (measurementEquipmentDocumentDrafts.length === 0) {
     measurementEquipmentDocumentsList.replaceChildren();
+    syncMeasurementEquipmentCardTemplateControls();
     return;
   }
 
@@ -20031,7 +20248,7 @@ function renderMeasurementEquipmentDocuments() {
     if (entry.documentCategoryLocked && entry.documentCategory) {
       const categoryValue = document.createElement("div");
       categoryValue.className = "module-attachment-category-value is-locked";
-      categoryValue.textContent = entry.documentCategory;
+      categoryValue.textContent = getMeasurementEquipmentDocumentCategoryLabel(entry.documentCategory);
       categoryValue.setAttribute("aria-label", "Vrsta dokumenta");
       categorySlot.append(categoryValue);
     } else {
@@ -20048,6 +20265,7 @@ function renderMeasurementEquipmentDocuments() {
         const nextValue = categorySelect.value || "";
         updateMeasurementEquipmentDocumentDraft(entry.id, { documentCategory: nextValue });
         row.classList.toggle("is-unclassified", !nextValue);
+        syncMeasurementEquipmentCardTemplateControls();
       });
       categorySlot.append(categorySelect);
     }
@@ -20077,6 +20295,7 @@ function renderMeasurementEquipmentDocuments() {
     row.append(copy, categorySlot, actions);
     return row;
   }));
+  syncMeasurementEquipmentCardTemplateControls();
 }
 
 async function queueMeasurementEquipmentDocuments(
@@ -42597,6 +42816,29 @@ measurementEquipmentDocumentsInput?.addEventListener("change", () => {
   void runMutation(() => queueMeasurementEquipmentDocuments(files), measurementEquipmentError).then(() => {
     measurementEquipmentDocumentsInput.value = "";
   });
+});
+
+measurementEquipmentCardTemplateUploadButton?.addEventListener("click", () => {
+  measurementEquipmentCardTemplateInput?.click();
+});
+
+measurementEquipmentCardTemplateInput?.addEventListener("change", () => {
+  const files = Array.from(measurementEquipmentCardTemplateInput.files ?? []);
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueMeasurementEquipmentCardTemplate(files), measurementEquipmentError).then(() => {
+    measurementEquipmentCardTemplateInput.value = "";
+  });
+});
+
+measurementEquipmentCardExportWordButton?.addEventListener("click", () => {
+  void runMutation(() => exportMeasurementEquipmentCardDocument("word"), measurementEquipmentError);
+});
+
+measurementEquipmentCardExportPdfButton?.addEventListener("click", () => {
+  void runMutation(() => exportMeasurementEquipmentCardDocument("pdf"), measurementEquipmentError);
 });
 
 measurementEquipmentForm?.addEventListener("submit", (event) => {

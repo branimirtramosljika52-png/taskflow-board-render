@@ -16445,6 +16445,35 @@ body.is-measurement-equipment-document-preview-open {
   gap: 12px;
 }
 
+.measurement-equipment-export-block .document-template-reference-actions {
+  flex-wrap: wrap;
+}
+
+.measurement-equipment-export-block .ghost-button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.measurement-equipment-export-placeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.measurement-equipment-export-placeholders code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 105, 255, 0.25);
+  background: rgba(241, 237, 255, 0.86);
+  color: #4d2b8f;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .module-collapse-button {
   min-width: 40px;
   height: 40px;
