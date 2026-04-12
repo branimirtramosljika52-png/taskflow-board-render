@@ -15518,9 +15518,58 @@ body.is-vehicle-reservation-open {
   align-items: flex-start;
 }
 
+.measurement-equipment-card--emphasized {
+  border-color: rgba(120, 73, 166, 0.34);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 247, 255, 0.98));
+  box-shadow: 0 12px 28px rgba(92, 52, 140, 0.12);
+}
+
+.measurement-equipment-card--emphasized:hover,
+.measurement-equipment-card--emphasized:focus-visible,
+.measurement-equipment-card--emphasized.is-active {
+  border-color: rgba(120, 73, 166, 0.48);
+  box-shadow: 0 16px 34px rgba(92, 52, 140, 0.18);
+}
+
+.measurement-equipment-card--emphasized .measurement-equipment-card-meta {
+  color: #466559;
+  font-weight: 600;
+}
+
 .measurement-equipment-card-footer {
   justify-content: flex-start;
   align-items: flex-start;
+}
+
+.measurement-equipment-card-groups {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.measurement-equipment-card-group {
+  border: 1px solid rgba(120, 73, 166, 0.18);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.measurement-equipment-card-group-label {
+  margin: 0;
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6d4a92;
+  font-weight: 700;
+}
+
+.measurement-equipment-card-group .measurement-equipment-chip,
+.measurement-equipment-card-group .service-catalog-template-badge {
+  font-weight: 700;
 }
 
 .measurement-equipment-card-copy,
@@ -19220,6 +19269,10 @@ body.is-measurement-equipment-document-preview-open {
 
   .measurement-equipment-activity-field.is-wide {
     grid-column: span 2;
+  }
+
+  .measurement-equipment-card-groups {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

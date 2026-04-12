@@ -22010,6 +22010,7 @@ function renderMeasurementEquipmentModule() {
   measurementEquipmentList.replaceChildren(...visibleItems.map((item) => {
     const card = document.createElement("article");
     card.className = `measurement-equipment-card is-${slugifyValue(item.equipmentKind || "measurement")}`;
+    card.classList.add("measurement-equipment-card--emphasized");
     if (String(item.id) === String(measurementEquipmentIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -22045,20 +22046,32 @@ function renderMeasurementEquipmentModule() {
     head.append(copy, badges);
 
     const footer = document.createElement("div");
-    footer.className = "measurement-equipment-card-footer";
+    footer.className = "measurement-equipment-card-groups";
 
+    const calibrationGroup = document.createElement("section");
+    calibrationGroup.className = "measurement-equipment-card-group";
+    const calibrationLabel = document.createElement("p");
+    calibrationLabel.className = "measurement-equipment-card-group-label";
+    calibrationLabel.textContent = "Umjernica";
     const dates = document.createElement("div");
     dates.className = "measurement-equipment-card-chips";
-    if (item.requiresCalibration && item.calibrationDate) {
-      dates.append(createBadge(`Umj. ${formatCompactDate(item.calibrationDate)}`, "measurement-equipment-chip"));
+    if (item.requiresCalibration) {
+      dates.append(
+        createBadge(
+          item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Vrijedi do: bez roka",
+          item.validUntil && isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip",
+        ),
+      );
+    } else {
+      dates.append(createBadge("Nije potrebno umjeravanje", "measurement-equipment-chip"));
     }
-    if (item.requiresCalibration && item.validUntil) {
-      dates.append(createBadge(`Vrijedi do ${formatCompactDate(item.validUntil)}`, isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"));
-    }
-    if (item.requiresCalibration && item.calibrationPeriod) {
-      dates.append(createBadge(item.calibrationPeriod, "measurement-equipment-chip"));
-    }
+    calibrationGroup.append(calibrationLabel, dates);
 
+    const templatesGroup = document.createElement("section");
+    templatesGroup.className = "measurement-equipment-card-group";
+    const templatesLabel = document.createElement("p");
+    templatesLabel.className = "measurement-equipment-card-group-label";
+    templatesLabel.textContent = "Koristi se u zapisnicima";
     const templates = document.createElement("div");
     templates.className = "measurement-equipment-card-chips";
     if ((item.linkedTemplateTitles ?? []).length > 0) {
@@ -22068,37 +22081,10 @@ function renderMeasurementEquipmentModule() {
     } else {
       templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
     }
+    templatesGroup.append(templatesLabel, templates);
 
-    const note = document.createElement("p");
-    note.className = "measurement-equipment-card-note";
-    note.textContent = item.note || ((item.documents ?? []).length > 0
-      ? `${item.documents.length} datotek${item.documents.length === 1 ? "a" : "e"} spremljeno`
-      : "Bez dodatne napomene.");
-
-    const activityWrap = document.createElement("div");
-    activityWrap.className = "measurement-equipment-card-activity";
-    const activityItems = Array.isArray(item.activityItems) ? item.activityItems : [];
-    activityItems.slice(0, 3).forEach((activityEntry) => {
-      const parts = [
-        getMeasurementEquipmentActivityTypeLabel(activityEntry.activityType),
-        activityEntry.performedOn ? formatCompactDate(activityEntry.performedOn) : "",
-        activityEntry.performedBy || "",
-      ].filter(Boolean);
-      activityWrap.append(createBadge(parts.join(" · "), "measurement-equipment-chip"));
-    });
-    if (activityItems.length > 3) {
-      activityWrap.append(createBadge(`+${activityItems.length - 3}`, "measurement-equipment-chip"));
-    }
-
-    if (dates.childElementCount > 0) {
-      footer.append(dates);
-    }
-    footer.append(templates);
-    if (activityWrap.childElementCount > 0) {
-      card.append(head, note, activityWrap, footer);
-    } else {
-      card.append(head, note, footer);
-    }
+    footer.append(calibrationGroup, templatesGroup);
+    card.append(head, footer);
 
     const openItem = () => {
       if (!canManageMasterData) {
