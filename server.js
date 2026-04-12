@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
+import JSZip from "jszip";
 
 import {
   canDeleteWorkOrders,
@@ -104,6 +105,231 @@ function sendBinary(response, statusCode, body, {
     response.setHeader("Content-Disposition", `attachment; filename="${fileName.replace(/"/g, "")}"`);
   }
   response.end(body);
+}
+
+const MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY = "karton_template";
+const MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_LABELS = Object.freeze({
+  racun: "Racun",
+  umjernica: "Umjernica",
+  karton_uredaja: "Karton uredaja",
+  slika_uredaja: "Slika uredaja",
+  servisni_zapis: "Servisni zapis",
+  upute: "Upute / dokumentacija",
+  ostalo: "Ostalo",
+});
+
+function normalizeMeasurementEquipmentDocumentCategoryValue(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+}
+
+function getMeasurementEquipmentDocumentCategoryLabel(value = "") {
+  const normalized = normalizeMeasurementEquipmentDocumentCategoryValue(value);
+  return MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_LABELS[normalized] || normalized || "Dokument";
+}
+
+function normalizeDateOnlyValue(value = "") {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match?.[1]) {
+    return match[1];
+  }
+  const parsed = Date.parse(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function isMeasurementEquipmentCalibrationValid(item = {}, todayIso = new Date().toISOString().slice(0, 10)) {
+  if (!item?.requiresCalibration) {
+    return false;
+  }
+  const validUntil = normalizeDateOnlyValue(item.validUntil);
+  if (!validUntil) {
+    return false;
+  }
+  return validUntil >= todayIso;
+}
+
+function getMeasurementEquipmentCalibrationStatusLabel(item = {}, todayIso = new Date().toISOString().slice(0, 10)) {
+  if (!item?.requiresCalibration) {
+    return "Ne treba";
+  }
+  const validUntil = normalizeDateOnlyValue(item.validUntil);
+  if (!validUntil) {
+    return "Bez roka";
+  }
+  return validUntil >= todayIso ? "Vazeca" : "Istekla";
+}
+
+function parseDateSortValue(value = "") {
+  const normalized = normalizeDateOnlyValue(value);
+  if (!normalized) {
+    return 0;
+  }
+  const parsed = Date.parse(`${normalized}T00:00:00Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortMeasurementEquipmentActivityEntries(entries = []) {
+  return [...(Array.isArray(entries) ? entries : [])].sort((left, right) => {
+    const rightScore = parseDateSortValue(right?.performedOn || right?.updatedAt || right?.createdAt);
+    const leftScore = parseDateSortValue(left?.performedOn || left?.updatedAt || left?.createdAt);
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    return String(right?.id || "").localeCompare(String(left?.id || ""));
+  });
+}
+
+function buildMeasurementEquipmentLatestActivitySummary(item = {}, activityType = "") {
+  const normalizedType = normalizeInputValue(activityType).toLowerCase();
+  const latest = sortMeasurementEquipmentActivityEntries(item.activityItems ?? [])
+    .find((entry) => normalizeInputValue(entry?.activityType).toLowerCase() === normalizedType);
+  if (!latest) {
+    return "";
+  }
+
+  const parts = [];
+  if (latest.performedOn) {
+    parts.push(normalizeDateOnlyValue(latest.performedOn));
+  }
+  if (normalizedType === "umjeravanje") {
+    if (latest.validUntil) {
+      parts.push(`vrijedi do ${normalizeDateOnlyValue(latest.validUntil)}`);
+    }
+    if (latest.satisfies) {
+      parts.push(`zadovoljava ${normalizeInputValue(latest.satisfies).toUpperCase()}`);
+    }
+  } else {
+    if (latest.performedBy) {
+      parts.push(normalizeInputValue(latest.performedBy));
+    }
+    if (latest.note) {
+      parts.push(normalizeInputValue(latest.note));
+    }
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
+function escapeCsvCell(value = "") {
+  const normalized = value === null || value === undefined
+    ? ""
+    : String(value).replace(/\r?\n/g, " ").trim();
+  return `"${normalized.replace(/"/g, "\"\"")}"`;
+}
+
+function buildCsvBuffer(rows = []) {
+  const lines = (Array.isArray(rows) ? rows : []).map((row) => (
+    (Array.isArray(row) ? row : [row]).map((entry) => escapeCsvCell(entry)).join(";")
+  ));
+  return Buffer.from(`\uFEFF${lines.join("\r\n")}\r\n`, "utf8");
+}
+
+function sanitizeZipPathSegment(value = "", fallback = "stavka") {
+  const normalized = String(value ?? "")
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized ? normalized.slice(0, 120) : fallback;
+}
+
+function buildUniqueZipPath(filePath = "", usedPaths = new Set()) {
+  if (!usedPaths.has(filePath)) {
+    usedPaths.add(filePath);
+    return filePath;
+  }
+  const extension = extname(filePath);
+  const base = extension ? filePath.slice(0, -extension.length) : filePath;
+  let counter = 2;
+  let candidate = `${base} (${counter})${extension}`;
+  while (usedPaths.has(candidate)) {
+    counter += 1;
+    candidate = `${base} (${counter})${extension}`;
+  }
+  usedPaths.add(candidate);
+  return candidate;
+}
+
+function sortMeasurementEquipmentDocumentsByUpdatedAt(documents = []) {
+  return [...(Array.isArray(documents) ? documents : [])].sort((left, right) => {
+    const rightScore = parseDateSortValue(right?.updatedAt || right?.createdAt);
+    const leftScore = parseDateSortValue(left?.updatedAt || left?.createdAt);
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    return String(right?.id || "").localeCompare(String(left?.id || ""));
+  });
+}
+
+function collectMeasurementEquipmentDocumentsForZip(
+  item = {},
+  selectedCategories = new Set(),
+  {
+    onlyValidCalibrationCertificates = false,
+    todayIso = new Date().toISOString().slice(0, 10),
+  } = {},
+) {
+  const docs = (Array.isArray(item.documents) ? item.documents : [])
+    .map((document) => ({
+      ...document,
+      normalizedCategory: normalizeMeasurementEquipmentDocumentCategoryValue(document?.documentCategory),
+    }))
+    .filter((document) => {
+      if (!document?.fileName) {
+        return false;
+      }
+      if (!document.normalizedCategory || document.normalizedCategory === MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY) {
+        return false;
+      }
+      return selectedCategories.size === 0 || selectedCategories.has(document.normalizedCategory);
+    });
+
+  if (docs.length === 0) {
+    return [];
+  }
+
+  const byCategory = new Map();
+  docs.forEach((document) => {
+    if (!byCategory.has(document.normalizedCategory)) {
+      byCategory.set(document.normalizedCategory, []);
+    }
+    byCategory.get(document.normalizedCategory).push(document);
+  });
+
+  const orderedCategories = selectedCategories.size > 0
+    ? [...selectedCategories]
+    : [...byCategory.keys()];
+  const results = [];
+
+  orderedCategories.forEach((category) => {
+    const categoryDocuments = sortMeasurementEquipmentDocumentsByUpdatedAt(byCategory.get(category) ?? []);
+    if (categoryDocuments.length === 0) {
+      return;
+    }
+    if (category === "umjernica" && onlyValidCalibrationCertificates) {
+      if (!isMeasurementEquipmentCalibrationValid(item, todayIso)) {
+        return;
+      }
+      results.push(categoryDocuments[0]);
+      return;
+    }
+    results.push(...categoryDocuments);
+  });
+
+  return results;
 }
 
 async function generatePdfBufferForTemplate(template = {}, {
@@ -745,6 +971,8 @@ async function handleApiRequest(request, response, url) {
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
+    const measurementEquipmentExcelExportMatch = url.pathname === "/api/measurement-equipment/export-list-excel";
+    const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
     const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
     const measurementEquipmentPdfExportMatch = url.pathname === "/api/measurement-equipment/export-pdf";
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
@@ -1275,6 +1503,232 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (measurementEquipmentExcelExportMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo izvoziti popis mjerne opreme.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const items = [...(scopedSnapshot.measurementEquipment ?? [])].sort((left, right) => {
+        const byName = String(left?.name || "").localeCompare(String(right?.name || ""), "hr", { sensitivity: "base" });
+        if (byName !== 0) {
+          return byName;
+        }
+        const byInventory = String(left?.inventoryNumber || "").localeCompare(String(right?.inventoryNumber || ""), "hr", { sensitivity: "base" });
+        if (byInventory !== 0) {
+          return byInventory;
+        }
+        return String(left?.id || "").localeCompare(String(right?.id || ""));
+      });
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const rows = [[
+        "Naziv opreme",
+        "Proizvodac",
+        "Tip/model",
+        "Oznaka uredaja",
+        "Serijski broj",
+        "Inv broj",
+        "Umjerava se",
+        "Datum umjeravanja",
+        "Vrijedi do",
+        "Status umjernice",
+        "Koristi se u zapisnicima",
+        "Mjernu opremu unio",
+        "Odobrio",
+        "Datum unosa",
+        "Zadnje umjeravanje",
+        "Zadnji pregled",
+        "Zadnji servis",
+        "Broj datoteka",
+      ]];
+
+      items.forEach((item) => {
+        rows.push([
+          normalizeInputValue(item?.name),
+          normalizeInputValue(item?.manufacturer),
+          normalizeInputValue(item?.deviceType),
+          normalizeInputValue(item?.deviceCode),
+          normalizeInputValue(item?.serialNumber),
+          normalizeInputValue(item?.inventoryNumber),
+          item?.requiresCalibration ? "DA" : "NE",
+          normalizeDateOnlyValue(item?.calibrationDate),
+          normalizeDateOnlyValue(item?.validUntil),
+          getMeasurementEquipmentCalibrationStatusLabel(item, todayIso),
+          (Array.isArray(item?.linkedTemplateTitles) ? item.linkedTemplateTitles : []).join(", "),
+          normalizeInputValue(item?.enteredBy),
+          normalizeInputValue(item?.approvedBy),
+          normalizeDateOnlyValue(item?.entryDate),
+          buildMeasurementEquipmentLatestActivitySummary(item, "umjeravanje"),
+          buildMeasurementEquipmentLatestActivitySummary(item, "pregled"),
+          buildMeasurementEquipmentLatestActivitySummary(item, "servis"),
+          String((Array.isArray(item?.documents) ? item.documents : []).length),
+        ]);
+      });
+
+      const fileName = sanitizeGeneratedDocumentFileName(
+        `mjerna-oprema-popis-${todayIso}`,
+        { fallback: "mjerna-oprema-popis", extension: "csv" },
+      );
+      sendBinary(response, 200, buildCsvBuffer(rows), {
+        contentType: "text/csv; charset=utf-8",
+        fileName,
+      });
+      return true;
+    }
+
+    if (measurementEquipmentZipExportMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo izvoziti datoteke mjerne opreme.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const allItems = Array.isArray(scopedSnapshot.measurementEquipment)
+        ? scopedSnapshot.measurementEquipment
+        : [];
+      const requestedIdsRaw = Array.isArray(body?.equipmentIds)
+        ? body.equipmentIds
+        : Array.isArray(body?.deviceIds)
+          ? body.deviceIds
+          : [];
+      const requestedIdSet = new Set(requestedIdsRaw.map((value) => normalizeInputValue(value)).filter(Boolean));
+      const selectedItems = requestedIdSet.size > 0
+        ? allItems.filter((item) => requestedIdSet.has(String(item?.id ?? "")))
+        : [...allItems];
+      if (selectedItems.length === 0) {
+        sendError(response, 400, "Nema odabranih uređaja za ZIP izvoz.");
+        return true;
+      }
+
+      const requestedCategoriesRaw = Array.isArray(body?.documentCategories)
+        ? body.documentCategories
+        : Array.isArray(body?.categories)
+          ? body.categories
+          : [];
+      const selectedCategories = new Set(
+        requestedCategoriesRaw
+          .map((value) => normalizeMeasurementEquipmentDocumentCategoryValue(value))
+          .filter((value) => value && value !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY),
+      );
+      if (selectedCategories.size === 0) {
+        selectedItems.forEach((item) => {
+          (Array.isArray(item?.documents) ? item.documents : []).forEach((document) => {
+            const normalized = normalizeMeasurementEquipmentDocumentCategoryValue(document?.documentCategory);
+            if (normalized && normalized !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY) {
+              selectedCategories.add(normalized);
+            }
+          });
+        });
+      }
+      if (selectedCategories.size === 0) {
+        sendError(response, 400, "Za odabrane uređaje nema datoteka za ZIP izvoz.");
+        return true;
+      }
+
+      const onlyValidCalibrationCertificates = Boolean(body?.onlyValidCalibrationCertificates);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const zip = new JSZip();
+      const usedPaths = new Set();
+      const manifestRows = [[
+        "Uredaj ID",
+        "Naziv uredaja",
+        "Inv broj",
+        "Kategorija",
+        "Datoteka",
+        "Status umjernice",
+      ]];
+      const skippedDocuments = [];
+      let addedCount = 0;
+
+      for (const item of selectedItems) {
+        const selectedDocuments = collectMeasurementEquipmentDocumentsForZip(
+          item,
+          selectedCategories,
+          {
+            onlyValidCalibrationCertificates,
+            todayIso,
+          },
+        );
+        if (selectedDocuments.length === 0) {
+          continue;
+        }
+
+        const deviceFolder = sanitizeZipPathSegment(
+          [
+            item?.inventoryNumber ? `INV-${item.inventoryNumber}` : "",
+            item?.name || "",
+            item?.id ? `ID-${item.id}` : "",
+          ].filter(Boolean).join(" - "),
+          `uredaj-${item?.id || "bez-id"}`,
+        );
+
+        for (const document of selectedDocuments) {
+          const normalizedCategory = normalizeMeasurementEquipmentDocumentCategoryValue(document?.documentCategory);
+          const categoryFolder = sanitizeZipPathSegment(
+            getMeasurementEquipmentDocumentCategoryLabel(normalizedCategory),
+            "Dokumenti",
+          );
+          const fileName = sanitizeZipPathSegment(
+            normalizeInputValue(document?.fileName),
+            `dokument-${addedCount + skippedDocuments.length + 1}`,
+          );
+          const candidatePath = `${deviceFolder}/${categoryFolder}/${fileName}`;
+
+          try {
+            const storedDocument = await readStoredDocumentBuffer(document);
+            const zipPath = buildUniqueZipPath(candidatePath, usedPaths);
+            zip.file(zipPath, storedDocument.buffer);
+            addedCount += 1;
+            manifestRows.push([
+              String(item?.id ?? ""),
+              normalizeInputValue(item?.name),
+              normalizeInputValue(item?.inventoryNumber),
+              getMeasurementEquipmentDocumentCategoryLabel(normalizedCategory),
+              normalizeInputValue(document?.fileName),
+              getMeasurementEquipmentCalibrationStatusLabel(item, todayIso),
+            ]);
+          } catch (error) {
+            skippedDocuments.push(
+              [
+                `Uredaj #${item?.id || "?"}`,
+                normalizeInputValue(item?.name) || "Bez naziva",
+                normalizeInputValue(document?.fileName) || "Datoteka",
+                normalizeInputValue(error?.message) || "Neuspjelo citanje dokumenta",
+              ].filter(Boolean).join(" | "),
+            );
+          }
+        }
+      }
+
+      if (addedCount === 0) {
+        sendError(response, 400, "Nijedna datoteka nije dostupna za ZIP izvoz (provjeri odabir i vazecu umjernicu).");
+        return true;
+      }
+
+      if (skippedDocuments.length > 0) {
+        zip.file("_neuspjeli_dokumenti.txt", skippedDocuments.join("\n"));
+      }
+      zip.file("_manifest.csv", buildCsvBuffer(manifestRows));
+
+      const zipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+      const fileName = sanitizeGeneratedDocumentFileName(
+        `mjerna-oprema-dokumenti-${todayIso}`,
+        { fallback: "mjerna-oprema-dokumenti", extension: "zip" },
+      );
+
+      sendBinary(response, 200, zipBuffer, {
+        contentType: "application/zip",
+        fileName,
+      });
       return true;
     }
 

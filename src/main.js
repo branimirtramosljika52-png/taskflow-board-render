@@ -1456,6 +1456,8 @@ const measurementEquipmentCardTemplateInput = document.querySelector("#measureme
 const measurementEquipmentCardTemplateUploadButton = document.querySelector("#measurement-equipment-card-template-upload");
 const measurementEquipmentCardExportWordButton = document.querySelector("#measurement-equipment-card-export-word");
 const measurementEquipmentCardExportPdfButton = document.querySelector("#measurement-equipment-card-export-pdf");
+const measurementEquipmentExportExcelButton = document.querySelector("#measurement-equipment-export-excel");
+const measurementEquipmentExportZipButton = document.querySelector("#measurement-equipment-export-zip");
 const measurementEquipmentCardTemplateMeta = document.querySelector("#measurement-equipment-card-template-meta");
 const measurementEquipmentNoteInput = document.querySelector("#measurement-equipment-note");
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
@@ -1558,6 +1560,7 @@ let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSpecDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
+let measurementEquipmentBulkExporting = false;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
@@ -20216,6 +20219,119 @@ function buildMeasurementEquipmentCardExportFileBaseName() {
   return `${sanitizeDocumentTemplateFileName(fallbackName, "karton-uredaja")}-${datePart}`;
 }
 
+function getMeasurementEquipmentExportItems() {
+  return sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
+}
+
+function normalizeMeasurementEquipmentPromptSelectionTokens(value = "") {
+  return String(value ?? "")
+    .split(/[,;\s]+/)
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+}
+
+function resolveMeasurementEquipmentDeviceIdsFromPrompt(value = "", items = []) {
+  const normalizedInput = String(value || "").trim();
+  if (!normalizedInput || normalizedInput === "*" || /^all$/i.test(normalizedInput)) {
+    return items.map((item) => String(item.id));
+  }
+
+  const byIndex = new Map(items.map((item, index) => [String(index + 1), String(item.id)]));
+  const byId = new Set(items.map((item) => String(item.id)));
+  const nextSelectedIds = [];
+
+  normalizeMeasurementEquipmentPromptSelectionTokens(normalizedInput).forEach((token) => {
+    if (byIndex.has(token)) {
+      nextSelectedIds.push(byIndex.get(token));
+      return;
+    }
+    if (byId.has(token)) {
+      nextSelectedIds.push(token);
+    }
+  });
+
+  return Array.from(new Set(nextSelectedIds));
+}
+
+function getMeasurementEquipmentZipCategoryOptions() {
+  return MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS
+    .filter((option) => {
+      const normalizedValue = normalizeMeasurementEquipmentDocumentCategoryValue(option.value || "");
+      return Boolean(normalizedValue && normalizedValue !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY);
+    });
+}
+
+function resolveMeasurementEquipmentDocumentCategoriesFromPrompt(value = "", options = []) {
+  const normalizedInput = String(value || "").trim();
+  if (!normalizedInput || normalizedInput === "*" || /^all$/i.test(normalizedInput)) {
+    return options.map((option) => String(option.value));
+  }
+
+  const byIndex = new Map(options.map((option, index) => [String(index + 1), String(option.value)]));
+  const byNormalizedValue = new Map(
+    options.map((option) => [normalizeMeasurementEquipmentDocumentCategoryValue(option.value), String(option.value)]),
+  );
+  const nextValues = [];
+
+  normalizeMeasurementEquipmentPromptSelectionTokens(normalizedInput).forEach((token) => {
+    const normalizedToken = normalizeMeasurementEquipmentDocumentCategoryValue(token);
+    if (byIndex.has(token)) {
+      nextValues.push(byIndex.get(token));
+      return;
+    }
+    if (byNormalizedValue.has(normalizedToken)) {
+      nextValues.push(byNormalizedValue.get(normalizedToken));
+    }
+  });
+
+  return Array.from(new Set(nextValues));
+}
+
+function buildMeasurementEquipmentZipDevicePrompt(items = []) {
+  const optionsPreview = items
+    .slice(0, 120)
+    .map((item, index) => [
+      `${index + 1})`,
+      item.id ? `#${item.id}` : "",
+      item.name || "Bez naziva",
+      item.inventoryNumber ? `Inv ${item.inventoryNumber}` : "",
+    ].filter(Boolean).join(" · "));
+  const truncatedNote = items.length > 120
+    ? `\n... +${items.length - 120} dodatnih uređaja`
+    : "";
+
+  return [
+    "ZIP izvoz datoteka - odabir uređaja",
+    "Upiši redne brojeve ili ID-eve odvojene zarezom.",
+    'Za sve uređaje upiši "ALL".',
+    "",
+    ...optionsPreview,
+    truncatedNote,
+  ].join("\n");
+}
+
+function buildMeasurementEquipmentZipCategoryPrompt(options = []) {
+  const optionLines = options.map((option, index) => `${index + 1}) ${option.label} (${option.value})`);
+  return [
+    "ZIP izvoz datoteka - odabir vrsta datoteka",
+    "Upiši redne brojeve ili vrijednosti odvojene zarezom.",
+    'Za sve vrste upiši "ALL".',
+    "",
+    ...optionLines,
+  ].join("\n");
+}
+
+function syncMeasurementEquipmentExportActionControls() {
+  const hasItems = getMeasurementEquipmentExportItems().length > 0;
+  const isBusy = measurementEquipmentCardExporting || measurementEquipmentBulkExporting;
+  if (measurementEquipmentExportExcelButton) {
+    measurementEquipmentExportExcelButton.disabled = !hasItems || isBusy;
+  }
+  if (measurementEquipmentExportZipButton) {
+    measurementEquipmentExportZipButton.disabled = !hasItems || isBusy;
+  }
+}
+
 function syncMeasurementEquipmentCardTemplateControls() {
   const templateDocument = getMeasurementEquipmentCardTemplateDocument();
   if (measurementEquipmentCardTemplateMeta) {
@@ -20231,6 +20347,7 @@ function syncMeasurementEquipmentCardTemplateControls() {
   if (measurementEquipmentCardExportPdfButton) {
     measurementEquipmentCardExportPdfButton.disabled = isDisabled;
   }
+  syncMeasurementEquipmentExportActionControls();
 }
 
 async function queueMeasurementEquipmentCardTemplate(files = []) {
@@ -20298,6 +20415,81 @@ async function exportMeasurementEquipmentCardDocument(format = "word") {
     triggerBlobDownload(response.blob, response.fileName || fileName);
   } finally {
     measurementEquipmentCardExporting = false;
+    syncMeasurementEquipmentCardTemplateControls();
+  }
+}
+
+async function exportMeasurementEquipmentListExcel() {
+  const fallbackName = `mjerna-oprema-popis-${new Date().toISOString().slice(0, 10)}.csv`;
+  measurementEquipmentBulkExporting = true;
+  syncMeasurementEquipmentCardTemplateControls();
+  try {
+    const response = await apiBinaryRequest("/measurement-equipment/export-list-excel", {
+      method: "POST",
+    });
+    triggerBlobDownload(response.blob, response.fileName || fallbackName);
+  } finally {
+    measurementEquipmentBulkExporting = false;
+    syncMeasurementEquipmentCardTemplateControls();
+  }
+}
+
+async function exportMeasurementEquipmentDocumentsZip() {
+  const items = getMeasurementEquipmentExportItems();
+  if (items.length === 0) {
+    throw new Error("Nema opreme za ZIP izvoz.");
+  }
+
+  const selectedDeviceInput = window.prompt(
+    buildMeasurementEquipmentZipDevicePrompt(items),
+    "ALL",
+  );
+  if (selectedDeviceInput === null) {
+    return;
+  }
+  const selectedEquipmentIds = resolveMeasurementEquipmentDeviceIdsFromPrompt(selectedDeviceInput, items);
+  if (selectedEquipmentIds.length === 0) {
+    throw new Error("Nije odabran nijedan uređaj za ZIP izvoz.");
+  }
+
+  const categoryOptions = getMeasurementEquipmentZipCategoryOptions();
+  if (categoryOptions.length === 0) {
+    throw new Error("Nema dostupnih kategorija datoteka za ZIP izvoz.");
+  }
+
+  const selectedCategoryInput = window.prompt(
+    buildMeasurementEquipmentZipCategoryPrompt(categoryOptions),
+    "ALL",
+  );
+  if (selectedCategoryInput === null) {
+    return;
+  }
+  const selectedDocumentCategories = resolveMeasurementEquipmentDocumentCategoriesFromPrompt(
+    selectedCategoryInput,
+    categoryOptions,
+  );
+  if (selectedDocumentCategories.length === 0) {
+    throw new Error("Nije odabrana nijedna vrsta datoteke za ZIP izvoz.");
+  }
+
+  const onlyValidCalibrationCertificates = window.confirm(
+    "Za umjernice ukljuciti samo vazecu umjernicu po uredaju?",
+  );
+  const fallbackName = `mjerna-oprema-dokumenti-${new Date().toISOString().slice(0, 10)}.zip`;
+  measurementEquipmentBulkExporting = true;
+  syncMeasurementEquipmentCardTemplateControls();
+  try {
+    const response = await apiBinaryRequest("/measurement-equipment/export-files-zip", {
+      method: "POST",
+      body: {
+        equipmentIds: selectedEquipmentIds,
+        documentCategories: selectedDocumentCategories,
+        onlyValidCalibrationCertificates,
+      },
+    });
+    triggerBlobDownload(response.blob, response.fileName || fallbackName);
+  } finally {
+    measurementEquipmentBulkExporting = false;
     syncMeasurementEquipmentCardTemplateControls();
   }
 }
@@ -42985,6 +43177,14 @@ measurementEquipmentCardExportWordButton?.addEventListener("click", () => {
 
 measurementEquipmentCardExportPdfButton?.addEventListener("click", () => {
   void runMutation(() => exportMeasurementEquipmentCardDocument("pdf"), measurementEquipmentError);
+});
+
+measurementEquipmentExportExcelButton?.addEventListener("click", () => {
+  void runMutation(() => exportMeasurementEquipmentListExcel(), measurementEquipmentError);
+});
+
+measurementEquipmentExportZipButton?.addEventListener("click", () => {
+  void runMutation(() => exportMeasurementEquipmentDocumentsZip(), measurementEquipmentError);
 });
 
 measurementEquipmentForm?.addEventListener("submit", (event) => {
