@@ -560,6 +560,7 @@ const state = {
   serviceCatalogEditorOpen: false,
   measurementEquipmentEditorOpen: false,
   measurementEquipmentDocumentPreviewOpen: false,
+  measurementEquipmentExportDialogOpen: false,
   measurementEquipmentTemplateSectionExpanded: false,
   measurementEquipmentActivitySectionExpanded: false,
   measurementEquipmentDocumentsSectionExpanded: false,
@@ -1458,6 +1459,19 @@ const measurementEquipmentCardExportWordButton = document.querySelector("#measur
 const measurementEquipmentCardExportPdfButton = document.querySelector("#measurement-equipment-card-export-pdf");
 const measurementEquipmentExportExcelButton = document.querySelector("#measurement-equipment-export-excel");
 const measurementEquipmentExportZipButton = document.querySelector("#measurement-equipment-export-zip");
+const measurementEquipmentExportBackdrop = document.querySelector("#measurement-equipment-export-backdrop");
+const measurementEquipmentExportPanel = document.querySelector("#measurement-equipment-export-panel");
+const measurementEquipmentExportCloseButton = document.querySelector("#measurement-equipment-export-close");
+const measurementEquipmentExportForm = document.querySelector("#measurement-equipment-export-form");
+const measurementEquipmentExportDevicesInput = document.querySelector("#measurement-equipment-export-devices");
+const measurementEquipmentExportDevicesAllButton = document.querySelector("#measurement-equipment-export-devices-all");
+const measurementEquipmentExportDevicesClearButton = document.querySelector("#measurement-equipment-export-devices-clear");
+const measurementEquipmentExportCategoriesInput = document.querySelector("#measurement-equipment-export-categories");
+const measurementEquipmentExportCategoriesAllButton = document.querySelector("#measurement-equipment-export-categories-all");
+const measurementEquipmentExportCategoriesClearButton = document.querySelector("#measurement-equipment-export-categories-clear");
+const measurementEquipmentExportCalibrationModeInput = document.querySelector("#measurement-equipment-export-calibration-mode");
+const measurementEquipmentExportSubmitButton = document.querySelector("#measurement-equipment-export-submit");
+const measurementEquipmentExportCancelButton = document.querySelector("#measurement-equipment-export-cancel");
 const measurementEquipmentCardTemplateMeta = document.querySelector("#measurement-equipment-card-template-meta");
 const measurementEquipmentNoteInput = document.querySelector("#measurement-equipment-note");
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
@@ -1832,6 +1846,14 @@ if (measurementEquipmentDocumentPreviewPanel?.parentElement !== document.body) {
   document.body.append(measurementEquipmentDocumentPreviewPanel);
 }
 
+if (measurementEquipmentExportBackdrop?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentExportBackdrop);
+}
+
+if (measurementEquipmentExportPanel?.parentElement !== document.body) {
+  document.body.append(measurementEquipmentExportPanel);
+}
+
 if (safetyAuthorizationEditorBackdrop?.parentElement !== document.body) {
   document.body.append(safetyAuthorizationEditorBackdrop);
 }
@@ -1917,6 +1939,15 @@ if (measurementEquipmentDocumentPreviewBackdrop) {
 if (measurementEquipmentDocumentPreviewPanel) {
   measurementEquipmentDocumentPreviewPanel.hidden = true;
   measurementEquipmentDocumentPreviewPanel.setAttribute("aria-hidden", "true");
+}
+
+if (measurementEquipmentExportBackdrop) {
+  measurementEquipmentExportBackdrop.hidden = true;
+}
+
+if (measurementEquipmentExportPanel) {
+  measurementEquipmentExportPanel.hidden = true;
+  measurementEquipmentExportPanel.setAttribute("aria-hidden", "true");
 }
 
 if (safetyAuthorizationEditorBackdrop) {
@@ -20223,36 +20254,6 @@ function getMeasurementEquipmentExportItems() {
   return sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
 }
 
-function normalizeMeasurementEquipmentPromptSelectionTokens(value = "") {
-  return String(value ?? "")
-    .split(/[,;\s]+/)
-    .map((entry) => String(entry || "").trim())
-    .filter(Boolean);
-}
-
-function resolveMeasurementEquipmentDeviceIdsFromPrompt(value = "", items = []) {
-  const normalizedInput = String(value || "").trim();
-  if (!normalizedInput || normalizedInput === "*" || /^all$/i.test(normalizedInput)) {
-    return items.map((item) => String(item.id));
-  }
-
-  const byIndex = new Map(items.map((item, index) => [String(index + 1), String(item.id)]));
-  const byId = new Set(items.map((item) => String(item.id)));
-  const nextSelectedIds = [];
-
-  normalizeMeasurementEquipmentPromptSelectionTokens(normalizedInput).forEach((token) => {
-    if (byIndex.has(token)) {
-      nextSelectedIds.push(byIndex.get(token));
-      return;
-    }
-    if (byId.has(token)) {
-      nextSelectedIds.push(token);
-    }
-  });
-
-  return Array.from(new Set(nextSelectedIds));
-}
-
 function getMeasurementEquipmentZipCategoryOptions() {
   return MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS
     .filter((option) => {
@@ -20261,64 +20262,183 @@ function getMeasurementEquipmentZipCategoryOptions() {
     });
 }
 
-function resolveMeasurementEquipmentDocumentCategoriesFromPrompt(value = "", options = []) {
-  const normalizedInput = String(value || "").trim();
-  if (!normalizedInput || normalizedInput === "*" || /^all$/i.test(normalizedInput)) {
-    return options.map((option) => String(option.value));
+const MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN = "__all__";
+
+function getSelectedMultiSelectValues(select) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return [];
+  }
+  return Array.from(select.selectedOptions)
+    .map((option) => String(option.value || "").trim())
+    .filter(Boolean);
+}
+
+function setMultiSelectSelectedValues(select, values = []) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const selectedSet = new Set((Array.isArray(values) ? values : []).map((value) => String(value)));
+  Array.from(select.options).forEach((option) => {
+    option.selected = selectedSet.has(String(option.value));
+  });
+}
+
+function renderMeasurementEquipmentExportDialogOptions({ resetSelection = false } = {}) {
+  const items = getMeasurementEquipmentExportItems();
+  const categoryOptions = getMeasurementEquipmentZipCategoryOptions();
+
+  if (measurementEquipmentExportDevicesInput) {
+    const previousSelected = resetSelection ? [] : getSelectedMultiSelectValues(measurementEquipmentExportDevicesInput);
+    const allDeviceOption = createOption(
+      MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN,
+      `ALL · svi uređaji (${items.length})`,
+    );
+    const deviceOptions = items.map((item) => createOption(
+      String(item.id),
+      [item.id ? `#${item.id}` : "", item.name || "Bez naziva", item.inventoryNumber ? `Inv ${item.inventoryNumber}` : ""]
+        .filter(Boolean)
+        .join(" · "),
+    ));
+    measurementEquipmentExportDevicesInput.replaceChildren(allDeviceOption, ...deviceOptions);
+
+    const availableValues = new Set(items.map((item) => String(item.id)));
+    const nextSelected = previousSelected.filter((value) => availableValues.has(value));
+    if (nextSelected.length === 0 || previousSelected.includes(MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN)) {
+      setMultiSelectSelectedValues(measurementEquipmentExportDevicesInput, [MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN]);
+    } else {
+      setMultiSelectSelectedValues(measurementEquipmentExportDevicesInput, nextSelected);
+    }
   }
 
-  const byIndex = new Map(options.map((option, index) => [String(index + 1), String(option.value)]));
-  const byNormalizedValue = new Map(
-    options.map((option) => [normalizeMeasurementEquipmentDocumentCategoryValue(option.value), String(option.value)]),
-  );
-  const nextValues = [];
+  if (measurementEquipmentExportCategoriesInput) {
+    const previousSelected = resetSelection ? [] : getSelectedMultiSelectValues(measurementEquipmentExportCategoriesInput);
+    const allCategoriesOption = createOption(
+      MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN,
+      `ALL · sve vrste (${categoryOptions.length})`,
+    );
+    const categoryOptionNodes = categoryOptions.map((option) => createOption(String(option.value), option.label));
+    measurementEquipmentExportCategoriesInput.replaceChildren(allCategoriesOption, ...categoryOptionNodes);
 
-  normalizeMeasurementEquipmentPromptSelectionTokens(normalizedInput).forEach((token) => {
-    const normalizedToken = normalizeMeasurementEquipmentDocumentCategoryValue(token);
-    if (byIndex.has(token)) {
-      nextValues.push(byIndex.get(token));
-      return;
+    const availableValues = new Set(categoryOptions.map((option) => String(option.value)));
+    const nextSelected = previousSelected.filter((value) => availableValues.has(value));
+    if (nextSelected.length === 0 || previousSelected.includes(MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN)) {
+      setMultiSelectSelectedValues(measurementEquipmentExportCategoriesInput, [MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN]);
+    } else {
+      setMultiSelectSelectedValues(measurementEquipmentExportCategoriesInput, nextSelected);
     }
-    if (byNormalizedValue.has(normalizedToken)) {
-      nextValues.push(byNormalizedValue.get(normalizedToken));
+  }
+
+  if (measurementEquipmentExportCalibrationModeInput) {
+    const current = String(measurementEquipmentExportCalibrationModeInput.value || "");
+    if (resetSelection || (current !== "all" && current !== "valid")) {
+      measurementEquipmentExportCalibrationModeInput.value = "valid";
     }
+  }
+}
+
+function syncMeasurementEquipmentExportDialogControls() {
+  const hasItems = getMeasurementEquipmentExportItems().length > 0;
+  const hasCategories = getMeasurementEquipmentZipCategoryOptions().length > 0;
+  const isBusy = measurementEquipmentCardExporting || measurementEquipmentBulkExporting;
+  const canSubmit = hasItems && hasCategories && !isBusy;
+
+  if (measurementEquipmentExportSubmitButton) {
+    measurementEquipmentExportSubmitButton.disabled = !canSubmit;
+  }
+  if (measurementEquipmentExportCloseButton) {
+    measurementEquipmentExportCloseButton.disabled = isBusy;
+  }
+  if (measurementEquipmentExportCancelButton) {
+    measurementEquipmentExportCancelButton.disabled = isBusy;
+  }
+  if (measurementEquipmentExportDevicesInput) {
+    measurementEquipmentExportDevicesInput.disabled = !hasItems || isBusy;
+  }
+  if (measurementEquipmentExportCategoriesInput) {
+    measurementEquipmentExportCategoriesInput.disabled = !hasCategories || isBusy;
+  }
+  if (measurementEquipmentExportCalibrationModeInput) {
+    measurementEquipmentExportCalibrationModeInput.disabled = isBusy;
+  }
+  if (measurementEquipmentExportDevicesAllButton) {
+    measurementEquipmentExportDevicesAllButton.disabled = !hasItems || isBusy;
+  }
+  if (measurementEquipmentExportDevicesClearButton) {
+    measurementEquipmentExportDevicesClearButton.disabled = !hasItems || isBusy;
+  }
+  if (measurementEquipmentExportCategoriesAllButton) {
+    measurementEquipmentExportCategoriesAllButton.disabled = !hasCategories || isBusy;
+  }
+  if (measurementEquipmentExportCategoriesClearButton) {
+    measurementEquipmentExportCategoriesClearButton.disabled = !hasCategories || isBusy;
+  }
+}
+
+function syncMeasurementEquipmentExportDialogModal({ resetSelection = false } = {}) {
+  if (state.measurementEquipmentExportDialogOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "measurement-equipment"
+    || !state.user
+  )) {
+    state.measurementEquipmentExportDialogOpen = false;
+  }
+
+  const isOpen = Boolean(state.measurementEquipmentExportDialogOpen);
+  document.body.classList.toggle("is-measurement-equipment-export-open", isOpen);
+  measurementEquipmentExportPanel?.classList.toggle("is-open", isOpen);
+
+  if (measurementEquipmentExportBackdrop) {
+    measurementEquipmentExportBackdrop.hidden = !isOpen;
+  }
+
+  if (measurementEquipmentExportPanel) {
+    measurementEquipmentExportPanel.hidden = !isOpen;
+    measurementEquipmentExportPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (!isOpen) {
+    return;
+  }
+
+  renderMeasurementEquipmentExportDialogOptions({ resetSelection });
+  syncMeasurementEquipmentExportDialogControls();
+  requestAnimationFrame(() => {
+    measurementEquipmentExportDevicesInput?.focus({ preventScroll: true });
   });
-
-  return Array.from(new Set(nextValues));
 }
 
-function buildMeasurementEquipmentZipDevicePrompt(items = []) {
-  const optionsPreview = items
-    .slice(0, 120)
-    .map((item, index) => [
-      `${index + 1})`,
-      item.id ? `#${item.id}` : "",
-      item.name || "Bez naziva",
-      item.inventoryNumber ? `Inv ${item.inventoryNumber}` : "",
-    ].filter(Boolean).join(" · "));
-  const truncatedNote = items.length > 120
-    ? `\n... +${items.length - 120} dodatnih uređaja`
-    : "";
-
-  return [
-    "ZIP izvoz datoteka - odabir uređaja",
-    "Upiši redne brojeve ili ID-eve odvojene zarezom.",
-    'Za sve uređaje upiši "ALL".',
-    "",
-    ...optionsPreview,
-    truncatedNote,
-  ].join("\n");
+function openMeasurementEquipmentExportDialog() {
+  const items = getMeasurementEquipmentExportItems();
+  if (items.length === 0) {
+    throw new Error("Nema opreme za ZIP izvoz.");
+  }
+  state.measurementEquipmentExportDialogOpen = true;
+  syncMeasurementEquipmentExportDialogModal({ resetSelection: true });
 }
 
-function buildMeasurementEquipmentZipCategoryPrompt(options = []) {
-  const optionLines = options.map((option, index) => `${index + 1}) ${option.label} (${option.value})`);
-  return [
-    "ZIP izvoz datoteka - odabir vrsta datoteka",
-    "Upiši redne brojeve ili vrijednosti odvojene zarezom.",
-    'Za sve vrste upiši "ALL".',
-    "",
-    ...optionLines,
-  ].join("\n");
+function closeMeasurementEquipmentExportDialog() {
+  state.measurementEquipmentExportDialogOpen = false;
+  syncMeasurementEquipmentExportDialogModal();
+}
+
+function resolveMeasurementEquipmentExportDialogDeviceIds(items = []) {
+  const allDeviceIds = items.map((item) => String(item.id));
+  const selected = getSelectedMultiSelectValues(measurementEquipmentExportDevicesInput);
+  if (selected.includes(MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN) || selected.length === 0) {
+    return allDeviceIds;
+  }
+  const allowedValues = new Set(allDeviceIds);
+  return Array.from(new Set(selected.filter((value) => allowedValues.has(value))));
+}
+
+function resolveMeasurementEquipmentExportDialogDocumentCategories(options = []) {
+  const allCategories = options.map((option) => String(option.value));
+  const selected = getSelectedMultiSelectValues(measurementEquipmentExportCategoriesInput);
+  if (selected.includes(MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN) || selected.length === 0) {
+    return allCategories;
+  }
+  const allowedValues = new Set(allCategories);
+  return Array.from(new Set(selected.filter((value) => allowedValues.has(value))));
 }
 
 function syncMeasurementEquipmentExportActionControls() {
@@ -20330,6 +20450,7 @@ function syncMeasurementEquipmentExportActionControls() {
   if (measurementEquipmentExportZipButton) {
     measurementEquipmentExportZipButton.disabled = !hasItems || isBusy;
   }
+  syncMeasurementEquipmentExportDialogControls();
 }
 
 function syncMeasurementEquipmentCardTemplateControls() {
@@ -20420,7 +20541,7 @@ async function exportMeasurementEquipmentCardDocument(format = "word") {
 }
 
 async function exportMeasurementEquipmentListExcel() {
-  const fallbackName = `mjerna-oprema-popis-${new Date().toISOString().slice(0, 10)}.csv`;
+  const fallbackName = `mjerna-oprema-popis-${new Date().toISOString().slice(0, 10)}.xlsx`;
   measurementEquipmentBulkExporting = true;
   syncMeasurementEquipmentCardTemplateControls();
   try {
@@ -20435,19 +20556,16 @@ async function exportMeasurementEquipmentListExcel() {
 }
 
 async function exportMeasurementEquipmentDocumentsZip() {
+  openMeasurementEquipmentExportDialog();
+}
+
+async function exportMeasurementEquipmentDocumentsZipFromDialog() {
   const items = getMeasurementEquipmentExportItems();
   if (items.length === 0) {
     throw new Error("Nema opreme za ZIP izvoz.");
   }
 
-  const selectedDeviceInput = window.prompt(
-    buildMeasurementEquipmentZipDevicePrompt(items),
-    "ALL",
-  );
-  if (selectedDeviceInput === null) {
-    return;
-  }
-  const selectedEquipmentIds = resolveMeasurementEquipmentDeviceIdsFromPrompt(selectedDeviceInput, items);
+  const selectedEquipmentIds = resolveMeasurementEquipmentExportDialogDeviceIds(items);
   if (selectedEquipmentIds.length === 0) {
     throw new Error("Nije odabran nijedan uređaj za ZIP izvoz.");
   }
@@ -20457,24 +20575,14 @@ async function exportMeasurementEquipmentDocumentsZip() {
     throw new Error("Nema dostupnih kategorija datoteka za ZIP izvoz.");
   }
 
-  const selectedCategoryInput = window.prompt(
-    buildMeasurementEquipmentZipCategoryPrompt(categoryOptions),
-    "ALL",
-  );
-  if (selectedCategoryInput === null) {
-    return;
-  }
-  const selectedDocumentCategories = resolveMeasurementEquipmentDocumentCategoriesFromPrompt(
-    selectedCategoryInput,
-    categoryOptions,
-  );
+  const selectedDocumentCategories = resolveMeasurementEquipmentExportDialogDocumentCategories(categoryOptions);
   if (selectedDocumentCategories.length === 0) {
     throw new Error("Nije odabrana nijedna vrsta datoteke za ZIP izvoz.");
   }
 
-  const onlyValidCalibrationCertificates = window.confirm(
-    "Za umjernice ukljuciti samo vazecu umjernicu po uredaju?",
-  );
+  const onlyValidCalibrationCertificates = String(
+    measurementEquipmentExportCalibrationModeInput?.value || "valid",
+  ) !== "all";
   const fallbackName = `mjerna-oprema-dokumenti-${new Date().toISOString().slice(0, 10)}.zip`;
   measurementEquipmentBulkExporting = true;
   syncMeasurementEquipmentCardTemplateControls();
@@ -20488,6 +20596,7 @@ async function exportMeasurementEquipmentDocumentsZip() {
       },
     });
     triggerBlobDownload(response.blob, response.fileName || fallbackName);
+    closeMeasurementEquipmentExportDialog();
   } finally {
     measurementEquipmentBulkExporting = false;
     syncMeasurementEquipmentCardTemplateControls();
@@ -22827,6 +22936,9 @@ function renderMeasurementEquipmentModule() {
   }
 
   syncMeasurementEquipmentCardTemplateControls();
+  if (state.measurementEquipmentExportDialogOpen) {
+    syncMeasurementEquipmentExportDialogModal();
+  }
 }
 
 function getSafetyAuthorizationTemplateSelectionIds() {
@@ -32408,6 +32520,7 @@ function renderActiveView() {
   syncLegalFrameworkEditorModal();
   syncServiceCatalogEditorModal();
   syncMeasurementEquipmentEditorModal();
+  syncMeasurementEquipmentExportDialogModal();
   syncSafetyAuthorizationEditorModal();
   syncDocumentTemplateEditorModal();
 }
@@ -43077,6 +43190,39 @@ measurementEquipmentDocumentPreviewBackdrop?.addEventListener("click", () => {
   closeMeasurementEquipmentDocumentPreview();
 });
 
+measurementEquipmentExportCloseButton?.addEventListener("click", () => {
+  closeMeasurementEquipmentExportDialog();
+});
+
+measurementEquipmentExportCancelButton?.addEventListener("click", () => {
+  closeMeasurementEquipmentExportDialog();
+});
+
+measurementEquipmentExportBackdrop?.addEventListener("click", () => {
+  closeMeasurementEquipmentExportDialog();
+});
+
+measurementEquipmentExportDevicesAllButton?.addEventListener("click", () => {
+  setMultiSelectSelectedValues(measurementEquipmentExportDevicesInput, [MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN]);
+});
+
+measurementEquipmentExportDevicesClearButton?.addEventListener("click", () => {
+  setMultiSelectSelectedValues(measurementEquipmentExportDevicesInput, []);
+});
+
+measurementEquipmentExportCategoriesAllButton?.addEventListener("click", () => {
+  setMultiSelectSelectedValues(measurementEquipmentExportCategoriesInput, [MEASUREMENT_EQUIPMENT_EXPORT_ALL_TOKEN]);
+});
+
+measurementEquipmentExportCategoriesClearButton?.addEventListener("click", () => {
+  setMultiSelectSelectedValues(measurementEquipmentExportCategoriesInput, []);
+});
+
+measurementEquipmentExportForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void runMutation(() => exportMeasurementEquipmentDocumentsZipFromDialog(), measurementEquipmentError);
+});
+
 measurementEquipmentResetButton?.addEventListener("click", () => {
   resetMeasurementEquipmentForm();
   renderMeasurementEquipmentModule();
@@ -44639,6 +44785,11 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.workOrderDocumentWizard.open) {
     closeWorkOrderDocumentWizard();
+    return;
+  }
+
+  if (event.key === "Escape" && state.measurementEquipmentExportDialogOpen) {
+    closeMeasurementEquipmentExportDialog();
     return;
   }
 

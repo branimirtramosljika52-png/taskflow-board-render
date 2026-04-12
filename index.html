@@ -3112,6 +3112,70 @@
                 </div>
                 <div id="measurement-equipment-document-preview-body" class="measurement-equipment-document-preview-body"></div>
               </section>
+              <div
+                id="measurement-equipment-export-backdrop"
+                class="offer-editor-backdrop measurement-equipment-export-backdrop"
+                hidden
+              ></div>
+              <section
+                id="measurement-equipment-export-panel"
+                class="panel measurement-equipment-export-panel"
+                hidden
+                aria-hidden="true"
+              >
+                <div class="measurement-equipment-export-panel-head">
+                  <div>
+                    <p class="section-kicker">ZIP export</p>
+                    <h3>Izvoz datoteka mjerne opreme</h3>
+                  </div>
+                  <button id="measurement-equipment-export-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+                <form id="measurement-equipment-export-form" class="measurement-equipment-export-form">
+                  <label class="field field-span-full">
+                    <span>Uređaji</span>
+                    <select
+                      id="measurement-equipment-export-devices"
+                      class="measurement-equipment-export-multiselect"
+                      multiple
+                      size="8"
+                    ></select>
+                    <small class="helper-copy module-copy">Možeš odabrati više uređaja ili ALL.</small>
+                  </label>
+                  <div class="measurement-equipment-export-quick-actions">
+                    <button id="measurement-equipment-export-devices-all" type="button" class="ghost-button">All uređaji</button>
+                    <button id="measurement-equipment-export-devices-clear" type="button" class="ghost-button">Očisti</button>
+                  </div>
+
+                  <label class="field field-span-full">
+                    <span>Vrste datoteka</span>
+                    <select
+                      id="measurement-equipment-export-categories"
+                      class="measurement-equipment-export-multiselect"
+                      multiple
+                      size="7"
+                    ></select>
+                  </label>
+                  <div class="measurement-equipment-export-quick-actions">
+                    <button id="measurement-equipment-export-categories-all" type="button" class="ghost-button">Sve vrste</button>
+                    <button id="measurement-equipment-export-categories-clear" type="button" class="ghost-button">Očisti</button>
+                  </div>
+
+                  <label class="field">
+                    <span>Umjernice</span>
+                    <select id="measurement-equipment-export-calibration-mode">
+                      <option value="valid">Samo važeće umjernice</option>
+                      <option value="all">Sve umjernice</option>
+                    </select>
+                  </label>
+
+                  <p class="helper-copy module-copy">U ZIP će se dodati i manifest datoteka s pregledom sadržaja.</p>
+
+                  <div class="form-actions">
+                    <button id="measurement-equipment-export-submit" type="submit" class="primary-button">Izvezi ZIP</button>
+                    <button id="measurement-equipment-export-cancel" type="button" class="ghost-button">Odustani</button>
+                  </div>
+                </form>
+              </section>
             </section>
 
             <section id="offers-module" class="offers-module" hidden>

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import JSZip from "jszip";
+import * as XLSX from "xlsx";
 
 import {
   canDeleteWorkOrders,
@@ -232,6 +233,50 @@ function buildCsvBuffer(rows = []) {
     (Array.isArray(row) ? row : [row]).map((entry) => escapeCsvCell(entry)).join(";")
   ));
   return Buffer.from(`\uFEFF${lines.join("\r\n")}\r\n`, "utf8");
+}
+
+function sanitizeExcelSheetName(value = "", fallback = "Popis") {
+  const cleaned = String(value ?? "")
+    .replace(/[\\/*?:[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const safe = cleaned || fallback;
+  return safe.slice(0, 31);
+}
+
+function buildMeasurementEquipmentListXlsxBuffer(rows = [], sheetName = "Mjerna oprema") {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const worksheet = XLSX.utils.aoa_to_sheet(normalizedRows);
+  const maxColumns = normalizedRows.reduce((max, row) => (
+    Math.max(max, Array.isArray(row) ? row.length : 1)
+  ), 0);
+
+  if (maxColumns > 0) {
+    worksheet["!cols"] = Array.from({ length: maxColumns }, (_, columnIndex) => {
+      const longest = normalizedRows.reduce((width, row) => {
+        const value = Array.isArray(row) ? row[columnIndex] : row;
+        return Math.max(width, String(value ?? "").length);
+      }, 10);
+      return { wch: Math.min(Math.max(longest + 2, 12), 56) };
+    });
+
+    if (normalizedRows.length > 1) {
+      worksheet["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: normalizedRows.length - 1, c: maxColumns - 1 },
+        }),
+      };
+    }
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sanitizeExcelSheetName(sheetName, "Popis"));
+  return XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+    compression: true,
+  });
 }
 
 function sanitizeZipPathSegment(value = "", fallback = "stavka") {
@@ -1571,10 +1616,10 @@ async function handleApiRequest(request, response, url) {
 
       const fileName = sanitizeGeneratedDocumentFileName(
         `mjerna-oprema-popis-${todayIso}`,
-        { fallback: "mjerna-oprema-popis", extension: "csv" },
+        { fallback: "mjerna-oprema-popis", extension: "xlsx" },
       );
-      sendBinary(response, 200, buildCsvBuffer(rows), {
-        contentType: "text/csv; charset=utf-8",
+      sendBinary(response, 200, buildMeasurementEquipmentListXlsxBuffer(rows), {
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         fileName,
       });
       return true;
