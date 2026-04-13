@@ -249,6 +249,39 @@ function parseJsonArray(value, fallback = []) {
   }
 }
 
+const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeExpiry: 30,
+  repeatEveryDays: 7,
+});
+
+function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min = 1, max = 365 } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeExpiry: normalizeMeasurementEquipmentNotificationDay(
+      source.leadDaysBeforeExpiry ?? source.leadDays,
+      fallback.leadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
 function cloneJsonValue(value) {
   if (value === undefined) {
     return undefined;
@@ -1239,6 +1272,21 @@ function mapMeasurementEquipmentCardTemplateEntry(row = {}) {
   };
 }
 
+function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const normalized = normalizeMeasurementEquipmentNotificationSettings(parseJsonObject(row.notification_rules_json));
+  return {
+    organizationId,
+    ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -2171,13 +2219,16 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [measurementEquipmentTemplateRows] = await connection.query(`
-    SELECT organization_id, card_template_json, created_at, updated_at
+    SELECT organization_id, card_template_json, notification_rules_json, created_at, updated_at
     FROM web_measurement_equipment_settings
     ORDER BY organization_id ASC
   `);
 
   const measurementEquipmentCardTemplates = measurementEquipmentTemplateRows
     .map((row) => mapMeasurementEquipmentCardTemplateEntry(row))
+    .filter(Boolean);
+  const measurementEquipmentNotificationSettings = measurementEquipmentTemplateRows
+    .map((row) => mapMeasurementEquipmentNotificationSettingsEntry(row))
     .filter(Boolean);
 
   const [safetyAuthorizationRows] = await connection.query(`
@@ -2254,6 +2305,7 @@ async function fetchSnapshotFromConnection(connection) {
     serviceCatalog,
     measurementEquipment,
     measurementEquipmentCardTemplates,
+    measurementEquipmentNotificationSettings,
     safetyAuthorizations,
     dashboardWidgets,
   };
@@ -2341,6 +2393,7 @@ export class InMemorySafetyRepository {
       serviceCatalog: [],
       measurementEquipment: [],
       measurementEquipmentCardTemplates: [],
+      measurementEquipmentNotificationSettings: [],
       safetyAuthorizations: [],
       dashboardWidgets: [],
     };
@@ -2484,6 +2537,9 @@ export class InMemorySafetyRepository {
       measurementEquipmentCardTemplates: this.snapshot.measurementEquipmentCardTemplates.map((item) => ({
         ...item,
         templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
+      })),
+      measurementEquipmentNotificationSettings: this.snapshot.measurementEquipmentNotificationSettings.map((item) => ({
+        ...item,
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
         ...item,
@@ -3246,6 +3302,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertMeasurementEquipmentNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija.");
+    }
+
+    const normalizedSettings = normalizeMeasurementEquipmentNotificationSettings(notificationSettings);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.measurementEquipmentNotificationSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.measurementEquipmentNotificationSettings[currentIndex];
+      this.snapshot.measurementEquipmentNotificationSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.measurementEquipmentNotificationSettings.push(nextEntry);
+    }
+
+    return this.snapshot.measurementEquipmentNotificationSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async updateMeasurementEquipmentItem(id, patch) {
     const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
 
@@ -3739,6 +3829,7 @@ export class MySqlSafetyRepository {
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
         card_template_json LONGTEXT NULL,
+        notification_rules_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_measurement_equipment_settings_org (organization_id)
@@ -3816,6 +3907,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entry_date", "DATE NULL AFTER approved_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "measurement_specs_json", "LONGTEXT NULL AFTER activity_items_json");
+    await ensureColumnExists(this.pool, "web_measurement_equipment_settings", "notification_rules_json", "LONGTEXT NULL AFTER card_template_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -5840,6 +5932,34 @@ export class MySqlSafetyRepository {
     } finally {
       connection.release();
     }
+  }
+
+  async upsertMeasurementEquipmentNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija.");
+    }
+
+    const normalizedSettings = normalizeMeasurementEquipmentNotificationSettings(notificationSettings);
+    await this.pool.query(
+      `
+        INSERT INTO web_measurement_equipment_settings
+          (organization_id, notification_rules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          notification_rules_json = VALUES(notification_rules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedSettings),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      ...normalizedSettings,
+    };
   }
 
   async updateMeasurementEquipmentItem(id, patch) {

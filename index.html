@@ -539,6 +539,12 @@
                 </svg>
                 <span id="topbar-shortcut-todo-count" class="topbar-shortcut-count" hidden>0</span>
               </button>
+              <button id="topbar-shortcut-settings" type="button" class="topbar-shortcut-button" aria-label="Settings">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 8.75a3.25 3.25 0 1 1 0 6.5 3.25 3.25 0 0 1 0-6.5Z"></path>
+                  <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8l-.2.2a2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-2 2h-.3a2 2 0 0 1-2-2v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8 0l-.2-.2a2 2 0 0 1 0-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1-2-2v-.3a2 2 0 0 1 2-2h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 0-2.8l.2-.2a2 2 0 0 1 2.8 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 2-2h.3a2 2 0 0 1 2 2v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a2 2 0 0 1 2 2v.3a2 2 0 0 1-2 2h-.2a1 1 0 0 0-.9.6Z"></path>
+                </svg>
+              </button>
             </div>
             <div class="notifications-menu">
               <button
@@ -2963,6 +2969,34 @@
                   </div>
                 </div>
                 <p class="helper-copy module-copy">Modul je spreman za cloud funkcije i daljnju razradu.</p>
+              </section>
+            </section>
+
+            <section id="settings-module" class="settings-module" hidden>
+              <section class="panel settings-notifications-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Settings</p>
+                    <h3>Send Notifications</h3>
+                  </div>
+                </div>
+                <p class="helper-copy module-copy">
+                  Definiraj kada se za mjernu opremu salje notifikacija prije isteka i svakih koliko dana se ponavlja dok oprema ne bude obnovljena.
+                </p>
+                <div class="form-grid settings-notification-grid">
+                  <label class="field">
+                    <span>Mjerenja: dana prije isteka</span>
+                    <input id="settings-measurement-lead-days" type="number" min="1" max="365" inputmode="numeric" />
+                  </label>
+                  <label class="field">
+                    <span>Ponavljaj svakih (dana)</span>
+                    <input id="settings-measurement-repeat-days" type="number" min="1" max="90" inputmode="numeric" />
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button id="settings-notifications-save" type="button" class="primary-button">Spremi postavke</button>
+                </div>
+                <p id="settings-notifications-feedback" class="form-error" aria-live="polite"></p>
               </section>
             </section>
 

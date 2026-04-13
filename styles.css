@@ -1828,6 +1828,28 @@ fieldset {
   font-weight: 600;
 }
 
+.settings-module {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-notifications-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.settings-notification-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .settings-notification-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .offers-module {
   display: grid;
   gap: 18px;

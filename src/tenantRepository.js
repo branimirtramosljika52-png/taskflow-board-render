@@ -1372,6 +1372,27 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         ? { ...templateEntry.templateDocument }
         : null;
     })(),
+    measurementEquipmentNotificationSettings: (() => {
+      const defaults = {
+        leadDaysBeforeExpiry: 30,
+        repeatEveryDays: 7,
+      };
+      const settingsEntry = (rawSnapshot.measurementEquipmentNotificationSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return defaults;
+      }
+
+      return {
+        leadDaysBeforeExpiry: Number.isFinite(Number(settingsEntry.leadDaysBeforeExpiry))
+          ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.leadDaysBeforeExpiry))))
+          : defaults.leadDaysBeforeExpiry,
+        repeatEveryDays: Number.isFinite(Number(settingsEntry.repeatEveryDays))
+          ? Math.max(1, Math.min(90, Math.round(Number(settingsEntry.repeatEveryDays))))
+          : defaults.repeatEveryDays,
+      };
+    })(),
     safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -1821,6 +1842,7 @@ export class MemoryTenantRepository {
     learningTests: [],
     serviceCatalog: [],
     measurementEquipment: [],
+    measurementEquipmentNotificationSettings: [],
     safetyAuthorizations: [],
     dashboardWidgets: [],
   }) {
@@ -2468,6 +2490,7 @@ export class MySqlTenantRepository {
     learningTests: [],
     serviceCatalog: [],
     measurementEquipment: [],
+    measurementEquipmentNotificationSettings: [],
     safetyAuthorizations: [],
     dashboardWidgets: [],
   }) {
@@ -2491,6 +2514,7 @@ export class MySqlTenantRepository {
         learningTests: [],
         serviceCatalog: [],
         measurementEquipment: [],
+        measurementEquipmentNotificationSettings: [],
         safetyAuthorizations: [],
         dashboardWidgets: [],
       };

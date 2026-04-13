@@ -164,6 +164,10 @@ const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
 const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
 const NOTIFICATIONS_RESOLVED_KEY_PREFIX = "s360-notifications-resolved:";
+const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeExpiry: 30,
+  repeatEveryDays: 7,
+});
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
   { value: "away", label: "Away" },
@@ -547,6 +551,9 @@ const state = {
   serviceCatalog: [],
   measurementEquipment: [],
   measurementEquipmentCardTemplate: null,
+  measurementEquipmentNotificationSettings: {
+    ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+  },
   safetyAuthorizations: [],
   dashboardWidgets: [],
   activeView: "selfdash",
@@ -1125,6 +1132,7 @@ const loginError = document.querySelector("#login-error");
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
+const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
 const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
 const notificationsTrigger = document.querySelector("#notifications-trigger");
@@ -1212,6 +1220,11 @@ const moduleViewDescription = document.querySelector("#module-view-description")
 const moduleViewChips = document.querySelector("#module-view-chips");
 const documentsModule = document.querySelector("#documents-module");
 const cloudModule = document.querySelector("#cloud-module");
+const settingsModule = document.querySelector("#settings-module");
+const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
+const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
+const settingsNotificationsSaveButton = document.querySelector("#settings-notifications-save");
+const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
 const documentsRnCount = document.querySelector("#documents-rn-count");
@@ -2679,6 +2692,38 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
+function normalizeNotificationDayValue(value, fallback = 1, { min = 1, max = 365 } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeExpiry: normalizeNotificationDayValue(
+      source.leadDaysBeforeExpiry ?? source.leadDays,
+      fallback.leadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeNotificationDayValue(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function getMeasurementEquipmentNotificationSettings() {
+  return normalizeMeasurementEquipmentNotificationSettings(state.measurementEquipmentNotificationSettings);
+}
+
 function canManageRenderedUser(user) {
   if (getIsSuperAdmin()) {
     return true;
@@ -2811,6 +2856,9 @@ function applySnapshot(payload) {
   state.serviceCatalog = payload.serviceCatalog ?? [];
   state.measurementEquipment = payload.measurementEquipment ?? [];
   state.measurementEquipmentCardTemplate = payload.measurementEquipmentCardTemplate ?? null;
+  state.measurementEquipmentNotificationSettings = normalizeMeasurementEquipmentNotificationSettings(
+    payload.measurementEquipmentNotificationSettings,
+  );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
@@ -4215,6 +4263,7 @@ function renderModuleView() {
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isDocumentsModule = state.activeModuleItem === "documents";
   const isCloudModule = state.activeModuleItem === "cloud";
+  const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
@@ -4268,6 +4317,10 @@ function renderModuleView() {
     cloudModule.hidden = !isCloudModule;
   }
 
+  if (settingsModule) {
+    settingsModule.hidden = !isSettingsModule;
+  }
+
   if (measurementEquipmentModule) {
     measurementEquipmentModule.hidden = !isMeasurementEquipmentModule;
   }
@@ -4310,6 +4363,10 @@ function renderModuleView() {
 
   if (isCloudModule) {
     // Cloud modul trenutno koristi statični prikaz.
+  }
+
+  if (isSettingsModule) {
+    renderSettingsModule();
   }
 
   if (isMeasurementEquipmentModule) {
@@ -7268,6 +7325,83 @@ function renderDocumentsExplorerTree(tree = { companies: [] }) {
   });
 
   documentsExplorerList.replaceChildren(...nodes);
+}
+
+function renderSettingsModule() {
+  if (!settingsModule) {
+    return;
+  }
+
+  const canManageSettings = getCanManageMasterData();
+  const notificationSettings = getMeasurementEquipmentNotificationSettings();
+  const leadDaysValue = String(notificationSettings.leadDaysBeforeExpiry);
+  const repeatDaysValue = String(notificationSettings.repeatEveryDays);
+
+  if (settingsMeasurementLeadDaysInput) {
+    if (document.activeElement !== settingsMeasurementLeadDaysInput) {
+      settingsMeasurementLeadDaysInput.value = leadDaysValue;
+    }
+    settingsMeasurementLeadDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsMeasurementRepeatDaysInput) {
+    if (document.activeElement !== settingsMeasurementRepeatDaysInput) {
+      settingsMeasurementRepeatDaysInput.value = repeatDaysValue;
+    }
+    settingsMeasurementRepeatDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsNotificationsSaveButton) {
+    settingsNotificationsSaveButton.disabled = !canManageSettings;
+    settingsNotificationsSaveButton.hidden = !canManageSettings;
+  }
+
+  if (settingsNotificationsFeedback) {
+    if (!canManageSettings) {
+      settingsNotificationsFeedback.textContent = "Samo admin moze mijenjati postavke slanja.";
+    } else if (settingsNotificationsFeedback.textContent === "Samo admin moze mijenjati postavke slanja.") {
+      settingsNotificationsFeedback.textContent = "";
+    }
+  }
+}
+
+async function saveMeasurementEquipmentNotificationSettings() {
+  if (!getCanManageMasterData()) {
+    if (settingsNotificationsFeedback) {
+      settingsNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
+    }
+    return;
+  }
+
+  const leadDays = normalizeNotificationDayValue(
+    settingsMeasurementLeadDaysInput?.value,
+    DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS.leadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const repeatEveryDays = normalizeNotificationDayValue(
+    settingsMeasurementRepeatDaysInput?.value,
+    DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+
+  if (settingsMeasurementLeadDaysInput) {
+    settingsMeasurementLeadDaysInput.value = String(leadDays);
+  }
+  if (settingsMeasurementRepeatDaysInput) {
+    settingsMeasurementRepeatDaysInput.value = String(repeatEveryDays);
+  }
+
+  const success = await runMutation(() => apiRequest("/measurement-equipment/notification-settings", {
+    method: "POST",
+    body: {
+      leadDaysBeforeExpiry: leadDays,
+      repeatEveryDays,
+    },
+  }), settingsNotificationsFeedback);
+
+  if (success && settingsNotificationsFeedback) {
+    settingsNotificationsFeedback.textContent = "Postavke su spremljene.";
+  }
 }
 
 function renderDocumentsModule() {
@@ -30804,7 +30938,45 @@ function buildReminderNotifications() {
 }
 
 function buildMeasurementEquipmentNotifications() {
-  const today = new Date().toISOString().slice(0, 10);
+  const notificationSettings = getMeasurementEquipmentNotificationSettings();
+  const leadDaysBeforeExpiry = notificationSettings.leadDaysBeforeExpiry;
+  const repeatEveryDays = notificationSettings.repeatEveryDays;
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    const deltaMs = targetDate.getTime() - todayDate.getTime();
+    return Math.round(deltaMs / (1000 * 60 * 60 * 24));
+  };
+
+  const shouldSend = (daysUntilDue) => {
+    if (!Number.isFinite(daysUntilDue)) {
+      return false;
+    }
+
+    if (daysUntilDue >= 0) {
+      if (daysUntilDue > leadDaysBeforeExpiry) {
+        return false;
+      }
+      if (daysUntilDue === 0 || daysUntilDue === leadDaysBeforeExpiry) {
+        return true;
+      }
+      return ((leadDaysBeforeExpiry - daysUntilDue) % repeatEveryDays) === 0;
+    }
+
+    const overdueDays = Math.abs(daysUntilDue);
+    if (overdueDays === 1) {
+      return true;
+    }
+    return (overdueDays % repeatEveryDays) === 0;
+  };
+
   return (state.measurementEquipment ?? [])
     .filter((item) => item?.requiresCalibration && item?.validUntil)
     .map((item) => {
@@ -30813,15 +30985,21 @@ function buildMeasurementEquipmentNotifications() {
         return null;
       }
 
+      const daysUntilDue = getDaysUntil(dueDate);
+      if (!shouldSend(daysUntilDue)) {
+        return null;
+      }
+
       let level = "info";
       let title = "Umjernica uskoro ističe";
-      if (dueDate < today) {
+      if (Number.isFinite(daysUntilDue) && daysUntilDue < 0) {
         level = "critical";
         title = "Umjernica je istekla";
-      } else if (isUpcomingIsoDate(dueDate, 30)) {
+      } else if (daysUntilDue === 0) {
         level = "warning";
-      } else {
-        return null;
+        title = "Umjernica istice danas";
+      } else if (Number.isFinite(daysUntilDue) && daysUntilDue > 0) {
+        level = "warning";
       }
 
       const context = [
@@ -45474,6 +45652,28 @@ topbarShortcutRemindersButton?.addEventListener("click", () => {
 
 topbarShortcutTodoButton?.addEventListener("click", () => {
   activateSidebarItem("todo", { expandSidebar: state.sidebarCollapsed });
+});
+
+topbarShortcutSettingsButton?.addEventListener("click", () => {
+  activateSidebarItem("settings", { expandSidebar: state.sidebarCollapsed });
+});
+
+settingsNotificationsSaveButton?.addEventListener("click", () => {
+  void saveMeasurementEquipmentNotificationSettings();
+});
+
+settingsMeasurementLeadDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveMeasurementEquipmentNotificationSettings();
+  }
+});
+
+settingsMeasurementRepeatDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveMeasurementEquipmentNotificationSettings();
+  }
 });
 
 notificationsTrigger?.addEventListener("click", (event) => {
