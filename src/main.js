@@ -1576,6 +1576,7 @@ let measurementEquipmentSpecDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let measurementEquipmentBulkExporting = false;
+let measurementEquipmentEditorChromeSyncTimer = 0;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
@@ -20227,10 +20228,21 @@ function updateMeasurementEquipmentSpecDraft(specId = "", patch = {}) {
     return { didAppendRow: false };
   }
 
-  measurementEquipmentSpecDrafts[index] = normalizeMeasurementEquipmentSpecDraftEntry({
-    ...measurementEquipmentSpecDrafts[index],
+  const currentEntry = measurementEquipmentSpecDrafts[index];
+  const nextEntry = normalizeMeasurementEquipmentSpecDraftEntry({
+    ...currentEntry,
     ...patch,
   });
+
+  if (
+    currentEntry.quantity === nextEntry.quantity
+    && currentEntry.range === nextEntry.range
+    && currentEntry.remark === nextEntry.remark
+  ) {
+    return { didAppendRow: false };
+  }
+
+  measurementEquipmentSpecDrafts[index] = nextEntry;
 
   const hasBlank = measurementEquipmentSpecDrafts.some((entry) => !(entry.quantity || entry.range || entry.remark));
   let didAppendRow = false;
@@ -22966,9 +22978,25 @@ function syncMeasurementEquipmentEditorChrome() {
   }
 }
 
+function scheduleMeasurementEquipmentEditorChromeSync(delayMs = 90) {
+  if (measurementEquipmentEditorChromeSyncTimer) {
+    window.clearTimeout(measurementEquipmentEditorChromeSyncTimer);
+  }
+
+  measurementEquipmentEditorChromeSyncTimer = window.setTimeout(() => {
+    measurementEquipmentEditorChromeSyncTimer = 0;
+    syncMeasurementEquipmentEditorChrome();
+  }, delayMs);
+}
+
 function resetMeasurementEquipmentForm() {
   if (!measurementEquipmentForm) {
     return;
+  }
+
+  if (measurementEquipmentEditorChromeSyncTimer) {
+    window.clearTimeout(measurementEquipmentEditorChromeSyncTimer);
+    measurementEquipmentEditorChromeSyncTimer = 0;
   }
 
   measurementEquipmentForm.reset();
@@ -23016,6 +23044,11 @@ function resetMeasurementEquipmentForm() {
 }
 
 function hydrateMeasurementEquipmentForm(item) {
+  if (measurementEquipmentEditorChromeSyncTimer) {
+    window.clearTimeout(measurementEquipmentEditorChromeSyncTimer);
+    measurementEquipmentEditorChromeSyncTimer = 0;
+  }
+
   state.activeView = "module";
   state.activeModuleItem = "measurement-equipment";
   renderActiveView();
@@ -43572,10 +43605,13 @@ measurementEquipmentDeleteButton?.addEventListener("click", () => {
 
 measurementEquipmentForm?.addEventListener("input", (event) => {
   const target = event.target instanceof HTMLElement ? event.target : null;
-  if (target?.closest(".measurement-equipment-activity-list")) {
+  if (
+    target?.closest(".measurement-equipment-activity-list")
+    || target?.closest("#measurement-equipment-specs-list")
+  ) {
     return;
   }
-  syncMeasurementEquipmentEditorChrome();
+  scheduleMeasurementEquipmentEditorChromeSync();
 });
 
 measurementEquipmentRequiresCalibrationInput?.addEventListener("change", () => {
