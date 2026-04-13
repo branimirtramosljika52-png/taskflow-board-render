@@ -156,6 +156,7 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
   { value: "name-asc", label: "Naziv A-Z" },
   { value: "name-desc", label: "Naziv Z-A" },
 ]);
+const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
@@ -1496,6 +1497,10 @@ const measurementEquipmentSideActivityEmpty = document.querySelector("#measureme
 const measurementEquipmentSideActivityLoading = document.querySelector("#measurement-equipment-side-activity-loading");
 const measurementEquipmentSideActivityError = document.querySelector("#measurement-equipment-side-activity-error");
 const measurementEquipmentSideActivityCount = document.querySelector("#measurement-equipment-side-activity-count");
+const measurementEquipmentSideActivityFilterInput = document.querySelector("#measurement-equipment-side-activity-filter");
+const measurementEquipmentSideActivitySearchInput = document.querySelector("#measurement-equipment-side-activity-search");
+const measurementEquipmentSideActivityCommentInput = document.querySelector("#measurement-equipment-side-activity-comment-input");
+const measurementEquipmentSideActivityCommentAddButton = document.querySelector("#measurement-equipment-side-activity-comment-add");
 const measurementEquipmentDocumentPreviewBackdrop = document.querySelector("#measurement-equipment-document-preview-backdrop");
 const measurementEquipmentDocumentPreviewPanel = document.querySelector("#measurement-equipment-document-preview-panel");
 const measurementEquipmentDocumentPreviewTitle = document.querySelector("#measurement-equipment-document-preview-title");
@@ -1590,6 +1595,7 @@ let learningTestPreviewSlideIndex = 0;
 let learningTestPreviewOpen = false;
 let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
+let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
@@ -22424,6 +22430,94 @@ function normalizeMeasurementEquipmentActivityTypeValue(value = "") {
     : "pregled";
 }
 
+function formatMeasurementEquipmentCommentNote(text = "") {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) {
+    return "";
+  }
+  return `${MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX} ${normalizedText}`.trim();
+}
+
+function extractMeasurementEquipmentCommentText(value = "") {
+  const note = String(value || "").trim();
+  if (!note) {
+    return "";
+  }
+  const normalizedPrefix = MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX.toLowerCase();
+  if (!note.toLowerCase().startsWith(normalizedPrefix)) {
+    return "";
+  }
+  return note.slice(MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX.length).trim();
+}
+
+function normalizeMeasurementEquipmentCommentTimestamp(value = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function createMeasurementEquipmentSideComment(entry = {}) {
+  const text = String(entry.text || "").trim() || extractMeasurementEquipmentCommentText(entry.note);
+  if (!text) {
+    return null;
+  }
+  const createdAt = normalizeMeasurementEquipmentCommentTimestamp(entry.createdAt || entry.updatedAt) || new Date().toISOString();
+  const updatedAt = normalizeMeasurementEquipmentCommentTimestamp(entry.updatedAt || entry.createdAt) || createdAt;
+  const performedOn = normalizeMeasurementEquipmentActivityDate(entry.performedOn || createdAt) || createdAt.slice(0, 10);
+  return {
+    id: String(entry.id || crypto.randomUUID()),
+    text,
+    author: String(entry.author || entry.performedBy || "").trim().slice(0, 180),
+    performedOn,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function splitMeasurementEquipmentActivityAndCommentEntries(items = []) {
+  const activities = [];
+  const comments = [];
+
+  (Array.isArray(items) ? items : []).forEach((entry) => {
+    const draft = createMeasurementEquipmentActivityDraft(entry, { defaultCompleted: true });
+    const comment = createMeasurementEquipmentSideComment({
+      id: entry?.id || draft.id,
+      note: entry?.note ?? draft.note,
+      performedBy: entry?.performedBy ?? draft.performedBy,
+      performedOn: entry?.performedOn ?? draft.performedOn,
+      createdAt: entry?.createdAt ?? draft.createdAt,
+      updatedAt: entry?.updatedAt ?? draft.updatedAt,
+    });
+
+    if (comment) {
+      comments.push(comment);
+      return;
+    }
+
+    const hasDraftData = Boolean(
+      draft.activityType
+      || draft.performedOn
+      || draft.performedBy
+      || draft.validUntil
+      || draft.calibrationPeriod
+      || draft.satisfies
+      || draft.note,
+    );
+
+    if (hasDraftData) {
+      activities.push(draft);
+    }
+  });
+
+  activities.sort(compareMeasurementEquipmentActivityDraftRecency);
+  comments.sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")));
+
+  return { activities, comments };
+}
+
 function normalizeMeasurementEquipmentSatisfiesValue(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "da") {
@@ -22494,10 +22588,22 @@ function createMeasurementEquipmentActivityDraft(
 }
 
 function setMeasurementEquipmentActivityDrafts(items = []) {
-  measurementEquipmentActivityDrafts = (Array.isArray(items) ? items : [])
-    .map((entry) => createMeasurementEquipmentActivityDraft(entry, { defaultCompleted: true }))
-    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note);
+  const split = splitMeasurementEquipmentActivityAndCommentEntries(items);
+  measurementEquipmentActivityDrafts = split.activities;
+  measurementEquipmentSideComments = split.comments;
   renderMeasurementEquipmentSideActivityPanel();
+}
+
+function resetMeasurementEquipmentSideActivityControls() {
+  if (measurementEquipmentSideActivityFilterInput) {
+    measurementEquipmentSideActivityFilterInput.value = "all";
+  }
+  if (measurementEquipmentSideActivitySearchInput) {
+    measurementEquipmentSideActivitySearchInput.value = "";
+  }
+  if (measurementEquipmentSideActivityCommentInput) {
+    measurementEquipmentSideActivityCommentInput.value = "";
+  }
 }
 
 function getMeasurementEquipmentActivityTypeLabel(value = "") {
@@ -22732,14 +22838,51 @@ function buildMeasurementEquipmentSideActivityEvents(item = null) {
     getMeasurementEquipmentActivityFeedRecords(),
   );
   const manualEvents = buildMeasurementEquipmentManualActivityEvents(measurementEquipmentActivityDrafts);
+  const commentEvents = buildMeasurementEquipmentCommentEvents(measurementEquipmentSideComments);
   const systemEvents = buildMeasurementEquipmentSystemEvents(item);
 
-  return [...usageEvents, ...manualEvents, ...systemEvents]
+  return [...usageEvents, ...manualEvents, ...commentEvents, ...systemEvents]
     .sort((left, right) => (
       Number(right.sortValue || 0) - Number(left.sortValue || 0)
       || String(right.timestamp || "").localeCompare(String(left.timestamp || ""))
       || String(right.id || "").localeCompare(String(left.id || ""))
     ));
+}
+
+function buildMeasurementEquipmentCommentEvents(comments = []) {
+  return (Array.isArray(comments) ? comments : []).map((entry) => {
+    const timestamp = String(entry.updatedAt || entry.createdAt || "").trim();
+    const detailParts = [];
+    if (entry.author) {
+      detailParts.push(`Autor: ${entry.author}`);
+    }
+    if (entry.text) {
+      detailParts.push(entry.text);
+    }
+    return {
+      id: `comment:${String(entry.id || crypto.randomUUID())}`,
+      kind: "comment",
+      title: "Komentar",
+      subtitle: formatMeasurementEquipmentTimelineDateLabel(entry.performedOn || timestamp),
+      details: detailParts.join(" · "),
+      timestamp,
+      sortValue: getMeasurementEquipmentTimelineSortValue(timestamp || entry.performedOn),
+    };
+  });
+}
+
+function matchesMeasurementEquipmentSideActivityFilter(event = {}, filter = "all") {
+  const normalized = String(filter || "all").trim().toLowerCase();
+  if (normalized === "all") {
+    return true;
+  }
+  if (normalized === "activity") {
+    return event.kind === "activity" || event.kind === "draft";
+  }
+  if (normalized === "comment") {
+    return event.kind === "comment";
+  }
+  return event.kind === normalized;
 }
 
 function renderMeasurementEquipmentSideActivityPanel() {
@@ -22756,8 +22899,35 @@ function renderMeasurementEquipmentSideActivityPanel() {
   const activeItem = getActiveMeasurementEquipmentItem();
   const feedState = state.measurementEquipmentActivityFeed || {};
   const events = buildMeasurementEquipmentSideActivityEvents(activeItem);
+  const selectedFilter = String(measurementEquipmentSideActivityFilterInput?.value || "all").trim().toLowerCase() || "all";
+  const query = String(measurementEquipmentSideActivitySearchInput?.value || "").trim().toLowerCase();
+  const visibleEvents = events.filter((event) => {
+    if (!matchesMeasurementEquipmentSideActivityFilter(event, selectedFilter)) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+    const haystack = [
+      event.title || "",
+      event.subtitle || "",
+      event.details || "",
+    ].join(" ").toLowerCase();
+    return haystack.includes(query);
+  });
 
-  measurementEquipmentSideActivityCount.textContent = String(events.length);
+  if (measurementEquipmentSideActivityCommentInput) {
+    measurementEquipmentSideActivityCommentInput.disabled = !activeItem;
+  }
+  if (measurementEquipmentSideActivityCommentAddButton) {
+    measurementEquipmentSideActivityCommentAddButton.disabled = !activeItem;
+  }
+
+  measurementEquipmentSideActivityCount.textContent = (
+    visibleEvents.length === events.length
+      ? String(events.length)
+      : `${visibleEvents.length}/${events.length}`
+  );
   measurementEquipmentSideActivityLoading.hidden = !feedState.loading;
 
   if (feedState.error) {
@@ -22768,22 +22938,25 @@ function renderMeasurementEquipmentSideActivityPanel() {
     measurementEquipmentSideActivityError.textContent = "";
   }
 
-  measurementEquipmentSideActivityEmpty.hidden = Boolean(activeItem) && events.length > 0;
+  measurementEquipmentSideActivityEmpty.hidden = Boolean(activeItem) && visibleEvents.length > 0;
   if (!activeItem) {
     measurementEquipmentSideActivityEmpty.hidden = false;
     measurementEquipmentSideActivityEmpty.textContent = "Otvori spremljenu opremu za pregled activity timeline-a.";
   } else if (events.length === 0) {
     measurementEquipmentSideActivityEmpty.hidden = false;
     measurementEquipmentSideActivityEmpty.textContent = "Još nema promjena ni korištenja ove opreme u zapisnicima.";
+  } else if (visibleEvents.length === 0) {
+    measurementEquipmentSideActivityEmpty.hidden = false;
+    measurementEquipmentSideActivityEmpty.textContent = "Nema rezultata za odabrani filter ili pretragu.";
   }
 
-  if (!activeItem || events.length === 0) {
+  if (!activeItem || visibleEvents.length === 0) {
     measurementEquipmentSideActivityList.replaceChildren();
     return;
   }
 
   measurementEquipmentSideActivityList.replaceChildren(
-    ...events.map((event) => {
+    ...visibleEvents.map((event) => {
       const itemNode = document.createElement("article");
       itemNode.className = "measurement-equipment-side-activity-item";
       itemNode.classList.add(`is-${event.kind}`);
@@ -22797,6 +22970,48 @@ function renderMeasurementEquipmentSideActivityPanel() {
       return itemNode;
     }),
   );
+}
+
+function addMeasurementEquipmentSideComment() {
+  const activeItem = getActiveMeasurementEquipmentItem();
+  if (!activeItem) {
+    if (measurementEquipmentError) {
+      measurementEquipmentError.textContent = "Prvo otvori spremljenu opremu pa dodaj komentar.";
+    }
+    return;
+  }
+
+  const text = String(measurementEquipmentSideActivityCommentInput?.value || "").trim();
+  if (!text) {
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  const comment = createMeasurementEquipmentSideComment({
+    id: crypto.randomUUID(),
+    text,
+    author: getUserDisplayLabel(state.user || {}),
+    performedOn: nowIso.slice(0, 10),
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  });
+
+  if (!comment) {
+    return;
+  }
+
+  measurementEquipmentSideComments = [comment, ...measurementEquipmentSideComments]
+    .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")));
+
+  if (measurementEquipmentSideActivityCommentInput) {
+    measurementEquipmentSideActivityCommentInput.value = "";
+    measurementEquipmentSideActivityCommentInput.focus({ preventScroll: true });
+  }
+  if (measurementEquipmentError) {
+    measurementEquipmentError.textContent = "";
+  }
+
+  renderMeasurementEquipmentSideActivityPanel();
 }
 
 async function ensureMeasurementEquipmentActivityFeedLoaded({ force = false } = {}) {
@@ -22849,7 +23064,7 @@ async function ensureMeasurementEquipmentActivityFeedLoaded({ force = false } = 
 }
 
 function buildMeasurementEquipmentActivityPayload() {
-  return [...measurementEquipmentActivityDrafts]
+  const activityItems = [...measurementEquipmentActivityDrafts]
     .map((entry) => {
       const activityType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
       const isCalibration = activityType === "umjeravanje";
@@ -22868,6 +23083,34 @@ function buildMeasurementEquipmentActivityPayload() {
       };
     })
     .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note)
+    .sort(compareMeasurementEquipmentActivityDraftRecency);
+
+  const commentItems = (Array.isArray(measurementEquipmentSideComments) ? measurementEquipmentSideComments : [])
+    .map((entry) => {
+      const text = String(entry.text || "").trim();
+      if (!text) {
+        return null;
+      }
+      const createdAt = String(entry.createdAt || new Date().toISOString());
+      const updatedAt = String(entry.updatedAt || createdAt || new Date().toISOString());
+      const performedOn = normalizeMeasurementEquipmentActivityDate(entry.performedOn || updatedAt || createdAt) || new Date().toISOString().slice(0, 10);
+      return {
+        id: String(entry.id || "").trim() || crypto.randomUUID(),
+        activityType: "servis",
+        completed: true,
+        performedOn,
+        performedBy: String(entry.author || "").trim().slice(0, 180),
+        calibrationPeriod: "",
+        validUntil: "",
+        satisfies: "",
+        note: formatMeasurementEquipmentCommentNote(text),
+        createdAt,
+        updatedAt,
+      };
+    })
+    .filter(Boolean);
+
+  return [...activityItems, ...commentItems]
     .sort(compareMeasurementEquipmentActivityDraftRecency);
 }
 
@@ -23396,6 +23639,7 @@ function resetMeasurementEquipmentForm() {
   if (measurementEquipmentError) {
     measurementEquipmentError.textContent = "";
   }
+  resetMeasurementEquipmentSideActivityControls();
   setMeasurementEquipmentDocumentDrafts([]);
   setMeasurementEquipmentActivityDrafts([]);
   setMeasurementEquipmentSpecDrafts([]);
@@ -23439,6 +23683,7 @@ function hydrateMeasurementEquipmentForm(item) {
   if (measurementEquipmentError) {
     measurementEquipmentError.textContent = "";
   }
+  resetMeasurementEquipmentSideActivityControls();
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   setMeasurementEquipmentActivityDrafts(item.activityItems ?? []);
   setMeasurementEquipmentSpecDrafts(item.measurementSpecs ?? []);
@@ -43957,6 +44202,25 @@ measurementEquipmentSortInput?.addEventListener("change", () => {
   renderMeasurementEquipmentModule();
 });
 
+measurementEquipmentSideActivityFilterInput?.addEventListener("change", () => {
+  renderMeasurementEquipmentSideActivityPanel();
+});
+
+measurementEquipmentSideActivitySearchInput?.addEventListener("input", () => {
+  renderMeasurementEquipmentSideActivityPanel();
+});
+
+measurementEquipmentSideActivityCommentAddButton?.addEventListener("click", () => {
+  addMeasurementEquipmentSideComment();
+});
+
+measurementEquipmentSideActivityCommentInput?.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    addMeasurementEquipmentSideComment();
+  }
+});
+
 measurementEquipmentOpenFormButton?.addEventListener("click", () => {
   resetMeasurementEquipmentForm();
   renderMeasurementEquipmentModule();
@@ -45241,6 +45505,7 @@ logoutButton?.addEventListener("click", () => {
     state.serviceCatalog = [];
     state.measurementEquipment = [];
     state.measurementEquipmentCardTemplate = null;
+    measurementEquipmentSideComments = [];
     state.measurementEquipmentActivityFeed = {
       organizationId: "",
       loaded: false,

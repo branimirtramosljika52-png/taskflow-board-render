@@ -15805,6 +15805,27 @@ body.is-vehicle-reservation-open {
   margin: 0;
 }
 
+.measurement-equipment-side-activity-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.measurement-equipment-side-activity-controls .field {
+  margin: 0;
+}
+
+.measurement-equipment-side-activity-controls .field span {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.measurement-equipment-side-activity-controls select,
+.measurement-equipment-side-activity-controls input {
+  min-height: 38px;
+  font-size: 0.86rem;
+}
+
 .measurement-equipment-side-activity-panel .work-order-activity-list {
   gap: 8px;
   overflow: visible;
@@ -15835,6 +15856,11 @@ body.is-vehicle-reservation-open {
   background: rgba(255, 248, 239, 0.96);
 }
 
+.measurement-equipment-side-activity-item.is-comment {
+  border-color: rgba(169, 92, 194, 0.36);
+  background: rgba(250, 242, 255, 0.97);
+}
+
 .measurement-equipment-side-activity-title {
   margin: 0;
   color: #242135;
@@ -15856,6 +15882,30 @@ body.is-vehicle-reservation-open {
   color: #5f6886;
   font-size: 0.74rem;
   line-height: 1.35;
+}
+
+.measurement-equipment-side-activity-comment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(173, 102, 203, 0.26);
+}
+
+.measurement-equipment-side-activity-comment .field {
+  margin: 0;
+}
+
+.measurement-equipment-side-activity-comment textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.measurement-equipment-side-activity-comment .primary-button {
+  justify-self: end;
+  min-height: 36px;
+  padding: 0 14px;
 }
 
 .document-template-editor-panel.is-workspace-open {

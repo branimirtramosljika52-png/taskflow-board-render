@@ -3955,10 +3955,44 @@
                       <p class="helper-copy module-copy">
                         Ovdje vidiš promjene na opremi i korištenje u zapisnicima.
                       </p>
+                      <div class="measurement-equipment-side-activity-controls">
+                        <label class="field">
+                          <span>Filter</span>
+                          <select id="measurement-equipment-side-activity-filter">
+                            <option value="all">Sve aktivnosti</option>
+                            <option value="usage">Korištenje u zapisnicima</option>
+                            <option value="activity">Aktivnosti opreme</option>
+                            <option value="comment">Komentari</option>
+                            <option value="system">Sistemske promjene</option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span>Pretraga</span>
+                          <input
+                            id="measurement-equipment-side-activity-search"
+                            type="search"
+                            placeholder="Pretraži activity..."
+                            autocomplete="off"
+                          />
+                        </label>
+                      </div>
                       <div id="measurement-equipment-side-activity-loading" class="work-order-activity-loading" hidden>Učitavanje aktivnosti...</div>
                       <p id="measurement-equipment-side-activity-empty" class="work-order-activity-empty">Otvori spremljenu opremu za pregled activity timeline-a.</p>
                       <p id="measurement-equipment-side-activity-error" class="form-error work-order-activity-error" hidden></p>
                       <div id="measurement-equipment-side-activity-list" class="work-order-activity-list"></div>
+                      <div class="measurement-equipment-side-activity-comment">
+                        <label class="field">
+                          <span>Komentar</span>
+                          <textarea
+                            id="measurement-equipment-side-activity-comment-input"
+                            rows="3"
+                            placeholder="Dodaj komentar za ovu opremu..."
+                          ></textarea>
+                        </label>
+                        <button id="measurement-equipment-side-activity-comment-add" type="button" class="primary-button">
+                          Dodaj komentar
+                        </button>
+                      </div>
                     </aside>
                   </div>
                 </div>
