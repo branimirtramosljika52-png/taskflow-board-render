@@ -1223,7 +1223,7 @@ const cloudModule = document.querySelector("#cloud-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
-const settingsNotificationsSaveButton = document.querySelector("#settings-notifications-save");
+const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
@@ -7354,9 +7354,9 @@ function renderSettingsModule() {
     settingsMeasurementRepeatDaysInput.disabled = !canManageSettings;
   }
 
-  if (settingsNotificationsSaveButton) {
-    settingsNotificationsSaveButton.disabled = !canManageSettings;
-    settingsNotificationsSaveButton.hidden = !canManageSettings;
+  if (settingsSaveAllButton) {
+    settingsSaveAllButton.disabled = !canManageSettings;
+    settingsSaveAllButton.hidden = !canManageSettings;
   }
 
   if (settingsNotificationsFeedback) {
@@ -7368,12 +7368,16 @@ function renderSettingsModule() {
   }
 }
 
-async function saveMeasurementEquipmentNotificationSettings() {
+async function saveMeasurementEquipmentNotificationSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Postavke su spremljene.";
+
   if (!getCanManageMasterData()) {
     if (settingsNotificationsFeedback) {
       settingsNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
     }
-    return;
+    return false;
   }
 
   const leadDays = normalizeNotificationDayValue(
@@ -7403,8 +7407,16 @@ async function saveMeasurementEquipmentNotificationSettings() {
   }), settingsNotificationsFeedback);
 
   if (success && settingsNotificationsFeedback) {
-    settingsNotificationsFeedback.textContent = "Postavke su spremljene.";
+    settingsNotificationsFeedback.textContent = successMessage;
   }
+
+  return success;
+}
+
+async function saveAllSettingsBlocks() {
+  return saveMeasurementEquipmentNotificationSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
 }
 
 function renderDocumentsModule() {
@@ -45661,21 +45673,21 @@ topbarShortcutSettingsButton?.addEventListener("click", () => {
   activateSidebarItem("settings", { expandSidebar: state.sidebarCollapsed });
 });
 
-settingsNotificationsSaveButton?.addEventListener("click", () => {
-  void saveMeasurementEquipmentNotificationSettings();
+settingsSaveAllButton?.addEventListener("click", () => {
+  void saveAllSettingsBlocks();
 });
 
 settingsMeasurementLeadDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    void saveMeasurementEquipmentNotificationSettings();
+    void saveAllSettingsBlocks();
   }
 });
 
 settingsMeasurementRepeatDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    void saveMeasurementEquipmentNotificationSettings();
+    void saveAllSettingsBlocks();
   }
 });
 

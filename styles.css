@@ -1841,7 +1841,7 @@ fieldset {
 
 .settings-notification-inline {
   display: grid;
-  grid-template-columns: minmax(160px, 210px) minmax(160px, 210px) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 210px) minmax(160px, 210px);
   gap: 10px;
   align-items: end;
 }
@@ -1854,15 +1854,20 @@ fieldset {
   height: 42px;
 }
 
-.settings-notification-inline .primary-button {
+.settings-module-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 2px 2px;
+}
+
+#settings-save-all {
   height: 36px;
   padding: 0 14px;
+  min-width: 132px;
+  width: auto;
   font-size: 0.86rem;
   white-space: nowrap;
-  align-self: end;
-  justify-self: end;
-  width: auto;
-  min-width: 132px;
 }
 
 .settings-notifications-panel .section-heading {
