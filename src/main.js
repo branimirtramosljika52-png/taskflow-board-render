@@ -20219,12 +20219,12 @@ function setMeasurementEquipmentSpecDrafts(items = []) {
 function updateMeasurementEquipmentSpecDraft(specId = "", patch = {}) {
   const targetId = String(specId || "").trim();
   if (!targetId) {
-    return;
+    return { didAppendRow: false };
   }
 
   const index = measurementEquipmentSpecDrafts.findIndex((entry) => String(entry.id) === targetId);
   if (index < 0) {
-    return;
+    return { didAppendRow: false };
   }
 
   measurementEquipmentSpecDrafts[index] = normalizeMeasurementEquipmentSpecDraftEntry({
@@ -20233,9 +20233,13 @@ function updateMeasurementEquipmentSpecDraft(specId = "", patch = {}) {
   });
 
   const hasBlank = measurementEquipmentSpecDrafts.some((entry) => !(entry.quantity || entry.range || entry.remark));
+  let didAppendRow = false;
   if (!hasBlank && measurementEquipmentSpecDrafts.length < 6) {
     measurementEquipmentSpecDrafts.push(normalizeMeasurementEquipmentSpecDraftEntry({}));
+    didAppendRow = true;
   }
+
+  return { didAppendRow };
 }
 
 function buildMeasurementEquipmentSpecPayload() {
@@ -22266,7 +22270,7 @@ function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
   });
 }
 
-function renderMeasurementEquipmentSpecs() {
+function renderMeasurementEquipmentSpecs({ focusState = null } = {}) {
   if (!measurementEquipmentSpecsList) {
     return;
   }
@@ -22292,12 +22296,21 @@ function renderMeasurementEquipmentSpecs() {
       label.textContent = labelText;
       const input = document.createElement("input");
       input.type = "text";
+      input.dataset.specFieldKey = fieldKey;
       input.maxLength = maxLength;
       input.placeholder = placeholder;
       input.value = String(entry[fieldKey] || "");
       input.addEventListener("input", () => {
-        updateMeasurementEquipmentSpecDraft(entry.id, { [fieldKey]: input.value || "" });
-        renderMeasurementEquipmentSpecs();
+        const restoreState = {
+          specId: entry.id,
+          fieldKey,
+          selectionStart: input.selectionStart,
+          selectionEnd: input.selectionEnd,
+        };
+        const { didAppendRow } = updateMeasurementEquipmentSpecDraft(entry.id, { [fieldKey]: input.value || "" });
+        if (didAppendRow) {
+          renderMeasurementEquipmentSpecs({ focusState: restoreState });
+        }
       });
       field.append(label, input);
       return field;
@@ -22313,6 +22326,29 @@ function renderMeasurementEquipmentSpecs() {
   });
 
   measurementEquipmentSpecsList.replaceChildren(...rows);
+
+  if (!focusState || !focusState.specId || !focusState.fieldKey) {
+    return;
+  }
+
+  const targetInput = measurementEquipmentSpecsList
+    .querySelector(
+      `[data-spec-id="${String(focusState.specId)}"] input[data-spec-field-key="${String(focusState.fieldKey)}"]`,
+    );
+
+  if (!(targetInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  targetInput.focus();
+
+  const selectionStart = Number.isInteger(focusState.selectionStart)
+    ? Math.max(0, focusState.selectionStart)
+    : targetInput.value.length;
+  const selectionEnd = Number.isInteger(focusState.selectionEnd)
+    ? Math.max(selectionStart, focusState.selectionEnd)
+    : selectionStart;
+  targetInput.setSelectionRange(selectionStart, selectionEnd);
 }
 
 function normalizeMeasurementEquipmentActivityDate(value = "") {
