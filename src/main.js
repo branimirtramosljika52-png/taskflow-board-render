@@ -1455,6 +1455,7 @@ const measurementEquipmentDocumentsBody = document.querySelector("#measurement-e
 const measurementEquipmentDocumentsList = document.querySelector("#measurement-equipment-documents-list");
 const measurementEquipmentCardTemplateInput = document.querySelector("#measurement-equipment-card-template-input");
 const measurementEquipmentCardTemplateUploadButton = document.querySelector("#measurement-equipment-card-template-upload");
+const measurementEquipmentCardExportPlaceholdersWordButton = document.querySelector("#measurement-equipment-card-export-placeholders-word");
 const measurementEquipmentCardExportWordButton = document.querySelector("#measurement-equipment-card-export-word");
 const measurementEquipmentCardExportPdfButton = document.querySelector("#measurement-equipment-card-export-pdf");
 const measurementEquipmentExportExcelButton = document.querySelector("#measurement-equipment-export-excel");
@@ -13972,6 +13973,32 @@ const MEASUREMENT_EQUIPMENT_ACTIVITY_DOCUMENT_CATEGORY_BY_TYPE = Object.freeze({
   pregled: "karton_uređaja",
 });
 
+const MEASUREMENT_EQUIPMENT_CARD_PLACEHOLDER_BASE_DEFINITIONS = Object.freeze([
+  { key: "NAZIV_UREDJAJA", label: "Naziv uređaja" },
+  { key: "PROIZVODAC", label: "Proizvođač" },
+  { key: "TIP_MODEL", label: "Tip / model" },
+  { key: "OZNAKA_UREDAJA", label: "Oznaka uređaja" },
+  { key: "SERIJSKI_BROJ", label: "Serijski broj" },
+  { key: "INV_BROJ", label: "Inventarni broj" },
+  { key: "MJERNU_OPREMU_UNIO", label: "Mjernu opremu unio" },
+  { key: "ODOBRIO", label: "Odobrio" },
+  { key: "DATUM_UNOSA", label: "Datum unosa" },
+  { key: "UMJERAVA_SE", label: "Umjerava se (DA/NE)" },
+  { key: "DATUM_UMJERAVANJA", label: "Datum umjeravanja" },
+  { key: "PERIODIKA_UMJERAVANJA", label: "Periodika umjeravanja (mjeseci)" },
+  { key: "VRIJEDI_DO", label: "Vrijedi do" },
+  { key: "ZAPISNICI", label: "Povezani zapisnici / predlošci" },
+  { key: "AKTIVNOSTI", label: "Sve aktivnosti (jedna ispod druge)" },
+  { key: "AKTIVNOSTI_UMJERAVANJE", label: "Aktivnosti umjeravanja (max 6)" },
+  { key: "AKTIVNOSTI_PREGLED", label: "Aktivnosti pregleda (max 6)" },
+  { key: "AKTIVNOSTI_SERVIS", label: "Aktivnosti servisa (max 6)" },
+  { key: "DOKUMENTI", label: "Dokumenti uređaja (jedan ispod drugog)" },
+  { key: "MJERNE_STAVKE", label: "Mjerne stavke (jedna ispod druge)" },
+  { key: "NAPOMENA", label: "Napomena uređaja" },
+  { key: "DATUM_GENERIRANJA", label: "Datum generiranja dokumenta" },
+  { key: "DANAS", label: "Današnji datum" },
+]);
+
 const USER_ELECTRICAL_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "", label: "Odaberi vrstu dokumenta" },
   { value: "dokaz_ispitivac", label: "Dokaz ispitivača" },
@@ -20194,6 +20221,45 @@ function buildMeasurementEquipmentExportDocumentLines() {
     .filter(Boolean);
 }
 
+function getMeasurementEquipmentCardPlaceholderDefinitions() {
+  const definitions = [...MEASUREMENT_EQUIPMENT_CARD_PLACEHOLDER_BASE_DEFINITIONS];
+  for (let index = 1; index <= 6; index += 1) {
+    definitions.push(
+      { key: `MJERNA_VELICINA_${index}`, label: `Mjerna veličina ${index}` },
+      { key: `RASPON_${index}`, label: `Raspon ${index}` },
+      { key: `OPASKA_${index}`, label: `Opaska ${index}` },
+    );
+  }
+  return definitions;
+}
+
+function buildMeasurementEquipmentPlaceholderWordMarkup() {
+  const rows = getMeasurementEquipmentCardPlaceholderDefinitions()
+    .map((entry) => `
+      <tr>
+        <td>{{${escapeHtml(entry.key)}}}</td>
+        <td>${escapeHtml(entry.label)}</td>
+      </tr>
+    `)
+    .join("");
+
+  return `
+    <div class="cover">
+      <h1>Karton opreme · Placeholderi</h1>
+      <p>Kopiraj točan token (s vitičastim zagradama) u svoj .docx/.dotx predložak.</p>
+      <table class="placeholder-table">
+        <thead>
+          <tr>
+            <th>Placeholder</th>
+            <th>Značenje</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function buildMeasurementEquipmentExportPlaceholders() {
   const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
   const linkedTemplateTitles = getTemplateTitlesByIds(getMeasurementEquipmentTemplateSelectionIds());
@@ -20455,6 +20521,7 @@ function syncMeasurementEquipmentExportActionControls() {
 
 function syncMeasurementEquipmentCardTemplateControls() {
   const templateDocument = getMeasurementEquipmentCardTemplateDocument();
+  const isBusy = measurementEquipmentCardExporting || measurementEquipmentBulkExporting;
   if (measurementEquipmentCardTemplateMeta) {
     measurementEquipmentCardTemplateMeta.textContent = templateDocument?.fileName
       ? `Template: ${templateDocument.fileName}${templateDocument.updatedAt ? ` · ažurirano ${formatCompactDateTime(templateDocument.updatedAt)}` : ""}`
@@ -20467,6 +20534,9 @@ function syncMeasurementEquipmentCardTemplateControls() {
   }
   if (measurementEquipmentCardExportPdfButton) {
     measurementEquipmentCardExportPdfButton.disabled = isDisabled;
+  }
+  if (measurementEquipmentCardExportPlaceholdersWordButton) {
+    measurementEquipmentCardExportPlaceholdersWordButton.disabled = isBusy;
   }
   syncMeasurementEquipmentExportActionControls();
 }
@@ -20538,6 +20608,14 @@ async function exportMeasurementEquipmentCardDocument(format = "word") {
     measurementEquipmentCardExporting = false;
     syncMeasurementEquipmentCardTemplateControls();
   }
+}
+
+function exportMeasurementEquipmentPlaceholderWord() {
+  const fallbackName = `karton-opreme-placeholderi-${new Date().toISOString().slice(0, 10)}.doc`;
+  triggerBlobDownload(
+    createWordHtmlBlob("Karton opreme · Placeholderi", buildMeasurementEquipmentPlaceholderWordMarkup()),
+    fallbackName,
+  );
 }
 
 async function exportMeasurementEquipmentListExcel() {
@@ -43319,6 +43397,12 @@ measurementEquipmentCardTemplateInput?.addEventListener("change", () => {
 
 measurementEquipmentCardExportWordButton?.addEventListener("click", () => {
   void runMutation(() => exportMeasurementEquipmentCardDocument("word"), measurementEquipmentError);
+});
+
+measurementEquipmentCardExportPlaceholdersWordButton?.addEventListener("click", () => {
+  void runMutation(async () => {
+    exportMeasurementEquipmentPlaceholderWord();
+  }, measurementEquipmentError);
 });
 
 measurementEquipmentCardExportPdfButton?.addEventListener("click", () => {

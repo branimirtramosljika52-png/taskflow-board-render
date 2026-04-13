@@ -3674,6 +3674,22 @@
                         </svg>
                       </button>
                       <button
+                        id="measurement-equipment-card-export-placeholders-word"
+                        type="button"
+                        class="ghost-button measurement-equipment-export-action-button"
+                        title="Preuzmi placeholdere (Word)"
+                        aria-label="Preuzmi placeholdere (Word)"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+                          <path d="M14 2v5h5" />
+                          <path d="M9 11h6" />
+                          <path d="M9 15h6" />
+                          <path d="M10 8h.01" />
+                          <path d="M13 8h.01" />
+                        </svg>
+                      </button>
+                      <button
                         id="measurement-equipment-card-export-word"
                         type="button"
                         class="ghost-button measurement-equipment-export-action-button"
@@ -3735,23 +3751,7 @@
                     Učitaj .docx/.dotx karton template i koristi placeholdere za automatsko popunjavanje.
                   </p>
                   <p class="helper-copy module-copy measurement-equipment-export-placeholders" hidden>
-                    Placeholderi:
-                    <code>{{NAZIV_UREDJAJA}}</code>,
-                    <code>{{PROIZVODAC}}</code>,
-                    <code>{{TIP_MODEL}}</code>,
-                    <code>{{SERIJSKI_BROJ}}</code>,
-                    <code>{{INV_BROJ}}</code>,
-                    <code>{{OZNAKA_UREDAJA}}</code>,
-                    <code>{{DATUM_UMJERAVANJA}}</code>,
-                    <code>{{VRIJEDI_DO}}</code>,
-                    <code>{{AKTIVNOSTI_UMJERAVANJE}}</code>,
-                    <code>{{AKTIVNOSTI_PREGLED}}</code>,
-                    <code>{{AKTIVNOSTI_SERVIS}}</code>,
-                    <code>{{DOKUMENTI}}</code>,
-                    <code>{{MJERNE_STAVKE}}</code>,
-                    <code>{{MJERNA_VELICINA_1}}</code>…<code>{{MJERNA_VELICINA_6}}</code>,
-                    <code>{{RASPON_1}}</code>…<code>{{RASPON_6}}</code>,
-                    <code>{{OPASKA_1}}</code>…<code>{{OPASKA_6}}</code>
+                    Placeholdere preuzmi kroz ikonu "Preuzmi placeholdere (Word)".
                   </p>
                 </section>
               </section>
@@ -4616,6 +4616,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260411d"></script>
+    <script type="module" src="/src/main.js?v=20260413a"></script>
   </body>
 </html>
