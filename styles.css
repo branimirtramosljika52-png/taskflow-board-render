@@ -16504,13 +16504,31 @@ body.is-measurement-equipment-document-preview-open {
   justify-content: flex-end;
 }
 
+.measurement-equipment-export-block--global .document-template-reference-actions > button.measurement-equipment-export-action-button {
+  flex: 0 0 auto;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.measurement-equipment-export-action-button svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 .measurement-equipment-export-block .ghost-button[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .measurement-equipment-export-placeholders {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   gap: 6px 8px;
   align-items: center;
