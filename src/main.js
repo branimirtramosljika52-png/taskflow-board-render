@@ -150,6 +150,12 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
   "OPISRADOVA",
   "RADILOSE",
 ]);
+const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
+  { value: "due-asc", label: "Rok umjeravanja (najbliži)" },
+  { value: "due-desc", label: "Rok umjeravanja (najdalji)" },
+  { value: "name-asc", label: "Naziv A-Z" },
+  { value: "name-desc", label: "Naziv Z-A" },
+]);
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
@@ -586,7 +592,7 @@ const state = {
   },
   measurementEquipmentFilters: {
     query: "",
-    kind: "all",
+    sort: "due-asc",
   },
   safetyAuthorizationFilters: {
     query: "",
@@ -1414,7 +1420,7 @@ const measurementEquipmentCalibrationCount = document.querySelector("#measuremen
 const measurementEquipmentExpiringCount = document.querySelector("#measurement-equipment-expiring-count");
 const measurementEquipmentFilesCount = document.querySelector("#measurement-equipment-files-count");
 const measurementEquipmentSearchInput = document.querySelector("#measurement-equipment-search");
-const measurementEquipmentFilterKindInput = document.querySelector("#measurement-equipment-filter-kind");
+const measurementEquipmentSortInput = document.querySelector("#measurement-equipment-sort");
 const measurementEquipmentHelper = document.querySelector("#measurement-equipment-helper");
 const measurementEquipmentList = document.querySelector("#measurement-equipment-list");
 const measurementEquipmentEmpty = document.querySelector("#measurement-equipment-empty");
@@ -23092,6 +23098,69 @@ function hydrateMeasurementEquipmentForm(item) {
   });
 }
 
+function getMeasurementEquipmentComparableLabel(item) {
+  return `${item?.name || ""} ${item?.deviceCode || ""} ${item?.serialNumber || ""} ${item?.inventoryNumber || ""}`.trim();
+}
+
+function compareMeasurementEquipmentByName(left, right, { direction = "asc" } = {}) {
+  const result = getMeasurementEquipmentComparableLabel(left).localeCompare(
+    getMeasurementEquipmentComparableLabel(right),
+    "hr",
+    { sensitivity: "base", numeric: true },
+  );
+  return direction === "desc" ? result * -1 : result;
+}
+
+function compareMeasurementEquipmentByDueDate(left, right, { direction = "asc" } = {}) {
+  const leftDueDate = String(left?.validUntil || "");
+  const rightDueDate = String(right?.validUntil || "");
+
+  if (leftDueDate && rightDueDate && leftDueDate !== rightDueDate) {
+    const result = leftDueDate.localeCompare(rightDueDate);
+    return direction === "desc" ? result * -1 : result;
+  }
+
+  if (leftDueDate && !rightDueDate) {
+    return -1;
+  }
+
+  if (!leftDueDate && rightDueDate) {
+    return 1;
+  }
+
+  return compareMeasurementEquipmentByName(left, right, { direction: "asc" });
+}
+
+function sortMeasurementEquipmentItemsForList(items, mode = "due-asc") {
+  const sorted = [...(items ?? [])];
+
+  if (mode === "name-asc") {
+    return sorted.sort((left, right) => compareMeasurementEquipmentByName(left, right, { direction: "asc" }));
+  }
+
+  if (mode === "name-desc") {
+    return sorted.sort((left, right) => compareMeasurementEquipmentByName(left, right, { direction: "desc" }));
+  }
+
+  if (mode === "due-desc") {
+    return sorted.sort((left, right) => {
+      const dueComparison = compareMeasurementEquipmentByDueDate(left, right, { direction: "desc" });
+      if (dueComparison !== 0) {
+        return dueComparison;
+      }
+      return compareMeasurementEquipmentByName(left, right, { direction: "desc" });
+    });
+  }
+
+  return sorted.sort((left, right) => {
+    const dueComparison = compareMeasurementEquipmentByDueDate(left, right, { direction: "asc" });
+    if (dueComparison !== 0) {
+      return dueComparison;
+    }
+    return compareMeasurementEquipmentByName(left, right, { direction: "asc" });
+  });
+}
+
 function renderMeasurementEquipmentModule() {
   if (!measurementEquipmentModule || !measurementEquipmentList || !measurementEquipmentEmpty) {
     return;
@@ -23100,15 +23169,15 @@ function renderMeasurementEquipmentModule() {
   const canManageMasterData = getCanManageMasterData();
   const filters = {
     query: measurementEquipmentSearchInput?.value?.trim() || state.measurementEquipmentFilters.query || "",
-    kind: measurementEquipmentFilterKindInput?.value || state.measurementEquipmentFilters.kind || "all",
+    sort: measurementEquipmentSortInput?.value || state.measurementEquipmentFilters.sort || "due-asc",
   };
   state.measurementEquipmentFilters = filters;
 
-  const allItems = sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
-  const visibleItems = sortMeasurementEquipmentItems(filterMeasurementEquipmentItems(
-    (state.measurementEquipment ?? []).filter((item) => filters.kind === "all" || item.equipmentKind === filters.kind),
-    { query: filters.query },
-  ));
+  const allItems = [...(state.measurementEquipment ?? [])];
+  const visibleItems = sortMeasurementEquipmentItemsForList(
+    filterMeasurementEquipmentItems(state.measurementEquipment ?? [], { query: filters.query }),
+    filters.sort,
+  );
 
   if (measurementEquipmentOpenFormButton) {
     measurementEquipmentOpenFormButton.hidden = !canManageMasterData;
@@ -32901,6 +32970,9 @@ function renderSharedOptions() {
   if (measurementEquipmentSearchInput && measurementEquipmentSearchInput.value !== state.measurementEquipmentFilters.query) {
     measurementEquipmentSearchInput.value = state.measurementEquipmentFilters.query;
   }
+  if (measurementEquipmentSortInput && measurementEquipmentSortInput.value !== state.measurementEquipmentFilters.sort) {
+    measurementEquipmentSortInput.value = state.measurementEquipmentFilters.sort;
+  }
   if (safetyAuthorizationSearchInput && safetyAuthorizationSearchInput.value !== state.safetyAuthorizationFilters.query) {
     safetyAuthorizationSearchInput.value = state.safetyAuthorizationFilters.query;
   }
@@ -32994,11 +33066,12 @@ function renderSharedOptions() {
       measurementEquipmentDeviceCodeInput.value || "",
     );
   }
-  if (measurementEquipmentFilterKindInput) {
-    replaceSelectOptions(measurementEquipmentFilterKindInput, [
-      { value: "all", label: "Sva oprema" },
-      ...MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
-    ], state.measurementEquipmentFilters.kind || "all");
+  if (measurementEquipmentSortInput) {
+    replaceSelectOptions(
+      measurementEquipmentSortInput,
+      MEASUREMENT_EQUIPMENT_SORT_OPTIONS,
+      state.measurementEquipmentFilters.sort || "due-asc",
+    );
   }
   if (documentTemplateTypeInput) {
     replaceSelectOptions(documentTemplateTypeInput, DOCUMENT_TEMPLATE_TYPE_OPTIONS, documentTemplateTypeInput.value || "Zapisnik");
@@ -43517,8 +43590,8 @@ measurementEquipmentSearchInput?.addEventListener("input", () => {
   renderMeasurementEquipmentModule();
 });
 
-measurementEquipmentFilterKindInput?.addEventListener("change", () => {
-  state.measurementEquipmentFilters.kind = measurementEquipmentFilterKindInput.value || "all";
+measurementEquipmentSortInput?.addEventListener("change", () => {
+  state.measurementEquipmentFilters.sort = measurementEquipmentSortInput.value || "due-asc";
   renderMeasurementEquipmentModule();
 });
 
