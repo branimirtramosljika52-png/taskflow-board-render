@@ -1841,7 +1841,7 @@ fieldset {
 
 .settings-notification-inline {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) auto;
+  grid-template-columns: minmax(160px, 210px) minmax(160px, 210px) minmax(0, 1fr);
   gap: 10px;
   align-items: end;
 }
@@ -1855,10 +1855,14 @@ fieldset {
 }
 
 .settings-notification-inline .primary-button {
-  height: 42px;
-  padding: 0 16px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 0.86rem;
   white-space: nowrap;
   align-self: end;
+  justify-self: end;
+  width: auto;
+  min-width: 132px;
 }
 
 .settings-notifications-panel .section-heading {
