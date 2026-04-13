@@ -212,6 +212,7 @@ const DASHBOARD_WIDGET_TEMPLATES = [
 ];
 const DASHBOARD_GRID_GAP_PX = 14;
 let dashboardWidgetLayoutInteraction = null;
+let dashboardWidgetDropPreviewElement = null;
 let workOrderLeafletMap = null;
 let workOrderLeafletLayer = null;
 let workOrderLeafletClusterLayer = null;
@@ -1113,6 +1114,8 @@ let measurementColumnCounter = 0;
 let measurementComputedRefreshTimerId = 0;
 let userPresenceMenuOpen = false;
 let notificationsMenuOpen = false;
+let remindersShortcutMenuOpen = false;
+let todoShortcutMenuOpen = false;
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
@@ -1135,6 +1138,16 @@ const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo")
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
 const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
+const topbarRemindersPanel = document.querySelector("#topbar-reminders-panel");
+const topbarRemindersPanelMeta = document.querySelector("#topbar-reminders-panel-meta");
+const topbarRemindersPanelList = document.querySelector("#topbar-reminders-panel-list");
+const topbarRemindersPanelEmpty = document.querySelector("#topbar-reminders-panel-empty");
+const topbarRemindersOpenAllButton = document.querySelector("#topbar-reminders-open-all");
+const topbarTodoPanel = document.querySelector("#topbar-todo-panel");
+const topbarTodoPanelMeta = document.querySelector("#topbar-todo-panel-meta");
+const topbarTodoPanelList = document.querySelector("#topbar-todo-panel-list");
+const topbarTodoPanelEmpty = document.querySelector("#topbar-todo-panel-empty");
+const topbarTodoOpenAllButton = document.querySelector("#topbar-todo-open-all");
 const notificationsTrigger = document.querySelector("#notifications-trigger");
 const notificationsTriggerCount = document.querySelector("#notifications-trigger-count");
 const notificationsPanel = document.querySelector("#notifications-panel");
@@ -3486,6 +3499,8 @@ function setUserMenuOpen(isOpen) {
 
   if (userMenuOpen) {
     setNotificationsMenuOpen(false);
+    setRemindersShortcutMenuOpen(false);
+    setTodoShortcutMenuOpen(false);
   }
 
   if (!userMenuOpen) {
@@ -5848,7 +5863,45 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
   }
 }
 
-function setNotificationsMenuOpen(isOpen) {
+function setRemindersShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
+  remindersShortcutMenuOpen = Boolean(isOpen && state.user);
+
+  if (topbarRemindersPanel) {
+    topbarRemindersPanel.hidden = !remindersShortcutMenuOpen;
+  }
+
+  if (topbarShortcutRemindersButton) {
+    topbarShortcutRemindersButton.setAttribute("aria-expanded", remindersShortcutMenuOpen ? "true" : "false");
+    topbarShortcutRemindersButton.classList.toggle("is-open", remindersShortcutMenuOpen);
+  }
+
+  if (remindersShortcutMenuOpen && closeOthers) {
+    setTodoShortcutMenuOpen(false, { closeOthers: false });
+    setNotificationsMenuOpen(false, { closeOthers: false });
+    setUserMenuOpen(false);
+  }
+}
+
+function setTodoShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
+  todoShortcutMenuOpen = Boolean(isOpen && state.user);
+
+  if (topbarTodoPanel) {
+    topbarTodoPanel.hidden = !todoShortcutMenuOpen;
+  }
+
+  if (topbarShortcutTodoButton) {
+    topbarShortcutTodoButton.setAttribute("aria-expanded", todoShortcutMenuOpen ? "true" : "false");
+    topbarShortcutTodoButton.classList.toggle("is-open", todoShortcutMenuOpen);
+  }
+
+  if (todoShortcutMenuOpen && closeOthers) {
+    setRemindersShortcutMenuOpen(false, { closeOthers: false });
+    setNotificationsMenuOpen(false, { closeOthers: false });
+    setUserMenuOpen(false);
+  }
+}
+
+function setNotificationsMenuOpen(isOpen, { closeOthers = true } = {}) {
   notificationsMenuOpen = Boolean(isOpen && state.user);
 
   if (notificationsPanel) {
@@ -5858,7 +5911,9 @@ function setNotificationsMenuOpen(isOpen) {
   notificationsTrigger?.setAttribute("aria-expanded", notificationsMenuOpen ? "true" : "false");
   notificationsTrigger?.classList.toggle("is-open", notificationsMenuOpen);
 
-  if (notificationsMenuOpen) {
+  if (notificationsMenuOpen && closeOthers) {
+    setRemindersShortcutMenuOpen(false, { closeOthers: false });
+    setTodoShortcutMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
 }
@@ -28525,6 +28580,8 @@ function renderAuthState() {
   }
 
   setNotificationsMenuOpen(false);
+  setRemindersShortcutMenuOpen(false);
+  setTodoShortcutMenuOpen(false);
   setUserMenuOpen(false);
 }
 
@@ -30404,6 +30461,73 @@ function getDashboardGridMetrics() {
   };
 }
 
+function getDashboardLayoutMaxRow(widgets = getDashboardWidgets()) {
+  return widgets.reduce((maxRow, widget) => {
+    const rowStart = Math.max(1, Number(widget?.gridRow ?? 1) || 1);
+    const rowHeight = clampDashboardWidgetHeight(widget?.gridHeight ?? 3);
+    return Math.max(maxRow, rowStart + rowHeight - 1);
+  }, 1);
+}
+
+function ensureDashboardWidgetDropPreview() {
+  if (!dashboardWidgetGrid) {
+    return null;
+  }
+
+  if (!dashboardWidgetDropPreviewElement || !dashboardWidgetDropPreviewElement.isConnected) {
+    dashboardWidgetDropPreviewElement = document.createElement("div");
+    dashboardWidgetDropPreviewElement.className = "dashboard-widget-drop-preview";
+    dashboardWidgetDropPreviewElement.setAttribute("aria-hidden", "true");
+    dashboardWidgetGrid.append(dashboardWidgetDropPreviewElement);
+  }
+
+  return dashboardWidgetDropPreviewElement;
+}
+
+function renderDashboardWidgetDropPreview({
+  gridColumn = 1,
+  gridRow = 1,
+  gridWidth = 4,
+  gridHeight = 3,
+  metrics = getDashboardGridMetrics(),
+} = {}) {
+  if (!metrics) {
+    return;
+  }
+
+  const preview = ensureDashboardWidgetDropPreview();
+  if (!preview) {
+    return;
+  }
+
+  const normalizedWidth = clampDashboardWidgetWidth(gridWidth);
+  const normalizedHeight = clampDashboardWidgetHeight(gridHeight);
+  const clampedColumn = Math.max(1, Math.min(
+    Math.max(1, metrics.columns - normalizedWidth + 1),
+    Number(gridColumn) || 1,
+  ));
+  const clampedRow = Math.max(1, Number(gridRow) || 1);
+  const widthPx = (metrics.columnWidth * normalizedWidth) + (metrics.gap * Math.max(0, normalizedWidth - 1));
+  const heightPx = (metrics.rowHeight * normalizedHeight) + (metrics.gap * Math.max(0, normalizedHeight - 1));
+  const leftPx = (clampedColumn - 1) * metrics.stepX;
+  const topPx = (clampedRow - 1) * metrics.stepY;
+
+  preview.style.left = `${leftPx}px`;
+  preview.style.top = `${topPx}px`;
+  preview.style.width = `${widthPx}px`;
+  preview.style.height = `${heightPx}px`;
+  preview.hidden = false;
+}
+
+function clearDashboardWidgetDropPreview() {
+  if (!dashboardWidgetDropPreviewElement) {
+    return;
+  }
+
+  dashboardWidgetDropPreviewElement.remove();
+  dashboardWidgetDropPreviewElement = null;
+}
+
 function applyDashboardWidgetCardGridStyle(card, {
   gridColumn = 1,
   gridRow = 1,
@@ -30432,6 +30556,7 @@ function clearDashboardWidgetInteraction({ revertLayout = true } = {}) {
   interaction.card.removeAttribute("data-layout-preview");
   interaction.card.releasePointerCapture?.(interaction.pointerId);
   document.body.classList.remove("is-dragging-dashboard-widget");
+  clearDashboardWidgetDropPreview();
 
   if (revertLayout) {
     applyDashboardWidgetCardGridStyle(interaction.card, {
@@ -30572,6 +30697,7 @@ function beginDashboardWidgetLayoutInteraction(mode, widget, card, event) {
     previewHeight: clampDashboardWidgetHeight(widget.gridHeight),
     startPixelWidth: card.getBoundingClientRect().width,
     startPixelHeight: card.getBoundingClientRect().height,
+    maxPreviewRow: Math.max(4, getDashboardLayoutMaxRow(getDashboardWidgets()) + 4),
     metrics,
   };
 
@@ -30579,6 +30705,13 @@ function beginDashboardWidgetLayoutInteraction(mode, widget, card, event) {
   card.style.willChange = mode === "move" ? "transform" : "width, height";
   card.setPointerCapture?.(event.pointerId);
   document.body.classList.add("is-dragging-dashboard-widget");
+  renderDashboardWidgetDropPreview({
+    gridColumn: Number(widget.gridColumn ?? 1),
+    gridRow: Number(widget.gridRow ?? 1),
+    gridWidth: clampDashboardWidgetWidth(widget.gridWidth),
+    gridHeight: clampDashboardWidgetHeight(widget.gridHeight),
+    metrics,
+  });
   event.preventDefault();
   event.stopPropagation();
 }
@@ -30595,18 +30728,37 @@ function updateDashboardWidgetLayoutInteraction(event) {
   const deltaRows = Math.round(deltaY / interaction.metrics.stepY);
 
   if (interaction.mode === "move") {
-    interaction.previewColumn = Math.max(1, interaction.startColumn + deltaColumns);
-    interaction.previewRow = Math.max(1, interaction.startRow + deltaRows);
+    const maxColumn = Math.max(1, interaction.metrics.columns - interaction.startWidth + 1);
+    interaction.previewColumn = Math.max(1, Math.min(maxColumn, interaction.startColumn + deltaColumns));
+    interaction.previewRow = Math.max(1, Math.min(interaction.maxPreviewRow, interaction.startRow + deltaRows));
     interaction.card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
     interaction.card.dataset.layoutPreview = `${interaction.previewColumn}:${interaction.previewRow}`;
+    renderDashboardWidgetDropPreview({
+      gridColumn: interaction.previewColumn,
+      gridRow: interaction.previewRow,
+      gridWidth: interaction.startWidth,
+      gridHeight: interaction.startHeight,
+      metrics: interaction.metrics,
+    });
     return;
   }
 
-  interaction.previewWidth = clampDashboardWidgetWidth(interaction.startWidth + deltaColumns);
+  const maxWidthAtColumn = Math.max(3, interaction.metrics.columns - interaction.startColumn + 1);
+  interaction.previewWidth = Math.min(
+    maxWidthAtColumn,
+    clampDashboardWidgetWidth(interaction.startWidth + deltaColumns),
+  );
   interaction.previewHeight = clampDashboardWidgetHeight(interaction.startHeight + deltaRows);
   interaction.card.style.width = `${Math.max(interaction.metrics.columnWidth, interaction.startPixelWidth + deltaX)}px`;
   interaction.card.style.height = `${Math.max(interaction.metrics.rowHeight, interaction.startPixelHeight + deltaY)}px`;
   interaction.card.dataset.layoutPreview = `${interaction.previewWidth}x${interaction.previewHeight}`;
+  renderDashboardWidgetDropPreview({
+    gridColumn: interaction.startColumn,
+    gridRow: interaction.startRow,
+    gridWidth: interaction.previewWidth,
+    gridHeight: interaction.previewHeight,
+    metrics: interaction.metrics,
+  });
 }
 
 function commitDashboardWidgetLayoutInteraction() {
@@ -30779,6 +30931,8 @@ function renderDashboardWidgetGrid() {
   if (!dashboardWidgetGrid || !dashboardWidgetEmpty) {
     return;
   }
+
+  clearDashboardWidgetDropPreview();
 
   const widgets = getDashboardWidgets();
 
@@ -31045,6 +31199,120 @@ function getPendingTodoNotificationCount() {
   return (state.todoTasks ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
 }
 
+function createTopbarShortcutPreviewRow({
+  title = "",
+  subtitle = "",
+  meta = "",
+  onOpen = null,
+} = {}) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "topbar-shortcut-preview-row";
+  row.title = subtitle || title;
+
+  const copy = document.createElement("div");
+  copy.className = "topbar-shortcut-preview-copy";
+
+  const titleEl = document.createElement("strong");
+  titleEl.textContent = title || "Stavka";
+
+  const subtitleEl = document.createElement("span");
+  subtitleEl.textContent = subtitle || "";
+
+  copy.append(titleEl, subtitleEl);
+
+  const metaEl = document.createElement("span");
+  metaEl.className = "topbar-shortcut-preview-meta";
+  metaEl.textContent = meta || "";
+
+  row.append(copy, metaEl);
+
+  if (typeof onOpen === "function") {
+    row.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpen();
+    });
+  }
+
+  return row;
+}
+
+function getTopbarActiveReminderItems() {
+  return sortReminders((state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done"))
+    .slice(0, 6);
+}
+
+function getTopbarActiveTodoItems() {
+  return sortTodoTasks((state.todoTasks ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done"))
+    .slice(0, 6);
+}
+
+function renderTopbarRemindersPanel() {
+  if (!topbarRemindersPanelList || !topbarRemindersPanelEmpty) {
+    return;
+  }
+
+  const reminders = getTopbarActiveReminderItems();
+
+  if (topbarRemindersPanelMeta) {
+    topbarRemindersPanelMeta.textContent = reminders.length > 0
+      ? `${reminders.length} aktivnih remindersa`
+      : "Nema aktivnih remindersa.";
+  }
+
+  if (topbarRemindersOpenAllButton) {
+    topbarRemindersOpenAllButton.disabled = (state.reminders ?? []).length === 0;
+  }
+
+  topbarRemindersPanelList.replaceChildren(...reminders.map((reminder) => createTopbarShortcutPreviewRow({
+    title: reminder.title || "Reminder",
+    subtitle: [
+      reminder.workOrderNumber ? `RN ${reminder.workOrderNumber}` : "",
+      reminder.companyName || "",
+    ].filter(Boolean).join(" · ") || "Opći reminder",
+    meta: reminder.dueDate ? `Rok ${formatCompactDate(reminder.dueDate)}` : "Bez datuma",
+    onOpen: () => {
+      setRemindersShortcutMenuOpen(false);
+      hydrateReminderForm(reminder);
+    },
+  })));
+
+  topbarRemindersPanelEmpty.hidden = reminders.length !== 0;
+}
+
+function renderTopbarTodoPanel() {
+  if (!topbarTodoPanelList || !topbarTodoPanelEmpty) {
+    return;
+  }
+
+  const tasks = getTopbarActiveTodoItems();
+
+  if (topbarTodoPanelMeta) {
+    topbarTodoPanelMeta.textContent = tasks.length > 0
+      ? `${tasks.length} otvorenih zadataka`
+      : "Nema aktivnih ToDo zadataka.";
+  }
+
+  if (topbarTodoOpenAllButton) {
+    topbarTodoOpenAllButton.disabled = (state.todoTasks ?? []).length === 0;
+  }
+
+  topbarTodoPanelList.replaceChildren(...tasks.map((task) => createTopbarShortcutPreviewRow({
+    title: task.title || "ToDo zadatak",
+    subtitle: task.companyName || task.workOrderNumber
+      ? [task.workOrderNumber ? `RN ${task.workOrderNumber}` : "", task.companyName || ""].filter(Boolean).join(" · ")
+      : "Bez vezanog RN-a",
+    meta: task.dueDate ? `Rok ${formatCompactDate(task.dueDate)}` : getOptionLabel(PRIORITY_OPTIONS, task.priority || "Normal"),
+    onOpen: () => {
+      setTodoShortcutMenuOpen(false);
+      hydrateTodoTaskForm(task);
+    },
+  })));
+
+  topbarTodoPanelEmpty.hidden = tasks.length !== 0;
+}
+
 function renderTopbarShortcutCounts() {
   const reminderCount = getPendingReminderNotificationCount();
   const todoCount = getPendingTodoNotificationCount();
@@ -31057,7 +31325,12 @@ function renderTopbarShortcutCounts() {
   if (topbarShortcutTodoCount) {
     topbarShortcutTodoCount.hidden = todoCount === 0;
     topbarShortcutTodoCount.textContent = todoCount > 99 ? "99+" : String(todoCount);
+    topbarShortcutTodoButton?.classList.toggle("has-unread", todoCount > 0);
   }
+
+  topbarShortcutRemindersButton?.classList.toggle("has-unread", reminderCount > 0);
+  renderTopbarRemindersPanel();
+  renderTopbarTodoPanel();
 }
 
 function getAllNotifications() {
@@ -31251,10 +31524,34 @@ function renderNotifications() {
       notificationsTriggerCount.textContent = "0";
     }
     notificationsTrigger?.classList.remove("has-unread");
+    topbarShortcutRemindersButton?.classList.remove("has-unread", "is-open");
+    topbarShortcutTodoButton?.classList.remove("has-unread", "is-open");
     notificationsPanelList?.replaceChildren();
+    topbarRemindersPanelList?.replaceChildren();
+    topbarTodoPanelList?.replaceChildren();
     if (notificationsPanelMeta) {
       notificationsPanelMeta.textContent = "Nema novih stavki.";
     }
+    if (topbarRemindersPanelMeta) {
+      topbarRemindersPanelMeta.textContent = "Nema aktivnih remindersa.";
+    }
+    if (topbarTodoPanelMeta) {
+      topbarTodoPanelMeta.textContent = "Nema aktivnih ToDo zadataka.";
+    }
+    if (topbarRemindersPanelEmpty) {
+      topbarRemindersPanelEmpty.hidden = false;
+    }
+    if (topbarTodoPanelEmpty) {
+      topbarTodoPanelEmpty.hidden = false;
+    }
+    if (topbarRemindersOpenAllButton) {
+      topbarRemindersOpenAllButton.disabled = true;
+    }
+    if (topbarTodoOpenAllButton) {
+      topbarTodoOpenAllButton.disabled = true;
+    }
+    setRemindersShortcutMenuOpen(false);
+    setTodoShortcutMenuOpen(false);
     notificationsBody?.replaceChildren();
     return;
   }
@@ -45661,16 +45958,32 @@ topbarShortcutDashboardButton?.addEventListener("click", () => {
   activateSidebarItem("dashboard", { expandSidebar: state.sidebarCollapsed });
 });
 
-topbarShortcutRemindersButton?.addEventListener("click", () => {
-  activateSidebarItem("reminders", { expandSidebar: state.sidebarCollapsed });
+topbarShortcutRemindersButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setRemindersShortcutMenuOpen(!remindersShortcutMenuOpen);
 });
 
-topbarShortcutTodoButton?.addEventListener("click", () => {
-  activateSidebarItem("todo", { expandSidebar: state.sidebarCollapsed });
+topbarShortcutTodoButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setTodoShortcutMenuOpen(!todoShortcutMenuOpen);
 });
 
 topbarShortcutSettingsButton?.addEventListener("click", () => {
   activateSidebarItem("settings", { expandSidebar: state.sidebarCollapsed });
+});
+
+topbarRemindersOpenAllButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setRemindersShortcutMenuOpen(false);
+  activateSidebarItem("reminders", { expandSidebar: state.sidebarCollapsed });
+});
+
+topbarTodoOpenAllButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setTodoShortcutMenuOpen(false);
+  activateSidebarItem("todo", { expandSidebar: state.sidebarCollapsed });
 });
 
 settingsSaveAllButton?.addEventListener("click", () => {
@@ -46039,6 +46352,22 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (remindersShortcutMenuOpen && event.target instanceof Node) {
+    const clickedRemindersControl = topbarShortcutRemindersButton?.contains(event.target)
+      || topbarRemindersPanel?.contains(event.target);
+    if (!clickedRemindersControl) {
+      setRemindersShortcutMenuOpen(false);
+    }
+  }
+
+  if (todoShortcutMenuOpen && event.target instanceof Node) {
+    const clickedTodoControl = topbarShortcutTodoButton?.contains(event.target)
+      || topbarTodoPanel?.contains(event.target);
+    if (!clickedTodoControl) {
+      setTodoShortcutMenuOpen(false);
+    }
+  }
+
   if (!userMenuOpen) {
     return;
   }
@@ -46067,6 +46396,12 @@ window.addEventListener("resize", () => {
   closeOpenWorkOrderStatusMenus();
   if (notificationsMenuOpen) {
     setNotificationsMenuOpen(false);
+  }
+  if (remindersShortcutMenuOpen) {
+    setRemindersShortcutMenuOpen(false);
+  }
+  if (todoShortcutMenuOpen) {
+    setTodoShortcutMenuOpen(false);
   }
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);

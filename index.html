@@ -521,24 +521,54 @@
                   <rect x="4" y="13" width="7" height="7" rx="2"></rect>
                 </svg>
               </button>
-              <button id="topbar-shortcut-reminders" type="button" class="topbar-shortcut-button" aria-label="Reminders">
-                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7.5 8a4.5 4.5 0 1 1 9 0c0 5 2 5.5 2 6H5.5c0-.5 2-1 2-6"></path>
-                  <path d="M10 18a2 2 0 0 0 4 0"></path>
-                </svg>
-                <span id="topbar-shortcut-reminders-count" class="topbar-shortcut-count" hidden>0</span>
-              </button>
-              <button id="topbar-shortcut-todo" type="button" class="topbar-shortcut-button" aria-label="ToDo">
-                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 7h10"></path>
-                  <path d="M9 12h10"></path>
-                  <path d="M9 17h10"></path>
-                  <path d="m4.5 7 1.5 1.5L8.5 6"></path>
-                  <path d="m4.5 12 1.5 1.5L8.5 11"></path>
-                  <path d="m4.5 17 1.5 1.5L8.5 16"></path>
-                </svg>
-                <span id="topbar-shortcut-todo-count" class="topbar-shortcut-count" hidden>0</span>
-              </button>
+              <div class="topbar-shortcut-menu">
+                <button id="topbar-shortcut-reminders" type="button" class="topbar-shortcut-button" aria-label="Reminders" aria-expanded="false">
+                  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7.5 8a4.5 4.5 0 1 1 9 0c0 5 2 5.5 2 6H5.5c0-.5 2-1 2-6"></path>
+                    <path d="M10 18a2 2 0 0 0 4 0"></path>
+                  </svg>
+                  <span id="topbar-shortcut-reminders-count" class="topbar-shortcut-count" hidden>0</span>
+                </button>
+                <div id="topbar-reminders-panel" class="topbar-shortcut-panel notifications-panel" hidden>
+                  <div class="notifications-panel-head">
+                    <div class="notifications-panel-copy">
+                      <strong>Reminders</strong>
+                      <span id="topbar-reminders-panel-meta">Nema aktivnih remindersa.</span>
+                    </div>
+                    <button id="topbar-reminders-open-all" type="button" class="ghost-button notifications-open-all-button">
+                      Prikaži sve
+                    </button>
+                  </div>
+                  <div id="topbar-reminders-panel-list" class="notifications-panel-list"></div>
+                  <p id="topbar-reminders-panel-empty" class="notifications-panel-empty" hidden>Nema aktivnih remindersa.</p>
+                </div>
+              </div>
+              <div class="topbar-shortcut-menu">
+                <button id="topbar-shortcut-todo" type="button" class="topbar-shortcut-button" aria-label="ToDo" aria-expanded="false">
+                  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 7h10"></path>
+                    <path d="M9 12h10"></path>
+                    <path d="M9 17h10"></path>
+                    <path d="m4.5 7 1.5 1.5L8.5 6"></path>
+                    <path d="m4.5 12 1.5 1.5L8.5 11"></path>
+                    <path d="m4.5 17 1.5 1.5L8.5 16"></path>
+                  </svg>
+                  <span id="topbar-shortcut-todo-count" class="topbar-shortcut-count" hidden>0</span>
+                </button>
+                <div id="topbar-todo-panel" class="topbar-shortcut-panel notifications-panel" hidden>
+                  <div class="notifications-panel-head">
+                    <div class="notifications-panel-copy">
+                      <strong>ToDo</strong>
+                      <span id="topbar-todo-panel-meta">Nema aktivnih ToDo zadataka.</span>
+                    </div>
+                    <button id="topbar-todo-open-all" type="button" class="ghost-button notifications-open-all-button">
+                      Prikaži sve
+                    </button>
+                  </div>
+                  <div id="topbar-todo-panel-list" class="notifications-panel-list"></div>
+                  <p id="topbar-todo-panel-empty" class="notifications-panel-empty" hidden>Nema aktivnih ToDo zadataka.</p>
+                </div>
+              </div>
               <button id="topbar-shortcut-settings" type="button" class="topbar-shortcut-button" aria-label="Settings">
                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 8.75a3.25 3.25 0 1 1 0 6.5 3.25 3.25 0 0 1 0-6.5Z"></path>
@@ -550,7 +580,7 @@
               <button
                 id="notifications-trigger"
                 type="button"
-                class="notifications-trigger"
+                class="notifications-trigger topbar-shortcut-button"
                 aria-label="Notifications"
                 aria-expanded="false"
               >
