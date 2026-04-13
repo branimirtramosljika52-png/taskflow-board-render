@@ -1830,22 +1830,48 @@ fieldset {
 
 .settings-module {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .settings-notifications-panel {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px 16px;
 }
 
-.settings-notification-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.settings-notification-inline {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.settings-notification-inline .field > span {
+  font-size: 0.72rem;
+}
+
+.settings-notification-inline .field > input {
+  height: 42px;
+}
+
+.settings-notification-inline .primary-button {
+  height: 42px;
+  padding: 0 16px;
+  white-space: nowrap;
+  align-self: end;
+}
+
+.settings-notifications-panel .section-heading {
+  margin-bottom: 0;
+}
+
+#settings-notifications-feedback {
+  margin: 0;
+  min-height: 1.1rem;
 }
 
 @media (max-width: 900px) {
-  .settings-notification-grid {
+  .settings-notification-inline {
     grid-template-columns: 1fr;
   }
 }

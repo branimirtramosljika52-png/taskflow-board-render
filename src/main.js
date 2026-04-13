@@ -4274,7 +4274,10 @@ function renderModuleView() {
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
-  const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule && !isDocumentsModule && !isMeasurementEquipmentModule;
+  const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
+    && !isDocumentsModule
+    && !isMeasurementEquipmentModule
+    && !isSettingsModule;
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
