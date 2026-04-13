@@ -594,6 +594,13 @@ const state = {
     query: "",
     sort: "due-asc",
   },
+  measurementEquipmentActivityFeed: {
+    organizationId: "",
+    loaded: false,
+    loading: false,
+    error: "",
+    records: [],
+  },
   safetyAuthorizationFilters: {
     query: "",
   },
@@ -1484,6 +1491,11 @@ const measurementEquipmentNoteInput = document.querySelector("#measurement-equip
 const measurementEquipmentError = document.querySelector("#measurement-equipment-error");
 const measurementEquipmentResetButton = document.querySelector("#measurement-equipment-reset");
 const measurementEquipmentDeleteButton = document.querySelector("#measurement-equipment-delete");
+const measurementEquipmentSideActivityList = document.querySelector("#measurement-equipment-side-activity-list");
+const measurementEquipmentSideActivityEmpty = document.querySelector("#measurement-equipment-side-activity-empty");
+const measurementEquipmentSideActivityLoading = document.querySelector("#measurement-equipment-side-activity-loading");
+const measurementEquipmentSideActivityError = document.querySelector("#measurement-equipment-side-activity-error");
+const measurementEquipmentSideActivityCount = document.querySelector("#measurement-equipment-side-activity-count");
 const measurementEquipmentDocumentPreviewBackdrop = document.querySelector("#measurement-equipment-document-preview-backdrop");
 const measurementEquipmentDocumentPreviewPanel = document.querySelector("#measurement-equipment-document-preview-panel");
 const measurementEquipmentDocumentPreviewTitle = document.querySelector("#measurement-equipment-document-preview-title");
@@ -7264,10 +7276,30 @@ function upsertDocumentsExplorerRecord(record = null) {
     ...currentItems.filter((item) => String(item?.id || "").trim() !== normalizedId),
   ];
   state.documentsExplorer.loaded = true;
-  state.documentsExplorer.organizationId = String(state.activeOrganizationId || "").trim();
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  state.documentsExplorer.organizationId = activeOrganizationId;
+
+  const feedScopeId = String(state.measurementEquipmentActivityFeed.organizationId || "").trim();
+  if (feedScopeId && feedScopeId === activeOrganizationId) {
+    const feedRecords = Array.isArray(state.measurementEquipmentActivityFeed.records)
+      ? state.measurementEquipmentActivityFeed.records
+      : [];
+    state.measurementEquipmentActivityFeed = {
+      ...state.measurementEquipmentActivityFeed,
+      loaded: true,
+      error: "",
+      records: [
+        record,
+        ...feedRecords.filter((item) => String(item?.id || "").trim() !== normalizedId),
+      ],
+    };
+  }
 
   if (state.activeView === "module" && state.activeModuleItem === "documents") {
     renderDocumentsModule();
+  }
+  if (state.measurementEquipmentEditorOpen) {
+    renderMeasurementEquipmentSideActivityPanel();
   }
 }
 
@@ -13788,6 +13820,8 @@ function dismissServiceCatalogEditor() {
 function openMeasurementEquipmentEditor() {
   state.measurementEquipmentEditorOpen = true;
   syncMeasurementEquipmentEditorModal();
+  renderMeasurementEquipmentSideActivityPanel();
+  void ensureMeasurementEquipmentActivityFeedLoaded();
 }
 
 function closeMeasurementEquipmentEditor({ reset = false } = {}) {
@@ -22463,6 +22497,7 @@ function setMeasurementEquipmentActivityDrafts(items = []) {
   measurementEquipmentActivityDrafts = (Array.isArray(items) ? items : [])
     .map((entry) => createMeasurementEquipmentActivityDraft(entry, { defaultCompleted: true }))
     .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note);
+  renderMeasurementEquipmentSideActivityPanel();
 }
 
 function getMeasurementEquipmentActivityTypeLabel(value = "") {
@@ -22489,6 +22524,328 @@ function compareMeasurementEquipmentActivityDraftRecency(left = {}, right = {}) 
   const leftUpdated = String(left.updatedAt || left.createdAt || "").trim();
   const rightUpdated = String(right.updatedAt || right.createdAt || "").trim();
   return rightUpdated.localeCompare(leftUpdated);
+}
+
+function getActiveMeasurementEquipmentItem() {
+  const activeId = String(measurementEquipmentIdInput?.value || "").trim();
+  if (!activeId) {
+    return null;
+  }
+  return (state.measurementEquipment ?? []).find((item) => String(item?.id || "").trim() === activeId) || null;
+}
+
+function normalizeMeasurementEquipmentTimelineTimestamp(value = "") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) {
+    return "";
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    return `${rawValue}T00:00:00.000Z`;
+  }
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toISOString();
+}
+
+function getMeasurementEquipmentTimelineSortValue(value = "") {
+  const normalized = normalizeMeasurementEquipmentTimelineTimestamp(value);
+  if (!normalized) {
+    return 0;
+  }
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function formatMeasurementEquipmentTimelineDateLabel(value = "") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) {
+    return "Bez datuma";
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    return formatCompactDate(rawValue);
+  }
+  return formatDateTime(rawValue);
+}
+
+function documentRecordReferencesMeasurementEquipment(record = {}, equipmentId = "") {
+  const normalizedEquipmentId = String(equipmentId || "").trim();
+  if (!normalizedEquipmentId) {
+    return false;
+  }
+
+  const valueEntries = Object.values(record?.fieldValues ?? {});
+  for (let index = 0; index < valueEntries.length; index += 1) {
+    const entry = valueEntries[index];
+
+    if (Array.isArray(entry)) {
+      const hasMatch = entry.some((value) => String(value || "").trim() === normalizedEquipmentId);
+      if (hasMatch) {
+        return true;
+      }
+      continue;
+    }
+
+    if (entry && typeof entry === "object") {
+      const nestedValues = [
+        ...(Array.isArray(entry.ids) ? entry.ids : []),
+        ...(Array.isArray(entry.selectedIds) ? entry.selectedIds : []),
+      ];
+      if (nestedValues.some((value) => String(value || "").trim() === normalizedEquipmentId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function getMeasurementEquipmentActivityFeedRecords() {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const fromDocumentsExplorer = (
+    state.documentsExplorer.loaded
+    && String(state.documentsExplorer.organizationId || "").trim() === activeOrganizationId
+    && Array.isArray(state.documentsExplorer.records)
+  )
+    ? state.documentsExplorer.records
+    : [];
+  const fromFeedCache = Array.isArray(state.measurementEquipmentActivityFeed.records)
+    ? state.measurementEquipmentActivityFeed.records
+    : [];
+
+  return fromDocumentsExplorer.length > 0 ? fromDocumentsExplorer : fromFeedCache;
+}
+
+function buildMeasurementEquipmentUsageEvents(item = {}, records = []) {
+  const equipmentId = String(item?.id || "").trim();
+  if (!equipmentId) {
+    return [];
+  }
+
+  return (Array.isArray(records) ? records : [])
+    .filter((record) => documentRecordReferencesMeasurementEquipment(record, equipmentId))
+    .map((record) => {
+      const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
+      const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
+      const workOrderNumber = String(
+        linkedWorkOrder?.workOrderNumber
+        || extractedWorkOrderNumber
+        || "Bez RN",
+      ).trim() || "Bez RN";
+      const templateLabel = String(
+        record?.templateTitle
+        || record?.documentType
+        || "Zapisnik",
+      ).trim() || "Zapisnik";
+      const timestamp = (
+        String(record?.inspectionDate || "").trim()
+        || String(record?.issuedDate || "").trim()
+        || String(record?.createdAt || "").trim()
+      );
+      const details = [
+        linkedWorkOrder?.companyName || "",
+        linkedWorkOrder?.locationName ? createCompactLocationLabel(linkedWorkOrder.locationName) : "",
+      ].filter(Boolean).join(" · ");
+
+      return {
+        id: `usage:${String(record?.id || crypto.randomUUID())}`,
+        kind: "usage",
+        title: `Korišteno u ${templateLabel}`,
+        subtitle: `RN ${workOrderNumber}`,
+        details,
+        timestamp,
+        sortValue: getMeasurementEquipmentTimelineSortValue(timestamp),
+      };
+    });
+}
+
+function buildMeasurementEquipmentManualActivityEvents(activityItems = []) {
+  return (Array.isArray(activityItems) ? activityItems : []).map((entry) => {
+    const isSaved = parseMeasurementEquipmentActivityCompleted(entry.completed, true) && !entry.isEditing;
+    const activityType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
+    const timestamp = (
+      String(entry.performedOn || "").trim()
+      || String(entry.updatedAt || "").trim()
+      || String(entry.createdAt || "").trim()
+    );
+    const details = [
+      entry.performedBy ? `Izvršio: ${entry.performedBy}` : "",
+      activityType === "umjeravanje" && entry.validUntil ? `Vrijedi do: ${formatCompactDate(entry.validUntil)}` : "",
+      activityType === "umjeravanje" && entry.satisfies
+        ? `Zadovoljava: ${String(entry.satisfies).toUpperCase()}`
+        : "",
+      activityType !== "umjeravanje" && entry.note ? entry.note : "",
+    ].filter(Boolean).join(" · ");
+
+    return {
+      id: `activity:${String(entry.id || crypto.randomUUID())}`,
+      kind: isSaved ? "activity" : "draft",
+      title: `${getMeasurementEquipmentActivityTypeLabel(activityType)}${isSaved ? "" : " (u tijeku)"}`,
+      subtitle: entry.performedOn ? formatCompactDate(entry.performedOn) : "Bez datuma",
+      details,
+      timestamp,
+      sortValue: getMeasurementEquipmentTimelineSortValue(timestamp),
+    };
+  });
+}
+
+function buildMeasurementEquipmentSystemEvents(item = {}) {
+  const events = [];
+  const createdAt = String(item?.createdAt || "").trim();
+  const updatedAt = String(item?.updatedAt || "").trim();
+
+  if (createdAt) {
+    events.push({
+      id: `system:create:${String(item?.id || "new")}`,
+      kind: "system",
+      title: "Stavka opreme kreirana",
+      subtitle: formatMeasurementEquipmentTimelineDateLabel(createdAt),
+      details: item.enteredBy ? `Unio: ${item.enteredBy}` : "",
+      timestamp: createdAt,
+      sortValue: getMeasurementEquipmentTimelineSortValue(createdAt),
+    });
+  }
+
+  if (updatedAt && updatedAt !== createdAt) {
+    events.push({
+      id: `system:update:${String(item?.id || "new")}`,
+      kind: "system",
+      title: "Zadnja izmjena podataka",
+      subtitle: formatMeasurementEquipmentTimelineDateLabel(updatedAt),
+      details: item.approvedBy ? `Odobrio: ${item.approvedBy}` : "",
+      timestamp: updatedAt,
+      sortValue: getMeasurementEquipmentTimelineSortValue(updatedAt),
+    });
+  }
+
+  return events;
+}
+
+function buildMeasurementEquipmentSideActivityEvents(item = null) {
+  if (!item) {
+    return [];
+  }
+
+  const usageEvents = buildMeasurementEquipmentUsageEvents(
+    item,
+    getMeasurementEquipmentActivityFeedRecords(),
+  );
+  const manualEvents = buildMeasurementEquipmentManualActivityEvents(measurementEquipmentActivityDrafts);
+  const systemEvents = buildMeasurementEquipmentSystemEvents(item);
+
+  return [...usageEvents, ...manualEvents, ...systemEvents]
+    .sort((left, right) => (
+      Number(right.sortValue || 0) - Number(left.sortValue || 0)
+      || String(right.timestamp || "").localeCompare(String(left.timestamp || ""))
+      || String(right.id || "").localeCompare(String(left.id || ""))
+    ));
+}
+
+function renderMeasurementEquipmentSideActivityPanel() {
+  if (
+    !measurementEquipmentSideActivityList
+    || !measurementEquipmentSideActivityEmpty
+    || !measurementEquipmentSideActivityLoading
+    || !measurementEquipmentSideActivityError
+    || !measurementEquipmentSideActivityCount
+  ) {
+    return;
+  }
+
+  const activeItem = getActiveMeasurementEquipmentItem();
+  const feedState = state.measurementEquipmentActivityFeed || {};
+  const events = buildMeasurementEquipmentSideActivityEvents(activeItem);
+
+  measurementEquipmentSideActivityCount.textContent = String(events.length);
+  measurementEquipmentSideActivityLoading.hidden = !feedState.loading;
+
+  if (feedState.error) {
+    measurementEquipmentSideActivityError.hidden = false;
+    measurementEquipmentSideActivityError.textContent = feedState.error;
+  } else {
+    measurementEquipmentSideActivityError.hidden = true;
+    measurementEquipmentSideActivityError.textContent = "";
+  }
+
+  measurementEquipmentSideActivityEmpty.hidden = Boolean(activeItem) && events.length > 0;
+  if (!activeItem) {
+    measurementEquipmentSideActivityEmpty.hidden = false;
+    measurementEquipmentSideActivityEmpty.textContent = "Otvori spremljenu opremu za pregled activity timeline-a.";
+  } else if (events.length === 0) {
+    measurementEquipmentSideActivityEmpty.hidden = false;
+    measurementEquipmentSideActivityEmpty.textContent = "Još nema promjena ni korištenja ove opreme u zapisnicima.";
+  }
+
+  if (!activeItem || events.length === 0) {
+    measurementEquipmentSideActivityList.replaceChildren();
+    return;
+  }
+
+  measurementEquipmentSideActivityList.replaceChildren(
+    ...events.map((event) => {
+      const itemNode = document.createElement("article");
+      itemNode.className = "measurement-equipment-side-activity-item";
+      itemNode.classList.add(`is-${event.kind}`);
+
+      const title = createListLine(event.title || "Activity", "measurement-equipment-side-activity-title");
+      const subtitle = createListLine(event.subtitle || "Bez datuma", "measurement-equipment-side-activity-subtitle");
+      const details = createListLine(event.details || "", "measurement-equipment-side-activity-details");
+      details.hidden = !event.details;
+
+      itemNode.append(title, subtitle, details);
+      return itemNode;
+    }),
+  );
+}
+
+async function ensureMeasurementEquipmentActivityFeedLoaded({ force = false } = {}) {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  if (!activeOrganizationId) {
+    return;
+  }
+
+  const feedState = state.measurementEquipmentActivityFeed;
+  const isSameScope = String(feedState.organizationId || "").trim() === activeOrganizationId;
+
+  if (!force && feedState.loaded && isSameScope) {
+    renderMeasurementEquipmentSideActivityPanel();
+    return;
+  }
+
+  if (feedState.loading) {
+    return;
+  }
+
+  state.measurementEquipmentActivityFeed = {
+    ...feedState,
+    organizationId: activeOrganizationId,
+    loading: true,
+    error: "",
+  };
+  renderMeasurementEquipmentSideActivityPanel();
+
+  try {
+    const response = await apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`);
+    const records = Array.isArray(response?.items) ? response.items : [];
+    state.measurementEquipmentActivityFeed = {
+      organizationId: activeOrganizationId,
+      loaded: true,
+      loading: false,
+      error: "",
+      records,
+    };
+  } catch (error) {
+    state.measurementEquipmentActivityFeed = {
+      ...state.measurementEquipmentActivityFeed,
+      organizationId: activeOrganizationId,
+      loaded: false,
+      loading: false,
+      error: error?.message || "Ne mogu učitati activity podatke zapisnika.",
+    };
+  }
+
+  renderMeasurementEquipmentSideActivityPanel();
 }
 
 function buildMeasurementEquipmentActivityPayload() {
@@ -22575,6 +22932,7 @@ function renderMeasurementEquipmentActivities() {
     empty.className = "helper-copy module-copy";
     empty.textContent = "Još nema aktivnosti. Dodaj pregled, umjeravanje ili servis.";
     measurementEquipmentActivityList.replaceChildren(empty);
+    renderMeasurementEquipmentSideActivityPanel();
     return;
   }
 
@@ -22894,6 +23252,7 @@ function renderMeasurementEquipmentActivities() {
   });
 
   measurementEquipmentActivityList.replaceChildren(...rows);
+  renderMeasurementEquipmentSideActivityPanel();
 }
 
 function syncMeasurementEquipmentCalibrationFields({ clearWhenDisabled = false } = {}) {
@@ -23047,6 +23406,7 @@ function resetMeasurementEquipmentForm() {
   syncMeasurementEquipmentCalibrationFields();
   syncMeasurementEquipmentEditorSections();
   syncMeasurementEquipmentEditorChrome();
+  renderMeasurementEquipmentSideActivityPanel();
 }
 
 function hydrateMeasurementEquipmentForm(item) {
@@ -23093,6 +23453,8 @@ function hydrateMeasurementEquipmentForm(item) {
   syncMeasurementEquipmentEditorSections();
   syncMeasurementEquipmentEditorChrome();
   openMeasurementEquipmentEditor();
+  renderMeasurementEquipmentSideActivityPanel();
+  void ensureMeasurementEquipmentActivityFeedLoaded();
   requestAnimationFrame(() => {
     measurementEquipmentNameInput?.focus({ preventScroll: true });
   });
@@ -44879,6 +45241,13 @@ logoutButton?.addEventListener("click", () => {
     state.serviceCatalog = [];
     state.measurementEquipment = [];
     state.measurementEquipmentCardTemplate = null;
+    state.measurementEquipmentActivityFeed = {
+      organizationId: "",
+      loaded: false,
+      loading: false,
+      error: "",
+      records: [],
+    };
     state.safetyAuthorizations = [];
     state.documentTemplates = [];
     state.dashboardWidgets = [];

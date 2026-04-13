@@ -3781,7 +3781,8 @@
                 </div>
 
                 <div class="measurement-equipment-editor-body" tabindex="-1">
-                  <form id="measurement-equipment-form" class="entity-form measurement-equipment-form">
+                  <div class="measurement-equipment-editor-layout">
+                    <form id="measurement-equipment-form" class="entity-form measurement-equipment-form">
                     <input id="measurement-equipment-id" type="hidden" />
 
                     <div class="form-grid measurement-equipment-form-grid">
@@ -3941,7 +3942,25 @@
                       <button id="measurement-equipment-reset" type="button" class="ghost-button">Nova oprema</button>
                       <button id="measurement-equipment-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
-                  </form>
+                    </form>
+
+                    <aside class="measurement-equipment-side-activity-panel">
+                      <div class="measurement-equipment-side-activity-head">
+                        <div>
+                          <p class="section-kicker">Activity</p>
+                          <h3>Povijest opreme</h3>
+                        </div>
+                        <span id="measurement-equipment-side-activity-count" class="work-order-activity-count">0</span>
+                      </div>
+                      <p class="helper-copy module-copy">
+                        Ovdje vidiš promjene na opremi i korištenje u zapisnicima.
+                      </p>
+                      <div id="measurement-equipment-side-activity-loading" class="work-order-activity-loading" hidden>Učitavanje aktivnosti...</div>
+                      <p id="measurement-equipment-side-activity-empty" class="work-order-activity-empty">Otvori spremljenu opremu za pregled activity timeline-a.</p>
+                      <p id="measurement-equipment-side-activity-error" class="form-error work-order-activity-error" hidden></p>
+                      <div id="measurement-equipment-side-activity-list" class="work-order-activity-list"></div>
+                    </aside>
+                  </div>
                 </div>
               </section>
             </section>
@@ -4200,6 +4219,7 @@
                       <button id="learning-test-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                     </div>
                   </form>
+
                 </div>
               </section>
 
