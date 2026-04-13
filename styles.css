@@ -15640,6 +15640,30 @@ body.is-vehicle-reservation-open {
   gap: 8px;
 }
 
+.measurement-equipment-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+.measurement-equipment-card-action-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.measurement-equipment-card-action-button svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
 .legal-framework-status-badge,
 .service-catalog-status-badge,
 .document-template-status-badge,

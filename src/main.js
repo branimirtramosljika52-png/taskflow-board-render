@@ -20143,6 +20143,51 @@ function buildMeasurementEquipmentExportActivityLines(type = "", { limit = 0 } =
     .filter(Boolean);
 }
 
+function buildMeasurementEquipmentExportActivityLinesFromEntries(
+  entriesInput = [],
+  type = "",
+  { limit = 0 } = {},
+) {
+  const normalizedType = normalizeMeasurementEquipmentActivityTypeValue(type);
+  const safeLimit = Number.isFinite(Number(limit)) && Number(limit) > 0
+    ? Math.max(1, Math.min(24, Math.round(Number(limit))))
+    : 0;
+
+  let entries = (Array.isArray(entriesInput) ? entriesInput : [])
+    .map((entry) => createMeasurementEquipmentActivityDraft(entry, { defaultCompleted: true }))
+    .filter((entry) => entry.activityType || entry.performedOn || entry.performedBy || entry.validUntil || entry.calibrationPeriod || entry.satisfies || entry.note)
+    .sort(compareMeasurementEquipmentActivityDraftRecency)
+    .filter((entry) => (normalizedType ? normalizeMeasurementEquipmentActivityTypeValue(entry.activityType) === normalizedType : true));
+
+  if (safeLimit > 0) {
+    entries = entries.slice(0, safeLimit);
+  }
+
+  return entries
+    .map((entry) => {
+      const safeType = normalizeMeasurementEquipmentActivityTypeValue(entry.activityType);
+      const base = [
+        getMeasurementEquipmentActivityTypeLabel(safeType),
+        entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma",
+      ];
+      if (entry.performedBy) {
+        base.push(entry.performedBy);
+      }
+      if (safeType === "umjeravanje") {
+        if (entry.validUntil) {
+          base.push(`vrijedi do ${formatCompactDate(entry.validUntil)}`);
+        }
+        if (entry.satisfies) {
+          base.push(`zadovoljava: ${String(entry.satisfies || "").toUpperCase()}`);
+        }
+      } else if (entry.note) {
+        base.push(entry.note);
+      }
+      return base.filter(Boolean).join(" - ");
+    })
+    .filter(Boolean);
+}
+
 function normalizeMeasurementEquipmentSpecDraftEntry(entry = {}) {
   return {
     id: String(entry.id || crypto.randomUUID()),
@@ -20213,6 +20258,16 @@ function buildMeasurementEquipmentExportSpecLines() {
 
 function buildMeasurementEquipmentExportDocumentLines() {
   return measurementEquipmentDocumentDrafts
+    .filter((entry) => normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY)
+    .map((entry) => [
+      getMeasurementEquipmentDocumentCategoryLabel(entry.documentCategory) || "Dokument",
+      entry.fileName || "",
+    ].filter(Boolean).join(": "))
+    .filter(Boolean);
+}
+
+function buildMeasurementEquipmentExportDocumentLinesFromEntries(entriesInput = []) {
+  return (Array.isArray(entriesInput) ? entriesInput : [])
     .filter((entry) => normalizeMeasurementEquipmentDocumentCategoryValue(entry.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY)
     .map((entry) => [
       getMeasurementEquipmentDocumentCategoryLabel(entry.documentCategory) || "Dokument",
@@ -20308,9 +20363,78 @@ function buildMeasurementEquipmentExportPlaceholders() {
   return placeholders;
 }
 
+function buildMeasurementEquipmentExportPlaceholdersForItem(item = {}) {
+  const requiresCalibration = item?.requiresCalibration === true
+    || String(item?.requiresCalibration || "").toLowerCase() === "true"
+    || String(item?.requiresCalibration || "") === "1";
+  const linkedTemplateTitles = (Array.isArray(item?.linkedTemplateTitles) && item.linkedTemplateTitles.length > 0)
+    ? item.linkedTemplateTitles
+    : getTemplateTitlesByIds(Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : []);
+  const activityEntries = Array.isArray(item?.activityItems) ? item.activityItems : [];
+  const activityAll = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries);
+  const activityCalibration = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries, "umjeravanje", { limit: 6 });
+  const activityReview = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries, "pregled", { limit: 6 });
+  const activityService = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries, "servis", { limit: 6 });
+  const documentLines = buildMeasurementEquipmentExportDocumentLinesFromEntries(item?.documents ?? []);
+  const specItems = (Array.isArray(item?.measurementSpecs) ? item.measurementSpecs : [])
+    .map((entry) => normalizeMeasurementEquipmentSpecDraftEntry(entry))
+    .filter((entry) => entry.quantity || entry.range || entry.remark)
+    .slice(0, 6);
+  const specLines = specItems
+    .map((entry, index) => {
+      const values = [entry.quantity, entry.range, entry.remark].filter(Boolean);
+      return values.length > 0 ? `${index + 1}. ${values.join(" | ")}` : "";
+    })
+    .filter(Boolean);
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  const placeholders = {
+    NAZIV_UREDJAJA: item?.name || "",
+    PROIZVODAC: item?.manufacturer || "",
+    TIP_MODEL: item?.deviceType || "",
+    OZNAKA_UREDAJA: item?.deviceCode || "",
+    SERIJSKI_BROJ: item?.serialNumber || "",
+    INV_BROJ: item?.inventoryNumber || "",
+    MJERNU_OPREMU_UNIO: item?.enteredBy || "",
+    ODOBRIO: item?.approvedBy || "",
+    DATUM_UNOSA: item?.entryDate ? formatCompactDate(item.entryDate) : "",
+    UMJERAVA_SE: requiresCalibration ? "DA" : "NE",
+    DATUM_UMJERAVANJA: item?.calibrationDate ? formatCompactDate(item.calibrationDate) : "",
+    PERIODIKA_UMJERAVANJA: item?.calibrationPeriod || "",
+    VRIJEDI_DO: item?.validUntil ? formatCompactDate(item.validUntil) : "",
+    ZAPISNICI: linkedTemplateTitles.join(", "),
+    AKTIVNOSTI: activityAll.join("\n"),
+    AKTIVNOSTI_UMJERAVANJE: activityCalibration.join("\n"),
+    AKTIVNOSTI_PREGLED: activityReview.join("\n"),
+    AKTIVNOSTI_SERVIS: activityService.join("\n"),
+    DOKUMENTI: documentLines.join("\n"),
+    MJERNE_STAVKE: specLines.join("\n"),
+    NAPOMENA: item?.note || "",
+    DATUM_GENERIRANJA: formatCompactDate(todayIso),
+    DANAS: formatCompactDate(todayIso),
+  };
+
+  for (let index = 0; index < 6; index += 1) {
+    const entry = specItems[index] ?? {};
+    placeholders[`MJERNA_VELICINA_${index + 1}`] = entry.quantity || "";
+    placeholders[`RASPON_${index + 1}`] = entry.range || "";
+    placeholders[`OPASKA_${index + 1}`] = entry.remark || "";
+  }
+
+  return placeholders;
+}
+
 function buildMeasurementEquipmentCardExportFileBaseName() {
   const inventoryNumber = String(measurementEquipmentInventoryNumberInput?.value || "").trim();
   const equipmentName = String(measurementEquipmentNameInput?.value || "").trim();
+  const fallbackName = inventoryNumber || equipmentName || "karton-uredaja";
+  const datePart = new Date().toISOString().slice(0, 10);
+  return `${sanitizeDocumentTemplateFileName(fallbackName, "karton-uredaja")}-${datePart}`;
+}
+
+function buildMeasurementEquipmentCardExportFileBaseNameForItem(item = {}) {
+  const inventoryNumber = String(item?.inventoryNumber || "").trim();
+  const equipmentName = String(item?.name || "").trim();
   const fallbackName = inventoryNumber || equipmentName || "karton-uredaja";
   const datePart = new Date().toISOString().slice(0, 10);
   return `${sanitizeDocumentTemplateFileName(fallbackName, "karton-uredaja")}-${datePart}`;
@@ -20607,6 +20731,44 @@ async function exportMeasurementEquipmentCardDocument(format = "word") {
   } finally {
     measurementEquipmentCardExporting = false;
     syncMeasurementEquipmentCardTemplateControls();
+  }
+}
+
+async function exportMeasurementEquipmentCardDocumentForItem(item, format = "word") {
+  const safeItem = item && typeof item === "object" ? item : null;
+  if (!safeItem) {
+    throw new Error("Uređaj nije pronađen.");
+  }
+
+  const templateDocument = getMeasurementEquipmentCardTemplateDocument();
+  if (!templateDocument) {
+    throw new Error("Prvo učitaj karton template (.docx/.dotx).");
+  }
+
+  const safeFormat = String(format || "").trim().toLowerCase() === "pdf" ? "pdf" : "word";
+  const endpoint = safeFormat === "pdf"
+    ? "/measurement-equipment/export-pdf"
+    : "/measurement-equipment/export-word";
+  const extension = safeFormat === "pdf" ? "pdf" : "docx";
+  const fileName = `${buildMeasurementEquipmentCardExportFileBaseNameForItem(safeItem)}.${extension}`;
+
+  measurementEquipmentCardExporting = true;
+  syncMeasurementEquipmentCardTemplateControls();
+  renderMeasurementEquipmentModule();
+  try {
+    const response = await apiBinaryRequest(endpoint, {
+      method: "POST",
+      body: {
+        templateDocument,
+        placeholders: buildMeasurementEquipmentExportPlaceholdersForItem(safeItem),
+        fileName,
+      },
+    });
+    triggerBlobDownload(response.blob, response.fileName || fileName);
+  } finally {
+    measurementEquipmentCardExporting = false;
+    syncMeasurementEquipmentCardTemplateControls();
+    renderMeasurementEquipmentModule();
   }
 }
 
@@ -22902,6 +23064,7 @@ function renderMeasurementEquipmentModule() {
       ? `Prikazano ${visibleItems.length} stavki opreme.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} stavki opreme.`;
   }
+  const hasCardTemplateDocument = Boolean(getMeasurementEquipmentCardTemplateDocument());
 
   measurementEquipmentList.replaceChildren(...visibleItems.map((item) => {
     const card = document.createElement("article");
@@ -22939,6 +23102,53 @@ function renderMeasurementEquipmentModule() {
     badges.append(
       createBadge(item.requiresCalibration ? "Umjerava se" : "Ne umjerava se", item.requiresCalibration ? "document-template-status-badge is-active" : "document-template-status-badge is-archived"),
     );
+    if (canManageMasterData) {
+      const actions = document.createElement("div");
+      actions.className = "measurement-equipment-card-actions";
+
+      const exportWordButton = document.createElement("button");
+      exportWordButton.type = "button";
+      exportWordButton.className = "ghost-button measurement-equipment-card-action-button";
+      exportWordButton.title = "Preuzmi karton (Word)";
+      exportWordButton.setAttribute("aria-label", `Preuzmi Word karton za ${item.name || "uređaj"}`);
+      exportWordButton.disabled = !hasCardTemplateDocument || measurementEquipmentCardExporting;
+      exportWordButton.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+          <path d="M14 2v5h5" />
+          <path d="M8 13l1.4 4L11 13l1.6 4L14 13" />
+        </svg>
+      `;
+
+      const exportPdfButton = document.createElement("button");
+      exportPdfButton.type = "button";
+      exportPdfButton.className = "ghost-button measurement-equipment-card-action-button";
+      exportPdfButton.title = "Preuzmi karton (PDF)";
+      exportPdfButton.setAttribute("aria-label", `Preuzmi PDF karton za ${item.name || "uređaj"}`);
+      exportPdfButton.disabled = !hasCardTemplateDocument || measurementEquipmentCardExporting;
+      exportPdfButton.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+          <path d="M14 2v5h5" />
+          <path d="M8 17h8" />
+          <path d="M8 13h8" />
+        </svg>
+      `;
+
+      exportWordButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runMutation(() => exportMeasurementEquipmentCardDocumentForItem(item, "word"), measurementEquipmentError);
+      });
+      exportPdfButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runMutation(() => exportMeasurementEquipmentCardDocumentForItem(item, "pdf"), measurementEquipmentError);
+      });
+
+      actions.append(exportWordButton, exportPdfButton);
+      badges.append(actions);
+    }
     head.append(copy, badges);
 
     const footer = document.createElement("div");
