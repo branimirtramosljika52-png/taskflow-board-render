@@ -324,6 +324,7 @@ const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
   reminders: "home",
   todo: "home",
+  notifications: "home",
   companies: "company",
   locations: "locations",
   management: "organisations",
@@ -333,6 +334,7 @@ const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
   selfdash: ["home", "operations"],
   reminders: ["home"],
   todo: ["home"],
+  notifications: ["home"],
   companies: ["company"],
   locations: ["locations"],
   management: ["organisations"],
@@ -449,6 +451,7 @@ const SIDEBAR_ITEM_CONFIG = {
   dashboard: { group: "home", view: "selfdash", focus: "top" },
   reminders: { group: "home", view: "reminders" },
   todo: { group: "home", view: "todo" },
+  notifications: { group: "home", view: "notifications" },
   settings: { group: "home", view: "module", module: "settings" },
   "measurement-equipment": { group: "organisations", view: "module", module: "measurement-equipment" },
   vehicles: { group: "organisations", view: "module", module: "vehicles" },
@@ -492,6 +495,7 @@ const SIDEBAR_ITEM_LABELS = {
   dashboard: "Dashboard",
   reminders: "Reminders",
   todo: "ToDo",
+  notifications: "Notifications",
   settings: "Settings",
   "measurement-equipment": "Measurement Equipment",
   vehicles: "Vehicles",
@@ -1044,6 +1048,7 @@ let measurementRowCounter = 0;
 let measurementColumnCounter = 0;
 let measurementComputedRefreshTimerId = 0;
 let userPresenceMenuOpen = false;
+let notificationsMenuOpen = false;
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
@@ -1060,6 +1065,13 @@ const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const notificationsTrigger = document.querySelector("#notifications-trigger");
+const notificationsTriggerCount = document.querySelector("#notifications-trigger-count");
+const notificationsPanel = document.querySelector("#notifications-panel");
+const notificationsPanelMeta = document.querySelector("#notifications-panel-meta");
+const notificationsPanelList = document.querySelector("#notifications-panel-list");
+const notificationsPanelEmpty = document.querySelector("#notifications-panel-empty");
+const notificationsPanelOpenAllButton = document.querySelector("#notifications-panel-open-all");
 const userBadge = document.querySelector("#user-badge");
 const userMenuPanel = document.querySelector("#user-menu-panel");
 const userMenuAvatar = document.querySelector("#user-menu-avatar");
@@ -1126,6 +1138,7 @@ const workspaceViews = {
   selfdash: document.querySelector("#selfdash-view"),
   reminders: document.querySelector("#reminders-view"),
   todo: document.querySelector("#todo-view"),
+  notifications: document.querySelector("#notifications-view"),
   companies: document.querySelector("#companies-view"),
   locations: document.querySelector("#locations-view"),
   management: document.querySelector("#management-view"),
@@ -1707,6 +1720,15 @@ const todoCommentsEmpty = document.querySelector("#todo-comments-empty");
 const todoCommentForm = document.querySelector("#todo-comment-form");
 const todoCommentInput = document.querySelector("#todo-comment-message");
 const todoCommentError = document.querySelector("#todo-comment-error");
+const notificationsTotalCount = document.querySelector("#notifications-total-count");
+const notificationsCriticalCount = document.querySelector("#notifications-critical-count");
+const notificationsWarningCount = document.querySelector("#notifications-warning-count");
+const notificationsEquipmentCount = document.querySelector("#notifications-equipment-count");
+const notificationsSearchInput = document.querySelector("#notifications-search");
+const notificationsFilterKindInput = document.querySelector("#notifications-filter-kind");
+const notificationsFilterLevelInput = document.querySelector("#notifications-filter-level");
+const notificationsBody = document.querySelector("#notifications-body");
+const notificationsEmpty = document.querySelector("#notifications-empty");
 
 const workOrderEditorPanel = document.querySelector("#work-order-editor-panel");
 const workOrderEditorBackdrop = document.querySelector("#work-order-editor-backdrop");
@@ -3355,6 +3377,10 @@ function setUserMenuOpen(isOpen) {
 
   userBadge?.setAttribute("aria-expanded", userMenuOpen ? "true" : "false");
 
+  if (userMenuOpen) {
+    setNotificationsMenuOpen(false);
+  }
+
   if (!userMenuOpen) {
     setUserPresenceMenuOpen(false);
     setUserMenuError("");
@@ -4416,6 +4442,16 @@ function activateSidebarItem(itemName, options = {}) {
     state.activeView = "todo";
     renderActiveView();
     workspaceViews.todo?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
+  if (itemConfig.view === "notifications") {
+    state.activeView = "notifications";
+    renderActiveView();
+    workspaceViews.notifications?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
@@ -5690,6 +5726,21 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
     meta.className = "work-order-service-picker-empty";
     meta.textContent = `${getWorkOrderCompletedServiceCount({ serviceItems: selectedItems })}/${selectedItems.length} odrađeno`;
     trigger.append(meta);
+  }
+}
+
+function setNotificationsMenuOpen(isOpen) {
+  notificationsMenuOpen = Boolean(isOpen && state.user);
+
+  if (notificationsPanel) {
+    notificationsPanel.hidden = !notificationsMenuOpen;
+  }
+
+  notificationsTrigger?.setAttribute("aria-expanded", notificationsMenuOpen ? "true" : "false");
+  notificationsTrigger?.classList.toggle("is-open", notificationsMenuOpen);
+
+  if (notificationsMenuOpen) {
+    setUserMenuOpen(false);
   }
 }
 
@@ -28265,6 +28316,7 @@ function renderAuthState() {
     renderChatDock();
   }
 
+  setNotificationsMenuOpen(false);
   setUserMenuOpen(false);
 }
 
@@ -30618,6 +30670,329 @@ function isReminderOverdue(reminder) {
     && reminder.status !== "done"
     && reminder.dueDate < new Date().toISOString().slice(0, 10),
   );
+}
+
+function getNotificationLevelPriority(level = "info") {
+  if (level === "critical") {
+    return 0;
+  }
+  if (level === "warning") {
+    return 1;
+  }
+  return 2;
+}
+
+function getNotificationLevelLabel(level = "info") {
+  if (level === "critical") {
+    return "Kritično";
+  }
+  if (level === "warning") {
+    return "Upozorenje";
+  }
+  return "Info";
+}
+
+function getNotificationKindLabel(kind = "") {
+  if (kind === "equipment") {
+    return "Oprema";
+  }
+  if (kind === "reminder") {
+    return "Reminder";
+  }
+  return "Notifikacija";
+}
+
+function buildReminderNotifications() {
+  const today = new Date().toISOString().slice(0, 10);
+  return (state.reminders ?? [])
+    .filter((item) => item?.status !== "done" && item?.dueDate)
+    .map((item) => {
+      const dueDate = String(item.dueDate || "");
+      if (!dueDate) {
+        return null;
+      }
+
+      let level = "info";
+      let title = "Reminder dolazi uskoro";
+      if (dueDate < today) {
+        level = "critical";
+        title = "Reminder kasni";
+      } else if (dueDate === today) {
+        level = "warning";
+        title = "Reminder je danas";
+      } else if (!isUpcomingIsoDate(dueDate, 7)) {
+        return null;
+      }
+
+      const context = [
+        item.workOrderNumber ? `RN ${item.workOrderNumber}` : "",
+        item.companyName || "",
+        item.locationName || "",
+      ].filter(Boolean).join(" · ") || "Opći reminder";
+
+      return {
+        id: `reminder-${item.id}-${dueDate}`,
+        kind: "reminder",
+        level,
+        title,
+        message: String(item.title || "Reminder"),
+        context,
+        dueDate,
+        referenceId: String(item.id ?? ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildMeasurementEquipmentNotifications() {
+  const today = new Date().toISOString().slice(0, 10);
+  return (state.measurementEquipment ?? [])
+    .filter((item) => item?.requiresCalibration && item?.validUntil)
+    .map((item) => {
+      const dueDate = String(item.validUntil || "");
+      if (!dueDate) {
+        return null;
+      }
+
+      let level = "info";
+      let title = "Umjernica uskoro ističe";
+      if (dueDate < today) {
+        level = "critical";
+        title = "Umjernica je istekla";
+      } else if (isUpcomingIsoDate(dueDate, 30)) {
+        level = "warning";
+      } else {
+        return null;
+      }
+
+      const context = [
+        item.manufacturer || "",
+        item.deviceType || "",
+        item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+      ].filter(Boolean).join(" · ") || "Mjerna i ispitna oprema";
+
+      return {
+        id: `equipment-${item.id}-${dueDate}`,
+        kind: "equipment",
+        level,
+        title,
+        message: String(item.name || "Uređaj"),
+        context,
+        dueDate,
+        referenceId: String(item.id ?? ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+function getAllNotifications() {
+  return [
+    ...buildReminderNotifications(),
+    ...buildMeasurementEquipmentNotifications(),
+  ].sort((left, right) => {
+    const levelDelta = getNotificationLevelPriority(left.level) - getNotificationLevelPriority(right.level);
+    if (levelDelta !== 0) {
+      return levelDelta;
+    }
+
+    const leftDate = parseDateValue(left.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const rightDate = parseDateValue(right.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    if (leftDate !== rightDate) {
+      return leftDate - rightDate;
+    }
+
+    return String(left.message || left.title || "").localeCompare(String(right.message || right.title || ""), "hr");
+  });
+}
+
+function getFilteredNotifications(source = getAllNotifications()) {
+  const query = String(notificationsSearchInput?.value || "").trim().toLowerCase();
+  const kind = String(notificationsFilterKindInput?.value || "all").trim().toLowerCase();
+  const level = String(notificationsFilterLevelInput?.value || "all").trim().toLowerCase();
+
+  return source.filter((entry) => {
+    if (kind !== "all" && String(entry.kind || "").toLowerCase() !== kind) {
+      return false;
+    }
+    if (level !== "all" && String(entry.level || "").toLowerCase() !== level) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+
+    const haystack = [
+      entry.title,
+      entry.message,
+      entry.context,
+      entry.dueDate ? formatCompactDate(entry.dueDate) : "",
+    ].join(" ").toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function openNotificationEntry(entry) {
+  if (!entry) {
+    return;
+  }
+
+  if (entry.kind === "reminder") {
+    const reminder = getReminderById(entry.referenceId);
+    if (reminder) {
+      hydrateReminderForm(reminder);
+      return;
+    }
+    activateSidebarItem("reminders", { expandSidebar: state.sidebarCollapsed });
+    return;
+  }
+
+  if (entry.kind === "equipment") {
+    activateSidebarItem("measurement-equipment", { expandSidebar: state.sidebarCollapsed });
+    const equipment = state.measurementEquipment.find((item) => String(item.id) === String(entry.referenceId)) ?? null;
+    if (equipment && getCanManageMasterData()) {
+      window.requestAnimationFrame(() => {
+        hydrateMeasurementEquipmentForm(equipment);
+      });
+    }
+  }
+}
+
+function createNotificationRow(entry, { compact = false } = {}) {
+  const row = document.createElement(compact ? "button" : "article");
+  row.className = `notification-row is-${entry.level || "info"}${compact ? " is-compact" : ""}`;
+  if (compact) {
+    row.type = "button";
+  }
+
+  const marker = document.createElement("span");
+  marker.className = `notification-row-marker is-${entry.level || "info"}`;
+  marker.setAttribute("aria-hidden", "true");
+
+  const copy = document.createElement("div");
+  copy.className = "notification-row-copy";
+
+  const top = document.createElement("div");
+  top.className = "notification-row-top";
+  const title = document.createElement("strong");
+  title.textContent = entry.title || "Notifikacija";
+
+  const badges = document.createElement("div");
+  badges.className = "notification-row-badges";
+  badges.append(
+    createBadge(getNotificationKindLabel(entry.kind), "service-catalog-template-badge"),
+    createBadge(getNotificationLevelLabel(entry.level), `notification-level-badge is-${entry.level || "info"}`),
+  );
+  top.append(title, badges);
+
+  const message = document.createElement("p");
+  message.className = "notification-row-message";
+  message.textContent = entry.message || "Bez naslova";
+
+  const meta = document.createElement("p");
+  meta.className = "notification-row-meta";
+  meta.textContent = [
+    entry.context || "",
+    entry.dueDate ? `Rok: ${formatCompactDate(entry.dueDate)}` : "",
+  ].filter(Boolean).join(" · ");
+
+  copy.append(top, message, meta);
+
+  if (compact) {
+    row.append(marker, copy);
+    row.addEventListener("click", () => {
+      setNotificationsMenuOpen(false);
+      openNotificationEntry(entry);
+    });
+    return row;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "notification-row-actions";
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "ghost-button";
+  openButton.textContent = "Otvori";
+  openButton.addEventListener("click", () => {
+    openNotificationEntry(entry);
+  });
+  actions.append(openButton);
+
+  row.append(marker, copy, actions);
+  return row;
+}
+
+function renderNotificationsPanel(items = getAllNotifications()) {
+  const count = items.length;
+
+  if (notificationsTriggerCount) {
+    notificationsTriggerCount.hidden = count === 0;
+    notificationsTriggerCount.textContent = count > 99 ? "99+" : String(count);
+  }
+  if (notificationsTrigger) {
+    notificationsTrigger.classList.toggle("has-unread", count > 0);
+  }
+  if (notificationsPanelMeta) {
+    notificationsPanelMeta.textContent = count > 0
+      ? `${count} aktivnih notifikacija`
+      : "Nema novih stavki.";
+  }
+  if (notificationsPanelOpenAllButton) {
+    notificationsPanelOpenAllButton.disabled = count === 0;
+  }
+  if (!notificationsPanelList || !notificationsPanelEmpty) {
+    return;
+  }
+
+  const previewItems = items.slice(0, 6);
+  notificationsPanelList.replaceChildren(...previewItems.map((entry) => createNotificationRow(entry, { compact: true })));
+  notificationsPanelEmpty.hidden = previewItems.length !== 0;
+}
+
+function renderNotificationsView(items = getAllNotifications()) {
+  if (!notificationsBody || !notificationsEmpty) {
+    return;
+  }
+
+  const criticalCount = items.filter((item) => item.level === "critical").length;
+  const warningCount = items.filter((item) => item.level === "warning").length;
+  const equipmentCount = items.filter((item) => item.kind === "equipment").length;
+
+  if (notificationsTotalCount) {
+    notificationsTotalCount.textContent = String(items.length);
+  }
+  if (notificationsCriticalCount) {
+    notificationsCriticalCount.textContent = String(criticalCount);
+  }
+  if (notificationsWarningCount) {
+    notificationsWarningCount.textContent = String(warningCount);
+  }
+  if (notificationsEquipmentCount) {
+    notificationsEquipmentCount.textContent = String(equipmentCount);
+  }
+
+  const filtered = getFilteredNotifications(items);
+  notificationsBody.replaceChildren(...filtered.map((entry) => createNotificationRow(entry)));
+  notificationsEmpty.hidden = filtered.length !== 0;
+}
+
+function renderNotifications() {
+  if (!state.user) {
+    if (notificationsTriggerCount) {
+      notificationsTriggerCount.hidden = true;
+      notificationsTriggerCount.textContent = "0";
+    }
+    notificationsTrigger?.classList.remove("has-unread");
+    notificationsPanelList?.replaceChildren();
+    if (notificationsPanelMeta) {
+      notificationsPanelMeta.textContent = "Nema novih stavki.";
+    }
+    notificationsBody?.replaceChildren();
+    return;
+  }
+
+  const items = getAllNotifications();
+  renderNotificationsPanel(items);
+  renderNotificationsView(items);
 }
 
 function getFilteredReminders() {
@@ -42577,6 +42952,7 @@ function render() {
   renderSharedOptions();
   renderReminders();
   renderTodo();
+  renderNotifications();
   renderCompanies();
   renderLocations();
   renderManagement();
@@ -43035,6 +43411,9 @@ todoResetButton?.addEventListener("click", resetTodoForm);
 todoSearchInput?.addEventListener("input", renderTodo);
 todoFilterScopeInput?.addEventListener("change", renderTodo);
 todoFilterStatusInput?.addEventListener("change", renderTodo);
+notificationsSearchInput?.addEventListener("input", renderNotifications);
+notificationsFilterKindInput?.addEventListener("change", renderNotifications);
+notificationsFilterLevelInput?.addEventListener("change", renderNotifications);
 todoDetailStatus?.addEventListener("change", () => {
   const taskId = todoDetailStatus.dataset.taskId;
 
@@ -45005,6 +45384,18 @@ userBadge?.addEventListener("click", (event) => {
   setUserMenuOpen(!userMenuOpen);
 });
 
+notificationsTrigger?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setNotificationsMenuOpen(!notificationsMenuOpen);
+});
+
+notificationsPanelOpenAllButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setNotificationsMenuOpen(false);
+  activateSidebarItem("notifications", { expandSidebar: state.sidebarCollapsed });
+});
+
 userMenuPresenceButton?.addEventListener("click", (event) => {
   event.stopPropagation();
 
@@ -45333,6 +45724,14 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (notificationsMenuOpen && event.target instanceof Node) {
+    const clickedNotificationsControl = notificationsTrigger?.contains(event.target)
+      || notificationsPanel?.contains(event.target);
+    if (!clickedNotificationsControl) {
+      setNotificationsMenuOpen(false);
+    }
+  }
+
   if (!userMenuOpen) {
     return;
   }
@@ -45359,6 +45758,9 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("resize", () => {
   closeOpenWorkOrderStatusMenus();
+  if (notificationsMenuOpen) {
+    setNotificationsMenuOpen(false);
+  }
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
   }

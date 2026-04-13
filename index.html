@@ -217,6 +217,15 @@
                   </span>
                   <strong>ToDo</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="notifications">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6.5 9a5.5 5.5 0 0 1 11 0v3.2l1.3 2.1H5.2l1.3-2.1Z"></path>
+                      <path d="M10 18a2 2 0 0 0 4 0"></path>
+                    </svg>
+                  </span>
+                  <strong>Notifications</strong>
+                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="settings">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -502,49 +511,79 @@
               <select id="organization-switcher"></select>
             </label>
           </div>
-          <div class="user-menu">
-            <button id="user-badge" type="button" class="user-badge user-menu-trigger"></button>
-            <div id="user-menu-panel" class="user-menu-panel" hidden>
-              <div class="user-menu-summary">
-                <div id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true"></div>
-                <div class="user-menu-copy">
-                  <strong id="user-menu-name"></strong>
-                  <span id="user-menu-role"></span>
-                  <span id="user-menu-presence-current" class="user-menu-presence-current"></span>
-                  <span id="user-menu-email"></span>
-                  <span id="user-menu-organizations"></span>
-                </div>
-              </div>
-              <div class="user-menu-status-block">
-                <span class="user-menu-section-label">Status</span>
-                <div class="user-menu-presence-picker">
-                  <button
-                    id="user-menu-presence-button"
-                    type="button"
-                    class="user-menu-presence-trigger"
-                    aria-haspopup="menu"
-                    aria-expanded="false"
-                  >
-                    <span class="user-presence-dot" aria-hidden="true"></span>
-                    <span id="user-menu-presence-label" class="user-menu-presence-label-text"></span>
-                    <span class="user-menu-presence-caret" aria-hidden="true">&#9662;</span>
+          <div class="topbar-actions">
+            <div class="notifications-menu">
+              <button
+                id="notifications-trigger"
+                type="button"
+                class="notifications-trigger"
+                aria-label="Notifications"
+                aria-expanded="false"
+              >
+                <svg class="icon-svg notifications-trigger-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6.5 9a5.5 5.5 0 0 1 11 0v3.2l1.3 2.1H5.2l1.3-2.1Z"></path>
+                  <path d="M10 18a2 2 0 0 0 4 0"></path>
+                </svg>
+                <span id="notifications-trigger-count" class="notifications-trigger-count" hidden>0</span>
+              </button>
+              <div id="notifications-panel" class="notifications-panel" hidden>
+                <div class="notifications-panel-head">
+                  <div class="notifications-panel-copy">
+                    <strong>Notifications</strong>
+                    <span id="notifications-panel-meta">Nema novih stavki.</span>
+                  </div>
+                  <button id="notifications-panel-open-all" type="button" class="ghost-button notifications-open-all-button">
+                    Prikaži sve
                   </button>
-                  <div id="user-menu-presence-menu" class="user-menu-presence-menu" hidden></div>
                 </div>
+                <div id="notifications-panel-list" class="notifications-panel-list"></div>
+                <p id="notifications-panel-empty" class="notifications-panel-empty" hidden>Nema aktivnih notifikacija.</p>
               </div>
-              <div class="user-menu-metrics">
-                <div class="user-menu-metric">
-                  <span class="user-menu-metric-label">Zadnja prijava</span>
-                  <strong id="user-menu-last-login"></strong>
+            </div>
+            <div class="user-menu">
+              <button id="user-badge" type="button" class="user-badge user-menu-trigger"></button>
+              <div id="user-menu-panel" class="user-menu-panel" hidden>
+                <div class="user-menu-summary">
+                  <div id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true"></div>
+                  <div class="user-menu-copy">
+                    <strong id="user-menu-name"></strong>
+                    <span id="user-menu-role"></span>
+                    <span id="user-menu-presence-current" class="user-menu-presence-current"></span>
+                    <span id="user-menu-email"></span>
+                    <span id="user-menu-organizations"></span>
+                  </div>
                 </div>
-              </div>
-              <div class="user-menu-actions">
-                <input id="user-menu-avatar-file" type="file" accept="image/*" hidden />
-                <button id="user-menu-avatar-button" type="button" class="user-menu-link-button">
-                  Promijeni profilnu sliku
-                </button>
-                <button id="logout-button" type="button" class="user-menu-link-button user-menu-link-danger">Odjava</button>
-                <p id="user-menu-error" class="form-error user-menu-error" aria-live="polite"></p>
+                <div class="user-menu-status-block">
+                  <span class="user-menu-section-label">Status</span>
+                  <div class="user-menu-presence-picker">
+                    <button
+                      id="user-menu-presence-button"
+                      type="button"
+                      class="user-menu-presence-trigger"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                    >
+                      <span class="user-presence-dot" aria-hidden="true"></span>
+                      <span id="user-menu-presence-label" class="user-menu-presence-label-text"></span>
+                      <span class="user-menu-presence-caret" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <div id="user-menu-presence-menu" class="user-menu-presence-menu" hidden></div>
+                  </div>
+                </div>
+                <div class="user-menu-metrics">
+                  <div class="user-menu-metric">
+                    <span class="user-menu-metric-label">Zadnja prijava</span>
+                    <strong id="user-menu-last-login"></strong>
+                  </div>
+                </div>
+                <div class="user-menu-actions">
+                  <input id="user-menu-avatar-file" type="file" accept="image/*" hidden />
+                  <button id="user-menu-avatar-button" type="button" class="user-menu-link-button">
+                    Promijeni profilnu sliku
+                  </button>
+                  <button id="logout-button" type="button" class="user-menu-link-button user-menu-link-danger">Odjava</button>
+                  <p id="user-menu-error" class="form-error user-menu-error" aria-live="polite"></p>
+                </div>
               </div>
             </div>
           </div>
@@ -2020,6 +2059,77 @@
                 </div>
               </aside>
             </div>
+          </section>
+        </section>
+
+        <section id="notifications-view" class="workspace-view" hidden>
+          <section class="panel notifications-overview-panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Home</p>
+                <h2>Notifications</h2>
+              </div>
+              <p class="helper-copy">
+                Pregled kritičnih stavki, isteka opreme i podsjetnika koji traže brzu akciju.
+              </p>
+            </div>
+
+            <div class="notifications-summary-grid">
+              <article class="summary-card">
+                <span>Ukupno</span>
+                <strong id="notifications-total-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Kritično</span>
+                <strong id="notifications-critical-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Upozorenja</span>
+                <strong id="notifications-warning-count">0</strong>
+              </article>
+              <article class="summary-card">
+                <span>Istek opreme</span>
+                <strong id="notifications-equipment-count">0</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel notifications-list-panel">
+            <div class="workspace-list-head">
+              <div class="workspace-list-copy">
+                <p class="section-kicker">List view</p>
+                <h3>Aktivne notifikacije</h3>
+              </div>
+            </div>
+
+            <div class="filter-row filter-row-clickup notifications-filter-row">
+              <label class="field">
+                <span>Pretraga</span>
+                <input id="notifications-search" type="search" placeholder="RN, tvrtka, oprema, naslov..." />
+              </label>
+
+              <label class="field">
+                <span>Vrsta</span>
+                <select id="notifications-filter-kind">
+                  <option value="all">Sve vrste</option>
+                  <option value="equipment">Oprema</option>
+                  <option value="reminder">Reminders</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Razina</span>
+                <select id="notifications-filter-level">
+                  <option value="all">Sve razine</option>
+                  <option value="critical">Kritično</option>
+                  <option value="warning">Upozorenje</option>
+                  <option value="info">Info</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="notifications-body" class="notifications-list"></div>
+            <p id="notifications-empty" class="empty-inline" hidden>Nema notifikacija za odabrane filtere.</p>
           </section>
         </section>
 
@@ -3737,7 +3847,7 @@
                     </div>
                   </div>
                   <p id="measurement-equipment-card-template-meta" class="helper-copy module-copy">
-                    Učitaj .docx/.dotx karton template i koristi placeholdere za automatsko popunjavanje.
+                    Učitaj .docx/.dotx karton template, pa koristi ikone desno za izvoz.
                   </p>
                   <p class="helper-copy module-copy measurement-equipment-export-placeholders" hidden>
                     Placeholdere preuzmi kroz ikonu "Preuzmi placeholdere (Word)".
