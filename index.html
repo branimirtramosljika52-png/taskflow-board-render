@@ -512,6 +512,34 @@
             </label>
           </div>
           <div class="topbar-actions">
+            <div class="topbar-shortcuts" aria-label="Brzi moduli">
+              <button id="topbar-shortcut-dashboard" type="button" class="topbar-shortcut-button" aria-label="Dashboard">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="4" width="7" height="7" rx="2"></rect>
+                  <rect x="13" y="4" width="7" height="5" rx="2"></rect>
+                  <rect x="13" y="11" width="7" height="9" rx="2"></rect>
+                  <rect x="4" y="13" width="7" height="7" rx="2"></rect>
+                </svg>
+              </button>
+              <button id="topbar-shortcut-reminders" type="button" class="topbar-shortcut-button" aria-label="Reminders">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7.5 8a4.5 4.5 0 1 1 9 0c0 5 2 5.5 2 6H5.5c0-.5 2-1 2-6"></path>
+                  <path d="M10 18a2 2 0 0 0 4 0"></path>
+                </svg>
+                <span id="topbar-shortcut-reminders-count" class="topbar-shortcut-count" hidden>0</span>
+              </button>
+              <button id="topbar-shortcut-todo" type="button" class="topbar-shortcut-button" aria-label="ToDo">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 7h10"></path>
+                  <path d="M9 12h10"></path>
+                  <path d="M9 17h10"></path>
+                  <path d="m4.5 7 1.5 1.5L8.5 6"></path>
+                  <path d="m4.5 12 1.5 1.5L8.5 11"></path>
+                  <path d="m4.5 17 1.5 1.5L8.5 16"></path>
+                </svg>
+                <span id="topbar-shortcut-todo-count" class="topbar-shortcut-count" hidden>0</span>
+              </button>
+            </div>
             <div class="notifications-menu">
               <button
                 id="notifications-trigger"
@@ -2073,25 +2101,6 @@
                 Pregled kritičnih stavki, isteka opreme i podsjetnika koji traže brzu akciju.
               </p>
             </div>
-
-            <div class="notifications-summary-grid">
-              <article class="summary-card">
-                <span>Ukupno</span>
-                <strong id="notifications-total-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Kritično</span>
-                <strong id="notifications-critical-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Upozorenja</span>
-                <strong id="notifications-warning-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Istek opreme</span>
-                <strong id="notifications-equipment-count">0</strong>
-              </article>
-            </div>
           </section>
 
           <section class="panel notifications-list-panel">
@@ -2124,6 +2133,15 @@
                   <option value="critical">Kritično</option>
                   <option value="warning">Upozorenje</option>
                   <option value="info">Info</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Status</span>
+                <select id="notifications-filter-state">
+                  <option value="active">Aktivne</option>
+                  <option value="resolved">Riješene</option>
+                  <option value="all">Sve</option>
                 </select>
               </label>
             </div>

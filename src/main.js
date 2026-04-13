@@ -163,6 +163,7 @@ const VEHICLE_SCHEDULE_END_HOUR = 22;
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
 const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
+const NOTIFICATIONS_RESOLVED_KEY_PREFIX = "s360-notifications-resolved:";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
   { value: "away", label: "Away" },
@@ -613,6 +614,10 @@ const state = {
     query: "",
     status: "all",
   },
+  notificationsResolved: {
+    scope: "",
+    ids: new Set(),
+  },
   documentsExplorer: {
     organizationId: "",
     query: "",
@@ -981,6 +986,58 @@ function getWorkOrderFilterPresetsStorageKey() {
   return `${WORK_ORDER_FILTER_PRESETS_KEY_PREFIX}${getWorkOrderFilterStorageScope()}`;
 }
 
+function getNotificationsResolvedStorageScope() {
+  const organizationId = state.activeOrganizationId || "global";
+  const userId = state.user?.id || "guest";
+  return `${userId}:${organizationId}`;
+}
+
+function getNotificationsResolvedStorageKey() {
+  return `${NOTIFICATIONS_RESOLVED_KEY_PREFIX}${getNotificationsResolvedStorageScope()}`;
+}
+
+function loadResolvedNotifications() {
+  const scope = getNotificationsResolvedStorageScope();
+  if (state.notificationsResolved.scope === scope) {
+    return;
+  }
+
+  const raw = readJsonFromLocalStorage(getNotificationsResolvedStorageKey(), []);
+  const ids = Array.isArray(raw)
+    ? raw.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  state.notificationsResolved.scope = scope;
+  state.notificationsResolved.ids = new Set(ids);
+}
+
+function persistResolvedNotifications() {
+  loadResolvedNotifications();
+  writeJsonToLocalStorage(
+    getNotificationsResolvedStorageKey(),
+    Array.from(state.notificationsResolved.ids),
+  );
+}
+
+function isNotificationResolved(notificationId = "") {
+  loadResolvedNotifications();
+  return state.notificationsResolved.ids.has(String(notificationId || ""));
+}
+
+function setNotificationResolvedState(notificationId = "", isResolved = false) {
+  const normalizedId = String(notificationId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  loadResolvedNotifications();
+  if (isResolved) {
+    state.notificationsResolved.ids.add(normalizedId);
+  } else {
+    state.notificationsResolved.ids.delete(normalizedId);
+  }
+  persistResolvedNotifications();
+}
+
 function getWorkOrderFilterActiveRuleCount(groups = state.workOrderFilters.groups) {
   return (groups ?? []).reduce((count, group) => count + (group.rules ?? []).filter((rule) => {
     const field = getWorkOrderFilterFieldDefinition(rule.field);
@@ -1065,6 +1122,11 @@ const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
+const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
+const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
+const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
+const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
 const notificationsTrigger = document.querySelector("#notifications-trigger");
 const notificationsTriggerCount = document.querySelector("#notifications-trigger-count");
 const notificationsPanel = document.querySelector("#notifications-panel");
@@ -1720,13 +1782,10 @@ const todoCommentsEmpty = document.querySelector("#todo-comments-empty");
 const todoCommentForm = document.querySelector("#todo-comment-form");
 const todoCommentInput = document.querySelector("#todo-comment-message");
 const todoCommentError = document.querySelector("#todo-comment-error");
-const notificationsTotalCount = document.querySelector("#notifications-total-count");
-const notificationsCriticalCount = document.querySelector("#notifications-critical-count");
-const notificationsWarningCount = document.querySelector("#notifications-warning-count");
-const notificationsEquipmentCount = document.querySelector("#notifications-equipment-count");
 const notificationsSearchInput = document.querySelector("#notifications-search");
 const notificationsFilterKindInput = document.querySelector("#notifications-filter-kind");
 const notificationsFilterLevelInput = document.querySelector("#notifications-filter-level");
+const notificationsFilterStateInput = document.querySelector("#notifications-filter-state");
 const notificationsBody = document.querySelector("#notifications-body");
 const notificationsEmpty = document.querySelector("#notifications-empty");
 
@@ -30785,11 +30844,37 @@ function buildMeasurementEquipmentNotifications() {
     .filter(Boolean);
 }
 
+function getPendingReminderNotificationCount() {
+  return (state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
+}
+
+function getPendingTodoNotificationCount() {
+  return (state.todoTasks ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
+}
+
+function renderTopbarShortcutCounts() {
+  const reminderCount = getPendingReminderNotificationCount();
+  const todoCount = getPendingTodoNotificationCount();
+
+  if (topbarShortcutRemindersCount) {
+    topbarShortcutRemindersCount.hidden = reminderCount === 0;
+    topbarShortcutRemindersCount.textContent = reminderCount > 99 ? "99+" : String(reminderCount);
+  }
+
+  if (topbarShortcutTodoCount) {
+    topbarShortcutTodoCount.hidden = todoCount === 0;
+    topbarShortcutTodoCount.textContent = todoCount > 99 ? "99+" : String(todoCount);
+  }
+}
+
 function getAllNotifications() {
   return [
     ...buildReminderNotifications(),
     ...buildMeasurementEquipmentNotifications(),
-  ].sort((left, right) => {
+  ].map((entry) => ({
+    ...entry,
+    resolved: isNotificationResolved(entry.id),
+  })).sort((left, right) => {
     const levelDelta = getNotificationLevelPriority(left.level) - getNotificationLevelPriority(right.level);
     if (levelDelta !== 0) {
       return levelDelta;
@@ -30809,12 +30894,19 @@ function getFilteredNotifications(source = getAllNotifications()) {
   const query = String(notificationsSearchInput?.value || "").trim().toLowerCase();
   const kind = String(notificationsFilterKindInput?.value || "all").trim().toLowerCase();
   const level = String(notificationsFilterLevelInput?.value || "all").trim().toLowerCase();
+  const viewState = String(notificationsFilterStateInput?.value || "active").trim().toLowerCase();
 
   return source.filter((entry) => {
     if (kind !== "all" && String(entry.kind || "").toLowerCase() !== kind) {
       return false;
     }
     if (level !== "all" && String(entry.level || "").toLowerCase() !== level) {
+      return false;
+    }
+    if (viewState === "active" && entry.resolved) {
+      return false;
+    }
+    if (viewState === "resolved" && !entry.resolved) {
       return false;
     }
     if (!query) {
@@ -30858,14 +30950,11 @@ function openNotificationEntry(entry) {
 }
 
 function createNotificationRow(entry, { compact = false } = {}) {
-  const row = document.createElement(compact ? "button" : "article");
-  row.className = `notification-row is-${entry.level || "info"}${compact ? " is-compact" : ""}`;
-  if (compact) {
-    row.type = "button";
-  }
+  const row = document.createElement("article");
+  row.className = `notification-row is-${entry.level || "info"}${compact ? " is-compact" : ""}${entry.resolved ? " is-resolved" : ""}`;
 
   const marker = document.createElement("span");
-  marker.className = `notification-row-marker is-${entry.level || "info"}`;
+  marker.className = `notification-row-marker is-${entry.level || "info"}${entry.resolved ? " is-resolved" : ""}`;
   marker.setAttribute("aria-hidden", "true");
 
   const copy = document.createElement("div");
@@ -30881,6 +30970,7 @@ function createNotificationRow(entry, { compact = false } = {}) {
   badges.append(
     createBadge(getNotificationKindLabel(entry.kind), "service-catalog-template-badge"),
     createBadge(getNotificationLevelLabel(entry.level), `notification-level-badge is-${entry.level || "info"}`),
+    createBadge(entry.resolved ? "Riješeno" : "Aktivno", `notification-row-status-badge${entry.resolved ? " is-resolved" : " is-active"}`),
   );
   top.append(title, badges);
 
@@ -30897,32 +30987,27 @@ function createNotificationRow(entry, { compact = false } = {}) {
 
   copy.append(top, message, meta);
 
-  if (compact) {
-    row.append(marker, copy);
-    row.addEventListener("click", () => {
-      setNotificationsMenuOpen(false);
-      openNotificationEntry(entry);
-    });
-    return row;
-  }
-
   const actions = document.createElement("div");
   actions.className = "notification-row-actions";
-  const openButton = document.createElement("button");
-  openButton.type = "button";
-  openButton.className = "ghost-button";
-  openButton.textContent = "Otvori";
-  openButton.addEventListener("click", () => {
-    openNotificationEntry(entry);
+  const toggleResolvedButton = document.createElement("button");
+  toggleResolvedButton.type = "button";
+  toggleResolvedButton.className = "ghost-button notification-inline-action";
+  toggleResolvedButton.textContent = entry.resolved ? "Vrati aktivno" : "Riješeno";
+  toggleResolvedButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setNotificationResolvedState(entry.id, !entry.resolved);
+    renderNotifications();
   });
-  actions.append(openButton);
+  actions.append(toggleResolvedButton);
 
   row.append(marker, copy, actions);
   return row;
 }
 
 function renderNotificationsPanel(items = getAllNotifications()) {
-  const count = items.length;
+  const activeItems = items.filter((item) => !item.resolved);
+  const count = activeItems.length;
 
   if (notificationsTriggerCount) {
     notificationsTriggerCount.hidden = count === 0;
@@ -30943,7 +31028,7 @@ function renderNotificationsPanel(items = getAllNotifications()) {
     return;
   }
 
-  const previewItems = items.slice(0, 6);
+  const previewItems = activeItems.slice(0, 6);
   notificationsPanelList.replaceChildren(...previewItems.map((entry) => createNotificationRow(entry, { compact: true })));
   notificationsPanelEmpty.hidden = previewItems.length !== 0;
 }
@@ -30953,23 +31038,6 @@ function renderNotificationsView(items = getAllNotifications()) {
     return;
   }
 
-  const criticalCount = items.filter((item) => item.level === "critical").length;
-  const warningCount = items.filter((item) => item.level === "warning").length;
-  const equipmentCount = items.filter((item) => item.kind === "equipment").length;
-
-  if (notificationsTotalCount) {
-    notificationsTotalCount.textContent = String(items.length);
-  }
-  if (notificationsCriticalCount) {
-    notificationsCriticalCount.textContent = String(criticalCount);
-  }
-  if (notificationsWarningCount) {
-    notificationsWarningCount.textContent = String(warningCount);
-  }
-  if (notificationsEquipmentCount) {
-    notificationsEquipmentCount.textContent = String(equipmentCount);
-  }
-
   const filtered = getFilteredNotifications(items);
   notificationsBody.replaceChildren(...filtered.map((entry) => createNotificationRow(entry)));
   notificationsEmpty.hidden = filtered.length !== 0;
@@ -30977,6 +31045,14 @@ function renderNotificationsView(items = getAllNotifications()) {
 
 function renderNotifications() {
   if (!state.user) {
+    if (topbarShortcutRemindersCount) {
+      topbarShortcutRemindersCount.hidden = true;
+      topbarShortcutRemindersCount.textContent = "0";
+    }
+    if (topbarShortcutTodoCount) {
+      topbarShortcutTodoCount.hidden = true;
+      topbarShortcutTodoCount.textContent = "0";
+    }
     if (notificationsTriggerCount) {
       notificationsTriggerCount.hidden = true;
       notificationsTriggerCount.textContent = "0";
@@ -30990,6 +31066,7 @@ function renderNotifications() {
     return;
   }
 
+  renderTopbarShortcutCounts();
   const items = getAllNotifications();
   renderNotificationsPanel(items);
   renderNotificationsView(items);
@@ -31181,6 +31258,7 @@ function renderReminderSummary() {
 
 function renderReminders() {
   renderReminderSummary();
+  renderTopbarShortcutCounts();
 
   if (!remindersBody) {
     return;
@@ -31692,6 +31770,7 @@ function renderTodoDetail() {
 
 function renderTodo() {
   renderTodoSummary();
+  renderTopbarShortcutCounts();
   renderTodoList();
   renderTodoDetail();
 }
@@ -43414,6 +43493,7 @@ todoFilterStatusInput?.addEventListener("change", renderTodo);
 notificationsSearchInput?.addEventListener("input", renderNotifications);
 notificationsFilterKindInput?.addEventListener("change", renderNotifications);
 notificationsFilterLevelInput?.addEventListener("change", renderNotifications);
+notificationsFilterStateInput?.addEventListener("change", renderNotifications);
 todoDetailStatus?.addEventListener("change", () => {
   const taskId = todoDetailStatus.dataset.taskId;
 
@@ -45382,6 +45462,18 @@ locationResetButton.addEventListener("click", () => {
 userBadge?.addEventListener("click", (event) => {
   event.stopPropagation();
   setUserMenuOpen(!userMenuOpen);
+});
+
+topbarShortcutDashboardButton?.addEventListener("click", () => {
+  activateSidebarItem("dashboard", { expandSidebar: state.sidebarCollapsed });
+});
+
+topbarShortcutRemindersButton?.addEventListener("click", () => {
+  activateSidebarItem("reminders", { expandSidebar: state.sidebarCollapsed });
+});
+
+topbarShortcutTodoButton?.addEventListener("click", () => {
+  activateSidebarItem("todo", { expandSidebar: state.sidebarCollapsed });
 });
 
 notificationsTrigger?.addEventListener("click", (event) => {

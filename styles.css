@@ -928,6 +928,66 @@ fieldset {
   margin-left: auto;
 }
 
+.topbar-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-shortcut-button {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(219, 166, 209, 0.64);
+  background: linear-gradient(145deg, rgba(241, 248, 255, 0.98), rgba(239, 226, 251, 0.9));
+  color: #5a3f84;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 8px 18px rgba(108, 83, 153, 0.1);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.topbar-shortcut-button .icon-svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topbar-shortcut-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(195, 129, 211, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 12px 22px rgba(108, 83, 153, 0.14);
+}
+
+.topbar-shortcut-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.84);
+  background: linear-gradient(135deg, #f04f97, #d22f65);
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 7px 14px rgba(204, 39, 99, 0.32);
+}
+
 .notifications-menu {
   position: relative;
 }
@@ -3377,7 +3437,7 @@ body.is-location-editor-open {
 }
 
 .notifications-filter-row {
-  grid-template-columns: minmax(0, 1.6fr) minmax(170px, 0.8fr) minmax(170px, 0.8fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(160px, 0.7fr) minmax(160px, 0.7fr) minmax(160px, 0.7fr);
 }
 
 .notifications-list {
@@ -3403,21 +3463,19 @@ body.is-location-editor-open {
 }
 
 .notification-row.is-compact {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   width: 100%;
   border-radius: 14px;
   padding: 10px 12px;
-  cursor: pointer;
   text-align: left;
   background:
     radial-gradient(circle at top right, rgba(235, 103, 181, 0.04), transparent 20%),
     rgba(247, 250, 255, 0.95);
-  transition: border-color 140ms ease, transform 140ms ease;
+  transition: border-color 140ms ease;
 }
 
 .notification-row.is-compact:hover {
   border-color: rgba(189, 157, 229, 0.72);
-  transform: translateY(-1px);
 }
 
 .notification-row-marker {
@@ -3442,6 +3500,18 @@ body.is-location-editor-open {
 .notification-row-marker.is-info {
   background: #4b74cb;
   box-shadow: 0 0 0 4px rgba(75, 116, 203, 0.14);
+}
+
+.notification-row-marker.is-resolved {
+  background: #8d98af;
+  box-shadow: 0 0 0 4px rgba(141, 152, 175, 0.14);
+}
+
+.notification-row.is-resolved {
+  opacity: 0.78;
+  background:
+    radial-gradient(circle at top right, rgba(151, 164, 192, 0.08), transparent 22%),
+    linear-gradient(180deg, rgba(247, 249, 252, 0.96), rgba(242, 245, 250, 0.96));
 }
 
 .notification-row-copy {
@@ -3496,6 +3566,25 @@ body.is-location-editor-open {
   color: #365eaa;
 }
 
+.notification-row-status-badge {
+  border-radius: 999px;
+  border: 1px solid rgba(188, 201, 223, 0.55);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+}
+
+.notification-row-status-badge.is-active {
+  border-color: rgba(124, 182, 143, 0.58);
+  background: rgba(230, 248, 236, 0.96);
+  color: #1f7241;
+}
+
+.notification-row-status-badge.is-resolved {
+  border-color: rgba(178, 186, 201, 0.58);
+  background: rgba(236, 240, 246, 0.96);
+  color: #50607e;
+}
+
 .notification-row-message,
 .notification-row-meta {
   margin: 0;
@@ -3515,6 +3604,21 @@ body.is-location-editor-open {
 .notification-row-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.notification-inline-action {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.notification-row.is-compact .notification-inline-action {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.76rem;
 }
 
 .todo-overview-panel,
