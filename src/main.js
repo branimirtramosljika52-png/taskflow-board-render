@@ -561,6 +561,7 @@ const state = {
   user: null,
   activeOrganizationId: "",
   activeTodoTaskId: "",
+  todoExpandedTaskIds: new Set(),
   activeDashboardWidgetId: "",
   activeVehicleId: "",
   activeVehicleReservationId: "",
@@ -593,6 +594,7 @@ const state = {
   workOrderListDensity: "collapsed",
   reminderEditorOpen: false,
   todoEditorOpen: false,
+  todoInvitedPickerOpen: false,
   offerEditorOpen: false,
   legalFrameworkFilters: {
     query: "",
@@ -1785,6 +1787,10 @@ const todoOverdueCount = document.querySelector("#todo-overdue-count");
 const todoOpenComposerButton = document.querySelector("#todo-open-composer");
 const todoEditorBackdrop = document.querySelector("#todo-editor-backdrop");
 const todoEditorPanel = document.querySelector("#todo-editor-panel");
+const todoEditorBackdropHomeParent = todoEditorBackdrop?.parentNode ?? null;
+const todoEditorBackdropHomeNextSibling = todoEditorBackdrop?.nextSibling ?? null;
+const todoEditorPanelHomeParent = todoEditorPanel?.parentNode ?? null;
+const todoEditorPanelHomeNextSibling = todoEditorPanel?.nextSibling ?? null;
 const todoEditorBody = document.querySelector("#todo-editor-body");
 const todoEditorTitle = document.querySelector("#todo-editor-title");
 const todoEditorCloseButton = document.querySelector("#todo-editor-close");
@@ -1792,6 +1798,10 @@ const todoForm = document.querySelector("#todo-form");
 const todoIdInput = document.querySelector("#todo-id");
 const todoTitleInput = document.querySelector("#todo-title");
 const todoAssigneeInput = document.querySelector("#todo-assigned-to-user-id");
+const todoInvitedDropdown = document.querySelector("#todo-invited-dropdown");
+const todoInvitedTrigger = document.querySelector("#todo-invited-trigger");
+const todoInvitedPreview = document.querySelector("#todo-invited-preview");
+const todoInvitedPanel = document.querySelector("#todo-invited-panel");
 const todoInvitedUsersInput = document.querySelector("#todo-invited-user-ids");
 const todoInvitedSelectAllButton = document.querySelector("#todo-invited-select-all");
 const todoInvitedClearButton = document.querySelector("#todo-invited-clear");
@@ -1814,13 +1824,14 @@ const todoDetailContent = document.querySelector("#todo-detail-content");
 const todoDetailTitle = document.querySelector("#todo-detail-title");
 const todoDetailMeta = document.querySelector("#todo-detail-meta");
 const todoDetailMessage = document.querySelector("#todo-detail-message");
+const todoDetailFacts = document.querySelector("#todo-detail-facts");
+const todoDetailPeopleStack = document.querySelector("#todo-detail-people-stack");
+const todoDetailPeopleChips = document.querySelector("#todo-detail-people-chips");
 const todoDetailStatus = document.querySelector("#todo-detail-status");
 const todoDetailPriority = document.querySelector("#todo-detail-priority");
 const todoDetailAssignee = document.querySelector("#todo-detail-assignee");
 const todoDetailDueDate = document.querySelector("#todo-detail-due-date");
 const todoDetailInvitedUsersInput = document.querySelector("#todo-detail-invited-user-ids");
-const todoDetailInvitedSelectAllButton = document.querySelector("#todo-detail-invited-select-all");
-const todoDetailInvitedClearButton = document.querySelector("#todo-detail-invited-clear");
 const todoDetailOpenWorkOrder = document.querySelector("#todo-detail-open-work-order");
 const todoDetailEdit = document.querySelector("#todo-detail-edit");
 const todoDetailDelete = document.querySelector("#todo-detail-delete");
@@ -31124,6 +31135,9 @@ function getNotificationLevelLabel(level = "info") {
 }
 
 function getNotificationKindLabel(kind = "") {
+  if (kind === "todo_comment") {
+    return "Komentar";
+  }
   if (kind === "equipment") {
     return "Oprema";
   }
@@ -31294,6 +31308,68 @@ function buildMeasurementEquipmentNotifications() {
     .filter(Boolean);
 }
 
+function isTodoCommentFromCurrentUser(comment = {}) {
+  const currentUserId = String(state.user?.id ?? "").trim();
+  const currentAuthorLabel = normalizeText(
+    state.user?.fullName || state.user?.username || state.user?.email || "",
+  ).toLowerCase();
+  const commentUserId = String(comment.userId ?? "").trim();
+  const commentAuthorLabel = normalizeText(comment.authorLabel || "").toLowerCase();
+
+  if (currentUserId && commentUserId) {
+    return currentUserId === commentUserId;
+  }
+
+  if (currentAuthorLabel && commentAuthorLabel) {
+    return currentAuthorLabel === commentAuthorLabel;
+  }
+
+  return false;
+}
+
+function buildTodoCommentNotifications() {
+  if (!state.user) {
+    return [];
+  }
+
+  return (state.todoTasks ?? [])
+    .map((task) => {
+      const comments = Array.isArray(task?.comments) ? task.comments : [];
+      const externalComments = comments.filter((comment) => !isTodoCommentFromCurrentUser(comment));
+      if (externalComments.length === 0) {
+        return null;
+      }
+
+      const latestComment = externalComments
+        .slice()
+        .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))[0];
+
+      if (!latestComment) {
+        return null;
+      }
+
+      const createdAt = String(latestComment.createdAt || "");
+      const createdAtDate = createdAt.slice(0, 10);
+      const commentText = String(latestComment.message || "").replace(/\s+/g, " ").trim();
+
+      return {
+        id: `todo-comment-${task.id}-${latestComment.id || createdAt || externalComments.length}`,
+        kind: "todo_comment",
+        level: "info",
+        title: task.title || "ToDo tema",
+        message: `${latestComment.authorLabel || "Kolega"}: ${commentText || "Dodan je komentar."}`,
+        context: [
+          task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
+          task.companyName || "",
+          createdAt ? `Komentar ${formatDateTime(createdAt)}` : "",
+        ].filter(Boolean).join(" · "),
+        dueDate: createdAtDate,
+        referenceId: String(task.id || ""),
+      };
+    })
+    .filter(Boolean);
+}
+
 function getPendingReminderNotificationCount() {
   return (state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
 }
@@ -31438,8 +31514,7 @@ function renderTopbarShortcutCounts() {
 
 function getAllNotifications() {
   return [
-    ...buildReminderNotifications(),
-    ...buildMeasurementEquipmentNotifications(),
+    ...buildTodoCommentNotifications(),
   ].map((entry) => ({
     ...entry,
     resolved: isNotificationResolved(entry.id),
@@ -31513,6 +31588,18 @@ function openNotificationEntry(entry) {
     if (equipment && getCanManageMasterData()) {
       window.requestAnimationFrame(() => {
         hydrateMeasurementEquipmentForm(equipment);
+      });
+    }
+    return;
+  }
+
+  if (entry.kind === "todo_comment") {
+    activateSidebarItem("todo", { expandSidebar: state.sidebarCollapsed });
+    const task = getTodoTaskById(entry.referenceId);
+    if (task) {
+      window.requestAnimationFrame(() => {
+        setTodoTaskExpanded(task.id, true);
+        selectTodoTask(task.id);
       });
     }
   }
@@ -32152,6 +32239,157 @@ function getTodoInvitedSelectedUserIds(select) {
   return selectedValues.filter((value) => value !== TODO_INVITED_ALL_TOKEN);
 }
 
+function getTodoInvitedSelectedUsers(select = todoInvitedUsersInput) {
+  return getTodoInvitedSelectedUserIds(select)
+    .map((userId) => state.users.find((user) => String(user?.id) === String(userId)) ?? null)
+    .filter(Boolean);
+}
+
+function createTodoInvitedAvatar(userLike = {}) {
+  const label = userLike.fullName || userLike.email || userLike.username || "User";
+  return createWorkOrderMiniExecutor(
+    { label, user: userLike },
+    { className: "work-order-mini-executor todo-invited-avatar" },
+  );
+}
+
+function syncTodoInvitedPicker() {
+  if (state.todoInvitedPickerOpen && (!state.todoEditorOpen || !todoInvitedDropdown)) {
+    state.todoInvitedPickerOpen = false;
+  }
+
+  const isOpen = Boolean(state.todoInvitedPickerOpen && state.todoEditorOpen && todoInvitedDropdown);
+  todoInvitedDropdown?.classList.toggle("is-open", isOpen);
+  if (todoInvitedTrigger) {
+    todoInvitedTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+  if (todoInvitedPanel) {
+    todoInvitedPanel.hidden = !isOpen;
+  }
+}
+
+function setTodoInvitedPickerOpen(isOpen) {
+  state.todoInvitedPickerOpen = Boolean(isOpen);
+  syncTodoInvitedPicker();
+}
+
+function renderTodoInvitedPreview() {
+  if (!todoInvitedPreview) {
+    return;
+  }
+
+  const selectedUsers = getTodoInvitedSelectedUsers(todoInvitedUsersInput);
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "todo-invited-preview-wrap";
+
+  const stack = document.createElement("div");
+  stack.className = "todo-invited-preview-stack";
+
+  if (selectedUsers.length === 0) {
+    stack.append(createWorkOrderMiniExecutor("Bez pozvanih", {
+      className: "work-order-mini-executor todo-invited-avatar",
+    }));
+  } else {
+    selectedUsers.slice(0, 3).forEach((user) => stack.append(createTodoInvitedAvatar(user)));
+    if (selectedUsers.length > 3) {
+      stack.append(createExecutorOverflowBadge(selectedUsers.length - 3, "work-order-mini-executor todo-invited-avatar"));
+    }
+  }
+
+  const summary = document.createElement("span");
+  summary.className = "todo-invited-preview-text";
+  summary.textContent = selectedUsers.length === 0
+    ? "Odaberi ljude"
+    : selectedUsers.length === 1
+      ? (selectedUsers[0].fullName || selectedUsers[0].email || selectedUsers[0].username || "1 osoba")
+      : `${selectedUsers.length} pozvanih`;
+
+  previewWrap.append(stack, summary);
+  todoInvitedPreview.replaceChildren(previewWrap);
+}
+
+function syncTodoInvitedPanelOptionState() {
+  if (!todoInvitedPanel || !todoInvitedUsersInput) {
+    return;
+  }
+
+  const selectedSet = new Set(getTodoInvitedSelectedUserIds(todoInvitedUsersInput));
+  todoInvitedPanel.querySelectorAll(".todo-invited-option").forEach((option) => {
+    const checkbox = option.querySelector('input[name="todo-invited-user-id"]');
+    if (!(checkbox instanceof HTMLInputElement)) {
+      return;
+    }
+    const checked = selectedSet.has(String(checkbox.value || ""));
+    checkbox.checked = checked;
+    option.classList.toggle("is-selected", checked);
+  });
+}
+
+function syncTodoInvitedSelectionFromPanel() {
+  if (!todoInvitedPanel || !todoInvitedUsersInput) {
+    return;
+  }
+
+  const selectedIds = Array.from(
+    todoInvitedPanel.querySelectorAll('input[name="todo-invited-user-id"]:checked'),
+  ).map((input) => String(input.value || "")).filter(Boolean);
+
+  const peopleOptions = getTodoInvitedPeopleOptions();
+  const allSelected = peopleOptions.length > 0
+    && peopleOptions.every((option) => selectedIds.includes(String(option.value)));
+
+  setMultiSelectSelectedValues(
+    todoInvitedUsersInput,
+    allSelected ? [TODO_INVITED_ALL_TOKEN, ...selectedIds] : selectedIds,
+  );
+  syncTodoInvitedPanelOptionState();
+  renderTodoInvitedPreview();
+}
+
+function rebuildTodoInvitedPanel() {
+  if (!todoInvitedPanel) {
+    return;
+  }
+
+  const selectedSet = new Set(getTodoInvitedSelectedUserIds(todoInvitedUsersInput));
+  const users = [...state.users]
+    .filter((user) => user?.isActive !== false)
+    .sort((left, right) => String(left.fullName || left.email).localeCompare(String(right.fullName || right.email), "hr"));
+
+  if (users.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "todo-invited-empty";
+    empty.textContent = "Nema aktivnih kolega za odabir.";
+    todoInvitedPanel.replaceChildren(empty);
+    return;
+  }
+
+  todoInvitedPanel.replaceChildren(...users.map((user) => {
+    const option = document.createElement("label");
+    option.className = "todo-invited-option";
+    option.classList.toggle("is-selected", selectedSet.has(String(user.id)));
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "todo-invited-user-id";
+    checkbox.value = String(user.id);
+    checkbox.checked = selectedSet.has(String(user.id));
+
+    const avatar = createTodoInvitedAvatar(user);
+
+    const copy = document.createElement("span");
+    copy.className = "todo-invited-option-copy";
+    const name = document.createElement("strong");
+    name.textContent = user.fullName || user.email || user.username || "User";
+    const meta = document.createElement("span");
+    meta.textContent = user.email || user.username || "Safety360";
+    copy.append(name, meta);
+
+    option.append(checkbox, avatar, copy);
+    return option;
+  }));
+}
+
 function rebuildTodoAssigneeOptions(selectedValue = "") {
   if (!todoAssigneeInput) {
     return;
@@ -32176,6 +32414,9 @@ function rebuildTodoInvitedUserOptions(selectedValues = []) {
     todoInvitedUsersInput,
     allSelected ? [TODO_INVITED_ALL_TOKEN, ...values] : values,
   );
+  rebuildTodoInvitedPanel();
+  renderTodoInvitedPreview();
+  syncTodoInvitedPicker();
 }
 
 function rebuildTodoDetailAssigneeOptions(selectedValue = "") {
@@ -32263,6 +32504,7 @@ function resetTodoForm() {
     return;
   }
 
+  state.todoInvitedPickerOpen = false;
   todoIdInput.value = "";
   todoTitleInput.value = "";
   todoDueDateInput.value = "";
@@ -32279,6 +32521,7 @@ function resetTodoForm() {
   }
 
   renderTodoLinkPreview();
+  syncTodoInvitedPicker();
   syncTodoEditorChrome();
 }
 
@@ -32299,6 +32542,35 @@ function syncTodoEditorModal() {
   }
 
   const isOpen = state.todoEditorOpen;
+
+  if (!isOpen) {
+    state.todoInvitedPickerOpen = false;
+  }
+
+  if (isOpen) {
+    if (todoEditorBackdrop && todoEditorBackdrop.parentNode !== document.body) {
+      document.body.append(todoEditorBackdrop);
+    }
+    if (todoEditorPanel && todoEditorPanel.parentNode !== document.body) {
+      document.body.append(todoEditorPanel);
+    }
+  } else {
+    if (todoEditorBackdrop && todoEditorBackdropHomeParent) {
+      if (todoEditorBackdropHomeNextSibling && todoEditorBackdropHomeNextSibling.parentNode === todoEditorBackdropHomeParent) {
+        todoEditorBackdropHomeParent.insertBefore(todoEditorBackdrop, todoEditorBackdropHomeNextSibling);
+      } else {
+        todoEditorBackdropHomeParent.append(todoEditorBackdrop);
+      }
+    }
+    if (todoEditorPanel && todoEditorPanelHomeParent) {
+      if (todoEditorPanelHomeNextSibling && todoEditorPanelHomeNextSibling.parentNode === todoEditorPanelHomeParent) {
+        todoEditorPanelHomeParent.insertBefore(todoEditorPanel, todoEditorPanelHomeNextSibling);
+      } else {
+        todoEditorPanelHomeParent.append(todoEditorPanel);
+      }
+    }
+  }
+
   todoEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-todo-editor-open", isOpen);
 
@@ -32314,6 +32586,8 @@ function syncTodoEditorModal() {
   if (todoEditorCloseButton) {
     todoEditorCloseButton.hidden = !isOpen;
   }
+
+  syncTodoInvitedPicker();
 
   if (isOpen) {
     requestAnimationFrame(() => {
@@ -32359,7 +32633,9 @@ function hydrateTodoTaskForm(task) {
   rebuildTodoWorkOrderOptions(task.workOrderId || "");
   todoWorkOrderIdInput.value = task.workOrderId || "";
   todoMessageInput.value = task.message || "";
+  state.todoInvitedPickerOpen = false;
   renderTodoLinkPreview();
+  syncTodoInvitedPicker();
   syncTodoEditorChrome();
   openTodoEditor();
 }
@@ -32409,6 +32685,123 @@ function createTodoOpenTopicButton(taskId) {
     selectTodoTask(taskId);
   });
   return button;
+}
+
+function getTodoExpandedTaskIdsSet() {
+  if (state.todoExpandedTaskIds instanceof Set) {
+    return state.todoExpandedTaskIds;
+  }
+
+  if (Array.isArray(state.todoExpandedTaskIds)) {
+    state.todoExpandedTaskIds = new Set(state.todoExpandedTaskIds.map((item) => String(item || "")));
+    return state.todoExpandedTaskIds;
+  }
+
+  state.todoExpandedTaskIds = new Set();
+  return state.todoExpandedTaskIds;
+}
+
+function isTodoTaskExpanded(taskId) {
+  return getTodoExpandedTaskIdsSet().has(String(taskId || ""));
+}
+
+function setTodoTaskExpanded(taskId, isExpanded = false) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return;
+  }
+
+  const expandedIds = getTodoExpandedTaskIdsSet();
+  if (isExpanded) {
+    expandedIds.add(normalizedTaskId);
+  } else {
+    expandedIds.delete(normalizedTaskId);
+  }
+}
+
+function createTodoToggleCommentsButton(task = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button todo-comments-toggle-button";
+  const commentCount = Number(task.commentCount ?? task.comments?.length ?? 0);
+  const expanded = isTodoTaskExpanded(task.id);
+  button.textContent = expanded
+    ? "Sakrij komentare"
+    : `Raširi komentare${commentCount > 0 ? ` (${commentCount})` : ""}`;
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTodoTaskExpanded(task.id, !expanded);
+    renderTodoList();
+  });
+  return button;
+}
+
+function createTodoTaskInlineComment(comment = {}) {
+  const row = document.createElement("article");
+  row.className = "todo-task-inline-comment";
+
+  const avatar = document.createElement("span");
+  avatar.className = "todo-task-inline-comment-avatar";
+  avatar.textContent = getUserInitials({ fullName: comment.authorLabel || "Kolega" });
+
+  const content = document.createElement("div");
+  content.className = "todo-task-inline-comment-content";
+
+  const top = document.createElement("div");
+  top.className = "todo-task-inline-comment-top";
+
+  const author = document.createElement("strong");
+  author.textContent = comment.authorLabel || "Kolega";
+
+  const time = document.createElement("span");
+  time.textContent = comment.createdAt ? formatDateTime(comment.createdAt) : "";
+  top.append(author, time);
+
+  const body = document.createElement("p");
+  body.textContent = String(comment.message || "").trim() || "Bez teksta komentara.";
+
+  content.append(top, body);
+  row.append(avatar, content);
+  return row;
+}
+
+function createTodoTaskExpandedComments(task = {}) {
+  if (!isTodoTaskExpanded(task.id)) {
+    return null;
+  }
+
+  const wrap = document.createElement("section");
+  wrap.className = "todo-task-card-expand";
+  wrap.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const latestComments = comments
+    .slice()
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+    .slice(0, 3);
+
+  if (latestComments.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "todo-task-card-expand-empty";
+    empty.textContent = "Još nema komentara za ovu temu.";
+    wrap.append(empty);
+    return wrap;
+  }
+
+  wrap.append(...latestComments.map((comment) => createTodoTaskInlineComment(comment)));
+
+  if (comments.length > latestComments.length) {
+    const more = document.createElement("p");
+    more.className = "todo-task-card-expand-more";
+    more.textContent = `+${comments.length - latestComments.length} starijih komentara`;
+    wrap.append(more);
+  }
+
+  return wrap;
 }
 
 function formatTodoInvitedSummary(task = {}) {
@@ -32566,14 +32959,6 @@ function renderTodoList() {
     const meta = document.createElement("div");
     meta.className = "todo-task-card-meta";
 
-    if (task.workOrderNumber) {
-      meta.append(createMetaPill(`RN ${task.workOrderNumber}`, "is-neutral"));
-    }
-
-    if (task.companyName) {
-      meta.append(createMetaPill(task.companyName, "is-soft"));
-    }
-
     meta.append(createMetaPill(
       task.dueDate ? formatCompactDate(task.dueDate) : "Bez roka",
       isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
@@ -32604,9 +32989,19 @@ function renderTodoList() {
     const footerMain = document.createElement("div");
     footerMain.className = "todo-task-card-footer-main";
     footerMain.append(meta, participants);
-    footer.append(footerMain, createTodoOpenTopicButton(task.id));
+    const footerActions = document.createElement("div");
+    footerActions.className = "todo-task-card-footer-actions";
+    footerActions.append(
+      createTodoToggleCommentsButton(task),
+      createTodoOpenTopicButton(task.id),
+    );
+    footer.append(footerMain, footerActions);
 
     card.append(head, footer);
+    const expandedComments = createTodoTaskExpandedComments(task);
+    if (expandedComments) {
+      card.append(expandedComments);
+    }
     return card;
   }));
 
@@ -32644,15 +33039,51 @@ function renderTodoDetail() {
   if (todoDetailMeta) {
     const lines = [
       task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
-      formatTodoInvitedSummary(task),
       task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
-      task.createdAt ? formatDateTime(task.createdAt) : "",
+      task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
     ].filter(Boolean);
     todoDetailMeta.textContent = lines.join(" · ");
   }
 
   if (todoDetailMessage) {
     todoDetailMessage.textContent = task.message || "Bez opisa teme.";
+  }
+
+  if (todoDetailFacts) {
+    const createFact = (label, classNames = []) => {
+      const fact = document.createElement("span");
+      fact.className = "todo-detail-fact-chip";
+      classNames.forEach((className) => fact.classList.add(className));
+      fact.textContent = label;
+      return fact;
+    };
+
+    const facts = [];
+    facts.push(
+      createFact(
+        getOptionLabel(TODO_TASK_STATUS_OPTIONS, task.status || "open"),
+        [`is-status-${slugifyValue(task.status || "open")}`],
+      ),
+    );
+    facts.push(
+      createFact(
+        getOptionLabel(PRIORITY_OPTIONS, task.priority || "Normal"),
+        [`is-priority-${slugifyValue(task.priority || "Normal")}`],
+      ),
+    );
+    facts.push(
+      createFact(
+        task.dueDate ? `Rok ${formatCompactDate(task.dueDate)}` : "Bez roka",
+        [isTodoTaskOverdue(task) ? "is-overdue" : "is-date"],
+      ),
+    );
+    facts.push(createFact(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, ["is-soft"]));
+
+    if (task.updatedAt) {
+      facts.push(createFact(`Ažurirano ${formatCompactDate(String(task.updatedAt).slice(0, 10))}`, ["is-soft"]));
+    }
+
+    todoDetailFacts.replaceChildren(...facts);
   }
 
   if (todoDetailStatus) {
@@ -32681,6 +33112,69 @@ function renderTodoDetail() {
   if (todoDetailInvitedUsersInput) {
     rebuildTodoDetailInvitedUserOptions(task.invitedUserIds ?? []);
     todoDetailInvitedUsersInput.dataset.taskId = task.id;
+  }
+
+  const participantEntries = [];
+  const seenParticipants = new Set();
+  const appendParticipant = (userId, fallbackLabel = "") => {
+    const normalizedId = String(userId || "").trim();
+    const user = normalizedId
+      ? (state.users.find((item) => String(item?.id) === normalizedId) ?? null)
+      : null;
+    const label = user?.fullName || user?.email || fallbackLabel || "Osoba";
+    const key = normalizedId ? `id:${normalizedId}` : `label:${label.toLowerCase()}`;
+    if (!label || seenParticipants.has(key)) {
+      return;
+    }
+    seenParticipants.add(key);
+    participantEntries.push({ user, label });
+  };
+
+  appendParticipant(task.assignedToUserId, task.assignedToLabel || "");
+  (Array.isArray(task.invitedUserIds) ? task.invitedUserIds : []).forEach((userId) => appendParticipant(userId, ""));
+  (Array.isArray(task.invitedUserLabels) ? task.invitedUserLabels : []).forEach((label) => appendParticipant("", label));
+  appendParticipant(task.createdByUserId, task.createdByLabel || "");
+
+  if (todoDetailPeopleStack) {
+    todoDetailPeopleStack.replaceChildren();
+    if (participantEntries.length === 0) {
+      todoDetailPeopleStack.append(createMetaPill("Bez sudionika", "is-soft"));
+    } else {
+      participantEntries.slice(0, 4).forEach((entry) => {
+        const avatar = createWorkOrderMiniExecutor(
+          { label: entry.label, user: entry.user },
+          { className: "work-order-mini-executor todo-detail-person-avatar" },
+        );
+        avatar.title = entry.label;
+        todoDetailPeopleStack.append(avatar);
+      });
+      if (participantEntries.length > 4) {
+        todoDetailPeopleStack.append(createExecutorOverflowBadge(participantEntries.length - 4, "work-order-mini-executor todo-detail-person-avatar"));
+      }
+    }
+  }
+
+  if (todoDetailPeopleChips) {
+    todoDetailPeopleChips.replaceChildren();
+    if (participantEntries.length === 0) {
+      const chip = document.createElement("span");
+      chip.className = "todo-detail-person-chip is-soft";
+      chip.textContent = "Bez pozvanih kolega";
+      todoDetailPeopleChips.append(chip);
+    } else {
+      participantEntries.slice(0, 3).forEach((entry) => {
+        const chip = document.createElement("span");
+        chip.className = "todo-detail-person-chip";
+        chip.textContent = entry.label;
+        todoDetailPeopleChips.append(chip);
+      });
+      if (participantEntries.length > 3) {
+        const extra = document.createElement("span");
+        extra.className = "todo-detail-person-chip is-soft";
+        extra.textContent = `+${participantEntries.length - 3}`;
+        todoDetailPeopleChips.append(extra);
+      }
+    }
   }
 
   if (todoDetailOpenWorkOrder) {
@@ -44493,19 +44987,38 @@ todoResetButton?.addEventListener("click", resetTodoForm);
 todoSearchInput?.addEventListener("input", renderTodo);
 todoFilterScopeInput?.addEventListener("change", renderTodo);
 todoFilterStatusInput?.addEventListener("change", renderTodo);
+todoInvitedTrigger?.addEventListener("click", (event) => {
+  event.preventDefault();
+  setTodoInvitedPickerOpen(!state.todoInvitedPickerOpen);
+});
+todoInvitedPanel?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+    return;
+  }
+  const option = target.closest(".todo-invited-option");
+  option?.classList.toggle("is-selected", target.checked);
+  syncTodoInvitedSelectionFromPanel();
+});
 todoInvitedUsersInput?.addEventListener("change", () => {
   const selected = getSelectedMultiSelectValues(todoInvitedUsersInput);
   if (selected.includes(TODO_INVITED_ALL_TOKEN)) {
     const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
     setMultiSelectSelectedValues(todoInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
   }
+  syncTodoInvitedPanelOptionState();
+  renderTodoInvitedPreview();
 });
 todoInvitedSelectAllButton?.addEventListener("click", () => {
   const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
   setMultiSelectSelectedValues(todoInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
+  syncTodoInvitedPanelOptionState();
+  renderTodoInvitedPreview();
 });
 todoInvitedClearButton?.addEventListener("click", () => {
   setMultiSelectSelectedValues(todoInvitedUsersInput, []);
+  syncTodoInvitedPanelOptionState();
+  renderTodoInvitedPreview();
 });
 notificationsSearchInput?.addEventListener("input", renderNotifications);
 notificationsFilterKindInput?.addEventListener("change", renderNotifications);
@@ -44572,21 +45085,6 @@ todoDetailInvitedUsersInput?.addEventListener("change", () => {
       invitedUserIds: getTodoInvitedSelectedUserIds(todoDetailInvitedUsersInput),
     },
   }), todoCommentError);
-});
-todoDetailInvitedSelectAllButton?.addEventListener("click", () => {
-  if (!todoDetailInvitedUsersInput) {
-    return;
-  }
-  const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
-  setMultiSelectSelectedValues(todoDetailInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
-  todoDetailInvitedUsersInput.dispatchEvent(new Event("change", { bubbles: true }));
-});
-todoDetailInvitedClearButton?.addEventListener("click", () => {
-  if (!todoDetailInvitedUsersInput) {
-    return;
-  }
-  setMultiSelectSelectedValues(todoDetailInvitedUsersInput, []);
-  todoDetailInvitedUsersInput.dispatchEvent(new Event("change", { bubbles: true }));
 });
 todoDetailDueDate?.addEventListener("change", () => {
   const taskId = todoDetailDueDate.dataset.taskId;
@@ -46889,6 +47387,14 @@ document.addEventListener("click", (event) => {
     setVehicleReservationAssigneePickerOpen(false);
   }
 
+  if (
+    state.todoInvitedPickerOpen
+    && event.target instanceof Node
+    && !todoInvitedDropdown?.contains(event.target)
+  ) {
+    setTodoInvitedPickerOpen(false);
+  }
+
   if (state.measurementSheet.fillMenu && event.target instanceof Node) {
     const clickedFillMenu = measurementFillMenu?.contains(event.target);
     const clickedFillHandle = event.target instanceof HTMLElement && event.target.closest(".measurement-fill-handle");
@@ -46968,6 +47474,9 @@ window.addEventListener("resize", () => {
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
   }
+  if (state.todoInvitedPickerOpen) {
+    setTodoInvitedPickerOpen(false);
+  }
 });
 
 document.addEventListener("scroll", (event) => {
@@ -46979,6 +47488,7 @@ document.addEventListener("scroll", (event) => {
       || target.closest(".work-item-status-menu-portal")
       || target.closest(".work-order-service-picker-menu-portal")
       || target.closest(".vehicle-reservation-assignees-dropdown")
+      || target.closest(".todo-invited-dropdown")
     )
   ) {
     return;
@@ -46987,6 +47497,9 @@ document.addEventListener("scroll", (event) => {
   closeOpenWorkOrderStatusMenus();
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
+  }
+  if (state.todoInvitedPickerOpen) {
+    setTodoInvitedPickerOpen(false);
   }
 }, true);
 

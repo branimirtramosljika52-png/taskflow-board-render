@@ -1995,6 +1995,14 @@
 
                   <p id="todo-detail-message" class="todo-detail-message"></p>
 
+                  <div id="todo-detail-facts" class="todo-detail-facts"></div>
+
+                  <div class="todo-detail-people-row">
+                    <span class="todo-detail-people-label">Sudionici</span>
+                    <div id="todo-detail-people-stack" class="todo-detail-people-stack"></div>
+                    <div id="todo-detail-people-chips" class="todo-detail-people-chips"></div>
+                  </div>
+
                   <div class="todo-detail-fields">
                     <label class="field">
                       <span>Status</span>
@@ -2016,16 +2024,7 @@
                       <input id="todo-detail-due-date" type="date" />
                     </label>
 
-                    <label class="field field-span-full">
-                      <div class="todo-invite-head">
-                        <span>Pozvani ljudi</span>
-                        <div class="todo-invite-actions">
-                          <button id="todo-detail-invited-select-all" type="button" class="ghost-button ghost-button-tiny">Svi</button>
-                          <button id="todo-detail-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
-                        </div>
-                      </div>
-                      <select id="todo-detail-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
-                    </label>
+                    <select id="todo-detail-invited-user-ids" class="todo-multi-select" multiple size="6" hidden></select>
                   </div>
 
                   <section class="todo-comments-section">
@@ -2079,12 +2078,12 @@
                     <input id="todo-title" type="text" maxlength="180" placeholder="npr. Potvrda termina i priprema ekipe" required />
                   </label>
 
-                  <label class="field">
+                  <label class="field todo-editor-core-field">
                     <span>Kome dodjeljuješ</span>
                     <select id="todo-assigned-to-user-id"></select>
                   </label>
 
-                  <label class="field">
+                  <label class="field todo-editor-core-field">
                     <div class="todo-invite-head">
                       <span>Pozovi ljude</span>
                       <div class="todo-invite-actions">
@@ -2092,20 +2091,27 @@
                         <button id="todo-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
                       </div>
                     </div>
-                    <select id="todo-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
+                    <div id="todo-invited-dropdown" class="todo-invited-dropdown">
+                      <button id="todo-invited-trigger" type="button" class="todo-invited-trigger" aria-expanded="false" aria-haspopup="listbox">
+                        <div id="todo-invited-preview" class="todo-invited-preview"></div>
+                        <span class="todo-invited-caret" aria-hidden="true">&#9662;</span>
+                      </button>
+                      <div id="todo-invited-panel" class="todo-invited-panel" hidden></div>
+                    </div>
+                    <select id="todo-invited-user-ids" class="todo-multi-select" multiple size="6" hidden></select>
                   </label>
 
-                  <label class="field">
+                  <label class="field todo-editor-core-field">
                     <span>Datum</span>
                     <input id="todo-due-date" type="date" />
                   </label>
 
-                  <label class="field">
+                  <label class="field todo-editor-core-field">
                     <span>Status</span>
                     <select id="todo-status"></select>
                   </label>
 
-                  <label class="field">
+                  <label class="field todo-editor-core-field">
                     <span>Prioritet</span>
                     <select id="todo-priority"></select>
                   </label>
@@ -2164,8 +2170,7 @@
                 <span>Vrsta</span>
                 <select id="notifications-filter-kind">
                   <option value="all">Sve vrste</option>
-                  <option value="equipment">Oprema</option>
-                  <option value="reminder">Reminders</option>
+                  <option value="todo_comment">Komentari</option>
                 </select>
               </label>
 
