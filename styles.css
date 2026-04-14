@@ -3375,8 +3375,8 @@ body.is-location-editor-open {
 
 .reminders-workspace-panel {
   display: grid;
-  gap: 12px;
-  padding-top: 18px;
+  gap: 10px;
+  padding-top: 12px;
 }
 
 .reminders-head-compact {
@@ -3388,15 +3388,15 @@ body.is-location-editor-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
-  gap: 16px;
+  gap: 12px;
   align-items: start;
 }
 
 .reminders-composer-card,
 .reminders-list-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 10px;
   border-radius: 18px;
   border: 1px solid rgba(212, 188, 232, 0.68);
   background:
@@ -3409,16 +3409,32 @@ body.is-location-editor-open {
 
 .reminders-composer-head {
   padding-bottom: 0;
+  margin-bottom: -2px;
+}
+
+.reminders-composer-head .workspace-list-copy {
+  gap: 2px;
+}
+
+.reminders-composer-head .section-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.13em;
+}
+
+.reminders-composer-head h3 {
+  margin: 0;
+  font-size: 1.12rem;
 }
 
 .reminder-form-compact {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .reminder-form-compact .form-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 6px 8px;
 }
 
 .reminder-form-compact .field-span-full {
@@ -3426,7 +3442,23 @@ body.is-location-editor-open {
 }
 
 .reminder-form-compact textarea {
-  min-height: 92px;
+  min-height: 72px;
+}
+
+.reminder-form-compact .field.reminder-field-compact {
+  justify-self: start;
+  width: min(100%, 190px);
+}
+
+.reminder-form-compact .field.reminder-field-compact > input,
+.reminder-form-compact .field.reminder-field-compact > select {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.reminder-form-compact .field.reminder-field-compact > span {
+  font-size: 0.72rem;
+  margin-bottom: -1px;
 }
 
 .reminders-filter-row {
