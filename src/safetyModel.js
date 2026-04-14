@@ -2336,6 +2336,26 @@ function hydrateTodoTaskCore({
   const dueDate = hasOwn(input, "dueDate")
     ? normalizeOptionalDate(input.dueDate)
     : normalizeOptionalDate(current?.dueDate);
+  const invitedUserIds = hasOwn(input, "invitedUserIds")
+    ? normalizeIdList(input.invitedUserIds)
+    : normalizeIdList(current?.invitedUserIds);
+  const fallbackInvitedLabels = (
+    hasOwn(input, "invitedUserLabels")
+      ? (Array.isArray(input.invitedUserLabels) ? input.invitedUserLabels : [input.invitedUserLabels])
+      : (Array.isArray(current?.invitedUserLabels) ? current.invitedUserLabels : [current?.invitedUserLabels])
+  )
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+  const usersById = new Map(
+    (state?.users ?? []).map((user) => [String(user?.id ?? ""), user]),
+  );
+  const invitedUserLabels = invitedUserIds.map((userId, index) => {
+    const user = usersById.get(String(userId));
+    if (user) {
+      return normalizeText(user.fullName || user.email || user.username || "User");
+    }
+    return fallbackInvitedLabels[index] || "";
+  }).filter(Boolean);
 
   return {
     id: current?.id ?? "",
@@ -2363,6 +2383,8 @@ function hydrateTodoTaskCore({
     assignedToLabel: hasOwn(input, "assignedToLabel")
       ? normalizeText(input.assignedToLabel)
       : (current?.assignedToLabel ?? ""),
+    invitedUserIds,
+    invitedUserLabels,
     completedAt: normalizedStatus === "done"
       ? (current?.completedAt ?? timestamp)
       : null,
@@ -3994,6 +4016,10 @@ export function filterTodoTasks(
       return false;
     }
 
+    if (scope === "invited" && normalizedUserId && !normalizeIdList(item.invitedUserIds).includes(normalizedUserId)) {
+      return false;
+    }
+
     if (scope === "unassigned" && normalizeText(item.assignedToUserId)) {
       return false;
     }
@@ -4010,6 +4036,7 @@ export function filterTodoTasks(
       item.workOrderNumber,
       item.createdByLabel,
       item.assignedToLabel,
+      ...(item.invitedUserLabels ?? []),
       ...(item.comments ?? []).map((comment) => comment.message),
     ].join(" ").toLowerCase();
 

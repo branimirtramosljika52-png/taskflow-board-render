@@ -3885,19 +3885,19 @@ body.is-reminder-editor-open {
 .todo-overview-panel,
 .todo-workspace-panel {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .todo-summary-grid {
-  display: grid;
+  display: none !important;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
 .todo-layout {
-  display: grid;
-  grid-template-columns: minmax(270px, 320px) minmax(300px, 380px) minmax(0, 1fr);
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   align-items: start;
 }
 
@@ -3905,9 +3905,10 @@ body.is-reminder-editor-open {
 .todo-list-card,
 .todo-detail-card {
   display: grid;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
-  padding: 18px;
+  width: 100%;
+  padding: 16px;
   border-radius: 24px;
   border: 1px solid rgba(214, 220, 234, 0.92);
   background:
@@ -3920,7 +3921,7 @@ body.is-reminder-editor-open {
 .todo-list {
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 310px);
+  max-height: 340px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -3995,6 +3996,30 @@ body.is-reminder-editor-open {
   grid-template-columns: minmax(0, 1.5fr) minmax(160px, 0.9fr) minmax(160px, 0.9fr);
 }
 
+.todo-multi-select {
+  min-height: 118px;
+  padding: 8px;
+}
+
+.todo-invite-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.todo-invite-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ghost-button-tiny {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+}
+
 .todo-task-card-message,
 .todo-detail-message,
 .todo-comment-body {
@@ -4064,7 +4089,7 @@ body.is-reminder-editor-open {
 .todo-comments-list {
   display: grid;
   gap: 12px;
-  max-height: 360px;
+  max-height: 280px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -4109,20 +4134,20 @@ body.is-reminder-editor-open {
 }
 
 @media (max-width: 1480px) {
-  .todo-layout {
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  }
-
   .notifications-filter-row {
     grid-template-columns: minmax(0, 1fr) minmax(170px, 0.8fr) minmax(170px, 0.8fr);
   }
 
-  .todo-detail-card {
-    grid-column: 1 / -1;
-  }
-
   .todo-filter-row {
     grid-template-columns: minmax(0, 1fr) minmax(170px, 0.8fr) minmax(170px, 0.8fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .todo-form-grid,
+  .todo-filter-row,
+  .todo-detail-fields {
+    grid-template-columns: 1fr !important;
   }
 }
 

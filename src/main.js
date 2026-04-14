@@ -1785,6 +1785,9 @@ const todoForm = document.querySelector("#todo-form");
 const todoIdInput = document.querySelector("#todo-id");
 const todoTitleInput = document.querySelector("#todo-title");
 const todoAssigneeInput = document.querySelector("#todo-assigned-to-user-id");
+const todoInvitedUsersInput = document.querySelector("#todo-invited-user-ids");
+const todoInvitedSelectAllButton = document.querySelector("#todo-invited-select-all");
+const todoInvitedClearButton = document.querySelector("#todo-invited-clear");
 const todoDueDateInput = document.querySelector("#todo-due-date");
 const todoStatusInput = document.querySelector("#todo-status");
 const todoPriorityInput = document.querySelector("#todo-priority");
@@ -1808,6 +1811,9 @@ const todoDetailStatus = document.querySelector("#todo-detail-status");
 const todoDetailPriority = document.querySelector("#todo-detail-priority");
 const todoDetailAssignee = document.querySelector("#todo-detail-assignee");
 const todoDetailDueDate = document.querySelector("#todo-detail-due-date");
+const todoDetailInvitedUsersInput = document.querySelector("#todo-detail-invited-user-ids");
+const todoDetailInvitedSelectAllButton = document.querySelector("#todo-detail-invited-select-all");
+const todoDetailInvitedClearButton = document.querySelector("#todo-detail-invited-clear");
 const todoDetailOpenWorkOrder = document.querySelector("#todo-detail-open-work-order");
 const todoDetailEdit = document.querySelector("#todo-detail-edit");
 const todoDetailDelete = document.querySelector("#todo-detail-delete");
@@ -31373,7 +31379,7 @@ function renderTopbarTodoPanel() {
 
   if (topbarTodoPanelMeta) {
     topbarTodoPanelMeta.textContent = tasks.length > 0
-      ? `${tasks.length} otvorenih zadataka`
+      ? `${tasks.length} otvorenih tema`
       : "Nema aktivnih ToDo zadataka.";
   }
 
@@ -31382,7 +31388,7 @@ function renderTopbarTodoPanel() {
   }
 
   topbarTodoPanelList.replaceChildren(...tasks.map((task) => createTopbarShortcutPreviewRow({
-    title: task.title || "ToDo zadatak",
+    title: task.title || "ToDo tema",
     subtitle: task.companyName || task.workOrderNumber
       ? [task.workOrderNumber ? `RN ${task.workOrderNumber}` : "", task.companyName || ""].filter(Boolean).join(" · ")
       : "Bez vezanog RN-a",
@@ -32091,7 +32097,7 @@ function isTodoTaskOverdue(task) {
 
 function getTodoAssigneeOptions() {
   return [
-    { value: "", label: "Bez izvršitelja" },
+    { value: "", label: "Bez nositelja" },
     ...[...state.users]
       .filter((user) => user?.isActive !== false)
       .sort((left, right) => String(left.fullName || left.email).localeCompare(String(right.fullName || right.email)))
@@ -32106,9 +32112,30 @@ function getFilteredTodoTasks() {
   return sortTodoTasks(filterTodoTasks(state.todoTasks, {
     query: todoSearchInput?.value ?? "",
     status: todoFilterStatusInput?.value ?? "all",
-    scope: todoFilterScopeInput?.value ?? "assigned",
+    scope: todoFilterScopeInput?.value ?? "all",
     userId: state.user?.id ?? "",
   }));
+}
+
+function getTodoInvitedPeopleOptions() {
+  return [...state.users]
+    .filter((user) => user?.isActive !== false)
+    .sort((left, right) => String(left.fullName || left.email).localeCompare(String(right.fullName || right.email)))
+    .map((user) => ({
+      value: user.id,
+      label: user.fullName || user.email || user.username || "User",
+    }));
+}
+
+const TODO_INVITED_ALL_TOKEN = "__all__";
+
+function getTodoInvitedSelectedUserIds(select) {
+  const selectedValues = getSelectedMultiSelectValues(select);
+  const availableUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
+  if (selectedValues.includes(TODO_INVITED_ALL_TOKEN)) {
+    return availableUserIds;
+  }
+  return selectedValues.filter((value) => value !== TODO_INVITED_ALL_TOKEN);
 }
 
 function rebuildTodoAssigneeOptions(selectedValue = "") {
@@ -32119,12 +32146,48 @@ function rebuildTodoAssigneeOptions(selectedValue = "") {
   replaceSelectOptions(todoAssigneeInput, getTodoAssigneeOptions(), selectedValue || "");
 }
 
+function rebuildTodoInvitedUserOptions(selectedValues = []) {
+  if (!todoInvitedUsersInput) {
+    return;
+  }
+  const values = Array.isArray(selectedValues) ? Array.from(new Set(selectedValues.map((value) => String(value)))) : [];
+  const peopleOptions = getTodoInvitedPeopleOptions();
+  const allSelected = peopleOptions.length > 0 && peopleOptions.every((option) => values.includes(String(option.value)));
+  const options = [
+    createOption(TODO_INVITED_ALL_TOKEN, "Svi aktivni kolege"),
+    ...peopleOptions.map((option) => createOption(option.value, option.label)),
+  ];
+  todoInvitedUsersInput.replaceChildren(...options);
+  setMultiSelectSelectedValues(
+    todoInvitedUsersInput,
+    allSelected ? [TODO_INVITED_ALL_TOKEN, ...values] : values,
+  );
+}
+
 function rebuildTodoDetailAssigneeOptions(selectedValue = "") {
   if (!todoDetailAssignee) {
     return;
   }
 
   replaceSelectOptions(todoDetailAssignee, getTodoAssigneeOptions(), selectedValue || "");
+}
+
+function rebuildTodoDetailInvitedUserOptions(selectedValues = []) {
+  if (!todoDetailInvitedUsersInput) {
+    return;
+  }
+  const values = Array.isArray(selectedValues) ? Array.from(new Set(selectedValues.map((value) => String(value)))) : [];
+  const peopleOptions = getTodoInvitedPeopleOptions();
+  const allSelected = peopleOptions.length > 0 && peopleOptions.every((option) => values.includes(String(option.value)));
+  const options = [
+    createOption(TODO_INVITED_ALL_TOKEN, "Svi aktivni kolege"),
+    ...peopleOptions.map((option) => createOption(option.value, option.label)),
+  ];
+  todoDetailInvitedUsersInput.replaceChildren(...options);
+  setMultiSelectSelectedValues(
+    todoDetailInvitedUsersInput,
+    allSelected ? [TODO_INVITED_ALL_TOKEN, ...values] : values,
+  );
 }
 
 function rebuildTodoWorkOrderOptions(selectedValue = "") {
@@ -32170,6 +32233,7 @@ function buildTodoTaskPayload() {
   return {
     title: todoTitleInput.value,
     assignedToUserId: todoAssigneeInput.value,
+    invitedUserIds: getTodoInvitedSelectedUserIds(todoInvitedUsersInput),
     dueDate: todoDueDateInput.value,
     status: todoStatusInput.value,
     priority: todoPriorityInput.value,
@@ -32191,6 +32255,7 @@ function resetTodoForm() {
   todoStatusInput.value = "open";
   todoPriorityInput.value = "Normal";
   rebuildTodoAssigneeOptions("");
+  rebuildTodoInvitedUserOptions([]);
   rebuildTodoWorkOrderOptions("");
   todoWorkOrderIdInput.value = "";
   todoMessageInput.value = "";
@@ -32216,6 +32281,7 @@ function hydrateTodoTaskForm(task) {
   todoPriorityInput.value = task.priority || "Normal";
   rebuildTodoAssigneeOptions(task.assignedToUserId || "");
   todoAssigneeInput.value = task.assignedToUserId || "";
+  rebuildTodoInvitedUserOptions(task.invitedUserIds ?? []);
   rebuildTodoWorkOrderOptions(task.workOrderId || "");
   todoWorkOrderIdInput.value = task.workOrderId || "";
   todoMessageInput.value = task.message || "";
@@ -32231,7 +32297,7 @@ function openTodoComposerForWorkOrder(workOrder = null) {
   resetTodoForm();
 
   if (workOrder) {
-    todoTitleInput.value = `Zadatak za ${workOrder.workOrderNumber}`;
+    todoTitleInput.value = `Tema za ${workOrder.workOrderNumber}`;
     todoDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
     rebuildTodoWorkOrderOptions(workOrder.id);
     todoWorkOrderIdInput.value = workOrder.id;
@@ -32255,6 +32321,19 @@ function createTodoTaskPriorityBadge(priority = "Normal") {
   badge.className = `todo-task-priority-badge ${priorityBadgeClass(priority)}`;
   badge.textContent = getOptionLabel(PRIORITY_OPTIONS, priority);
   return badge;
+}
+
+function formatTodoInvitedSummary(task = {}) {
+  const labels = Array.isArray(task.invitedUserLabels)
+    ? task.invitedUserLabels.filter(Boolean)
+    : [];
+  if (labels.length === 0) {
+    return "Bez pozvanih";
+  }
+  if (labels.length === 1) {
+    return `Pozvan: ${labels[0]}`;
+  }
+  return `Pozvani: ${labels.length}`;
 }
 
 function selectTodoTask(taskId) {
@@ -32314,8 +32393,8 @@ function renderTodoList() {
     const subtitle = document.createElement("span");
     subtitle.className = "todo-task-card-subtitle";
     subtitle.textContent = [
-      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvršitelja",
-      task.createdByLabel ? `od ${task.createdByLabel}` : "",
+      task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
+      formatTodoInvitedSummary(task),
     ].filter(Boolean).join(" · ");
     copy.append(title, subtitle);
 
@@ -32326,7 +32405,7 @@ function renderTodoList() {
 
     const message = document.createElement("p");
     message.className = "todo-task-card-message";
-    message.textContent = task.message || "Bez dodatne poruke.";
+    message.textContent = task.message || "Bez opisa teme.";
 
     const meta = document.createElement("div");
     meta.className = "todo-task-card-meta";
@@ -32382,7 +32461,8 @@ function renderTodoDetail() {
 
   if (todoDetailMeta) {
     const lines = [
-      task.assignedToLabel ? `Za ${task.assignedToLabel}` : "Bez izvršitelja",
+      task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
+      formatTodoInvitedSummary(task),
       task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
       task.createdAt ? formatDateTime(task.createdAt) : "",
     ].filter(Boolean);
@@ -32390,7 +32470,7 @@ function renderTodoDetail() {
   }
 
   if (todoDetailMessage) {
-    todoDetailMessage.textContent = task.message || "Bez dodatne poruke.";
+    todoDetailMessage.textContent = task.message || "Bez opisa teme.";
   }
 
   if (todoDetailStatus) {
@@ -32416,6 +32496,11 @@ function renderTodoDetail() {
     todoDetailDueDate.dataset.taskId = task.id;
   }
 
+  if (todoDetailInvitedUsersInput) {
+    rebuildTodoDetailInvitedUserOptions(task.invitedUserIds ?? []);
+    todoDetailInvitedUsersInput.dataset.taskId = task.id;
+  }
+
   if (todoDetailOpenWorkOrder) {
     const linkedWorkOrder = getLinkedTodoWorkOrder(task);
     todoDetailOpenWorkOrder.hidden = !linkedWorkOrder;
@@ -32434,7 +32519,7 @@ function renderTodoDetail() {
 
   if (todoDetailDelete) {
     todoDetailDelete.onclick = () => {
-      if (!window.confirm(`Obrisati zadatak "${task.title}"?`)) {
+      if (!window.confirm(`Obrisati temu "${task.title}"?`)) {
         return;
       }
 
@@ -34783,11 +34868,12 @@ function renderSharedOptions() {
     ...TODO_TASK_STATUS_OPTIONS,
   ], todoFilterStatusInput?.value || "all");
   replaceSelectOptions(todoFilterScopeInput, [
-    { value: "all", label: "Sve" },
-    { value: "assigned", label: "Dodijeljeno meni" },
-    { value: "created", label: "Poslao sam" },
-    { value: "unassigned", label: "Bez izvršitelja" },
-  ], todoFilterScopeInput?.value || "assigned");
+    { value: "all", label: "Sve teme" },
+    { value: "assigned", label: "Nositelj sam" },
+    { value: "invited", label: "Pozvan sam" },
+    { value: "created", label: "Otvorio sam" },
+    { value: "unassigned", label: "Bez nositelja" },
+  ], todoFilterScopeInput?.value || "all");
   if (offerStatusInput) {
     replaceSelectOptions(offerStatusInput, OFFER_STATUS_OPTIONS, offerStatusInput.value || "draft");
     syncOfferStatusTheme();
@@ -34891,7 +34977,9 @@ function renderSharedOptions() {
   rebuildReminderCompanyOptions(reminderCompanyIdInput?.value || "");
   renderReminderLinkPreview();
   rebuildTodoAssigneeOptions(todoAssigneeInput?.value || "");
+  rebuildTodoInvitedUserOptions(getSelectedMultiSelectValues(todoInvitedUsersInput));
   rebuildTodoDetailAssigneeOptions(todoDetailAssignee?.value || "");
+  rebuildTodoDetailInvitedUserOptions(getSelectedMultiSelectValues(todoDetailInvitedUsersInput));
   rebuildTodoWorkOrderOptions(todoWorkOrderIdInput?.value || "");
   rebuildVehicleReservationUserOptions(getVehicleReservationSelectedUserIds());
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
@@ -44216,6 +44304,20 @@ todoResetButton?.addEventListener("click", resetTodoForm);
 todoSearchInput?.addEventListener("input", renderTodo);
 todoFilterScopeInput?.addEventListener("change", renderTodo);
 todoFilterStatusInput?.addEventListener("change", renderTodo);
+todoInvitedUsersInput?.addEventListener("change", () => {
+  const selected = getSelectedMultiSelectValues(todoInvitedUsersInput);
+  if (selected.includes(TODO_INVITED_ALL_TOKEN)) {
+    const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
+    setMultiSelectSelectedValues(todoInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
+  }
+});
+todoInvitedSelectAllButton?.addEventListener("click", () => {
+  const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
+  setMultiSelectSelectedValues(todoInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
+});
+todoInvitedClearButton?.addEventListener("click", () => {
+  setMultiSelectSelectedValues(todoInvitedUsersInput, []);
+});
 notificationsSearchInput?.addEventListener("input", renderNotifications);
 notificationsFilterKindInput?.addEventListener("change", renderNotifications);
 notificationsFilterLevelInput?.addEventListener("change", renderNotifications);
@@ -44261,6 +44363,41 @@ todoDetailAssignee?.addEventListener("change", () => {
       assignedToUserId: todoDetailAssignee.value,
     },
   }), todoCommentError);
+});
+todoDetailInvitedUsersInput?.addEventListener("change", () => {
+  const taskId = todoDetailInvitedUsersInput.dataset.taskId;
+
+  if (!taskId) {
+    return;
+  }
+
+  const selected = getSelectedMultiSelectValues(todoDetailInvitedUsersInput);
+  if (selected.includes(TODO_INVITED_ALL_TOKEN)) {
+    const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
+    setMultiSelectSelectedValues(todoDetailInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
+  }
+
+  void runMutation(() => apiRequest(`/todo-tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      invitedUserIds: getTodoInvitedSelectedUserIds(todoDetailInvitedUsersInput),
+    },
+  }), todoCommentError);
+});
+todoDetailInvitedSelectAllButton?.addEventListener("click", () => {
+  if (!todoDetailInvitedUsersInput) {
+    return;
+  }
+  const allUserIds = getTodoInvitedPeopleOptions().map((option) => String(option.value));
+  setMultiSelectSelectedValues(todoDetailInvitedUsersInput, [TODO_INVITED_ALL_TOKEN, ...allUserIds]);
+  todoDetailInvitedUsersInput.dispatchEvent(new Event("change", { bubbles: true }));
+});
+todoDetailInvitedClearButton?.addEventListener("click", () => {
+  if (!todoDetailInvitedUsersInput) {
+    return;
+  }
+  setMultiSelectSelectedValues(todoDetailInvitedUsersInput, []);
+  todoDetailInvitedUsersInput.dispatchEvent(new Event("change", { bubbles: true }));
 });
 todoDetailDueDate?.addEventListener("change", () => {
   const taskId = todoDetailDueDate.dataset.taskId;

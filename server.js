@@ -721,6 +721,39 @@ function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
   };
 }
 
+function resolveTodoInvitedUsersPayload(scopedSnapshot, body = {}) {
+  const hasInvitedUserIds = Object.prototype.hasOwnProperty.call(body, "invitedUserIds");
+
+  if (!hasInvitedUserIds) {
+    return {};
+  }
+
+  const requestedIds = Array.isArray(body.invitedUserIds)
+    ? body.invitedUserIds
+    : [body.invitedUserIds];
+  const invitedUserIds = Array.from(new Set(
+    requestedIds.map((value) => normalizeInputValue(value)).filter(Boolean),
+  ));
+
+  if (invitedUserIds.length === 0) {
+    return {
+      invitedUserIds: [],
+      invitedUserLabels: [],
+    };
+  }
+
+  const invitedUsers = invitedUserIds.map((userId) => assertInScope(
+    scopedSnapshot.users,
+    userId,
+    "Pozvani kolega nije dostupan za aktivnu organizaciju.",
+  ));
+
+  return {
+    invitedUserIds: invitedUsers.map((user) => String(user.id)),
+    invitedUserLabels: invitedUsers.map((user) => user.fullName || user.email || user.username || "User"),
+  };
+}
+
 function resolveVehicleReservationUserPayload(scopedSnapshot, body = {}) {
   const hasUserIds = Object.prototype.hasOwnProperty.call(body, "reservedForUserIds");
   const hasLabels = Object.prototype.hasOwnProperty.call(body, "reservedForLabels");
@@ -1263,9 +1296,11 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
       const assignedPayload = resolveAssignedUserPayload(scopedSnapshot, body);
+      const invitedPayload = resolveTodoInvitedUsersPayload(scopedSnapshot, body);
       await domainRepository.createTodoTask({
         ...body,
         ...assignedPayload,
+        ...invitedPayload,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
@@ -2247,9 +2282,11 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
       const assignedPayload = resolveAssignedUserPayload(scopedSnapshot, body);
+      const invitedPayload = resolveTodoInvitedUsersPayload(scopedSnapshot, body);
       const updated = await domainRepository.updateTodoTask(todoTaskMatch[1], {
         ...body,
         ...assignedPayload,
+        ...invitedPayload,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 

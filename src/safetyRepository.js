@@ -1747,7 +1747,8 @@ async function fetchSnapshotFromConnection(connection) {
   const [todoTaskRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, work_order_id, title, message, status,
            priority, due_date, created_by_user_id, created_by_label, assigned_to_user_id,
-           assigned_to_label, completed_at, created_at, updated_at
+           assigned_to_label, invited_user_ids_json, invited_user_labels_json,
+           completed_at, created_at, updated_at
     FROM web_team_tasks
     ORDER BY
       CASE status
@@ -1813,6 +1814,12 @@ async function fetchSnapshotFromConnection(connection) {
       createdByLabel: row.created_by_label ?? "",
       assignedToUserId: dbString(row.assigned_to_user_id),
       assignedToLabel: row.assigned_to_label ?? "",
+      invitedUserIds: parseJsonArray(row.invited_user_ids_json, [])
+        .map((value) => dbString(value))
+        .filter(Boolean),
+      invitedUserLabels: parseJsonArray(row.invited_user_labels_json, [])
+        .map((value) => dbString(value))
+        .filter(Boolean),
       completedAt: normalizeTimestamp(row.completed_at),
       commentCount: comments.length,
       comments,
@@ -2493,6 +2500,8 @@ export class InMemorySafetyRepository {
       reminders: [...this.snapshot.reminders],
       todoTasks: this.snapshot.todoTasks.map((item) => ({
         ...item,
+        invitedUserIds: [...(item.invitedUserIds ?? [])],
+        invitedUserLabels: [...(item.invitedUserLabels ?? [])],
         comments: (item.comments ?? []).map((comment) => ({ ...comment })),
       })),
       offers: this.snapshot.offers.map((item) => ({
@@ -3685,6 +3694,8 @@ export class MySqlSafetyRepository {
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
         assigned_to_user_id INT NULL,
         assigned_to_label VARCHAR(160) NOT NULL DEFAULT '',
+        invited_user_ids_json LONGTEXT NULL,
+        invited_user_labels_json LONGTEXT NULL,
         completed_at DATETIME NULL DEFAULT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -4006,6 +4017,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
+    await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_ids_json", "LONGTEXT NULL AFTER assigned_to_label");
+    await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_labels_json", "LONGTEXT NULL AFTER invited_user_ids_json");
     await this.pool.query(`
       UPDATE web_service_catalog
       SET service_type = CASE
@@ -5173,8 +5186,9 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_team_tasks
             (organization_id, company_id, location_id, work_order_id, title, message, status, priority,
-             due_date, created_by_user_id, created_by_label, assigned_to_user_id, assigned_to_label, completed_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             due_date, created_by_user_id, created_by_label, assigned_to_user_id, assigned_to_label,
+             invited_user_ids_json, invited_user_labels_json, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5190,6 +5204,8 @@ export class MySqlSafetyRepository {
           draft.createdByLabel,
           parseNullableInteger(draft.assignedToUserId),
           draft.assignedToLabel,
+          JSON.stringify(draft.invitedUserIds ?? []),
+          JSON.stringify(draft.invitedUserLabels ?? []),
           draft.completedAt ? new Date(draft.completedAt) : null,
         ],
       );
@@ -5231,7 +5247,8 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_team_tasks
           SET company_id = ?, location_id = ?, work_order_id = ?, title = ?, message = ?, status = ?,
-              priority = ?, due_date = ?, assigned_to_user_id = ?, assigned_to_label = ?, completed_at = ?
+              priority = ?, due_date = ?, assigned_to_user_id = ?, assigned_to_label = ?,
+              invited_user_ids_json = ?, invited_user_labels_json = ?, completed_at = ?
           WHERE id = ?
         `,
         [
@@ -5245,6 +5262,8 @@ export class MySqlSafetyRepository {
           next.dueDate,
           parseNullableInteger(next.assignedToUserId),
           next.assignedToLabel,
+          JSON.stringify(next.invitedUserIds ?? []),
+          JSON.stringify(next.invitedUserLabels ?? []),
           next.completedAt ? new Date(next.completedAt) : null,
           Number(id),
         ],

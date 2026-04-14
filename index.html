@@ -1932,30 +1932,11 @@
             <div class="section-heading">
               <div>
                 <p class="section-kicker">Home</p>
-                <h2>ToDo</h2>
+                <h2>ToDo teme</h2>
               </div>
               <p class="helper-copy">
-                Interni zadaci i kratka komunikacija medu kolegama, s vezom na RN kada treba operativa.
+                Otvori temu, pozovi kolege i vodi komentare na jednom mjestu, po potrebi povezano s RN-om.
               </p>
-            </div>
-
-            <div class="todo-summary-grid">
-              <article class="summary-card">
-                <span>Ukupno</span>
-                <strong id="todo-total-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Dodijeljeno meni</span>
-                <strong id="todo-assigned-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Poslao sam</span>
-                <strong id="todo-created-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Kasne</span>
-                <strong id="todo-overdue-count">0</strong>
-              </article>
             </div>
           </section>
 
@@ -1964,8 +1945,8 @@
               <section class="todo-composer-card">
                 <div class="section-heading">
                   <div>
-                    <p class="section-kicker">Send task</p>
-                    <h3>Novi zadatak</h3>
+                    <p class="section-kicker">Tema</p>
+                    <h3>Nova tema</h3>
                   </div>
                 </div>
 
@@ -1974,13 +1955,24 @@
 
                   <div class="form-grid todo-form-grid">
                     <label class="field field-span-full">
-                      <span>Naslov</span>
-                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Pošalji ponudu klijentu" required />
+                      <span>Naslov teme</span>
+                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Potvrda termina i priprema ekipe" required />
                     </label>
 
                     <label class="field">
-                      <span>Za koga</span>
+                      <span>Nositelj teme</span>
                       <select id="todo-assigned-to-user-id"></select>
+                    </label>
+
+                    <label class="field">
+                      <div class="todo-invite-head">
+                        <span>Pozovi ljude</span>
+                        <div class="todo-invite-actions">
+                          <button id="todo-invited-select-all" type="button" class="ghost-button ghost-button-tiny">Svi</button>
+                          <button id="todo-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
+                        </div>
+                      </div>
+                      <select id="todo-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
                     </label>
 
                     <label class="field">
@@ -2004,15 +1996,15 @@
                     </label>
 
                     <label class="field field-span-full">
-                      <span>Poruka</span>
-                    <textarea id="todo-message" rows="6" placeholder="Što treba napraviti, do kada i što je bitno?"></textarea>
+                      <span>Opis teme</span>
+                    <textarea id="todo-message" rows="6" placeholder="Opis teme, cilj i kratke upute za sudionike..."></textarea>
                     </label>
                   </div>
 
                   <div id="todo-link-preview" class="reminder-link-preview" hidden></div>
 
                   <div class="form-actions">
-                    <button type="submit" class="primary-button">Pošalji zadatak</button>
+                    <button type="submit" class="primary-button">Spremi temu</button>
                     <button id="todo-reset" type="button" class="ghost-button">Očisti formu</button>
                   </div>
                 </form>
@@ -2024,14 +2016,14 @@
                 <div class="workspace-list-head">
                   <div class="workspace-list-copy">
                     <p class="section-kicker">Inbox</p>
-                    <h3>Popis zadataka</h3>
+                    <h3>Popis tema</h3>
                   </div>
                 </div>
 
                 <div class="filter-row filter-row-clickup reminders-filter-row todo-filter-row">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="todo-search" type="search" placeholder="Naslov, poruka, kolega, RN..." />
+                    <input id="todo-search" type="search" placeholder="Tema, opis, kolege, RN..." />
                   </label>
 
                   <label class="field">
@@ -2046,21 +2038,21 @@
                 </div>
 
                 <div id="todo-body" class="todo-list"></div>
-                <p id="todo-empty" class="empty-inline" hidden>Nema zadataka za trenutni filter.</p>
+                <p id="todo-empty" class="empty-inline" hidden>Nema tema za trenutni filter.</p>
               </section>
 
               <aside id="todo-detail-panel" class="todo-detail-card">
                 <div id="todo-detail-empty" class="todo-detail-empty">
                   <p class="section-kicker">Conversation</p>
-                  <h3>Odaberi zadatak</h3>
-                  <p class="helper-copy">Klikni zadatak iz srednje kolone da otvoris razgovor, status i detalje.</p>
+                  <h3>Odaberi temu</h3>
+                  <p class="helper-copy">Klikni temu iz popisa da otvoriš razgovor, status i detalje.</p>
                 </div>
 
                 <div id="todo-detail-content" class="todo-detail-content" hidden>
                   <div class="todo-detail-head">
                     <div class="todo-detail-heading">
                       <p class="section-kicker">Conversation</p>
-                      <h3 id="todo-detail-title">ToDo</h3>
+                      <h3 id="todo-detail-title">Tema</h3>
                       <p id="todo-detail-meta" class="helper-copy"></p>
                     </div>
 
@@ -2085,13 +2077,24 @@
                     </label>
 
                     <label class="field">
-                      <span>Izvršitelj</span>
+                      <span>Nositelj</span>
                       <select id="todo-detail-assignee"></select>
                     </label>
 
                     <label class="field">
                       <span>Rok</span>
                       <input id="todo-detail-due-date" type="date" />
+                    </label>
+
+                    <label class="field field-span-full">
+                      <div class="todo-invite-head">
+                        <span>Pozvani ljudi</span>
+                        <div class="todo-invite-actions">
+                          <button id="todo-detail-invited-select-all" type="button" class="ghost-button ghost-button-tiny">Svi</button>
+                          <button id="todo-detail-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
+                        </div>
+                      </div>
+                      <select id="todo-detail-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
                     </label>
                   </div>
 
@@ -2109,7 +2112,7 @@
                     <form id="todo-comment-form" class="todo-comment-form">
                       <label class="field field-span-full">
                         <span>Dodaj poruku</span>
-                        <textarea id="todo-comment-message" rows="4" placeholder="Napišite kratku poruku kolegi ili update zadatka..." required></textarea>
+                        <textarea id="todo-comment-message" rows="4" placeholder="Napiši komentar za sudionike teme..." required></textarea>
                       </label>
 
                       <div class="form-actions">
