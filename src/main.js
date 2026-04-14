@@ -32403,7 +32403,7 @@ function createTodoOpenTopicButton(taskId) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "ghost-button todo-open-topic-button";
-  button.textContent = "Otvori temu";
+  button.textContent = "Otvori thread";
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     selectTodoTask(taskId);
@@ -32522,8 +32522,25 @@ function renderTodoList() {
       }
     });
 
+    const leadLabel = task.assignedToLabel || task.createdByLabel || "Tema";
+    const invitedLabels = Array.isArray(task.invitedUserLabels) ? task.invitedUserLabels.filter(Boolean) : [];
+    const participantLabels = [];
+    [task.assignedToLabel, ...invitedLabels, task.createdByLabel].filter(Boolean).forEach((label) => {
+      if (!participantLabels.includes(label)) {
+        participantLabels.push(label);
+      }
+    });
+
     const head = document.createElement("div");
     head.className = "todo-task-card-head";
+
+    const threadLead = document.createElement("div");
+    threadLead.className = "todo-task-card-shell";
+
+    const avatar = document.createElement("span");
+    avatar.className = "todo-task-card-avatar";
+    avatar.textContent = getUserInitials({ fullName: leadLabel || "Tema" });
+
     const copy = document.createElement("div");
     copy.className = "todo-task-card-copy";
     const title = document.createElement("strong");
@@ -32533,18 +32550,18 @@ function renderTodoList() {
     subtitle.className = "todo-task-card-subtitle";
     subtitle.textContent = [
       task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
-      formatTodoInvitedSummary(task),
+      task.createdByLabel ? `Otvorio: ${task.createdByLabel}` : "",
     ].filter(Boolean).join(" · ");
-    copy.append(title, subtitle);
+    const preview = document.createElement("span");
+    preview.className = "todo-task-card-preview";
+    preview.textContent = (task.message || "Bez opisa teme.").replace(/\s+/g, " ").trim();
+    copy.append(title, subtitle, preview);
+    threadLead.append(avatar, copy);
 
     const badges = document.createElement("div");
     badges.className = "todo-task-card-badges";
     badges.append(createTodoTaskStatusBadge(task), createTodoTaskPriorityBadge(task.priority));
-    head.append(copy, badges);
-
-    const message = document.createElement("p");
-    message.className = "todo-task-card-message";
-    message.textContent = task.message || "Bez opisa teme.";
+    head.append(threadLead, badges);
 
     const meta = document.createElement("div");
     meta.className = "todo-task-card-meta";
@@ -32562,12 +32579,34 @@ function renderTodoList() {
       isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
     ));
     meta.append(createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft"));
+    if (task.updatedAt) {
+      meta.append(createMetaPill(`Ažurirano ${formatCompactDate(String(task.updatedAt).slice(0, 10))}`, "is-soft"));
+    }
+
+    const participants = document.createElement("div");
+    participants.className = "todo-task-card-participants";
+    if (participantLabels.length === 0) {
+      participants.append(createMetaPill("Bez sudionika", "is-soft"));
+    } else {
+      participantLabels.slice(0, 3).forEach((label) => {
+        const badge = document.createElement("span");
+        badge.className = "todo-task-card-participant";
+        badge.textContent = label;
+        participants.append(badge);
+      });
+      if (participantLabels.length > 3) {
+        participants.append(createMetaPill(`+${participantLabels.length - 3}`, "is-soft"));
+      }
+    }
 
     const footer = document.createElement("div");
     footer.className = "todo-task-card-footer";
-    footer.append(meta, createTodoOpenTopicButton(task.id));
+    const footerMain = document.createElement("div");
+    footerMain.className = "todo-task-card-footer-main";
+    footerMain.append(meta, participants);
+    footer.append(footerMain, createTodoOpenTopicButton(task.id));
 
-    card.append(head, message, footer);
+    card.append(head, footer);
     return card;
   }));
 
@@ -32680,6 +32719,8 @@ function renderTodoDetail() {
     todoCommentsBody.replaceChildren(...(task.comments ?? []).map((comment) => {
       const article = document.createElement("article");
       article.className = "todo-comment";
+      const isOwnComment = String(comment.userId ?? "") === String(state.user?.id ?? "");
+      article.classList.toggle("is-own", isOwnComment);
 
       const avatar = document.createElement("span");
       avatar.className = "todo-comment-avatar";
@@ -32691,7 +32732,7 @@ function renderTodoDetail() {
       const top = document.createElement("div");
       top.className = "todo-comment-top";
       const author = document.createElement("strong");
-      author.textContent = comment.authorLabel || "Safety360";
+      author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "Safety360");
       const time = document.createElement("span");
       time.textContent = formatDateTime(comment.createdAt);
       top.append(author, time);
