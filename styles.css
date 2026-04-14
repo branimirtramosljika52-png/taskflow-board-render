@@ -3912,10 +3912,10 @@ body.is-reminder-editor-open {
 }
 
 .todo-layout {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -3940,10 +3940,16 @@ body.is-reminder-editor-open {
   box-sizing: border-box;
 }
 
+.todo-list-card,
+.todo-detail-card {
+  align-self: stretch;
+  min-height: 0;
+}
+
 .todo-list {
   display: grid;
   gap: 12px;
-  max-height: 340px;
+  max-height: min(58vh, 620px);
   overflow: auto;
   padding-right: 4px;
 }
@@ -4032,56 +4038,45 @@ body.is-reminder-editor-open {
   overflow-wrap: anywhere;
 }
 
-/* Guard rails: force ToDo core sections to stay visible and inside the viewport. */
-#todo-view .todo-composer-card,
-#todo-view .todo-list-card,
-#todo-view .todo-detail-card,
-#todo-view #todo-form,
-#todo-view .todo-list-card .todo-filter-row,
-#todo-view #todo-body {
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-#todo-view .todo-composer-card .section-heading h3,
-#todo-view .todo-list-card .workspace-list-copy h3 {
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-#todo-view #todo-form[hidden],
-#todo-view .todo-list-card .todo-filter-row[hidden] {
-  display: grid !important;
-}
-
-#todo-view #todo-body[hidden] {
-  display: grid !important;
-}
-
-#todo-view #todo-form {
-  display: grid !important;
-  max-height: none !important;
-  overflow: visible !important;
-}
-
-#todo-view .todo-list-card .todo-filter-row {
-  display: grid !important;
-  max-height: none !important;
-  overflow: visible !important;
-}
-
-#todo-view #todo-body {
-  display: grid !important;
-  min-height: 120px;
-}
-
 .todo-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .todo-filter-row {
   grid-template-columns: minmax(0, 1.5fr) minmax(160px, 0.9fr) minmax(160px, 0.9fr);
+}
+
+.todo-editor-backdrop {
+  z-index: 118;
+}
+
+.todo-editor-panel.is-modal-open {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 119;
+  width: min(1100px, calc(100vw - 24px));
+  height: calc(100vh - 28px);
+  max-height: none;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid rgba(206, 212, 228, 0.94);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.24);
+  border-radius: 28px;
+}
+
+.todo-editor-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+
+.todo-editor-body .todo-form-compact {
+  padding: 2px 2px 10px;
+}
+
+body.is-todo-editor-open {
+  overflow: hidden;
 }
 
 .todo-multi-select {
@@ -12889,6 +12884,7 @@ body.is-document-template-editor-open .chat-dock {
 
   .todo-layout {
     width: 100%;
+    grid-template-columns: 1fr;
   }
 
   .todo-list {

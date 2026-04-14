@@ -592,6 +592,7 @@ const state = {
   activeWorkOrderViewMode: "list",
   workOrderListDensity: "collapsed",
   reminderEditorOpen: false,
+  todoEditorOpen: false,
   offerEditorOpen: false,
   legalFrameworkFilters: {
     query: "",
@@ -1782,6 +1783,11 @@ const todoAssignedCount = document.querySelector("#todo-assigned-count");
 const todoCreatedCount = document.querySelector("#todo-created-count");
 const todoOverdueCount = document.querySelector("#todo-overdue-count");
 const todoOpenComposerButton = document.querySelector("#todo-open-composer");
+const todoEditorBackdrop = document.querySelector("#todo-editor-backdrop");
+const todoEditorPanel = document.querySelector("#todo-editor-panel");
+const todoEditorBody = document.querySelector("#todo-editor-body");
+const todoEditorTitle = document.querySelector("#todo-editor-title");
+const todoEditorCloseButton = document.querySelector("#todo-editor-close");
 const todoForm = document.querySelector("#todo-form");
 const todoIdInput = document.querySelector("#todo-id");
 const todoTitleInput = document.querySelector("#todo-title");
@@ -2931,6 +2937,11 @@ function applySnapshot(payload) {
     state.reminderEditorOpen = false;
     syncReminderEditorModal();
     resetReminderForm();
+  }
+  if (todoIdInput?.value && !state.todoTasks.some((item) => String(item.id) === String(todoIdInput.value))) {
+    state.todoEditorOpen = false;
+    syncTodoEditorModal();
+    resetTodoForm();
   }
   if (legalFrameworkIdInput?.value && !state.legalFrameworks.some((item) => String(item.id) === String(legalFrameworkIdInput.value))) {
     state.legalFrameworkEditorOpen = false;
@@ -28474,6 +28485,8 @@ function renderAuthState() {
     syncWorkOrderEditorModal();
     state.reminderEditorOpen = false;
     syncReminderEditorModal();
+    state.todoEditorOpen = false;
+    syncTodoEditorModal();
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     state.legalFrameworkEditorOpen = false;
@@ -32266,6 +32279,66 @@ function resetTodoForm() {
   }
 
   renderTodoLinkPreview();
+  syncTodoEditorChrome();
+}
+
+function syncTodoEditorChrome() {
+  if (todoEditorTitle) {
+    todoEditorTitle.textContent = todoIdInput?.value
+      ? `Uredi temu | ${todoTitleInput?.value?.trim() || "Bez naslova"}`
+      : "Nova tema";
+  }
+}
+
+function syncTodoEditorModal() {
+  if (state.todoEditorOpen && (
+    state.activeView !== "todo"
+    || !state.user
+  )) {
+    state.todoEditorOpen = false;
+  }
+
+  const isOpen = state.todoEditorOpen;
+  todoEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-todo-editor-open", isOpen);
+
+  if (todoEditorPanel) {
+    todoEditorPanel.hidden = !isOpen;
+    todoEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (todoEditorBackdrop) {
+    todoEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (todoEditorCloseButton) {
+    todoEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      todoEditorBody?.scrollTo({ top: 0, behavior: "auto" });
+      todoTitleInput?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function openTodoEditor() {
+  state.todoEditorOpen = true;
+  syncTodoEditorChrome();
+  syncTodoEditorModal();
+}
+
+function closeTodoEditor({ reset = false } = {}) {
+  state.todoEditorOpen = false;
+  syncTodoEditorModal();
+  if (reset) {
+    resetTodoForm();
+  }
+}
+
+function dismissTodoEditor() {
+  closeTodoEditor({ reset: true });
 }
 
 function hydrateTodoTaskForm(task) {
@@ -32287,7 +32360,8 @@ function hydrateTodoTaskForm(task) {
   todoWorkOrderIdInput.value = task.workOrderId || "";
   todoMessageInput.value = task.message || "";
   renderTodoLinkPreview();
-  todoTitleInput.focus({ preventScroll: true });
+  syncTodoEditorChrome();
+  openTodoEditor();
 }
 
 function openTodoComposerForWorkOrder(workOrder = null) {
@@ -32306,7 +32380,8 @@ function openTodoComposerForWorkOrder(workOrder = null) {
   }
 
   renderTodoLinkPreview();
-  todoTitleInput.focus({ preventScroll: true });
+  syncTodoEditorChrome();
+  openTodoEditor();
 }
 
 function createTodoTaskStatusBadge(task) {
@@ -32637,7 +32712,7 @@ function renderTodoDetail() {
 }
 
 function renderTodo() {
-  ensureTodoWorkspaceVisible();
+  syncTodoEditorModal();
   renderTodoSummary();
   renderTopbarShortcutCounts();
   renderTodoList();
@@ -44352,8 +44427,10 @@ remindersSearchInput?.addEventListener("input", renderReminders);
 remindersFilterStatusInput?.addEventListener("change", renderReminders);
 todoOpenComposerButton?.addEventListener("click", () => {
   openTodoComposerForWorkOrder(null);
-  ensureTodoWorkspaceVisible();
 });
+todoEditorCloseButton?.addEventListener("click", dismissTodoEditor);
+todoEditorBackdrop?.addEventListener("click", dismissTodoEditor);
+todoTitleInput?.addEventListener("input", syncTodoEditorChrome);
 todoWorkOrderIdInput?.addEventListener("change", renderTodoLinkPreview);
 todoForm?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -44367,9 +44444,7 @@ todoForm?.addEventListener("submit", (event) => {
     body: buildTodoTaskPayload(),
   }), todoError).then((success) => {
     if (success) {
-      if (!isEditing) {
-        resetTodoForm();
-      }
+      closeTodoEditor({ reset: true });
     }
   });
 });
@@ -47357,6 +47432,11 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && state.measurementEquipmentExportDialogOpen) {
     closeMeasurementEquipmentExportDialog();
+    return;
+  }
+
+  if (event.key === "Escape" && state.todoEditorOpen) {
+    dismissTodoEditor();
     return;
   }
 

@@ -6,7 +6,7 @@
     <title>Safety360</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260414a" />
+    <link rel="stylesheet" href="/styles.css?v=20260414b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1937,84 +1937,11 @@
               <div class="todo-overview-actions">
                 <button id="todo-open-composer" type="button" class="primary-button todo-open-composer-button">+ Nova tema</button>
               </div>
-              <p class="helper-copy">
-                Otvori temu, pozovi kolege i vodi komentare na jednom mjestu, po potrebi povezano s RN-om.
-              </p>
             </div>
           </section>
 
           <section class="panel todo-workspace-panel">
             <div class="todo-layout">
-              <section class="todo-composer-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">Tema</p>
-                    <h3>Nova tema</h3>
-                  </div>
-                </div>
-
-                <form id="todo-form" class="entity-form">
-                  <input id="todo-id" type="hidden" />
-
-                  <div class="form-grid todo-form-grid">
-                    <label class="field field-span-full">
-                      <span>Naslov teme</span>
-                      <input id="todo-title" type="text" maxlength="180" placeholder="npr. Potvrda termina i priprema ekipe" required />
-                    </label>
-
-                    <label class="field">
-                      <span>Nositelj teme</span>
-                      <select id="todo-assigned-to-user-id"></select>
-                    </label>
-
-                    <label class="field">
-                      <div class="todo-invite-head">
-                        <span>Pozovi ljude</span>
-                        <div class="todo-invite-actions">
-                          <button id="todo-invited-select-all" type="button" class="ghost-button ghost-button-tiny">Svi</button>
-                          <button id="todo-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
-                        </div>
-                      </div>
-                      <select id="todo-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
-                    </label>
-
-                    <label class="field">
-                      <span>Datum</span>
-                      <input id="todo-due-date" type="date" />
-                    </label>
-
-                    <label class="field">
-                      <span>Status</span>
-                      <select id="todo-status"></select>
-                    </label>
-
-                    <label class="field">
-                      <span>Prioritet</span>
-                      <select id="todo-priority"></select>
-                    </label>
-
-                    <label class="field field-span-full">
-                      <span>Radni nalog</span>
-                      <select id="todo-work-order-id"></select>
-                    </label>
-
-                    <label class="field field-span-full">
-                      <span>Opis teme</span>
-                    <textarea id="todo-message" rows="6" placeholder="Opis teme, cilj i kratke upute za sudionike..."></textarea>
-                    </label>
-                  </div>
-
-                  <div id="todo-link-preview" class="reminder-link-preview" hidden></div>
-
-                  <div class="form-actions">
-                    <button type="submit" class="primary-button">Spremi temu</button>
-                    <button id="todo-reset" type="button" class="ghost-button">Očisti formu</button>
-                  </div>
-                </form>
-
-                <p id="todo-error" class="form-error" aria-live="polite"></p>
-              </section>
-
               <section class="todo-list-card">
                 <div class="workspace-list-head">
                   <div class="workspace-list-copy">
@@ -2127,6 +2054,81 @@
                   </section>
                 </div>
               </aside>
+            </div>
+          </section>
+
+          <div id="todo-editor-backdrop" class="offer-editor-backdrop reminder-editor-backdrop todo-editor-backdrop" hidden></div>
+          <section id="todo-editor-panel" class="panel reminder-editor-panel todo-editor-panel" hidden>
+            <div class="offers-editor-fixed-head">
+              <div class="section-heading offers-section-heading">
+                <div>
+                  <p class="section-kicker">Tema</p>
+                  <h3 id="todo-editor-title">Nova tema</h3>
+                </div>
+                <button id="todo-editor-close" type="button" class="ghost-button">Zatvori</button>
+              </div>
+            </div>
+
+            <div id="todo-editor-body" class="reminder-editor-body todo-editor-body" tabindex="-1">
+              <form id="todo-form" class="entity-form todo-form-compact">
+                <input id="todo-id" type="hidden" />
+
+                <div class="form-grid todo-form-grid">
+                  <label class="field field-span-full">
+                    <span>Naslov teme</span>
+                    <input id="todo-title" type="text" maxlength="180" placeholder="npr. Potvrda termina i priprema ekipe" required />
+                  </label>
+
+                  <label class="field">
+                    <span>Kome dodjeljuješ</span>
+                    <select id="todo-assigned-to-user-id"></select>
+                  </label>
+
+                  <label class="field">
+                    <div class="todo-invite-head">
+                      <span>Pozovi ljude</span>
+                      <div class="todo-invite-actions">
+                        <button id="todo-invited-select-all" type="button" class="ghost-button ghost-button-tiny">Svi</button>
+                        <button id="todo-invited-clear" type="button" class="ghost-button ghost-button-tiny">Očisti</button>
+                      </div>
+                    </div>
+                    <select id="todo-invited-user-ids" class="todo-multi-select" multiple size="6"></select>
+                  </label>
+
+                  <label class="field">
+                    <span>Datum</span>
+                    <input id="todo-due-date" type="date" />
+                  </label>
+
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="todo-status"></select>
+                  </label>
+
+                  <label class="field">
+                    <span>Prioritet</span>
+                    <select id="todo-priority"></select>
+                  </label>
+
+                  <label class="field field-span-full">
+                    <span>Radni nalog</span>
+                    <select id="todo-work-order-id"></select>
+                  </label>
+
+                  <label class="field field-span-full">
+                    <span>Opis teme</span>
+                    <textarea id="todo-message" rows="6" placeholder="Opis teme, cilj i kratke upute za sudionike..."></textarea>
+                  </label>
+                </div>
+
+                <div id="todo-link-preview" class="reminder-link-preview" hidden></div>
+                <p id="todo-error" class="form-error" aria-live="polite"></p>
+
+                <div class="form-actions">
+                  <button type="submit" class="primary-button">Spremi temu</button>
+                  <button id="todo-reset" type="button" class="ghost-button">Očisti formu</button>
+                </div>
+              </form>
             </div>
           </section>
         </section>
@@ -4864,6 +4866,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260414a"></script>
+    <script type="module" src="/src/main.js?v=20260414b"></script>
   </body>
 </html>
