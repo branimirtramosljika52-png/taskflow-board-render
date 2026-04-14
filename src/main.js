@@ -31310,11 +31310,15 @@ function buildMeasurementEquipmentNotifications() {
 
 function isTodoCommentFromCurrentUser(comment = {}) {
   const currentUserId = String(state.user?.id ?? "").trim();
-  const currentAuthorLabel = normalizeText(
+  const normalizeLabel = (value) => String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  const currentAuthorLabel = normalizeLabel(
     state.user?.fullName || state.user?.username || state.user?.email || "",
-  ).toLowerCase();
+  );
   const commentUserId = String(comment.userId ?? "").trim();
-  const commentAuthorLabel = normalizeText(comment.authorLabel || "").toLowerCase();
+  const commentAuthorLabel = normalizeLabel(comment.authorLabel || "");
 
   if (currentUserId && commentUserId) {
     return currentUserId === commentUserId;
@@ -32942,8 +32946,8 @@ function renderTodoList() {
     const subtitle = document.createElement("span");
     subtitle.className = "todo-task-card-subtitle";
     subtitle.textContent = [
-      task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
-      task.createdByLabel ? `Otvorio: ${task.createdByLabel}` : "",
+      task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
+      task.companyName || "",
     ].filter(Boolean).join(" · ");
     const preview = document.createElement("span");
     preview.className = "todo-task-card-preview";
@@ -32951,10 +32955,7 @@ function renderTodoList() {
     copy.append(title, subtitle, preview);
     threadLead.append(avatar, copy);
 
-    const badges = document.createElement("div");
-    badges.className = "todo-task-card-badges";
-    badges.append(createTodoTaskStatusBadge(task), createTodoTaskPriorityBadge(task.priority));
-    head.append(threadLead, badges);
+    head.append(threadLead);
 
     const meta = document.createElement("div");
     meta.className = "todo-task-card-meta";
@@ -33037,12 +33038,8 @@ function renderTodoDetail() {
   }
 
   if (todoDetailMeta) {
-    const lines = [
-      task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "Bez nositelja",
-      task.createdByLabel ? `Poslao ${task.createdByLabel}` : "",
-      task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
-    ].filter(Boolean);
-    todoDetailMeta.textContent = lines.join(" · ");
+    todoDetailMeta.textContent = "";
+    todoDetailMeta.hidden = true;
   }
 
   if (todoDetailMessage) {
