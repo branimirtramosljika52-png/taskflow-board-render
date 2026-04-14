@@ -1814,48 +1814,24 @@
         </section>
 
         <section id="reminders-view" class="workspace-view" hidden>
-          <section class="panel reminders-overview-panel">
-            <div class="section-heading">
-              <div>
-                <p class="section-kicker">Home</p>
-                <h2>Reminders</h2>
-              </div>
-              <p class="helper-copy">
-                Follow-upovi, rokovi i interni podsjetnici vezani uz organizaciju, klijente i radne naloge.
-              </p>
-            </div>
-
-            <div class="reminders-summary-grid">
-              <article class="summary-card">
-                <span>Ukupno</span>
-                <strong id="reminders-total-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Danas</span>
-                <strong id="reminders-today-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Kasne</span>
-                <strong id="reminders-overdue-count">0</strong>
-              </article>
-              <article class="summary-card">
-                <span>Gotovi</span>
-                <strong id="reminders-done-count">0</strong>
-              </article>
-            </div>
-          </section>
-
           <section class="panel reminders-workspace-panel">
+            <div class="workspace-list-head reminders-head-compact">
+              <div class="workspace-list-copy">
+                <p class="section-kicker">Home</p>
+                <h3>Reminders</h3>
+              </div>
+            </div>
+
             <div class="reminders-layout">
               <section class="reminders-composer-card">
-                <div class="section-heading">
-                  <div>
+                <div class="workspace-list-head reminders-composer-head">
+                  <div class="workspace-list-copy">
                     <p class="section-kicker">Create</p>
                     <h3>Novi reminder</h3>
                   </div>
                 </div>
 
-                <form id="reminder-form" class="entity-form">
+                <form id="reminder-form" class="entity-form reminder-form-compact">
                   <input id="reminder-id" type="hidden" />
 
                   <div class="form-grid">
@@ -1874,6 +1850,11 @@
                       <select id="reminder-status"></select>
                     </label>
 
+                    <label class="field">
+                      <span>Ponavljaj (dana)</span>
+                      <input id="reminder-repeat-days" type="number" min="0" max="365" step="1" placeholder="0 = jednokratno" />
+                    </label>
+
                     <label class="field field-span-full">
                       <span>Radni nalog</span>
                       <select id="reminder-work-order-id"></select>
@@ -1886,7 +1867,7 @@
 
                     <label class="field field-span-full">
                       <span>Bilješka</span>
-                      <textarea id="reminder-note" rows="5" placeholder="Kratka bilješka, follow-up ili interni podsjetnik."></textarea>
+                      <textarea id="reminder-note" rows="3" placeholder="Kratka bilješka, follow-up ili interni podsjetnik."></textarea>
                     </label>
                   </div>
 

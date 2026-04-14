@@ -1759,6 +1759,7 @@ const reminderIdInput = document.querySelector("#reminder-id");
 const reminderTitleInput = document.querySelector("#reminder-title");
 const reminderDueDateInput = document.querySelector("#reminder-due-date");
 const reminderStatusInput = document.querySelector("#reminder-status");
+const reminderRepeatDaysInput = document.querySelector("#reminder-repeat-days");
 const reminderWorkOrderIdInput = document.querySelector("#reminder-work-order-id");
 const reminderCompanyIdInput = document.querySelector("#reminder-company-id");
 const reminderNoteInput = document.querySelector("#reminder-note");
@@ -31687,6 +31688,7 @@ function buildReminderPayload() {
     companyId: linkedWorkOrder?.companyId || reminderCompanyIdInput.value,
     locationId: linkedWorkOrder?.locationId || "",
     note: reminderNoteInput.value,
+    repeatEveryDays: reminderRepeatDaysInput?.value ?? "",
   };
 }
 
@@ -31699,6 +31701,10 @@ function resetReminderForm() {
 
   if (reminderStatusInput) {
     reminderStatusInput.value = "active";
+  }
+
+  if (reminderRepeatDaysInput) {
+    reminderRepeatDaysInput.value = "";
   }
 
   if (reminderCompanyIdInput) {
@@ -31722,6 +31728,11 @@ function hydrateReminderForm(reminder) {
   reminderTitleInput.value = reminder.title || "";
   reminderDueDateInput.value = reminder.dueDate || "";
   reminderStatusInput.value = reminder.status || "active";
+  if (reminderRepeatDaysInput) {
+    reminderRepeatDaysInput.value = Number.isInteger(Number(reminder.repeatEveryDays))
+      ? String(reminder.repeatEveryDays)
+      : "";
+  }
   rebuildReminderWorkOrderOptions(reminder.workOrderId || "");
   rebuildReminderCompanyOptions(reminder.companyId || "");
   reminderCompanyIdInput.value = reminder.companyId || "";
@@ -31759,6 +31770,59 @@ function createReminderStatusBadge(status) {
   return badge;
 }
 
+function formatReminderRepeatLabel(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return "";
+  }
+
+  if (parsed === 1) {
+    return "Svakodnevno";
+  }
+
+  if (parsed === 7) {
+    return "Tjedno";
+  }
+
+  return `Svaka ${parsed} dana`;
+}
+
+function createReminderStatusSelect(reminder) {
+  const select = document.createElement("select");
+  select.className = `reminder-status-select is-${reminder.status || "active"}`;
+  select.setAttribute("aria-label", "Status remindera");
+  replaceSelectOptions(select, REMINDER_STATUS_OPTIONS, reminder.status || "active");
+
+  const stopPropagation = (event) => {
+    event.stopPropagation();
+  };
+
+  select.addEventListener("pointerdown", stopPropagation);
+  select.addEventListener("click", stopPropagation);
+  select.addEventListener("keydown", stopPropagation);
+  select.addEventListener("change", () => {
+    const nextStatus = select.value;
+
+    if (nextStatus === (reminder.status || "active")) {
+      return;
+    }
+
+    void runMutation(() => apiRequest(`/reminders/${reminder.id}`, {
+      method: "PATCH",
+      body: {
+        status: nextStatus,
+      },
+    }), reminderError).then((success) => {
+      if (!success) {
+        select.value = reminder.status || "active";
+      }
+    });
+  });
+
+  return select;
+}
+
 function renderReminderSummary() {
   const reminders = state.reminders;
   const today = new Date().toISOString().slice(0, 10);
@@ -31791,8 +31855,22 @@ function renderReminders() {
   const reminders = getFilteredReminders();
   remindersBody.replaceChildren(...reminders.map((reminder) => {
     const linkedWorkOrder = getReminderLinkedWorkOrder(reminder);
+    const repeatLabel = formatReminderRepeatLabel(reminder.repeatEveryDays);
+    const openEditor = () => {
+      hydrateReminderForm(reminder);
+    };
     const card = document.createElement("article");
     card.className = "reminder-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Uredi reminder ${reminder.title}`);
+    card.addEventListener("click", openEditor);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openEditor();
+      }
+    });
 
     const top = document.createElement("div");
     top.className = "reminder-card-top";
@@ -31812,18 +31890,25 @@ function renderReminders() {
 
     const meta = document.createElement("div");
     meta.className = "reminder-card-meta";
-    meta.append(createReminderStatusBadge(reminder.status));
+    meta.append(createReminderStatusSelect(reminder));
 
     const due = document.createElement("span");
     due.className = `reminder-due-pill${isReminderOverdue(reminder) ? " is-overdue" : ""}`;
     due.textContent = reminder.dueDate ? formatCompactDate(reminder.dueDate) : "Bez datuma";
     meta.append(due);
 
+    if (repeatLabel) {
+      const repeat = document.createElement("span");
+      repeat.className = "reminder-repeat-pill";
+      repeat.textContent = repeatLabel;
+      meta.append(repeat);
+    }
+
     top.append(copy, meta);
 
     const note = document.createElement("p");
     note.className = "reminder-card-note";
-    note.textContent = reminder.note || "Bez dodatne bilješke.";
+    note.textContent = reminder.note || "Bez bilješke.";
 
     const footer = document.createElement("div");
     footer.className = "reminder-card-footer";
@@ -31836,6 +31921,12 @@ function renderReminders() {
 
     const actions = document.createElement("div");
     actions.className = "reminder-card-actions";
+    actions.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    actions.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
 
     if (linkedWorkOrder) {
       actions.append(createActionButton("Otvori RN", "ghost-button reminder-inline-action", () => {
@@ -31844,17 +31935,6 @@ function renderReminders() {
     }
 
     actions.append(
-      createActionButton(reminder.status === "done" ? "Vrati aktivno" : "Oznaci gotovo", "ghost-button reminder-inline-action", () => {
-        void runMutation(() => apiRequest(`/reminders/${reminder.id}`, {
-          method: "PATCH",
-          body: {
-            status: reminder.status === "done" ? "active" : "done",
-          },
-        }), reminderError);
-      }),
-      createActionButton("Uredi", "ghost-button reminder-inline-action", () => {
-        hydrateReminderForm(reminder);
-      }),
       createActionButton("Obriši", "ghost-button reminder-inline-action is-danger", () => {
         if (!window.confirm(`Obrisati reminder "${reminder.title}"?`)) {
           return;

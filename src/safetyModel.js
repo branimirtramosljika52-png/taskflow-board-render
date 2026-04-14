@@ -500,6 +500,21 @@ function normalizeReminderStatus(value) {
   return REMINDER_STATUS_SET.has(status) ? status : "active";
 }
 
+function normalizeReminderRepeatEveryDays(value, fallback = null) {
+  const raw = normalizeText(value);
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(365, parsed);
+}
+
 function normalizeTodoTaskStatus(value) {
   const status = normalizeText(value).toLowerCase();
   return TODO_TASK_STATUS_SET.has(status) ? status : "open";
@@ -2257,6 +2272,9 @@ function hydrateReminderCore({
     dueDate: hasOwn(input, "dueDate")
       ? normalizeOptionalDate(input.dueDate)
       : normalizeOptionalDate(current?.dueDate),
+    repeatEveryDays: hasOwn(input, "repeatEveryDays")
+      ? normalizeReminderRepeatEveryDays(input.repeatEveryDays, null)
+      : normalizeReminderRepeatEveryDays(current?.repeatEveryDays, null),
     status: normalizedStatus,
     createdByUserId: hasOwn(input, "createdByUserId")
       ? normalizeText(input.createdByUserId)

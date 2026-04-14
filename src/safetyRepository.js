@@ -1700,6 +1700,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [reminderRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, work_order_id, title, note, due_date,
+           repeat_every_days,
            status, created_by_user_id, created_by_label, completed_at, created_at, updated_at
     FROM web_reminders
     ORDER BY
@@ -1731,6 +1732,9 @@ async function fetchSnapshotFromConnection(connection) {
       title: row.title ?? "",
       note: row.note ?? "",
       dueDate: normalizeDateOnly(row.due_date),
+      repeatEveryDays: Number.isInteger(Number(row.repeat_every_days)) && Number(row.repeat_every_days) > 0
+        ? Number(row.repeat_every_days)
+        : null,
       status: row.status ?? "active",
       createdByUserId: dbString(row.created_by_user_id),
       createdByLabel: row.created_by_label ?? "",
@@ -3651,6 +3655,7 @@ export class MySqlSafetyRepository {
         title VARCHAR(180) NOT NULL,
         note TEXT NOT NULL,
         due_date DATE NULL,
+        repeat_every_days INT NULL,
         status VARCHAR(24) NOT NULL DEFAULT 'active',
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
@@ -4000,6 +4005,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
+    await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
     await this.pool.query(`
       UPDATE web_service_catalog
       SET service_type = CASE
@@ -5055,9 +5061,9 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_reminders
-            (organization_id, company_id, location_id, work_order_id, title, note, due_date,
+            (organization_id, company_id, location_id, work_order_id, title, note, due_date, repeat_every_days,
              status, created_by_user_id, created_by_label, completed_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -5067,6 +5073,7 @@ export class MySqlSafetyRepository {
           draft.title,
           draft.note,
           draft.dueDate,
+          parseNullableInteger(draft.repeatEveryDays),
           draft.status,
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
@@ -5111,7 +5118,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_reminders
           SET company_id = ?, location_id = ?, work_order_id = ?, title = ?, note = ?, due_date = ?,
-              status = ?, completed_at = ?
+              repeat_every_days = ?, status = ?, completed_at = ?
           WHERE id = ?
         `,
         [
@@ -5121,6 +5128,7 @@ export class MySqlSafetyRepository {
           next.title,
           next.note,
           next.dueDate,
+          parseNullableInteger(next.repeatEveryDays),
           next.status,
           next.completedAt ? new Date(next.completedAt) : null,
           Number(id),
