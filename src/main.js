@@ -29910,7 +29910,8 @@ function createDashboardWidgetDraftFromForm() {
     ...patch,
     organizationId: state.activeOrganizationId,
     userId: state.user?.id,
-    position: getDashboardWidgets().length + 1,
+    // Novi widget dodajemo na vrh dashboarda.
+    position: 1,
   }, state, () => "dashboard-preview", () => new Date().toISOString());
 }
 
@@ -30570,12 +30571,45 @@ function clearDashboardWidgetInteraction({ revertLayout = true } = {}) {
   dashboardWidgetLayoutInteraction = null;
 }
 
-function buildDashboardLayoutWidgets(widgetId, patch) {
-  return applyDashboardWidgetGridLayout(getDashboardWidgets().map((item) => (
+function sortDashboardWidgetsByGrid(widgets = []) {
+  return [...widgets].sort((left, right) => {
+    const rowDelta = Number(left.gridRow ?? 1) - Number(right.gridRow ?? 1);
+    if (rowDelta !== 0) {
+      return rowDelta;
+    }
+
+    const columnDelta = Number(left.gridColumn ?? 1) - Number(right.gridColumn ?? 1);
+    if (columnDelta !== 0) {
+      return columnDelta;
+    }
+
+    const positionDelta = Number(left.position ?? Number.MAX_SAFE_INTEGER) - Number(right.position ?? Number.MAX_SAFE_INTEGER);
+    if (positionDelta !== 0) {
+      return positionDelta;
+    }
+
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""), "hr");
+  });
+}
+
+function normalizeDashboardWidgetPositionsByGrid(widgets = []) {
+  return sortDashboardWidgetsByGrid(widgets).map((widget, index) => ({
+    ...widget,
+    position: index + 1,
+  }));
+}
+
+function buildDashboardLayoutWidgets(widgetId, patch, { prioritizeWidget = false } = {}) {
+  const effectivePatch = prioritizeWidget
+    ? { ...patch, position: 1 }
+    : patch;
+  const laidOut = applyDashboardWidgetGridLayout(getDashboardWidgets().map((item) => (
     String(item.id) === String(widgetId)
-      ? updateDashboardWidget(item, patch, state, () => new Date().toISOString())
+      ? updateDashboardWidget(item, effectivePatch, state, () => new Date().toISOString())
       : item
   )));
+
+  return normalizeDashboardWidgetPositionsByGrid(laidOut);
 }
 
 function getDashboardWidgetLayoutChanges(nextWidgets) {
@@ -30771,7 +30805,7 @@ function commitDashboardWidgetLayoutInteraction() {
     ? buildDashboardLayoutWidgets(interaction.widgetId, {
       gridColumn: interaction.previewColumn,
       gridRow: interaction.previewRow,
-    })
+    }, { prioritizeWidget: true })
     : buildDashboardLayoutWidgets(interaction.widgetId, {
       size: getDashboardWidgetSizeFromWidth(interaction.previewWidth),
       gridWidth: interaction.previewWidth,
@@ -46837,10 +46871,14 @@ dashboardWidgetForm?.addEventListener("submit", (event) => {
   const isEditing = Boolean(dashboardWidgetIdInput.value);
   const path = isEditing ? `/dashboard-widgets/${dashboardWidgetIdInput.value}` : "/dashboard-widgets";
   const method = isEditing ? "PATCH" : "POST";
+  const body = readDashboardWidgetFormPatch();
+  if (!isEditing) {
+    body.position = 1;
+  }
 
   void runMutation(() => apiRequest(path, {
     method,
-    body: readDashboardWidgetFormPatch(),
+    body,
   }), dashboardWidgetError).then((success) => {
     if (success) {
       closeDashboardBuilder();
