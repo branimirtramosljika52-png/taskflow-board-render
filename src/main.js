@@ -591,6 +591,7 @@ const state = {
   vehicleScheduleSelection: null,
   activeWorkOrderViewMode: "list",
   workOrderListDensity: "collapsed",
+  reminderEditorOpen: false,
   offerEditorOpen: false,
   legalFrameworkFilters: {
     query: "",
@@ -1754,6 +1755,12 @@ const remindersTotalCount = document.querySelector("#reminders-total-count");
 const remindersTodayCount = document.querySelector("#reminders-today-count");
 const remindersOverdueCount = document.querySelector("#reminders-overdue-count");
 const remindersDoneCount = document.querySelector("#reminders-done-count");
+const reminderOpenFormButton = document.querySelector("#reminder-open-form");
+const reminderEditorBackdrop = document.querySelector("#reminder-editor-backdrop");
+const reminderEditorPanel = document.querySelector("#reminder-editor-panel");
+const reminderEditorBody = document.querySelector("#reminder-editor-body");
+const reminderEditorTitle = document.querySelector("#reminder-editor-title");
+const reminderEditorCloseButton = document.querySelector("#reminder-editor-close");
 const reminderForm = document.querySelector("#reminder-form");
 const reminderIdInput = document.querySelector("#reminder-id");
 const reminderTitleInput = document.querySelector("#reminder-title");
@@ -2912,6 +2919,11 @@ function applySnapshot(payload) {
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     resetOfferForm();
+  }
+  if (reminderIdInput?.value && !state.reminders.some((item) => String(item.id) === String(reminderIdInput.value))) {
+    state.reminderEditorOpen = false;
+    syncReminderEditorModal();
+    resetReminderForm();
   }
   if (legalFrameworkIdInput?.value && !state.legalFrameworks.some((item) => String(item.id) === String(legalFrameworkIdInput.value))) {
     state.legalFrameworkEditorOpen = false;
@@ -28453,6 +28465,8 @@ function renderAuthState() {
   if (!authenticated) {
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
+    state.reminderEditorOpen = false;
+    syncReminderEditorModal();
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     state.legalFrameworkEditorOpen = false;
@@ -31750,6 +31764,66 @@ function resetReminderForm() {
   }
 
   renderReminderLinkPreview();
+  syncReminderEditorChrome();
+}
+
+function syncReminderEditorChrome() {
+  if (reminderEditorTitle) {
+    reminderEditorTitle.textContent = reminderIdInput?.value
+      ? `Uredi reminder | ${reminderTitleInput?.value?.trim() || "Bez naslova"}`
+      : "Novi reminder";
+  }
+}
+
+function syncReminderEditorModal() {
+  if (state.reminderEditorOpen && (
+    state.activeView !== "reminders"
+    || !state.user
+  )) {
+    state.reminderEditorOpen = false;
+  }
+
+  const isOpen = state.reminderEditorOpen;
+  reminderEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-reminder-editor-open", isOpen);
+
+  if (reminderEditorPanel) {
+    reminderEditorPanel.hidden = !isOpen;
+    reminderEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (reminderEditorBackdrop) {
+    reminderEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (reminderEditorCloseButton) {
+    reminderEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      reminderEditorBody?.scrollTo({ top: 0, behavior: "auto" });
+      reminderTitleInput?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function openReminderEditor() {
+  state.reminderEditorOpen = true;
+  syncReminderEditorChrome();
+  syncReminderEditorModal();
+}
+
+function closeReminderEditor({ reset = false } = {}) {
+  state.reminderEditorOpen = false;
+  syncReminderEditorModal();
+  if (reset) {
+    resetReminderForm();
+  }
+}
+
+function dismissReminderEditor() {
+  closeReminderEditor({ reset: true });
 }
 
 function hydrateReminderForm(reminder) {
@@ -31772,7 +31846,8 @@ function hydrateReminderForm(reminder) {
   reminderCompanyIdInput.value = reminder.companyId || "";
   reminderNoteInput.value = reminder.note || "";
   syncReminderContextFromWorkOrder();
-  reminderTitleInput.focus({ preventScroll: true });
+  syncReminderEditorChrome();
+  openReminderEditor();
 }
 
 function openReminderComposerForWorkOrder(workOrder = null) {
@@ -31792,7 +31867,8 @@ function openReminderComposerForWorkOrder(workOrder = null) {
   }
 
   syncReminderContextFromWorkOrder();
-  reminderTitleInput.focus({ preventScroll: true });
+  syncReminderEditorChrome();
+  openReminderEditor();
 }
 
 function createReminderStatusBadge(status) {
@@ -31881,6 +31957,7 @@ function renderReminderSummary() {
 function renderReminders() {
   renderReminderSummary();
   renderTopbarShortcutCounts();
+  syncReminderEditorModal();
 
   if (!remindersBody) {
     return;
@@ -44097,12 +44174,23 @@ reminderForm?.addEventListener("submit", (event) => {
     body: buildReminderPayload(),
   }), reminderError).then((success) => {
     if (success) {
-      resetReminderForm();
+      closeReminderEditor({ reset: true });
     }
   });
 });
 
 reminderResetButton?.addEventListener("click", resetReminderForm);
+reminderOpenFormButton?.addEventListener("click", () => {
+  state.activeView = "reminders";
+  state.activeSidebarGroup = "home";
+  state.activeSidebarItem = "reminders";
+  renderActiveView();
+  resetReminderForm();
+  openReminderEditor();
+});
+reminderEditorCloseButton?.addEventListener("click", dismissReminderEditor);
+reminderEditorBackdrop?.addEventListener("click", dismissReminderEditor);
+reminderTitleInput?.addEventListener("input", syncReminderEditorChrome);
 remindersSearchInput?.addEventListener("input", renderReminders);
 remindersFilterStatusInput?.addEventListener("change", renderReminders);
 todoWorkOrderIdInput?.addEventListener("change", renderTodoLinkPreview);
@@ -47059,6 +47147,11 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && state.measurementEquipmentExportDialogOpen) {
     closeMeasurementEquipmentExportDialog();
+    return;
+  }
+
+  if (event.key === "Escape" && state.reminderEditorOpen) {
+    dismissReminderEditor();
     return;
   }
 

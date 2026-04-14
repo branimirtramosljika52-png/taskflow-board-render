@@ -1829,8 +1829,51 @@
                     <p class="section-kicker">Create</p>
                     <h3>Novi reminder</h3>
                   </div>
+                  <div class="workspace-list-actions">
+                    <button id="reminder-open-form" type="button" class="primary-button">+ Add Reminder</button>
+                  </div>
+                </div>
+                <p class="helper-copy module-copy">Dodaj novi reminder kroz popup editor. Klik na postojeći reminder otvara uređivanje u istom popupu.</p>
+              </section>
+
+              <section class="reminders-list-card">
+                <div class="workspace-list-head">
+                  <div class="workspace-list-copy">
+                    <p class="section-kicker">List view</p>
+                    <h3>Popis reminders</h3>
+                  </div>
                 </div>
 
+                <div class="filter-row filter-row-clickup reminders-filter-row">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="reminders-search" type="search" placeholder="Naslov, RN, klijent, bilješka..." />
+                  </label>
+
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="reminders-filter-status"></select>
+                  </label>
+                </div>
+
+                <div id="reminders-body" class="reminders-list"></div>
+                <p id="reminders-empty" class="empty-inline" hidden>Nema reminders za trenutni filter.</p>
+              </section>
+            </div>
+
+            <div id="reminder-editor-backdrop" class="offer-editor-backdrop reminder-editor-backdrop" hidden></div>
+            <section id="reminder-editor-panel" class="panel reminder-editor-panel" hidden>
+              <div class="offers-editor-fixed-head">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Reminder</p>
+                    <h3 id="reminder-editor-title">Novi reminder</h3>
+                  </div>
+                  <button id="reminder-editor-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+              </div>
+
+              <div id="reminder-editor-body" class="reminder-editor-body" tabindex="-1">
                 <form id="reminder-form" class="entity-form reminder-form-compact">
                   <input id="reminder-id" type="hidden" />
 
@@ -1872,40 +1915,15 @@
                   </div>
 
                   <div id="reminder-link-preview" class="reminder-link-preview" hidden></div>
+                  <p id="reminder-error" class="form-error" aria-live="polite"></p>
 
                   <div class="form-actions">
                     <button type="submit" class="primary-button">Spremi reminder</button>
                     <button id="reminder-reset" type="button" class="ghost-button">Očisti formu</button>
                   </div>
                 </form>
-
-                <p id="reminder-error" class="form-error" aria-live="polite"></p>
-              </section>
-
-              <section class="reminders-list-card">
-                <div class="workspace-list-head">
-                  <div class="workspace-list-copy">
-                    <p class="section-kicker">List view</p>
-                    <h3>Popis reminders</h3>
-                  </div>
-                </div>
-
-                <div class="filter-row filter-row-clickup reminders-filter-row">
-                  <label class="field">
-                    <span>Pretraga</span>
-                    <input id="reminders-search" type="search" placeholder="Naslov, RN, klijent, bilješka..." />
-                  </label>
-
-                  <label class="field">
-                    <span>Status</span>
-                    <select id="reminders-filter-status"></select>
-                  </label>
-                </div>
-
-                <div id="reminders-body" class="reminders-list"></div>
-                <p id="reminders-empty" class="empty-inline" hidden>Nema reminders za trenutni filter.</p>
-              </section>
-            </div>
+              </div>
+            </section>
           </section>
         </section>
 

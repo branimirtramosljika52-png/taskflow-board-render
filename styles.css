@@ -3427,6 +3427,11 @@ body.is-location-editor-open {
   font-size: 1.12rem;
 }
 
+.reminders-composer-card .module-copy {
+  margin: 0;
+  max-width: 72ch;
+}
+
 .reminder-form-compact {
   display: grid;
   gap: 6px;
@@ -3471,6 +3476,48 @@ body.is-location-editor-open {
 
 .reminders-list-card {
   min-height: 0;
+}
+
+.reminder-editor-backdrop {
+  z-index: 118;
+}
+
+.reminder-editor-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fbfcfe, #f5f7fb);
+}
+
+.reminder-editor-panel.is-modal-open {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 119;
+  width: min(1040px, calc(100vw - 24px));
+  height: calc(100vh - 28px);
+  max-height: none;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid rgba(206, 212, 228, 0.94);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.24);
+  border-radius: 28px;
+}
+
+.reminder-editor-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+
+.reminder-editor-body .reminder-form-compact {
+  padding: 2px 2px 10px;
+}
+
+body.is-reminder-editor-open {
+  overflow: hidden;
 }
 
 .reminder-link-preview {
@@ -14218,6 +14265,13 @@ body.is-document-template-editor-open .chat-dock {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .reminder-editor-panel.is-modal-open {
+    top: 10px;
+    width: calc(100vw - 14px);
+    height: calc(100vh - 14px);
+    border-radius: 18px;
+  }
+
   .reminder-card-top,
   .reminder-card-footer {
     flex-direction: column;
@@ -14227,6 +14281,10 @@ body.is-document-template-editor-open .chat-dock {
   .reminder-card-meta,
   .reminder-card-actions {
     justify-content: flex-start;
+  }
+
+  .reminder-editor-body {
+    padding: 0 10px 10px;
   }
 }
 
