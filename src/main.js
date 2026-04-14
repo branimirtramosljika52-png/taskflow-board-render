@@ -31101,12 +31101,46 @@ function getNotificationKindLabel(kind = "") {
 
 function buildReminderNotifications() {
   const today = new Date().toISOString().slice(0, 10);
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    const deltaMs = targetDate.getTime() - todayDate.getTime();
+    return Math.round(deltaMs / (1000 * 60 * 60 * 24));
+  };
+
   return (state.reminders ?? [])
     .filter((item) => item?.status !== "done" && item?.dueDate)
     .map((item) => {
       const dueDate = String(item.dueDate || "");
       if (!dueDate) {
         return null;
+      }
+
+      const daysUntilDue = getDaysUntil(dueDate);
+      const repeatEveryDays = Number.parseInt(String(item.repeatEveryDays ?? ""), 10);
+      const hasRepeatInterval = Number.isFinite(repeatEveryDays) && repeatEveryDays > 0;
+
+      if (Number.isFinite(daysUntilDue)) {
+        if (daysUntilDue > 0) {
+          if (hasRepeatInterval) {
+            if (daysUntilDue > 30 || (daysUntilDue % repeatEveryDays) !== 0) {
+              return null;
+            }
+          } else if (daysUntilDue > 7) {
+            return null;
+          }
+        } else if (daysUntilDue < 0 && hasRepeatInterval) {
+          if ((Math.abs(daysUntilDue) % repeatEveryDays) !== 0) {
+            return null;
+          }
+        }
       }
 
       let level = "info";
@@ -31117,8 +31151,8 @@ function buildReminderNotifications() {
       } else if (dueDate === today) {
         level = "warning";
         title = "Reminder je danas";
-      } else if (!isUpcomingIsoDate(dueDate, 7)) {
-        return null;
+      } else if (hasRepeatInterval) {
+        title = `Reminder svakih ${repeatEveryDays} dana`;
       }
 
       const context = [
