@@ -2958,60 +2958,42 @@
             </section>
 
             <section id="vehicles-module" class="vehicles-module" hidden>
-              <div class="vehicles-summary-grid">
-                <article class="vehicles-stat-card is-total">
-                  <span class="vehicles-stat-label">Ukupno</span>
-                  <strong id="vehicles-total-count" class="vehicles-stat-value">0</strong>
-                </article>
-                <article class="vehicles-stat-card is-available">
-                  <span class="vehicles-stat-label">Dostupno</span>
-                  <strong id="vehicles-available-count" class="vehicles-stat-value">0</strong>
-                </article>
-                <article class="vehicles-stat-card is-reserved">
-                  <span class="vehicles-stat-label">Rezervirano</span>
-                  <strong id="vehicles-reserved-count" class="vehicles-stat-value">0</strong>
-                </article>
-                <article class="vehicles-stat-card is-service">
-                  <span class="vehicles-stat-label">Servis / offline</span>
-                  <strong id="vehicles-service-count" class="vehicles-stat-value">0</strong>
-                </article>
-              </div>
-
-              <section class="panel vehicles-toolbar-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Fleet</p>
-                    <h3>Vozila organizacije</h3>
-                  </div>
-                  <div class="vehicles-toolbar-actions">
-                    <button id="vehicle-open-reservation" type="button" class="ghost-button">+ Rezervacija</button>
-                    <button id="vehicle-open-form" type="button" class="primary-button">+ Novo vozilo</button>
-                  </div>
-                </div>
-
-                <div class="vehicles-filters">
-                  <label class="field">
-                    <span>Pretraga</span>
-                    <input id="vehicles-search" type="search" placeholder="Naziv, registracija, marka, vozač..." />
-                  </label>
-                  <label class="field">
-                    <span>Status</span>
-                    <select id="vehicles-filter-status"></select>
-                  </label>
-                </div>
-              </section>
-
               <section class="panel vehicles-list-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
-                    <p class="section-kicker">Lista</p>
+                    <p class="section-kicker">Fleet</p>
                     <h3>Popis vozila</h3>
+                  </div>
+                  <div class="vehicles-panel-head-actions">
+                    <button id="vehicle-open-reservation" type="button" class="ghost-button">+ Rezervacija</button>
+                    <button id="vehicle-open-form" type="button" class="primary-button">+ Novo vozilo</button>
+                    <button
+                      id="vehicles-list-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="vehicles-list-body"
+                    >
+                      −
+                    </button>
                   </div>
                 </div>
 
-                <p id="vehicles-helper" class="helper-copy module-copy">Fleet pregled po dostupnosti, rezervacijama i servisu.</p>
-                <div id="vehicles-list" class="vehicles-list vehicles-list-full"></div>
-                <p id="vehicles-empty" class="helper-copy" hidden>Nema vozila za prikaz u aktivnoj organizaciji.</p>
+                <div id="vehicles-list-body" class="vehicles-panel-body">
+                  <div class="vehicles-inline-toolbar">
+                    <label class="field">
+                      <span>Pretraga</span>
+                      <input id="vehicles-search" type="search" placeholder="Naziv, registracija, broj šasije, marka, vozač..." />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="vehicles-filter-status"></select>
+                    </label>
+                  </div>
+
+                  <div id="vehicles-list" class="vehicles-list vehicles-list-full"></div>
+                  <p id="vehicles-empty" class="helper-copy" hidden>Nema vozila za prikaz u aktivnoj organizaciji.</p>
+                </div>
               </section>
 
               <section class="panel vehicle-schedule-panel">
@@ -3020,19 +3002,31 @@
                     <p class="section-kicker">Raspored</p>
                     <h3>Satni raspored vozila</h3>
                   </div>
-                  <div class="vehicle-schedule-toolbar">
-                    <button id="vehicle-schedule-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni dan">&#8592;</button>
-                    <button id="vehicle-schedule-today" type="button" class="ghost-button">Danas</button>
-                    <input id="vehicle-schedule-date" type="date" class="vehicle-schedule-date-input" />
-                    <button id="vehicle-schedule-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći dan">&#8594;</button>
+                  <div class="vehicle-schedule-head-actions">
+                    <div class="vehicle-schedule-toolbar">
+                      <button id="vehicle-schedule-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni dan">&#8592;</button>
+                      <button id="vehicle-schedule-today" type="button" class="ghost-button">Danas</button>
+                      <input id="vehicle-schedule-date" type="date" class="vehicle-schedule-date-input" />
+                      <button id="vehicle-schedule-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći dan">&#8594;</button>
+                    </div>
+                    <button
+                      id="vehicle-schedule-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="vehicle-schedule-body"
+                    >
+                      −
+                    </button>
                   </div>
                 </div>
 
-                <p id="vehicle-schedule-helper" class="helper-copy module-copy">Klikni prazan sat da odmah otvoris rezervaciju za to vozilo i termin.</p>
-                <div id="vehicle-schedule-grid-shell" class="vehicle-schedule-grid-shell">
-                  <div id="vehicle-schedule-grid" class="vehicle-schedule-grid"></div>
+                <div id="vehicle-schedule-body" class="vehicles-panel-body">
+                  <div id="vehicle-schedule-grid-shell" class="vehicle-schedule-grid-shell">
+                    <div id="vehicle-schedule-grid" class="vehicle-schedule-grid"></div>
+                  </div>
+                  <p id="vehicle-schedule-empty" class="helper-copy" hidden>Nema vozila za prikaz u rasporedu.</p>
                 </div>
-                <p id="vehicle-schedule-empty" class="helper-copy" hidden>Nema vozila za prikaz u rasporedu.</p>
               </section>
 
               <div id="vehicle-editor-backdrop" class="offer-editor-backdrop vehicle-editor-backdrop" hidden></div>
@@ -3062,6 +3056,10 @@
                       <label class="field">
                         <span>Registracija</span>
                         <input id="vehicle-plate-number" maxlength="32" placeholder="ZG 1234 AB" required />
+                      </label>
+                      <label class="field">
+                        <span>Broj šasije</span>
+                        <input id="vehicle-vin-number" maxlength="64" placeholder="VF1JL000123456789" />
                       </label>
                       <label class="field">
                         <span>Status</span>
@@ -3112,6 +3110,55 @@
                         <input id="vehicle-registration-expires-on" type="date" />
                       </label>
                     </div>
+
+                    <section class="service-catalog-template-block vehicle-editor-section-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Activity</p>
+                          <h3>Servisna i tehnička evidencija</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <button id="vehicle-activity-add" type="button" class="ghost-button">Dodaj aktivnost</button>
+                          <button
+                            id="vehicle-activity-toggle"
+                            type="button"
+                            class="ghost-button module-collapse-button"
+                            aria-expanded="true"
+                            aria-controls="vehicle-activity-body"
+                          >
+                            −
+                          </button>
+                        </div>
+                      </div>
+                      <div id="vehicle-activity-body" class="measurement-equipment-collapsible-body">
+                        <div id="vehicle-activity-list" class="vehicle-activity-list"></div>
+                      </div>
+                    </section>
+
+                    <section class="service-catalog-template-block vehicle-editor-section-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Documents</p>
+                          <h3>Dokumenti vozila</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="vehicle-documents-input" type="file" multiple hidden />
+                          <button id="vehicle-documents-upload" type="button" class="ghost-button">Dodaj datoteke</button>
+                          <button
+                            id="vehicle-documents-toggle"
+                            type="button"
+                            class="ghost-button module-collapse-button"
+                            aria-expanded="true"
+                            aria-controls="vehicle-documents-body"
+                          >
+                            −
+                          </button>
+                        </div>
+                      </div>
+                      <div id="vehicle-documents-body" class="measurement-equipment-collapsible-body">
+                        <div id="vehicle-documents-list" class="module-attachment-list"></div>
+                      </div>
+                    </section>
 
                     <label class="field field-span-full">
                       <span>Napomena</span>

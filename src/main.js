@@ -160,6 +160,32 @@ const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
+const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
+  { value: "", label: "Vrsta dokumenta" },
+  { value: "prometna", label: "Prometna" },
+  { value: "slika", label: "Slika vozila" },
+  { value: "servisna_dokumentacija", label: "Servisna dokumentacija" },
+  { value: "tehnicki_pregled", label: "Tehnički pregled" },
+  { value: "osiguranje", label: "Osiguranje" },
+  { value: "ostalo", label: "Ostalo" },
+]);
+const VEHICLE_DOCUMENT_CATEGORY_LABELS = new Map(
+  VEHICLE_DOCUMENT_CATEGORY_OPTIONS
+    .filter((option) => option.value)
+    .map((option) => [String(option.value), option.label]),
+);
+const VEHICLE_ACTIVITY_TYPE_OPTIONS = Object.freeze([
+  { value: "service", label: "Servis" },
+  { value: "technical_inspection", label: "Tehnički pregled" },
+  { value: "registration", label: "Registracija" },
+  { value: "repair", label: "Popravak" },
+  { value: "tires", label: "Gume" },
+  { value: "insurance", label: "Osiguranje" },
+  { value: "other", label: "Ostalo" },
+]);
+const VEHICLE_ACTIVITY_TYPE_LABELS = new Map(
+  VEHICLE_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
+);
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
 const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
@@ -576,6 +602,10 @@ const state = {
   locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
+  vehicleListSectionCollapsed: false,
+  vehicleScheduleSectionCollapsed: false,
+  vehicleActivitySectionExpanded: true,
+  vehicleDocumentsSectionExpanded: true,
   legalFrameworkEditorOpen: false,
   learningTestEditorOpen: false,
   serviceCatalogEditorOpen: false,
@@ -1260,6 +1290,8 @@ const vehiclesServiceCount = document.querySelector("#vehicles-service-count");
 const vehiclesSearchInput = document.querySelector("#vehicles-search");
 const vehiclesFilterStatusInput = document.querySelector("#vehicles-filter-status");
 const vehiclesHelper = document.querySelector("#vehicles-helper");
+const vehiclesListToggleButton = document.querySelector("#vehicles-list-toggle");
+const vehiclesListBody = document.querySelector("#vehicles-list-body");
 const vehiclesList = document.querySelector("#vehicles-list");
 const vehiclesEmpty = document.querySelector("#vehicles-empty");
 const vehicleSchedulePrevButton = document.querySelector("#vehicle-schedule-prev");
@@ -1267,6 +1299,8 @@ const vehicleScheduleTodayButton = document.querySelector("#vehicle-schedule-tod
 const vehicleScheduleNextButton = document.querySelector("#vehicle-schedule-next");
 const vehicleScheduleDateInput = document.querySelector("#vehicle-schedule-date");
 const vehicleScheduleHelper = document.querySelector("#vehicle-schedule-helper");
+const vehicleScheduleToggleButton = document.querySelector("#vehicle-schedule-toggle");
+const vehicleScheduleBody = document.querySelector("#vehicle-schedule-body");
 const vehicleScheduleGridShell = document.querySelector("#vehicle-schedule-grid-shell");
 const vehicleScheduleGrid = document.querySelector("#vehicle-schedule-grid");
 const vehicleScheduleEmpty = document.querySelector("#vehicle-schedule-empty");
@@ -1281,6 +1315,7 @@ const vehicleForm = document.querySelector("#vehicle-form");
 const vehicleIdInput = document.querySelector("#vehicle-id");
 const vehicleNameInput = document.querySelector("#vehicle-name");
 const vehiclePlateNumberInput = document.querySelector("#vehicle-plate-number");
+const vehicleVinNumberInput = document.querySelector("#vehicle-vin-number");
 const vehicleStatusInput = document.querySelector("#vehicle-status");
 const vehicleCategoryInput = document.querySelector("#vehicle-category");
 const vehicleMakeInput = document.querySelector("#vehicle-make");
@@ -1293,6 +1328,15 @@ const vehicleSeatCountInput = document.querySelector("#vehicle-seat-count");
 const vehicleOdometerKmInput = document.querySelector("#vehicle-odometer-km");
 const vehicleServiceDueDateInput = document.querySelector("#vehicle-service-due-date");
 const vehicleRegistrationExpiresOnInput = document.querySelector("#vehicle-registration-expires-on");
+const vehicleActivityAddButton = document.querySelector("#vehicle-activity-add");
+const vehicleActivityToggleButton = document.querySelector("#vehicle-activity-toggle");
+const vehicleActivityBody = document.querySelector("#vehicle-activity-body");
+const vehicleActivityList = document.querySelector("#vehicle-activity-list");
+const vehicleDocumentsInput = document.querySelector("#vehicle-documents-input");
+const vehicleDocumentsUploadButton = document.querySelector("#vehicle-documents-upload");
+const vehicleDocumentsToggleButton = document.querySelector("#vehicle-documents-toggle");
+const vehicleDocumentsBody = document.querySelector("#vehicle-documents-body");
+const vehicleDocumentsList = document.querySelector("#vehicle-documents-list");
 const vehicleNotesInput = document.querySelector("#vehicle-notes");
 const vehicleError = document.querySelector("#vehicle-error");
 const vehicleResetButton = document.querySelector("#vehicle-reset");
@@ -1702,6 +1746,8 @@ let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
+let vehicleDocumentDrafts = [];
+let vehicleActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let measurementEquipmentBulkExporting = false;
@@ -35084,12 +35130,402 @@ function syncVehicleEditorSummary() {
   }
 
   setVehicleReservationFormDisabled(!getVehicleFromReservationEditor() && state.vehicles.length === 0);
+  syncVehicleEditorSections();
+}
+
+function getVehicleDocumentCategoryLabel(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return VEHICLE_DOCUMENT_CATEGORY_LABELS.get(normalized) || String(value || "").trim() || "Dokument";
+}
+
+function normalizeVehicleActivityTypeValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return VEHICLE_ACTIVITY_TYPE_LABELS.has(normalized)
+    ? normalized
+    : "service";
+}
+
+function getVehicleActivityTypeLabel(value = "") {
+  return VEHICLE_ACTIVITY_TYPE_LABELS.get(normalizeVehicleActivityTypeValue(value)) || "Aktivnost";
+}
+
+function compareVehicleActivityDraftRecency(left = {}, right = {}) {
+  const leftDate = String(left.performedOn || "").trim();
+  const rightDate = String(right.performedOn || "").trim();
+
+  if (leftDate && rightDate && leftDate !== rightDate) {
+    return rightDate.localeCompare(leftDate);
+  }
+
+  if (leftDate && !rightDate) {
+    return -1;
+  }
+
+  if (!leftDate && rightDate) {
+    return 1;
+  }
+
+  const leftUpdated = String(left.updatedAt || left.createdAt || "").trim();
+  const rightUpdated = String(right.updatedAt || right.createdAt || "").trim();
+  return rightUpdated.localeCompare(leftUpdated);
+}
+
+function createVehicleActivityDraft(entry = {}, { applyDefaultDate = false } = {}) {
+  return {
+    id: String(entry.id || crypto.randomUUID()),
+    activityType: normalizeVehicleActivityTypeValue(entry.activityType || entry.type),
+    performedOn: String(entry.performedOn || entry.date || "").trim().slice(0, 10)
+      || (applyDefaultDate ? new Date().toISOString().slice(0, 10) : ""),
+    performedBy: String(entry.performedBy || entry.actor || "").trim().slice(0, 180),
+    odometerKm: String(entry.odometerKm ?? "").trim().slice(0, 12),
+    validUntil: String(entry.validUntil || "").trim().slice(0, 10),
+    workSummary: String(entry.workSummary || entry.workPerformed || entry.works || "").trim().slice(0, 240),
+    note: String(entry.note || "").trim().slice(0, 240),
+    createdAt: String(entry.createdAt || new Date().toISOString()),
+    updatedAt: String(entry.updatedAt || entry.createdAt || new Date().toISOString()),
+  };
+}
+
+function isVehicleActivityDraftMeaningful(entry = {}) {
+  return Boolean(
+    String(entry.performedOn || "").trim()
+    || String(entry.performedBy || "").trim()
+    || String(entry.odometerKm || "").trim()
+    || String(entry.validUntil || "").trim()
+    || String(entry.workSummary || "").trim()
+    || String(entry.note || "").trim()
+  );
+}
+
+function setVehicleActivityDrafts(items = []) {
+  vehicleActivityDrafts = (Array.isArray(items) ? items : [])
+    .map((entry) => createVehicleActivityDraft(entry))
+    .filter((entry) => isVehicleActivityDraftMeaningful(entry))
+    .sort(compareVehicleActivityDraftRecency);
+  renderVehicleActivities();
+}
+
+function updateVehicleActivityDraft(activityId, patch = {}) {
+  vehicleActivityDrafts = vehicleActivityDrafts
+    .map((entry) => (
+      String(entry.id) === String(activityId)
+        ? {
+          ...entry,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        }
+        : entry
+    ))
+    .sort(compareVehicleActivityDraftRecency);
+}
+
+function buildVehicleActivityPayload() {
+  return [...vehicleActivityDrafts]
+    .map((entry) => ({
+      id: String(entry.id || "").trim() || crypto.randomUUID(),
+      activityType: normalizeVehicleActivityTypeValue(entry.activityType),
+      performedOn: String(entry.performedOn || "").trim().slice(0, 10),
+      performedBy: String(entry.performedBy || "").trim().slice(0, 180),
+      odometerKm: String(entry.odometerKm || "").trim(),
+      validUntil: String(entry.validUntil || "").trim().slice(0, 10),
+      workSummary: String(entry.workSummary || "").trim().slice(0, 240),
+      note: String(entry.note || "").trim().slice(0, 240),
+      createdAt: String(entry.createdAt || new Date().toISOString()),
+      updatedAt: new Date().toISOString(),
+    }))
+    .filter((entry) => isVehicleActivityDraftMeaningful(entry))
+    .sort(compareVehicleActivityDraftRecency);
+}
+
+function syncVehicleModuleSections() {
+  const listExpanded = !state.vehicleListSectionCollapsed;
+  const scheduleExpanded = !state.vehicleScheduleSectionCollapsed;
+
+  if (vehiclesListBody) {
+    vehiclesListBody.hidden = !listExpanded;
+  }
+  if (vehiclesListToggleButton) {
+    vehiclesListToggleButton.textContent = listExpanded ? "−" : "+";
+    vehiclesListToggleButton.setAttribute("aria-expanded", String(listExpanded));
+    vehiclesListToggleButton.setAttribute("aria-label", listExpanded ? "Sakrij popis vozila" : "Prikaži popis vozila");
+  }
+
+  if (vehicleScheduleBody) {
+    vehicleScheduleBody.hidden = !scheduleExpanded;
+  }
+  if (vehicleScheduleToggleButton) {
+    vehicleScheduleToggleButton.textContent = scheduleExpanded ? "−" : "+";
+    vehicleScheduleToggleButton.setAttribute("aria-expanded", String(scheduleExpanded));
+    vehicleScheduleToggleButton.setAttribute("aria-label", scheduleExpanded ? "Sakrij raspored vozila" : "Prikaži raspored vozila");
+  }
+}
+
+function syncVehicleEditorSections() {
+  const activityExpanded = Boolean(state.vehicleActivitySectionExpanded);
+  const documentsExpanded = Boolean(state.vehicleDocumentsSectionExpanded);
+
+  if (vehicleActivityBody) {
+    vehicleActivityBody.hidden = !activityExpanded;
+  }
+  if (vehicleActivityToggleButton) {
+    vehicleActivityToggleButton.textContent = activityExpanded ? "−" : "+";
+    vehicleActivityToggleButton.setAttribute("aria-expanded", String(activityExpanded));
+  }
+
+  if (vehicleDocumentsBody) {
+    vehicleDocumentsBody.hidden = !documentsExpanded;
+  }
+  if (vehicleDocumentsToggleButton) {
+    vehicleDocumentsToggleButton.textContent = documentsExpanded ? "−" : "+";
+    vehicleDocumentsToggleButton.setAttribute("aria-expanded", String(documentsExpanded));
+  }
+}
+
+function openVehicleDocumentPreview(documentItem = null) {
+  const href = String(documentItem?.storageUrl || documentItem?.dataUrl || "").trim();
+
+  if (!href) {
+    return;
+  }
+
+  window.open(href, "_blank", "noopener");
+}
+
+function renderVehicleDocuments() {
+  if (!vehicleDocumentsList) {
+    return;
+  }
+
+  if (vehicleDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema dodanih dokumenata za ovo vozilo.";
+    vehicleDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  vehicleDocumentsList.replaceChildren(...vehicleDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+    row.classList.toggle("is-unclassified", !entry.documentCategory);
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "Dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getVehicleDocumentCategoryLabel(entry.documentCategory),
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+    copy.append(title, meta);
+
+    if (entry.description) {
+      const description = document.createElement("p");
+      description.className = "module-attachment-description";
+      description.textContent = entry.description;
+      copy.append(description);
+    }
+
+    const middle = document.createElement("div");
+    middle.className = "module-attachment-middle";
+
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "module-attachment-category-select";
+    replaceSelectOptions(categorySelect, VEHICLE_DOCUMENT_CATEGORY_OPTIONS, entry.documentCategory || "");
+    categorySelect.addEventListener("change", () => {
+      entry.documentCategory = categorySelect.value || "";
+      entry.updatedAt = new Date().toISOString();
+      row.classList.toggle("is-unclassified", !entry.documentCategory);
+      renderVehicleDocuments();
+    });
+    middle.append(categorySelect);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Pregled", "preview", "", () => {
+        openVehicleDocumentPreview(entry);
+      }),
+      createIconActionButton("Preuzmi", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni", "trash", "card-danger", () => {
+        vehicleDocumentDrafts = vehicleDocumentDrafts.filter((item) => String(item.id) !== String(entry.id));
+        renderVehicleDocuments();
+      }),
+    );
+
+    row.append(copy, middle, actions);
+    return row;
+  }));
+}
+
+async function queueVehicleDocuments(
+  files,
+  {
+    defaultCategory = "",
+    defaultDescription = "",
+  } = {},
+) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const normalizedCategory = String(defaultCategory || "").trim().toLowerCase();
+  const normalizedDescription = String(defaultDescription || "").trim();
+  vehicleDocumentDrafts = [
+    ...vehicleDocumentDrafts,
+    ...uploads.map((file) => createModuleAttachmentDraft({
+      ...file,
+      documentCategory: normalizedCategory,
+      description: normalizedDescription,
+    })),
+  ];
+  renderVehicleDocuments();
+}
+
+function renderVehicleActivities() {
+  if (!vehicleActivityList) {
+    return;
+  }
+
+  if (vehicleActivityDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Dodaj servis, tehnički pregled, registraciju ili drugi važan događaj za vozilo.";
+    vehicleActivityList.replaceChildren(empty);
+    return;
+  }
+
+  const createField = (labelText, control, className = "") => {
+    const field = document.createElement("label");
+    field.className = ["vehicle-activity-field", className].filter(Boolean).join(" ");
+    const label = document.createElement("span");
+    label.className = "vehicle-activity-label";
+    label.textContent = labelText;
+    field.append(label, control);
+    return field;
+  };
+
+  vehicleActivityList.replaceChildren(...vehicleActivityDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "vehicle-activity-row";
+
+    const fieldsGrid = document.createElement("div");
+    fieldsGrid.className = "vehicle-activity-grid";
+
+    const typeInput = document.createElement("select");
+    replaceSelectOptions(typeInput, VEHICLE_ACTIVITY_TYPE_OPTIONS, entry.activityType || "service");
+    typeInput.addEventListener("change", () => {
+      updateVehicleActivityDraft(entry.id, {
+        activityType: typeInput.value || "service",
+      });
+      renderVehicleActivities();
+    });
+
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.value = entry.performedOn || "";
+    dateInput.addEventListener("change", () => {
+      updateVehicleActivityDraft(entry.id, {
+        performedOn: dateInput.value || "",
+      });
+      renderVehicleActivities();
+    });
+
+    const byInput = document.createElement("input");
+    byInput.type = "text";
+    byInput.maxLength = 180;
+    byInput.placeholder = "Tko je radio";
+    byInput.value = entry.performedBy || "";
+    byInput.addEventListener("input", () => {
+      updateVehicleActivityDraft(entry.id, {
+        performedBy: byInput.value || "",
+      });
+    });
+
+    const odometerInput = document.createElement("input");
+    odometerInput.type = "number";
+    odometerInput.min = "0";
+    odometerInput.step = "1";
+    odometerInput.placeholder = "Kilometraža";
+    odometerInput.value = entry.odometerKm || "";
+    odometerInput.addEventListener("input", () => {
+      updateVehicleActivityDraft(entry.id, {
+        odometerKm: odometerInput.value || "",
+      });
+    });
+
+    const validUntilInput = document.createElement("input");
+    validUntilInput.type = "date";
+    validUntilInput.value = entry.validUntil || "";
+    validUntilInput.addEventListener("change", () => {
+      updateVehicleActivityDraft(entry.id, {
+        validUntil: validUntilInput.value || "",
+      });
+      renderVehicleActivities();
+    });
+
+    const workSummaryInput = document.createElement("input");
+    workSummaryInput.type = "text";
+    workSummaryInput.maxLength = 240;
+    workSummaryInput.placeholder = "Radovi / što je napravljeno";
+    workSummaryInput.value = entry.workSummary || "";
+    workSummaryInput.addEventListener("input", () => {
+      updateVehicleActivityDraft(entry.id, {
+        workSummary: workSummaryInput.value || "",
+      });
+    });
+
+    const noteInput = document.createElement("input");
+    noteInput.type = "text";
+    noteInput.maxLength = 240;
+    noteInput.placeholder = "Napomena";
+    noteInput.value = entry.note || "";
+    noteInput.addEventListener("input", () => {
+      updateVehicleActivityDraft(entry.id, {
+        note: noteInput.value || "",
+      });
+    });
+
+    fieldsGrid.append(
+      createField("Aktivnost", typeInput),
+      createField("Datum", dateInput, "is-date"),
+      createField("Izvršio", byInput),
+      createField("Km", odometerInput),
+      createField("Vrijedi do", validUntilInput, "is-date"),
+      createField("Radovi", workSummaryInput, "is-wide"),
+      createField("Napomena", noteInput, "is-wide"),
+    );
+
+    const actions = document.createElement("div");
+    actions.className = "vehicle-activity-actions";
+    const removeButton = createIconActionButton("Makni aktivnost", "trash", "card-danger", () => {
+      vehicleActivityDrafts = vehicleActivityDrafts.filter((item) => String(item.id) !== String(entry.id));
+      renderVehicleActivities();
+    });
+    actions.append(removeButton);
+
+    const meta = document.createElement("div");
+    meta.className = "vehicle-activity-row-meta";
+    meta.textContent = [
+      getVehicleActivityTypeLabel(entry.activityType),
+      entry.performedOn ? formatCompactDate(entry.performedOn) : "bez datuma",
+      entry.performedBy ? `izvršio: ${entry.performedBy}` : "",
+      entry.validUntil ? `vrijedi do ${formatCompactDate(entry.validUntil)}` : "",
+    ].filter(Boolean).join(" · ");
+
+    row.append(fieldsGrid, actions, meta);
+    return row;
+  }));
 }
 
 function buildVehiclePayload() {
   return {
     name: vehicleNameInput?.value || "",
     plateNumber: vehiclePlateNumberInput?.value || "",
+    vinNumber: vehicleVinNumberInput?.value || "",
     status: vehicleStatusInput?.value || "available",
     category: vehicleCategoryInput?.value || "",
     make: vehicleMakeInput?.value || "",
@@ -35102,6 +35538,11 @@ function buildVehiclePayload() {
     odometerKm: vehicleOdometerKmInput?.value || "",
     serviceDueDate: vehicleServiceDueDateInput?.value || "",
     registrationExpiresOn: vehicleRegistrationExpiresOnInput?.value || "",
+    documents: vehicleDocumentDrafts.map((item) => {
+      const { documentCategoryLocked, ...payload } = item;
+      return { ...payload };
+    }),
+    activityItems: buildVehicleActivityPayload(),
     notes: vehicleNotesInput?.value || "",
   };
 }
@@ -35170,8 +35611,13 @@ function resetVehicleForm({ clearSelection = true } = {}) {
   }
 
   vehicleForm.reset();
+  vehicleDocumentDrafts = [];
+  vehicleActivityDrafts = [];
   if (vehicleIdInput) {
     vehicleIdInput.value = "";
+  }
+  if (vehicleVinNumberInput) {
+    vehicleVinNumberInput.value = "";
   }
   if (vehicleError) {
     vehicleError.textContent = "";
@@ -35179,12 +35625,16 @@ function resetVehicleForm({ clearSelection = true } = {}) {
   if (vehicleStatusInput) {
     vehicleStatusInput.value = "available";
   }
+  state.vehicleActivitySectionExpanded = true;
+  state.vehicleDocumentsSectionExpanded = true;
 
   if (clearSelection) {
     state.activeVehicleId = "";
     state.activeVehicleReservationId = "";
   }
 
+  renderVehicleDocuments();
+  renderVehicleActivities();
   syncVehicleEditorSummary();
 }
 
@@ -35243,6 +35693,9 @@ function hydrateVehicleForm(vehicle) {
   if (vehiclePlateNumberInput) {
     vehiclePlateNumberInput.value = vehicle.plateNumber || "";
   }
+  if (vehicleVinNumberInput) {
+    vehicleVinNumberInput.value = vehicle.vinNumber || "";
+  }
   if (vehicleStatusInput) {
     vehicleStatusInput.value = vehicle.status || "available";
   }
@@ -35285,6 +35738,11 @@ function hydrateVehicleForm(vehicle) {
   if (vehicleError) {
     vehicleError.textContent = "";
   }
+  vehicleDocumentDrafts = (vehicle.documents ?? []).map((entry) => createModuleAttachmentDraft(entry));
+  setVehicleActivityDrafts(vehicle.activityItems ?? []);
+  state.vehicleActivitySectionExpanded = true;
+  state.vehicleDocumentsSectionExpanded = true;
+  renderVehicleDocuments();
 
   syncVehicleEditorSummary();
   renderVehiclesModule();
@@ -35542,6 +36000,31 @@ function resolveVehicleScheduleReservationPlacement(reservation, dateKey) {
   };
 }
 
+function getVehicleScheduleNowMarker(dateKey, nowValue = new Date().toISOString()) {
+  const nowDate = parseDateValue(nowValue);
+
+  if (!nowDate || toDateKey(nowDate) !== dateKey) {
+    return null;
+  }
+
+  const scheduleStart = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_START_HOUR).padStart(2, "0")}:00:00`);
+  const scheduleEnd = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_END_HOUR).padStart(2, "0")}:00:00`);
+
+  if (nowDate < scheduleStart || nowDate > scheduleEnd) {
+    return null;
+  }
+
+  const totalMinutes = (scheduleEnd.getTime() - scheduleStart.getTime()) / 60_000;
+  const offsetMinutes = (nowDate.getTime() - scheduleStart.getTime()) / 60_000;
+  const positionPercent = Math.max(0, Math.min(100, (offsetMinutes / totalMinutes) * 100));
+
+  return {
+    hour: nowDate.getHours(),
+    positionPercent,
+    label: formatCompactTime(nowDate),
+  };
+}
+
 function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   if (!vehicleScheduleGrid || !vehicleScheduleEmpty) {
     return;
@@ -35549,6 +36032,7 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
 
   const hours = getVehicleScheduleHours();
   const dateKey = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
+  const nowMarker = getVehicleScheduleNowMarker(dateKey, nowValue);
 
   if (vehicleScheduleDateInput) {
     vehicleScheduleDateInput.value = dateKey;
@@ -35576,12 +36060,15 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   hours.forEach((hour) => {
     const hourLabel = document.createElement("div");
     hourLabel.className = "vehicle-schedule-hour-head";
+    if (nowMarker && nowMarker.hour === hour) {
+      hourLabel.classList.add("is-current");
+    }
     hourLabel.textContent = `${String(hour).padStart(2, "0")}:00`;
     header.append(hourLabel);
   });
   fragment.append(header);
 
-  vehicles.forEach((vehicle) => {
+  vehicles.forEach((vehicle, vehicleIndex) => {
     const row = document.createElement("div");
     row.className = "vehicle-schedule-row";
     if (String(vehicle.id) === String(state.activeVehicleId)) {
@@ -35609,6 +36096,9 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
       const slotButton = document.createElement("button");
       slotButton.type = "button";
       slotButton.className = "vehicle-schedule-slot";
+      if (nowMarker && nowMarker.hour === hour) {
+        slotButton.classList.add("is-current-hour");
+      }
       slotButton.dataset.hour = String(hour);
       slotButton.setAttribute("aria-label", `Rezerviraj ${vehicle.name || vehicle.plateNumber || "vozilo"} u ${String(hour).padStart(2, "0")}:00`);
       slotButton.addEventListener("pointerdown", (event) => {
@@ -35640,6 +36130,17 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
       });
       track.append(slotButton);
     });
+
+    if (nowMarker) {
+      const nowLine = document.createElement("div");
+      nowLine.className = "vehicle-schedule-now-line";
+      nowLine.style.left = `${nowMarker.positionPercent}%`;
+      if (vehicleIndex === 0) {
+        nowLine.classList.add("has-label");
+        nowLine.dataset.label = nowMarker.label;
+      }
+      track.append(nowLine);
+    }
 
     syncVehicleScheduleSlotSelection(track, vehicle.id);
 
@@ -35678,6 +36179,7 @@ function renderVehiclesModule() {
     return;
   }
 
+  syncVehicleModuleSections();
   const nowValue = new Date().toISOString();
   const allVehicles = sortVehicles(state.vehicles ?? [], nowValue);
   const visibleVehicles = sortVehicles(filterVehicles(state.vehicles ?? [], {
@@ -35701,20 +36203,17 @@ function renderVehiclesModule() {
       return status === "service" || status === "inactive";
     }).length);
   }
-  if (vehiclesHelper) {
-    vehiclesHelper.textContent = visibleVehicles.length === allVehicles.length
-      ? `Prikazano ${visibleVehicles.length} vozila.`
-      : `Prikazano ${visibleVehicles.length} od ${allVehicles.length} vozila.`;
-  }
 
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
 
   vehiclesList.replaceChildren(...visibleVehicles.map((vehicle) => {
     const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
+    const nextReservation = getVehicleNextReservation(vehicle, nowValue);
     const card = document.createElement("article");
     card.className = `vehicle-list-row ${getVehicleStatusToneClass(availabilityStatus)}`;
     card.tabIndex = 0;
     card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori uređivanje za ${vehicle.name || vehicle.plateNumber || "vozilo"}`);
     if (String(vehicle.id) === String(state.activeVehicleId)) {
       card.classList.add("is-active");
     }
@@ -35730,11 +36229,21 @@ function renderVehiclesModule() {
     summary.className = "vehicle-list-row-meta";
     summary.textContent = [
       vehicle.plateNumber || "Bez registracije",
+      vehicle.vinNumber ? `Šasija ${vehicle.vinNumber}` : "",
       vehicle.registrationExpiresOn ? `Registracija do ${formatCompactDate(vehicle.registrationExpiresOn)}` : "Registracija nije unesena",
       [vehicle.make, vehicle.model].filter(Boolean).join(" "),
       vehicle.category,
     ].filter(Boolean).join(" | ");
     titleWrap.append(title, summary);
+
+    const detail = document.createElement("p");
+    detail.className = "vehicle-list-row-detail";
+    detail.textContent = [
+      vehicle.documents?.length ? `${vehicle.documents.length} dok.` : "Bez dokumenata",
+      vehicle.activityItems?.length ? `${vehicle.activityItems.length} aktivnosti` : "Bez activity loga",
+      nextReservation ? `Sljedeće: ${formatDateTime(nextReservation.startAt)}` : "Trenutno bez rezervacije",
+    ].filter(Boolean).join(" | ");
+    titleWrap.append(detail);
 
     const statusBadge = document.createElement("span");
     statusBadge.className = `vehicle-status-badge ${getVehicleStatusToneClass(availabilityStatus)}`;
@@ -35743,14 +36252,6 @@ function renderVehiclesModule() {
 
     const actions = document.createElement("div");
     actions.className = "vehicle-card-actions";
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "ghost-button";
-    editButton.textContent = "Uredi";
-    editButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      hydrateVehicleForm(vehicle);
-    });
     const reserveButton = document.createElement("button");
     reserveButton.type = "button";
     reserveButton.className = "ghost-button";
@@ -35763,11 +36264,11 @@ function renderVehiclesModule() {
         vehicleReservationPurposeInput?.focus({ preventScroll: true });
       });
     });
-    actions.append(editButton, reserveButton);
+    actions.append(reserveButton);
     head.append(actions);
 
     const openVehicle = () => {
-      selectVehicle(vehicle.id);
+      hydrateVehicleForm(vehicle);
     };
 
     card.append(head);
@@ -35878,6 +36379,8 @@ function renderVehiclesModule() {
   }
 
   renderVehicleSchedule(visibleVehicles, nowValue);
+  renderVehicleDocuments();
+  renderVehicleActivities();
   syncVehicleEditorSummary();
 }
 
@@ -36122,6 +36625,9 @@ function renderSharedOptions() {
   }
   if (userDocumentsInput) {
     userDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
+  }
+  if (vehicleDocumentsInput) {
+    vehicleDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
   if (measurementEquipmentDocumentsInput) {
     measurementEquipmentDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
@@ -46002,8 +46508,67 @@ vehiclesFilterStatusInput?.addEventListener("change", () => {
   renderVehiclesModule();
 });
 
+vehiclesListToggleButton?.addEventListener("click", () => {
+  state.vehicleListSectionCollapsed = !state.vehicleListSectionCollapsed;
+  syncVehicleModuleSections();
+});
+
+vehicleScheduleToggleButton?.addEventListener("click", () => {
+  state.vehicleScheduleSectionCollapsed = !state.vehicleScheduleSectionCollapsed;
+  syncVehicleModuleSections();
+});
+
+vehicleForm?.addEventListener("input", (event) => {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (target?.closest(".vehicle-activity-list")) {
+    return;
+  }
+  syncVehicleEditorSummary();
+});
+
 vehicleStatusInput?.addEventListener("change", () => {
   syncVehicleEditorSummary();
+});
+
+vehicleActivityToggleButton?.addEventListener("click", () => {
+  state.vehicleActivitySectionExpanded = !state.vehicleActivitySectionExpanded;
+  syncVehicleEditorSections();
+});
+
+vehicleDocumentsToggleButton?.addEventListener("click", () => {
+  state.vehicleDocumentsSectionExpanded = !state.vehicleDocumentsSectionExpanded;
+  syncVehicleEditorSections();
+});
+
+vehicleActivityAddButton?.addEventListener("click", () => {
+  state.vehicleActivitySectionExpanded = true;
+  vehicleActivityDrafts = [
+    createVehicleActivityDraft({}, { applyDefaultDate: true }),
+    ...vehicleActivityDrafts,
+  ].sort(compareVehicleActivityDraftRecency);
+  renderVehicleActivities();
+  syncVehicleEditorSections();
+});
+
+vehicleDocumentsUploadButton?.addEventListener("click", () => {
+  vehicleDocumentsInput?.click();
+});
+
+vehicleDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(vehicleDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueVehicleDocuments(files), vehicleError).then((success) => {
+    if (!success) {
+      return;
+    }
+    state.vehicleDocumentsSectionExpanded = true;
+    syncVehicleEditorSections();
+    vehicleDocumentsInput.value = "";
+  });
 });
 
 vehicleResetButton?.addEventListener("click", () => {

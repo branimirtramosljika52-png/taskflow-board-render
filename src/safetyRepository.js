@@ -1919,9 +1919,9 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [vehicleRows] = await connection.query(`
-    SELECT id, organization_id, name, plate_number, make_name, model_name, category, model_year,
+    SELECT id, organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year,
            color, fuel_type, transmission, seat_count, odometer_km, service_due_date,
-           registration_expires_on, notes, status, reservations_json, created_at, updated_at
+           registration_expires_on, notes, status, reservations_json, documents_json, activity_items_json, created_at, updated_at
     FROM web_vehicles
     ORDER BY updated_at DESC, id DESC
   `);
@@ -1931,6 +1931,7 @@ async function fetchSnapshotFromConnection(connection) {
     organizationId: dbString(row.organization_id),
     name: row.name ?? "",
     plateNumber: row.plate_number ?? "",
+    vinNumber: row.vin_number ?? "",
     make: row.make_name ?? "",
     model: row.model_name ?? "",
     category: row.category ?? "",
@@ -1944,6 +1945,41 @@ async function fetchSnapshotFromConnection(connection) {
     registrationExpiresOn: normalizeDateOnly(row.registration_expires_on),
     notes: row.notes ?? "",
     status: row.status ?? "available",
+    documents: parseJsonArray(row.documents_json).map((document) => ({
+      id: dbString(document.id),
+      fileName: dbString(document.fileName ?? document.name),
+      fileType: dbString(document.fileType ?? document.mimeType),
+      fileSize: Number(document.fileSize ?? document.size) || 0,
+      documentCategory: dbString(document.documentCategory ?? document.category),
+      description: dbString(document.description),
+      dataUrl: dbString(document.dataUrl ?? document.url ?? document.storageUrl),
+      storageProvider: dbString(document.storageProvider),
+      storageBucket: dbString(document.storageBucket),
+      storageKey: dbString(document.storageKey),
+      storageUrl: dbString(document.storageUrl ?? document.url),
+      createdAt: normalizeTimestamp(document.createdAt),
+      updatedAt: normalizeTimestamp(document.updatedAt ?? document.createdAt),
+    })).filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+    activityItems: parseJsonArray(row.activity_items_json).map((entry) => ({
+      id: dbString(entry.id),
+      activityType: dbString(entry.activityType ?? entry.type),
+      performedOn: normalizeDateOnly(entry.performedOn ?? entry.date),
+      performedBy: dbString(entry.performedBy ?? entry.actor),
+      validUntil: normalizeDateOnly(entry.validUntil),
+      odometerKm: parseNullableInteger(entry.odometerKm),
+      workSummary: dbString(entry.workSummary ?? entry.workPerformed ?? entry.works),
+      note: dbString(entry.note),
+      createdAt: normalizeTimestamp(entry.createdAt),
+      updatedAt: normalizeTimestamp(entry.updatedAt ?? entry.createdAt),
+    })).filter((entry) => (
+      entry.activityType
+      || entry.performedOn
+      || entry.performedBy
+      || entry.validUntil
+      || entry.workSummary
+      || entry.note
+      || Number.isFinite(entry.odometerKm)
+    )),
     reservations: sortVehicleReservations(parseJsonArray(row.reservations_json).map((reservation) => ({
       id: dbString(reservation.id),
       vehicleId: dbString(reservation.vehicleId) || String(row.id),
@@ -3769,6 +3805,7 @@ export class MySqlSafetyRepository {
         organization_id INT NOT NULL,
         name VARCHAR(180) NOT NULL,
         plate_number VARCHAR(32) NOT NULL,
+        vin_number VARCHAR(64) NOT NULL DEFAULT '',
         make_name VARCHAR(120) NOT NULL DEFAULT '',
         model_name VARCHAR(120) NOT NULL DEFAULT '',
         category VARCHAR(120) NOT NULL DEFAULT '',
@@ -3783,6 +3820,8 @@ export class MySqlSafetyRepository {
         notes TEXT NULL,
         status VARCHAR(24) NOT NULL DEFAULT 'available',
         reservations_json LONGTEXT NULL,
+        documents_json LONGTEXT NULL,
+        activity_items_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_vehicles_org_plate (organization_id, plate_number),
@@ -3916,6 +3955,9 @@ export class MySqlSafetyRepository {
         INDEX idx_web_learning_tests_updated (organization_id, updated_at)
       )
     `);
+    await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
+    await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
+    await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entered_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER inventory_number");
@@ -5516,15 +5558,16 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_vehicles
-            (organization_id, name, plate_number, make_name, model_name, category, model_year, color, fuel_type,
+            (organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year, color, fuel_type,
              transmission, seat_count, odometer_km, service_due_date, registration_expires_on, notes, status,
-             reservations_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             reservations_json, documents_json, activity_items_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           draft.name,
           draft.plateNumber,
+          draft.vinNumber,
           draft.make,
           draft.model,
           draft.category,
@@ -5539,6 +5582,8 @@ export class MySqlSafetyRepository {
           draft.notes,
           draft.status,
           JSON.stringify(draft.reservations ?? []),
+          JSON.stringify(draft.documents ?? []),
+          JSON.stringify(draft.activityItems ?? []),
         ],
       );
 
@@ -5573,14 +5618,15 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_vehicles
-          SET name = ?, plate_number = ?, make_name = ?, model_name = ?, category = ?, model_year = ?, color = ?,
+          SET name = ?, plate_number = ?, vin_number = ?, make_name = ?, model_name = ?, category = ?, model_year = ?, color = ?,
               fuel_type = ?, transmission = ?, seat_count = ?, odometer_km = ?, service_due_date = ?,
-              registration_expires_on = ?, notes = ?, status = ?, reservations_json = ?
+              registration_expires_on = ?, notes = ?, status = ?, reservations_json = ?, documents_json = ?, activity_items_json = ?
           WHERE id = ?
         `,
         [
           next.name,
           next.plateNumber,
+          next.vinNumber,
           next.make,
           next.model,
           next.category,
@@ -5595,6 +5641,8 @@ export class MySqlSafetyRepository {
           next.notes,
           next.status,
           JSON.stringify(next.reservations ?? []),
+          JSON.stringify(next.documents ?? []),
+          JSON.stringify(next.activityItems ?? []),
           Number(id),
         ],
       );

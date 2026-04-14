@@ -16098,6 +16098,30 @@ body.is-document-template-editor-open .chat-dock {
   gap: 12px;
 }
 
+.vehicles-panel-head-actions,
+.vehicle-schedule-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vehicles-panel-body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.vehicles-inline-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(47, 104, 84, 0.1);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(251, 253, 252, 0.98), rgba(246, 249, 247, 0.98));
+}
+
 .vehicles-toolbar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -16113,11 +16137,11 @@ body.is-document-template-editor-open .chat-dock {
 
 .vehicle-list-row {
   border: 1px solid rgba(47, 104, 84, 0.14);
-  border-radius: 24px;
-  padding: 16px 18px;
+  border-radius: 22px;
+  padding: 18px 20px;
   background: rgba(255, 255, 255, 0.94);
   display: grid;
-  gap: 12px;
+  gap: 14px;
   cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
   min-width: 0;
@@ -16146,8 +16170,8 @@ body.is-document-template-editor-open .chat-dock {
 
 .vehicle-list-row-main {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) minmax(170px, auto) auto;
+  align-items: start;
   gap: 12px;
 }
 
@@ -16172,13 +16196,13 @@ body.is-document-template-editor-open .chat-dock {
 .vehicle-list-row-copy,
 .vehicle-reservation-item-copy {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .vehicle-list-row-title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   color: #22352d;
 }
 
@@ -16498,33 +16522,41 @@ body.is-vehicle-reservation-open {
 
 .vehicle-schedule-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .vehicle-schedule-date-input {
-  min-width: 170px;
+  min-width: 156px;
   max-width: 100%;
+  min-height: 42px;
+  padding-inline: 12px;
+  border-radius: 14px;
 }
 
 .vehicle-schedule-grid-shell {
   min-width: 0;
   min-height: 320px;
-  max-height: min(68vh, calc(100vh - 250px));
+  max-height: min(70vh, calc(100vh - 230px));
   overflow: auto;
-  border: 1px solid rgba(47, 104, 84, 0.12);
+  border: 1px solid rgba(47, 104, 84, 0.16);
   border-radius: 24px;
-  background: linear-gradient(180deg, rgba(251, 253, 252, 0.98), rgba(245, 248, 246, 0.98));
+  background: linear-gradient(180deg, rgba(250, 252, 251, 0.98), rgba(241, 246, 243, 0.98));
   scrollbar-gutter: stable both-edges;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .vehicle-schedule-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-width: 100%;
   width: max-content;
-  padding: 14px;
+  padding: 12px;
 }
 
 .vehicle-schedule-header-row {
@@ -16533,11 +16565,11 @@ body.is-vehicle-reservation-open {
   z-index: 4;
   display: grid;
   grid-template-columns: minmax(230px, 250px) repeat(var(--vehicle-hour-count, 16), minmax(72px, 1fr));
-  gap: 10px;
+  gap: 8px;
   width: max-content;
   min-width: 100%;
   padding-bottom: 2px;
-  background: linear-gradient(180deg, rgba(251, 253, 252, 0.98), rgba(251, 253, 252, 0.82));
+  background: linear-gradient(180deg, rgba(250, 252, 251, 0.99), rgba(250, 252, 251, 0.86));
 }
 
 .vehicle-schedule-vehicle-head,
@@ -16567,15 +16599,21 @@ body.is-vehicle-reservation-open {
   align-items: center;
   justify-content: center;
   min-width: 72px;
-  padding: 12px 0;
-  font-size: 0.78rem;
-  color: #5f7068;
+  padding: 10px 0;
+  font-size: 0.76rem;
+  color: #51635b;
+}
+
+.vehicle-schedule-hour-head.is-current {
+  border-color: rgba(230, 71, 114, 0.38);
+  background: rgba(255, 239, 244, 0.98);
+  color: #b0325a;
 }
 
 .vehicle-schedule-row {
   display: grid;
   grid-template-columns: minmax(230px, 250px) minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   width: max-content;
   min-width: 100%;
   align-items: stretch;
@@ -16591,7 +16629,7 @@ body.is-vehicle-reservation-open {
   left: 0;
   z-index: 2;
   display: grid;
-  gap: 6px;
+  gap: 5px;
   padding: 14px 16px;
   text-align: left;
   cursor: pointer;
@@ -16608,10 +16646,10 @@ body.is-vehicle-reservation-open {
   isolation: isolate;
   display: grid;
   grid-template-columns: repeat(var(--vehicle-hour-count, 16), minmax(72px, 1fr));
-  grid-auto-rows: minmax(82px, auto);
-  border: 1px solid rgba(47, 104, 84, 0.12);
+  grid-auto-rows: minmax(88px, auto);
+  border: 1px solid rgba(47, 104, 84, 0.16);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.94);
   overflow: hidden;
 }
 
@@ -16621,16 +16659,20 @@ body.is-vehicle-reservation-open {
 }
 
 .vehicle-schedule-slot {
-  min-height: 82px;
+  min-height: 88px;
   border: 0;
-  border-right: 1px solid rgba(47, 104, 84, 0.08);
+  border-right: 1px solid rgba(47, 104, 84, 0.06);
   background: transparent;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease;
 }
 
 .vehicle-schedule-slot:nth-child(2n) {
-  background: rgba(47, 104, 84, 0.02);
+  background: rgba(47, 104, 84, 0.025);
+}
+
+.vehicle-schedule-slot.is-current-hour {
+  background: rgba(255, 233, 239, 0.72);
 }
 
 .vehicle-schedule-slot:hover,
@@ -16638,6 +16680,33 @@ body.is-vehicle-reservation-open {
 .vehicle-schedule-slot:focus-visible {
   background: rgba(47, 104, 84, 0.08);
   outline: none;
+}
+
+.vehicle-schedule-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(180deg, rgba(232, 67, 111, 0.95), rgba(197, 34, 80, 0.95));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 18px rgba(232, 67, 111, 0.22);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.vehicle-schedule-now-line.has-label::before {
+  content: attr(data-label);
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(197, 34, 80, 0.94);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .vehicle-schedule-reservation {
@@ -16690,17 +16759,78 @@ body.is-vehicle-reservation-open {
   color: #4f5961;
 }
 
+.vehicle-editor-section-block {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(251, 253, 252, 0.98), rgba(246, 249, 247, 0.98));
+}
+
+.vehicle-activity-list {
+  display: grid;
+  gap: 12px;
+}
+
+.vehicle-activity-row {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.vehicle-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vehicle-activity-field {
+  display: grid;
+  gap: 6px;
+}
+
+.vehicle-activity-field.is-wide {
+  grid-column: span 2;
+}
+
+.vehicle-activity-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(47, 104, 84, 0.74);
+}
+
+.vehicle-activity-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vehicle-activity-row-meta {
+  color: #5f7068;
+  font-size: 0.86rem;
+}
+
 @media (max-width: 1180px) {
   .vehicles-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vehicle-activity-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .vehicles-summary-grid,
+  .vehicles-inline-toolbar,
   .vehicles-filters,
   .vehicles-form-grid,
-  .vehicle-reservation-assignee-panel {
+  .vehicle-reservation-assignee-panel,
+  .vehicle-activity-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -16708,6 +16838,9 @@ body.is-vehicle-reservation-open {
     justify-content: flex-start;
   }
 
+  .vehicles-panel-head-actions,
+  .vehicle-schedule-head-actions,
+  .vehicle-schedule-toolbar,
   .vehicle-list-row-main,
   .vehicle-list-row-actions,
   .vehicle-reservation-item-head {
@@ -16722,6 +16855,10 @@ body.is-vehicle-reservation-open {
 
   .vehicle-inline-status-select {
     width: 100%;
+  }
+
+  .vehicle-activity-field.is-wide {
+    grid-column: span 1;
   }
 
   .vehicle-modal-panel.is-modal-open,

@@ -58,6 +58,7 @@ import {
   sortServiceCatalogItems,
   sortVehicles,
   sortTodoTasks,
+  updateVehicle,
   updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
   updateDashboardWidget,
@@ -1567,6 +1568,75 @@ test("vehicles filter and sort by availability and search context", () => {
     sortVehicles([availableVehicle, serviceVehicle, reservedVehicle], "2026-03-30T09:00:00.000Z").map((item) => item.id),
     ["vehicle-b", "vehicle-a", "vehicle-c"],
   );
+});
+
+test("vehicles keep vin, documents and activity history", () => {
+  const state = buildState();
+  const vehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Servisni kombi 9",
+      plateNumber: "ZG 9090 ZZ",
+      vinNumber: "vf1jl000123456789",
+      documents: [
+        {
+          fileName: "Prometna.pdf",
+          documentCategory: "prometna",
+          dataUrl: "data:application/pdf;base64,AAAA",
+        },
+      ],
+      activityItems: [
+        {
+          activityType: "service",
+          performedOn: "2026-03-20",
+          performedBy: "Auto centar Horvat",
+          odometerKm: 152000,
+          workSummary: "Mali servis i filteri",
+        },
+        {
+          activityType: "technical_inspection",
+          performedOn: "2026-03-25",
+          performedBy: "CVH Sesvete",
+          validUntil: "2027-03-25",
+          note: "Prošao bez primjedbi",
+        },
+      ],
+    },
+    state,
+    () => "vehicle-z",
+    () => "2026-03-29T08:00:00.000Z",
+  );
+
+  assert.equal(vehicle.vinNumber, "VF1JL000123456789");
+  assert.equal(vehicle.documents.length, 1);
+  assert.equal(vehicle.documents[0].fileName, "Prometna.pdf");
+  assert.equal(vehicle.activityItems.length, 2);
+  assert.equal(vehicle.activityItems[0].activityType, "technical_inspection");
+  assert.equal(vehicle.activityItems[0].performedBy, "CVH Sesvete");
+
+  const updated = updateVehicle(
+    vehicle,
+    {
+      documents: [
+        ...vehicle.documents,
+        {
+          fileName: "Slika-vozila.jpg",
+          documentCategory: "slika",
+          dataUrl: "data:image/jpeg;base64,BBBB",
+        },
+      ],
+    },
+    {
+      ...state,
+      vehicles: [vehicle],
+    },
+    () => "2026-03-29T09:00:00.000Z",
+  );
+
+  assert.equal(updated.documents.length, 2);
+  assert.equal(filterVehicles([updated], { query: "vf1jl000123456789" }).length, 1);
+  assert.equal(filterVehicles([updated], { query: "cvh" }).length, 1);
+  assert.equal(filterVehicles([updated], { query: "slika-vozila" }).length, 1);
 });
 
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {

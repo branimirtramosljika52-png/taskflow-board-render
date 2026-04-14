@@ -1677,6 +1677,10 @@ function normalizeVehiclePlateNumber(value) {
   return normalizeText(value).replace(/\s+/g, " ").toUpperCase();
 }
 
+function normalizeVehicleVinNumber(value) {
+  return normalizeText(value).replace(/\s+/g, "").toUpperCase().slice(0, 64);
+}
+
 function normalizeVehicleInteger(value, fallback = null) {
   const raw = normalizeText(value);
 
@@ -1686,6 +1690,76 @@ function normalizeVehicleInteger(value, fallback = null) {
 
   const numeric = Math.round(normalizeFiniteNumber(raw, Number.NaN));
   return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
+}
+
+function compareVehicleActivityRecency(left = {}, right = {}) {
+  const leftDate = normalizeText(left.performedOn);
+  const rightDate = normalizeText(right.performedOn);
+
+  if (leftDate && rightDate && leftDate !== rightDate) {
+    return rightDate.localeCompare(leftDate);
+  }
+
+  if (leftDate && !rightDate) {
+    return -1;
+  }
+
+  if (!leftDate && rightDate) {
+    return 1;
+  }
+
+  const leftUpdated = normalizeText(left.updatedAt ?? left.createdAt);
+  const rightUpdated = normalizeText(right.updatedAt ?? right.createdAt);
+
+  if (leftUpdated && rightUpdated && leftUpdated !== rightUpdated) {
+    return rightUpdated.localeCompare(leftUpdated);
+  }
+
+  return normalizeText(right.id).localeCompare(normalizeText(left.id));
+}
+
+function normalizeVehicleActivityItems(items = [], now = isoNow) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const timestamp = now();
+
+  return items.map((item) => {
+    const activityType = normalizeText(item?.activityType ?? item?.type).toLowerCase().slice(0, 64);
+    const performedOn = normalizeOptionalDate(item?.performedOn ?? item?.date);
+    const performedBy = normalizeText(item?.performedBy ?? item?.actor).slice(0, 180);
+    const validUntil = normalizeOptionalDate(item?.validUntil);
+    const workSummary = normalizeText(item?.workSummary ?? item?.workPerformed ?? item?.works).slice(0, 240);
+    const note = normalizeText(item?.note);
+    const odometerKm = normalizeVehicleInteger(item?.odometerKm, null);
+    const hasAnyData = Boolean(
+      activityType
+      || performedOn
+      || performedBy
+      || validUntil
+      || workSummary
+      || note
+      || normalizeText(item?.odometerKm),
+    );
+
+    if (!hasAnyData) {
+      return null;
+    }
+
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      activityType,
+      performedOn,
+      performedBy,
+      validUntil,
+      odometerKm,
+      workSummary,
+      note,
+      createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
+      updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,
+    };
+  }).filter(Boolean).sort(compareVehicleActivityRecency);
 }
 
 function normalizeVehicleReservations(reservations = []) {
@@ -1855,6 +1929,9 @@ function hydrateVehicleCore({
     organizationId,
     name,
     plateNumber,
+    vinNumber: hasOwn(input, "vinNumber")
+      ? normalizeVehicleVinNumber(input.vinNumber)
+      : normalizeVehicleVinNumber(current?.vinNumber),
     make: hasOwn(input, "make") ? normalizeText(input.make) : (current?.make ?? ""),
     model: hasOwn(input, "model") ? normalizeText(input.model) : (current?.model ?? ""),
     category: hasOwn(input, "category") ? normalizeText(input.category) : (current?.category ?? ""),
@@ -1876,6 +1953,12 @@ function hydrateVehicleCore({
     registrationExpiresOn: hasOwn(input, "registrationExpiresOn")
       ? normalizeOptionalDate(input.registrationExpiresOn)
       : normalizeOptionalDate(current?.registrationExpiresOn),
+    documents: hasOwn(input, "documents")
+      ? normalizeAttachmentDocuments(input.documents)
+      : normalizeAttachmentDocuments(current?.documents),
+    activityItems: hasOwn(input, "activityItems")
+      ? normalizeVehicleActivityItems(input.activityItems, () => timestamp)
+      : normalizeVehicleActivityItems(current?.activityItems, () => timestamp),
     notes: hasOwn(input, "notes") ? normalizeText(input.notes) : (current?.notes ?? ""),
     status,
     reservations,
@@ -4331,11 +4414,18 @@ export function filterVehicles(
     const haystack = [
       vehicle.name,
       vehicle.plateNumber,
+      vehicle.vinNumber,
       vehicle.make,
       vehicle.model,
       vehicle.category,
       vehicle.color,
       vehicle.notes,
+      ...(vehicle.documents ?? []).map((document) => document.fileName),
+      ...(vehicle.documents ?? []).map((document) => document.documentCategory),
+      ...(vehicle.activityItems ?? []).map((entry) => entry.activityType),
+      ...(vehicle.activityItems ?? []).map((entry) => entry.performedBy),
+      ...(vehicle.activityItems ?? []).map((entry) => entry.workSummary),
+      ...(vehicle.activityItems ?? []).map((entry) => entry.note),
       ...(vehicle.reservations ?? []).map((reservation) => reservation.purpose),
       ...(vehicle.reservations ?? []).map((reservation) => reservation.reservedForLabel),
       ...(vehicle.reservations ?? []).flatMap((reservation) => reservation.reservedForLabels ?? []),
