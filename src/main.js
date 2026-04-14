@@ -1818,6 +1818,7 @@ const todoFilterScopeInput = document.querySelector("#todo-filter-scope");
 const todoFilterStatusInput = document.querySelector("#todo-filter-status");
 const todoBody = document.querySelector("#todo-body");
 const todoEmpty = document.querySelector("#todo-empty");
+const todoInlineError = document.querySelector("#todo-inline-error");
 const todoDetailPanel = document.querySelector("#todo-detail-panel");
 const todoDetailEmpty = document.querySelector("#todo-detail-empty");
 const todoDetailContent = document.querySelector("#todo-detail-content");
@@ -32503,6 +32504,18 @@ function buildTodoTaskPayload() {
   };
 }
 
+function syncTodoStatusInputLock(task = null) {
+  if (!todoStatusInput) {
+    return;
+  }
+
+  const canChangeStatus = !task || canCurrentUserChangeTodoStatus(task);
+  todoStatusInput.disabled = !canChangeStatus;
+  todoStatusInput.title = canChangeStatus
+    ? ""
+    : "Status može mijenjati samo osoba koja je otvorila temu.";
+}
+
 function resetTodoForm() {
   if (!todoForm) {
     return;
@@ -32513,6 +32526,7 @@ function resetTodoForm() {
   todoTitleInput.value = "";
   todoDueDateInput.value = "";
   todoStatusInput.value = "open";
+  syncTodoStatusInputLock(null);
   todoPriorityInput.value = "Normal";
   rebuildTodoAssigneeOptions("");
   rebuildTodoInvitedUserOptions([]);
@@ -32630,6 +32644,7 @@ function hydrateTodoTaskForm(task) {
   todoTitleInput.value = task.title || "";
   todoDueDateInput.value = task.dueDate || "";
   todoStatusInput.value = task.status || "open";
+  syncTodoStatusInputLock(task);
   todoPriorityInput.value = task.priority || "Normal";
   rebuildTodoAssigneeOptions(task.assignedToUserId || "");
   todoAssigneeInput.value = task.assignedToUserId || "";
@@ -32679,14 +32694,25 @@ function createTodoTaskPriorityBadge(priority = "Normal") {
   return badge;
 }
 
-function createTodoOpenTopicButton(taskId) {
+function canCurrentUserChangeTodoStatus(task = {}) {
+  const createdByUserId = String(task.createdByUserId ?? "").trim();
+  const currentUserId = String(state.user?.id ?? "").trim();
+  return Boolean(createdByUserId && currentUserId && createdByUserId === currentUserId);
+}
+
+function createTodoOpenTopicButton(task = {}) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "ghost-button todo-open-topic-button";
-  button.textContent = "Otvori thread";
+  const expanded = isTodoTaskExpanded(task.id);
+  button.textContent = expanded ? "Sakrij temu" : "Otvori temu";
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
   button.addEventListener("click", (event) => {
+    event.preventDefault();
     event.stopPropagation();
-    selectTodoTask(taskId);
+    state.activeTodoTaskId = String(task.id ?? "");
+    setTodoTaskExpanded(task.id, !expanded);
+    renderTodo();
   });
   return button;
 }
@@ -32723,102 +32749,183 @@ function setTodoTaskExpanded(taskId, isExpanded = false) {
   }
 }
 
-function createTodoToggleCommentsButton(task = {}) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "ghost-button todo-comments-toggle-button";
-  const commentCount = Number(task.commentCount ?? task.comments?.length ?? 0);
-  const expanded = isTodoTaskExpanded(task.id);
-  button.textContent = expanded
-    ? "Sakrij komentare"
-    : `Raširi komentare${commentCount > 0 ? ` (${commentCount})` : ""}`;
-  button.setAttribute("aria-expanded", expanded ? "true" : "false");
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setTodoTaskExpanded(task.id, !expanded);
-    renderTodoList();
+function createTodoTaskStatusControl(task = {}) {
+  const wrapper = document.createElement("label");
+  wrapper.className = "todo-task-status-control";
+
+  const label = document.createElement("span");
+  label.className = "todo-task-status-control-label";
+  label.textContent = "Status";
+
+  const select = document.createElement("select");
+  select.className = "todo-task-status-select";
+  replaceSelectOptions(select, TODO_TASK_STATUS_OPTIONS, task.status || "open");
+  select.dataset.status = slugifyValue(task.status || "open");
+  const canChangeStatus = canCurrentUserChangeTodoStatus(task);
+  select.disabled = !canChangeStatus;
+  select.title = canChangeStatus
+    ? "Promijeni status teme"
+    : "Status može mijenjati samo osoba koja je otvorila temu.";
+  ["click", "keydown"].forEach((eventName) => {
+    select.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
   });
-  return button;
+  select.addEventListener("change", () => {
+    const previousStatus = task.status || "open";
+    const nextStatus = select.value || previousStatus;
+    select.dataset.status = slugifyValue(nextStatus);
+
+    if (nextStatus === previousStatus) {
+      return;
+    }
+
+    select.disabled = true;
+    void runMutation(() => apiRequest(`/todo-tasks/${task.id}`, {
+      method: "PATCH",
+      body: {
+        status: nextStatus,
+      },
+    }), todoInlineError).then((success) => {
+      if (!success) {
+        select.value = previousStatus;
+        select.dataset.status = slugifyValue(previousStatus);
+      }
+    }).finally(() => {
+      const latestTask = getTodoTaskById(task.id) ?? task;
+      select.disabled = !canCurrentUserChangeTodoStatus(latestTask);
+    });
+  });
+
+  wrapper.append(label, select);
+  return wrapper;
 }
 
-function createTodoTaskInlineComment(comment = {}) {
-  const row = document.createElement("article");
-  row.className = "todo-task-inline-comment";
+function getTodoTaskParticipantLabels(task = {}) {
+  const labels = [];
+  [task.assignedToLabel, ...(task.invitedUserLabels ?? []), task.createdByLabel]
+    .filter(Boolean)
+    .forEach((label) => {
+      if (!labels.includes(label)) {
+        labels.push(label);
+      }
+    });
+  return labels;
+}
 
-  const avatar = document.createElement("span");
-  avatar.className = "todo-task-inline-comment-avatar";
-  avatar.textContent = getUserInitials({ fullName: comment.authorLabel || "Kolega" });
+function createTodoTaskDetailRow(label, value = "") {
+  const row = document.createElement("div");
+  row.className = "todo-task-detail-row";
 
-  const content = document.createElement("div");
-  content.className = "todo-task-inline-comment-content";
+  const title = document.createElement("span");
+  title.className = "todo-task-detail-row-label";
+  title.textContent = label;
 
-  const top = document.createElement("div");
-  top.className = "todo-task-inline-comment-top";
+  const content = document.createElement("strong");
+  content.className = "todo-task-detail-row-value";
+  content.textContent = value || "Bez podatka";
 
-  const author = document.createElement("strong");
-  author.textContent = comment.authorLabel || "Kolega";
-
-  const time = document.createElement("span");
-  time.textContent = comment.createdAt ? formatDateTime(comment.createdAt) : "";
-  top.append(author, time);
-
-  const body = document.createElement("p");
-  body.textContent = String(comment.message || "").trim() || "Bez teksta komentara.";
-
-  content.append(top, body);
-  row.append(avatar, content);
+  row.append(title, content);
   return row;
 }
 
-function createTodoTaskExpandedComments(task = {}) {
+function createTodoTaskExpandedPanel(task = {}) {
   if (!isTodoTaskExpanded(task.id)) {
     return null;
   }
 
   const wrap = document.createElement("section");
-  wrap.className = "todo-task-card-expand";
+  wrap.className = "todo-task-card-expand todo-task-card-expand-details";
   wrap.addEventListener("click", (event) => {
     event.stopPropagation();
   });
 
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const latestComments = comments
-    .slice()
-    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
-    .slice(0, 3);
+  const message = document.createElement("p");
+  message.className = "todo-task-detail-message";
+  message.textContent = task.message || "Bez dodatnog opisa teme.";
 
-  if (latestComments.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "todo-task-card-expand-empty";
-    empty.textContent = "Još nema komentara za ovu temu.";
-    wrap.append(empty);
-    return wrap;
+  const facts = document.createElement("div");
+  facts.className = "todo-task-detail-facts";
+  facts.append(
+    createTodoTaskPriorityBadge(task.priority || "Normal"),
+    createMetaPill(
+      task.dueDate ? `Rok ${formatCompactDate(task.dueDate)}` : "Bez roka",
+      isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
+    ),
+  );
+  if (task.updatedAt) {
+    facts.append(createMetaPill(`Ažurirano ${formatCompactDate(String(task.updatedAt).slice(0, 10))}`, "is-soft"));
   }
 
-  wrap.append(...latestComments.map((comment) => createTodoTaskInlineComment(comment)));
+  const detailList = document.createElement("div");
+  detailList.className = "todo-task-detail-list";
+  detailList.append(
+    createTodoTaskDetailRow("Otvorio", task.createdByLabel || "Safety360"),
+    createTodoTaskDetailRow("Nositelj", task.assignedToLabel || "Bez nositelja"),
+    createTodoTaskDetailRow(
+      "Sudionici",
+      (() => {
+        const participantLabels = getTodoTaskParticipantLabels(task);
+        return participantLabels.length > 0 ? participantLabels.join(", ") : "Bez sudionika";
+      })(),
+    ),
+  );
 
-  if (comments.length > latestComments.length) {
-    const more = document.createElement("p");
-    more.className = "todo-task-card-expand-more";
-    more.textContent = `+${comments.length - latestComments.length} starijih komentara`;
-    wrap.append(more);
+  if (task.workOrderNumber || task.companyName || task.locationName) {
+    detailList.append(createTodoTaskDetailRow(
+      "Povezano",
+      [
+        task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
+        task.companyName || "",
+        task.locationName || "",
+      ].filter(Boolean).join(" · "),
+    ));
   }
 
+  const actions = document.createElement("div");
+  actions.className = "todo-task-detail-actions";
+
+  const linkedWorkOrder = getLinkedTodoWorkOrder(task);
+  if (linkedWorkOrder) {
+    actions.append(createActionButton("Otvori RN", "ghost-button", (event) => {
+      event.stopPropagation();
+      hydrateWorkOrderForm(linkedWorkOrder);
+    }));
+  }
+
+  actions.append(
+    createActionButton("Uredi", "ghost-button", (event) => {
+      event.stopPropagation();
+      hydrateTodoTaskForm(task);
+    }),
+    createActionButton("Obriši", "ghost-button", (event) => {
+      event.stopPropagation();
+      if (!window.confirm(`Obrisati temu "${task.title}"?`)) {
+        return;
+      }
+
+      void runMutation(() => apiRequest(`/todo-tasks/${task.id}`, {
+        method: "DELETE",
+      }), todoInlineError).then((success) => {
+        if (success) {
+          setTodoTaskExpanded(task.id, false);
+          state.activeTodoTaskId = getFilteredTodoTasks()[0]?.id ?? "";
+        }
+      });
+    }),
+  );
+
+  wrap.append(message, facts, detailList);
+
+  if (!canCurrentUserChangeTodoStatus(task)) {
+    const note = document.createElement("p");
+    note.className = "todo-task-detail-note";
+    note.textContent = "Status može mijenjati samo osoba koja je otvorila temu.";
+    wrap.append(note);
+  }
+
+  wrap.append(actions);
   return wrap;
-}
-
-function formatTodoInvitedSummary(task = {}) {
-  const labels = Array.isArray(task.invitedUserLabels)
-    ? task.invitedUserLabels.filter(Boolean)
-    : [];
-  if (labels.length === 0) {
-    return "Bez pozvanih";
-  }
-  if (labels.length === 1) {
-    return `Pozvan: ${labels[0]}`;
-  }
-  return `Pozvani: ${labels.length}`;
 }
 
 function selectTodoTask(taskId) {
@@ -32907,26 +33014,25 @@ function renderTodoList() {
   todoBody.replaceChildren(...tasks.map((task) => {
     const card = document.createElement("article");
     card.className = "todo-task-card";
-    card.classList.toggle("is-active", String(task.id) === String(state.activeTodoTaskId));
+    const isExpanded = isTodoTaskExpanded(task.id);
+    card.classList.toggle("is-active", isExpanded || String(task.id) === String(state.activeTodoTaskId));
     card.tabIndex = 0;
     card.addEventListener("click", () => {
-      selectTodoTask(task.id);
+      state.activeTodoTaskId = String(task.id);
+      setTodoTaskExpanded(task.id, true);
+      renderTodo();
     });
     card.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        selectTodoTask(task.id);
+        state.activeTodoTaskId = String(task.id);
+        setTodoTaskExpanded(task.id, true);
+        renderTodo();
       }
     });
 
     const leadLabel = task.assignedToLabel || task.createdByLabel || "Tema";
-    const invitedLabels = Array.isArray(task.invitedUserLabels) ? task.invitedUserLabels.filter(Boolean) : [];
-    const participantLabels = [];
-    [task.assignedToLabel, ...invitedLabels, task.createdByLabel].filter(Boolean).forEach((label) => {
-      if (!participantLabels.includes(label)) {
-        participantLabels.push(label);
-      }
-    });
+    const participantLabels = getTodoTaskParticipantLabels(task);
 
     const head = document.createElement("div");
     head.className = "todo-task-card-head";
@@ -32955,7 +33061,7 @@ function renderTodoList() {
     copy.append(title, subtitle, preview);
     threadLead.append(avatar, copy);
 
-    head.append(threadLead);
+    head.append(threadLead, createTodoTaskStatusControl(task));
 
     const meta = document.createElement("div");
     meta.className = "todo-task-card-meta";
@@ -32964,7 +33070,7 @@ function renderTodoList() {
       task.dueDate ? formatCompactDate(task.dueDate) : "Bez roka",
       isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
     ));
-    meta.append(createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft"));
+    meta.append(createTodoTaskPriorityBadge(task.priority || "Normal"));
     if (task.updatedAt) {
       meta.append(createMetaPill(`Ažurirano ${formatCompactDate(String(task.updatedAt).slice(0, 10))}`, "is-soft"));
     }
@@ -32992,16 +33098,13 @@ function renderTodoList() {
     footerMain.append(meta, participants);
     const footerActions = document.createElement("div");
     footerActions.className = "todo-task-card-footer-actions";
-    footerActions.append(
-      createTodoToggleCommentsButton(task),
-      createTodoOpenTopicButton(task.id),
-    );
+    footerActions.append(createTodoOpenTopicButton(task));
     footer.append(footerMain, footerActions);
 
     card.append(head, footer);
-    const expandedComments = createTodoTaskExpandedComments(task);
-    if (expandedComments) {
-      card.append(expandedComments);
+    const expandedPanel = createTodoTaskExpandedPanel(task);
+    if (expandedPanel) {
+      card.append(expandedPanel);
     }
     return card;
   }));

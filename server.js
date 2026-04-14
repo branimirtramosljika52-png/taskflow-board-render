@@ -2278,6 +2278,22 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.todoTasks, todoTaskMatch[1], "ToDo zadatak nije pronađen.");
+      const currentTodoTask = scopedSnapshot.todoTasks.find((item) => String(item.id) === String(todoTaskMatch[1])) ?? null;
+      const hasRequestedStatus = Object.prototype.hasOwnProperty.call(body, "status");
+      const requestedStatus = String(body.status ?? "").trim().toLowerCase();
+      const currentStatus = String(currentTodoTask?.status ?? "").trim().toLowerCase();
+      const createdByUserId = String(currentTodoTask?.createdByUserId ?? "").trim();
+      const currentUserId = String(user?.id ?? "").trim();
+      if (
+        hasRequestedStatus
+        && requestedStatus
+        && requestedStatus !== currentStatus
+        && createdByUserId
+        && createdByUserId !== currentUserId
+      ) {
+        sendError(response, 403, "Status teme može mijenjati samo osoba koja je otvorila temu.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);

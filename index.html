@@ -1967,92 +1967,10 @@
                   </label>
                 </div>
 
+                <p id="todo-inline-error" class="form-error" aria-live="polite"></p>
                 <div id="todo-body" class="todo-list"></div>
                 <p id="todo-empty" class="empty-inline" hidden>Nema tema za trenutni filter.</p>
               </section>
-
-              <aside id="todo-detail-panel" class="todo-detail-card">
-                <div id="todo-detail-empty" class="todo-detail-empty">
-                  <p class="section-kicker">Conversation</p>
-                  <h3>Odaberi temu</h3>
-                  <p class="helper-copy">Klikni temu iz popisa da otvoriš razgovor, status i detalje.</p>
-                </div>
-
-                <div id="todo-detail-content" class="todo-detail-content" hidden>
-                  <div class="todo-detail-head">
-                    <div class="todo-detail-heading">
-                      <p class="section-kicker">Conversation</p>
-                      <h3 id="todo-detail-title">Tema</h3>
-                      <p id="todo-detail-meta" class="helper-copy"></p>
-                    </div>
-
-                    <div class="todo-detail-actions">
-                      <button id="todo-detail-open-work-order" type="button" class="ghost-button" hidden>Otvori RN</button>
-                      <button id="todo-detail-edit" type="button" class="ghost-button">Uredi</button>
-                      <button id="todo-detail-delete" type="button" class="ghost-button">Obriši</button>
-                    </div>
-                  </div>
-
-                  <p id="todo-detail-message" class="todo-detail-message"></p>
-
-                  <div id="todo-detail-facts" class="todo-detail-facts"></div>
-
-                  <div class="todo-detail-people-row">
-                    <span class="todo-detail-people-label">Sudionici</span>
-                    <div id="todo-detail-people-stack" class="todo-detail-people-stack"></div>
-                    <div id="todo-detail-people-chips" class="todo-detail-people-chips"></div>
-                  </div>
-
-                  <div class="todo-detail-fields">
-                    <label class="field">
-                      <span>Status</span>
-                      <select id="todo-detail-status"></select>
-                    </label>
-
-                    <label class="field">
-                      <span>Prioritet</span>
-                      <select id="todo-detail-priority"></select>
-                    </label>
-
-                    <label class="field">
-                      <span>Nositelj</span>
-                      <select id="todo-detail-assignee"></select>
-                    </label>
-
-                    <label class="field">
-                      <span>Rok</span>
-                      <input id="todo-detail-due-date" type="date" />
-                    </label>
-
-                    <select id="todo-detail-invited-user-ids" class="todo-multi-select" multiple size="6" hidden></select>
-                  </div>
-
-                  <section class="todo-comments-section">
-                    <div class="workspace-list-head">
-                      <div class="workspace-list-copy">
-                        <p class="section-kicker">Thread</p>
-                        <h3>Komunikacija</h3>
-                      </div>
-                    </div>
-
-                    <div id="todo-comments-body" class="todo-comments-list"></div>
-                    <p id="todo-comments-empty" class="empty-inline" hidden>Još nema komentara.</p>
-
-                    <form id="todo-comment-form" class="todo-comment-form">
-                      <label class="field field-span-full">
-                        <span>Dodaj poruku</span>
-                        <textarea id="todo-comment-message" rows="4" placeholder="Napiši komentar za sudionike teme..." required></textarea>
-                      </label>
-
-                      <div class="form-actions">
-                        <button type="submit" class="primary-button">Pošalji poruku</button>
-                      </div>
-                    </form>
-
-                    <p id="todo-comment-error" class="form-error" aria-live="polite"></p>
-                  </section>
-                </div>
-              </aside>
             </div>
           </section>
 
