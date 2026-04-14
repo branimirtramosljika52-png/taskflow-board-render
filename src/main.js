@@ -32829,6 +32829,341 @@ function createTodoTaskDetailRow(label, value = "") {
   return row;
 }
 
+function getTodoCommentMentionCandidates(task = {}, query = "") {
+  const normalizedQuery = String(query ?? "").trim().toLowerCase();
+  const priorityUserIds = new Set([
+    task.createdByUserId,
+    task.assignedToUserId,
+    ...(task.invitedUserIds ?? []),
+  ].map((value) => String(value ?? "").trim()).filter(Boolean));
+
+  return [...state.users]
+    .filter((user) => user?.isActive !== false)
+    .map((user) => ({
+      ...user,
+      mentionLabel: user.fullName || user.username || user.email || "Kolega",
+    }))
+    .filter((user) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+      const haystack = [
+        user.mentionLabel,
+        user.fullName,
+        user.username,
+        user.email,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(normalizedQuery);
+    })
+    .sort((left, right) => {
+      const leftPriority = priorityUserIds.has(String(left.id ?? "").trim()) ? 0 : 1;
+      const rightPriority = priorityUserIds.has(String(right.id ?? "").trim()) ? 0 : 1;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      return String(left.mentionLabel || "").localeCompare(String(right.mentionLabel || ""), "hr");
+    })
+    .slice(0, 6);
+}
+
+function getTodoCommentMentionState(value = "", caretIndex = String(value ?? "").length) {
+  const safeValue = String(value ?? "");
+  const safeCaretIndex = Math.max(0, Math.min(Number(caretIndex) || 0, safeValue.length));
+  const beforeCaret = safeValue.slice(0, safeCaretIndex);
+  const match = beforeCaret.match(/(^|[\s(])@([^\s@]*)$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const query = match[2] ?? "";
+  return {
+    query,
+    start: safeCaretIndex - query.length - 1,
+    end: safeCaretIndex,
+  };
+}
+
+function applyTodoCommentMention(textarea, mentionState, candidate = {}) {
+  if (!(textarea instanceof HTMLTextAreaElement) || !mentionState) {
+    return;
+  }
+
+  const label = String(candidate.mentionLabel || candidate.fullName || candidate.username || candidate.email || "").trim();
+  if (!label) {
+    return;
+  }
+
+  const value = textarea.value || "";
+  const nextValue = `${value.slice(0, mentionState.start)}@${label} ${value.slice(mentionState.end)}`;
+  const nextCaret = mentionState.start + label.length + 2;
+  textarea.value = nextValue;
+  textarea.focus();
+  textarea.setSelectionRange(nextCaret, nextCaret);
+}
+
+function createTodoCommentArticle(comment = {}) {
+  const article = document.createElement("article");
+  article.className = "todo-comment";
+  const isOwnComment = isTodoCommentFromCurrentUser(comment);
+  article.classList.toggle("is-own", isOwnComment);
+
+  const avatar = document.createElement("span");
+  avatar.className = "todo-comment-avatar";
+  avatar.textContent = getUserInitials({ fullName: comment.authorLabel || "Kolega" });
+
+  const content = document.createElement("div");
+  content.className = "todo-comment-content";
+
+  const top = document.createElement("div");
+  top.className = "todo-comment-top";
+
+  const author = document.createElement("strong");
+  author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "Safety360");
+
+  const time = document.createElement("span");
+  time.textContent = comment.createdAt ? formatDateTime(comment.createdAt) : "";
+  top.append(author, time);
+
+  const body = document.createElement("p");
+  body.className = "todo-comment-body";
+  body.textContent = String(comment.message || "").trim() || "Bez teksta komentara.";
+
+  content.append(top, body);
+  article.append(avatar, content);
+  return article;
+}
+
+function createTodoTaskCommentSection(task = {}) {
+  const section = document.createElement("section");
+  section.className = "todo-task-comments";
+  ["click", "keydown"].forEach((eventName) => {
+    section.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  const head = document.createElement("div");
+  head.className = "todo-task-comments-head";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "todo-task-comments-title";
+  const title = document.createElement("strong");
+  title.textContent = "Komentari";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = "Kao ispod objave: napiši komentar, Enter šalje, @ tagira kolegu.";
+  titleWrap.append(title, subtitle);
+
+  const count = createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft");
+  head.append(titleWrap, count);
+
+  const list = document.createElement("div");
+  list.className = "todo-comments-list";
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  if (comments.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-inline";
+    empty.textContent = "Još nema komentara na ovoj temi.";
+    list.append(empty);
+  } else {
+    list.append(...comments.map((comment) => createTodoCommentArticle(comment)));
+  }
+
+  const composer = document.createElement("form");
+  composer.className = "todo-comment-form todo-task-comment-form";
+
+  const field = document.createElement("label");
+  field.className = "field field-span-full todo-task-comment-field";
+
+  const fieldLabel = document.createElement("span");
+  fieldLabel.textContent = "Dodaj komentar";
+
+  const textareaWrap = document.createElement("div");
+  textareaWrap.className = "todo-task-comment-textarea-wrap";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "todo-task-comment-textarea";
+  textarea.rows = 3;
+  textarea.placeholder = "Napiši komentar... Enter šalje, Shift+Enter novi red, @ tagira kolegu.";
+  textarea.required = true;
+
+  const mentionMenu = document.createElement("div");
+  mentionMenu.className = "todo-comment-mention-menu";
+  mentionMenu.hidden = true;
+
+  textareaWrap.append(textarea, mentionMenu);
+  field.append(fieldLabel, textareaWrap);
+
+  const error = document.createElement("p");
+  error.className = "form-error";
+  error.setAttribute("aria-live", "polite");
+
+  const footer = document.createElement("div");
+  footer.className = "todo-task-comment-footer";
+
+  const hint = document.createElement("p");
+  hint.className = "todo-task-comment-hint";
+  hint.textContent = "Tip: `@Ime Prezime` ubaciš iz prijedloga ispod polja.";
+
+  const submitButton = document.createElement("button");
+  submitButton.type = "submit";
+  submitButton.className = "primary-button";
+  submitButton.textContent = "Komentiraj";
+
+  footer.append(hint, submitButton);
+  composer.append(field, error, footer);
+
+  let mentionState = null;
+  let mentionCandidates = [];
+  let mentionIndex = 0;
+
+  const closeMentionMenu = () => {
+    mentionState = null;
+    mentionCandidates = [];
+    mentionIndex = 0;
+    mentionMenu.hidden = true;
+    mentionMenu.replaceChildren();
+  };
+
+  const renderMentionMenu = () => {
+    if (!mentionState || mentionCandidates.length === 0) {
+      closeMentionMenu();
+      return;
+    }
+
+    mentionMenu.replaceChildren(...mentionCandidates.map((candidate, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "todo-comment-mention-option";
+      if (index === mentionIndex) {
+        button.classList.add("is-active");
+      }
+
+      const avatar = document.createElement("span");
+      avatar.className = "todo-comment-mention-avatar";
+      avatar.textContent = getUserInitials({ fullName: candidate.mentionLabel || "Kolega" });
+
+      const copy = document.createElement("span");
+      copy.className = "todo-comment-mention-copy";
+      const strong = document.createElement("strong");
+      strong.textContent = candidate.mentionLabel;
+      const meta = document.createElement("span");
+      meta.textContent = candidate.email || candidate.username || "Korisnik";
+      copy.append(strong, meta);
+
+      button.append(avatar, copy);
+      button.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        applyTodoCommentMention(textarea, mentionState, candidate);
+        closeMentionMenu();
+      });
+      return button;
+    }));
+
+    mentionMenu.hidden = false;
+  };
+
+  const updateMentionMenu = () => {
+    mentionState = getTodoCommentMentionState(textarea.value, textarea.selectionStart ?? textarea.value.length);
+    mentionCandidates = mentionState
+      ? getTodoCommentMentionCandidates(task, mentionState.query)
+      : [];
+    mentionIndex = 0;
+    renderMentionMenu();
+  };
+
+  const submitComment = async () => {
+    const message = textarea.value.trim();
+    if (!message) {
+      error.textContent = "Upiši komentar prije slanja.";
+      textarea.focus();
+      return;
+    }
+
+    textarea.disabled = true;
+    submitButton.disabled = true;
+    const success = await runMutation(() => apiRequest(`/todo-tasks/${task.id}/comments`, {
+      method: "POST",
+      body: {
+        message,
+      },
+    }), error);
+
+    if (!success) {
+      textarea.disabled = false;
+      submitButton.disabled = false;
+      textarea.focus();
+      return;
+    }
+
+    textarea.value = "";
+    closeMentionMenu();
+  };
+
+  textarea.addEventListener("input", updateMentionMenu);
+  textarea.addEventListener("click", updateMentionMenu);
+  textarea.addEventListener("keyup", (event) => {
+    if (["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"].includes(event.key)) {
+      return;
+    }
+    updateMentionMenu();
+  });
+  textarea.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (!mentionMenu.matches(":hover")) {
+        closeMentionMenu();
+      }
+    }, 120);
+  });
+  textarea.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+
+    if (!mentionMenu.hidden && mentionCandidates.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        mentionIndex = (mentionIndex + 1) % mentionCandidates.length;
+        renderMentionMenu();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        mentionIndex = (mentionIndex - 1 + mentionCandidates.length) % mentionCandidates.length;
+        renderMentionMenu();
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        applyTodoCommentMention(textarea, mentionState, mentionCandidates[mentionIndex]);
+        closeMentionMenu();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMentionMenu();
+        return;
+      }
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void submitComment();
+    }
+  });
+
+  composer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitComment();
+  });
+
+  section.append(head, list, composer);
+  return section;
+}
+
 function createTodoTaskExpandedPanel(task = {}) {
   if (!isTodoTaskExpanded(task.id)) {
     return null;
@@ -32924,7 +33259,7 @@ function createTodoTaskExpandedPanel(task = {}) {
     wrap.append(note);
   }
 
-  wrap.append(actions);
+  wrap.append(createTodoTaskCommentSection(task), actions);
   return wrap;
 }
 
@@ -33071,6 +33406,7 @@ function renderTodoList() {
       isTodoTaskOverdue(task) ? "is-danger" : "is-soft",
     ));
     meta.append(createTodoTaskPriorityBadge(task.priority || "Normal"));
+    meta.append(createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft"));
     if (task.updatedAt) {
       meta.append(createMetaPill(`Ažurirano ${formatCompactDate(String(task.updatedAt).slice(0, 10))}`, "is-soft"));
     }
