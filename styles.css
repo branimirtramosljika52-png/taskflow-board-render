@@ -3891,6 +3891,20 @@ body.is-reminder-editor-open {
   overflow-x: clip;
 }
 
+.todo-overview-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.todo-open-composer-button {
+  min-height: 34px;
+  padding-inline: 14px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
 .todo-summary-grid {
   display: none !important;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4019,11 +4033,30 @@ body.is-reminder-editor-open {
 }
 
 /* Guard rails: force ToDo core sections to stay visible and inside the viewport. */
+#todo-view .todo-composer-card,
+#todo-view .todo-list-card,
+#todo-view .todo-detail-card,
+#todo-view #todo-form,
+#todo-view .todo-list-card .todo-filter-row,
+#todo-view #todo-body {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
 #todo-view .todo-composer-card .section-heading h3,
 #todo-view .todo-list-card .workspace-list-copy h3 {
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
+}
+
+#todo-view #todo-form[hidden],
+#todo-view .todo-list-card .todo-filter-row[hidden] {
+  display: grid !important;
+}
+
+#todo-view #todo-body[hidden] {
+  display: grid !important;
 }
 
 #todo-view #todo-form {

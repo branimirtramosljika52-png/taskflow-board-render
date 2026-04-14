@@ -1781,6 +1781,7 @@ const todoTotalCount = document.querySelector("#todo-total-count");
 const todoAssignedCount = document.querySelector("#todo-assigned-count");
 const todoCreatedCount = document.querySelector("#todo-created-count");
 const todoOverdueCount = document.querySelector("#todo-overdue-count");
+const todoOpenComposerButton = document.querySelector("#todo-open-composer");
 const todoForm = document.querySelector("#todo-form");
 const todoIdInput = document.querySelector("#todo-id");
 const todoTitleInput = document.querySelector("#todo-title");
@@ -32365,6 +32366,57 @@ function renderTodoSummary() {
   todoOverdueCount.textContent = String(state.todoTasks.filter((item) => isTodoTaskOverdue(item)).length);
 }
 
+function ensureTodoWorkspaceVisible() {
+  const todoView = workspaceViews.todo;
+
+  if (!todoView) {
+    return;
+  }
+
+  const composerCard = todoView.querySelector(".todo-composer-card");
+  const listCard = todoView.querySelector(".todo-list-card");
+  const detailCard = todoView.querySelector(".todo-detail-card");
+  const formNode = todoForm instanceof HTMLElement ? todoForm : null;
+  const filterRowNode = todoView.querySelector(".todo-filter-row");
+  const listBodyNode = todoBody instanceof HTMLElement ? todoBody : null;
+
+  [
+    composerCard,
+    listCard,
+    detailCard,
+    composerCard?.querySelector(".section-heading"),
+    listCard?.querySelector(".workspace-list-head"),
+    formNode,
+    filterRowNode,
+    listBodyNode,
+  ].forEach((node) => {
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.hidden = false;
+    node.removeAttribute("hidden");
+    node.style.visibility = "visible";
+    node.style.opacity = "1";
+  });
+
+  if (formNode) {
+    formNode.style.display = "grid";
+    formNode.style.maxHeight = "none";
+    formNode.style.overflow = "visible";
+  }
+
+  if (filterRowNode instanceof HTMLElement) {
+    filterRowNode.style.display = "grid";
+    filterRowNode.style.maxHeight = "none";
+    filterRowNode.style.overflow = "visible";
+  }
+
+  if (listBodyNode) {
+    listBodyNode.style.display = "grid";
+    listBodyNode.style.minHeight = "120px";
+  }
+}
+
 function renderTodoList() {
   if (!todoBody) {
     return;
@@ -32585,6 +32637,7 @@ function renderTodoDetail() {
 }
 
 function renderTodo() {
+  ensureTodoWorkspaceVisible();
   renderTodoSummary();
   renderTopbarShortcutCounts();
   renderTodoList();
@@ -44297,6 +44350,10 @@ reminderEditorBackdrop?.addEventListener("click", dismissReminderEditor);
 reminderTitleInput?.addEventListener("input", syncReminderEditorChrome);
 remindersSearchInput?.addEventListener("input", renderReminders);
 remindersFilterStatusInput?.addEventListener("change", renderReminders);
+todoOpenComposerButton?.addEventListener("click", () => {
+  openTodoComposerForWorkOrder(null);
+  ensureTodoWorkspaceVisible();
+});
 todoWorkOrderIdInput?.addEventListener("change", renderTodoLinkPreview);
 todoForm?.addEventListener("submit", (event) => {
   event.preventDefault();
