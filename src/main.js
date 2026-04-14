@@ -32323,6 +32323,18 @@ function createTodoTaskPriorityBadge(priority = "Normal") {
   return badge;
 }
 
+function createTodoOpenTopicButton(taskId) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button todo-open-topic-button";
+  button.textContent = "Otvori temu";
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectTodoTask(taskId);
+  });
+  return button;
+}
+
 function formatTodoInvitedSummary(task = {}) {
   const labels = Array.isArray(task.invitedUserLabels)
     ? task.invitedUserLabels.filter(Boolean)
@@ -32424,7 +32436,11 @@ function renderTodoList() {
     ));
     meta.append(createMetaPill(`${task.commentCount ?? task.comments?.length ?? 0} komentara`, "is-soft"));
 
-    card.append(head, message, meta);
+    const footer = document.createElement("div");
+    footer.className = "todo-task-card-footer";
+    footer.append(meta, createTodoOpenTopicButton(task.id));
+
+    card.append(head, message, footer);
     return card;
   }));
 
