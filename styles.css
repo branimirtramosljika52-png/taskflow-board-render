@@ -3911,6 +3911,7 @@ body.is-reminder-editor-open {
 .todo-list-card,
 .todo-detail-card {
   display: grid;
+  align-content: start;
   gap: 14px;
   min-width: 0;
   width: 100%;
@@ -4015,6 +4016,31 @@ body.is-reminder-editor-open {
 .todo-task-card-subtitle,
 .todo-task-card-message {
   overflow-wrap: anywhere;
+}
+
+/* Guard rails: force ToDo core sections to stay visible and inside the viewport. */
+#todo-view .todo-composer-card .section-heading h3,
+#todo-view .todo-list-card .workspace-list-copy h3 {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#todo-view #todo-form {
+  display: grid !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#todo-view .todo-list-card .todo-filter-row {
+  display: grid !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#todo-view #todo-body {
+  display: grid !important;
+  min-height: 120px;
 }
 
 .todo-form-grid {
