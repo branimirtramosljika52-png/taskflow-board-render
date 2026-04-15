@@ -3069,11 +3069,27 @@ body.is-location-editor-open {
 }
 
 .people-management-panel .data-table td:nth-child(1) {
-  min-width: 280px;
+  min-width: 260px;
+}
+
+.people-management-panel .data-table td:nth-child(2) {
+  min-width: 220px;
+}
+
+.people-management-panel .data-table td:nth-child(3) {
+  min-width: 180px;
 }
 
 .people-management-panel .data-table td:nth-child(4) {
-  min-width: 240px;
+  min-width: 220px;
+}
+
+.people-management-panel .data-table td:nth-child(5) {
+  min-width: 150px;
+}
+
+.people-management-panel .table-actions {
+  white-space: nowrap;
 }
 
 .checkbox-field {

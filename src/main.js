@@ -2874,6 +2874,63 @@ function getUserSystemRoleLabel(role = "") {
   return "User";
 }
 
+function getUserOrganizationNames(user = {}) {
+  const directOrganizationName = String(user?.organizationName || "").trim();
+  const scopedNames = Array.isArray(user?.organizations)
+    ? user.organizations.map((organization) => String(organization?.name || "").trim()).filter(Boolean)
+    : [];
+  return Array.from(new Set([directOrganizationName, ...scopedNames].filter(Boolean)));
+}
+
+function getUserOrganizationSummary(user = {}) {
+  const organizationNames = getUserOrganizationNames(user);
+
+  if (organizationNames.length === 0) {
+    return "Bez organizacije";
+  }
+
+  if (organizationNames.length === 1) {
+    return organizationNames[0];
+  }
+
+  return `${organizationNames[0]} +${organizationNames.length - 1}`;
+}
+
+function getUserRoleSummary(user = {}) {
+  const profileRoleLabel = getUserProfileRoleLabel(user.profileRole);
+  const systemRoleLabel = getUserSystemRoleLabel(user.role);
+  const shouldShowSystemRole = user.role === "super_admin"
+    || (user.role === "admin" && profileRoleLabel !== systemRoleLabel);
+
+  return {
+    title: profileRoleLabel,
+    subtitle: shouldShowSystemRole ? `Sustav: ${systemRoleLabel}` : "",
+  };
+}
+
+function getUserAuthorizationSummary(user = {}) {
+  const panicQualification = getUserElectricalQualification(user, "elektro");
+  const switchQualification = getUserElectricalQualification(user, "tipkalo");
+  const activeAreas = [
+    { label: "Panik rasvjeta", qualification: panicQualification },
+    { label: "Tipkalo", qualification: switchQualification },
+  ].filter(({ qualification }) => hasQualificationCapability(qualification));
+
+  if (activeAreas.length === 0) {
+    return {
+      title: "Bez aktivnih ovlaštenja",
+      subtitle: "Nisu upisana aktivna područja",
+      meta: [],
+    };
+  }
+
+  return {
+    title: activeAreas.map((entry) => entry.label).join(" · "),
+    subtitle: activeAreas.map((entry) => getQualificationValidityLabel(entry.qualification)).join(" · "),
+    meta: [createMetaPill(`${activeAreas.length} aktivna`, "is-success")],
+  };
+}
+
 function getUserDocumentDisplayName(user = null) {
   const displayName = String(user?.displayName || "").trim();
   if (displayName) {
@@ -12974,21 +13031,17 @@ function createUserIdentityCell(user) {
 
   const copy = document.createElement("div");
   copy.className = "people-list-copy";
+  const fullName = String(user.fullName || "").trim();
   const displayName = String(user.displayName || "").trim();
-  const primaryName = user.fullName || user.email || "User";
-  const identityMeta = [
-    displayName && displayName !== primaryName ? displayName : "",
+  const primaryName = displayName || fullName || user.email || "User";
+  const secondaryParts = [
+    displayName && fullName && displayName !== fullName ? fullName : "",
     user.title ? String(user.title).trim() : "",
-    user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
-  ].filter(Boolean).join(" · ");
-  const organizationMeta = [
-    user.oib ? `OIB ${user.oib}` : "",
-    (user.organizations ?? []).map((organization) => organization.name).join(", ") || "Bez organizacije",
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean);
   copy.append(
+    createListLine(getUserOrganizationSummary(user), "list-eyebrow"),
     createListLine(primaryName, "list-primary"),
-    createListLine(identityMeta, "list-secondary"),
-    createListLine(organizationMeta, "list-tertiary"),
+    secondaryParts.length > 0 ? createListLine(secondaryParts.join(" · "), "list-secondary") : createListLine(user.email || "Bez emaila", "list-secondary"),
   );
 
   stack.append(avatar, copy);
@@ -12997,26 +13050,11 @@ function createUserIdentityCell(user) {
 }
 
 function createUserElectricalCell(user) {
-  const panicQualification = getUserElectricalQualification(user, "elektro");
-  const switchQualification = getUserElectricalQualification(user, "tipkalo");
-  const activeAreas = [
-    { label: "Panik rasvjeta", qualification: panicQualification },
-    { label: "Tipkalo", qualification: switchQualification },
-  ].filter(({ qualification }) => hasQualificationCapability(qualification));
-
-  if (activeAreas.length === 0) {
-    return createStackCell({
-      title: "Bez ovlaštenja",
-      subtitle: "Nisu upisana aktivna ovlaštenja",
-    });
-  }
-
+  const summary = getUserAuthorizationSummary(user);
   return createStackCell({
-    title: activeAreas.length === 1 ? activeAreas[0].label : `${activeAreas.length} aktivna područja`,
-    subtitle: activeAreas.map((entry) => entry.label).join(" · "),
-    tertiary: activeAreas
-      .map((entry) => `${entry.label}: ${getQualificationValidityLabel(entry.qualification)}`)
-      .join(" · "),
+    title: summary.title,
+    subtitle: summary.subtitle,
+    meta: summary.meta,
   });
 }
 
@@ -46041,12 +46079,20 @@ function renderLocations() {
 }
 
 function renderUsers() {
-  usersBody.replaceChildren(...state.users.map((user) => {
+  const sortedUsers = [...state.users].sort((left, right) => String(
+    left.displayName || left.fullName || left.email || "",
+  ).localeCompare(
+    String(right.displayName || right.fullName || right.email || ""),
+    "hr",
+  ));
+
+  usersBody.replaceChildren(...sortedUsers.map((user) => {
     const row = document.createElement("tr");
     row.className = "list-row";
     const actionsCell = document.createElement("td");
     actionsCell.className = "table-actions";
     const canEditUser = canManageRenderedUser(user);
+    const roleSummary = getUserRoleSummary(user);
 
     if (canEditUser) {
       row.classList.add("is-clickable");
@@ -46076,20 +46122,18 @@ function renderUsers() {
     row.append(
       createUserIdentityCell(user),
       createStackCell({
-        title: user.email,
+        title: user.email || "Bez emaila",
         subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Još bez prijave",
-        tertiary: user.title ? `Titula: ${user.title}` : "",
       }),
       createStackCell({
-        title: getUserProfileRoleLabel(user.profileRole),
-        subtitle: `Pristup: ${getUserSystemRoleLabel(user.role)}`,
+        title: roleSummary.title,
+        subtitle: roleSummary.subtitle,
       }),
       createUserElectricalCell(user),
-      createStackCell({
-        title: user.isActive ? "Active" : "Inactive",
-        subtitle: user.organizationName || "Bez organizacije",
-        meta: [createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive)],
-      }),
+      createBadgeCell(
+        createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive),
+        user.isActive ? "Pristup omogućen" : "Pristup blokiran",
+      ),
       actionsCell,
     );
 
