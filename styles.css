@@ -23384,6 +23384,7 @@ body.is-measurement-equipment-export-open {
 
 .sidebar-brand-pill {
   padding: 12px 14px;
+  min-height: 80px;
   border-color: rgba(185, 205, 237, 0.8);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(242, 248, 255, 0.95));
 }
@@ -23402,29 +23403,39 @@ body.is-measurement-equipment-export-open {
   grid-template-areas:
     "logo name"
     "logo workspace";
-  column-gap: 12px;
-  row-gap: 2px;
+  column-gap: 14px;
+  row-gap: 4px;
   align-items: center;
 }
 
 .sidebar-brand-meta > .brand-logo-badge {
   grid-area: logo;
+  align-self: center;
 }
 
 .sidebar-brand-meta > .brand-wordmark {
   grid-area: name;
+  align-self: end;
+  font-size: 1.3rem;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
 }
 
 .sidebar-brand-meta > #sidebar-active-organization {
   grid-area: workspace;
+  align-self: start;
+  color: #657995;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .sidebar-brand-logo {
-  --logo-badge-size: 40px;
-  border-radius: 14px;
+  --logo-badge-size: 46px;
+  border-radius: 16px;
 }
 
 .sidebar-group.is-open .sidebar-group-toggle {
