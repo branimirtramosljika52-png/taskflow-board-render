@@ -18145,6 +18145,14 @@ body.is-vehicle-reservation-open {
   min-height: 0;
 }
 
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .document-template-editor-panel.is-fill-mode .document-template-form {
   display: flex;
   flex-direction: column;
@@ -19349,7 +19357,7 @@ body.is-measurement-equipment-export-open {
 
 .document-template-builder-shell {
   display: grid;
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1.2fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
   min-height: calc(100dvh - 230px);
@@ -19364,10 +19372,6 @@ body.is-measurement-equipment-export-open {
   align-content: start;
 }
 
-.document-template-editor-panel.is-workspace-open {
-  --document-template-sticky-offset: 92px;
-}
-
 .document-template-editor-panel.is-workspace-open .document-template-workspace-head {
   position: relative;
   top: auto;
@@ -19380,38 +19384,25 @@ body.is-measurement-equipment-export-open {
 .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
-  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px);
-  align-items: stretch;
-}
-
-.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
-.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main,
-.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-preview {
-  position: relative;
-  top: auto;
-  align-self: stretch;
-  min-height: 0;
-  max-height: none;
   overflow: auto;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  align-items: start;
   padding-right: 6px;
   overscroll-behavior: contain;
 }
 
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
 .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main {
-  padding-right: 10px;
-}
-
-.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-preview-block {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-}
-
-.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-preview {
-  height: 100%;
-  min-height: 0;
+  position: relative;
+  top: auto;
+  align-self: start;
   max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main {
+  padding-right: 4px;
 }
 
 .document-template-toolbox {
@@ -22996,21 +22987,8 @@ body.is-measurement-equipment-export-open {
     align-items: start;
   }
 
-  .document-template-editor-panel.is-workspace-open .document-template-builder-sidebar {
-    grid-row: 1 / span 2;
-  }
-
   .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
-  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main,
-  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-preview {
-    overflow: visible;
-    padding-right: 0;
-  }
-
-  .document-template-editor-panel.is-workspace-open .document-template-builder-preview {
-    grid-column: 2;
-    position: static;
-    max-height: none;
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main {
     overflow: visible;
     padding-right: 0;
   }
@@ -23038,19 +23016,6 @@ body.is-measurement-equipment-export-open {
 
   .document-template-card-badges {
     justify-content: flex-start;
-  }
-
-  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
-    grid-template-columns: minmax(0, 1fr);
-    overflow: auto;
-  }
-
-  .document-template-editor-panel.is-workspace-open .document-template-builder-sidebar,
-  .document-template-editor-panel.is-workspace-open .document-template-builder-preview {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    padding-right: 0;
   }
 
   .document-template-inline-grid {

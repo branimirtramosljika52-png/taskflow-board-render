@@ -22685,7 +22685,7 @@ function syncDocumentTemplateEditorChrome() {
     documentTemplateSaveButton.hidden = fillMode;
   }
   if (documentTemplateOpenPdfPreviewButton) {
-    documentTemplateOpenPdfPreviewButton.hidden = true;
+    documentTemplateOpenPdfPreviewButton.hidden = fillMode;
   }
   if (documentTemplateExportPreviewButton) {
     documentTemplateExportPreviewButton.hidden = true;
@@ -49108,7 +49108,7 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
 });
 
 documentTemplateOpenPdfPreviewButton?.addEventListener("click", () => {
-  void exportDocumentTemplatePdf();
+  openDocumentTemplatePreviewWindow({ placeholderMode: false });
 });
 
 documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
