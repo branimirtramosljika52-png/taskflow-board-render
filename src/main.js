@@ -13274,7 +13274,7 @@ function renderWorkOrderActivity() {
 
     const actor = document.createElement("span");
     actor.className = "work-order-activity-actor";
-    actor.textContent = entry.actorLabel || "Safety360";
+    actor.textContent = entry.actorLabel || "SafeNexus";
     meta.append(actor);
 
     if (entry.fieldLabel) {
@@ -29506,7 +29506,7 @@ function renderAuthState() {
     }
 
     if (sidebarActiveOrganization) {
-      sidebarActiveOrganization.textContent = organization ? organization.name : "Safety360";
+      sidebarActiveOrganization.textContent = organization ? organization.name : "SafeNexus";
     }
 
     if (managementNavLabel) {
@@ -33630,7 +33630,7 @@ function rebuildTodoInvitedPanel() {
     const name = document.createElement("strong");
     name.textContent = user.fullName || user.email || user.username || "User";
     const meta = document.createElement("span");
-    meta.textContent = user.email || user.username || "Safety360";
+    meta.textContent = user.email || user.username || "SafeNexus";
     copy.append(name, meta);
 
     option.append(checkbox, avatar, copy);
@@ -34162,7 +34162,7 @@ function createTodoCommentArticle(comment = {}) {
   top.className = "todo-comment-top";
 
   const author = document.createElement("strong");
-  author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "Safety360");
+  author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "SafeNexus");
 
   const time = document.createElement("span");
   time.textContent = comment.createdAt ? formatDateTime(comment.createdAt) : "";
@@ -34438,7 +34438,7 @@ function createTodoTaskExpandedPanel(task = {}) {
   const detailList = document.createElement("div");
   detailList.className = "todo-task-detail-list";
   detailList.append(
-    createTodoTaskDetailRow("Otvorio", task.createdByLabel || "Safety360"),
+    createTodoTaskDetailRow("Otvorio", task.createdByLabel || "SafeNexus"),
     createTodoTaskDetailRow("Nositelj", task.assignedToLabel || "Bez nositelja"),
     createTodoTaskDetailRow(
       "Sudionici",
@@ -34905,7 +34905,7 @@ function renderTodoDetail() {
       const top = document.createElement("div");
       top.className = "todo-comment-top";
       const author = document.createElement("strong");
-      author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "Safety360");
+      author.textContent = isOwnComment ? "Ti" : (comment.authorLabel || "SafeNexus");
       const time = document.createElement("span");
       time.textContent = formatDateTime(comment.createdAt);
       top.append(author, time);
@@ -35185,7 +35185,7 @@ function syncOfferNumberPreview() {
 
   const preview = nextOfferNumber(state.offers ?? [], {
     year: Number(new Date().toISOString().slice(0, 4)),
-    initials: deriveOfferInitials(state.user?.fullName || state.user?.username || "Safety360") || "SD",
+    initials: deriveOfferInitials(state.user?.fullName || state.user?.username || "SafeNexus") || "SN",
   });
   offerNumberPreview.textContent = preview.offerNumber;
 }
@@ -35997,7 +35997,7 @@ function renderOffersModule() {
     footer.className = "offer-list-card-footer";
     const creator = document.createElement("span");
     creator.className = "offer-list-card-number";
-    creator.textContent = offer.createdByLabel || "Safety360";
+    creator.textContent = offer.createdByLabel || "SafeNexus";
     footer.append(creator);
 
     if (offer.showTotalAmount !== false) {

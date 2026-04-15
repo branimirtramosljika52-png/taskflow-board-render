@@ -1610,7 +1610,7 @@ export function deriveOfferInitials(value) {
     return initials.slice(0, 4);
   }
 
-  return (compact || "SD").slice(0, 4);
+  return (compact || "SN").slice(0, 4);
 }
 
 function normalizeOfferBreakdowns(breakdowns = []) {
@@ -2489,7 +2489,7 @@ function createTodoTaskCommentCore(input, createId = () => crypto.randomUUID(), 
     taskId: requireText(input.taskId, "Zadatak"),
     organizationId: requireText(input.organizationId, "Organizacija"),
     userId: normalizeText(input.userId),
-    authorLabel: normalizeText(input.authorLabel) || "Safety360",
+    authorLabel: normalizeText(input.authorLabel) || "SafeNexus",
     message: requireText(input.message, "Poruka"),
     createdAt: now(),
   };
@@ -5894,7 +5894,7 @@ function buildDashboardDistributionItems(widget, items) {
 
     if (widget.metricKey === "creator") {
       return countGroupedValues(items, (item) => item.createdByLabel, {
-        fallback: "Safety360",
+        fallback: "SafeNexus",
         limit: widget.limit,
       });
     }
@@ -5924,7 +5924,7 @@ function buildDashboardDistributionItems(widget, items) {
 
     if (widget.metricKey === "creator") {
       return countGroupedValues(items, (item) => item.createdByLabel, {
-        fallback: "Safety360",
+        fallback: "SafeNexus",
         limit: widget.limit,
       });
     }
