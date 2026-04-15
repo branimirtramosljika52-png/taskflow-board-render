@@ -2972,6 +2972,7 @@ export function createLegalFramework(
     tagsText: normalizeText(input.tagsText),
     sourceUrl: normalizeText(input.sourceUrl),
     note: normalizeText(input.note),
+    documents: normalizeAttachmentDocuments(input.documents),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -2992,6 +2993,9 @@ export function updateLegalFramework(current, patch, state, now = isoNow) {
     tagsText: hasOwn(patch, "tagsText") ? normalizeText(patch.tagsText) : current.tagsText,
     sourceUrl: hasOwn(patch, "sourceUrl") ? normalizeText(patch.sourceUrl) : current.sourceUrl,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    documents: hasOwn(patch, "documents")
+      ? normalizeAttachmentDocuments(patch.documents)
+      : normalizeAttachmentDocuments(current.documents),
     updatedAt: now(),
   };
 }
@@ -3019,6 +3023,7 @@ export function filterLegalFrameworks(
       item.versionLabel,
       item.tagsText,
       item.note,
+      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);

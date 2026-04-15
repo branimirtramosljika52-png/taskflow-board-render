@@ -3575,30 +3575,11 @@
             </section>
 
             <section id="legal-framework-module" class="legal-framework-module" hidden>
-              <div class="legal-framework-summary-grid">
-                <article class="legal-framework-stat-card is-total">
-                  <span class="legal-framework-stat-label">Ukupno</span>
-                  <strong id="legal-framework-total-count" class="legal-framework-stat-value">0</strong>
-                </article>
-                <article class="legal-framework-stat-card is-active">
-                  <span class="legal-framework-stat-label">Aktivni</span>
-                  <strong id="legal-framework-active-count" class="legal-framework-stat-value">0</strong>
-                </article>
-                <article class="legal-framework-stat-card is-inactive">
-                  <span class="legal-framework-stat-label">Neaktivni</span>
-                  <strong id="legal-framework-inactive-count" class="legal-framework-stat-value">0</strong>
-                </article>
-                <article class="legal-framework-stat-card is-review">
-                  <span class="legal-framework-stat-label">Review uskoro</span>
-                  <strong id="legal-framework-review-count" class="legal-framework-stat-value">0</strong>
-                </article>
-              </div>
-
-              <section class="panel legal-framework-toolbar-panel">
-                <div class="section-heading offers-section-heading">
+              <section class="panel legal-framework-list-panel">
+                <div class="section-heading offers-section-heading legal-framework-list-heading">
                   <div>
-                    <p class="section-kicker">Compliance</p>
-                    <h3>Zakoni i propisi</h3>
+                    <p class="section-kicker">Registar</p>
+                    <h3>Zakoni, pravilnici i norme</h3>
                   </div>
                   <button id="legal-framework-open-form" type="button" class="primary-button">+ Novi propis</button>
                 </div>
@@ -3606,21 +3587,12 @@
                 <div class="legal-framework-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="legal-framework-search" type="search" placeholder="Naziv propisa, zapisnik, tag..." />
+                    <input id="legal-framework-search" type="search" placeholder="Naziv propisa, zapisnik, dokument ili napomena..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
                     <select id="legal-framework-filter-status"></select>
                   </label>
-                </div>
-              </section>
-
-              <section class="panel legal-framework-list-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Registar</p>
-                    <h3>Popis propisa</h3>
-                  </div>
                 </div>
 
                 <p id="legal-framework-helper" class="helper-copy module-copy">Pregled zakona, pravilnika i internih propisa po organizaciji.</p>
@@ -3654,25 +3626,13 @@
                       <input id="legal-framework-reference-code" type="hidden" />
                       <input id="legal-framework-version-label" type="hidden" />
                       <input id="legal-framework-published-on" type="hidden" />
+                      <input id="legal-framework-effective-from" type="hidden" />
+                      <input id="legal-framework-review-date" type="hidden" />
+                      <input id="legal-framework-source-url" type="hidden" />
+                      <input id="legal-framework-tags-text" type="hidden" />
                       <label class="field">
                         <span>Status</span>
                         <select id="legal-framework-status"></select>
-                      </label>
-                      <label class="field">
-                        <span>Vrijedi od</span>
-                        <input id="legal-framework-effective-from" type="date" />
-                      </label>
-                      <label class="field">
-                        <span>Review datum</span>
-                        <input id="legal-framework-review-date" type="date" />
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Izvorni link</span>
-                        <input id="legal-framework-source-url" maxlength="255" placeholder="https://..." />
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Tagovi</span>
-                        <input id="legal-framework-tags-text" maxlength="255" placeholder="vatrogastvo, zaštita na radu, servis..." />
                       </label>
                     </div>
 
@@ -3680,6 +3640,21 @@
                       <span>Napomena</span>
                       <textarea id="legal-framework-note" rows="4" placeholder="Bitne napomene, sažetak obveze, što se koristi u zapisnicima..."></textarea>
                     </label>
+
+                    <section class="service-catalog-template-block legal-framework-documents-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Documents</p>
+                          <h3>PDF propisi i pravilnici</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="legal-framework-documents-input" type="file" accept=".pdf,application/pdf" multiple hidden />
+                          <button id="legal-framework-documents-upload" type="button" class="ghost-button">Dodaj PDF</button>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Dodaj PDF zakona, pravilnika ili internih akata koje želiš brzo skinuti iz popisa.</p>
+                      <div id="legal-framework-documents-list" class="module-attachment-list"></div>
+                    </section>
 
                     <section class="service-catalog-template-block">
                       <div class="section-heading offers-section-heading">

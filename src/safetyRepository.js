@@ -2054,7 +2054,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [legalFrameworkRows] = await connection.query(`
     SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
-           published_on, effective_from, review_date, status, tags_text, source_url, note,
+           published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json,
            created_at, updated_at
     FROM web_legal_frameworks
     ORDER BY
@@ -2083,6 +2083,9 @@ async function fetchSnapshotFromConnection(connection) {
     tagsText: row.tags_text ?? "",
     sourceUrl: row.source_url ?? "",
     note: row.note ?? "",
+    documents: parseJsonArray(row.documents_json)
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
@@ -2617,7 +2620,10 @@ export class InMemorySafetyRepository {
           reservedForLabels: [...(reservation.reservedForLabels ?? [])],
         })),
       })),
-      legalFrameworks: this.snapshot.legalFrameworks.map((item) => ({ ...item })),
+      legalFrameworks: this.snapshot.legalFrameworks.map((item) => ({
+        ...item,
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
       documentTemplates: this.snapshot.documentTemplates.map((item) => ({
         ...item,
         selectedLegalFrameworkIds: [...(item.selectedLegalFrameworkIds ?? [])],
@@ -3943,6 +3949,7 @@ export class MySqlSafetyRepository {
         tags_text TEXT NULL,
         source_url VARCHAR(255) NOT NULL DEFAULT '',
         note TEXT NULL,
+        documents_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_legal_frameworks_org_status (organization_id, status),
@@ -4067,6 +4074,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
+    await ensureColumnExists(this.pool, "web_legal_frameworks", "documents_json", "LONGTEXT NULL AFTER note");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entered_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER inventory_number");
@@ -6392,8 +6400,8 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_legal_frameworks
             (organization_id, title, category, authority_name, reference_code, version_label,
-             published_on, effective_from, review_date, status, tags_text, source_url, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -6409,6 +6417,7 @@ export class MySqlSafetyRepository {
           draft.tagsText,
           draft.sourceUrl,
           draft.note,
+          JSON.stringify(draft.documents ?? []),
         ],
       );
 
@@ -6453,7 +6462,7 @@ export class MySqlSafetyRepository {
           UPDATE web_legal_frameworks
           SET title = ?, category = ?, authority_name = ?, reference_code = ?, version_label = ?,
               published_on = ?, effective_from = ?, review_date = ?, status = ?, tags_text = ?,
-              source_url = ?, note = ?
+              source_url = ?, note = ?, documents_json = ?
           WHERE id = ?
         `,
         [
@@ -6469,6 +6478,7 @@ export class MySqlSafetyRepository {
           next.tagsText,
           next.sourceUrl,
           next.note,
+          JSON.stringify(next.documents ?? []),
           Number(id),
         ],
       );

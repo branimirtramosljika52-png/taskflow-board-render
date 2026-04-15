@@ -223,6 +223,14 @@ test("legal framework create, update, filter and sort work together", () => {
       referenceCode: "NN 92/10",
       reviewDate: "2026-04-05",
       tagsText: "vatra, zastita",
+      documents: [
+        {
+          id: "legal-doc-1",
+          fileName: "zakon-zastita-od-pozara.pdf",
+          fileType: "application/pdf",
+          dataUrl: "data:application/pdf;base64,AAAA",
+        },
+      ],
     },
     state,
     () => "legal-1",
@@ -259,6 +267,16 @@ test("legal framework create, update, filter and sort work together", () => {
 
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "legal-2");
+  assert.equal(first.documents.length, 1);
+  assert.equal(first.documents[0].fileName, "zakon-zastita-od-pozara.pdf");
+
+  const filteredByDocument = filterLegalFrameworks([first, updatedSecond], {
+    query: "pozara.pdf",
+    status: "all",
+  });
+
+  assert.equal(filteredByDocument.length, 1);
+  assert.equal(filteredByDocument[0].id, "legal-1");
 
   const sorted = sortLegalFrameworks([updatedSecond, first]);
   assert.equal(sorted[0].id, "legal-1");

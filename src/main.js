@@ -96,6 +96,7 @@ const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
+const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
   "bmp",
@@ -1460,6 +1461,9 @@ const legalFrameworkEffectiveFromInput = document.querySelector("#legal-framewor
 const legalFrameworkReviewDateInput = document.querySelector("#legal-framework-review-date");
 const legalFrameworkSourceUrlInput = document.querySelector("#legal-framework-source-url");
 const legalFrameworkTagsTextInput = document.querySelector("#legal-framework-tags-text");
+const legalFrameworkDocumentsInput = document.querySelector("#legal-framework-documents-input");
+const legalFrameworkDocumentsUploadButton = document.querySelector("#legal-framework-documents-upload");
+const legalFrameworkDocumentsList = document.querySelector("#legal-framework-documents-list");
 const legalFrameworkTemplateList = document.querySelector("#legal-framework-template-list");
 const legalFrameworkNoteInput = document.querySelector("#legal-framework-note");
 const legalFrameworkError = document.querySelector("#legal-framework-error");
@@ -1762,6 +1766,7 @@ let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
+let legalFrameworkDocumentDrafts = [];
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
@@ -4432,6 +4437,7 @@ function renderModuleView() {
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
+    && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isSettingsModule
     && !isVehiclesModule;
@@ -19693,6 +19699,176 @@ function getLegalFrameworkLinkedTemplateTitles(item = {}) {
   return getTemplateTitlesByIds(getLegalFrameworkLinkedTemplateIds(item));
 }
 
+function isLegalFrameworkDocumentFileAllowed(file) {
+  const fileName = String(file?.name || "").trim().toLowerCase();
+  const fileType = String(file?.type || "").trim().toLowerCase();
+  return fileName.endsWith(".pdf") || fileType.includes("pdf");
+}
+
+function formatLegalFrameworkDocumentCountLabel(count = 0) {
+  const safeCount = Math.max(0, Number(count) || 0);
+
+  if (safeCount === 1) {
+    return "1 PDF dokument";
+  }
+
+  if (safeCount >= 2 && safeCount <= 4) {
+    return `${safeCount} PDF dokumenta`;
+  }
+
+  return `${safeCount} PDF dokumenata`;
+}
+
+function formatLegalFrameworkTemplateCountLabel(count = 0) {
+  const safeCount = Math.max(0, Number(count) || 0);
+
+  if (safeCount === 0) {
+    return "Bez povezanih zapisnika";
+  }
+
+  if (safeCount === 1) {
+    return "1 povezani zapisnik";
+  }
+
+  if (safeCount >= 2 && safeCount <= 4) {
+    return `${safeCount} povezana zapisnika`;
+  }
+
+  return `${safeCount} povezanih zapisnika`;
+}
+
+function setLegalFrameworkDocumentDrafts(items = []) {
+  legalFrameworkDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft({
+      ...item,
+      documentCategory: item?.documentCategory || "pdf",
+    }))
+    .filter((item) => item.fileName && (item.dataUrl || item.storageUrl));
+}
+
+function createLegalFrameworkCardDocumentActions(item = {}) {
+  const documents = (Array.isArray(item.documents) ? item.documents : [])
+    .map((entry) => createModuleAttachmentDraft(entry))
+    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "legal-framework-card-actions";
+
+  documents.slice(0, 3).forEach((entry) => {
+    const downloadButton = createIconActionButton(
+      `Preuzmi ${entry.fileName || "PDF dokument"}`,
+      "download",
+      "",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerModuleAttachmentDownload(entry);
+      },
+    );
+    downloadButton.classList.add("legal-framework-card-download-button");
+    actions.append(downloadButton);
+  });
+
+  if (documents.length > 3) {
+    actions.append(createBadge(`+${documents.length - 3}`, "legal-framework-meta-badge"));
+  }
+
+  return actions;
+}
+
+function renderLegalFrameworkDocuments() {
+  if (!legalFrameworkDocumentsList) {
+    return;
+  }
+
+  if (legalFrameworkDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema dodanih PDF dokumenata za ovaj propis.";
+    legalFrameworkDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  legalFrameworkDocumentsList.replaceChildren(...legalFrameworkDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row legal-framework-document-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "PDF dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      "PDF",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    if (entry.description) {
+      const description = document.createElement("p");
+      description.className = "module-attachment-description";
+      description.textContent = entry.description;
+      copy.append(description);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Preuzmi PDF", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni PDF", "trash", "card-danger", () => {
+        legalFrameworkDocumentDrafts = legalFrameworkDocumentDrafts.filter((item) => String(item.id) !== String(entry.id));
+        renderLegalFrameworkDocuments();
+      }),
+    );
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueLegalFrameworkDocuments(files) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!uploadFiles.length) {
+    return;
+  }
+
+  for (const file of uploadFiles) {
+    if (!isLegalFrameworkDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podrzan. Dozvoljen je samo PDF.`);
+    }
+
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  const nextDocuments = await Promise.all(uploadFiles.map(async (file) => createModuleAttachmentDraft({
+    fileName: file.name,
+    fileType: file.type || "application/pdf",
+    fileSize: file.size || 0,
+    documentCategory: "pdf",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  legalFrameworkDocumentDrafts = [
+    ...legalFrameworkDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderLegalFrameworkDocuments();
+}
+
 function renderTemplateSelectionChecklist(
   container,
   {
@@ -22280,6 +22456,10 @@ function buildLegalFrameworkPayload() {
     reviewDate: legalFrameworkReviewDateInput?.value || "",
     sourceUrl: legalFrameworkSourceUrlInput?.value || "",
     tagsText: legalFrameworkTagsTextInput?.value || "",
+    documents: legalFrameworkDocumentDrafts.map((item) => {
+      const { documentCategoryLocked, ...payload } = item;
+      return { ...payload };
+    }),
     linkedTemplateIds: getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"),
     note: legalFrameworkNoteInput?.value || "",
   };
@@ -22301,7 +22481,9 @@ function resetLegalFrameworkForm() {
   if (legalFrameworkError) {
     legalFrameworkError.textContent = "";
   }
+  setLegalFrameworkDocumentDrafts([]);
   renderLegalFrameworkTemplateChecklist([]);
+  renderLegalFrameworkDocuments();
   syncLegalFrameworkEditorChrome();
 }
 
@@ -22332,7 +22514,9 @@ function hydrateLegalFrameworkForm(item) {
   legalFrameworkSourceUrlInput.value = item.sourceUrl || "";
   legalFrameworkTagsTextInput.value = item.tagsText || "";
   legalFrameworkNoteInput.value = item.note || "";
+  setLegalFrameworkDocumentDrafts(item.documents ?? []);
   renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedTemplateIds(item));
+  renderLegalFrameworkDocuments();
   if (legalFrameworkError) {
     legalFrameworkError.textContent = "";
   }
@@ -22381,19 +22565,6 @@ function renderLegalFrameworkModule() {
 
   const allItems = sortLegalFrameworks(state.legalFrameworks ?? []);
   const visibleItems = sortLegalFrameworks(filterLegalFrameworks(state.legalFrameworks ?? [], filters));
-
-  if (legalFrameworkTotalCount) {
-    legalFrameworkTotalCount.textContent = String(allItems.length);
-  }
-  if (legalFrameworkActiveCount) {
-    legalFrameworkActiveCount.textContent = String(allItems.filter((item) => item.status === "active").length);
-  }
-  if (legalFrameworkInactiveCount) {
-    legalFrameworkInactiveCount.textContent = String(allItems.filter((item) => item.status === "inactive").length);
-  }
-  if (legalFrameworkReviewCount) {
-    legalFrameworkReviewCount.textContent = String(allItems.filter((item) => isLegalFrameworkReviewSoon(item)).length);
-  }
   if (legalFrameworkHelper) {
     legalFrameworkHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} propisa.`
@@ -22411,43 +22582,51 @@ function renderLegalFrameworkModule() {
 
     const head = document.createElement("div");
     head.className = "legal-framework-card-head";
+    const primary = document.createElement("div");
+    primary.className = "legal-framework-card-primary";
     const heading = document.createElement("div");
     heading.className = "legal-framework-card-heading";
     const title = document.createElement("h4");
     title.textContent = item.title || "Bez naziva";
+    const linkedTemplateTitles = getLegalFrameworkLinkedTemplateTitles(item);
+    const documentCount = Array.isArray(item.documents) ? item.documents.length : 0;
     const meta = document.createElement("p");
     meta.className = "legal-framework-card-meta";
     meta.textContent = [
-      item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "",
-      item.reviewDate ? `Review ${formatCompactDate(item.reviewDate)}` : "",
-      item.sourceUrl ? "Ima izvorni link" : "",
-    ].filter(Boolean).join(" | ") || "Bez dodatnih rokova i poveznica";
+      documentCount > 0 ? formatLegalFrameworkDocumentCountLabel(documentCount) : "Bez PDF dokumenata",
+      formatLegalFrameworkTemplateCountLabel(linkedTemplateTitles.length),
+    ].filter(Boolean).join(" | ");
     heading.append(title, meta);
-    head.append(createLegalFrameworkStatusBadge(item.status), heading);
+    primary.append(createLegalFrameworkStatusBadge(item.status), heading);
+    head.append(primary);
+
+    const documentActions = createLegalFrameworkCardDocumentActions(item);
+    if (documentActions) {
+      head.append(documentActions);
+    }
 
     const note = document.createElement("p");
     note.className = "legal-framework-card-note";
-    note.textContent = item.note || item.sourceUrl || "Dodaj sažetak obveze, link na izvor ili bitne napomene za zapisnik.";
+    note.textContent = item.note || "Dodaj sažetak obveze ili kratku napomenu koja ide u zapisnik.";
 
     const footer = document.createElement("div");
     footer.className = "legal-framework-card-footer";
-    const dates = document.createElement("div");
-    dates.className = "legal-framework-card-dates";
-    dates.append(createBadge(item.effectiveFrom ? `Vrijedi od ${formatCompactDate(item.effectiveFrom)}` : "Bez pocetka primjene", "legal-framework-meta-badge"));
-    if (item.reviewDate) {
-      dates.append(createBadge(`Review ${formatCompactDate(item.reviewDate)}`, isLegalFrameworkReviewSoon(item) ? "legal-framework-meta-badge is-review" : "legal-framework-meta-badge"));
-    }
-
     const tags = document.createElement("div");
     tags.className = "legal-framework-card-tags";
-    const linkedTemplateTitles = getLegalFrameworkLinkedTemplateTitles(item);
     if (linkedTemplateTitles.length > 0) {
       tags.append(...linkedTemplateTitles.slice(0, 5).map((entry) => createBadge(entry, "legal-framework-tag")));
     } else {
       tags.append(createBadge("Bez zapisnika", "legal-framework-tag is-muted"));
     }
 
-    footer.append(dates, tags);
+    const documentsMeta = document.createElement("div");
+    documentsMeta.className = "legal-framework-card-documents";
+    documentsMeta.append(createBadge(
+      documentCount > 0 ? formatLegalFrameworkDocumentCountLabel(documentCount) : "Bez PDF dokumenata",
+      "legal-framework-meta-badge",
+    ));
+
+    footer.append(tags, documentsMeta);
     card.append(head, note, footer);
 
     const openCard = () => {
@@ -37034,6 +37213,7 @@ function renderSharedOptions() {
   }
   if (state.legalFrameworkEditorOpen) {
     renderLegalFrameworkTemplateChecklist(getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"));
+    renderLegalFrameworkDocuments();
   }
   if (state.measurementEquipmentEditorOpen) {
     renderMeasurementEquipmentTemplateChecklist(getMeasurementEquipmentTemplateSelectionIds());
@@ -37050,6 +37230,9 @@ function renderSharedOptions() {
   }
   if (measurementEquipmentDocumentsInput) {
     measurementEquipmentDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
+  }
+  if (legalFrameworkDocumentsInput) {
+    legalFrameworkDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
   }
   syncCompanySelectionPreview(
     workOrderCompanyIdInput?.value || "",
@@ -47342,6 +47525,22 @@ legalFrameworkOpenFormButton?.addEventListener("click", () => {
   openLegalFrameworkEditor();
   requestAnimationFrame(() => {
     legalFrameworkTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+legalFrameworkDocumentsUploadButton?.addEventListener("click", () => {
+  legalFrameworkDocumentsInput?.click();
+});
+
+legalFrameworkDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(legalFrameworkDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueLegalFrameworkDocuments(files), legalFrameworkError).then(() => {
+    legalFrameworkDocumentsInput.value = "";
   });
 });
 

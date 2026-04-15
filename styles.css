@@ -17485,6 +17485,70 @@ body.is-vehicle-reservation-open {
   gap: 8px;
 }
 
+.legal-framework-list-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.legal-framework-list-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.legal-framework-list-heading > .primary-button {
+  flex: 0 0 auto;
+}
+
+.legal-framework-card {
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.legal-framework-card-head {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.legal-framework-card-primary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.legal-framework-card-heading {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.legal-framework-card-actions,
+.legal-framework-card-documents {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.legal-framework-card-download-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+
+.legal-framework-card-footer {
+  justify-content: flex-start;
+}
+
+.legal-framework-document-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.legal-framework-documents-block .document-template-reference-actions > button {
+  flex: 0 0 auto;
+  min-width: 128px;
+}
+
 .measurement-equipment-card-actions {
   display: inline-flex;
   align-items: center;
@@ -21623,6 +21687,25 @@ body.is-measurement-equipment-export-open {
   .work-order-document-selection-person-area-grid,
   .work-order-document-selection-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .legal-framework-list-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .legal-framework-list-heading > .primary-button {
+    width: 100%;
+  }
+
+  .legal-framework-card-head,
+  .legal-framework-card-primary {
+    flex-direction: column;
+  }
+
+  .legal-framework-card-actions,
+  .legal-framework-card-documents {
+    justify-content: flex-start;
   }
 
   .document-template-preview-person-signature.is-right-aligned {
