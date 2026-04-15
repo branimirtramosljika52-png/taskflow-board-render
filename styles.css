@@ -17181,6 +17181,10 @@ body.is-vehicle-reservation-open {
   gap: 12px;
 }
 
+.safety-authorization-filters {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .legal-framework-list,
 .service-catalog-list,
 .measurement-equipment-list,
@@ -17658,6 +17662,7 @@ body.is-vehicle-reservation-open {
 }
 
 .legal-framework-card-actions,
+.safety-authorization-card-actions,
 .legal-framework-card-documents {
   display: inline-flex;
   flex-wrap: wrap;
@@ -17665,7 +17670,8 @@ body.is-vehicle-reservation-open {
   gap: 8px;
 }
 
-.legal-framework-card-download-button {
+.legal-framework-card-download-button,
+.safety-authorization-card-download-button {
   width: 34px;
   min-width: 34px;
   height: 34px;
@@ -18094,6 +18100,14 @@ body.is-document-template-editor-open {
 .measurement-equipment-card-note,
 .safety-authorization-card-note {
   font-size: 0.88rem;
+}
+
+.safety-authorization-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .measurement-equipment-card-badges {
@@ -21849,6 +21863,7 @@ body.is-measurement-equipment-export-open {
   }
 
   .legal-framework-card-actions,
+  .safety-authorization-card-actions,
   .legal-framework-card-documents {
     justify-content: flex-start;
   }

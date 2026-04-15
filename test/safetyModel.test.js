@@ -2556,7 +2556,15 @@ test("safety authorizations support template links, filters and sorting", () => 
       title: "Ovlaštenje za servis",
       scope: "Servis i pregled",
       issuedOn: "2026-02-01",
-      validUntil: "",
+      validForever: true,
+      documents: [
+        {
+          id: "auth-doc-1",
+          fileName: "ovlastenje-servis.pdf",
+          fileType: "application/pdf",
+          dataUrl: "data:application/pdf;base64,AAAA",
+        },
+      ],
     },
     state,
     () => "auth-2",
@@ -2575,9 +2583,12 @@ test("safety authorizations support template links, filters and sorting", () => 
 
   assert.deepEqual(first.linkedTemplateTitles, ["Servisni zapisnik"]);
   assert.deepEqual(updatedSecond.linkedTemplateTitles, ["Servisni zapisnik"]);
+  assert.equal(second.validForever, true);
+  assert.equal(second.validUntil, null);
+  assert.equal(second.documents[0].fileName, "ovlastenje-servis.pdf");
 
   const filtered = filterSafetyAuthorizations([first, updatedSecond], {
-    query: "internu ekipu",
+    query: "ovlastenje-servis.pdf",
   });
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "auth-2");

@@ -2137,6 +2137,7 @@
                   <option value="all">Sve vrste</option>
                   <option value="reminder">Reminders</option>
                   <option value="equipment">Mjerna oprema</option>
+                  <option value="authorization">Ovlastenja</option>
                   <option value="vehicle">Vozila</option>
                   <option value="todo_comment">Komentari</option>
                 </select>
@@ -3069,6 +3070,28 @@
                   </div>
                 </div>
                 <p id="settings-vehicle-notifications-feedback" class="form-error" aria-live="polite"></p>
+              </section>
+              <section class="panel settings-notifications-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Safety authorization</p>
+                    <h3>Podsjetnici za ovlastenja</h3>
+                  </div>
+                </div>
+                <div class="settings-notification-group">
+                  <strong>Istek ovlastenja</strong>
+                  <div class="settings-notification-inline">
+                    <label class="field">
+                      <span>Dana prije isteka</span>
+                      <input id="settings-safety-authorization-lead-days" type="number" min="1" max="365" inputmode="numeric" />
+                    </label>
+                    <label class="field">
+                      <span>Ponavljaj svakih (dana)</span>
+                      <input id="settings-safety-authorization-repeat-days" type="number" min="1" max="90" inputmode="numeric" />
+                    </label>
+                  </div>
+                </div>
+                <p id="settings-safety-authorization-notifications-feedback" class="form-error" aria-live="polite"></p>
               </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>
@@ -4231,26 +4254,11 @@
             </section>
 
             <section id="safety-authorization-module" class="safety-authorization-module" hidden>
-              <div class="safety-authorization-summary-grid">
-                <article class="safety-authorization-stat-card is-total">
-                  <span class="safety-authorization-stat-label">Ukupno</span>
-                  <strong id="safety-authorization-total-count" class="safety-authorization-stat-value">0</strong>
-                </article>
-                <article class="safety-authorization-stat-card is-active">
-                  <span class="safety-authorization-stat-label">Vazeca</span>
-                  <strong id="safety-authorization-active-count" class="safety-authorization-stat-value">0</strong>
-                </article>
-                <article class="safety-authorization-stat-card is-expiring">
-                  <span class="safety-authorization-stat-label">Istjece uskoro</span>
-                  <strong id="safety-authorization-expiring-count" class="safety-authorization-stat-value">0</strong>
-                </article>
-              </div>
-
-              <section class="panel safety-authorization-toolbar-panel">
+              <section class="panel safety-authorization-list-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
-                    <p class="section-kicker">Authorizations</p>
-                    <h3>Ovlaštenja</h3>
+                    <p class="section-kicker">Register</p>
+                    <h3>Popis ovlaštenja</h3>
                   </div>
                   <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novo ovlaštenje</button>
                 </div>
@@ -4258,17 +4266,8 @@
                 <div class="safety-authorization-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="safety-authorization-search" type="search" placeholder="Naziv ovlaštenja, opseg, zapisnik..." />
+                    <input id="safety-authorization-search" type="search" placeholder="Naziv ovlastenja, opseg, PDF..." />
                   </label>
-                </div>
-              </section>
-
-              <section class="panel safety-authorization-list-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Register</p>
-                    <h3>Popis ovlaštenja</h3>
-                  </div>
                 </div>
 
                 <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ovlaštenja, rokova i zapisnika u kojima se spominju.</p>
@@ -4309,7 +4308,29 @@
                         <span>Vrijedi do</span>
                         <input id="safety-authorization-valid-until" type="date" />
                       </label>
+                      <div class="field qualification-validity-field">
+                        <span>Rok</span>
+                        <label class="checkbox-field">
+                          <input id="safety-authorization-valid-forever" type="checkbox" />
+                          <span>Vrijedi trajno</span>
+                        </label>
+                      </div>
                     </div>
+
+                    <section class="service-catalog-template-block legal-framework-documents-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Documents</p>
+                          <h3>PDF ovlastenja i rjesenja</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="safety-authorization-documents-input" type="file" accept=".pdf,application/pdf" multiple hidden />
+                          <button id="safety-authorization-documents-upload" type="button" class="ghost-button">Dodaj PDF</button>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Dodaj PDF rjesenja, uvjerenja ili drugih dokumenata koje kasnije mozes skinuti iz popisa.</p>
+                      <div id="safety-authorization-documents-list" class="module-attachment-list"></div>
+                    </section>
 
                     <section class="service-catalog-template-block">
                       <div class="section-heading offers-section-heading">

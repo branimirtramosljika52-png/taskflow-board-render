@@ -1495,6 +1495,25 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/safety-authorizations/notification-settings") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati postavke notifikacija ovlastenja.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertSafetyAuthorizationNotificationSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        notificationSettings: {
+          leadDaysBeforeExpiry: body?.leadDaysBeforeExpiry,
+          repeatEveryDays: body?.repeatEveryDays,
+        },
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/document-records") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo pregledavati zapisnike.");

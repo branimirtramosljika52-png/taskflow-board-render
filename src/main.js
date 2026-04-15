@@ -195,6 +195,10 @@ const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
 });
+const DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeExpiry: 30,
+  repeatEveryDays: 7,
+});
 const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   registrationLeadDaysBeforeExpiry: 30,
   registrationRepeatEveryDays: 7,
@@ -601,6 +605,9 @@ const state = {
   measurementEquipmentCardTemplate: null,
   measurementEquipmentNotificationSettings: {
     ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+  },
+  safetyAuthorizationNotificationSettings: {
+    ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
   },
   vehicleNotificationSettings: {
     ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
@@ -1295,12 +1302,15 @@ const cloudModule = document.querySelector("#cloud-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
+const settingsSafetyAuthorizationLeadDaysInput = document.querySelector("#settings-safety-authorization-lead-days");
+const settingsSafetyAuthorizationRepeatDaysInput = document.querySelector("#settings-safety-authorization-repeat-days");
 const settingsVehicleRegistrationLeadDaysInput = document.querySelector("#settings-vehicle-registration-lead-days");
 const settingsVehicleRegistrationRepeatDaysInput = document.querySelector("#settings-vehicle-registration-repeat-days");
 const settingsVehicleTireLeadDaysInput = document.querySelector("#settings-vehicle-tire-lead-days");
 const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-vehicle-tire-repeat-days");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
+const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector("#settings-safety-authorization-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
@@ -1710,6 +1720,10 @@ const safetyAuthorizationTitleInput = document.querySelector("#safety-authorizat
 const safetyAuthorizationScopeInput = document.querySelector("#safety-authorization-scope");
 const safetyAuthorizationIssuedOnInput = document.querySelector("#safety-authorization-issued-on");
 const safetyAuthorizationValidUntilInput = document.querySelector("#safety-authorization-valid-until");
+const safetyAuthorizationValidForeverInput = document.querySelector("#safety-authorization-valid-forever");
+const safetyAuthorizationDocumentsInput = document.querySelector("#safety-authorization-documents-input");
+const safetyAuthorizationDocumentsUploadButton = document.querySelector("#safety-authorization-documents-upload");
+const safetyAuthorizationDocumentsList = document.querySelector("#safety-authorization-documents-list");
 const safetyAuthorizationTemplateList = document.querySelector("#safety-authorization-template-list");
 const safetyAuthorizationNoteInput = document.querySelector("#safety-authorization-note");
 const safetyAuthorizationError = document.querySelector("#safety-authorization-error");
@@ -1781,6 +1795,7 @@ let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
 let legalFrameworkDocumentDrafts = [];
+let safetyAuthorizationDocumentDrafts = [];
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
@@ -2997,6 +3012,29 @@ function getMeasurementEquipmentNotificationSettings() {
   return normalizeMeasurementEquipmentNotificationSettings(state.measurementEquipmentNotificationSettings);
 }
 
+function normalizeSafetyAuthorizationNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeExpiry: normalizeNotificationDayValue(
+      source.leadDaysBeforeExpiry ?? source.leadDays,
+      fallback.leadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeNotificationDayValue(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function getSafetyAuthorizationNotificationSettings() {
+  return normalizeSafetyAuthorizationNotificationSettings(state.safetyAuthorizationNotificationSettings);
+}
+
 function normalizeVehicleNotificationSettings(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -3164,6 +3202,9 @@ function applySnapshot(payload) {
   state.measurementEquipmentCardTemplate = payload.measurementEquipmentCardTemplate ?? null;
   state.measurementEquipmentNotificationSettings = normalizeMeasurementEquipmentNotificationSettings(
     payload.measurementEquipmentNotificationSettings,
+  );
+  state.safetyAuthorizationNotificationSettings = normalizeSafetyAuthorizationNotificationSettings(
+    payload.safetyAuthorizationNotificationSettings,
   );
   state.vehicleNotificationSettings = normalizeVehicleNotificationSettings(
     payload.vehicleNotificationSettings,
@@ -4599,6 +4640,7 @@ function renderModuleView() {
     && !isDocumentsModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
+    && !isSafetyAuthorizationModule
     && !isServiceCatalogModule
     && !isSettingsModule
     && !isVehiclesModule;
@@ -7709,6 +7751,7 @@ function renderSettingsModule() {
 
   const canManageSettings = getCanManageMasterData();
   const measurementNotificationSettings = getMeasurementEquipmentNotificationSettings();
+  const safetyAuthorizationNotificationSettings = getSafetyAuthorizationNotificationSettings();
   const vehicleNotificationSettings = getVehicleNotificationSettings();
 
   if (settingsMeasurementLeadDaysInput) {
@@ -7723,6 +7766,20 @@ function renderSettingsModule() {
       settingsMeasurementRepeatDaysInput.value = String(measurementNotificationSettings.repeatEveryDays);
     }
     settingsMeasurementRepeatDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsSafetyAuthorizationLeadDaysInput) {
+    if (document.activeElement !== settingsSafetyAuthorizationLeadDaysInput) {
+      settingsSafetyAuthorizationLeadDaysInput.value = String(safetyAuthorizationNotificationSettings.leadDaysBeforeExpiry);
+    }
+    settingsSafetyAuthorizationLeadDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsSafetyAuthorizationRepeatDaysInput) {
+    if (document.activeElement !== settingsSafetyAuthorizationRepeatDaysInput) {
+      settingsSafetyAuthorizationRepeatDaysInput.value = String(safetyAuthorizationNotificationSettings.repeatEveryDays);
+    }
+    settingsSafetyAuthorizationRepeatDaysInput.disabled = !canManageSettings;
   }
 
   if (settingsVehicleRegistrationLeadDaysInput) {
@@ -7758,7 +7815,7 @@ function renderSettingsModule() {
     settingsSaveAllButton.hidden = !canManageSettings;
   }
 
-  [settingsNotificationsFeedback, settingsVehicleNotificationsFeedback].forEach((feedbackNode) => {
+  [settingsNotificationsFeedback, settingsSafetyAuthorizationNotificationsFeedback, settingsVehicleNotificationsFeedback].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
     }
@@ -7811,6 +7868,51 @@ async function saveMeasurementEquipmentNotificationSettings(options = {}) {
 
   if (success && settingsNotificationsFeedback) {
     settingsNotificationsFeedback.textContent = successMessage;
+  }
+
+  return success;
+}
+
+async function saveSafetyAuthorizationNotificationSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Postavke su spremljene.";
+
+  if (!getCanManageMasterData()) {
+    if (settingsSafetyAuthorizationNotificationsFeedback) {
+      settingsSafetyAuthorizationNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
+    }
+    return false;
+  }
+
+  const leadDaysBeforeExpiry = normalizeNotificationDayValue(
+    settingsSafetyAuthorizationLeadDaysInput?.value,
+    DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS.leadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const repeatEveryDays = normalizeNotificationDayValue(
+    settingsSafetyAuthorizationRepeatDaysInput?.value,
+    DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+
+  if (settingsSafetyAuthorizationLeadDaysInput) {
+    settingsSafetyAuthorizationLeadDaysInput.value = String(leadDaysBeforeExpiry);
+  }
+  if (settingsSafetyAuthorizationRepeatDaysInput) {
+    settingsSafetyAuthorizationRepeatDaysInput.value = String(repeatEveryDays);
+  }
+
+  const success = await runMutation(() => apiRequest("/safety-authorizations/notification-settings", {
+    method: "POST",
+    body: {
+      leadDaysBeforeExpiry,
+      repeatEveryDays,
+    },
+  }), settingsSafetyAuthorizationNotificationsFeedback);
+
+  if (success && settingsSafetyAuthorizationNotificationsFeedback) {
+    settingsSafetyAuthorizationNotificationsFeedback.textContent = successMessage;
   }
 
   return success;
@@ -7883,10 +7985,13 @@ async function saveAllSettingsBlocks() {
   const measurementSaved = await saveMeasurementEquipmentNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
+  const safetyAuthorizationSaved = await saveSafetyAuthorizationNotificationSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
   const vehicleSaved = await saveVehicleNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
-  return measurementSaved && vehicleSaved;
+  return measurementSaved && safetyAuthorizationSaved && vehicleSaved;
 }
 
 function renderDocumentsModule() {
@@ -24886,6 +24991,150 @@ function getSafetyAuthorizationTemplateSelectionIds() {
   return getCheckedValues(safetyAuthorizationTemplateList, "safety-authorization-template-id");
 }
 
+function isSafetyAuthorizationDocumentFileAllowed(file) {
+  return isLegalFrameworkDocumentFileAllowed(file);
+}
+
+function setSafetyAuthorizationDocumentDrafts(items = []) {
+  safetyAuthorizationDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft({
+      ...item,
+      documentCategory: item?.documentCategory || "pdf",
+    }))
+    .filter((item) => item.fileName && (item.dataUrl || item.storageUrl));
+}
+
+function createSafetyAuthorizationCardDocumentActions(item = {}) {
+  const documents = (Array.isArray(item.documents) ? item.documents : [])
+    .map((entry) => createModuleAttachmentDraft(entry))
+    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "safety-authorization-card-actions";
+
+  documents.slice(0, 3).forEach((entry) => {
+    const downloadButton = createIconActionButton(
+      `Preuzmi ${entry.fileName || "PDF dokument"}`,
+      "download",
+      "",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerModuleAttachmentDownload(entry);
+      },
+    );
+    downloadButton.classList.add("safety-authorization-card-download-button");
+    actions.append(downloadButton);
+  });
+
+  if (documents.length > 3) {
+    actions.append(createBadge(`+${documents.length - 3}`, "legal-framework-meta-badge"));
+  }
+
+  return actions;
+}
+
+function renderSafetyAuthorizationDocuments() {
+  if (!safetyAuthorizationDocumentsList) {
+    return;
+  }
+
+  if (safetyAuthorizationDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Jos nema dodanih PDF dokumenata za ovo ovlastenje.";
+    safetyAuthorizationDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  safetyAuthorizationDocumentsList.replaceChildren(...safetyAuthorizationDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row legal-framework-document-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "PDF dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      "PDF",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    if (entry.description) {
+      const description = document.createElement("p");
+      description.className = "module-attachment-description";
+      description.textContent = entry.description;
+      copy.append(description);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Preuzmi PDF", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni PDF", "trash", "card-danger", () => {
+        safetyAuthorizationDocumentDrafts = safetyAuthorizationDocumentDrafts.filter((item) => String(item.id) !== String(entry.id));
+        renderSafetyAuthorizationDocuments();
+      }),
+    );
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueSafetyAuthorizationDocuments(files) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!uploadFiles.length) {
+    return;
+  }
+
+  for (const file of uploadFiles) {
+    if (!isSafetyAuthorizationDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podrzan. Dozvoljen je samo PDF.`);
+    }
+
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  const nextDocuments = await Promise.all(uploadFiles.map(async (file) => createModuleAttachmentDraft({
+    fileName: file.name,
+    fileType: file.type || "application/pdf",
+    fileSize: file.size || 0,
+    documentCategory: "pdf",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  safetyAuthorizationDocumentDrafts = [
+    ...safetyAuthorizationDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderSafetyAuthorizationDocuments();
+}
+
+function syncSafetyAuthorizationValidityInput() {
+  syncQualificationValidityInput(safetyAuthorizationValidUntilInput, safetyAuthorizationValidForeverInput);
+
+  if (safetyAuthorizationValidForeverInput?.checked && safetyAuthorizationValidUntilInput) {
+    safetyAuthorizationValidUntilInput.value = "";
+  }
+}
+
 function renderSafetyAuthorizationTemplateChecklist(selectedIds = []) {
   renderTemplateSelectionChecklist(safetyAuthorizationTemplateList, {
     selectedIds,
@@ -24900,8 +25149,10 @@ function buildSafetyAuthorizationPayload() {
     title: safetyAuthorizationTitleInput?.value || "",
     scope: safetyAuthorizationScopeInput?.value || "",
     issuedOn: safetyAuthorizationIssuedOnInput?.value || "",
-    validUntil: safetyAuthorizationValidUntilInput?.value || "",
+    validUntil: safetyAuthorizationValidForeverInput?.checked ? "" : (safetyAuthorizationValidUntilInput?.value || ""),
+    validForever: Boolean(safetyAuthorizationValidForeverInput?.checked),
     linkedTemplateIds: getSafetyAuthorizationTemplateSelectionIds(),
+    documents: safetyAuthorizationDocumentDrafts.map((entry) => ({ ...entry })),
     note: safetyAuthorizationNoteInput?.value || "",
   };
 }
@@ -24931,6 +25182,12 @@ function resetSafetyAuthorizationForm() {
   if (safetyAuthorizationError) {
     safetyAuthorizationError.textContent = "";
   }
+  if (safetyAuthorizationValidForeverInput) {
+    safetyAuthorizationValidForeverInput.checked = false;
+  }
+  setSafetyAuthorizationDocumentDrafts([]);
+  renderSafetyAuthorizationDocuments();
+  syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist([]);
   syncSafetyAuthorizationEditorChrome();
 }
@@ -24946,10 +25203,16 @@ function hydrateSafetyAuthorizationForm(item) {
   safetyAuthorizationScopeInput.value = item.scope || "";
   safetyAuthorizationIssuedOnInput.value = item.issuedOn || "";
   safetyAuthorizationValidUntilInput.value = item.validUntil || "";
+  if (safetyAuthorizationValidForeverInput) {
+    safetyAuthorizationValidForeverInput.checked = Boolean(item.validForever);
+  }
   safetyAuthorizationNoteInput.value = item.note || "";
   if (safetyAuthorizationError) {
     safetyAuthorizationError.textContent = "";
   }
+  setSafetyAuthorizationDocumentDrafts(item.documents ?? []);
+  renderSafetyAuthorizationDocuments();
+  syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist(item.linkedTemplateIds ?? []);
   syncSafetyAuthorizationEditorChrome();
   openSafetyAuthorizationEditor();
@@ -24971,7 +25234,13 @@ function renderSafetyAuthorizationModule() {
 
   const allItems = sortSafetyAuthorizations(state.safetyAuthorizations ?? []);
   const visibleItems = sortSafetyAuthorizations(filterSafetyAuthorizations(state.safetyAuthorizations ?? [], filters));
-  const activeItems = allItems.filter((item) => !item.validUntil || !parseDateValue(item.validUntil) || parseDateValue(item.validUntil) >= new Date(new Date().setHours(0, 0, 0, 0)));
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  const activeItems = allItems.filter((item) => (
+    item.validForever
+    || !item.validUntil
+    || !parseDateValue(item.validUntil)
+    || parseDateValue(item.validUntil) >= today
+  ));
 
   if (safetyAuthorizationOpenFormButton) {
     safetyAuthorizationOpenFormButton.hidden = !canManageMasterData;
@@ -25023,7 +25292,17 @@ function renderSafetyAuthorizationModule() {
     if (item.issuedOn) {
       dates.append(createBadge(`Izdano ${formatCompactDate(item.issuedOn)}`, "measurement-equipment-chip"));
     }
-    dates.append(createBadge(item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Bez roka", isUpcomingIsoDate(item.validUntil) ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip"));
+    const validityLabel = item.validForever
+      ? "Vrijedi trajno"
+      : item.validUntil
+        ? `Vrijedi do ${formatCompactDate(item.validUntil)}`
+        : "Bez roka";
+    dates.append(createBadge(
+      validityLabel,
+      !item.validForever && isUpcomingIsoDate(item.validUntil)
+        ? "measurement-equipment-chip is-warning"
+        : "measurement-equipment-chip",
+    ));
     head.append(copy, dates);
 
     const templates = document.createElement("div");
@@ -25040,7 +25319,28 @@ function renderSafetyAuthorizationModule() {
     note.className = "safety-authorization-card-note";
     note.textContent = item.note || "Bez dodatne napomene.";
 
-    card.append(head, templates, note);
+    const footer = document.createElement("div");
+    footer.className = "safety-authorization-card-footer";
+
+    const documentInfo = document.createElement("div");
+    documentInfo.className = "safety-authorization-card-chips";
+    const documentCount = Array.isArray(item.documents) ? item.documents.length : 0;
+    documentInfo.append(createBadge(
+      documentCount > 0
+        ? `${documentCount} PDF`
+        : "Bez PDF-a",
+      documentCount > 0
+        ? "service-catalog-template-badge"
+        : "service-catalog-template-badge is-muted",
+    ));
+
+    const documentActions = createSafetyAuthorizationCardDocumentActions(item);
+    footer.append(documentInfo);
+    if (documentActions) {
+      footer.append(documentActions);
+    }
+
+    card.append(head, templates, note, footer);
 
     const openItem = () => {
       if (!canManageMasterData) {
@@ -31776,6 +32076,12 @@ function getNotificationKindLabel(kind = "") {
   if (kind === "equipment") {
     return "Oprema";
   }
+  if (kind === "authorization") {
+    return "Ovlastenje";
+  }
+  if (kind === "vehicle") {
+    return "Vozilo";
+  }
   if (kind === "reminder") {
     return "Reminder";
   }
@@ -31938,6 +32244,85 @@ function buildMeasurementEquipmentNotifications() {
         context,
         dueDate,
         referenceId: String(item.id ?? ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildSafetyAuthorizationNotifications() {
+  const notificationSettings = getSafetyAuthorizationNotificationSettings();
+  const leadDaysBeforeExpiry = notificationSettings.leadDaysBeforeExpiry;
+  const repeatEveryDays = notificationSettings.repeatEveryDays;
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    const deltaMs = targetDate.getTime() - todayDate.getTime();
+    return Math.round(deltaMs / (1000 * 60 * 60 * 24));
+  };
+
+  const shouldSend = (daysUntilDue) => {
+    if (!Number.isFinite(daysUntilDue)) {
+      return false;
+    }
+
+    if (daysUntilDue >= 0) {
+      if (daysUntilDue > leadDaysBeforeExpiry) {
+        return false;
+      }
+      if (daysUntilDue === 0 || daysUntilDue === leadDaysBeforeExpiry) {
+        return true;
+      }
+      return ((leadDaysBeforeExpiry - daysUntilDue) % repeatEveryDays) === 0;
+    }
+
+    const overdueDays = Math.abs(daysUntilDue);
+    if (overdueDays === 1) {
+      return true;
+    }
+    return (overdueDays % repeatEveryDays) === 0;
+  };
+
+  return (state.safetyAuthorizations ?? [])
+    .filter((item) => !item?.validForever && item?.validUntil)
+    .map((item) => {
+      const dueDate = String(item.validUntil || "");
+      if (!dueDate) {
+        return null;
+      }
+
+      const daysUntilDue = getDaysUntil(dueDate);
+      if (!shouldSend(daysUntilDue)) {
+        return null;
+      }
+
+      let level = "warning";
+      let title = "Ovlastenje uskoro istice";
+      if (Number.isFinite(daysUntilDue) && daysUntilDue < 0) {
+        level = "critical";
+        title = "Ovlastenje je isteklo";
+      } else if (daysUntilDue === 0) {
+        title = "Ovlastenje istice danas";
+      }
+
+      return {
+        id: `authorization-${item.id}-${dueDate}`,
+        kind: "authorization",
+        level,
+        title,
+        message: item.title || "Ovlastenje",
+        context: [
+          item.scope || "",
+          item.documents?.[0]?.fileName || "",
+        ].filter(Boolean).join(" · ") || "Safety authorization",
+        dueDate,
+        referenceId: String(item.id || ""),
       };
     })
     .filter(Boolean);
@@ -32287,6 +32672,7 @@ function getAllNotifications() {
   return [
     ...buildReminderNotifications(),
     ...buildMeasurementEquipmentNotifications(),
+    ...buildSafetyAuthorizationNotifications(),
     ...buildVehicleNotifications(),
     ...buildTodoCommentNotifications(),
   ].map((entry) => ({
@@ -32362,6 +32748,17 @@ function openNotificationEntry(entry) {
     if (equipment && getCanManageMasterData()) {
       window.requestAnimationFrame(() => {
         hydrateMeasurementEquipmentForm(equipment);
+      });
+    }
+    return;
+  }
+
+  if (entry.kind === "authorization") {
+    activateSidebarItem("safety-authorization", { expandSidebar: state.sidebarCollapsed });
+    const authorization = state.safetyAuthorizations.find((item) => String(item.id) === String(entry.referenceId)) ?? null;
+    if (authorization && getCanManageMasterData()) {
+      window.requestAnimationFrame(() => {
+        hydrateSafetyAuthorizationForm(authorization);
       });
     }
     return;
@@ -37492,6 +37889,9 @@ function renderSharedOptions() {
   }
   if (legalFrameworkDocumentsInput) {
     legalFrameworkDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
+  }
+  if (safetyAuthorizationDocumentsInput) {
+    safetyAuthorizationDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
   }
   syncCompanySelectionPreview(
     workOrderCompanyIdInput?.value || "",
@@ -48440,6 +48840,26 @@ safetyAuthorizationDeleteButton?.addEventListener("click", () => {
   });
 });
 
+safetyAuthorizationValidForeverInput?.addEventListener("change", () => {
+  syncSafetyAuthorizationValidityInput();
+});
+
+safetyAuthorizationDocumentsUploadButton?.addEventListener("click", () => {
+  safetyAuthorizationDocumentsInput?.click();
+});
+
+safetyAuthorizationDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(safetyAuthorizationDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueSafetyAuthorizationDocuments(files), safetyAuthorizationError).then(() => {
+    safetyAuthorizationDocumentsInput.value = "";
+  });
+});
+
 safetyAuthorizationForm?.addEventListener("input", () => {
   syncSafetyAuthorizationEditorChrome();
 });
@@ -48956,6 +49376,20 @@ settingsMeasurementLeadDaysInput?.addEventListener("keydown", (event) => {
 });
 
 settingsMeasurementRepeatDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsSafetyAuthorizationLeadDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsSafetyAuthorizationRepeatDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     void saveAllSettingsBlocks();
@@ -49524,6 +49958,9 @@ logoutButton?.addEventListener("click", () => {
     state.measurementEquipmentCardTemplate = null;
     state.measurementEquipmentNotificationSettings = {
       ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+    };
+    state.safetyAuthorizationNotificationSettings = {
+      ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
     };
     state.vehicleNotificationSettings = {
       ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,

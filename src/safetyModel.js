@@ -3415,6 +3415,10 @@ export function createSafetyAuthorization(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
   );
+  const validForever = normalizeBoolean(input.validForever, false);
+  const validUntil = validForever
+    ? null
+    : normalizeOptionalDate(input.validUntil);
 
   return {
     id: createId(),
@@ -3422,7 +3426,8 @@ export function createSafetyAuthorization(
     title: requireText(input.title, "Ime ovlaštenja"),
     scope: normalizeText(input.scope ?? input.authorizationScope),
     issuedOn: normalizeOptionalDate(input.issuedOn ?? input.issuedAt),
-    validUntil: normalizeOptionalDate(input.validUntil),
+    validUntil,
+    validForever,
     note: normalizeText(input.note),
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
@@ -3436,6 +3441,9 @@ export function updateSafetyAuthorization(current, patch, state, now = isoNow) {
   const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
     ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
     : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+  const nextValidForever = hasOwn(patch, "validForever")
+    ? normalizeBoolean(patch.validForever, false)
+    : normalizeBoolean(current.validForever, false);
 
   return {
     ...current,
@@ -3449,9 +3457,12 @@ export function updateSafetyAuthorization(current, patch, state, now = isoNow) {
     issuedOn: hasOwn(patch, "issuedOn") || hasOwn(patch, "issuedAt")
       ? normalizeOptionalDate(patch.issuedOn ?? patch.issuedAt)
       : current.issuedOn,
-    validUntil: hasOwn(patch, "validUntil")
-      ? normalizeOptionalDate(patch.validUntil)
-      : current.validUntil,
+    validUntil: nextValidForever
+      ? null
+      : hasOwn(patch, "validUntil")
+        ? normalizeOptionalDate(patch.validUntil)
+        : current.validUntil,
+    validForever: nextValidForever,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
@@ -3487,15 +3498,18 @@ export function filterSafetyAuthorizations(
 
 export function sortSafetyAuthorizations(items) {
   return [...(items ?? [])].sort((left, right) => {
-    if (left.validUntil && right.validUntil && left.validUntil !== right.validUntil) {
-      return left.validUntil.localeCompare(right.validUntil);
+    const leftValidUntil = normalizeBoolean(left.validForever, false) ? "" : String(left.validUntil || "");
+    const rightValidUntil = normalizeBoolean(right.validForever, false) ? "" : String(right.validUntil || "");
+
+    if (leftValidUntil && rightValidUntil && leftValidUntil !== rightValidUntil) {
+      return leftValidUntil.localeCompare(rightValidUntil);
     }
 
-    if (left.validUntil && !right.validUntil) {
+    if (leftValidUntil && !rightValidUntil) {
       return -1;
     }
 
-    if (!left.validUntil && right.validUntil) {
+    if (!leftValidUntil && rightValidUntil) {
       return 1;
     }
 

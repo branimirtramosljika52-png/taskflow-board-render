@@ -1460,6 +1460,27 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : defaults.repeatEveryDays,
       };
     })(),
+    safetyAuthorizationNotificationSettings: (() => {
+      const defaults = {
+        leadDaysBeforeExpiry: 30,
+        repeatEveryDays: 7,
+      };
+      const settingsEntry = (rawSnapshot.safetyAuthorizationNotificationSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return defaults;
+      }
+
+      return {
+        leadDaysBeforeExpiry: Number.isFinite(Number(settingsEntry.leadDaysBeforeExpiry))
+          ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.leadDaysBeforeExpiry))))
+          : defaults.leadDaysBeforeExpiry,
+        repeatEveryDays: Number.isFinite(Number(settingsEntry.repeatEveryDays))
+          ? Math.max(1, Math.min(90, Math.round(Number(settingsEntry.repeatEveryDays))))
+          : defaults.repeatEveryDays,
+      };
+    })(),
     vehicleNotificationSettings: (() => {
       const defaults = {
         registrationLeadDaysBeforeExpiry: 30,
@@ -1945,6 +1966,7 @@ export class MemoryTenantRepository {
     serviceCatalog: [],
     measurementEquipment: [],
     measurementEquipmentNotificationSettings: [],
+    safetyAuthorizationNotificationSettings: [],
     safetyAuthorizations: [],
     dashboardWidgets: [],
   }) {
@@ -2630,6 +2652,7 @@ export class MySqlTenantRepository {
         serviceCatalog: [],
         measurementEquipment: [],
         measurementEquipmentNotificationSettings: [],
+        safetyAuthorizationNotificationSettings: [],
         safetyAuthorizations: [],
         dashboardWidgets: [],
       };

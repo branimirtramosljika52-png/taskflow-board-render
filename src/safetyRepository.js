@@ -253,6 +253,10 @@ const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
 });
+const DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeExpiry: 30,
+  repeatEveryDays: 7,
+});
 const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   registrationLeadDaysBeforeExpiry: 30,
   registrationRepeatEveryDays: 7,
@@ -274,6 +278,25 @@ function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
     ? value
     : {};
   const fallback = DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeExpiry: normalizeMeasurementEquipmentNotificationDay(
+      source.leadDaysBeforeExpiry ?? source.leadDays,
+      fallback.leadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function normalizeSafetyAuthorizationNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS;
   return {
     leadDaysBeforeExpiry: normalizeMeasurementEquipmentNotificationDay(
       source.leadDaysBeforeExpiry ?? source.leadDays,
@@ -1337,6 +1360,21 @@ function mapVehicleNotificationSettingsEntry(row = {}) {
   };
 }
 
+function mapSafetyAuthorizationNotificationSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const normalized = normalizeSafetyAuthorizationNotificationSettings(parseJsonObject(row.notification_rules_json));
+  return {
+    organizationId,
+    ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -2341,8 +2379,18 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapVehicleNotificationSettingsEntry(row))
     .filter(Boolean);
 
+  const [safetyAuthorizationSettingsRows] = await connection.query(`
+    SELECT organization_id, notification_rules_json, created_at, updated_at
+    FROM web_safety_authorization_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const safetyAuthorizationNotificationSettings = safetyAuthorizationSettingsRows
+    .map((row) => mapSafetyAuthorizationNotificationSettingsEntry(row))
+    .filter(Boolean);
+
   const [safetyAuthorizationRows] = await connection.query(`
-    SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, note,
+    SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
            linked_template_ids_json, documents_json, created_at, updated_at
     FROM web_safety_authorizations
     ORDER BY
@@ -2363,7 +2411,8 @@ async function fetchSnapshotFromConnection(connection) {
       title: row.title ?? "",
       scope: row.authorization_scope ?? "",
       issuedOn: normalizeDateOnly(row.issued_on),
-      validUntil: normalizeDateOnly(row.valid_until),
+      validUntil: row.valid_forever ? null : normalizeDateOnly(row.valid_until),
+      validForever: Boolean(row.valid_forever),
       note: row.note ?? "",
       linkedTemplateIds,
       linkedTemplateTitles,
@@ -2416,6 +2465,7 @@ async function fetchSnapshotFromConnection(connection) {
     measurementEquipment,
     measurementEquipmentCardTemplates,
     measurementEquipmentNotificationSettings,
+    safetyAuthorizationNotificationSettings,
     vehicleNotificationSettings,
     safetyAuthorizations,
     dashboardWidgets,
@@ -2505,6 +2555,7 @@ export class InMemorySafetyRepository {
       measurementEquipment: [],
       measurementEquipmentCardTemplates: [],
       measurementEquipmentNotificationSettings: [],
+      safetyAuthorizationNotificationSettings: [],
       vehicleNotificationSettings: [],
       safetyAuthorizations: [],
       dashboardWidgets: [],
@@ -2656,6 +2707,9 @@ export class InMemorySafetyRepository {
         templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
       })),
       measurementEquipmentNotificationSettings: this.snapshot.measurementEquipmentNotificationSettings.map((item) => ({
+        ...item,
+      })),
+      safetyAuthorizationNotificationSettings: this.snapshot.safetyAuthorizationNotificationSettings.map((item) => ({
         ...item,
       })),
       vehicleNotificationSettings: this.snapshot.vehicleNotificationSettings.map((item) => ({
@@ -3456,6 +3510,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertSafetyAuthorizationNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija ovlastenja.");
+    }
+
+    const normalizedSettings = normalizeSafetyAuthorizationNotificationSettings(notificationSettings);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.safetyAuthorizationNotificationSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.safetyAuthorizationNotificationSettings[currentIndex];
+      this.snapshot.safetyAuthorizationNotificationSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.safetyAuthorizationNotificationSettings.push(nextEntry);
+    }
+
+    return this.snapshot.safetyAuthorizationNotificationSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
     const safeOrganizationId = dbString(organizationId);
     if (!safeOrganizationId) {
@@ -4007,6 +4095,16 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_safety_authorization_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        notification_rules_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_safety_authorization_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_safety_authorizations (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -4014,6 +4112,7 @@ export class MySqlSafetyRepository {
         authorization_scope VARCHAR(220) NOT NULL DEFAULT '',
         issued_on DATE NULL,
         valid_until DATE NULL,
+        valid_forever TINYINT(1) NOT NULL DEFAULT 0,
         note TEXT NULL,
         linked_template_ids_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
@@ -4084,6 +4183,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_measurement_equipment", "measurement_specs_json", "LONGTEXT NULL AFTER activity_items_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment_settings", "notification_rules_json", "LONGTEXT NULL AFTER card_template_json");
     await ensureColumnExists(this.pool, "web_vehicle_settings", "notification_rules_json", "LONGTEXT NULL");
+    await ensureColumnExists(this.pool, "web_safety_authorization_settings", "notification_rules_json", "LONGTEXT NULL");
+    await ensureColumnExists(this.pool, "web_safety_authorizations", "valid_forever", "TINYINT(1) NOT NULL DEFAULT 0 AFTER valid_until");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -6155,6 +6256,34 @@ export class MySqlSafetyRepository {
     };
   }
 
+  async upsertSafetyAuthorizationNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija ovlastenja.");
+    }
+
+    const normalizedSettings = normalizeSafetyAuthorizationNotificationSettings(notificationSettings);
+    await this.pool.query(
+      `
+        INSERT INTO web_safety_authorization_settings
+          (organization_id, notification_rules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          notification_rules_json = VALUES(notification_rules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedSettings),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      ...normalizedSettings,
+    };
+  }
+
   async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
     const safeOrganizationId = Number(organizationId);
     if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
@@ -6284,9 +6413,9 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_safety_authorizations
-            (organization_id, title, authorization_scope, issued_on, valid_until, note,
+            (organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
              linked_template_ids_json, documents_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -6294,6 +6423,7 @@ export class MySqlSafetyRepository {
           draft.scope,
           draft.issuedOn,
           draft.validUntil,
+          draft.validForever ? 1 : 0,
           draft.note,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
@@ -6337,7 +6467,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_safety_authorizations
-          SET title = ?, authorization_scope = ?, issued_on = ?, valid_until = ?,
+          SET title = ?, authorization_scope = ?, issued_on = ?, valid_until = ?, valid_forever = ?,
               note = ?, linked_template_ids_json = ?, documents_json = ?
           WHERE id = ?
         `,
@@ -6346,6 +6476,7 @@ export class MySqlSafetyRepository {
           next.scope,
           next.issuedOn,
           next.validUntil,
+          next.validForever ? 1 : 0,
           next.note,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
