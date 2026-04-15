@@ -1188,6 +1188,15 @@ let todoShortcutMenuOpen = false;
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
+let globalLoadingTimerId = null;
+
+const GLOBAL_LOADING_DELAY_MS = 180;
+const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
+const globalLoadingState = {
+  count: 0,
+  visible: false,
+  message: "Učitavanje podataka...",
+};
 
 const authScreen = document.querySelector("#auth-screen");
 const appShell = document.querySelector("#app-shell");
@@ -1201,6 +1210,8 @@ const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const globalLoadingIndicator = document.querySelector("#global-loading-indicator");
+const globalLoadingIndicatorCopy = document.querySelector("#global-loading-indicator-copy");
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
@@ -3075,6 +3086,97 @@ function normalizeVehicleNotificationSettings(value = {}) {
 
 function getVehicleNotificationSettings() {
   return normalizeVehicleNotificationSettings(state.vehicleNotificationSettings);
+}
+
+function showGlobalLoadingIndicator(message = globalLoadingState.message) {
+  if (!globalLoadingIndicator) {
+    return;
+  }
+
+  globalLoadingState.visible = true;
+  globalLoadingState.message = message || globalLoadingState.message;
+
+  if (globalLoadingIndicatorCopy) {
+    globalLoadingIndicatorCopy.textContent = globalLoadingState.message;
+  }
+
+  globalLoadingIndicator.hidden = false;
+  document.body.classList.add("is-global-loading");
+
+  requestAnimationFrame(() => {
+    globalLoadingIndicator.classList.add("is-visible");
+  });
+}
+
+function hideGlobalLoadingIndicator() {
+  if (!globalLoadingIndicator) {
+    return;
+  }
+
+  globalLoadingState.visible = false;
+  globalLoadingIndicator.classList.remove("is-visible");
+  document.body.classList.remove("is-global-loading");
+
+  window.setTimeout(() => {
+    if (!globalLoadingState.visible) {
+      globalLoadingIndicator.hidden = true;
+    }
+  }, GLOBAL_LOADING_HIDE_DELAY_MS);
+}
+
+function beginGlobalLoading(message = "Učitavanje podataka...", { immediate = false } = {}) {
+  globalLoadingState.count += 1;
+  globalLoadingState.message = message || globalLoadingState.message;
+
+  if (globalLoadingIndicatorCopy) {
+    globalLoadingIndicatorCopy.textContent = globalLoadingState.message;
+  }
+
+  if (globalLoadingTimerId) {
+    window.clearTimeout(globalLoadingTimerId);
+    globalLoadingTimerId = null;
+  }
+
+  if (globalLoadingState.visible) {
+    return;
+  }
+
+  if (immediate) {
+    showGlobalLoadingIndicator(globalLoadingState.message);
+    return;
+  }
+
+  globalLoadingTimerId = window.setTimeout(() => {
+    globalLoadingTimerId = null;
+    if (globalLoadingState.count > 0) {
+      showGlobalLoadingIndicator(globalLoadingState.message);
+    }
+  }, GLOBAL_LOADING_DELAY_MS);
+}
+
+function endGlobalLoading() {
+  globalLoadingState.count = Math.max(0, globalLoadingState.count - 1);
+
+  if (globalLoadingState.count > 0) {
+    return;
+  }
+
+  if (globalLoadingTimerId) {
+    window.clearTimeout(globalLoadingTimerId);
+    globalLoadingTimerId = null;
+  }
+
+  hideGlobalLoadingIndicator();
+}
+
+async function withGlobalLoading(message, callback, options = {}) {
+  beginGlobalLoading(message, options);
+
+  try {
+    return await callback();
+  } finally {
+    endGlobalLoading();
+  }
 }
 
 function canManageRenderedUser(user) {
@@ -50012,6 +50114,7 @@ loginForm?.addEventListener("submit", () => {
   }
   loginForm.classList.add("is-submitting");
   document.body.classList.add("is-auth-leaving");
+  beginGlobalLoading("Otvaram SafeNexus...", { immediate: true });
 });
 
 logoutButton?.addEventListener("click", () => {
@@ -50112,7 +50215,9 @@ organizationSwitcher?.addEventListener("change", () => {
     populateOrganizationForm(selectedOrganization);
   }
 
-  void refreshSnapshot();
+  void withGlobalLoading("Učitavam podatke organizacije...", () => refreshSnapshot()).catch((error) => {
+    setSyncError(error.message);
+  });
 });
 
 organizationForm?.addEventListener("submit", (event) => {
@@ -50500,14 +50605,12 @@ refreshLoginContent().catch(() => {
   renderLoginContent();
 });
 
-refreshSession()
-  .then((user) => {
-    if (user) {
-      return refreshSnapshot();
-    }
-
-    return null;
-  })
+withGlobalLoading("Pokrećem SafeNexus...", async () => {
+  const user = await refreshSession();
+  if (user) {
+    await refreshSnapshot();
+  }
+})
   .catch((error) => {
     setSyncError(error.message);
     connectionStatus.textContent = "Backend nije dostupan";
