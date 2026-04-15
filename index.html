@@ -4527,35 +4527,16 @@
             </section>
 
             <section id="template-development-module" class="template-development-module" hidden>
-              <div class="template-development-summary-grid">
-                <article class="template-development-stat-card is-total">
-                  <span class="template-development-stat-label">Ukupno</span>
-                  <strong id="document-template-total-count" class="template-development-stat-value">0</strong>
-                </article>
-                <article class="template-development-stat-card is-active">
-                  <span class="template-development-stat-label">Aktivni</span>
-                  <strong id="document-template-active-count" class="template-development-stat-value">0</strong>
-                </article>
-                <article class="template-development-stat-card is-draft">
-                  <span class="template-development-stat-label">Skice</span>
-                  <strong id="document-template-draft-count" class="template-development-stat-value">0</strong>
-                </article>
-                <article class="template-development-stat-card is-reference">
-                  <span class="template-development-stat-label">Word reference</span>
-                  <strong id="document-template-reference-count" class="template-development-stat-value">0</strong>
-                </article>
-              </div>
-
-              <section class="panel template-development-toolbar-panel">
-                <div class="section-heading offers-section-heading">
+              <section class="panel template-development-list-panel">
+                <div class="section-heading offers-section-heading template-development-list-heading">
                   <div>
                     <p class="section-kicker">Template development</p>
-                    <h3>Builder za Zapisnike</h3>
+                    <h3>Popis Zapisnika</h3>
                   </div>
                   <button id="document-template-open-form" type="button" class="primary-button">+ Novi template</button>
                 </div>
 
-                <div class="template-development-filters">
+                <div class="template-development-list-toolbar">
                   <label class="field">
                     <span>Pretraga</span>
                     <input id="document-template-search" type="search" placeholder="Naziv, tip, placeholder, oprema..." />
@@ -4565,17 +4546,7 @@
                     <select id="document-template-filter-status"></select>
                   </label>
                 </div>
-              </section>
 
-              <section class="panel template-development-list-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Templates</p>
-                    <h3>Popis Zapisnika</h3>
-                  </div>
-                </div>
-
-                <p id="document-template-helper" class="helper-copy module-copy">Složi blokove i placeholdere, poveži ih s podacima iz baze i koristi Word kao glavni predložak.</p>
                 <div id="document-template-list" class="document-template-list"></div>
                 <p id="document-template-empty" class="helper-copy" hidden>Nema templatea za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -4764,8 +4735,19 @@
                           </label>
                           <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
                         </section>
-
                       </section>
+
+                      <aside id="document-template-preview-block" class="document-template-builder-preview">
+                        <section class="document-template-block document-template-preview-block">
+                          <div class="section-heading offers-section-heading">
+                            <div>
+                              <p class="section-kicker">Preview</p>
+                              <h3>Prikaz zapisnika</h3>
+                            </div>
+                          </div>
+                          <div id="document-template-preview" class="document-template-preview"></div>
+                        </section>
+                      </aside>
                     </div>
 
                     <section id="document-template-runtime-dock" class="document-template-runtime-dock" hidden>

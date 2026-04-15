@@ -1581,6 +1581,7 @@ const documentTemplateReferenceDownloadButton = document.querySelector("#documen
 const documentTemplateReferenceRemoveButton = document.querySelector("#document-template-reference-remove");
 const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
 const documentTemplateFormActions = documentTemplateEditorPanel?.querySelector(".form-actions");
+const documentTemplatePreviewBlock = document.querySelector("#document-template-preview-block");
 const documentTemplatePreview = document.querySelector("#document-template-preview");
 const documentTemplateError = document.querySelector("#document-template-error");
 const documentTemplateResetButton = document.querySelector("#document-template-reset");
@@ -19621,7 +19622,7 @@ function renderDocumentTemplatePreviewContent() {
   clampDocumentTemplateSheetIndex();
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(buildDocumentTemplateDraft(), {
     placeholderMode: false,
-    sheetTabs: false,
+    sheetTabs: true,
   });
 }
 
@@ -22706,6 +22707,9 @@ function syncDocumentTemplateEditorChrome() {
   }
   if (documentTemplateBuilderSidebar) {
     documentTemplateBuilderSidebar.hidden = fillMode;
+  }
+  if (documentTemplatePreviewBlock) {
+    documentTemplatePreviewBlock.hidden = fillMode;
   }
   if (documentTemplateFormActions) {
     documentTemplateFormActions.hidden = fillMode;
@@ -29023,12 +29027,6 @@ function renderDocumentTemplateModule() {
   if (documentTemplateReferenceCount) {
     documentTemplateReferenceCount.textContent = String(allItems.filter((item) => item.referenceDocument?.fileName).length);
   }
-  if (documentTemplateHelper) {
-    documentTemplateHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} templatea.`
-      : `Prikazano ${visibleItems.length} od ${allItems.length} templatea.`;
-  }
-
   documentTemplateList.replaceChildren(...visibleItems.map((template) => {
     const card = document.createElement("article");
     card.className = `document-template-card is-${slugifyValue(template.status || "draft")}`;
@@ -29061,35 +29059,34 @@ function renderDocumentTemplateModule() {
       linkedLegalCount > 0 ? `${linkedLegalCount} propisa` : "",
       linkedEquipmentCount > 0 ? `${linkedEquipmentCount} opreme` : "",
       template.referenceDocument?.fileName ? "Word ref" : "",
-    ].filter(Boolean).join(" | ") || "Word predložak i placeholderi";
+    ].filter(Boolean).join(" · ") || "Bez dodatnih veza";
     copy.append(title, meta);
-    head.append(badges, copy);
+    head.append(copy, badges);
 
-    const description = document.createElement("p");
-    description.className = "document-template-card-description";
-    description.textContent = template.description || "Word ostaje glavni predložak, a ovdje slažeš blokove, placeholdere i povezane izvore podataka.";
-
-    const chips = document.createElement("div");
-    chips.className = "document-template-card-chips";
-    chips.append(
-      createBadge(`${template.customFields?.length || 0} blokova`, "document-template-meta-badge"),
-      createBadge(`${linkedLegalCount} propisa`, "document-template-meta-badge"),
-      createBadge(`${linkedEquipmentCount} opreme`, "document-template-meta-badge"),
-    );
+    const descriptionText = String(template.description || "").trim();
+    const description = descriptionText
+      ? document.createElement("p")
+      : null;
+    if (description) {
+      description.className = "document-template-card-description";
+      description.textContent = descriptionText;
+    }
 
     const footer = document.createElement("div");
     footer.className = "document-template-card-footer";
-    const output = document.createElement("span");
-    output.textContent = template.referenceDocument?.fileName ? "Word reference dodan" : "Bez Word reference";
     const updated = document.createElement("span");
     updated.textContent = template.updatedAt ? `Ažurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
-    footer.append(output, updated);
+    footer.append(updated);
 
     const openCard = () => {
       hydrateDocumentTemplateForm(template);
     };
 
-    card.append(head, description, chips, footer);
+    card.append(head);
+    if (description) {
+      card.append(description);
+    }
+    card.append(footer);
     card.addEventListener("click", openCard);
     card.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") {
