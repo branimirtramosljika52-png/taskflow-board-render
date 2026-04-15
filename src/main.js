@@ -500,6 +500,7 @@ const MODULE_VIEW_DEFINITIONS = {
 };
 const SIDEBAR_ITEM_CONFIG = {
   dashboard: { group: "home", view: "selfdash", focus: "top" },
+  "control-panel": { group: "home", view: "selfdash", focus: "control-panel" },
   reminders: { group: "home", view: "reminders" },
   todo: { group: "home", view: "todo" },
   notifications: { group: "home", view: "notifications" },
@@ -544,6 +545,7 @@ const SIDEBAR_GROUP_LABELS = {
 };
 const SIDEBAR_ITEM_LABELS = {
   dashboard: "Dashboard",
+  "control-panel": "Control Panel",
   reminders: "Reminders",
   todo: "ToDo",
   notifications: "Notifications",
@@ -1266,6 +1268,7 @@ const sidebarGroupButtons = Array.from(document.querySelectorAll("[data-group-to
 const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-group-panel]"));
 const sidebarOrganisationsGroupPanel = document.querySelector("#sidebar-organisations-group-panel");
 const sidebarNavItems = Array.from(document.querySelectorAll("[data-sidebar-item]"));
+const controlPanelNavItem = document.querySelector('[data-sidebar-item="control-panel"]');
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -2835,6 +2838,14 @@ function getIsAdmin() {
 
 function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
+}
+
+function isDashboardControlPanelItem(itemName = state.activeSidebarItem) {
+  return itemName === "control-panel";
+}
+
+function isDashboardOverviewItem(itemName = state.activeSidebarItem) {
+  return itemName === "dashboard";
 }
 
 function isSystemPrivilegedRole(role = "") {
@@ -4856,6 +4867,14 @@ function activateSidebarItem(itemName, options = {}) {
   if (itemConfig.view === "selfdash") {
     state.activeView = "selfdash";
     renderActiveView();
+
+    if (itemConfig.focus === "control-panel") {
+      dashboardControlPanel?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      return;
+    }
 
     if (itemConfig.focus === "list") {
       workOrdersTableWrap?.scrollIntoView({
@@ -29019,6 +29038,7 @@ function renderAuthState() {
   if (authenticated) {
     const isSuperAdmin = getIsSuperAdmin();
     const isAdmin = getIsAdmin();
+    const canManageMasterData = getCanManageMasterData();
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -29074,6 +29094,12 @@ function renderAuthState() {
     renderTopbarBreadcrumbs();
     organizationSwitcherWrap.hidden = state.organizations.length <= 1;
     managementTab.hidden = !(isSuperAdmin || isAdmin);
+    if (controlPanelNavItem) {
+      controlPanelNavItem.hidden = !canManageMasterData;
+    }
+    if (!canManageMasterData && isDashboardControlPanelItem()) {
+      state.activeSidebarItem = "dashboard";
+    }
 
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = organization ? organization.name : "Safety360";
@@ -29109,6 +29135,9 @@ function renderAuthState() {
     organizationContext.textContent = "";
     organizationSwitcherWrap.hidden = true;
     managementTab.hidden = true;
+    if (controlPanelNavItem) {
+      controlPanelNavItem.hidden = true;
+    }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
     }
@@ -31591,33 +31620,43 @@ function renderDashboardWidgetGrid() {
 }
 
 function renderDashboardOverview() {
-  const shouldShowDashboard = Boolean(
+  const shouldShowDashboardOverview = Boolean(
     dashboardOverviewPanel
     && state.user
     && state.activeView === "selfdash"
-    && state.activeSidebarItem === "dashboard",
+    && isDashboardOverviewItem(),
   );
+  const shouldShowDashboardControlPanel = Boolean(
+    dashboardControlPanel
+    && state.user
+    && state.activeView === "selfdash"
+    && isDashboardControlPanelItem()
+    && getCanManageMasterData(),
+  );
+  const shouldShowDashboardWorkspace = shouldShowDashboardOverview || shouldShowDashboardControlPanel;
 
   if (!dashboardOverviewPanel) {
     return;
   }
 
-  dashboardOverviewPanel.hidden = !shouldShowDashboard;
+  dashboardOverviewPanel.hidden = !shouldShowDashboardOverview;
   renderDashboardControlPanelContent();
   if (dashboardControlPanel) {
-    dashboardControlPanel.hidden = !(shouldShowDashboard && getCanManageMasterData());
+    dashboardControlPanel.hidden = !shouldShowDashboardControlPanel;
   }
 
   if (dashboardWorkOrdersPanel) {
-    dashboardWorkOrdersPanel.hidden = state.activeView === "selfdash" && state.activeSidebarItem === "dashboard";
+    dashboardWorkOrdersPanel.hidden = state.activeView === "selfdash" && shouldShowDashboardWorkspace;
   }
 
-  if (!shouldShowDashboard) {
+  if (!shouldShowDashboardWorkspace) {
     document.body.classList.remove("is-dashboard-builder-open");
     return;
   }
 
-  renderDashboardInsightsSummary();
+  if (shouldShowDashboardOverview) {
+    renderDashboardInsightsSummary();
+  }
 
   if (dashboardSeedLayoutButton) {
     dashboardSeedLayoutButton.hidden = getDashboardWidgets().length > 0;
@@ -31633,21 +31672,23 @@ function renderDashboardOverview() {
     dashboardBuilderPanel.hidden = !state.dashboardBuilder.open;
   }
 
-  document.body.classList.toggle("is-dashboard-builder-open", shouldShowDashboard && state.dashboardBuilder.open);
+  document.body.classList.toggle("is-dashboard-builder-open", shouldShowDashboardOverview && state.dashboardBuilder.open);
 
   if (dashboardWidgetDeleteButton) {
     dashboardWidgetDeleteButton.hidden = !(dashboardWidgetIdInput?.value ?? "");
   }
 
-  dashboardOverviewPanel.classList.toggle("has-builder-open", state.dashboardBuilder.open);
-  if (state.dashboardBuilder.open) {
+  dashboardOverviewPanel.classList.toggle("has-builder-open", shouldShowDashboardOverview && state.dashboardBuilder.open);
+  if (shouldShowDashboardOverview && state.dashboardBuilder.open) {
     syncDashboardBuilderSearchInput();
     renderDashboardWidgetCategoryList();
     renderDashboardWidgetTemplateGrid();
     syncDashboardWidgetFormOptions();
   }
-  renderDashboardWidgetGrid();
-  renderDashboardWidgetPreview();
+  if (shouldShowDashboardOverview) {
+    renderDashboardWidgetGrid();
+    renderDashboardWidgetPreview();
+  }
 }
 
 function getReminderById(reminderId) {
@@ -46290,13 +46331,13 @@ sidebarGroupButtons.forEach((button) => {
 });
 
 appHomeButton?.addEventListener("click", () => {
-  activateSidebarItem("dashboard", {
+  activateSidebarItem(getCanManageMasterData() ? "control-panel" : "dashboard", {
     expandSidebar: state.sidebarCollapsed,
   });
 });
 
 sidebarHomeButton?.addEventListener("click", () => {
-  activateSidebarItem("dashboard", {
+  activateSidebarItem(getCanManageMasterData() ? "control-panel" : "dashboard", {
     expandSidebar: state.sidebarCollapsed,
   });
 });
