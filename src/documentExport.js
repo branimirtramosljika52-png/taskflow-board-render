@@ -383,6 +383,24 @@ function normalizeDocxSpecialPlaceholderValue(value) {
   }
 
   const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
+  if (blockType === "system_description") {
+    const rows = (Array.isArray(value.rows) ? value.rows : [])
+      .slice(0, 16)
+      .map((row, index) => ({
+        id: clean(row?.id) || `system-description-row-${index + 1}`,
+        subtitle: clean(row?.subtitle),
+        description: String(row?.description ?? "").replace(/\r\n/g, "\n"),
+        lineCount: Math.max(1, Math.min(8, Math.round(Number(row?.lineCount) || 1))),
+      }));
+
+    return {
+      type: "system_description",
+      title: clean(value.title) || "Opis sustava",
+      subtitle: clean(value.subtitle),
+      rows,
+    };
+  }
+
   if (blockType === "signature_group") {
     const items = (Array.isArray(value.items) ? value.items : [])
       .map((item) => {
@@ -919,9 +937,96 @@ function buildWordSignatureGroupXml(items = []) {
   `.replace(/\n\s+/g, "");
 }
 
+function buildDocxSystemDescriptionFallbackText(value = {}) {
+  return [
+    clean(value.title),
+    clean(value.subtitle),
+    ...((Array.isArray(value.rows) ? value.rows : []).map((row) => {
+      const subtitle = clean(row?.subtitle);
+      const description = clean(row?.description);
+      return subtitle ? `${subtitle}: ${description}`.trim() : description;
+    })),
+  ].filter(Boolean).join("\n");
+}
+
+function buildWordSystemDescriptionRowXml(row = {}) {
+  const subtitle = clean(row.subtitle);
+  const description = String(row.description ?? "").replace(/\r\n/g, "\n");
+  const lineCount = Math.max(1, Math.min(8, Math.round(Number(row.lineCount) || 1)));
+  const lines = description ? description.split("\n") : [""];
+
+  if (!subtitle) {
+    return lines.map((line, lineIndex) => buildWordParagraphXml(line, {
+      align: "left",
+      size: 20,
+      spacingBefore: lineIndex === 0 ? 20 : 0,
+      spacingAfter: lineIndex === lines.length - 1 ? Math.max(40, lineCount * 28) : 20,
+    })).join("");
+  }
+
+  const valueText = lines.join(" ").trim();
+  const safeSpacingAfter = Math.max(30, lineCount * 24);
+
+  return `
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+        <w:spacing w:before="0" w:after="${safeSpacingAfter}"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr><w:b/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+        <w:t xml:space="preserve">${escapeWordXmlText(`${subtitle}: `)}</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+        <w:t xml:space="preserve">${escapeWordXmlText(valueText)}</w:t>
+      </w:r>
+    </w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordSystemDescriptionXml(value = {}) {
+  const title = clean(value.title) || "Opis sustava";
+  const subtitle = clean(value.subtitle);
+  const rows = Array.isArray(value.rows) ? value.rows : [];
+
+  const headingXml = `
+    <w:p>
+      <w:pPr>
+        <w:spacing w:before="100" w:after="60"/>
+        <w:shd w:val="clear" w:color="auto" w:fill="D1D5DB"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
+        <w:t xml:space="preserve">${escapeWordXmlText(title.toUpperCase())}</w:t>
+      </w:r>
+    </w:p>
+  `.replace(/\n\s+/g, "");
+
+  const subtitleXml = subtitle
+    ? buildWordParagraphXml(subtitle, {
+      align: "left",
+      italic: true,
+      color: "6B7280",
+      size: 18,
+      spacingAfter: 60,
+    })
+    : "";
+
+  const rowsXml = rows.length > 0
+    ? rows.map((row) => buildWordSystemDescriptionRowXml(row)).join("")
+    : buildWordParagraphXml("", { spacingAfter: 40 });
+
+  return `${headingXml}${subtitleXml}${rowsXml}${buildWordParagraphXml("", { spacingAfter: 0 })}`;
+}
+
 function buildDocxSpecialPlaceholderXml(value) {
   if (!value || typeof value !== "object") {
     return "";
+  }
+
+  if (value.type === "system_description") {
+    return buildWordSystemDescriptionXml(value);
   }
 
   if (value.type === "signature_group") {
@@ -976,7 +1081,9 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
       const fallbackText = escapeWordXmlText(
         value.type === "table"
           ? buildDocxTableFallbackText(value)
-          : buildDocxSignatureGroupFallbackText(value.items),
+          : value.type === "system_description"
+            ? buildDocxSystemDescriptionFallbackText(value)
+            : buildDocxSignatureGroupFallbackText(value.items),
       );
       xml = xml.replace(new RegExp(escapeRegex(sentinel), "g"), fallbackText);
       changed = true;
@@ -1019,7 +1126,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
         const specialValue = normalizeDocxSpecialPlaceholderValue(value);
         if (specialValue) {
-          if (specialValue.type === "table") {
+          if (specialValue.type === "table" || specialValue.type === "system_description") {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
             specialPlaceholders.set(sentinel, specialValue);
             return [safeKey, sentinel];
@@ -1299,6 +1406,87 @@ function renderPdfTextBlock(doc, helpers, title, body = "") {
     lineGap: 2,
   });
   doc.moveDown(0.5);
+}
+
+function renderPdfSystemDescriptionBlock(doc, helpers, block = {}) {
+  const title = clean(block.title) || "Opis sustava";
+  const subtitle = clean(block.subtitle);
+  const rows = Array.isArray(block.rows) ? block.rows : [];
+
+  helpers.ensureSpace(80);
+  const startX = doc.page.margins.left;
+  const titleY = doc.y;
+  doc.save();
+  doc.roundedRect(startX, titleY, helpers.availableWidth, 22, 2);
+  doc.fillColor("#D1D5DB");
+  doc.fill();
+  doc.restore();
+
+  doc.font("dejavu-bold").fontSize(12).fillColor("#111827").text(title.toUpperCase(), startX + 10, titleY + 4, {
+    width: helpers.availableWidth - 20,
+  });
+  doc.y = titleY + 30;
+
+  if (subtitle) {
+    doc.font("dejavu-italic").fontSize(9.5).fillColor("#64748b").text(subtitle, {
+      width: helpers.availableWidth,
+    });
+    doc.moveDown(0.35);
+  }
+
+  rows.forEach((row) => {
+    const rowSubtitle = clean(row?.subtitle);
+    const rowDescription = String(row?.description ?? "").replace(/\r\n/g, "\n");
+    const lineCount = Math.max(1, Math.min(8, Math.round(Number(row?.lineCount) || 1)));
+    const safeDescription = rowDescription || "";
+    const approxHeight = Math.max(18, lineCount * 16);
+    helpers.ensureSpace(approxHeight + 10);
+
+    if (!rowSubtitle) {
+      doc.font("dejavu").fontSize(11).fillColor("#111827").text(safeDescription, {
+        width: helpers.availableWidth,
+        lineGap: 2,
+      });
+      doc.moveDown(Math.max(0.2, lineCount * 0.12));
+      return;
+    }
+
+    if (safeDescription.includes("\n") || lineCount > 1) {
+      doc.font("dejavu-bold").fontSize(11).fillColor("#111827").text(`${rowSubtitle}:`, {
+        width: helpers.availableWidth,
+        align: "center",
+      });
+      doc.font("dejavu").fontSize(11).fillColor("#111827").text(safeDescription, {
+        width: helpers.availableWidth,
+        align: "center",
+        lineGap: 2,
+      });
+      doc.moveDown(Math.max(0.15, lineCount * 0.1));
+      return;
+    }
+
+    const labelText = `${rowSubtitle}: `;
+    const valueText = safeDescription;
+    const fontSize = 11;
+    doc.font("dejavu-bold").fontSize(fontSize);
+    const labelWidth = doc.widthOfString(labelText);
+    doc.font("dejavu").fontSize(fontSize);
+    const valueWidth = doc.widthOfString(valueText);
+    const rowWidth = Math.min(helpers.availableWidth, labelWidth + valueWidth);
+    const textX = startX + Math.max(0, (helpers.availableWidth - rowWidth) / 2);
+    const textY = doc.y;
+
+    doc.font("dejavu-bold").fontSize(fontSize).fillColor("#111827").text(labelText, textX, textY, {
+      lineBreak: false,
+      continued: true,
+    });
+    doc.font("dejavu").fontSize(fontSize).fillColor("#111827").text(valueText, {
+      lineBreak: true,
+    });
+    doc.moveDown(0.15);
+  });
+
+  doc.moveDown(0.45);
 }
 
 function renderPdfTable(doc, helpers, table = {}) {
@@ -1627,6 +1815,11 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
 
       if (itemType === "text_block") {
         renderPdfTextBlock(doc, helpers, item.title || "Tekst", item.body || "");
+        continue;
+      }
+
+      if (itemType === "system_description") {
+        renderPdfSystemDescriptionBlock(doc, helpers, item);
         continue;
       }
 

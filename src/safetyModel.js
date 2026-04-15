@@ -99,6 +99,7 @@ export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [
 
 export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "chapter", label: "Poglavlje" },
+  { value: "system_description", label: "Opis sustava" },
   { value: "text", label: "Tekst" },
   { value: "longtext", label: "Dugi tekst" },
   { value: "date", label: "Datum" },
@@ -136,6 +137,7 @@ export const LEARNING_TEST_STATUS_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
   "chapter",
+  "system_description",
   "longtext",
   "qualified_inspectors",
   "sketch_upload",
@@ -1496,6 +1498,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       ? (normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet)
         ?? buildLegacyTemplateMeasurementSheet(columns, legacyRowCount))
       : null;
+    const normalizedSystemRows = type === "system_description"
+      ? normalizeDocumentTemplateSystemDescriptionRows(field?.systemRows ?? field?.rows ?? [])
+      : [];
 
     while (seenKeys.has(key)) {
       key = slugifyTemplateKey(`${key}_${index + 1}`, `FIELD_${index + 1}`);
@@ -1522,6 +1527,10 @@ function normalizeDocumentTemplateFields(fields = []) {
       signatureRole: normalizeText(field?.signatureRole).toLowerCase() || "inspect",
       signatureMultiple: normalizeBoolean(field?.signatureMultiple, true),
       signatureIncludeScan: normalizeBoolean(field?.signatureIncludeScan, false),
+      sectionSubtitle: type === "system_description"
+        ? normalizeText(field?.sectionSubtitle).slice(0, 280)
+        : "",
+      systemRows: normalizedSystemRows,
       legalFrameworkIds: normalizeIdList(field?.legalFrameworkIds ?? field?.availableLegalFrameworkIds ?? []),
       defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),
@@ -1538,6 +1547,35 @@ function normalizeDocumentTemplateFields(fields = []) {
       sheet: normalizedSheet,
     };
   });
+}
+
+function normalizeDocumentTemplateSystemDescriptionLineCount(value = 1) {
+  return Math.max(1, Math.min(8, Math.round(normalizeFiniteNumber(value, 1))));
+}
+
+function normalizeDocumentTemplateSystemDescriptionRows(rows = []) {
+  const source = Array.isArray(rows) ? rows : [];
+  const normalizedRows = source
+    .slice(0, 16)
+    .map((row, index) => ({
+      id: normalizeText(row?.id) || `system-description-row-${index + 1}`,
+      subtitle: normalizeText(row?.subtitle ?? row?.label).slice(0, 160),
+      description: String(row?.description ?? row?.value ?? "").replace(/\r\n/g, "\n").slice(0, 4000),
+      lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row?.lineCount ?? row?.rows),
+      placeholder: normalizeText(row?.placeholder).slice(0, 220),
+    }));
+
+  if (normalizedRows.length > 0) {
+    return normalizedRows;
+  }
+
+  return [{
+    id: "system-description-row-1",
+    subtitle: "",
+    description: "",
+    lineCount: 1,
+    placeholder: "",
+  }];
 }
 
 function normalizeDocumentTemplateEquipmentItems(items = []) {

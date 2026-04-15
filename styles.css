@@ -20650,6 +20650,67 @@ body.is-measurement-equipment-export-open {
   gap: 8px;
 }
 
+.document-template-runtime-system-description-field {
+  display: grid;
+  gap: 12px;
+}
+
+.document-template-runtime-system-title {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #d1d5db;
+  color: #111827;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-system-subtitle {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.document-template-runtime-system-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.document-template-runtime-system-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid rgba(181, 116, 165, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.document-template-runtime-system-row.is-description-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.document-template-runtime-system-row-label {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  color: #1f2937;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.document-template-runtime-system-row-control {
+  min-width: 0;
+}
+
+.document-template-runtime-system-row-control input,
+.document-template-runtime-system-row-control textarea {
+  width: 100%;
+}
+
 .document-template-runtime-media-field {
   display: grid;
   gap: 12px;
@@ -21585,6 +21646,79 @@ body.is-measurement-equipment-export-open {
   line-height: 1.35;
 }
 
+.document-template-system-config {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(198, 134, 182, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 251, 254, 0.98), rgba(247, 251, 248, 0.98));
+}
+
+.document-template-system-config-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.document-template-system-config-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.document-template-system-config-copy strong {
+  color: #2b1d3d;
+  font-size: 0.92rem;
+}
+
+.document-template-system-config-copy span {
+  color: #6d6280;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.document-template-system-config-list {
+  display: grid;
+  gap: 10px;
+}
+
+.document-template-system-config-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(214, 89, 173, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.document-template-system-config-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.document-template-system-config-row-head strong {
+  color: #3d2152;
+  font-size: 0.82rem;
+}
+
+.document-template-system-config-row-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 180px);
+  gap: 8px 10px;
+}
+
+.document-template-system-config-row-grid > .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.document-template-system-config-line-field {
+  min-width: 140px;
+}
+
 .document-template-digital-signature-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, max-content));
@@ -21635,6 +21769,77 @@ body.is-measurement-equipment-export-open {
   min-height: 54px;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(240, 79, 151, 0.92), rgba(122, 97, 255, 0.88));
+}
+
+.document-template-preview-system-block {
+  display: grid;
+  gap: 12px;
+}
+
+.document-template-preview-system-title {
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: #d1d5db;
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.document-template-preview-system-subtitle {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.document-template-preview-system-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.document-template-preview-system-row {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+}
+
+.document-template-preview-system-row.is-description-only {
+  justify-items: stretch;
+  text-align: left;
+}
+
+.document-template-preview-system-row-label {
+  color: #111827;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.document-template-preview-system-row-value {
+  width: 100%;
+  min-height: calc(var(--document-template-system-lines, 1) * 1.4rem);
+  color: #1f2937;
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.document-template-preview-system-placeholder {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+@media (max-width: 860px) {
+  .document-template-system-config-row-grid,
+  .document-template-runtime-system-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-preview-system-row {
+    justify-items: stretch;
+    text-align: left;
+  }
 }
 
 .document-template-item-card {

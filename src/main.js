@@ -14901,6 +14901,140 @@ function parseTemplateLooseNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizeDocumentTemplateSystemDescriptionLineCount(value = 1) {
+  return Math.max(1, Math.min(8, Math.round(parseTemplateLooseNumber(value, 1))));
+}
+
+function createEmptyDocumentTemplateSystemDescriptionRowDraft(initial = {}, index = 0) {
+  return {
+    id: initial.id || crypto.randomUUID(),
+    subtitle: String(initial.subtitle ?? initial.label ?? "").trim(),
+    description: String(initial.description ?? initial.value ?? "").replace(/\r\n/g, "\n").trim(),
+    lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(initial.lineCount ?? initial.rows),
+    placeholder: String(initial.placeholder ?? "").trim(),
+  };
+}
+
+function createDefaultDocumentTemplateSystemDescriptionRows() {
+  return [
+    { id: "system-description-default-1", subtitle: "Proizvođač", description: "", lineCount: 1, placeholder: "npr. COOPER" },
+    { id: "system-description-default-2", subtitle: "Tip", description: "", lineCount: 1, placeholder: "npr. FULL CXM/CO/GP/R/BB" },
+    { id: "system-description-default-3", subtitle: "Teh. podaci", description: "", lineCount: 1, placeholder: "npr. 1 kom" },
+    { id: "system-description-default-4", subtitle: "", description: "", lineCount: 2, placeholder: "Kratki opis sustava, položaja i bitnih napomena..." },
+  ].map((row, index) => createEmptyDocumentTemplateSystemDescriptionRowDraft(row, index));
+}
+
+function normalizeDocumentTemplateSystemDescriptionRows(rows = [], { ensureOne = true, fallbackRows = [] } = {}) {
+  const sourceRows = Array.isArray(rows) && rows.length > 0
+    ? rows
+    : (Array.isArray(fallbackRows) && fallbackRows.length > 0 ? fallbackRows : []);
+  const normalizedRows = sourceRows
+    .slice(0, 16)
+    .map((row, index) => createEmptyDocumentTemplateSystemDescriptionRowDraft(row, index));
+
+  if (normalizedRows.length > 0) {
+    return normalizedRows;
+  }
+
+  return ensureOne
+    ? [createEmptyDocumentTemplateSystemDescriptionRowDraft({}, 0)]
+    : [];
+}
+
+function isDocumentTemplateSystemDescriptionValue(value = null) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.rows));
+}
+
+function normalizeDocumentTemplateSystemDescriptionRuntimeValue(field = {}, value = null) {
+  const templateRows = normalizeDocumentTemplateSystemDescriptionRows(
+    field?.systemRows,
+    {
+      ensureOne: true,
+      fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+    },
+  );
+  const source = isDocumentTemplateSystemDescriptionValue(value) ? value : {};
+  const runtimeRows = Array.isArray(source.rows) ? source.rows : [];
+  const totalRowCount = Math.max(templateRows.length, runtimeRows.length, 1);
+  const rows = Array.from({ length: totalRowCount }, (_, index) => {
+    const templateRow = templateRows[index] ?? createEmptyDocumentTemplateSystemDescriptionRowDraft({}, index);
+    const runtimeRow = runtimeRows[index] ?? {};
+    return createEmptyDocumentTemplateSystemDescriptionRowDraft({
+      ...templateRow,
+      ...runtimeRow,
+      id: runtimeRow.id || templateRow.id,
+      subtitle: Object.prototype.hasOwnProperty.call(runtimeRow, "subtitle") ? runtimeRow.subtitle : templateRow.subtitle,
+      description: Object.prototype.hasOwnProperty.call(runtimeRow, "description") ? runtimeRow.description : templateRow.description,
+      lineCount: Object.prototype.hasOwnProperty.call(runtimeRow, "lineCount") ? runtimeRow.lineCount : templateRow.lineCount,
+      placeholder: Object.prototype.hasOwnProperty.call(runtimeRow, "placeholder") ? runtimeRow.placeholder : templateRow.placeholder,
+    }, index);
+  });
+
+  return {
+    title: String(field?.label || field?.wordLabel || "Opis sustava").trim() || "Opis sustava",
+    sectionSubtitle: Object.prototype.hasOwnProperty.call(source, "sectionSubtitle")
+      ? String(source.sectionSubtitle ?? "").trim()
+      : String(field?.sectionSubtitle || "").trim(),
+    rows,
+  };
+}
+
+function createDocumentTemplateSystemDescriptionBlankValue(field = {}) {
+  const value = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
+  return {
+    ...value,
+    rows: value.rows.map((row) => ({
+      ...row,
+      description: "",
+    })),
+  };
+}
+
+function buildDocumentTemplateSystemDescriptionSummaryLines(value = null) {
+  const model = isDocumentTemplateSystemDescriptionValue(value)
+    ? normalizeDocumentTemplateSystemDescriptionRuntimeValue({ label: value.title || "Opis sustava", systemRows: value.rows || [], sectionSubtitle: value.sectionSubtitle || "" }, value)
+    : null;
+
+  if (!model) {
+    return [];
+  }
+
+  const lines = [];
+  if (model.title) {
+    lines.push(model.title);
+  }
+  if (model.sectionSubtitle) {
+    lines.push(model.sectionSubtitle);
+  }
+
+  model.rows.forEach((row) => {
+    const subtitle = String(row.subtitle || "").trim();
+    const description = String(row.description || "").trim();
+    if (!subtitle && !description) {
+      return;
+    }
+    lines.push(subtitle ? `${subtitle}: ${description}`.trim() : description);
+  });
+
+  return lines.filter(Boolean);
+}
+
+function buildDocumentTemplateSystemDescriptionSummaryText(value = null) {
+  return buildDocumentTemplateSystemDescriptionSummaryLines(value).join("\n");
+}
+
+function hasDocumentTemplateSystemDescriptionContent(value = null) {
+  if (!isDocumentTemplateSystemDescriptionValue(value)) {
+    return false;
+  }
+
+  if (String(value.sectionSubtitle || "").trim()) {
+    return true;
+  }
+
+  return (Array.isArray(value.rows) ? value.rows : []).some((row) => String(row?.description || "").trim());
+}
+
 function getLegalFrameworkStatusLabel(value) {
   return getOptionLabel(LEGAL_FRAMEWORK_STATUS_OPTIONS, value || "active");
 }
@@ -15194,6 +15328,7 @@ const DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "chapter",
+  "system_description",
   "qualified_inspectors",
   "sketch_upload",
   "image_upload",
@@ -15212,6 +15347,7 @@ const DOCUMENT_TEMPLATE_MEDIA_FIELD_TYPES = new Set([
 
 const DOCUMENT_TEMPLATE_RUNTIME_FORCE_FULL_WIDTH_TYPES = new Set([
   "chapter",
+  "system_description",
   "qualified_inspectors",
   "sketch_upload",
   "image_upload",
@@ -15237,6 +15373,14 @@ const DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS = {
 
 const DOCUMENT_TEMPLATE_LONGTEXT_HEIGHT_OPTIONS = Array.from({ length: 10 }, (_, index) => {
   const rows = index + 3;
+  return {
+    value: String(rows),
+    label: `${rows} red${rows === 1 ? "" : rows >= 2 && rows <= 4 ? "a" : "ova"}`,
+  };
+});
+
+const DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS = Array.from({ length: 8 }, (_, index) => {
+  const rows = index + 1;
   return {
     value: String(rows),
     label: `${rows} red${rows === 1 ? "" : rows >= 2 && rows <= 4 ? "a" : "ova"}`,
@@ -15427,6 +15571,12 @@ function formatDocumentTemplateLookupResolvedValue(value) {
     return "Ne";
   }
   if (value && typeof value === "object") {
+    if (isDocumentTemplateSystemDescriptionValue(value)) {
+      if (!hasDocumentTemplateSystemDescriptionContent(value)) {
+        return "";
+      }
+      return buildDocumentTemplateSystemDescriptionSummaryLines(value).slice(0, 3).join(" | ");
+    }
     const mediaValue = normalizeDocumentTemplateMediaFieldValue(value);
     if (mediaValue) {
       return mediaValue.fileName || getDocumentTemplateMediaFieldKindLabel(mediaValue.documentCategory || "");
@@ -15449,6 +15599,9 @@ function hasMeaningfulDocumentRecordValue(value) {
   }
 
   if (value && typeof value === "object") {
+    if (isDocumentTemplateSystemDescriptionValue(value)) {
+      return hasDocumentTemplateSystemDescriptionContent(value);
+    }
     return Object.keys(value).length > 0;
   }
 
@@ -15830,6 +15983,20 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     );
   }
 
+  if (safeTool === "system_description") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Opis sustava",
+        wordLabel: "Opis sustava",
+        type: "system_description",
+        sectionSubtitle: "",
+        systemRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+        helpText: "Dodaj naslov bloka i retke koje će korisnik kasnije ispunjavati u zapisniku.",
+      },
+      baseIndex,
+    );
+  }
+
   if (safeTool === "measurement_table") {
     const sheet = buildTemplateMeasurementSheetFromLegacyConfig({
       columns: ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"],
@@ -16093,6 +16260,16 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     helpText: String(initial.helpText ?? "").trim(),
     toggleTrueLabel: String(initial.toggleTrueLabel ?? "").trim(),
     toggleFalseLabel: String(initial.toggleFalseLabel ?? "").trim(),
+    sectionSubtitle: String(initial.sectionSubtitle ?? "").trim(),
+    systemRows: type === "system_description"
+      ? normalizeDocumentTemplateSystemDescriptionRows(
+        initial.systemRows ?? initial.rows,
+        {
+          ensureOne: true,
+          fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+        },
+      )
+      : [],
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
     signatureRole: String(initial.signatureRole ?? "inspect").trim().toLowerCase() || "inspect",
     signatureMultiple: initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true,
@@ -16568,6 +16745,13 @@ function buildDocumentTemplateDraft() {
       previousDocumentMode: String(field.previousDocumentMode || "NONE").trim().toUpperCase() || "NONE",
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
+      sectionSubtitle: String(field.sectionSubtitle || "").trim(),
+      systemRows: normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
+        ensureOne: field.type === "system_description",
+        fallbackRows: field.type === "system_description"
+          ? createDefaultDocumentTemplateSystemDescriptionRows()
+          : [],
+      }),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
       signatureRole: String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect",
       signatureMultiple: Boolean(field.signatureMultiple ?? true),
@@ -16628,6 +16812,15 @@ function buildDocumentTemplateDraft() {
           signatureRole: field.signatureRole || "inspect",
           signatureMultiple: Boolean(field.signatureMultiple ?? true),
           signatureIncludeScan: Boolean(field.signatureIncludeScan),
+          sectionSubtitle: field.type === "system_description"
+            ? String(field.sectionSubtitle || "").trim()
+            : "",
+          systemRows: field.type === "system_description"
+            ? normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
+              ensureOne: true,
+              fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+            })
+            : [],
           layoutWidth: getDocumentTemplateRuntimeFieldLayoutWidth(field),
           fieldHeight: 0,
           legalFrameworkIds,
@@ -16649,6 +16842,8 @@ function buildDocumentTemplateDraft() {
           lookupValue: field.source === "DATABASE_LOOKUP" ? field.lookupValue : "",
           valueColumn: field.source === "DATABASE_LOOKUP" ? field.valueColumn : "",
           previousDocumentMode: field.previousDocumentMode || "NONE",
+          sectionSubtitle: "",
+          systemRows: [],
           legalFrameworkIds: [],
           defaultLegalFrameworkIds: [],
           columns: [],
@@ -18153,6 +18348,10 @@ function getDocumentTemplateSourceRuntimeValue(fieldOrSource, context = {}) {
 function normalizeDocumentTemplateRuntimeFieldValueByType(field = {}, value = "") {
   const type = String(field?.type || "text").trim().toLowerCase();
 
+  if (type === "system_description") {
+    return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
+  }
+
   if (type === "checkbox" || type === "toggle") {
     if (typeof value === "boolean") {
       return value;
@@ -18346,6 +18545,26 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
         .join(", ");
     }
     return `Potpis (${getSignatureAreaLabel(field.signatureArea || "elektro")})`;
+  }
+
+  if (field.type === "system_description") {
+    const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+    const runtimeValue = runtimeWorkOrderId
+      ? getDocumentTemplateRuntimeFieldValue(runtimeWorkOrderId, field.id)
+      : undefined;
+
+    if (runtimeValue !== undefined) {
+      return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, runtimeValue);
+    }
+
+    if (runtimeWorkOrderId && isDocumentTemplateRuntimePersistedField(field)) {
+      const fallbackValue = getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId);
+      if (hasMeaningfulDocumentRecordValue(fallbackValue)) {
+        return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, fallbackValue);
+      }
+    }
+
+    return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
   }
 
   if (field.type === "chapter") {
@@ -18777,6 +18996,46 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
             ${!placeholderMode ? `<p class="document-template-preview-muted">Blok vizualno odvaja i grupira sljedeće stavke u templateu.</p>` : ""}
           </div>
         </div>
+      </section>
+    `;
+  }
+
+  if (field.type === "system_description") {
+    const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue(
+      field,
+      getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode }),
+    );
+    const rowsMarkup = model.rows.map((row, rowIndex) => {
+      const subtitle = escapeHtml(row.subtitle || "");
+      const description = escapeHtml(row.description || "").replace(/\n/g, "<br />");
+      const hasSubtitle = Boolean(subtitle);
+      const hasDescription = Boolean(String(row.description || "").trim());
+      const rowValue = hasDescription
+        ? description
+        : `<span class="document-template-preview-system-placeholder">${escapeHtml(row.placeholder || (placeholderMode ? token : "Vrijednost se unosi u zapisniku."))}</span>`;
+      return `
+        <article class="document-template-preview-system-row ${hasSubtitle ? "" : "is-description-only"}">
+          ${hasSubtitle ? `<div class="document-template-preview-system-row-label">${subtitle}</div>` : ""}
+          <div
+            class="document-template-preview-system-row-value"
+            style="--document-template-system-lines:${normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount)}"
+          >
+            ${rowValue}
+          </div>
+        </article>
+      `;
+    }).join("");
+
+    return `
+      <section class="document-template-preview-section">
+        <div class="document-template-preview-system-block">
+          <div class="document-template-preview-system-title">${placeholderMode ? escapeHtml(token) : escapeHtml(model.title || title)}</div>
+          ${model.sectionSubtitle ? `<p class="document-template-preview-system-subtitle">${escapeHtml(model.sectionSubtitle)}</p>` : ""}
+          <div class="document-template-preview-system-rows">
+            ${rowsMarkup}
+          </div>
+        </div>
+        ${helpText}
       </section>
     `;
   }
@@ -19410,15 +19669,41 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
   }));
 }
 
+function buildDocumentTemplateSystemDescriptionWordPlaceholder(field = {}, context = {}, index = 0) {
+  const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false });
+  const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
+  return {
+    __docxBlockType: "system_description",
+    title: model.title || field.label || field.wordLabel || "Opis sustava",
+    subtitle: model.sectionSubtitle || "",
+    rows: model.rows.map((row) => ({
+      id: row.id,
+      subtitle: row.subtitle || "",
+      description: row.description || "",
+      lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+    })),
+  };
+}
+
 function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}, index = 0) {
   if (field.type === "measurement_table") {
     return buildDocumentTemplateMeasurementTableWordPlaceholder(field, context);
+  }
+
+  if (field.type === "system_description") {
+    return buildDocumentTemplateSystemDescriptionWordPlaceholder(field, context, index);
   }
 
   return buildDocumentTemplateFieldExportText(field, context, index);
 }
 
 function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 0) {
+  if (field.type === "system_description") {
+    return buildDocumentTemplateSystemDescriptionSummaryText(
+      getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+    );
+  }
+
   if (field.type === "measurement_table") {
     return buildDocumentTemplateMeasurementTableText(field, context);
   }
@@ -19646,6 +19931,23 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
           type: "signature_group",
           title,
           items: buildDocumentTemplateDigitalSignatureEntries(field, context),
+        };
+      }
+
+      if (field.type === "system_description") {
+        const value = normalizeDocumentTemplateSystemDescriptionRuntimeValue(
+          field,
+          getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+        );
+        return {
+          type: "system_description",
+          title: value.title || title,
+          subtitle: value.sectionSubtitle || "",
+          rows: value.rows.map((row) => ({
+            subtitle: row.subtitle || "",
+            description: row.description || "",
+            lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+          })),
         };
       }
 
@@ -25559,7 +25861,7 @@ function renderDocumentTemplatePlaceholderPalette() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "document-template-placeholder-chip";
-    button.title = `${entry.label} | ${entry.value || ""}`.trim();
+    button.title = `${entry.label} | ${formatDocumentTemplateLookupResolvedValue(entry.value) || ""}`.trim();
 
     const token = document.createElement("strong");
     token.textContent = entry.token;
@@ -25627,6 +25929,10 @@ function isDocumentTemplateRuntimeVisibleField(field = {}) {
 }
 
 function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
+  if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+    return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
+  }
+
   if (field.type === "checkbox" || field.type === "toggle") {
     return ["1", "true", "da", "yes", "on"].includes(String(field.defaultValue || "").trim().toLowerCase());
   }
@@ -25645,6 +25951,9 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id);
 
   if (sourceId === "blank") {
+    if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+      return createDocumentTemplateSystemDescriptionBlankValue(field);
+    }
     return field.type === "checkbox" || field.type === "toggle" ? false : "";
   }
 
@@ -27491,6 +27800,103 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return shellNode;
   };
 
+  const createSystemDescriptionFieldControl = (field, workOrder) => {
+    const shellNode = document.createElement("div");
+    shellNode.className = "document-template-runtime-system-description-field";
+
+    const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue(
+      field,
+      getDocumentTemplateRuntimeInitialValue(field, workOrder.id),
+    );
+
+    const titleBar = document.createElement("div");
+    titleBar.className = "document-template-runtime-system-title";
+    titleBar.textContent = createFieldTitle(field, 0);
+    shellNode.append(titleBar);
+
+    if (model.sectionSubtitle) {
+      const subtitle = document.createElement("p");
+      subtitle.className = "document-template-runtime-system-subtitle";
+      subtitle.textContent = model.sectionSubtitle;
+      shellNode.append(subtitle);
+    }
+
+    const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
+    if (sourcePicker) {
+      shellNode.append(sourcePicker);
+    }
+
+    const rowsWrap = document.createElement("div");
+    rowsWrap.className = "document-template-runtime-system-rows";
+
+    const syncValue = () => {
+      setDocumentTemplateRuntimeFieldValue(
+        workOrder.id,
+        field.id,
+        {
+          sectionSubtitle: model.sectionSubtitle || "",
+          rows: model.rows.map((row) => ({
+            id: row.id,
+            subtitle: row.subtitle || "",
+            description: row.description || "",
+            lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+          })),
+        },
+        { render: false },
+      );
+      renderDocumentTemplatePreviewContent();
+    };
+
+    model.rows.forEach((row, rowIndex) => {
+      const rowCard = document.createElement("article");
+      rowCard.className = `document-template-runtime-system-row ${row.subtitle ? "" : "is-description-only"}`;
+
+      if (row.subtitle) {
+        const rowLabel = document.createElement("div");
+        rowLabel.className = "document-template-runtime-system-row-label";
+        rowLabel.textContent = row.subtitle;
+        rowCard.append(rowLabel);
+      }
+
+      const controlWrap = document.createElement("div");
+      controlWrap.className = "document-template-runtime-system-row-control";
+      const control = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount) > 1 || !row.subtitle
+        ? document.createElement("textarea")
+        : document.createElement("input");
+
+      if (control instanceof HTMLTextAreaElement) {
+        control.rows = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount);
+        control.style.minHeight = `${Math.max(56, normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount) * 32)}px`;
+      } else {
+        control.type = "text";
+      }
+
+      control.value = row.description || "";
+      control.placeholder = row.placeholder || (row.subtitle
+        ? `Upiši ${row.subtitle.toLowerCase()}`
+        : "Dodaj opis sustava...");
+      control.addEventListener("input", (event) => {
+        model.rows[rowIndex].description = String(event.currentTarget.value ?? "");
+        syncValue();
+      });
+
+      controlWrap.append(control);
+      rowCard.append(controlWrap);
+      rowsWrap.append(rowCard);
+    });
+
+    shellNode.append(rowsWrap);
+
+    if (field.helpText) {
+      const helper = document.createElement("small");
+      helper.className = "document-template-runtime-field-help";
+      helper.textContent = field.helpText;
+      shellNode.append(helper);
+    }
+
+    return shellNode;
+  };
+
   const createMediaFieldControl = (field, workOrder) => {
     const shellNode = document.createElement("div");
     shellNode.className = "document-template-runtime-media-field";
@@ -27859,6 +28265,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.className = "field field-span-full";
       fieldShell.append(createMeasurementFieldControl(field, activeWorkOrder));
       grid.append(fieldShell);
+    } else if (field.type === "system_description") {
+      const fieldShell = document.createElement("div");
+      fieldShell.className = "field field-span-full";
+      fieldShell.append(createSystemDescriptionFieldControl(field, activeWorkOrder));
+      grid.append(fieldShell);
     } else if (isDocumentTemplateMediaFieldType(field.type)) {
       const fieldShell = document.createElement("div");
       fieldShell.className = "field field-span-full";
@@ -28159,7 +28570,11 @@ function renderDocumentTemplateFieldRows() {
     const labelField = document.createElement("label");
     labelField.className = "field";
     const labelSpan = document.createElement("span");
-    labelSpan.textContent = field.type === "chapter" ? "Ime bloka" : "Naziv u aplikaciji";
+    labelSpan.textContent = field.type === "chapter"
+      ? "Ime bloka"
+      : field.type === "system_description"
+        ? "Naslov bloka"
+        : "Naziv u aplikaciji";
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.value = field.label || "";
@@ -28200,7 +28615,11 @@ function renderDocumentTemplateFieldRows() {
     const wordLabelField = document.createElement("label");
     wordLabelField.className = "field";
     const wordLabelSpan = document.createElement("span");
-    wordLabelSpan.textContent = field.type === "chapter" ? "Naslov u Wordu" : "Placeholder u Wordu";
+    wordLabelSpan.textContent = field.type === "chapter"
+      ? "Naslov u Wordu"
+      : field.type === "system_description"
+        ? "Placeholder bloka u Wordu"
+        : "Placeholder u Wordu";
     const wordLabelInput = document.createElement("input");
     wordLabelInput.type = "text";
     wordLabelInput.placeholder = "Kako se placeholder zove u Wordu";
@@ -28476,6 +28895,142 @@ function renderDocumentTemplateFieldRows() {
         ? `Interni blok buildera. U njemu je ${chapterCount} ${chapterCount === 1 ? "stavka" : "stavki"} i sve sljedeće stavke ulaze unutra do novog bloka.`
         : "Interni blok buildera. Dodaj polja, tekst ili Excel ispod njega i sve će automatski ući u ovu cjelinu.";
       specialInfoField.append(specialInfoValue);
+    } else if (field.type === "system_description") {
+      specialInfoField.hidden = true;
+
+      const subtitleField = document.createElement("label");
+      subtitleField.className = "field field-span-full";
+      const subtitleSpan = document.createElement("span");
+      subtitleSpan.textContent = "Podnaslov / uvodni opis";
+      const subtitleInput = document.createElement("input");
+      subtitleInput.type = "text";
+      subtitleInput.placeholder = "Kratka uvodna rečenica ili podnaslov bloka";
+      subtitleInput.value = field.sectionSubtitle || "";
+      subtitleInput.addEventListener("input", (event) => {
+        documentTemplateFieldDrafts[draftIndex].sectionSubtitle = String(event.currentTarget.value || "");
+        renderDocumentTemplatePreviewContent();
+      });
+      subtitleField.append(subtitleSpan, subtitleInput);
+
+      const rowsField = document.createElement("div");
+      rowsField.className = "field field-span-full document-template-system-config";
+
+      const rowsHead = document.createElement("div");
+      rowsHead.className = "document-template-system-config-head";
+
+      const rowsCopy = document.createElement("div");
+      rowsCopy.className = "document-template-system-config-copy";
+      const rowsTitle = document.createElement("strong");
+      rowsTitle.textContent = "Redovi bloka";
+      const rowsMeta = document.createElement("span");
+      rowsMeta.textContent = "Ostavi podnaslov praznim ako želiš puni tekst preko cijele širine.";
+      rowsCopy.append(rowsTitle, rowsMeta);
+
+      const addRowButton = createActionButton("Dodaj red", "ghost-button", () => {
+        documentTemplateFieldDrafts[draftIndex].systemRows = [
+          ...normalizeDocumentTemplateSystemDescriptionRows(documentTemplateFieldDrafts[draftIndex].systemRows, {
+            ensureOne: false,
+          }),
+          createEmptyDocumentTemplateSystemDescriptionRowDraft({}, documentTemplateFieldDrafts[draftIndex].systemRows?.length || 0),
+        ];
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+
+      rowsHead.append(rowsCopy, addRowButton);
+      rowsField.append(rowsHead);
+
+      const rowsList = document.createElement("div");
+      rowsList.className = "document-template-system-config-list";
+      const systemRows = normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
+        ensureOne: true,
+        fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+      });
+      documentTemplateFieldDrafts[draftIndex].systemRows = systemRows;
+
+      systemRows.forEach((systemRow, systemRowIndex) => {
+        const rowCard = document.createElement("article");
+        rowCard.className = "document-template-system-config-row";
+
+        const rowHeader = document.createElement("div");
+        rowHeader.className = "document-template-system-config-row-head";
+
+        const rowCounter = document.createElement("strong");
+        rowCounter.textContent = `Red ${systemRowIndex + 1}`;
+
+        const removeRowButton = createActionButton("Makni red", "ghost-button", () => {
+          const currentRows = normalizeDocumentTemplateSystemDescriptionRows(documentTemplateFieldDrafts[draftIndex].systemRows, {
+            ensureOne: true,
+            fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+          });
+          documentTemplateFieldDrafts[draftIndex].systemRows = currentRows.filter((_, currentIndex) => currentIndex !== systemRowIndex);
+          if (documentTemplateFieldDrafts[draftIndex].systemRows.length === 0) {
+            documentTemplateFieldDrafts[draftIndex].systemRows = [createEmptyDocumentTemplateSystemDescriptionRowDraft({}, 0)];
+          }
+          renderDocumentTemplateFieldRows();
+          renderDocumentTemplatePreviewContent();
+        });
+        removeRowButton.disabled = systemRows.length <= 1;
+        rowHeader.append(rowCounter, removeRowButton);
+
+        const rowGrid = document.createElement("div");
+        rowGrid.className = "document-template-system-config-row-grid";
+
+        const rowSubtitleField = document.createElement("label");
+        rowSubtitleField.className = "field";
+        const rowSubtitleSpan = document.createElement("span");
+        rowSubtitleSpan.textContent = "Podnaslov";
+        const rowSubtitleInput = document.createElement("input");
+        rowSubtitleInput.type = "text";
+        rowSubtitleInput.placeholder = "npr. Proizvođač";
+        rowSubtitleInput.value = systemRow.subtitle || "";
+        rowSubtitleInput.addEventListener("input", (event) => {
+          documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].subtitle = String(event.currentTarget.value || "");
+          renderDocumentTemplatePreviewContent();
+        });
+        rowSubtitleField.append(rowSubtitleSpan, rowSubtitleInput);
+
+        const rowLineField = document.createElement("label");
+        rowLineField.className = "field document-template-system-config-line-field";
+        const rowLineSpan = document.createElement("span");
+        rowLineSpan.textContent = "Visina";
+        const rowLineSelect = document.createElement("select");
+        rowLineSelect.className = "document-template-source-select";
+        replaceSelectOptions(
+          rowLineSelect,
+          DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS,
+          String(normalizeDocumentTemplateSystemDescriptionLineCount(systemRow.lineCount)),
+        );
+        rowLineSelect.addEventListener("change", () => {
+          documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(rowLineSelect.value);
+          renderDocumentTemplateFieldRows();
+          renderDocumentTemplatePreviewContent();
+        });
+        rowLineField.append(rowLineSpan, rowLineSelect);
+
+        const rowDescriptionField = document.createElement("label");
+        rowDescriptionField.className = "field field-span-full";
+        const rowDescriptionSpan = document.createElement("span");
+        rowDescriptionSpan.textContent = "Opis / vrijednost";
+        const rowDescriptionInput = document.createElement("textarea");
+        rowDescriptionInput.rows = normalizeDocumentTemplateSystemDescriptionLineCount(systemRow.lineCount);
+        rowDescriptionInput.placeholder = systemRow.subtitle
+          ? `Vrijednost za red "${systemRow.subtitle}"`
+          : "Opis koji ide preko cijele širine bloka";
+        rowDescriptionInput.value = systemRow.description || "";
+        rowDescriptionInput.addEventListener("input", (event) => {
+          documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].description = String(event.currentTarget.value || "");
+          renderDocumentTemplatePreviewContent();
+        });
+        rowDescriptionField.append(rowDescriptionSpan, rowDescriptionInput);
+
+        rowGrid.append(rowSubtitleField, rowLineField, rowDescriptionField);
+        rowCard.append(rowHeader, rowGrid);
+        rowsList.append(rowCard);
+      });
+
+      rowsField.append(rowsList);
+      grid.append(subtitleField, rowsField);
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
     } else if (isDocumentTemplateMediaFieldType(field.type)) {
@@ -28636,6 +29191,8 @@ function renderDocumentTemplateFieldRows() {
 
     if (field.type === "measurement_table") {
       grid.append(columnsField);
+    } else if (field.type === "system_description") {
+      // system description fields already appended above
     } else if (field.type === "legal_list") {
       // legal fields already appended above
     } else if (isSpecialType) {
@@ -43814,6 +44371,10 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
   }
 
   if (type === "measurement_table") {
+    return true;
+  }
+
+  if (type === "system_description") {
     return true;
   }
 
