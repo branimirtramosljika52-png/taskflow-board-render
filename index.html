@@ -1183,6 +1183,20 @@
             </div>
           </section>
 
+          <section id="dashboard-control-panel" class="panel dashboard-control-panel" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Home</p>
+                <h2>Control panel</h2>
+              </div>
+              <p class="helper-copy dashboard-control-copy">
+                Administracija platforme, pristupnih zahtjeva i sadržaja početnog ekrana na jednom mjestu.
+              </p>
+            </div>
+
+            <div id="dashboard-control-grid" class="dashboard-control-grid"></div>
+          </section>
+
           <section id="work-order-list-panel" class="panel panel-work-orders">
             <div class="workspace-list-head">
               <div class="workspace-list-copy">
@@ -2524,7 +2538,7 @@
             <p id="organization-error" class="form-error" aria-live="polite"></p>
           </section>
 
-          <section class="panel">
+          <section class="panel people-management-panel">
             <div class="section-heading">
               <div>
                 <p class="section-kicker">People</p>
@@ -2535,15 +2549,16 @@
               </div>
             </div>
 
+            <p class="helper-copy people-management-copy">Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.</p>
+
             <div class="table-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>User</th>
-                    <th>Email</th>
+                    <th>Korisnik</th>
+                    <th>Kontakt</th>
                     <th>Role</th>
-                      <th>Ovlaštenja</th>
-                    <th>Organization</th>
+                    <th>Ovlaštenja</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -2580,6 +2595,10 @@
                       <input id="user-last-name" type="text" maxlength="160" />
                     </label>
                     <label class="field">
+                      <span>Prikaz imena</span>
+                      <input id="user-display-name" type="text" maxlength="220" placeholder="npr. mr. sc. Ana Savanović" />
+                    </label>
+                    <label class="field">
                       <span>Email</span>
                       <input id="user-email" type="email" maxlength="160" required />
                     </label>
@@ -2599,8 +2618,12 @@
                       <span>Primary organization</span>
                       <select id="user-organization-id"></select>
                     </label>
-                    <label id="user-role-field" class="field">
+                    <label class="field">
                       <span>Role</span>
+                      <select id="user-profile-role"></select>
+                    </label>
+                    <label id="user-role-field" class="field">
+                      <span>Pristup sustavu</span>
                       <select id="user-role">
                         <option value="user">User</option>
                         <option value="admin">Admin</option>
@@ -2688,6 +2711,17 @@
                         <span>E broj</span>
                         <input id="user-electrical-e-broj" type="text" maxlength="160" />
                       </label>
+                      <label class="field">
+                        <span>Vrijedi do</span>
+                        <input id="user-electrical-valid-until" type="date" />
+                      </label>
+                      <div class="field qualification-validity-field">
+                        <span>Vrijedi trajno</span>
+                        <label class="checkbox-field">
+                          <input id="user-electrical-valid-forever" type="checkbox" />
+                          <span>Bez isteka</span>
+                        </label>
+                      </div>
                     </div>
                   </section>
 
@@ -2725,6 +2759,17 @@
                         <span>E broj</span>
                         <input id="user-tipkalo-e-broj" type="text" maxlength="160" />
                       </label>
+                      <label class="field">
+                        <span>Vrijedi do</span>
+                        <input id="user-tipkalo-valid-until" type="date" />
+                      </label>
+                      <div class="field qualification-validity-field">
+                        <span>Vrijedi trajno</span>
+                        <label class="checkbox-field">
+                          <input id="user-tipkalo-valid-forever" type="checkbox" />
+                          <span>Bez isteka</span>
+                        </label>
+                      </div>
                     </div>
                   </section>
                   </div>

@@ -264,6 +264,58 @@ test("memory tenant repository keeps additional switch-off qualifications on use
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.eBroj, "89627512970");
 });
 
+test("memory tenant repository stores display name and profile role on user", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Ana",
+    lastName: "Savanović",
+    displayName: "mr. sc. Ana Savanović",
+    profileRole: "senior_user",
+    title: "dipl. ing. el.",
+    email: "ana-profile@example.com",
+    password: "secret123",
+    role: "user",
+  });
+
+  assert.equal(createdUser.displayName, "mr. sc. Ana Savanović");
+  assert.equal(createdUser.profileRole, "senior_user");
+  assert.equal(createdUser.title, "dipl. ing. el.");
+});
+
+test("memory tenant repository stores qualification validity windows", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Marko",
+    lastName: "Rok",
+    email: "marko-rok@example.com",
+    password: "secret123",
+    role: "user",
+    electricalQualification: {
+      canInspect: true,
+      validForever: true,
+      additionalAreas: {
+        tipkalo: {
+          canAuthorize: true,
+          validUntil: "2027-04-15",
+        },
+      },
+    },
+  });
+
+  assert.equal(createdUser.electricalQualification.validForever, true);
+  assert.equal(createdUser.electricalQualification.validUntil, "");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.validForever, false);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.validUntil, "2027-04-15");
+});
+
 test("memory tenant repository stores and approves signup requests", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

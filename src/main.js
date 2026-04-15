@@ -201,6 +201,17 @@ const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   tireLeadDaysBeforeDue: 30,
   tireRepeatEveryDays: 7,
 });
+const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
+  { value: "new_user", label: "New User" },
+  { value: "junior_user", label: "Junior User" },
+  { value: "senior_user", label: "Senior User" },
+  { value: "leand_user", label: "Leand User" },
+  { value: "manager", label: "Manager" },
+  { value: "admin", label: "Admin" },
+]);
+const USER_PROFILE_ROLE_LABELS = new Map(
+  USER_PROFILE_ROLE_OPTIONS.map((option) => [option.value, option.label]),
+);
 const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
@@ -1785,6 +1796,8 @@ const activeWorkOrdersCount = document.querySelector("#active-work-orders-count"
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
 const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
+const dashboardControlPanel = document.querySelector("#dashboard-control-panel");
+const dashboardControlGrid = document.querySelector("#dashboard-control-grid");
 const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
 const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
@@ -2417,6 +2430,7 @@ const organizationContactEmailInput = document.querySelector("#organization-cont
 const organizationContactPhoneInput = document.querySelector("#organization-contact-phone");
 const organizationStatusInput = document.querySelector("#organization-status");
 const organizationResetButton = document.querySelector("#organization-reset");
+const managementIntroPanel = document.querySelector("#management-intro-panel");
 
 const userForm = document.querySelector("#user-form");
 const userError = document.querySelector("#user-error");
@@ -2439,6 +2453,8 @@ const userOrganizationMemberships = document.querySelector("#user-organization-m
 const userAvatarFileInput = document.querySelector("#user-avatar-file");
 const userAvatarPreview = document.querySelector("#user-avatar-preview");
 const userRoleInput = document.querySelector("#user-role");
+const userDisplayNameInput = document.querySelector("#user-display-name");
+const userProfileRoleInput = document.querySelector("#user-profile-role");
 const userLegacyUsernameInput = document.querySelector("#user-legacy-username");
 const userTitleInput = document.querySelector("#user-title");
 const userOibInput = document.querySelector("#user-oib");
@@ -2451,11 +2467,15 @@ const userElectricalCanAuthorizeInput = document.querySelector("#user-electrical
 const userElectricalClassInput = document.querySelector("#user-electrical-class");
 const userElectricalUrbrojInput = document.querySelector("#user-electrical-urbroj");
 const userElectricalEBrojInput = document.querySelector("#user-electrical-e-broj");
+const userElectricalValidUntilInput = document.querySelector("#user-electrical-valid-until");
+const userElectricalValidForeverInput = document.querySelector("#user-electrical-valid-forever");
 const userTipkaloCanInspectInput = document.querySelector("#user-tipkalo-can-inspect");
 const userTipkaloCanAuthorizeInput = document.querySelector("#user-tipkalo-can-authorize");
 const userTipkaloClassInput = document.querySelector("#user-tipkalo-class");
 const userTipkaloUrbrojInput = document.querySelector("#user-tipkalo-urbroj");
 const userTipkaloEBrojInput = document.querySelector("#user-tipkalo-e-broj");
+const userTipkaloValidUntilInput = document.querySelector("#user-tipkalo-valid-until");
+const userTipkaloValidForeverInput = document.querySelector("#user-tipkalo-valid-forever");
 const userElectricalSignatureDataUrlInput = document.querySelector("#user-electrical-signature-data-url");
 const userElectricalSignatureFileInput = document.querySelector("#user-electrical-signature-file");
 const userElectricalSignatureUploadButton = document.querySelector("#user-electrical-signature-upload");
@@ -2491,6 +2511,14 @@ const loginContentResetButton = document.querySelector("#login-content-reset");
 const loginContentBody = document.querySelector("#login-content-body");
 const signupRequestsPanel = document.querySelector("#signup-requests-panel");
 const signupRequestsBody = document.querySelector("#signup-requests-body");
+
+if (dashboardControlGrid) {
+  [organizationPanel, signupRequestsPanel, loginContentPanel]
+    .filter((panel) => panel instanceof HTMLElement)
+    .forEach((panel) => {
+      dashboardControlGrid.append(panel);
+    });
+}
 
 if (userEditorBackdrop?.parentElement !== document.body) {
   document.body.append(userEditorBackdrop);
@@ -2805,6 +2833,66 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
+function isSystemPrivilegedRole(role = "") {
+  return ["super_admin", "admin"].includes(String(role || "").trim().toLowerCase());
+}
+
+function normalizeUserProfileRoleValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (USER_PROFILE_ROLE_LABELS.has(normalized)) {
+    return normalized;
+  }
+  return normalized === "user" ? "new_user" : "new_user";
+}
+
+function getUserProfileRoleLabel(value = "") {
+  return USER_PROFILE_ROLE_LABELS.get(normalizeUserProfileRoleValue(value)) || "New User";
+}
+
+function getUserSystemRoleLabel(role = "") {
+  if (role === "super_admin") {
+    return "Super Admin";
+  }
+  if (role === "admin") {
+    return "Admin";
+  }
+  return "User";
+}
+
+function getUserDocumentDisplayName(user = null) {
+  const displayName = String(user?.displayName || "").trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  return String(user?.fullName || user?.email || "Korisnik").trim();
+}
+
+function hasQualificationCapability(qualification = {}) {
+  return Boolean(qualification?.canInspect || qualification?.canAuthorize);
+}
+
+function getQualificationValidityLabel(qualification = {}) {
+  if (!hasQualificationCapability(qualification)) {
+    return "";
+  }
+  if (qualification?.validForever) {
+    return "Trajno";
+  }
+  if (qualification?.validUntil) {
+    return `Do ${formatDate(qualification.validUntil)}`;
+  }
+  return "Bez roka";
+}
+
+function syncQualificationValidityInput(dateInput, foreverInput) {
+  if (!(dateInput instanceof HTMLInputElement) || !(foreverInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  dateInput.disabled = foreverInput.checked;
+}
+
 function normalizeNotificationDayValue(value, fallback = 1, { min = 1, max = 365 } = {}) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
@@ -2876,7 +2964,7 @@ function canManageRenderedUser(user) {
   }
 
   if (getIsAdmin()) {
-    return user?.role === "user";
+    return !isSystemPrivilegedRole(user?.role);
   }
 
   return false;
@@ -12863,7 +12951,10 @@ function createUserIdentityCell(user) {
 
   const copy = document.createElement("div");
   copy.className = "people-list-copy";
+  const displayName = String(user.displayName || "").trim();
+  const primaryName = user.fullName || user.email || "User";
   const identityMeta = [
+    displayName && displayName !== primaryName ? displayName : "",
     user.title ? String(user.title).trim() : "",
     user.legacyUsername ? `Legacy: ${user.legacyUsername}` : "Web account",
   ].filter(Boolean).join(" · ");
@@ -12872,7 +12963,7 @@ function createUserIdentityCell(user) {
     (user.organizations ?? []).map((organization) => organization.name).join(", ") || "Bez organizacije",
   ].filter(Boolean).join(" · ");
   copy.append(
-    createListLine(user.fullName || user.email || "User", "list-primary"),
+    createListLine(primaryName, "list-primary"),
     createListLine(identityMeta, "list-secondary"),
     createListLine(organizationMeta, "list-tertiary"),
   );
@@ -12885,35 +12976,24 @@ function createUserIdentityCell(user) {
 function createUserElectricalCell(user) {
   const panicQualification = getUserElectricalQualification(user, "elektro");
   const switchQualification = getUserElectricalQualification(user, "tipkalo");
-  const statusMeta = [];
-  const summarizeQualification = (qualification, label) => {
-    const detail = [
-      qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-      qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-      qualification.eBroj ? `E ${qualification.eBroj}` : "",
-    ].filter(Boolean).join(" | ");
+  const activeAreas = [
+    { label: "Panik rasvjeta", qualification: panicQualification },
+    { label: "Tipkalo", qualification: switchQualification },
+  ].filter(({ qualification }) => hasQualificationCapability(qualification));
 
-    return detail ? `${label}: ${detail}` : `${label}: nema podataka`;
-  };
-
-  if (panicQualification.canInspect) {
-    statusMeta.push({ label: "Panik ispitivač", className: "is-success" });
-  }
-  if (panicQualification.canAuthorize) {
-    statusMeta.push({ label: "Panik nositelj", className: "is-accent" });
-  }
-  if (switchQualification.canInspect) {
-    statusMeta.push({ label: "Tipkalo ispitivač", className: "is-success" });
-  }
-  if (switchQualification.canAuthorize) {
-    statusMeta.push({ label: "Tipkalo nositelj", className: "is-accent" });
+  if (activeAreas.length === 0) {
+    return createStackCell({
+      title: "Bez ovlaštenja",
+      subtitle: "Nisu upisana aktivna ovlaštenja",
+    });
   }
 
   return createStackCell({
-    title: statusMeta.length > 0 ? "Aktivna ovlaštenja" : "Bez ovlaštenja",
-    subtitle: summarizeQualification(panicQualification, "Panik"),
-    tertiary: summarizeQualification(switchQualification, "Tipkalo"),
-    meta: statusMeta,
+    title: activeAreas.length === 1 ? activeAreas[0].label : `${activeAreas.length} aktivna područja`,
+    subtitle: activeAreas.map((entry) => entry.label).join(" · "),
+    tertiary: activeAreas
+      .map((entry) => `${entry.label}: ${getQualificationValidityLabel(entry.qualification)}`)
+      .join(" · "),
   });
 }
 
@@ -20142,7 +20222,7 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
 
   const qualification = getUserElectricalQualification(user, signatureArea);
   return [
-    String(user.fullName || user.email || "").trim(),
+    getUserDocumentDisplayName(user),
     qualification.classCode ? `Klasa ${qualification.classCode}` : "",
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
@@ -20361,7 +20441,7 @@ function getQualifiedUserSourcePreviewValue(source, context = {}) {
     return getQualifiedUserSummaryValue(user, mapping.capability, "elektro");
   }
   if (mapping.field === "name") {
-    return String(user.fullName || user.email || "").trim();
+    return getUserDocumentDisplayName(user);
   }
 
   return String(qualification[mapping.field] || "").trim();
@@ -29409,6 +29489,8 @@ function buildUserPayload() {
   return {
     firstName: userFirstNameInput.value,
     lastName: userLastNameInput.value,
+    displayName: userDisplayNameInput?.value || "",
+    profileRole: userProfileRoleInput?.value || "new_user",
     title: userTitleInput?.value || "",
     oib: userOibInput?.value || "",
     email: userEmailInput.value,
@@ -29427,6 +29509,8 @@ function buildUserPayload() {
       classCode: userElectricalClassInput?.value || "",
       urbroj: userElectricalUrbrojInput?.value || "",
       eBroj: userElectricalEBrojInput?.value || "",
+      validUntil: userElectricalValidForeverInput?.checked ? "" : (userElectricalValidUntilInput?.value || ""),
+      validForever: Boolean(userElectricalValidForeverInput?.checked),
       signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
       documents: [],
       additionalAreas: {
@@ -29437,6 +29521,8 @@ function buildUserPayload() {
           classCode: userTipkaloClassInput?.value || "",
           urbroj: userTipkaloUrbrojInput?.value || "",
           eBroj: userTipkaloEBrojInput?.value || "",
+          validUntil: userTipkaloValidForeverInput?.checked ? "" : (userTipkaloValidUntilInput?.value || ""),
+          validForever: Boolean(userTipkaloValidForeverInput?.checked),
         },
       },
     },
@@ -29558,6 +29644,9 @@ function resetUserForm() {
   userForm.reset();
   userIdInput.value = "";
   userAvatarDataUrlInput.value = "";
+  if (userDisplayNameInput) {
+    userDisplayNameInput.value = "";
+  }
   if (userTitleInput) {
     userTitleInput.value = "";
   }
@@ -29569,6 +29658,9 @@ function resetUserForm() {
   }
   userError.textContent = "";
   userIsActiveInput.value = "true";
+  if (userProfileRoleInput) {
+    userProfileRoleInput.value = "new_user";
+  }
   userRoleInput.value = getIsSuperAdmin() ? "admin" : "user";
   renderAvatar(userAvatarPreview, {});
   userOrganizationIdInput.value = state.activeOrganizationId || state.organizations[0]?.id || "";
@@ -29578,6 +29670,21 @@ function resetUserForm() {
   }
   if (userElectricalCanAuthorizeInput) {
     userElectricalCanAuthorizeInput.value = "false";
+  }
+  if (userElectricalClassInput) {
+    userElectricalClassInput.value = "";
+  }
+  if (userElectricalUrbrojInput) {
+    userElectricalUrbrojInput.value = "";
+  }
+  if (userElectricalEBrojInput) {
+    userElectricalEBrojInput.value = "";
+  }
+  if (userElectricalValidUntilInput) {
+    userElectricalValidUntilInput.value = "";
+  }
+  if (userElectricalValidForeverInput) {
+    userElectricalValidForeverInput.checked = false;
   }
   if (userTipkaloCanInspectInput) {
     userTipkaloCanInspectInput.value = "false";
@@ -29594,9 +29701,17 @@ function resetUserForm() {
   if (userTipkaloEBrojInput) {
     userTipkaloEBrojInput.value = "";
   }
+  if (userTipkaloValidUntilInput) {
+    userTipkaloValidUntilInput.value = "";
+  }
+  if (userTipkaloValidForeverInput) {
+    userTipkaloValidForeverInput.checked = false;
+  }
   setUserDocumentDrafts([]);
   renderUserDocuments();
   renderUserElectricalSignaturePad("");
+  syncQualificationValidityInput(userElectricalValidUntilInput, userElectricalValidForeverInput);
+  syncQualificationValidityInput(userTipkaloValidUntilInput, userTipkaloValidForeverInput);
   syncUserEditorChrome(false);
   setUserEditorDocumentDropActive(false);
   renderAvatar(userAvatarPreview, {});
@@ -29745,6 +29860,9 @@ function hydrateUserForm(user) {
   userAvatarDataUrlInput.value = user.avatarDataUrl || "";
   userFirstNameInput.value = user.firstName;
   userLastNameInput.value = user.lastName;
+  if (userDisplayNameInput) {
+    userDisplayNameInput.value = user.displayName || "";
+  }
   if (userTitleInput) {
     userTitleInput.value = user.title || "";
   }
@@ -29755,6 +29873,9 @@ function hydrateUserForm(user) {
   userPasswordInput.value = "";
   userOrganizationIdInput.value = user.organizationId || state.activeOrganizationId;
   userRoleInput.value = user.role;
+  if (userProfileRoleInput) {
+    userProfileRoleInput.value = normalizeUserProfileRoleValue(user.profileRole);
+  }
   userLegacyUsernameInput.value = user.legacyUsername || "";
   userIsActiveInput.value = String(user.isActive);
   if (userElectricalCanInspectInput) {
@@ -29772,6 +29893,12 @@ function hydrateUserForm(user) {
   if (userElectricalEBrojInput) {
     userElectricalEBrojInput.value = electricalQualification.eBroj;
   }
+  if (userElectricalValidUntilInput) {
+    userElectricalValidUntilInput.value = electricalQualification.validUntil || "";
+  }
+  if (userElectricalValidForeverInput) {
+    userElectricalValidForeverInput.checked = Boolean(electricalQualification.validForever);
+  }
   if (userTipkaloCanInspectInput) {
     userTipkaloCanInspectInput.value = switchQualification.canInspect ? "true" : "false";
   }
@@ -29787,6 +29914,14 @@ function hydrateUserForm(user) {
   if (userTipkaloEBrojInput) {
     userTipkaloEBrojInput.value = switchQualification.eBroj;
   }
+  if (userTipkaloValidUntilInput) {
+    userTipkaloValidUntilInput.value = switchQualification.validUntil || "";
+  }
+  if (userTipkaloValidForeverInput) {
+    userTipkaloValidForeverInput.checked = Boolean(switchQualification.validForever);
+  }
+  syncQualificationValidityInput(userElectricalValidUntilInput, userElectricalValidForeverInput);
+  syncQualificationValidityInput(userTipkaloValidUntilInput, userTipkaloValidForeverInput);
   renderUserElectricalSignaturePad(electricalQualification.signatureDataUrl || "");
   setUserDocumentDrafts(getUserDocuments(user));
   renderUserDocuments();
@@ -29801,8 +29936,10 @@ function hydrateUserForm(user) {
 }
 
 function hydrateLoginContentForm(item) {
-  state.activeView = "management";
+  state.activeView = "selfdash";
+  state.activeSidebarItem = "dashboard";
   renderActiveView();
+  renderDashboardOverview();
   loginContentIdInput.value = item.id;
   loginContentAccentInput.value = item.accentLabel || "";
   loginContentHeadingInput.value = item.heading || "";
@@ -31429,6 +31566,9 @@ function renderDashboardOverview() {
   }
 
   dashboardOverviewPanel.hidden = !shouldShowDashboard;
+  if (dashboardControlPanel) {
+    dashboardControlPanel.hidden = !(shouldShowDashboard && getIsSuperAdmin());
+  }
 
   if (dashboardWorkOrdersPanel) {
     dashboardWorkOrdersPanel.hidden = state.activeView === "selfdash" && state.activeSidebarItem === "dashboard";
@@ -37071,6 +37211,7 @@ function renderSharedOptions() {
     : [
       { value: "user", label: "User" },
     ];
+  const selectedProfileRole = normalizeUserProfileRoleValue(userProfileRoleInput?.value);
 
   replaceSelectOptions(workOrderStatusInput, WORK_ORDER_STATUS_OPTIONS, workOrderStatusInput.value || "Otvoreni RN");
   replaceSelectOptions(workOrderPriorityInput, PRIORITY_OPTIONS, workOrderPriorityInput.value || "Normal");
@@ -37279,6 +37420,7 @@ function renderSharedOptions() {
   }
 
   replaceSelectOptions(userRoleInput, roleOptions, getIsSuperAdmin() ? (userRoleInput.value || "admin") : "user");
+  replaceSelectOptions(userProfileRoleInput, USER_PROFILE_ROLE_OPTIONS, selectedProfileRole);
   renderUserOrganizationMemberships(getIsSuperAdmin()
     ? getSelectedUserOrganizationIds()
     : [state.activeOrganizationId || state.organizations[0]?.id].filter(Boolean));
@@ -45863,18 +46005,17 @@ function renderUsers() {
       createStackCell({
         title: user.email,
         subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Još bez prijave",
+        tertiary: user.title ? `Titula: ${user.title}` : "",
       }),
       createStackCell({
-        title: user.role === "admin" ? "Admin" : user.role === "super_admin" ? "Super Admin" : "User",
-        subtitle: user.isActive ? "Active" : "Inactive",
+        title: getUserProfileRoleLabel(user.profileRole),
+        subtitle: `Pristup: ${getUserSystemRoleLabel(user.role)}`,
       }),
       createUserElectricalCell(user),
       createStackCell({
-        title: user.organizationName || "Bez organizacije",
-        subtitle: user.organizations?.length > 1 ? `${user.organizations.length} organizations` : "Single organization",
-      }),
-      createStackCell({
         title: user.isActive ? "Active" : "Inactive",
+        subtitle: user.organizationName || "Bez organizacije",
+        meta: [createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive)],
       }),
       actionsCell,
     );
@@ -46006,34 +46147,38 @@ function renderManagement() {
     ?? state.organizations[0]
     ?? null;
 
+  if (managementIntroPanel) {
+    managementIntroPanel.hidden = true;
+  }
+
   if (organizationPanel) {
     organizationPanel.hidden = !getIsSuperAdmin();
   }
 
   if (getIsSuperAdmin()) {
     if (managementViewKicker) {
-      managementViewKicker.textContent = "Platform control";
+      managementViewKicker.textContent = "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = "Organizations & admins";
+      managementViewTitle.textContent = "Korisnici";
     }
     if (managementViewDescription) {
-      managementViewDescription.textContent = "Ti jedini kreiras organizacije, dodjeljujes admina i po potrebi pregledavas signup zahtjeve prije odobravanja pristupa.";
+      managementViewDescription.textContent = "Popis korisnika, radnih uloga i ovlaštenja za odabranu organizaciju.";
     }
     if (userManagementNote) {
-      userManagementNote.textContent = "Odaberi organizaciju i rolu. Admin ovdje dobiva pristup svojoj organizaciji, a user ostaje operativni korisnik.";
+      userManagementNote.textContent = "U People modulu ostaju samo korisnici, njihove role i ovlaštenja.";
     }
   } else if (getIsAdmin()) {
     if (managementViewKicker) {
-      managementViewKicker.textContent = "Organization admin";
+      managementViewKicker.textContent = "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = "Team access";
+      managementViewTitle.textContent = "Korisnici";
     }
     if (managementViewDescription) {
       managementViewDescription.textContent = currentOrganization
-        ? `Upravljaj korisnicima za organizaciju ${currentOrganization.name}. Organizacije i admine postavlja samo super admin.`
-        : "Upravljaj korisnicima svoje organizacije. Organizacije i admine postavlja samo super admin.";
+        ? `Upravljaj korisnicima za organizaciju ${currentOrganization.name}.`
+        : "Upravljaj korisnicima svoje organizacije.";
     }
     if (userManagementNote) {
       userManagementNote.textContent = currentOrganization
@@ -49388,6 +49533,14 @@ userForm?.addEventListener("submit", (event) => {
       closeUserEditor({ reset: true });
     }
   });
+});
+
+userElectricalValidForeverInput?.addEventListener("change", () => {
+  syncQualificationValidityInput(userElectricalValidUntilInput, userElectricalValidForeverInput);
+});
+
+userTipkaloValidForeverInput?.addEventListener("change", () => {
+  syncQualificationValidityInput(userTipkaloValidUntilInput, userTipkaloValidForeverInput);
 });
 
 userDocumentsUploadButton?.addEventListener("click", () => {

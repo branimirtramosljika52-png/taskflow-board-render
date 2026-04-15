@@ -48,6 +48,29 @@ function normalizeOib(value) {
   return dbString(value).replace(/\s+/g, "");
 }
 
+function normalizeDateOnly(value) {
+  const normalized = dbString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+const USER_PROFILE_ROLE_VALUES = new Set([
+  "new_user",
+  "junior_user",
+  "senior_user",
+  "leand_user",
+  "manager",
+  "admin",
+]);
+
+function normalizeUserProfileRole(value, fallback = "new_user") {
+  const normalized = dbString(value).toLowerCase();
+  if (USER_PROFILE_ROLE_VALUES.has(normalized)) {
+    return normalized;
+  }
+
+  return USER_PROFILE_ROLE_VALUES.has(fallback) ? fallback : "new_user";
+}
+
 function normalizeOrganizationIds(values = []) {
   const entries = Array.isArray(values)
     ? values
@@ -204,20 +227,25 @@ function mapUserElectricalQualification(row = {}) {
     storageUrl: rawQualification.signatureStorageUrl,
   });
 
-  const mapQualificationArea = (rawArea = {}, discipline = "elektro") => ({
+  const mapQualificationArea = (rawArea = {}, discipline = "elektro") => {
+    const validForever = toBooleanFlag(rawArea.validForever, false);
+    return {
     discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
     canInspect: toBooleanFlag(rawArea.canInspect, false),
     canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
     classCode: dbString(rawArea.classCode),
     urbroj: dbString(rawArea.urbroj),
     eBroj: dbString(rawArea.eBroj),
+    validUntil: validForever ? "" : normalizeDateOnly(rawArea.validUntil),
+    validForever,
     signatureDataUrl: storedSignature.dataUrl,
     signatureStorageProvider: storedSignature.storageProvider,
     signatureStorageBucket: storedSignature.storageBucket,
     signatureStorageKey: storedSignature.storageKey,
     signatureStorageUrl: storedSignature.storageUrl,
     documents: [],
-  });
+  };
+  };
 
   const mappedAdditionalAreas = Object.fromEntries(
     Object.entries(parseJsonObject(rawQualification.additionalAreas, {}))
@@ -565,6 +593,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     classCode: "",
     urbroj: "",
     eBroj: "",
+    validUntil: "",
+    validForever: false,
     signatureDataUrl: "",
     signatureStorageProvider: "",
     signatureStorageBucket: "",
@@ -582,6 +612,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     storageUrl: source.signatureStorageUrl,
   });
 
+  const validForever = toBooleanFlag(source.validForever, false);
+
   return {
     discipline: dbString(source.discipline || "elektro").toLowerCase() || "elektro",
     canInspect: toBooleanFlag(source.canInspect, false),
@@ -589,6 +621,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     classCode: dbString(source.classCode),
     urbroj: dbString(source.urbroj),
     eBroj: dbString(source.eBroj),
+    validUntil: validForever ? "" : normalizeDateOnly(source.validUntil),
+    validForever,
     signatureDataUrl: storedSignature.dataUrl,
     signatureStorageProvider: storedSignature.storageProvider,
     signatureStorageBucket: storedSignature.storageBucket,
@@ -606,6 +640,7 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
           }
 
           const rawArea = parseJsonObject(value, {});
+          const areaValidForever = toBooleanFlag(rawArea.validForever, false);
           return [normalizedKey, {
             discipline: normalizedKey,
             canInspect: toBooleanFlag(rawArea.canInspect, false),
@@ -613,6 +648,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
             classCode: dbString(rawArea.classCode),
             urbroj: dbString(rawArea.urbroj),
             eBroj: dbString(rawArea.eBroj),
+            validUntil: areaValidForever ? "" : normalizeDateOnly(rawArea.validUntil),
+            validForever: areaValidForever,
             signatureDataUrl: storedSignature.dataUrl,
             signatureStorageProvider: storedSignature.storageProvider,
             signatureStorageBucket: storedSignature.storageBucket,
@@ -804,6 +841,11 @@ function sanitizeUser(row) {
     email: row.email ?? buildLegacyEmail(row.korisnicko_ime ?? row.legacy_username ?? "", row.id),
     firstName,
     lastName,
+    displayName: row.display_name ?? row.displayName ?? "",
+    profileRole: normalizeUserProfileRole(
+      row.profile_role ?? row.profileRole,
+      [ROLE_SUPER_ADMIN, ROLE_ADMIN].includes(normalizeRole(row.role ?? row.razina_prava ?? ROLE_USER)) ? "admin" : "new_user",
+    ),
     title: row.title ?? "",
     oib: row.oib ?? "",
     fullName: [firstName, lastName].filter(Boolean).join(" ") || row.ime_prezime || row.korisnicko_ime || row.email || "User",
@@ -902,6 +944,11 @@ function normalizeUserInput(input = {}) {
   return {
     firstName: dbString(input.firstName),
     lastName: dbString(input.lastName),
+    displayName: dbString(input.displayName),
+    profileRole: normalizeUserProfileRole(
+      input.profileRole,
+      [ROLE_SUPER_ADMIN, ROLE_ADMIN].includes(normalizeRole(input.role)) ? "admin" : "new_user",
+    ),
     title: dbString(input.title),
     oib: normalizeOib(input.oib),
     email: dbString(input.email).toLowerCase(),
@@ -1013,7 +1060,9 @@ async function ensureSchema(connection) {
       organization_ids_csv TEXT NULL,
       first_name VARCHAR(120) NOT NULL DEFAULT '',
       last_name VARCHAR(160) NOT NULL DEFAULT '',
+      display_name VARCHAR(255) NOT NULL DEFAULT '',
       title VARCHAR(160) NOT NULL DEFAULT '',
+      profile_role VARCHAR(64) NOT NULL DEFAULT 'new_user',
       oib VARCHAR(32) NOT NULL DEFAULT '',
       avatar_data_url LONGTEXT NULL,
       avatar_storage_provider VARCHAR(32) NULL,
@@ -1117,20 +1166,38 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
-    "avatar_data_url",
-    "LONGTEXT NULL AFTER last_name",
+    "display_name",
+    "VARCHAR(255) NOT NULL DEFAULT '' AFTER last_name",
   );
   await ensureColumn(
     connection,
     "app_users",
     "title",
-    "VARCHAR(160) NOT NULL DEFAULT '' AFTER last_name",
+    "VARCHAR(160) NOT NULL DEFAULT '' AFTER display_name",
   );
   await ensureColumn(
     connection,
     "app_users",
+    "profile_role",
+    "VARCHAR(64) NOT NULL DEFAULT 'new_user' AFTER title",
+  );
+  await connection.query(`
+    UPDATE app_users
+    SET profile_role = 'admin'
+    WHERE role IN ('super_admin', 'admin')
+      AND COALESCE(profile_role, '') IN ('', 'new_user')
+  `);
+  await ensureColumn(
+    connection,
+    "app_users",
     "oib",
-    "VARCHAR(32) NOT NULL DEFAULT '' AFTER title",
+    "VARCHAR(32) NOT NULL DEFAULT '' AFTER profile_role",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "avatar_data_url",
+    "LONGTEXT NULL AFTER oib",
   );
   await ensureColumn(
     connection,
@@ -1216,7 +1283,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const activeOrganizationId = dbString(effectiveOrganizationId);
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
-    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.title, u.oib, u.avatar_data_url,
+    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
            u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
@@ -1621,14 +1688,16 @@ async function seedDefaultData(connection) {
       await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, profile_role, email, legacy_username, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
         [
           Number(defaultOrganizationId),
           serializeOrganizationIds(defaultOrganizationId),
           parts.firstName,
           parts.lastName,
+          fullName,
+          role === ROLE_USER ? "new_user" : "admin",
           buildLegacyEmail(row.korisnicko_ime, row.id),
           row.korisnicko_ime,
           row.lozinka_hash,
@@ -1649,7 +1718,7 @@ async function seedDefaultData(connection) {
 
     if (firstUser?.id) {
       await connection.query(
-        "UPDATE app_users SET role = 'super_admin' WHERE id = ?",
+        "UPDATE app_users SET role = 'super_admin', profile_role = 'admin' WHERE id = ?",
         [Number(firstUser.id)],
       );
     }
@@ -1763,11 +1832,15 @@ export class MemoryTenantRepository {
         firstName: "Local",
         lastName: "Super Admin",
         fullName: "Local Super Admin",
+        displayName: "Local Super Admin",
+        profileRole: "admin",
         email: "admin@local.test",
         username: "admin",
         legacyUsername: "admin",
         role: ROLE_SUPER_ADMIN,
         isActive: true,
+        title: "",
+        oib: "",
         avatarDataUrl: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1976,6 +2049,10 @@ export class MemoryTenantRepository {
       firstName: normalized.firstName,
       lastName: normalized.lastName,
       fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+      displayName: normalized.displayName,
+      profileRole: normalized.profileRole,
+      title: normalized.title,
+      oib: normalized.oib,
       email: normalized.email,
       username: normalized.legacyUsername || normalized.email,
       legacyUsername: normalized.legacyUsername || normalized.email,
@@ -2021,6 +2098,10 @@ export class MemoryTenantRepository {
     current.firstName = normalized.firstName;
     current.lastName = normalized.lastName;
     current.fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
+    current.displayName = normalized.displayName;
+    current.profileRole = normalized.profileRole;
+    current.title = normalized.title;
+    current.oib = normalized.oib;
     current.email = normalized.email;
     current.legacyUsername = normalized.legacyUsername || current.legacyUsername;
     current.username = current.legacyUsername || current.email;
@@ -2162,6 +2243,7 @@ export class MemoryTenantRepository {
     const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
     const useExistingOrganization = dbString(input.organizationId);
     let organization = this.organizations.find((item) => item.id === useExistingOrganization) ?? null;
+    const approvedFullName = request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim();
 
     if (!organization) {
       organization = {
@@ -2186,12 +2268,16 @@ export class MemoryTenantRepository {
       organizations: [{ id: organization.id, name: organization.name }],
       firstName: request.firstName,
       lastName: request.lastName,
-      fullName: request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim(),
+      fullName: approvedFullName,
+      displayName: approvedFullName,
+      profileRole: approvedRole === ROLE_ADMIN ? "admin" : "new_user",
       email: request.email,
       username: request.email,
       legacyUsername: "",
       role: approvedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : approvedRole,
       isActive: true,
+      title: "",
+      oib: "",
       avatarDataUrl: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2314,7 +2400,7 @@ export class MySqlTenantRepository {
     try {
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
@@ -2346,7 +2432,7 @@ export class MySqlTenantRepository {
       const needle = dbString(identifier).toLowerCase();
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
@@ -2434,7 +2520,7 @@ export class MySqlTenantRepository {
 
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
@@ -2713,17 +2799,19 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, title, oib, avatar_data_url,
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
              electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
           serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
           normalized.firstName,
           normalized.lastName,
+          normalized.displayName,
           normalized.title,
+          normalized.profileRole,
           normalized.oib,
           preparedAvatar.storedAvatar.dataUrl || null,
           preparedAvatar.storedAvatar.storageProvider || null,
@@ -2838,7 +2926,9 @@ export class MySqlTenantRepository {
         "organization_ids_csv = ?",
         "first_name = ?",
         "last_name = ?",
+        "display_name = ?",
         "title = ?",
+        "profile_role = ?",
         "oib = ?",
         "avatar_data_url = ?",
         "avatar_storage_provider = ?",
@@ -2857,7 +2947,9 @@ export class MySqlTenantRepository {
         serializeOrganizationIds(targetOrganizationId, normalized.organizationIds),
         normalized.firstName,
         normalized.lastName,
+        normalized.displayName,
         normalized.title,
+        normalized.profileRole,
         normalized.oib,
         preparedAvatar.storedAvatar.dataUrl || null,
         preparedAvatar.storedAvatar.storageProvider || null,
@@ -3212,14 +3304,16 @@ export class MySqlTenantRepository {
       const [userResult] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, avatar_data_url, email, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, profile_role, avatar_data_url, email, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
         [
           Number(organizationId),
           serializeOrganizationIds(organizationId),
           request.firstName,
           request.lastName,
+          request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim(),
+          approvedRole === ROLE_ADMIN ? "admin" : "new_user",
           null,
           request.email,
           current.password_hash,
