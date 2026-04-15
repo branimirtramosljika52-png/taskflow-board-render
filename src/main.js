@@ -808,6 +808,10 @@ const state = {
     },
     overrides: {},
   },
+  documentTemplateSidebarPanels: {
+    referenceCollapsed: false,
+    placeholdersCollapsed: false,
+  },
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   expandedWorkOrderIds: new Set(),
   workOrderActivity: {
@@ -1560,7 +1564,11 @@ const documentTemplateCompanyIdInput = document.querySelector("#document-templat
 const documentTemplateLocationIdInput = document.querySelector("#document-template-location-id");
 const documentTemplateDescriptionInput = document.querySelector("#document-template-description");
 const documentTemplateDescriptionField = documentTemplateDescriptionInput?.closest("label");
+const documentTemplateReferenceToggleButton = document.querySelector("#document-template-reference-toggle");
+const documentTemplateReferencePanelBody = document.querySelector("#document-template-reference-panel-body");
 const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
+const documentTemplatePlaceholderToggleButton = document.querySelector("#document-template-placeholder-toggle");
+const documentTemplatePlaceholderPanelBody = document.querySelector("#document-template-placeholder-panel-body");
 const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
 const documentTemplateLinkSummary = document.querySelector("#document-template-link-summary");
 const documentTemplateToolbox = document.querySelector("#document-template-toolbox");
@@ -22723,7 +22731,60 @@ function syncDocumentTemplateEditorChrome() {
     documentTemplateReferenceMeta?.replaceChildren();
     documentTemplatePlaceholderPalette?.replaceChildren();
   }
+  syncDocumentTemplateSidebarPanels();
   renderDocumentTemplatePreviewContent();
+}
+
+function getDocumentTemplateSidebarPanelsState() {
+  if (!state.documentTemplateSidebarPanels || typeof state.documentTemplateSidebarPanels !== "object") {
+    state.documentTemplateSidebarPanels = {
+      referenceCollapsed: false,
+      placeholdersCollapsed: false,
+    };
+  }
+  return state.documentTemplateSidebarPanels;
+}
+
+function syncDocumentTemplateSidebarPanel(button, body, collapsed, {
+  collapsedLabel = "Prikaži",
+  expandedLabel = "Sakrij",
+} = {}) {
+  if (body instanceof HTMLElement) {
+    body.hidden = Boolean(collapsed);
+  }
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const label = collapsed ? collapsedLabel : expandedLabel;
+  button.textContent = label;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-expanded", String(!collapsed));
+}
+
+function syncDocumentTemplateSidebarPanels() {
+  const panelState = getDocumentTemplateSidebarPanelsState();
+  syncDocumentTemplateSidebarPanel(
+    documentTemplateReferenceToggleButton,
+    documentTemplateReferencePanelBody,
+    panelState.referenceCollapsed,
+  );
+  syncDocumentTemplateSidebarPanel(
+    documentTemplatePlaceholderToggleButton,
+    documentTemplatePlaceholderPanelBody,
+    panelState.placeholdersCollapsed,
+  );
+}
+
+function setDocumentTemplateSidebarPanelCollapsed(panelKey, collapsed = false) {
+  const panelState = getDocumentTemplateSidebarPanelsState();
+  panelState[panelKey] = Boolean(collapsed);
+  syncDocumentTemplateSidebarPanels();
+}
+
+function toggleDocumentTemplateSidebarPanel(panelKey) {
+  const panelState = getDocumentTemplateSidebarPanelsState();
+  setDocumentTemplateSidebarPanelCollapsed(panelKey, !panelState[panelKey]);
 }
 
 function buildLegalFrameworkPayload() {
@@ -28885,6 +28946,10 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateTextTarget = null;
   activeDocumentTemplateSectionTarget = "";
   documentTemplateReferenceDraft = null;
+  state.documentTemplateSidebarPanels = {
+    referenceCollapsed: false,
+    placeholdersCollapsed: false,
+  };
   clearDocumentTemplateFieldDragState();
   collapsedDocumentTemplateChapterIds = new Set();
   clearDocumentTemplateRuntimeContext({ render: false });
@@ -28935,6 +29000,10 @@ function hydrateDocumentTemplateForm(
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
   collapsedDocumentTemplateChapterIds = new Set();
+  state.documentTemplateSidebarPanels = {
+    referenceCollapsed: false,
+    placeholdersCollapsed: false,
+  };
   if (!preserveRuntimeContext) {
     clearDocumentTemplateRuntimeContext({ render: false });
   } else {
@@ -49065,6 +49134,14 @@ documentTemplateAddSectionButton?.addEventListener("click", () => {
 
 documentTemplateReferenceUploadButton?.addEventListener("click", () => {
   documentTemplateReferenceFileInput?.click();
+});
+
+documentTemplateReferenceToggleButton?.addEventListener("click", () => {
+  toggleDocumentTemplateSidebarPanel("referenceCollapsed");
+});
+
+documentTemplatePlaceholderToggleButton?.addEventListener("click", () => {
+  toggleDocumentTemplateSidebarPanel("placeholdersCollapsed");
 });
 
 documentTemplateReferenceDownloadButton?.addEventListener("click", () => {

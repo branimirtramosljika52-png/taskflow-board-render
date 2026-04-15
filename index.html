@@ -4608,58 +4608,79 @@
 
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
-                        <section class="document-template-block document-template-word-block">
-                          <div class="section-heading offers-section-heading">
+                        <section class="document-template-block document-template-sidebar-block document-template-word-block">
+                          <div class="document-template-sidebar-block-head">
                             <div>
                               <p class="section-kicker">Word predložak</p>
-                              <h3>Gotovi Word s placeholderima</h3>
+                              <h3>Word datoteka</h3>
                             </div>
+                            <button
+                              id="document-template-reference-toggle"
+                              type="button"
+                              class="ghost-button document-template-sidebar-toggle"
+                              aria-expanded="true"
+                              aria-controls="document-template-reference-panel-body"
+                            >
+                              Sakrij
+                            </button>
                           </div>
-                          <div class="document-template-word-flow">
-                            <article class="document-template-word-step">
-                              <strong>1</strong>
-                              <span>Složi builder</span>
-                            </article>
-                            <article class="document-template-word-step">
-                              <strong>2</strong>
-                              <span>Preuzmi Word</span>
-                            </article>
-                            <article class="document-template-word-step">
-                              <strong>3</strong>
-                              <span>Vrati gotovi .docx</span>
-                            </article>
-                          </div>
-                          <p class="helper-copy module-copy">Ovdje radiš admin predložak. Kasnije korisnik samo ispunjava ono što si ovdje definirao.</p>
-                          <div class="document-template-reference-actions">
+                          <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body">
+                            <div class="document-template-word-flow">
+                              <article class="document-template-word-step">
+                                <strong>1</strong>
+                                <span>Builder</span>
+                              </article>
+                              <article class="document-template-word-step">
+                                <strong>2</strong>
+                                <span>Preuzmi</span>
+                              </article>
+                              <article class="document-template-word-step">
+                                <strong>3</strong>
+                                <span>Vrati .docx</span>
+                              </article>
+                            </div>
                             <input id="document-template-reference-file-input" type="file" accept=".docx,.dotx" hidden />
-                            <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi Word s placeholderima</button>
-                            <button id="document-template-reference-upload" type="button" class="ghost-button">Upload gotovog Worda</button>
-                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni Word</button>
-                            <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni Word</button>
-                          </div>
-                          <div id="document-template-reference-meta" class="document-template-reference-meta">
-                            Nema spremljenog Word predloška.
-                          </div>
-                          <div class="document-template-placeholder-panel">
-                            <div class="document-template-placeholder-panel-head">
-                              <div>
-                                <p class="section-kicker">Placeholderi</p>
-                                <h4>Tokeni za Word</h4>
-                              </div>
+                            <div class="document-template-reference-actions document-template-reference-actions--stack">
+                              <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi Word s placeholderima</button>
+                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload gotovog Worda</button>
+                              <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni Word</button>
+                              <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni Word</button>
                             </div>
-                            <p class="helper-copy module-copy">Klik na token ga kopira ili ubacuje u aktivno tekstualno polje unutar buildera.</p>
+                            <div id="document-template-reference-meta" class="document-template-reference-meta">
+                              Nema spremljenog Word predloška.
+                            </div>
+                          </div>
+                        </section>
+
+                        <section class="document-template-block document-template-sidebar-block document-template-placeholder-panel">
+                          <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
+                            <div>
+                              <p class="section-kicker">Placeholderi</p>
+                              <h4>Tokeni za Word</h4>
+                            </div>
+                            <button
+                              id="document-template-placeholder-toggle"
+                              type="button"
+                              class="ghost-button document-template-sidebar-toggle"
+                              aria-expanded="true"
+                              aria-controls="document-template-placeholder-panel-body"
+                            >
+                              Sakrij
+                            </button>
+                          </div>
+                          <div id="document-template-placeholder-panel-body" class="document-template-sidebar-block-body">
                             <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
                           </div>
                         </section>
 
-                        <section class="document-template-block">
-                          <div class="section-heading offers-section-heading">
+                        <section class="document-template-block document-template-sidebar-block document-template-toolbox-block">
+                          <div class="document-template-sidebar-block-head">
                             <div>
                               <p class="section-kicker">Alatna traka</p>
                               <h3>Ubaci u template</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">Blokovi ovdje definiraju što kasnije korisnik ispunjava u zapisniku i koje placeholder tokene koristiš u Wordu.</p>
+                          <p class="helper-copy module-copy">Odaberi polje koje želiš dodati u zapisnik.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
                             <button type="button" class="document-template-tool-button" data-template-tool="text">
                               <strong>Tekst polje</strong>
@@ -4723,10 +4744,6 @@
                             <div>
                               <p class="section-kicker">Canvas</p>
                               <h3>Blokovi</h3>
-                            </div>
-                            <div class="document-template-layout-actions">
-                              <button id="document-template-add-field" type="button" class="ghost-button">+ Dodaj blok</button>
-                              <button id="document-template-add-excel" type="button" class="ghost-button">+ Dodaj Excel</button>
                             </div>
                           </div>
                           <label class="field field-span-full">
