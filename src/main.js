@@ -4439,6 +4439,7 @@ function renderModuleView() {
     && !isDocumentsModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
+    && !isServiceCatalogModule
     && !isSettingsModule
     && !isVehiclesModule;
 

@@ -3680,30 +3680,11 @@
             </section>
 
             <section id="service-catalog-module" class="service-catalog-module" hidden>
-              <div class="service-catalog-summary-grid">
-                <article class="service-catalog-stat-card is-total">
-                  <span class="service-catalog-stat-label">Ukupno</span>
-                  <strong id="service-catalog-total-count" class="service-catalog-stat-value">0</strong>
-                </article>
-                <article class="service-catalog-stat-card is-active">
-                  <span class="service-catalog-stat-label">Aktivne</span>
-                  <strong id="service-catalog-active-count" class="service-catalog-stat-value">0</strong>
-                </article>
-                <article class="service-catalog-stat-card is-inactive">
-                  <span class="service-catalog-stat-label">Neaktivne</span>
-                  <strong id="service-catalog-inactive-count" class="service-catalog-stat-value">0</strong>
-                </article>
-                <article class="service-catalog-stat-card is-templates">
-                  <span class="service-catalog-stat-label">S templateima</span>
-                  <strong id="service-catalog-template-count" class="service-catalog-stat-value">0</strong>
-                </article>
-              </div>
-
-              <section class="panel service-catalog-toolbar-panel">
-                <div class="section-heading offers-section-heading">
+              <section class="panel service-catalog-list-panel">
+                <div class="section-heading offers-section-heading service-catalog-list-heading">
                   <div>
-                    <p class="section-kicker">Service catalog</p>
-                    <h3>Popis usluga</h3>
+                    <p class="section-kicker">Services</p>
+                    <h3>Katalog usluga</h3>
                   </div>
                   <button id="service-catalog-open-form" type="button" class="primary-button">+ Nova usluga</button>
                 </div>
@@ -3711,21 +3692,12 @@
                 <div class="service-catalog-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, šifra, zapisnik..." />
+                    <input id="service-catalog-search" type="search" placeholder="Ime usluge, šifra ili povezani zapisnik..." />
                   </label>
                   <label class="field">
                     <span>Status</span>
                     <select id="service-catalog-filter-status"></select>
                   </label>
-                </div>
-              </section>
-
-              <section class="panel service-catalog-list-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Services</p>
-                    <h3>Katalog usluga</h3>
-                  </div>
                 </div>
 
                 <p id="service-catalog-helper" class="helper-copy module-copy">Katalog usluga koje se kasnije biraju pri otvaranju radnog naloga.</p>
