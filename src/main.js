@@ -1798,6 +1798,10 @@ const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-coun
 const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
 const dashboardControlPanel = document.querySelector("#dashboard-control-panel");
 const dashboardControlGrid = document.querySelector("#dashboard-control-grid");
+const dashboardPeoplePanel = document.querySelector("#dashboard-people-panel");
+const dashboardPeopleCount = document.querySelector("#dashboard-people-count");
+const dashboardPeopleOrganization = document.querySelector("#dashboard-people-organization");
+const dashboardOpenPeopleButton = document.querySelector("#dashboard-open-people");
 const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
 const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
@@ -16790,6 +16794,39 @@ function getActiveOrganizationUsers() {
     ));
 }
 
+function renderDashboardControlPanelContent() {
+  const canManageMasterData = getCanManageMasterData();
+  const isSuperAdmin = getIsSuperAdmin();
+  const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
+    ?? null;
+  const activeUsers = getActiveOrganizationUsers();
+  const userCount = activeUsers.length;
+
+  if (dashboardPeoplePanel) {
+    dashboardPeoplePanel.hidden = !canManageMasterData;
+  }
+
+  if (dashboardPeopleCount) {
+    dashboardPeopleCount.textContent = `${userCount} ${userCount === 1 ? "korisnik" : "korisnika"}`;
+  }
+
+  if (dashboardPeopleOrganization) {
+    dashboardPeopleOrganization.textContent = currentOrganization?.name || "Sve organizacije";
+  }
+
+  if (organizationPanel) {
+    organizationPanel.hidden = !isSuperAdmin;
+  }
+
+  if (loginContentPanel) {
+    loginContentPanel.hidden = !isSuperAdmin;
+  }
+
+  if (signupRequestsPanel) {
+    signupRequestsPanel.hidden = !isSuperAdmin;
+  }
+}
+
 function createWorkOrderDocumentSafetySpecialistPicker() {
   const users = getActiveOrganizationUsers();
   const wrapper = document.createElement("div");
@@ -31566,8 +31603,9 @@ function renderDashboardOverview() {
   }
 
   dashboardOverviewPanel.hidden = !shouldShowDashboard;
+  renderDashboardControlPanelContent();
   if (dashboardControlPanel) {
-    dashboardControlPanel.hidden = !(shouldShowDashboard && getIsSuperAdmin());
+    dashboardControlPanel.hidden = !(shouldShowDashboard && getCanManageMasterData());
   }
 
   if (dashboardWorkOrdersPanel) {
@@ -37437,13 +37475,7 @@ function renderSharedOptions() {
     userOrganizationMembershipsField.hidden = !getIsSuperAdmin();
   }
 
-  if (loginContentPanel) {
-    loginContentPanel.hidden = !getIsSuperAdmin();
-  }
-
-  if (signupRequestsPanel) {
-    signupRequestsPanel.hidden = !getIsSuperAdmin();
-  }
+  renderDashboardControlPanelContent();
 
   renderWorkOrderEditorSummary();
 }
@@ -48793,6 +48825,10 @@ userBadge?.addEventListener("click", (event) => {
 
 topbarShortcutDashboardButton?.addEventListener("click", () => {
   activateSidebarItem("dashboard", { expandSidebar: state.sidebarCollapsed });
+});
+
+dashboardOpenPeopleButton?.addEventListener("click", () => {
+  activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
 });
 
 topbarShortcutRemindersButton?.addEventListener("click", (event) => {

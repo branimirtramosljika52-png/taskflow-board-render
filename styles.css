@@ -3377,6 +3377,48 @@ body.is-location-editor-open {
   grid-column: 1 / -1;
 }
 
+.dashboard-control-card {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-control-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-control-card-head h3 {
+  margin: 0;
+}
+
+.dashboard-control-card-head .section-kicker {
+  margin-bottom: 6px;
+}
+
+.dashboard-control-badge,
+.dashboard-control-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(215, 223, 237, 0.96);
+  background: rgba(247, 250, 255, 0.96);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dashboard-control-card-meta,
+.dashboard-control-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .dashboard-overview-head {
   display: flex;
   justify-content: space-between;
