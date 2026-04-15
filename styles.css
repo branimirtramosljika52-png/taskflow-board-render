@@ -18133,7 +18133,9 @@ body.is-vehicle-reservation-open {
 
 .document-template-editor-panel.is-workspace-open .document-template-editor-body {
   padding: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-editor-body {
@@ -19332,6 +19334,13 @@ body.is-measurement-equipment-export-open {
   height: 100%;
 }
 
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .document-template-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -19360,22 +19369,49 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-editor-panel.is-workspace-open .document-template-workspace-head {
-  position: sticky;
-  top: 0;
-  z-index: 8;
+  position: relative;
+  top: auto;
+  z-index: 1;
   padding: 4px 0 12px;
   background: linear-gradient(180deg, rgba(255, 252, 255, 0.99), rgba(255, 248, 252, 0.96));
   border-bottom: 1px solid rgba(220, 156, 212, 0.24);
 }
 
-.document-template-editor-panel.is-workspace-open .document-template-builder-sidebar,
-.document-template-editor-panel.is-workspace-open .document-template-builder-preview {
-  position: sticky;
-  top: var(--document-template-sticky-offset);
-  align-self: start;
-  max-height: calc(100dvh - 148px);
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px);
+  align-items: stretch;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main,
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-preview {
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main {
+  padding-right: 10px;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-preview-block {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-preview {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
 }
 
 .document-template-toolbox {
@@ -22955,8 +22991,20 @@ body.is-measurement-equipment-export-open {
     grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   }
 
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+    overflow: auto;
+    align-items: start;
+  }
+
   .document-template-editor-panel.is-workspace-open .document-template-builder-sidebar {
     grid-row: 1 / span 2;
+  }
+
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-preview {
+    overflow: visible;
+    padding-right: 0;
   }
 
   .document-template-editor-panel.is-workspace-open .document-template-builder-preview {
@@ -22990,6 +23038,11 @@ body.is-measurement-equipment-export-open {
 
   .document-template-card-badges {
     justify-content: flex-start;
+  }
+
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
   }
 
   .document-template-editor-panel.is-workspace-open .document-template-builder-sidebar,
