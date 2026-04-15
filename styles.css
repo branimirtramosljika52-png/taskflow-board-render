@@ -19452,20 +19452,22 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-word-flow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 6px;
+  align-items: stretch;
 }
 
 .document-template-word-step {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 8px 0 6px;
-  border: 1px solid rgba(220, 156, 212, 0.34);
-  border-radius: 999px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid rgba(220, 156, 212, 0.3);
+  border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 248, 252, 0.98), rgba(255, 255, 255, 0.98));
 }
 
@@ -19481,10 +19483,14 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-word-step span {
+  display: block;
+  min-width: 0;
   color: #4c3558;
   font-size: 0.7rem;
   line-height: 1.2;
   font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .document-template-tool-button {
@@ -21140,12 +21146,13 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-item-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
-  align-items: center;
   padding: 0 0 6px 2px;
   border-bottom: 1px solid rgba(47, 104, 84, 0.08);
+  min-width: 0;
 }
 
 .document-template-item-head-copy {
@@ -21153,13 +21160,17 @@ body.is-measurement-equipment-export-open {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  flex: 1 1 240px;
   min-width: 0;
 }
 
 .document-template-item-head-copy strong {
+  flex: 1 1 100%;
+  min-width: 0;
   color: #22352d;
   font-size: 0.94rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .document-template-item-card.is-chapter .document-template-item-head-copy strong {
@@ -21241,7 +21252,8 @@ body.is-measurement-equipment-export-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 0 2px 4px 42px;
+  min-width: 0;
+  padding: 0 2px 4px 38px;
 }
 
 .document-template-item-token-label {
@@ -21254,6 +21266,8 @@ body.is-measurement-equipment-export-open {
 .document-template-item-token-value {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
+  min-width: 0;
   min-height: 32px;
   padding: 0 10px;
   border-radius: 12px;
@@ -21263,6 +21277,7 @@ body.is-measurement-equipment-export-open {
   font-size: 0.78rem;
   font-family: Consolas, "SFMono-Regular", monospace;
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .document-template-token-copy {
@@ -21374,6 +21389,14 @@ body.is-measurement-equipment-export-open {
 
 .document-template-item-card .field {
   gap: 4px;
+  min-width: 0;
+}
+
+.document-template-builder-main > .document-template-block,
+.document-template-custom-fields,
+.document-template-item-card,
+.document-template-chapter-group,
+.document-template-chapter-group-body {
   min-width: 0;
 }
 
@@ -21652,7 +21675,15 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-reference-actions--stack > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  line-height: 1.25;
+  white-space: normal;
+  text-align: center;
 }
 
 .document-template-reference-actions > button {
@@ -21668,6 +21699,7 @@ body.is-measurement-equipment-export-open {
   background: linear-gradient(180deg, rgba(255, 250, 253, 0.98), rgba(255, 255, 255, 0.98));
   font-size: 0.81rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .document-template-reference-status {
@@ -23064,7 +23096,31 @@ body.is-measurement-equipment-export-open {
   }
 }
 
+@media (max-width: 1320px) {
+  .document-template-builder-shell,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-builder-sidebar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .document-template-sidebar-block.document-template-toolbox-block {
+    grid-column: 1 / -1;
+  }
+
+  .document-template-item-token-row {
+    padding-left: 0;
+  }
+}
+
 @media (max-width: 760px) {
+  .document-template-builder-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .template-development-list-heading,
   .template-development-list-toolbar,
   .document-template-card-head {
