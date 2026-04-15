@@ -179,7 +179,7 @@ const VEHICLE_ACTIVITY_TYPE_OPTIONS = Object.freeze([
   { value: "technical_inspection", label: "Tehnički pregled" },
   { value: "registration", label: "Registracija" },
   { value: "repair", label: "Popravak" },
-  { value: "tires", label: "Gume" },
+  { value: "tires", label: "Promjena guma" },
   { value: "insurance", label: "Osiguranje" },
   { value: "other", label: "Ostalo" },
 ]);
@@ -194,6 +194,13 @@ const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
 });
+const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
+  registrationLeadDaysBeforeExpiry: 30,
+  registrationRepeatEveryDays: 7,
+  tireLeadDaysBeforeDue: 30,
+  tireRepeatEveryDays: 7,
+});
+const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
   { value: "away", label: "Away" },
@@ -580,6 +587,9 @@ const state = {
   measurementEquipmentCardTemplate: null,
   measurementEquipmentNotificationSettings: {
     ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+  },
+  vehicleNotificationSettings: {
+    ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
   },
   safetyAuthorizations: [],
   dashboardWidgets: [],
@@ -1270,8 +1280,13 @@ const cloudModule = document.querySelector("#cloud-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
+const settingsVehicleRegistrationLeadDaysInput = document.querySelector("#settings-vehicle-registration-lead-days");
+const settingsVehicleRegistrationRepeatDaysInput = document.querySelector("#settings-vehicle-registration-repeat-days");
+const settingsVehicleTireLeadDaysInput = document.querySelector("#settings-vehicle-tire-lead-days");
+const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-vehicle-tire-repeat-days");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
+const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
 const documentsRnCount = document.querySelector("#documents-rn-count");
@@ -1348,6 +1363,7 @@ const vehicleReservationPanel = document.querySelector("#vehicle-reservation-pan
 const vehicleReservationCloseButton = document.querySelector("#vehicle-reservation-close");
 const vehicleReservationBody = vehicleReservationPanel?.querySelector(".vehicle-modal-body");
 const vehicleReservationForm = document.querySelector("#vehicle-reservation-form");
+const vehicleReservationSubmitButton = vehicleReservationForm?.querySelector('button[type="submit"]');
 const vehicleReservationIdInput = document.querySelector("#vehicle-reservation-id");
 const vehicleReservationVehicleIdInput = document.querySelector("#vehicle-reservation-vehicle-id");
 const vehicleReservationStatusInput = document.querySelector("#vehicle-reservation-status");
@@ -2816,6 +2832,39 @@ function getMeasurementEquipmentNotificationSettings() {
   return normalizeMeasurementEquipmentNotificationSettings(state.measurementEquipmentNotificationSettings);
 }
 
+function normalizeVehicleNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_VEHICLE_NOTIFICATION_SETTINGS;
+  return {
+    registrationLeadDaysBeforeExpiry: normalizeNotificationDayValue(
+      source.registrationLeadDaysBeforeExpiry ?? source.registrationLeadDays ?? source.leadDaysBeforeExpiry,
+      fallback.registrationLeadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    registrationRepeatEveryDays: normalizeNotificationDayValue(
+      source.registrationRepeatEveryDays ?? source.registrationRepeatDays ?? source.repeatEveryDays,
+      fallback.registrationRepeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+    tireLeadDaysBeforeDue: normalizeNotificationDayValue(
+      source.tireLeadDaysBeforeDue ?? source.tireLeadDays ?? source.tyreLeadDays ?? source.tiresLeadDays,
+      fallback.tireLeadDaysBeforeDue,
+      { min: 1, max: 365 },
+    ),
+    tireRepeatEveryDays: normalizeNotificationDayValue(
+      source.tireRepeatEveryDays ?? source.tireRepeatDays ?? source.tyreRepeatDays ?? source.tiresRepeatDays,
+      fallback.tireRepeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function getVehicleNotificationSettings() {
+  return normalizeVehicleNotificationSettings(state.vehicleNotificationSettings);
+}
+
 function canManageRenderedUser(user) {
   if (getIsSuperAdmin()) {
     return true;
@@ -2950,6 +2999,9 @@ function applySnapshot(payload) {
   state.measurementEquipmentCardTemplate = payload.measurementEquipmentCardTemplate ?? null;
   state.measurementEquipmentNotificationSettings = normalizeMeasurementEquipmentNotificationSettings(
     payload.measurementEquipmentNotificationSettings,
+  );
+  state.vehicleNotificationSettings = normalizeVehicleNotificationSettings(
+    payload.vehicleNotificationSettings,
   );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
@@ -4381,7 +4433,8 @@ function renderModuleView() {
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
     && !isMeasurementEquipmentModule
-    && !isSettingsModule;
+    && !isSettingsModule
+    && !isVehiclesModule;
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -7480,22 +7533,49 @@ function renderSettingsModule() {
   }
 
   const canManageSettings = getCanManageMasterData();
-  const notificationSettings = getMeasurementEquipmentNotificationSettings();
-  const leadDaysValue = String(notificationSettings.leadDaysBeforeExpiry);
-  const repeatDaysValue = String(notificationSettings.repeatEveryDays);
+  const measurementNotificationSettings = getMeasurementEquipmentNotificationSettings();
+  const vehicleNotificationSettings = getVehicleNotificationSettings();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
-      settingsMeasurementLeadDaysInput.value = leadDaysValue;
+      settingsMeasurementLeadDaysInput.value = String(measurementNotificationSettings.leadDaysBeforeExpiry);
     }
     settingsMeasurementLeadDaysInput.disabled = !canManageSettings;
   }
 
   if (settingsMeasurementRepeatDaysInput) {
     if (document.activeElement !== settingsMeasurementRepeatDaysInput) {
-      settingsMeasurementRepeatDaysInput.value = repeatDaysValue;
+      settingsMeasurementRepeatDaysInput.value = String(measurementNotificationSettings.repeatEveryDays);
     }
     settingsMeasurementRepeatDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsVehicleRegistrationLeadDaysInput) {
+    if (document.activeElement !== settingsVehicleRegistrationLeadDaysInput) {
+      settingsVehicleRegistrationLeadDaysInput.value = String(vehicleNotificationSettings.registrationLeadDaysBeforeExpiry);
+    }
+    settingsVehicleRegistrationLeadDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsVehicleRegistrationRepeatDaysInput) {
+    if (document.activeElement !== settingsVehicleRegistrationRepeatDaysInput) {
+      settingsVehicleRegistrationRepeatDaysInput.value = String(vehicleNotificationSettings.registrationRepeatEveryDays);
+    }
+    settingsVehicleRegistrationRepeatDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsVehicleTireLeadDaysInput) {
+    if (document.activeElement !== settingsVehicleTireLeadDaysInput) {
+      settingsVehicleTireLeadDaysInput.value = String(vehicleNotificationSettings.tireLeadDaysBeforeDue);
+    }
+    settingsVehicleTireLeadDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsVehicleTireRepeatDaysInput) {
+    if (document.activeElement !== settingsVehicleTireRepeatDaysInput) {
+      settingsVehicleTireRepeatDaysInput.value = String(vehicleNotificationSettings.tireRepeatEveryDays);
+    }
+    settingsVehicleTireRepeatDaysInput.disabled = !canManageSettings;
   }
 
   if (settingsSaveAllButton) {
@@ -7503,13 +7583,17 @@ function renderSettingsModule() {
     settingsSaveAllButton.hidden = !canManageSettings;
   }
 
-  if (settingsNotificationsFeedback) {
-    if (!canManageSettings) {
-      settingsNotificationsFeedback.textContent = "Samo admin moze mijenjati postavke slanja.";
-    } else if (settingsNotificationsFeedback.textContent === "Samo admin moze mijenjati postavke slanja.") {
-      settingsNotificationsFeedback.textContent = "";
+  [settingsNotificationsFeedback, settingsVehicleNotificationsFeedback].forEach((feedbackNode) => {
+    if (!feedbackNode) {
+      return;
     }
-  }
+
+    if (!canManageSettings) {
+      feedbackNode.textContent = "Samo admin moze mijenjati postavke slanja.";
+    } else if (feedbackNode.textContent === "Samo admin moze mijenjati postavke slanja.") {
+      feedbackNode.textContent = "";
+    }
+  });
 }
 
 async function saveMeasurementEquipmentNotificationSettings(options = {}) {
@@ -7557,10 +7641,77 @@ async function saveMeasurementEquipmentNotificationSettings(options = {}) {
   return success;
 }
 
+async function saveVehicleNotificationSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Postavke su spremljene.";
+
+  if (!getCanManageMasterData()) {
+    if (settingsVehicleNotificationsFeedback) {
+      settingsVehicleNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
+    }
+    return false;
+  }
+
+  const registrationLeadDaysBeforeExpiry = normalizeNotificationDayValue(
+    settingsVehicleRegistrationLeadDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.registrationLeadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const registrationRepeatEveryDays = normalizeNotificationDayValue(
+    settingsVehicleRegistrationRepeatDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.registrationRepeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const tireLeadDaysBeforeDue = normalizeNotificationDayValue(
+    settingsVehicleTireLeadDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.tireLeadDaysBeforeDue,
+    { min: 1, max: 365 },
+  );
+  const tireRepeatEveryDays = normalizeNotificationDayValue(
+    settingsVehicleTireRepeatDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.tireRepeatEveryDays,
+    { min: 1, max: 90 },
+  );
+
+  if (settingsVehicleRegistrationLeadDaysInput) {
+    settingsVehicleRegistrationLeadDaysInput.value = String(registrationLeadDaysBeforeExpiry);
+  }
+  if (settingsVehicleRegistrationRepeatDaysInput) {
+    settingsVehicleRegistrationRepeatDaysInput.value = String(registrationRepeatEveryDays);
+  }
+  if (settingsVehicleTireLeadDaysInput) {
+    settingsVehicleTireLeadDaysInput.value = String(tireLeadDaysBeforeDue);
+  }
+  if (settingsVehicleTireRepeatDaysInput) {
+    settingsVehicleTireRepeatDaysInput.value = String(tireRepeatEveryDays);
+  }
+
+  const success = await runMutation(() => apiRequest("/vehicles/notification-settings", {
+    method: "POST",
+    body: {
+      registrationLeadDaysBeforeExpiry,
+      registrationRepeatEveryDays,
+      tireLeadDaysBeforeDue,
+      tireRepeatEveryDays,
+    },
+  }), settingsVehicleNotificationsFeedback);
+
+  if (success && settingsVehicleNotificationsFeedback) {
+    settingsVehicleNotificationsFeedback.textContent = successMessage;
+  }
+
+  return success;
+}
+
 async function saveAllSettingsBlocks() {
-  return saveMeasurementEquipmentNotificationSettings({
+  const measurementSaved = await saveMeasurementEquipmentNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
+  const vehicleSaved = await saveVehicleNotificationSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
+  return measurementSaved && vehicleSaved;
 }
 
 function renderDocumentsModule() {
@@ -31355,6 +31506,138 @@ function buildMeasurementEquipmentNotifications() {
     .filter(Boolean);
 }
 
+function buildVehicleNotifications() {
+  const notificationSettings = getVehicleNotificationSettings();
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    const deltaMs = targetDate.getTime() - todayDate.getTime();
+    return Math.round(deltaMs / (1000 * 60 * 60 * 24));
+  };
+
+  const shouldSend = (daysUntilDue, leadDaysBeforeExpiry, repeatEveryDays) => {
+    if (!Number.isFinite(daysUntilDue)) {
+      return false;
+    }
+
+    if (daysUntilDue >= 0) {
+      if (daysUntilDue > leadDaysBeforeExpiry) {
+        return false;
+      }
+      if (daysUntilDue === 0 || daysUntilDue === leadDaysBeforeExpiry) {
+        return true;
+      }
+      return ((leadDaysBeforeExpiry - daysUntilDue) % repeatEveryDays) === 0;
+    }
+
+    const overdueDays = Math.abs(daysUntilDue);
+    if (overdueDays === 1) {
+      return true;
+    }
+    return (overdueDays % repeatEveryDays) === 0;
+  };
+
+  const registrationNotifications = (state.vehicles ?? [])
+    .map((vehicle) => {
+      const dueDate = String(vehicle?.registrationExpiresOn || "");
+      if (!dueDate) {
+        return null;
+      }
+
+      const daysUntilDue = getDaysUntil(dueDate);
+      if (!shouldSend(
+        daysUntilDue,
+        notificationSettings.registrationLeadDaysBeforeExpiry,
+        notificationSettings.registrationRepeatEveryDays,
+      )) {
+        return null;
+      }
+
+      let level = "warning";
+      let title = "Registracija uskoro istice";
+      if (Number.isFinite(daysUntilDue) && daysUntilDue < 0) {
+        level = "critical";
+        title = "Registracija je istekla";
+      } else if (daysUntilDue === 0) {
+        title = "Registracija istice danas";
+      }
+
+      return {
+        id: `vehicle-registration-${vehicle.id}-${dueDate}`,
+        kind: "vehicle",
+        level,
+        title,
+        message: vehicle.name || vehicle.plateNumber || "Vozilo",
+        context: [
+          vehicle.plateNumber || "",
+          vehicle.vinNumber ? `Sasija ${vehicle.vinNumber}` : "",
+        ].filter(Boolean).join(" · ") || "Vozilo",
+        dueDate,
+        referenceId: String(vehicle.id || ""),
+      };
+    })
+    .filter(Boolean);
+
+  const tireNotifications = (state.vehicles ?? [])
+    .map((vehicle) => {
+      const tireActivity = [...(vehicle.activityItems ?? [])]
+        .filter((entry) => (
+          String(entry?.activityType || "").trim().toLowerCase() === "tires"
+          && String(entry?.validUntil || "").trim()
+        ))
+        .sort(compareVehicleActivityDraftRecency)[0];
+      const dueDate = String(tireActivity?.validUntil || "");
+      if (!dueDate) {
+        return null;
+      }
+
+      const daysUntilDue = getDaysUntil(dueDate);
+      if (!shouldSend(
+        daysUntilDue,
+        notificationSettings.tireLeadDaysBeforeDue,
+        notificationSettings.tireRepeatEveryDays,
+      )) {
+        return null;
+      }
+
+      let level = "warning";
+      let title = "Promjena guma uskoro";
+      if (Number.isFinite(daysUntilDue) && daysUntilDue < 0) {
+        level = "critical";
+        title = "Promjena guma kasni";
+      } else if (daysUntilDue === 0) {
+        title = "Promjena guma je danas";
+      }
+
+      return {
+        id: `vehicle-tires-${vehicle.id}-${dueDate}`,
+        kind: "vehicle",
+        level,
+        title,
+        message: vehicle.name || vehicle.plateNumber || "Vozilo",
+        context: [
+          vehicle.plateNumber || "",
+          tireActivity?.performedBy ? `Zadnje: ${tireActivity.performedBy}` : "",
+        ].filter(Boolean).join(" · ") || "Vozilo",
+        dueDate,
+        referenceId: String(vehicle.id || ""),
+      };
+    })
+    .filter(Boolean);
+
+  return [
+    ...registrationNotifications,
+    ...tireNotifications,
+  ];
+}
+
 function isTodoCommentFromCurrentUser(comment = {}) {
   const currentUserId = String(state.user?.id ?? "").trim();
   const normalizeLabel = (value) => String(value ?? "")
@@ -31565,6 +31848,9 @@ function renderTopbarShortcutCounts() {
 
 function getAllNotifications() {
   return [
+    ...buildReminderNotifications(),
+    ...buildMeasurementEquipmentNotifications(),
+    ...buildVehicleNotifications(),
     ...buildTodoCommentNotifications(),
   ].map((entry) => ({
     ...entry,
@@ -31639,6 +31925,17 @@ function openNotificationEntry(entry) {
     if (equipment && getCanManageMasterData()) {
       window.requestAnimationFrame(() => {
         hydrateMeasurementEquipmentForm(equipment);
+      });
+    }
+    return;
+  }
+
+  if (entry.kind === "vehicle") {
+    activateSidebarItem("vehicles", { expandSidebar: state.sidebarCollapsed });
+    const vehicle = state.vehicles.find((item) => String(item.id) === String(entry.referenceId)) ?? null;
+    if (vehicle && getCanManageMasterData()) {
+      window.requestAnimationFrame(() => {
+        hydrateVehicleForm(vehicle);
       });
     }
     return;
@@ -34853,6 +35150,12 @@ function renderOffersModule() {
 }
 
 function getVehicleStatusLabel(value) {
+  if (value === "reserved") {
+    return "Rezervirano";
+  }
+  if (value === "inactive") {
+    return "Servis";
+  }
   return getOptionLabel(VEHICLE_STATUS_OPTIONS, value || "available");
 }
 
@@ -34862,6 +35165,23 @@ function getVehicleReservationStatusLabel(value) {
 
 function getVehicleStatusToneClass(value) {
   return `is-${slugifyValue(value || "available")}`;
+}
+
+function getVehicleEditableStatusValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "service" || normalized === "inactive"
+    ? "service"
+    : "available";
+}
+
+function isVehicleServiceOnlyStatus(vehicle = null) {
+  return getVehicleEditableStatusValue(vehicle?.status) === "service";
+}
+
+function findFirstReservableVehicleId() {
+  return sortVehicles(state.vehicles ?? [])
+    .find((vehicle) => !isVehicleServiceOnlyStatus(vehicle))
+    ?.id ?? "";
 }
 
 function getActiveVehicle() {
@@ -34976,7 +35296,6 @@ function syncVehicleReservationAssigneePreview() {
 
   const selectedUsers = getVehicleReservationSelectedUsers();
   const labels = selectedUsers.map((user) => user.fullName || user.email || user.username || "User");
-  const executors = createVehicleReservationExecutorList(labels, { compact: true });
   const summary = document.createElement("span");
   summary.className = "vehicle-reservation-assignees-summary";
   summary.textContent = labels.length === 0
@@ -34985,6 +35304,16 @@ function syncVehicleReservationAssigneePreview() {
       ? labels[0]
       : `${labels.length} izvršitelja`;
 
+  if (labels.length === 0) {
+    summary.classList.add("is-placeholder");
+    vehicleReservationAssigneesPreview.replaceChildren(summary);
+    return;
+  }
+
+  const executors = createVehicleReservationExecutorList(labels, {
+    compact: true,
+    emptyLabel: "",
+  });
   vehicleReservationAssigneesPreview.replaceChildren(executors, summary);
 }
 
@@ -35024,6 +35353,8 @@ function rebuildVehicleReservationUserOptions(selectedValue = []) {
 
     const avatar = createVehicleReservationExecutorAvatar(user.fullName || user.email || user.username || "User");
 
+    const main = document.createElement("span");
+    main.className = "vehicle-reservation-assignee-main";
     const copy = document.createElement("span");
     copy.className = "vehicle-reservation-assignee-copy";
 
@@ -35034,7 +35365,8 @@ function rebuildVehicleReservationUserOptions(selectedValue = []) {
     meta.textContent = user.email || user.username || "Clan tima";
 
     copy.append(name, meta);
-    option.append(checkbox, avatar, copy);
+    main.append(avatar, copy);
+    option.append(main, checkbox);
     return option;
   }));
 
@@ -35051,7 +35383,11 @@ function rebuildVehicleReservationVehicleOptions(selectedValue = "") {
     { value: "", label: state.vehicles.length > 0 ? "Odaberi vozilo" : "Nema vozila" },
     ...sortVehicles(state.vehicles ?? []).map((vehicle) => ({
       value: vehicle.id,
-      label: `${vehicle.plateNumber || "Bez registracije"} · ${vehicle.name || "Vozilo"}`,
+      label: [
+        vehicle.plateNumber || "Bez registracije",
+        vehicle.name || "Vozilo",
+        isVehicleServiceOnlyStatus(vehicle) ? "Servis" : "",
+      ].filter(Boolean).join(" · "),
     })),
   ];
 
@@ -35073,6 +35409,7 @@ function setVehicleReservationFormDisabled(disabled) {
     return;
   }
 
+  vehicleReservationForm.dataset.formDisabled = disabled ? "true" : "false";
   const isEditing = Boolean(vehicleReservationIdInput?.value);
 
   Array.from(vehicleReservationForm.elements).forEach((field) => {
@@ -35096,6 +35433,38 @@ function setVehicleReservationFormDisabled(disabled) {
   if (vehicleOpenReservationButton) {
     vehicleOpenReservationButton.disabled = disabled;
   }
+
+  syncVehicleReservationAvailabilityState();
+}
+
+function syncVehicleReservationAvailabilityState() {
+  const reservationVehicle = getVehicleFromReservationEditor();
+  const isEditing = Boolean(vehicleReservationIdInput?.value);
+  const formDisabled = vehicleReservationForm?.dataset.formDisabled === "true";
+  const editorOpen = Boolean(state.vehicleReservationEditorOpen);
+  const serviceBlocked = Boolean(
+    editorOpen
+    && !isEditing
+    && reservationVehicle
+    && isVehicleServiceOnlyStatus(reservationVehicle),
+  );
+
+  if (vehicleReservationSubmitButton) {
+    vehicleReservationSubmitButton.disabled = formDisabled || serviceBlocked;
+  }
+
+  if (!vehicleReservationError) {
+    return;
+  }
+
+  if (serviceBlocked) {
+    vehicleReservationError.textContent = VEHICLE_SERVICE_RESERVATION_MESSAGE;
+    return;
+  }
+
+  if (vehicleReservationError.textContent === VEHICLE_SERVICE_RESERVATION_MESSAGE) {
+    vehicleReservationError.textContent = "";
+  }
 }
 
 function selectVehicle(vehicleId = "") {
@@ -35106,8 +35475,14 @@ function selectVehicle(vehicleId = "") {
 
 function syncVehicleEditorSummary() {
   const activeVehicle = getActiveVehicle();
-  const previewStatus = activeVehicle
-    ? getVehicleAvailabilityStatus(activeVehicle, new Date().toISOString())
+  const previewVehicle = activeVehicle
+    ? {
+      ...activeVehicle,
+      status: vehicleStatusInput?.value || activeVehicle.status,
+    }
+    : null;
+  const previewStatus = previewVehicle
+    ? getVehicleAvailabilityStatus(previewVehicle, new Date().toISOString())
     : (vehicleStatusInput?.value || "available");
 
   if (vehicleEditorTitle) {
@@ -35393,7 +35768,7 @@ function renderVehicleActivities() {
   if (vehicleActivityDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Dodaj servis, tehnički pregled, registraciju ili drugi važan događaj za vozilo.";
+    empty.textContent = "Dodaj servis, promjenu guma, tehnički pregled, registraciju ili drugi važan događaj za vozilo.";
     vehicleActivityList.replaceChildren(empty);
     return;
   }
@@ -35600,6 +35975,8 @@ function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.
 
   if (vehicleId) {
     state.activeVehicleId = String(vehicleId);
+  } else if (!vehicleReservationIdInput?.value) {
+    state.activeVehicleId = "";
   }
 
   syncVehicleEditorSummary();
@@ -35697,7 +36074,7 @@ function hydrateVehicleForm(vehicle) {
     vehicleVinNumberInput.value = vehicle.vinNumber || "";
   }
   if (vehicleStatusInput) {
-    vehicleStatusInput.value = vehicle.status || "available";
+    vehicleStatusInput.value = getVehicleEditableStatusValue(vehicle.status);
   }
   if (vehicleCategoryInput) {
     vehicleCategoryInput.value = vehicle.category || "";
@@ -35777,8 +36154,13 @@ function findCreatedVehicleReservationMatch(vehicle, previousIds, payload) {
 }
 
 function openVehicleReservationComposer({ vehicleId = state.activeVehicleId || "", startAt = "", endAt = "" } = {}) {
-  resetVehicleReservationForm({ clearSelection: true, vehicleId });
-  rebuildVehicleReservationVehicleOptions(vehicleId);
+  const requestedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId)) ?? null;
+  const nextVehicleId = requestedVehicle && !isVehicleServiceOnlyStatus(requestedVehicle)
+    ? requestedVehicle.id
+    : findFirstReservableVehicleId();
+
+  resetVehicleReservationForm({ clearSelection: true, vehicleId: nextVehicleId });
+  rebuildVehicleReservationVehicleOptions(nextVehicleId);
 
   if (startAt && vehicleReservationStartAtInput) {
     vehicleReservationStartAtInput.value = startAt;
@@ -35796,8 +36178,9 @@ function createVehicleInlineStatusSelect(vehicle) {
   const select = document.createElement("select");
   select.className = "vehicle-inline-status-select";
   select.setAttribute("aria-label", `Promijeni status za ${vehicle.name || vehicle.plateNumber || "vozilo"}`);
-  select.append(...VEHICLE_STATUS_OPTIONS.map((option) => createOption(option.value, option.label, vehicle.status || "available")));
-  select.value = vehicle.status || "available";
+  const selectedStatus = getVehicleEditableStatusValue(vehicle.status);
+  select.append(...VEHICLE_STATUS_OPTIONS.map((option) => createOption(option.value, option.label, selectedStatus)));
+  select.value = selectedStatus;
   select.addEventListener("change", () => {
     void runMutation(() => apiRequest(`/vehicles/${vehicle.id}`, {
       method: "PATCH",
@@ -35945,6 +36328,10 @@ async function finalizeVehicleScheduleSelection() {
     return;
   }
 
+  if (isVehicleServiceOnlyStatus(vehicle)) {
+    return;
+  }
+
   const extensionTarget = findVehicleScheduleExtensionTarget(vehicle, selectionWindow);
   selectVehicle(vehicle.id);
 
@@ -36071,8 +36458,12 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   vehicles.forEach((vehicle, vehicleIndex) => {
     const row = document.createElement("div");
     row.className = "vehicle-schedule-row";
+    const isServiceVehicle = isVehicleServiceOnlyStatus(vehicle);
     if (String(vehicle.id) === String(state.activeVehicleId)) {
       row.classList.add("is-active");
+    }
+    if (isServiceVehicle) {
+      row.classList.add("is-service");
     }
 
     const vehicleCell = document.createElement("button");
@@ -36090,18 +36481,33 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
 
     const track = document.createElement("div");
     track.className = "vehicle-schedule-track";
+    if (isServiceVehicle) {
+      track.classList.add("is-service-track");
+    }
     track.style.setProperty("--vehicle-hour-count", String(hours.length));
 
     hours.forEach((hour) => {
       const slotButton = document.createElement("button");
       slotButton.type = "button";
       slotButton.className = "vehicle-schedule-slot";
+      slotButton.disabled = isServiceVehicle;
+      if (isServiceVehicle) {
+        slotButton.classList.add("is-disabled");
+      }
       if (nowMarker && nowMarker.hour === hour) {
         slotButton.classList.add("is-current-hour");
       }
       slotButton.dataset.hour = String(hour);
-      slotButton.setAttribute("aria-label", `Rezerviraj ${vehicle.name || vehicle.plateNumber || "vozilo"} u ${String(hour).padStart(2, "0")}:00`);
+      slotButton.setAttribute(
+        "aria-label",
+        isServiceVehicle
+          ? `${vehicle.name || vehicle.plateNumber || "Vozilo"} je na servisu u ${String(hour).padStart(2, "0")}:00`
+          : `Rezerviraj ${vehicle.name || vehicle.plateNumber || "vozilo"} u ${String(hour).padStart(2, "0")}:00`,
+      );
       slotButton.addEventListener("pointerdown", (event) => {
+        if (isServiceVehicle) {
+          return;
+        }
         if (event.button !== 0) {
           return;
         }
@@ -36116,6 +36522,9 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
         event.preventDefault();
       });
       slotButton.addEventListener("pointerenter", (event) => {
+        if (isServiceVehicle) {
+          return;
+        }
         if (!(event.buttons & 1)) {
           return;
         }
@@ -36187,6 +36596,7 @@ function renderVehiclesModule() {
     status: vehiclesFilterStatusInput?.value || "all",
     nowValue,
   }), nowValue);
+  const reservableVehicles = allVehicles.filter((vehicle) => !isVehicleServiceOnlyStatus(vehicle));
 
   if (vehiclesTotalCount) {
     vehiclesTotalCount.textContent = String(allVehicles.length);
@@ -36200,8 +36610,12 @@ function renderVehiclesModule() {
   if (vehiclesServiceCount) {
     vehiclesServiceCount.textContent = String(allVehicles.filter((item) => {
       const status = getVehicleAvailabilityStatus(item, nowValue);
-      return status === "service" || status === "inactive";
+      return status === "service";
     }).length);
+  }
+
+  if (vehicleOpenReservationButton) {
+    vehicleOpenReservationButton.disabled = reservableVehicles.length === 0;
   }
 
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
@@ -36209,6 +36623,7 @@ function renderVehiclesModule() {
   vehiclesList.replaceChildren(...visibleVehicles.map((vehicle) => {
     const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
     const nextReservation = getVehicleNextReservation(vehicle, nowValue);
+    const isServiceVehicle = isVehicleServiceOnlyStatus(vehicle);
     const card = document.createElement("article");
     card.className = `vehicle-list-row ${getVehicleStatusToneClass(availabilityStatus)}`;
     card.tabIndex = 0;
@@ -36255,9 +36670,13 @@ function renderVehiclesModule() {
     const reserveButton = document.createElement("button");
     reserveButton.type = "button";
     reserveButton.className = "ghost-button";
-    reserveButton.textContent = "Rezerviraj";
+    reserveButton.textContent = isServiceVehicle ? "Servis" : "Rezerviraj";
+    reserveButton.disabled = isServiceVehicle;
     reserveButton.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (isServiceVehicle) {
+        return;
+      }
       selectVehicle(vehicle.id);
       openVehicleReservationComposer({ vehicleId: vehicle.id });
       requestAnimationFrame(() => {
@@ -36304,6 +36723,7 @@ function renderVehiclesModule() {
 
   const reservationVehicle = getVehicleFromReservationEditor() ?? getActiveVehicle();
   const reservations = reservationVehicle ? sortVehicleReservations(reservationVehicle.reservations ?? [], nowValue) : [];
+  syncVehicleReservationAvailabilityState();
 
   if (vehicleReservationsList) {
     vehicleReservationsList.replaceChildren(...reservations.map((reservation) => {
@@ -36566,7 +36986,7 @@ function renderSharedOptions() {
     ], state.documentTemplateFilters.status || "all");
   }
   if (vehicleStatusInput) {
-    replaceSelectOptions(vehicleStatusInput, VEHICLE_STATUS_OPTIONS, vehicleStatusInput.value || "available");
+    replaceSelectOptions(vehicleStatusInput, VEHICLE_STATUS_OPTIONS, getVehicleEditableStatusValue(vehicleStatusInput.value));
   }
   if (vehicleReservationStatusInput) {
     replaceSelectOptions(vehicleReservationStatusInput, VEHICLE_RESERVATION_STATUS_OPTIONS, vehicleReservationStatusInput.value || "reserved");
@@ -36577,7 +36997,6 @@ function renderSharedOptions() {
       { value: "available", label: "Dostupno" },
       { value: "reserved", label: "Rezervirano" },
       { value: "service", label: "Servis" },
-      { value: "inactive", label: "Van uporabe" },
     ], vehiclesFilterStatusInput.value || "all");
   }
   if (offersFilterStatusInput) {
@@ -46645,7 +47064,10 @@ vehicleForm?.addEventListener("submit", (event) => {
 });
 
 vehicleOpenReservationButton?.addEventListener("click", () => {
-  const reservationVehicleId = state.activeVehicleId || state.vehicles[0]?.id || "";
+  const activeVehicle = getActiveVehicle();
+  const reservationVehicleId = activeVehicle && !isVehicleServiceOnlyStatus(activeVehicle)
+    ? activeVehicle.id
+    : findFirstReservableVehicleId();
   openVehicleReservationComposer({ vehicleId: reservationVehicleId });
   requestAnimationFrame(() => {
     vehicleReservationPurposeInput?.focus({ preventScroll: true });
@@ -46655,7 +47077,7 @@ vehicleOpenReservationButton?.addEventListener("click", () => {
 vehicleReservationResetButton?.addEventListener("click", () => {
   resetVehicleReservationForm({
     clearSelection: true,
-    vehicleId: vehicleReservationVehicleIdInput?.value || state.activeVehicleId || state.vehicles[0]?.id || "",
+    vehicleId: vehicleReservationVehicleIdInput?.value || state.activeVehicleId || findFirstReservableVehicleId(),
   });
   renderVehiclesModule();
   openVehicleReservationEditor();
@@ -46672,6 +47094,7 @@ vehicleReservationBackdrop?.addEventListener("click", () => {
 vehicleReservationVehicleIdInput?.addEventListener("change", () => {
   state.activeVehicleId = vehicleReservationVehicleIdInput.value || "";
   state.activeVehicleReservationId = "";
+  syncVehicleReservationAvailabilityState();
   renderVehiclesModule();
 });
 
@@ -46732,6 +47155,14 @@ vehicleReservationForm?.addEventListener("submit", (event) => {
   const payload = buildVehicleReservationPayload();
   const previousIds = new Set((activeVehicle.reservations ?? []).map((item) => String(item.id)));
   const isEditing = Boolean(vehicleReservationIdInput?.value);
+
+  if (!isEditing && isVehicleServiceOnlyStatus(activeVehicle)) {
+    if (vehicleReservationError) {
+      vehicleReservationError.textContent = VEHICLE_SERVICE_RESERVATION_MESSAGE;
+    }
+    return;
+  }
+
   const path = isEditing
     ? `/vehicles/${activeVehicle.id}/reservations/${vehicleReservationIdInput.value}`
     : `/vehicles/${activeVehicle.id}/reservations`;
@@ -48625,6 +49056,12 @@ logoutButton?.addEventListener("click", () => {
     state.serviceCatalog = [];
     state.measurementEquipment = [];
     state.measurementEquipmentCardTemplate = null;
+    state.measurementEquipmentNotificationSettings = {
+      ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+    };
+    state.vehicleNotificationSettings = {
+      ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
+    };
     measurementEquipmentSideComments = [];
     state.measurementEquipmentActivityFeed = {
       organizationId: "",

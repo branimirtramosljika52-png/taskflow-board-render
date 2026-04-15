@@ -253,6 +253,12 @@ const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
 });
+const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
+  registrationLeadDaysBeforeExpiry: 30,
+  registrationRepeatEveryDays: 7,
+  tireLeadDaysBeforeDue: 30,
+  tireRepeatEveryDays: 7,
+});
 
 function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min = 1, max = 365 } = {}) {
   const numeric = Number(value);
@@ -277,6 +283,35 @@ function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
     repeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
       source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
       fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function normalizeVehicleNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_VEHICLE_NOTIFICATION_SETTINGS;
+  return {
+    registrationLeadDaysBeforeExpiry: normalizeMeasurementEquipmentNotificationDay(
+      source.registrationLeadDaysBeforeExpiry ?? source.registrationLeadDays ?? source.leadDaysBeforeExpiry,
+      fallback.registrationLeadDaysBeforeExpiry,
+      { min: 1, max: 365 },
+    ),
+    registrationRepeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
+      source.registrationRepeatEveryDays ?? source.registrationRepeatDays ?? source.repeatEveryDays,
+      fallback.registrationRepeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+    tireLeadDaysBeforeDue: normalizeMeasurementEquipmentNotificationDay(
+      source.tireLeadDaysBeforeDue ?? source.tireLeadDays ?? source.tyreLeadDays ?? source.tiresLeadDays,
+      fallback.tireLeadDaysBeforeDue,
+      { min: 1, max: 365 },
+    ),
+    tireRepeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
+      source.tireRepeatEveryDays ?? source.tireRepeatDays ?? source.tyreRepeatDays ?? source.tiresRepeatDays,
+      fallback.tireRepeatEveryDays,
       { min: 1, max: 90 },
     ),
   };
@@ -1287,6 +1322,21 @@ function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
   };
 }
 
+function mapVehicleNotificationSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const normalized = normalizeVehicleNotificationSettings(parseJsonObject(row.notification_rules_json));
+  return {
+    organizationId,
+    ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -2278,6 +2328,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapMeasurementEquipmentNotificationSettingsEntry(row))
     .filter(Boolean);
 
+  const [vehicleSettingsRows] = await connection.query(`
+    SELECT organization_id, notification_rules_json, created_at, updated_at
+    FROM web_vehicle_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const vehicleNotificationSettings = vehicleSettingsRows
+    .map((row) => mapVehicleNotificationSettingsEntry(row))
+    .filter(Boolean);
+
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, note,
            linked_template_ids_json, documents_json, created_at, updated_at
@@ -2353,6 +2413,7 @@ async function fetchSnapshotFromConnection(connection) {
     measurementEquipment,
     measurementEquipmentCardTemplates,
     measurementEquipmentNotificationSettings,
+    vehicleNotificationSettings,
     safetyAuthorizations,
     dashboardWidgets,
   };
@@ -2441,6 +2502,7 @@ export class InMemorySafetyRepository {
       measurementEquipment: [],
       measurementEquipmentCardTemplates: [],
       measurementEquipmentNotificationSettings: [],
+      vehicleNotificationSettings: [],
       safetyAuthorizations: [],
       dashboardWidgets: [],
     };
@@ -2588,6 +2650,9 @@ export class InMemorySafetyRepository {
         templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
       })),
       measurementEquipmentNotificationSettings: this.snapshot.measurementEquipmentNotificationSettings.map((item) => ({
+        ...item,
+      })),
+      vehicleNotificationSettings: this.snapshot.vehicleNotificationSettings.map((item) => ({
         ...item,
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
@@ -3385,6 +3450,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija vozila.");
+    }
+
+    const normalizedSettings = normalizeVehicleNotificationSettings(notificationSettings);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.vehicleNotificationSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.vehicleNotificationSettings[currentIndex];
+      this.snapshot.vehicleNotificationSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.vehicleNotificationSettings.push(nextEntry);
+    }
+
+    return this.snapshot.vehicleNotificationSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async updateMeasurementEquipmentItem(id, patch) {
     const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
 
@@ -3891,6 +3990,16 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_vehicle_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        notification_rules_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_vehicle_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_safety_authorizations (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -3966,6 +4075,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "measurement_specs_json", "LONGTEXT NULL AFTER activity_items_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment_settings", "notification_rules_json", "LONGTEXT NULL AFTER card_template_json");
+    await ensureColumnExists(this.pool, "web_vehicle_settings", "notification_rules_json", "LONGTEXT NULL");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -6019,6 +6129,34 @@ export class MySqlSafetyRepository {
     await this.pool.query(
       `
         INSERT INTO web_measurement_equipment_settings
+          (organization_id, notification_rules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          notification_rules_json = VALUES(notification_rules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedSettings),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      ...normalizedSettings,
+    };
+  }
+
+  async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija vozila.");
+    }
+
+    const normalizedSettings = normalizeVehicleNotificationSettings(notificationSettings);
+    await this.pool.query(
+      `
+        INSERT INTO web_vehicle_settings
           (organization_id, notification_rules_json)
         VALUES (?, ?)
         ON DUPLICATE KEY UPDATE

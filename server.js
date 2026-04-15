@@ -1474,6 +1474,27 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/vehicles/notification-settings") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati postavke notifikacija vozila.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertVehicleNotificationSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        notificationSettings: {
+          registrationLeadDaysBeforeExpiry: body?.registrationLeadDaysBeforeExpiry,
+          registrationRepeatEveryDays: body?.registrationRepeatEveryDays,
+          tireLeadDaysBeforeDue: body?.tireLeadDaysBeforeDue,
+          tireRepeatEveryDays: body?.tireRepeatEveryDays,
+        },
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/document-records") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo pregledavati zapisnike.");

@@ -1498,6 +1498,33 @@ test("vehicles create reservations, block overlaps and derive availability", () 
     /vec rezervirano/i,
   );
 
+  const serviceVehicle = updateVehicle(
+    vehicle,
+    {
+      status: "service",
+    },
+    {
+      ...state,
+      vehicles: [vehicle],
+    },
+    () => "2026-03-29T09:12:00.000Z",
+  );
+
+  assert.throws(
+    () => createVehicleReservation(
+      serviceVehicle,
+      {
+        purpose: "Nova voznja",
+        reservedForLabel: "Marko",
+        startAt: "2026-03-31T08:00:00.000Z",
+        endAt: "2026-03-31T10:00:00.000Z",
+      },
+      () => "reservation-service",
+      () => "2026-03-29T09:13:00.000Z",
+    ),
+    /na servisu/i,
+  );
+
   const completedVehicle = updateVehicleReservation(
     reservedVehicle,
     "reservation-1",

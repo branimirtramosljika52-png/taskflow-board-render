@@ -2088,6 +2088,9 @@
                 <span>Vrsta</span>
                 <select id="notifications-filter-kind">
                   <option value="all">Sve vrste</option>
+                  <option value="reminder">Reminders</option>
+                  <option value="equipment">Mjerna oprema</option>
+                  <option value="vehicle">Vozila</option>
                   <option value="todo_comment">Komentari</option>
                 </select>
               </label>
@@ -2951,6 +2954,43 @@
                   </label>
                 </div>
                 <p id="settings-notifications-feedback" class="form-error" aria-live="polite"></p>
+              </section>
+              <section class="panel settings-notifications-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Vozila</p>
+                    <h3>Podsjetnici za vozila</h3>
+                  </div>
+                </div>
+                <div class="settings-notification-stack">
+                  <div class="settings-notification-group">
+                    <strong>Istek registracije</strong>
+                    <div class="settings-notification-inline">
+                      <label class="field">
+                        <span>Dana prije isteka</span>
+                        <input id="settings-vehicle-registration-lead-days" type="number" min="1" max="365" inputmode="numeric" />
+                      </label>
+                      <label class="field">
+                        <span>Ponavljaj svakih (dana)</span>
+                        <input id="settings-vehicle-registration-repeat-days" type="number" min="1" max="90" inputmode="numeric" />
+                      </label>
+                    </div>
+                  </div>
+                  <div class="settings-notification-group">
+                    <strong>Promjena guma</strong>
+                    <div class="settings-notification-inline">
+                      <label class="field">
+                        <span>Dana prije roka</span>
+                        <input id="settings-vehicle-tire-lead-days" type="number" min="1" max="365" inputmode="numeric" />
+                      </label>
+                      <label class="field">
+                        <span>Ponavljaj svakih (dana)</span>
+                        <input id="settings-vehicle-tire-repeat-days" type="number" min="1" max="90" inputmode="numeric" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <p id="settings-vehicle-notifications-feedback" class="form-error" aria-live="polite"></p>
               </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>

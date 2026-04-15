@@ -1393,6 +1393,35 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : defaults.repeatEveryDays,
       };
     })(),
+    vehicleNotificationSettings: (() => {
+      const defaults = {
+        registrationLeadDaysBeforeExpiry: 30,
+        registrationRepeatEveryDays: 7,
+        tireLeadDaysBeforeDue: 30,
+        tireRepeatEveryDays: 7,
+      };
+      const settingsEntry = (rawSnapshot.vehicleNotificationSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return defaults;
+      }
+
+      return {
+        registrationLeadDaysBeforeExpiry: Number.isFinite(Number(settingsEntry.registrationLeadDaysBeforeExpiry))
+          ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.registrationLeadDaysBeforeExpiry))))
+          : defaults.registrationLeadDaysBeforeExpiry,
+        registrationRepeatEveryDays: Number.isFinite(Number(settingsEntry.registrationRepeatEveryDays))
+          ? Math.max(1, Math.min(90, Math.round(Number(settingsEntry.registrationRepeatEveryDays))))
+          : defaults.registrationRepeatEveryDays,
+        tireLeadDaysBeforeDue: Number.isFinite(Number(settingsEntry.tireLeadDaysBeforeDue))
+          ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.tireLeadDaysBeforeDue))))
+          : defaults.tireLeadDaysBeforeDue,
+        tireRepeatEveryDays: Number.isFinite(Number(settingsEntry.tireRepeatEveryDays))
+          ? Math.max(1, Math.min(90, Math.round(Number(settingsEntry.tireRepeatEveryDays))))
+          : defaults.tireRepeatEveryDays,
+      };
+    })(),
     safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({

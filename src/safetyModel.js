@@ -38,9 +38,7 @@ export const OFFER_STATUS_OPTIONS = [
 
 export const VEHICLE_STATUS_OPTIONS = [
   { value: "available", label: "Dostupno" },
-  { value: "reserved", label: "Rezervirano" },
   { value: "service", label: "Servis" },
-  { value: "inactive", label: "Van uporabe" },
 ];
 
 export const VEHICLE_RESERVATION_STATUS_OPTIONS = [
@@ -390,7 +388,6 @@ const VEHICLE_STATUS_RANK = {
   reserved: 0,
   available: 1,
   service: 2,
-  inactive: 3,
 };
 const VEHICLE_RESERVATION_STATUS_RANK = {
   checked_out: 0,
@@ -527,7 +524,11 @@ function normalizeOfferStatus(value) {
 
 function normalizeVehicleStatus(value) {
   const status = normalizeText(value).toLowerCase();
-  return VEHICLE_STATUS_SET.has(status) ? status : "available";
+  if (status === "service" || status === "inactive") {
+    return "service";
+  }
+
+  return "available";
 }
 
 function normalizeVehicleReservationStatus(value) {
@@ -2002,6 +2003,10 @@ function hydrateVehicleReservationCore({
     : (hasOwn(input, "reservedForLabel")
       ? normalizeVehicleReservationAssigneeLabels(input.reservedForLabel)
       : normalizeVehicleReservationAssigneeLabels(current?.reservedForLabels ?? current?.reservedForLabel));
+
+  if (!current && normalizeVehicleStatus(vehicle?.status) === "service") {
+    throw new Error("Vozilo je na servisu i nije dostupno za rezervaciju.");
+  }
 
   assertVehicleReservationWindow(startAt, endAt);
 
