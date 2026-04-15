@@ -17596,7 +17596,8 @@ body.is-vehicle-reservation-open {
 }
 
 .measurement-equipment-editor-panel.is-modal-open .measurement-equipment-editor-body {
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 0 14px 14px;
 }
 
