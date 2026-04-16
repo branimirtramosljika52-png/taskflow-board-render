@@ -183,10 +183,13 @@ export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "te
 
 export function normalizeDocumentTemplateFieldHeight(value = 0, type = "text") {
   const normalizedType = String(type || "text").trim().toLowerCase();
-  if (normalizedType !== "longtext") {
+  if (normalizedType === "measurement_table" || normalizedType === "page_break") {
     return 0;
   }
-  return Math.max(3, Math.min(18, Math.round(normalizeFiniteNumber(value, 4))));
+  if (normalizedType === "longtext") {
+    return Math.max(3, Math.min(18, Math.round(normalizeFiniteNumber(value, 4))));
+  }
+  return Math.max(0, Math.min(16, Math.round(normalizeFiniteNumber(value, 0))));
 }
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [

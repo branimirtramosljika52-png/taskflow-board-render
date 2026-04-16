@@ -306,7 +306,7 @@ test("document templates keep nested builder data and support filtering", () => 
       sampleLocationId: "location-1",
       selectedLegalFrameworkIds: ["legal-1"],
       customFields: [
-        { label: "Tvrtka u aplikaciji", wordLabel: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME" },
+        { label: "Tvrtka u aplikaciji", wordLabel: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME", fieldHeight: 5 },
         { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
@@ -316,6 +316,7 @@ test("document templates keep nested builder data and support filtering", () => 
           key: "potpis_ispitivaca",
           type: "inspector_signature",
           signatureArea: "elektro",
+          fieldHeight: 6,
         },
         {
           label: "Potpis nositelja",
@@ -403,10 +404,12 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields.length, 8);
   assert.equal(template.customFields[0].source, "COMPANY_NAME");
   assert.equal(template.customFields[0].wordLabel, "Tvrtka");
+  assert.equal(template.customFields[0].fieldHeight, 5);
   assert.equal(template.customFields[2].type, "checkbox");
   assert.equal(template.customFields[3].type, "toggle");
   assert.equal(template.customFields[4].type, "inspector_signature");
   assert.equal(template.customFields[4].signatureArea, "elektro");
+  assert.equal(template.customFields[4].fieldHeight, 6);
   assert.equal(template.customFields[5].type, "authorization_holder_signature");
   assert.equal(template.customFields[5].signatureArea, "elektro");
   assert.equal(template.customFields[6].type, "qualified_inspectors");

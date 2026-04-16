@@ -16628,6 +16628,81 @@ function getDocumentTemplateBuilderWidthMetaLabel(value = "", type = "text") {
   return `Širina ${normalizedWidth} / 9`;
 }
 
+function isDocumentTemplateFieldHeightEditable(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  return normalizedType !== "chapter"
+    && normalizedType !== "measurement_table"
+    && normalizedType !== "page_break";
+}
+
+function getDocumentTemplateBuilderHeightConfig(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  if (normalizedType === "longtext") {
+    return {
+      min: 3,
+      max: 18,
+      defaultValue: 4,
+      pixelStep: 28,
+      baseHeight: 120,
+      unitHeight: 28,
+      labelSuffix: "reda",
+    };
+  }
+  return {
+    min: 0,
+    max: 16,
+    defaultValue: 4,
+    pixelStep: 24,
+    baseHeight: 64,
+    unitHeight: 22,
+    labelSuffix: "",
+  };
+}
+
+function getDocumentTemplateBuilderFieldHeightValue(field = {}, { preserveAuto = false } = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (!isDocumentTemplateFieldHeightEditable(type)) {
+    return 0;
+  }
+  const normalizedValue = normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type);
+  if (preserveAuto && normalizedValue <= 0 && type !== "longtext") {
+    return 0;
+  }
+  if (normalizedValue > 0) {
+    return normalizedValue;
+  }
+  return getDocumentTemplateBuilderHeightConfig(type).defaultValue;
+}
+
+function getDocumentTemplateBuilderFieldHeightPx(field = {}, { preserveAuto = true } = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (!isDocumentTemplateFieldHeightEditable(type)) {
+    return 0;
+  }
+  const config = getDocumentTemplateBuilderHeightConfig(type);
+  const units = getDocumentTemplateBuilderFieldHeightValue(field, { preserveAuto });
+  if (units <= 0) {
+    return 0;
+  }
+  return Math.max(config.baseHeight, units * config.unitHeight);
+}
+
+function getDocumentTemplateBuilderHeightMetaLabel(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (!isDocumentTemplateFieldHeightEditable(type)) {
+    return "";
+  }
+  const normalizedValue = normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type);
+  if (normalizedValue <= 0 && type !== "longtext") {
+    return "Auto visina";
+  }
+  const resolvedValue = normalizedValue > 0
+    ? normalizedValue
+    : getDocumentTemplateBuilderHeightConfig(type).defaultValue;
+  const suffix = getDocumentTemplateBuilderHeightConfig(type).labelSuffix;
+  return suffix ? `Visina ${resolvedValue} ${suffix}` : `Visina ${resolvedValue}`;
+}
+
 function getDocumentTemplateBuilderWidthValueFromRatio(ratio = 1, type = "text") {
   if (!isDocumentTemplateFieldWidthEditable(type)) {
     return "full";
@@ -16953,7 +17028,7 @@ function buildDocumentTemplateDraft() {
             })
             : [],
           layoutWidth: getDocumentTemplateRuntimeFieldLayoutWidth(field),
-          fieldHeight: 0,
+          fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
           legalFrameworkIds,
           defaultLegalFrameworkIds,
           columns: [],
@@ -19116,10 +19191,12 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   const helpText = field.helpText
     ? `<p class="document-template-preview-muted">${escapeHtml(field.helpText)}</p>`
     : "";
+  const customHeightPx = getDocumentTemplateBuilderFieldHeightPx(field);
+  const sectionStyle = customHeightPx > 0 ? ` style="min-height:${customHeightPx}px"` : "";
 
   if (field.type === "chapter") {
     return `
-      <section class="document-template-preview-section is-chapter">
+      <section class="document-template-preview-section is-chapter"${sectionStyle}>
         <div class="document-template-preview-chapter">
           <span class="document-template-preview-chapter-line"></span>
           <div>
@@ -19170,7 +19247,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     }).join("");
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-system-stack">
           ${blocksMarkup}
         </div>
@@ -19199,7 +19276,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : escapeHtml(getDocumentTemplateMediaFieldSummary(mediaValue, field));
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(mediaKind)}</span>
@@ -19253,7 +19330,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       `;
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -19312,7 +19389,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       `;
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -19353,7 +19430,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : "";
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -19378,7 +19455,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         : '<tr><td colspan="4">Nema povezane opreme za ovaj template.</td></tr>';
 
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -19468,7 +19545,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       ? `<p class="document-template-preview-muted">${escapeHtml(signaturePreview.summary)}</p>`
       : "";
     return `
-      <section class="document-template-preview-section">
+      <section class="document-template-preview-section"${sectionStyle}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -19489,7 +19566,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     : escapeHtml(value);
 
   return `
-    <section class="document-template-preview-section">
+    <section class="document-template-preview-section"${sectionStyle}>
       <div class="document-template-preview-field-head">
         <h2>${title}</h2>
         <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -27774,6 +27851,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
       });
     }
 
+    const customFieldHeight = getDocumentTemplateBuilderFieldHeightPx(field, { preserveAuto: true });
+    if (customFieldHeight > 0) {
+      wrapper.style.minHeight = `${customFieldHeight}px`;
+      if (control instanceof HTMLTextAreaElement) {
+        control.style.minHeight = `${Math.max(120, customFieldHeight - 44)}px`;
+      } else if (control instanceof HTMLInputElement) {
+        control.style.minHeight = `${Math.max(52, customFieldHeight - 52)}px`;
+      } else if (control instanceof HTMLElement) {
+        control.style.minHeight = `${Math.max(52, customFieldHeight - 40)}px`;
+      }
+    }
+
     wrapper.append(control);
     if (field.helpText) {
       const helper = document.createElement("small");
@@ -28559,6 +28648,14 @@ function renderDocumentTemplateRuntimeFieldRows() {
     card.dataset.templateFieldId = String(field.id || "");
     card.dataset.fieldWidth = getDocumentTemplateRuntimeFieldLayoutWidth(field);
     card.style.setProperty("--document-template-runtime-span", String(getDocumentTemplateRuntimeFieldLayoutSpan(field)));
+    const customCardHeight = getDocumentTemplateBuilderFieldHeightPx(field, { preserveAuto: true });
+    if (customCardHeight > 0) {
+      card.style.setProperty("--document-template-runtime-card-min-height", `${customCardHeight}px`);
+      card.dataset.hasCustomHeight = "true";
+    } else {
+      card.style.removeProperty("--document-template-runtime-card-min-height");
+      card.dataset.hasCustomHeight = "false";
+    }
     const grid = document.createElement("div");
     grid.className = "form-grid document-template-inline-grid document-template-runtime-field-grid";
 
@@ -29034,6 +29131,7 @@ function renderDocumentTemplateFieldRows() {
     heightSpan.textContent = "Visina polja";
     const heightSelect = document.createElement("select");
     heightSelect.className = "document-template-source-select";
+    heightSelect.dataset.templateFieldHeightSelect = "true";
     replaceSelectOptions(
       heightSelect,
       DOCUMENT_TEMPLATE_LONGTEXT_HEIGHT_OPTIONS,
@@ -29584,6 +29682,18 @@ function renderDocumentTemplateFieldRows() {
     previewShell.innerHTML = buildDocumentTemplateFieldPreviewMarkup(field, previewContext, draftIndex, {
       placeholderMode: false,
     });
+    const applyCanvasPreviewHeight = (resolvedField = field) => {
+      const nextHeight = getDocumentTemplateBuilderFieldHeightPx(resolvedField, { preserveAuto: true });
+      if (nextHeight > 0) {
+        previewShell.style.setProperty("--document-template-canvas-preview-min-height", `${nextHeight}px`);
+        row.dataset.fieldHeight = String(
+          getDocumentTemplateBuilderFieldHeightValue(resolvedField, { preserveAuto: true }) || "auto",
+        );
+      } else {
+        previewShell.style.removeProperty("--document-template-canvas-preview-min-height");
+        row.dataset.fieldHeight = "auto";
+      }
+    };
 
     const canvasMeta = document.createElement("div");
     canvasMeta.className = "document-template-canvas-meta";
@@ -29594,11 +29704,11 @@ function renderDocumentTemplateFieldRows() {
       field.type || "text",
     );
     canvasMeta.append(widthLabel);
-
-    if (field.type === "longtext") {
-      const heightLabel = document.createElement("span");
+    let heightLabel = null;
+    if (isDocumentTemplateFieldHeightEditable(field.type)) {
+      heightLabel = document.createElement("span");
       heightLabel.className = "document-template-canvas-meta-pill";
-      heightLabel.textContent = `Visina ${normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")} reda`;
+      heightLabel.textContent = getDocumentTemplateBuilderHeightMetaLabel(field);
       canvasMeta.append(heightLabel);
     }
 
@@ -29667,6 +29777,88 @@ function renderDocumentTemplateFieldRows() {
 
       row.append(resizeHandle);
       applyCanvasWidth(normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"));
+    }
+
+    if (isDocumentTemplateFieldHeightEditable(field.type)) {
+      const heightResizeHandle = document.createElement("button");
+      heightResizeHandle.type = "button";
+      heightResizeHandle.className = "document-template-canvas-height-handle";
+      heightResizeHandle.setAttribute("aria-label", "Povuci rub za visinu polja");
+      heightResizeHandle.title = "Povuci rub za visinu polja";
+
+      const heightResizeIcon = document.createElement("span");
+      heightResizeIcon.className = "document-template-canvas-height-handle-icon";
+      heightResizeIcon.setAttribute("aria-hidden", "true");
+      heightResizeIcon.textContent = "↕";
+      heightResizeHandle.append(heightResizeIcon);
+
+      const applyCanvasHeight = (nextHeight) => {
+        const normalizedHeight = normalizeDocumentTemplateFieldHeight(nextHeight, field.type || "text");
+        documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizedHeight;
+        applyCanvasPreviewHeight({
+          ...documentTemplateFieldDrafts[draftIndex],
+          fieldHeight: normalizedHeight,
+        });
+        if (heightLabel) {
+          heightLabel.textContent = getDocumentTemplateBuilderHeightMetaLabel({
+            ...documentTemplateFieldDrafts[draftIndex],
+            fieldHeight: normalizedHeight,
+          });
+        }
+        if (field.type === "longtext") {
+          const inspectorHeightSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-height-select='true']");
+          if (inspectorHeightSelect instanceof HTMLSelectElement) {
+            inspectorHeightSelect.value = String(
+              normalizeDocumentTemplateFieldHeight(normalizedHeight, field.type || "longtext"),
+            );
+          }
+        }
+      };
+
+      heightResizeHandle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        activeDocumentTemplateInspectorFieldId = fieldId;
+        row.classList.add("is-active", "is-resizing-height");
+        document.body.classList.add("is-document-template-resizing-vertical");
+        heightResizeHandle.setPointerCapture?.(event.pointerId);
+
+        const heightConfig = getDocumentTemplateBuilderHeightConfig(field.type || "text");
+        const startY = event.clientY;
+        const startHeight = getDocumentTemplateBuilderFieldHeightValue(
+          documentTemplateFieldDrafts[draftIndex],
+          { preserveAuto: false },
+        );
+        const handlePointerMove = (moveEvent) => {
+          const delta = Math.round((moveEvent.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
+          const nextValue = Math.max(
+            heightConfig.min,
+            Math.min(heightConfig.max, startHeight + delta),
+          );
+          applyCanvasHeight(String(nextValue));
+        };
+        const stopPointerResize = () => {
+          row.classList.remove("is-resizing-height");
+          document.body.classList.remove("is-document-template-resizing-vertical");
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", stopPointerResize);
+          window.removeEventListener("pointercancel", stopPointerResize);
+          renderDocumentTemplateFieldRows();
+          refreshEditorSupport({ immediate: true });
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", stopPointerResize);
+        window.addEventListener("pointercancel", stopPointerResize);
+        handlePointerMove(event);
+      });
+
+      row.append(heightResizeHandle);
+      applyCanvasPreviewHeight(field);
     }
 
     if (isInspectorActive) {
