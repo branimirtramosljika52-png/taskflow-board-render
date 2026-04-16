@@ -15391,17 +15391,7 @@ const DOCUMENT_TEMPLATE_MEDIA_FIELD_TYPES = new Set([
 ]);
 
 const DOCUMENT_TEMPLATE_RUNTIME_FORCE_FULL_WIDTH_TYPES = new Set([
-  "chapter",
-  "system_description",
-  "qualified_inspectors",
-  "sketch_upload",
-  "image_upload",
-  "legal_list",
-  "equipment_list",
   "measurement_table",
-  "inspector_signature",
-  "authorization_holder_signature",
-  "digital_signature",
 ]);
 
 const DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS = {
@@ -16628,6 +16618,41 @@ function getDocumentTemplateBuilderWidthPercent(field = {}) {
     9: "100%",
   };
   return percentByWidth[numericWidth] || "48%";
+}
+
+function getDocumentTemplateBuilderWidthMetaLabel(value = "", type = "text") {
+  const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(value, type);
+  if (!isDocumentTemplateFieldWidthEditable(type) || normalizedWidth === "9") {
+    return normalizedWidth === "9" ? "Puna širina" : `Širina ${normalizedWidth} / 9`;
+  }
+  return `Širina ${normalizedWidth} / 9`;
+}
+
+function getDocumentTemplateBuilderWidthValueFromRatio(ratio = 1, type = "text") {
+  if (!isDocumentTemplateFieldWidthEditable(type)) {
+    return "full";
+  }
+
+  const clampedRatio = Math.min(Math.max(Number(ratio) || 1, 1 / 9), 1);
+  const candidateWidths = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+  let bestWidth = "9";
+  let smallestDistance = Number.POSITIVE_INFINITY;
+
+  candidateWidths.forEach((candidate) => {
+    const candidateRatio = Number.parseFloat(
+      getDocumentTemplateBuilderWidthPercent({
+        type,
+        layoutWidth: candidate,
+      }),
+    ) / 100;
+    const distance = Math.abs((candidateRatio || 1) - clampedRatio);
+    if (distance < smallestDistance) {
+      smallestDistance = distance;
+      bestWidth = candidate;
+    }
+  });
+
+  return normalizeDocumentTemplateFieldLayoutWidth(bestWidth, type);
 }
 
 function flushDocumentTemplateEditorSupportRefresh() {
@@ -29564,7 +29589,10 @@ function renderDocumentTemplateFieldRows() {
     canvasMeta.className = "document-template-canvas-meta";
     const widthLabel = document.createElement("span");
     widthLabel.className = "document-template-canvas-meta-pill";
-    widthLabel.textContent = `Širina ${getDocumentTemplateRuntimeFieldLayoutWidth(field)} / 9`;
+    widthLabel.textContent = getDocumentTemplateBuilderWidthMetaLabel(
+      getDocumentTemplateRuntimeFieldLayoutWidth(field),
+      field.type || "text",
+    );
     canvasMeta.append(widthLabel);
 
     if (field.type === "longtext") {
@@ -29577,32 +29605,17 @@ function renderDocumentTemplateFieldRows() {
     row.append(head, previewShell, canvasMeta);
 
     if (isDocumentTemplateFieldWidthEditable(field.type)) {
-      const edgeControl = document.createElement("div");
-      edgeControl.className = "document-template-canvas-edge-control";
-      edgeControl.addEventListener("click", (event) => {
-        event.stopPropagation();
-      });
+      const resizeHandle = document.createElement("button");
+      resizeHandle.type = "button";
+      resizeHandle.className = "document-template-canvas-resize-handle";
+      resizeHandle.setAttribute("aria-label", "Povuci rub za širinu polja");
+      resizeHandle.title = "Povuci rub za širinu polja";
 
-      const edgeActionRow = document.createElement("div");
-      edgeActionRow.className = "document-template-canvas-edge-actions";
-
-      const decreaseWidthButton = document.createElement("button");
-      decreaseWidthButton.type = "button";
-      decreaseWidthButton.className = "document-template-canvas-edge-arrow";
-      decreaseWidthButton.setAttribute("aria-label", "Smanji širinu polja");
-      decreaseWidthButton.title = "Smanji širinu";
-      decreaseWidthButton.textContent = "←";
-
-      const increaseWidthButton = document.createElement("button");
-      increaseWidthButton.type = "button";
-      increaseWidthButton.className = "document-template-canvas-edge-arrow";
-      increaseWidthButton.setAttribute("aria-label", "Povećaj širinu polja");
-      increaseWidthButton.title = "Povećaj širinu";
-      increaseWidthButton.textContent = "→";
-
-      const widthScale = document.createElement("div");
-      widthScale.className = "document-template-canvas-width-scale";
-      const widthButtons = [];
+      const resizeHandleIcon = document.createElement("span");
+      resizeHandleIcon.className = "document-template-canvas-resize-handle-icon";
+      resizeHandleIcon.setAttribute("aria-hidden", "true");
+      resizeHandleIcon.textContent = "↔";
+      resizeHandle.append(resizeHandleIcon);
 
       const applyCanvasWidth = (nextWidth) => {
         const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
@@ -29612,75 +29625,47 @@ function renderDocumentTemplateFieldRows() {
           ...documentTemplateFieldDrafts[draftIndex],
           layoutWidth: normalizedWidth,
         }));
-        widthLabel.textContent = `Širina ${normalizedWidth} / 9`;
-        widthButtons.forEach((button) => {
-          button.classList.toggle("is-active", button.dataset.widthValue === normalizedWidth);
-        });
-        const numericWidth = Number.parseInt(normalizedWidth, 10) || 9;
-        decreaseWidthButton.disabled = numericWidth <= 1;
-        increaseWidthButton.disabled = numericWidth >= 9;
+        widthLabel.textContent = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
         const inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']");
         if (inspectorWidthSelect instanceof HTMLSelectElement) {
           inspectorWidthSelect.value = normalizedWidth;
         }
       };
 
-      const commitCanvasWidth = (nextWidth) => {
-        const shouldReselectField = activeDocumentTemplateInspectorFieldId !== fieldId;
-        activeDocumentTemplateInspectorFieldId = fieldId;
-        applyCanvasWidth(nextWidth);
-        if (shouldReselectField) {
-          renderDocumentTemplateFieldRows();
+      resizeHandle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
         }
-      };
 
-      const shiftCanvasWidth = (direction = 1) => {
-        const currentWidth = Number.parseInt(
-          normalizeDocumentTemplateFieldLayoutWidth(documentTemplateFieldDrafts[draftIndex].layoutWidth, field.type || "text"),
-          10,
-        ) || 9;
-        commitCanvasWidth(String(Math.min(9, Math.max(1, currentWidth + direction))));
-      };
-
-      decreaseWidthButton.addEventListener("click", (event) => {
         event.preventDefault();
-        shiftCanvasWidth(-1);
+        event.stopPropagation();
+        activeDocumentTemplateInspectorFieldId = fieldId;
+        row.classList.add("is-active", "is-resizing");
+        document.body.classList.add("is-document-template-resizing");
+        resizeHandle.setPointerCapture?.(event.pointerId);
+
+        const canvasBounds = pageBody.getBoundingClientRect();
+        const handlePointerMove = (moveEvent) => {
+          const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+          applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
+        };
+        const stopPointerResize = () => {
+          row.classList.remove("is-resizing");
+          document.body.classList.remove("is-document-template-resizing");
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", stopPointerResize);
+          window.removeEventListener("pointercancel", stopPointerResize);
+          renderDocumentTemplateFieldRows();
+          refreshEditorSupport({ immediate: true });
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", stopPointerResize);
+        window.addEventListener("pointercancel", stopPointerResize);
+        handlePointerMove(event);
       });
 
-      increaseWidthButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        shiftCanvasWidth(1);
-      });
-
-      Array.from({ length: 9 }, (_, optionIndex) => {
-        const widthValue = String(optionIndex + 1);
-        const widthOptionButton = document.createElement("button");
-        widthOptionButton.type = "button";
-        widthOptionButton.className = "document-template-canvas-width-option";
-        widthOptionButton.dataset.widthValue = widthValue;
-        widthOptionButton.setAttribute("aria-label", `Postavi širinu ${widthValue} od 9`);
-        widthOptionButton.title = `Širina ${widthValue}/9`;
-        widthOptionButton.style.setProperty("--document-template-width-option-width", `${14 + ((optionIndex + 1) * 6)}px`);
-
-        const widthOptionBar = document.createElement("span");
-        widthOptionBar.className = "document-template-canvas-width-option-bar";
-        const widthOptionLabel = document.createElement("span");
-        widthOptionLabel.className = "document-template-canvas-width-option-label";
-        widthOptionLabel.textContent = widthValue;
-        widthOptionButton.append(widthOptionBar, widthOptionLabel);
-
-        widthOptionButton.addEventListener("click", (event) => {
-          event.preventDefault();
-          commitCanvasWidth(widthValue);
-        });
-
-        widthButtons.push(widthOptionButton);
-        widthScale.append(widthOptionButton);
-      });
-
-      edgeActionRow.append(decreaseWidthButton, widthScale, increaseWidthButton);
-      edgeControl.append(edgeActionRow);
-      row.append(edgeControl);
+      row.append(resizeHandle);
       applyCanvasWidth(normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"));
     }
 
