@@ -14941,41 +14941,69 @@ function normalizeDocumentTemplateSystemDescriptionRows(rows = [], { ensureOne =
     : [];
 }
 
-function isDocumentTemplateSystemDescriptionValue(value = null) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.rows));
-}
-
-function normalizeDocumentTemplateSystemDescriptionRuntimeValue(field = {}, value = null) {
-  const templateRows = normalizeDocumentTemplateSystemDescriptionRows(
+function createDocumentTemplateSystemDescriptionBlockDraft(initial = {}, field = {}, index = 0) {
+  const defaultTitle = String(field?.label || field?.wordLabel || "Opis sustava").trim() || "Opis sustava";
+  const fallbackRows = normalizeDocumentTemplateSystemDescriptionRows(
     field?.systemRows,
     {
       ensureOne: true,
       fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
     },
   );
-  const source = isDocumentTemplateSystemDescriptionValue(value) ? value : {};
-  const runtimeRows = Array.isArray(source.rows) ? source.rows : [];
-  const totalRowCount = Math.max(templateRows.length, runtimeRows.length, 1);
-  const rows = Array.from({ length: totalRowCount }, (_, index) => {
-    const templateRow = templateRows[index] ?? createEmptyDocumentTemplateSystemDescriptionRowDraft({}, index);
-    const runtimeRow = runtimeRows[index] ?? {};
-    return createEmptyDocumentTemplateSystemDescriptionRowDraft({
-      ...templateRow,
-      ...runtimeRow,
-      id: runtimeRow.id || templateRow.id,
-      subtitle: Object.prototype.hasOwnProperty.call(runtimeRow, "subtitle") ? runtimeRow.subtitle : templateRow.subtitle,
-      description: Object.prototype.hasOwnProperty.call(runtimeRow, "description") ? runtimeRow.description : templateRow.description,
-      lineCount: Object.prototype.hasOwnProperty.call(runtimeRow, "lineCount") ? runtimeRow.lineCount : templateRow.lineCount,
-      placeholder: Object.prototype.hasOwnProperty.call(runtimeRow, "placeholder") ? runtimeRow.placeholder : templateRow.placeholder,
-    }, index);
-  });
 
   return {
-    title: String(field?.label || field?.wordLabel || "Opis sustava").trim() || "Opis sustava",
-    sectionSubtitle: Object.prototype.hasOwnProperty.call(source, "sectionSubtitle")
-      ? String(source.sectionSubtitle ?? "").trim()
-      : String(field?.sectionSubtitle || "").trim(),
-    rows,
+    id: initial.id || crypto.randomUUID(),
+    title: String(initial.title ?? initial.label ?? defaultTitle).trim() || defaultTitle,
+    sectionSubtitle: String(initial.sectionSubtitle ?? initial.subtitle ?? field?.sectionSubtitle ?? "").trim(),
+    rows: normalizeDocumentTemplateSystemDescriptionRows(
+      initial.rows,
+      {
+        ensureOne: true,
+        fallbackRows,
+      },
+    ),
+  };
+}
+
+function normalizeDocumentTemplateSystemDescriptionBlocks(value = null, field = {}, { ensureOne = true } = {}) {
+  const legacyRows = Array.isArray(value?.rows) ? value.rows : [];
+  const sourceBlocks = Array.isArray(value?.blocks)
+    ? value.blocks
+    : (legacyRows.length > 0 || value?.title || value?.sectionSubtitle
+      ? [{
+        id: value?.id,
+        title: value?.title,
+        sectionSubtitle: value?.sectionSubtitle,
+        rows: legacyRows,
+      }]
+      : []);
+
+  const normalizedBlocks = sourceBlocks
+    .slice(0, 24)
+    .map((block, index) => createDocumentTemplateSystemDescriptionBlockDraft(block, field, index));
+
+  if (normalizedBlocks.length > 0) {
+    return normalizedBlocks;
+  }
+
+  return ensureOne
+    ? [createDocumentTemplateSystemDescriptionBlockDraft({}, field, 0)]
+    : [];
+}
+
+function isDocumentTemplateSystemDescriptionValue(value = null) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && (Array.isArray(value.rows) || Array.isArray(value.blocks)),
+  );
+}
+
+function normalizeDocumentTemplateSystemDescriptionRuntimeValue(field = {}, value = null) {
+  const source = isDocumentTemplateSystemDescriptionValue(value) ? value : {};
+  return {
+    blocks: normalizeDocumentTemplateSystemDescriptionBlocks(source, field, { ensureOne: true }),
   };
 }
 
@@ -14983,16 +15011,20 @@ function createDocumentTemplateSystemDescriptionBlankValue(field = {}) {
   const value = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
   return {
     ...value,
-    rows: value.rows.map((row) => ({
-      ...row,
-      description: "",
+    blocks: value.blocks.map((block, blockIndex) => ({
+      ...block,
+      id: block.id || `system-description-block-${blockIndex + 1}`,
+      rows: (Array.isArray(block.rows) ? block.rows : []).map((row) => ({
+        ...row,
+        description: "",
+      })),
     })),
   };
 }
 
 function buildDocumentTemplateSystemDescriptionSummaryLines(value = null) {
   const model = isDocumentTemplateSystemDescriptionValue(value)
-    ? normalizeDocumentTemplateSystemDescriptionRuntimeValue({ label: value.title || "Opis sustava", systemRows: value.rows || [], sectionSubtitle: value.sectionSubtitle || "" }, value)
+    ? normalizeDocumentTemplateSystemDescriptionRuntimeValue({}, value)
     : null;
 
   if (!model) {
@@ -15000,20 +15032,23 @@ function buildDocumentTemplateSystemDescriptionSummaryLines(value = null) {
   }
 
   const lines = [];
-  if (model.title) {
-    lines.push(model.title);
-  }
-  if (model.sectionSubtitle) {
-    lines.push(model.sectionSubtitle);
-  }
-
-  model.rows.forEach((row) => {
-    const subtitle = String(row.subtitle || "").trim();
-    const description = String(row.description || "").trim();
-    if (!subtitle && !description) {
-      return;
+  model.blocks.forEach((block) => {
+    const title = String(block.title || "").trim();
+    const subtitle = String(block.sectionSubtitle || "").trim();
+    if (title) {
+      lines.push(title);
     }
-    lines.push(subtitle ? `${subtitle}: ${description}`.trim() : description);
+    if (subtitle) {
+      lines.push(subtitle);
+    }
+    (Array.isArray(block.rows) ? block.rows : []).forEach((row) => {
+      const rowSubtitle = String(row.subtitle || "").trim();
+      const description = String(row.description || "").trim();
+      if (!rowSubtitle && !description) {
+        return;
+      }
+      lines.push(rowSubtitle ? `${rowSubtitle}: ${description}`.trim() : description);
+    });
   });
 
   return lines.filter(Boolean);
@@ -15028,11 +15063,13 @@ function hasDocumentTemplateSystemDescriptionContent(value = null) {
     return false;
   }
 
-  if (String(value.sectionSubtitle || "").trim()) {
-    return true;
-  }
-
-  return (Array.isArray(value.rows) ? value.rows : []).some((row) => String(row?.description || "").trim());
+  const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue({}, value);
+  return model.blocks.some((block) => (
+    String(block.sectionSubtitle || "").trim()
+    || (Array.isArray(block.rows) ? block.rows : []).some((row) => (
+      String(row?.description || "").trim()
+    ))
+  ));
 }
 
 function getLegalFrameworkStatusLabel(value) {
@@ -19005,35 +19042,43 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       field,
       getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode }),
     );
-    const rowsMarkup = model.rows.map((row, rowIndex) => {
-      const subtitle = escapeHtml(row.subtitle || "");
-      const description = escapeHtml(row.description || "").replace(/\n/g, "<br />");
-      const hasSubtitle = Boolean(subtitle);
-      const hasDescription = Boolean(String(row.description || "").trim());
-      const rowValue = hasDescription
-        ? description
-        : `<span class="document-template-preview-system-placeholder">${escapeHtml(row.placeholder || (placeholderMode ? token : "Vrijednost se unosi u zapisniku."))}</span>`;
+    const blocksMarkup = model.blocks.map((block, blockIndex) => {
+      const rowsMarkup = (Array.isArray(block.rows) ? block.rows : []).map((row) => {
+        const subtitle = escapeHtml(row.subtitle || "");
+        const description = escapeHtml(row.description || "").replace(/\n/g, "<br />");
+        const hasSubtitle = Boolean(subtitle);
+        const hasDescription = Boolean(String(row.description || "").trim());
+        const rowValue = hasDescription
+          ? description
+          : `<span class="document-template-preview-system-placeholder">${escapeHtml(row.placeholder || (placeholderMode ? token : "Vrijednost se unosi u zapisniku."))}</span>`;
+        return `
+          <article class="document-template-preview-system-row ${hasSubtitle ? "" : "is-description-only"}">
+            ${hasSubtitle ? `<div class="document-template-preview-system-row-label">${subtitle}</div>` : ""}
+            <div
+              class="document-template-preview-system-row-value"
+              style="--document-template-system-lines:${normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount)}"
+            >
+              ${rowValue}
+            </div>
+          </article>
+        `;
+      }).join("");
+
       return `
-        <article class="document-template-preview-system-row ${hasSubtitle ? "" : "is-description-only"}">
-          ${hasSubtitle ? `<div class="document-template-preview-system-row-label">${subtitle}</div>` : ""}
-          <div
-            class="document-template-preview-system-row-value"
-            style="--document-template-system-lines:${normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount)}"
-          >
-            ${rowValue}
+        <div class="document-template-preview-system-block" data-system-block-index="${blockIndex}">
+          <div class="document-template-preview-system-title">${escapeHtml(block.title || title)}</div>
+          ${block.sectionSubtitle ? `<p class="document-template-preview-system-subtitle">${escapeHtml(block.sectionSubtitle)}</p>` : ""}
+          <div class="document-template-preview-system-rows">
+            ${rowsMarkup}
           </div>
-        </article>
+        </div>
       `;
     }).join("");
 
     return `
       <section class="document-template-preview-section">
-        <div class="document-template-preview-system-block">
-          <div class="document-template-preview-system-title">${placeholderMode ? escapeHtml(token) : escapeHtml(model.title || title)}</div>
-          ${model.sectionSubtitle ? `<p class="document-template-preview-system-subtitle">${escapeHtml(model.sectionSubtitle)}</p>` : ""}
-          <div class="document-template-preview-system-rows">
-            ${rowsMarkup}
-          </div>
+        <div class="document-template-preview-system-stack">
+          ${blocksMarkup}
         </div>
         ${helpText}
       </section>
@@ -19674,13 +19719,16 @@ function buildDocumentTemplateSystemDescriptionWordPlaceholder(field = {}, conte
   const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
   return {
     __docxBlockType: "system_description",
-    title: model.title || field.label || field.wordLabel || "Opis sustava",
-    subtitle: model.sectionSubtitle || "",
-    rows: model.rows.map((row) => ({
-      id: row.id,
-      subtitle: row.subtitle || "",
-      description: row.description || "",
-      lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+    blocks: model.blocks.map((block, blockIndex) => ({
+      id: block.id || `system-description-block-${blockIndex + 1}`,
+      title: block.title || field.label || field.wordLabel || "Opis sustava",
+      subtitle: block.sectionSubtitle || "",
+      rows: (Array.isArray(block.rows) ? block.rows : []).map((row, rowIndex) => ({
+        id: row.id || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
+        subtitle: row.subtitle || "",
+        description: row.description || "",
+        lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+      })),
     })),
   };
 }
@@ -19941,12 +19989,16 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
         );
         return {
           type: "system_description",
-          title: value.title || title,
-          subtitle: value.sectionSubtitle || "",
-          rows: value.rows.map((row) => ({
-            subtitle: row.subtitle || "",
-            description: row.description || "",
-            lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+          blocks: value.blocks.map((block, blockIndex) => ({
+            id: block.id || `system-description-block-${blockIndex + 1}`,
+            title: block.title || title,
+            subtitle: block.sectionSubtitle || "",
+            rows: (Array.isArray(block.rows) ? block.rows : []).map((row, rowIndex) => ({
+              id: row.id || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
+              subtitle: row.subtitle || "",
+              description: row.description || "",
+              lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+            })),
           })),
         };
       }
@@ -27814,32 +27866,62 @@ function renderDocumentTemplateRuntimeFieldRows() {
     titleBar.textContent = createFieldTitle(field, 0);
     shellNode.append(titleBar);
 
-    if (model.sectionSubtitle) {
-      const subtitle = document.createElement("p");
-      subtitle.className = "document-template-runtime-system-subtitle";
-      subtitle.textContent = model.sectionSubtitle;
-      shellNode.append(subtitle);
-    }
-
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
     if (sourcePicker) {
       shellNode.append(sourcePicker);
     }
 
-    const rowsWrap = document.createElement("div");
-    rowsWrap.className = "document-template-runtime-system-rows";
+    const blocksHead = document.createElement("div");
+    blocksHead.className = "document-template-runtime-system-blocks-head";
+
+    const blocksCopy = document.createElement("div");
+    blocksCopy.className = "document-template-runtime-system-blocks-copy";
+    const blocksTitle = document.createElement("strong");
+    blocksTitle.textContent = "Blokovi sustava";
+    const blocksMeta = document.createElement("span");
+    blocksMeta.textContent = "Dodaj više blokova i u svakom uređuj naslov, uvod i retke.";
+    blocksCopy.append(blocksTitle, blocksMeta);
+
+    const createBlankRow = (initial = {}, index = 0) => createEmptyDocumentTemplateSystemDescriptionRowDraft({
+      subtitle: "",
+      description: "",
+      lineCount: 1,
+      placeholder: "Upiši sadržaj retka...",
+      ...initial,
+      description: "",
+    }, index);
+
+    const createBlankBlock = (index = 0) => {
+      const templateRows = normalizeDocumentTemplateSystemDescriptionRows(
+        field.systemRows,
+        {
+          ensureOne: true,
+          fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+        },
+      );
+      return createDocumentTemplateSystemDescriptionBlockDraft({
+        title: field.label || field.wordLabel || `Opis sustava ${index + 1}`,
+        sectionSubtitle: "",
+        rows: templateRows.map((templateRow, rowIndex) => createBlankRow(templateRow, rowIndex)),
+      }, field, index);
+    };
 
     const syncValue = () => {
       setDocumentTemplateRuntimeFieldValue(
         workOrder.id,
         field.id,
         {
-          sectionSubtitle: model.sectionSubtitle || "",
-          rows: model.rows.map((row) => ({
-            id: row.id,
-            subtitle: row.subtitle || "",
-            description: row.description || "",
-            lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+          blocks: model.blocks.map((block, blockIndex) => ({
+            id: block.id || `system-description-block-${blockIndex + 1}`,
+            title: block.title || "",
+            sectionSubtitle: block.sectionSubtitle || "",
+            rows: (Array.isArray(block.rows) ? block.rows : []).map((row, rowIndex) => ({
+              id: row.id || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
+              subtitle: row.subtitle || "",
+              description: row.description || "",
+              lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount),
+              placeholder: row.placeholder || "",
+            })),
           })),
         },
         { render: false },
@@ -27847,45 +27929,168 @@ function renderDocumentTemplateRuntimeFieldRows() {
       renderDocumentTemplatePreviewContent();
     };
 
-    model.rows.forEach((row, rowIndex) => {
-      const rowCard = document.createElement("article");
-      rowCard.className = `document-template-runtime-system-row ${row.subtitle ? "" : "is-description-only"}`;
+    const addBlockButton = createActionButton("Dodaj blok", "ghost-button", () => {
+      model.blocks.push(createBlankBlock(model.blocks.length));
+      syncValue();
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePreviewContent();
+    });
+    blocksHead.append(blocksCopy, addBlockButton);
+    shellNode.append(blocksHead);
 
-      if (row.subtitle) {
-        const rowLabel = document.createElement("div");
-        rowLabel.className = "document-template-runtime-system-row-label";
-        rowLabel.textContent = row.subtitle;
-        rowCard.append(rowLabel);
-      }
+    const blocksWrap = document.createElement("div");
+    blocksWrap.className = "document-template-runtime-system-blocks";
 
-      const controlWrap = document.createElement("div");
-      controlWrap.className = "document-template-runtime-system-row-control";
-      const control = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount) > 1 || !row.subtitle
-        ? document.createElement("textarea")
-        : document.createElement("input");
+    model.blocks.forEach((block, blockIndex) => {
+      const blockCard = document.createElement("article");
+      blockCard.className = "document-template-runtime-system-block";
 
-      if (control instanceof HTMLTextAreaElement) {
-        control.rows = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount);
-        control.style.minHeight = `${Math.max(56, normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount) * 32)}px`;
-      } else {
-        control.type = "text";
-      }
+      const blockHeader = document.createElement("div");
+      blockHeader.className = "document-template-runtime-system-block-head";
 
-      control.value = row.description || "";
-      control.placeholder = row.placeholder || (row.subtitle
-        ? `Upiši ${row.subtitle.toLowerCase()}`
-        : "Dodaj opis sustava...");
-      control.addEventListener("input", (event) => {
-        model.rows[rowIndex].description = String(event.currentTarget.value ?? "");
+      const blockBadge = document.createElement("span");
+      blockBadge.className = "document-template-runtime-system-block-badge";
+      blockBadge.textContent = `Blok ${blockIndex + 1}`;
+
+      const blockActions = document.createElement("div");
+      blockActions.className = "document-template-runtime-system-block-actions";
+      const addRowButton = createActionButton("Dodaj red", "ghost-button", () => {
+        block.rows = [
+          ...(Array.isArray(block.rows) ? block.rows : []),
+          createBlankRow({}, block.rows?.length || 0),
+        ];
+        syncValue();
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      const removeBlockButton = createActionButton("Makni blok", "ghost-button", () => {
+        model.blocks = model.blocks.filter((_, currentIndex) => currentIndex !== blockIndex);
+        if (model.blocks.length === 0) {
+          model.blocks = [createBlankBlock(0)];
+        }
+        syncValue();
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      removeBlockButton.disabled = model.blocks.length <= 1;
+      blockActions.append(addRowButton, removeBlockButton);
+      blockHeader.append(blockBadge, blockActions);
+      blockCard.append(blockHeader);
+
+      const blockMetaGrid = document.createElement("div");
+      blockMetaGrid.className = "document-template-runtime-system-block-meta";
+
+      const blockTitleField = document.createElement("label");
+      blockTitleField.className = "field";
+      const blockTitleSpan = document.createElement("span");
+      blockTitleSpan.textContent = "Naslov bloka";
+      const blockTitleInput = document.createElement("input");
+      blockTitleInput.type = "text";
+      blockTitleInput.value = block.title || "";
+      blockTitleInput.placeholder = "npr. DETEKTOR POŽARA - RUČNI";
+      blockTitleInput.addEventListener("input", (event) => {
+        model.blocks[blockIndex].title = String(event.currentTarget.value ?? "");
         syncValue();
       });
+      blockTitleField.append(blockTitleSpan, blockTitleInput);
 
-      controlWrap.append(control);
-      rowCard.append(controlWrap);
-      rowsWrap.append(rowCard);
+      const blockSubtitleField = document.createElement("label");
+      blockSubtitleField.className = "field";
+      const blockSubtitleSpan = document.createElement("span");
+      blockSubtitleSpan.textContent = "Uvod / opis bloka";
+      const blockSubtitleInput = document.createElement("input");
+      blockSubtitleInput.type = "text";
+      blockSubtitleInput.value = block.sectionSubtitle || "";
+      blockSubtitleInput.placeholder = "Kratki uvod ili dodatni opis za ovaj blok";
+      blockSubtitleInput.addEventListener("input", (event) => {
+        model.blocks[blockIndex].sectionSubtitle = String(event.currentTarget.value ?? "");
+        syncValue();
+      });
+      blockSubtitleField.append(blockSubtitleSpan, blockSubtitleInput);
+      blockMetaGrid.append(blockTitleField, blockSubtitleField);
+      blockCard.append(blockMetaGrid);
+
+      const rowsWrap = document.createElement("div");
+      rowsWrap.className = "document-template-runtime-system-rows";
+
+      (Array.isArray(block.rows) ? block.rows : []).forEach((row, rowIndex) => {
+        const rowCard = document.createElement("article");
+        rowCard.className = "document-template-runtime-system-row";
+
+        const rowMeta = document.createElement("div");
+        rowMeta.className = "document-template-runtime-system-row-meta";
+
+        const rowSubtitleField = document.createElement("label");
+        rowSubtitleField.className = "field";
+        const rowSubtitleSpan = document.createElement("span");
+        rowSubtitleSpan.textContent = "Podnaslov";
+        const rowSubtitleInput = document.createElement("input");
+        rowSubtitleInput.type = "text";
+        rowSubtitleInput.value = row.subtitle || "";
+        rowSubtitleInput.placeholder = "npr. Proizvođač";
+        rowSubtitleInput.addEventListener("input", (event) => {
+          model.blocks[blockIndex].rows[rowIndex].subtitle = String(event.currentTarget.value ?? "");
+          syncValue();
+        });
+        rowSubtitleField.append(rowSubtitleSpan, rowSubtitleInput);
+
+        const rowLineField = document.createElement("label");
+        rowLineField.className = "field";
+        const rowLineSpan = document.createElement("span");
+        rowLineSpan.textContent = "Visina retka";
+        const rowLineSelect = document.createElement("select");
+        rowLineSelect.className = "document-template-source-select";
+        replaceSelectOptions(
+          rowLineSelect,
+          DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS,
+          String(normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount)),
+        );
+        rowLineSelect.addEventListener("change", () => {
+          model.blocks[blockIndex].rows[rowIndex].lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(rowLineSelect.value);
+          syncValue();
+          renderDocumentTemplateFieldRows();
+          renderDocumentTemplatePreviewContent();
+        });
+        rowLineField.append(rowLineSpan, rowLineSelect);
+
+        const removeRowButton = createActionButton("Makni red", "ghost-button", () => {
+          model.blocks[blockIndex].rows = model.blocks[blockIndex].rows.filter((_, currentIndex) => currentIndex !== rowIndex);
+          if (model.blocks[blockIndex].rows.length === 0) {
+            model.blocks[blockIndex].rows = [createBlankRow({}, 0)];
+          }
+          syncValue();
+          renderDocumentTemplateFieldRows();
+          renderDocumentTemplatePreviewContent();
+        });
+        removeRowButton.classList.add("document-template-runtime-system-row-remove");
+        removeRowButton.disabled = (Array.isArray(block.rows) ? block.rows.length : 0) <= 1;
+        rowMeta.append(rowSubtitleField, rowLineField, removeRowButton);
+
+        const controlWrap = document.createElement("div");
+        controlWrap.className = "document-template-runtime-system-row-control";
+        const control = document.createElement("textarea");
+        const lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount);
+        control.rows = lineCount;
+        control.style.minHeight = `${Math.max(64, lineCount * 32)}px`;
+        control.value = row.description || "";
+        control.placeholder = row.placeholder || (row.subtitle
+          ? `Upiši ${String(row.subtitle || "").trim().toLowerCase()}`
+          : "Dodaj opis sustava...");
+        control.addEventListener("input", (event) => {
+          model.blocks[blockIndex].rows[rowIndex].description = String(event.currentTarget.value ?? "");
+          syncValue();
+        });
+
+        controlWrap.append(control);
+        rowCard.append(rowMeta, controlWrap);
+        rowsWrap.append(rowCard);
+      });
+
+      blockCard.append(rowsWrap);
+      blocksWrap.append(blockCard);
     });
 
-    shellNode.append(rowsWrap);
+    shellNode.append(blocksWrap);
 
     if (field.helpText) {
       const helper = document.createElement("small");
