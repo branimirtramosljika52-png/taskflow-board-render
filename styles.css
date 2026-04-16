@@ -23478,6 +23478,402 @@ body.is-measurement-equipment-export-open {
   }
 }
 
+.document-template-builder-shell {
+  grid-template-columns: minmax(248px, 280px) minmax(0, 1fr) minmax(320px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+  grid-template-columns: minmax(238px, 272px) minmax(0, 1fr) minmax(320px, 360px);
+  gap: 18px;
+  align-items: start;
+  padding: 0 0 16px;
+}
+
+.document-template-builder-sidebar,
+.document-template-builder-main,
+.document-template-builder-inspector {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-inspector {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: calc(100dvh - 178px);
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-main {
+  position: relative;
+  top: auto;
+  align-self: start;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.document-template-builder-main > .document-template-block {
+  min-width: 0;
+}
+
+.document-template-custom-fields {
+  gap: 16px;
+}
+
+.document-template-sheet-shell {
+  gap: 16px;
+}
+
+.document-template-sheet-panel {
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 249, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 22px 38px rgba(22, 45, 37, 0.08);
+}
+
+.document-template-item-card.is-canvas-field {
+  width: min(100%, var(--document-template-builder-width, 100%));
+  justify-self: start;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  border-color: rgba(47, 104, 84, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 251, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 16px 28px rgba(22, 45, 37, 0.06);
+}
+
+.document-template-item-card.is-canvas-field::before {
+  top: 14px;
+  bottom: 14px;
+  width: 5px;
+}
+
+.document-template-item-card.is-canvas-field:hover {
+  border-color: rgba(47, 104, 84, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 22px 38px rgba(22, 45, 37, 0.08);
+}
+
+.document-template-item-card.is-canvas-field.is-active {
+  border-color: rgba(53, 98, 196, 0.36);
+  box-shadow:
+    inset 0 0 0 1px rgba(53, 98, 196, 0.12),
+    0 24px 42px rgba(53, 98, 196, 0.14);
+  transform: translateY(-1px);
+}
+
+.document-template-item-card.is-canvas-field.is-active::before {
+  background: linear-gradient(180deg, rgba(34, 111, 235, 0.92), rgba(53, 98, 196, 0.82));
+}
+
+.document-template-item-card.is-canvas-field.is-chapter,
+.document-template-chapter-group > .document-template-item-card.is-chapter {
+  width: 100%;
+}
+
+.document-template-item-card.is-canvas-field.is-chapter-child {
+  margin-left: 0;
+}
+
+.document-template-item-card.is-canvas-field .document-template-item-head {
+  padding: 0 0 10px 2px;
+  margin-bottom: 2px;
+}
+
+.document-template-item-card.is-canvas-field .document-template-item-head-copy strong {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.document-template-item-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.document-template-canvas-settings,
+.document-template-canvas-resize {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.document-template-canvas-settings {
+  border-color: rgba(34, 111, 235, 0.24);
+  background: rgba(239, 246, 255, 0.96);
+  color: #1d4ed8;
+}
+
+.document-template-canvas-settings:hover,
+.document-template-canvas-settings:focus-visible {
+  border-color: rgba(34, 111, 235, 0.34);
+  background: rgba(224, 238, 255, 0.98);
+  color: #1e40af;
+}
+
+.document-template-canvas-resize {
+  border-color: rgba(15, 118, 110, 0.22);
+  background: rgba(240, 253, 250, 0.96);
+  color: #0f766e;
+}
+
+.document-template-canvas-resize:hover,
+.document-template-canvas-resize:focus-visible {
+  border-color: rgba(15, 118, 110, 0.34);
+  background: rgba(221, 248, 243, 0.98);
+  color: #115e59;
+}
+
+.document-template-canvas-preview {
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 20px;
+  padding: 15px 16px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.document-template-canvas-preview .document-template-preview-section {
+  gap: 12px;
+}
+
+.document-template-canvas-preview .document-template-preview-section h2 {
+  font-size: 1.02rem;
+}
+
+.document-template-canvas-preview .document-template-preview-field-head {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.document-template-canvas-preview .document-template-preview-field-value {
+  min-height: 48px;
+}
+
+.document-template-canvas-preview .document-template-preview-media-placeholder {
+  min-height: 128px;
+}
+
+.document-template-canvas-preview .document-template-preview-system-title {
+  font-size: 0.96rem;
+}
+
+.document-template-canvas-preview .document-template-preview-system-row {
+  gap: 6px;
+}
+
+.document-template-canvas-preview .document-template-preview-system-row-value {
+  min-height: calc(var(--document-template-system-lines, 1) * 1.5rem);
+}
+
+.document-template-canvas-preview .document-template-preview-person-signature {
+  min-height: 148px;
+}
+
+.document-template-canvas-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.document-template-canvas-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  background: rgba(247, 250, 248, 0.98);
+  color: #335447;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.document-template-chapter-group {
+  gap: 14px;
+  padding: 14px;
+  border-radius: 28px;
+}
+
+.document-template-chapter-group-body {
+  gap: 14px;
+  padding: 4px 0 0 18px;
+}
+
+.document-template-builder-inspector {
+  min-width: 0;
+}
+
+.document-template-inspector-block {
+  min-width: 0;
+}
+
+.document-template-field-inspector,
+.document-template-field-inspector-shell {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.document-template-field-inspector-head {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(47, 104, 84, 0.1);
+}
+
+.document-template-field-inspector-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.document-template-field-inspector-copy strong {
+  color: #22352d;
+  font-size: 1rem;
+}
+
+.document-template-field-inspector-copy span {
+  color: #60796f;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.document-template-field-inspector .document-template-item-token-row {
+  padding: 0;
+}
+
+.document-template-field-inspector .document-template-inline-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  align-items: start;
+}
+
+.document-template-field-inspector .document-template-inline-grid.is-excel-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.document-template-field-inspector .field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.document-template-field-inspector .field span {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #60796f;
+}
+
+.document-template-field-inspector input,
+.document-template-field-inspector select,
+.document-template-field-inspector textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 11px;
+  border-radius: 14px;
+}
+
+.document-template-field-inspector .field select[multiple] {
+  min-height: 132px;
+  padding-block: 8px;
+}
+
+.document-template-field-inspector .field-span-full,
+.document-template-field-inspector .document-template-inline-special-field,
+.document-template-field-inspector .document-template-inline-excel-field,
+.document-template-field-inspector .document-template-legal-hint {
+  grid-column: 1 / -1;
+}
+
+.document-template-field-inspector .document-template-source-config {
+  background: rgba(255, 250, 253, 0.96);
+}
+
+.document-template-field-inspector .document-template-inline-excel-host {
+  margin-top: 12px;
+}
+
+.document-template-field-inspector .document-template-inline-excel-editor-grid-wrap {
+  max-height: min(46vh, 520px);
+}
+
+@media (max-width: 1480px) {
+  .document-template-builder-shell,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(280px, 320px);
+  }
+}
+
+@media (max-width: 1320px) {
+  .document-template-builder-shell,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar,
+  .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-inspector {
+    position: relative;
+    top: auto;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .document-template-builder-sidebar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .document-template-builder-inspector {
+    order: 3;
+  }
+
+  .document-template-builder-main {
+    order: 2;
+  }
+
+  .document-template-field-inspector .document-template-item-token-row {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .document-template-builder-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-item-card.is-canvas-field {
+    width: 100%;
+  }
+
+  .document-template-field-inspector .document-template-inline-grid,
+  .document-template-field-inspector .document-template-inline-grid.is-excel-layout,
+  .document-template-field-inspector .document-template-system-config-row-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

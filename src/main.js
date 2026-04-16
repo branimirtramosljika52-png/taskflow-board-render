@@ -1588,6 +1588,8 @@ const documentTemplateAddExcelButton = document.querySelector("#document-templat
 const documentTemplateBuilderShell = documentTemplateEditorPanel?.querySelector(".document-template-builder-shell");
 const documentTemplateBuilderSidebar = documentTemplateEditorPanel?.querySelector(".document-template-builder-sidebar");
 const documentTemplateBuilderMain = documentTemplateEditorPanel?.querySelector(".document-template-builder-main");
+const documentTemplateBuilderInspector = documentTemplateEditorPanel?.querySelector(".document-template-builder-inspector");
+const documentTemplateFieldInspector = document.querySelector("#document-template-field-inspector");
 const documentTemplateLayoutActions = documentTemplateEditorPanel?.querySelector(".document-template-layout-actions");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
 const documentTemplateEquipmentItems = document.querySelector("#document-template-equipment-items");
@@ -1803,6 +1805,7 @@ let documentTemplateSectionDrafts = [];
 let activeDocumentTemplateSheetIndex = 0;
 let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
+let activeDocumentTemplateInspectorFieldId = "";
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
@@ -11708,6 +11711,10 @@ function ensureTemplateMeasurementSheetForField(fieldId) {
   }
 
   const normalizedFieldId = String(fieldId);
+  if (activeDocumentTemplateInspectorFieldId !== normalizedFieldId && !isDocumentTemplateRuntimeFillMode()) {
+    activeDocumentTemplateInspectorFieldId = normalizedFieldId;
+    renderDocumentTemplateFieldRows();
+  }
   const isSameField = state.measurementSheet.ownerKind === "template_field"
     && String(state.measurementSheet.ownerFieldId || "") === normalizedFieldId;
 
@@ -16528,9 +16535,14 @@ function focusDocumentTemplateFieldLabel(fieldId = "") {
     return;
   }
 
+  activeDocumentTemplateInspectorFieldId = String(fieldId || "").trim();
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    renderDocumentTemplateFieldRows();
+  }
+
   requestAnimationFrame(() => {
     const target = documentTemplateCustomFields.querySelector(
-      `[data-template-field-id="${CSS.escape(String(fieldId))}"] [data-template-field-app-label]`,
+      `[data-template-field-id="${CSS.escape(String(fieldId))}"] [data-template-field-app-label], #document-template-field-inspector [data-template-field-app-label]`,
     );
 
     if (!(target instanceof HTMLInputElement)) {
@@ -16582,6 +16594,39 @@ function insertTextIntoDocumentTemplateTarget(text) {
       }
     }, 1600);
   }
+}
+
+function getDocumentTemplateBuilderInspectorFieldId(visibleFields = []) {
+  const safeFields = Array.isArray(visibleFields) ? visibleFields : [];
+  const hasActive = safeFields.some((field) => String(field?.id || "") === String(activeDocumentTemplateInspectorFieldId || ""));
+  if (hasActive) {
+    return String(activeDocumentTemplateInspectorFieldId || "");
+  }
+  return String(safeFields[0]?.id || "").trim();
+}
+
+function getDocumentTemplateBuilderWidthPercent(field = {}) {
+  const widthValue = String(getDocumentTemplateRuntimeFieldLayoutWidth(field) || "9").trim().toLowerCase();
+  if (widthValue === "full") {
+    return "100%";
+  }
+  const numericWidth = Number.parseInt(widthValue, 10);
+  if (!Number.isFinite(numericWidth) || numericWidth <= 0) {
+    return "48%";
+  }
+
+  const percentByWidth = {
+    1: "22%",
+    2: "30%",
+    3: "38%",
+    4: "48%",
+    5: "58%",
+    6: "68%",
+    7: "78%",
+    8: "88%",
+    9: "100%",
+  };
+  return percentByWidth[numericWidth] || "48%";
 }
 
 async function copyDocumentTemplateToken(token = "") {
@@ -23172,6 +23217,9 @@ function syncDocumentTemplateEditorChrome() {
   if (documentTemplateBuilderSidebar) {
     documentTemplateBuilderSidebar.hidden = fillMode;
   }
+  if (documentTemplateBuilderInspector) {
+    documentTemplateBuilderInspector.hidden = fillMode;
+  }
   if (documentTemplatePreviewBlock) {
     documentTemplatePreviewBlock.hidden = fillMode;
   }
@@ -28622,10 +28670,20 @@ function renderDocumentTemplateFieldRows() {
   });
   const shell = document.createElement("div");
   shell.className = "document-template-sheet-shell";
+  const previewContext = buildDocumentTemplatePreviewContext(buildDocumentTemplateDraft());
+  activeDocumentTemplateInspectorFieldId = getDocumentTemplateBuilderInspectorFieldId(visibleFields);
 
   const pageBody = document.createElement("div");
   pageBody.className = "document-template-sheet-panel";
   const chapterShells = new Map();
+  const inspectorShell = document.createElement("div");
+  inspectorShell.className = "document-template-field-inspector-shell";
+  const inspectorEmpty = document.createElement("p");
+  inspectorEmpty.className = "helper-copy module-copy document-template-field-inspector-empty";
+  inspectorEmpty.textContent = visibleFields.length > 0
+    ? "Klikni blok na canvasu za detaljne postavke."
+    : "Dodaj polje iz alatne trake pa će se ovdje pojaviti postavke.";
+  inspectorShell.append(inspectorEmpty);
 
   if (visibleFields.length === 0) {
     const empty = document.createElement("p");
@@ -28640,6 +28698,7 @@ function renderDocumentTemplateFieldRows() {
     }
 
     const fieldId = String(field.id || "");
+    const isInspectorActive = fieldId === activeDocumentTemplateInspectorFieldId;
     ensureDocumentTemplateDatabaseLookupDraft(field);
     const chapterOwnerId = field.type === "chapter" ? "" : (chapterOwnerByFieldId.get(fieldId) || "");
     const previousField = visibleFields[draftIndex - 1] ?? null;
@@ -28655,13 +28714,17 @@ function renderDocumentTemplateFieldRows() {
     const row = document.createElement("div");
     row.className = [
       "document-template-item-card",
+      "is-canvas-field",
       field.type === "chapter" ? "is-chapter" : "",
       isChapterChild ? "is-chapter-child" : "",
       isChapterChild && previousOwnerId !== chapterOwnerId ? "is-chapter-child-start" : "",
       isChapterChild && nextOwnerId !== chapterOwnerId ? "is-chapter-child-end" : "",
       isHiddenByCollapsedChapter ? "is-hidden-by-chapter" : "",
+      isInspectorActive ? "is-active" : "",
     ].filter(Boolean).join(" ");
     row.dataset.templateFieldId = String(field.id || "");
+    row.dataset.fieldWidth = getDocumentTemplateRuntimeFieldLayoutWidth(field);
+    row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent(field));
     if (chapterOwnerId) {
       row.dataset.chapterOwnerId = chapterOwnerId;
     }
@@ -28704,7 +28767,61 @@ function renderDocumentTemplateFieldRows() {
       chapterCount.textContent = `${count} ${count === 1 ? "stavka" : "stavki"}`;
       headCopy.append(chapterCount);
     }
-    head.append(dragHandle, headCopy);
+    const headActions = document.createElement("div");
+    headActions.className = "document-template-item-head-actions";
+
+    const selectInspectorField = ({ focus = false } = {}) => {
+      activeDocumentTemplateInspectorFieldId = fieldId;
+      renderDocumentTemplateFieldRows();
+      if (focus) {
+        requestAnimationFrame(() => {
+          const inspectorInput = documentTemplateFieldInspector?.querySelector("input, textarea, select");
+          if (inspectorInput instanceof HTMLElement) {
+            inspectorInput.focus({ preventScroll: true });
+          }
+        });
+      }
+    };
+
+    const settingsButton = createActionButton("Postavke", "ghost-button document-template-canvas-settings", () => {
+      selectInspectorField({ focus: true });
+    });
+    settingsButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    headActions.append(settingsButton);
+
+    if (field.type !== "chapter" && isDocumentTemplateFieldWidthEditable(field.type)) {
+      const currentWidth = Number.parseInt(normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"), 10) || 3;
+      const shrinkButton = createActionButton("Uze", "ghost-button document-template-canvas-resize", () => {
+        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizeDocumentTemplateFieldLayoutWidth(String(Math.max(1, currentWidth - 1)), field.type || "text");
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      const expandButton = createActionButton("Sire", "ghost-button document-template-canvas-resize", () => {
+        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizeDocumentTemplateFieldLayoutWidth(String(Math.min(9, currentWidth + 1)), field.type || "text");
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      headActions.append(shrinkButton, expandButton);
+    }
+
+    if (field.type === "longtext") {
+      const currentHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
+      const reduceHeightButton = createActionButton("Nize", "ghost-button document-template-canvas-resize", () => {
+        documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.max(3, currentHeight - 1)), field.type || "longtext");
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      const increaseHeightButton = createActionButton("Vise", "ghost-button document-template-canvas-resize", () => {
+        documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.min(12, currentHeight + 1)), field.type || "longtext");
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      headActions.append(reduceHeightButton, increaseHeightButton);
+    }
+
+    head.append(dragHandle, headCopy, headActions);
 
     const tokenValue = field.type === "chapter"
       ? null
@@ -28727,6 +28844,15 @@ function renderDocumentTemplateFieldRows() {
 
       tokenRow.append(tokenLabel, tokenValue, tokenCopyButton);
     }
+
+    row.addEventListener("click", (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("button, input, select, textarea, a")) {
+        return;
+      }
+      activeDocumentTemplateInspectorFieldId = fieldId;
+      renderDocumentTemplateFieldRows();
+    });
 
     row.addEventListener("dragover", (event) => {
       if (!draggedDocumentTemplateFieldId || draggedDocumentTemplateFieldId === String(field.id || "")) {
@@ -29420,15 +29546,54 @@ function renderDocumentTemplateFieldRows() {
         }
         renderDocumentTemplateFieldRows();
       });
-      head.append(collapseButton);
+      headActions.append(collapseButton);
     }
 
-    head.append(removeButton);
-    row.append(head);
-    if (tokenRow) {
-      row.append(tokenRow);
+    headActions.append(removeButton);
+
+    const previewShell = document.createElement("div");
+    previewShell.className = "document-template-canvas-preview";
+    previewShell.innerHTML = buildDocumentTemplateFieldPreviewMarkup(field, previewContext, draftIndex, {
+      placeholderMode: false,
+    });
+
+    const canvasMeta = document.createElement("div");
+    canvasMeta.className = "document-template-canvas-meta";
+    const widthLabel = document.createElement("span");
+    widthLabel.className = "document-template-canvas-meta-pill";
+    widthLabel.textContent = `${getDocumentTemplateRuntimeFieldLayoutWidth(field)} / 9`;
+    canvasMeta.append(widthLabel);
+
+    if (field.type === "longtext") {
+      const heightLabel = document.createElement("span");
+      heightLabel.className = "document-template-canvas-meta-pill";
+      heightLabel.textContent = `${normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")} reda`;
+      canvasMeta.append(heightLabel);
     }
-    row.append(grid);
+
+    row.append(head, previewShell, canvasMeta);
+
+    if (isInspectorActive) {
+      inspectorShell.replaceChildren();
+
+      const inspectorHeader = document.createElement("div");
+      inspectorHeader.className = "document-template-field-inspector-head";
+
+      const inspectorCopy = document.createElement("div");
+      inspectorCopy.className = "document-template-field-inspector-copy";
+      const inspectorTitle = document.createElement("strong");
+      inspectorTitle.textContent = field.label || getDocumentTemplateFieldTypeLabel(field.type) || `Blok ${draftIndex + 1}`;
+      const inspectorMeta = document.createElement("span");
+      inspectorMeta.textContent = "Mijenjaj placeholdere, izvore podataka i veličinu odabranog polja.";
+      inspectorCopy.append(inspectorTitle, inspectorMeta);
+      inspectorHeader.append(inspectorCopy);
+
+      inspectorShell.append(inspectorHeader);
+      if (tokenRow) {
+        inspectorShell.append(tokenRow);
+      }
+      inspectorShell.append(grid);
+    }
     if (field.type === "measurement_table") {
       const inlineExcelHost = document.createElement("div");
       inlineExcelHost.className = "document-template-inline-excel-host";
@@ -29537,7 +29702,24 @@ function renderDocumentTemplateFieldRows() {
 
   shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
-  if (state.measurementSheet.ownerKind === "template_field" && state.measurementSheet.isOpen) {
+  if (documentTemplateFieldInspector) {
+    documentTemplateFieldInspector.replaceChildren(inspectorShell);
+  }
+
+  const activeTemplateSheetFieldId = String(state.measurementSheet.ownerFieldId || "").trim();
+  const hasActiveTemplateSheetField = activeTemplateSheetFieldId
+    ? documentTemplateFieldDrafts.some((field) => String(field?.id || "") === activeTemplateSheetFieldId)
+    : false;
+  const activeTemplateSheetHost = state.measurementSheet.ownerKind === "template_field"
+    && state.measurementSheet.isOpen
+    ? getTemplateMeasurementSheetInlineHost(activeTemplateSheetFieldId)
+    : null;
+  const shouldCloseTemplateSheet = state.measurementSheet.ownerKind === "template_field"
+    && (
+      !hasActiveTemplateSheetField
+      || (state.measurementSheet.isOpen && !(activeTemplateSheetHost instanceof HTMLElement))
+    );
+  if (shouldCloseTemplateSheet) {
     state.measurementSheet.selectionDrag = null;
     state.measurementSheet.fillMenu = null;
     state.measurementSheet.fillDrag = null;
@@ -29809,6 +29991,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateSheetIndex = 0;
   activeDocumentTemplateTextTarget = null;
   activeDocumentTemplateSectionTarget = "";
+  activeDocumentTemplateInspectorFieldId = "";
   documentTemplateReferenceDraft = null;
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
@@ -29863,6 +30046,7 @@ function hydrateDocumentTemplateForm(
   }
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
+  activeDocumentTemplateInspectorFieldId = "";
   collapsedDocumentTemplateChapterIds = new Set();
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
