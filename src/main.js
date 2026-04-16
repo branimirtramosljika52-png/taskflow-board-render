@@ -16630,33 +16630,6 @@ function getDocumentTemplateBuilderWidthPercent(field = {}) {
   return percentByWidth[numericWidth] || "48%";
 }
 
-function getDocumentTemplateBuilderWidthValueFromRatio(ratio = 1, type = "text") {
-  if (!isDocumentTemplateFieldWidthEditable(type)) {
-    return "full";
-  }
-
-  const clampedRatio = Math.min(Math.max(Number(ratio) || 1, 1 / 9), 1);
-  const candidateWidths = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-  let bestWidth = "9";
-  let smallestDistance = Number.POSITIVE_INFINITY;
-
-  candidateWidths.forEach((candidate) => {
-    const candidateRatio = Number.parseFloat(
-      getDocumentTemplateBuilderWidthPercent({
-        type,
-        layoutWidth: candidate,
-      }),
-    ) / 100;
-    const distance = Math.abs((candidateRatio || 1) - clampedRatio);
-    if (distance < smallestDistance) {
-      smallestDistance = distance;
-      bestWidth = candidate;
-    }
-  });
-
-  return normalizeDocumentTemplateFieldLayoutWidth(bestWidth, type);
-}
-
 function flushDocumentTemplateEditorSupportRefresh() {
   documentTemplateEditorSupportRefreshTimer = 0;
   renderDocumentTemplatePlaceholderPalette();
@@ -29013,6 +28986,7 @@ function renderDocumentTemplateFieldRows() {
     widthSpan.textContent = "Širina polja";
     const widthSelect = document.createElement("select");
     widthSelect.className = "document-template-source-select";
+    widthSelect.dataset.templateFieldWidthSelect = "true";
     replaceSelectOptions(
       widthSelect,
       DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS,
@@ -29590,24 +29564,45 @@ function renderDocumentTemplateFieldRows() {
     canvasMeta.className = "document-template-canvas-meta";
     const widthLabel = document.createElement("span");
     widthLabel.className = "document-template-canvas-meta-pill";
-    widthLabel.textContent = `${getDocumentTemplateRuntimeFieldLayoutWidth(field)} / 9`;
+    widthLabel.textContent = `Širina ${getDocumentTemplateRuntimeFieldLayoutWidth(field)} / 9`;
     canvasMeta.append(widthLabel);
 
     if (field.type === "longtext") {
       const heightLabel = document.createElement("span");
       heightLabel.className = "document-template-canvas-meta-pill";
-      heightLabel.textContent = `${normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")} reda`;
+      heightLabel.textContent = `Visina ${normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")} reda`;
       canvasMeta.append(heightLabel);
     }
 
     row.append(head, previewShell, canvasMeta);
 
     if (isDocumentTemplateFieldWidthEditable(field.type)) {
-      const resizeHandle = document.createElement("button");
-      resizeHandle.type = "button";
-      resizeHandle.className = "document-template-canvas-resize-handle";
-      resizeHandle.setAttribute("aria-label", "Povuci za širinu polja");
-      resizeHandle.title = "Povuci mišem za širinu polja";
+      const edgeControl = document.createElement("div");
+      edgeControl.className = "document-template-canvas-edge-control";
+      edgeControl.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+
+      const edgeActionRow = document.createElement("div");
+      edgeActionRow.className = "document-template-canvas-edge-actions";
+
+      const decreaseWidthButton = document.createElement("button");
+      decreaseWidthButton.type = "button";
+      decreaseWidthButton.className = "document-template-canvas-edge-arrow";
+      decreaseWidthButton.setAttribute("aria-label", "Smanji širinu polja");
+      decreaseWidthButton.title = "Smanji širinu";
+      decreaseWidthButton.textContent = "←";
+
+      const increaseWidthButton = document.createElement("button");
+      increaseWidthButton.type = "button";
+      increaseWidthButton.className = "document-template-canvas-edge-arrow";
+      increaseWidthButton.setAttribute("aria-label", "Povećaj širinu polja");
+      increaseWidthButton.title = "Povećaj širinu";
+      increaseWidthButton.textContent = "→";
+
+      const widthScale = document.createElement("div");
+      widthScale.className = "document-template-canvas-width-scale";
+      const widthButtons = [];
 
       const applyCanvasWidth = (nextWidth) => {
         const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
@@ -29617,40 +29612,76 @@ function renderDocumentTemplateFieldRows() {
           ...documentTemplateFieldDrafts[draftIndex],
           layoutWidth: normalizedWidth,
         }));
-        widthLabel.textContent = `${normalizedWidth} / 9`;
+        widthLabel.textContent = `Širina ${normalizedWidth} / 9`;
+        widthButtons.forEach((button) => {
+          button.classList.toggle("is-active", button.dataset.widthValue === normalizedWidth);
+        });
+        const numericWidth = Number.parseInt(normalizedWidth, 10) || 9;
+        decreaseWidthButton.disabled = numericWidth <= 1;
+        increaseWidthButton.disabled = numericWidth >= 9;
+        const inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']");
+        if (inspectorWidthSelect instanceof HTMLSelectElement) {
+          inspectorWidthSelect.value = normalizedWidth;
+        }
       };
 
-      resizeHandle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) {
-          return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
+      const commitCanvasWidth = (nextWidth) => {
+        const shouldReselectField = activeDocumentTemplateInspectorFieldId !== fieldId;
         activeDocumentTemplateInspectorFieldId = fieldId;
-        row.classList.add("is-active", "is-resizing");
-
-        const canvasBounds = pageBody.getBoundingClientRect();
-        const handlePointerMove = (moveEvent) => {
-          const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
-          applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
-        };
-        const stopPointerResize = () => {
-          row.classList.remove("is-resizing");
-          window.removeEventListener("pointermove", handlePointerMove);
-          window.removeEventListener("pointerup", stopPointerResize);
-          window.removeEventListener("pointercancel", stopPointerResize);
+        applyCanvasWidth(nextWidth);
+        if (shouldReselectField) {
           renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
-        };
+        }
+      };
 
-        window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("pointerup", stopPointerResize);
-        window.addEventListener("pointercancel", stopPointerResize);
-        handlePointerMove(event);
+      const shiftCanvasWidth = (direction = 1) => {
+        const currentWidth = Number.parseInt(
+          normalizeDocumentTemplateFieldLayoutWidth(documentTemplateFieldDrafts[draftIndex].layoutWidth, field.type || "text"),
+          10,
+        ) || 9;
+        commitCanvasWidth(String(Math.min(9, Math.max(1, currentWidth + direction))));
+      };
+
+      decreaseWidthButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        shiftCanvasWidth(-1);
       });
 
-      row.append(resizeHandle);
+      increaseWidthButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        shiftCanvasWidth(1);
+      });
+
+      Array.from({ length: 9 }, (_, optionIndex) => {
+        const widthValue = String(optionIndex + 1);
+        const widthOptionButton = document.createElement("button");
+        widthOptionButton.type = "button";
+        widthOptionButton.className = "document-template-canvas-width-option";
+        widthOptionButton.dataset.widthValue = widthValue;
+        widthOptionButton.setAttribute("aria-label", `Postavi širinu ${widthValue} od 9`);
+        widthOptionButton.title = `Širina ${widthValue}/9`;
+        widthOptionButton.style.setProperty("--document-template-width-option-width", `${14 + ((optionIndex + 1) * 6)}px`);
+
+        const widthOptionBar = document.createElement("span");
+        widthOptionBar.className = "document-template-canvas-width-option-bar";
+        const widthOptionLabel = document.createElement("span");
+        widthOptionLabel.className = "document-template-canvas-width-option-label";
+        widthOptionLabel.textContent = widthValue;
+        widthOptionButton.append(widthOptionBar, widthOptionLabel);
+
+        widthOptionButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          commitCanvasWidth(widthValue);
+        });
+
+        widthButtons.push(widthOptionButton);
+        widthScale.append(widthOptionButton);
+      });
+
+      edgeActionRow.append(decreaseWidthButton, widthScale, increaseWidthButton);
+      edgeControl.append(edgeActionRow);
+      row.append(edgeControl);
+      applyCanvasWidth(normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"));
     }
 
     if (isInspectorActive) {
