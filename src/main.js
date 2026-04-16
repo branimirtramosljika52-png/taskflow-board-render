@@ -1806,6 +1806,7 @@ let activeDocumentTemplateSheetIndex = 0;
 let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let activeDocumentTemplateInspectorFieldId = "";
+let documentTemplateEditorSupportRefreshTimer = 0;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
@@ -16629,6 +16630,56 @@ function getDocumentTemplateBuilderWidthPercent(field = {}) {
   return percentByWidth[numericWidth] || "48%";
 }
 
+function getDocumentTemplateBuilderWidthValueFromRatio(ratio = 1, type = "text") {
+  if (!isDocumentTemplateFieldWidthEditable(type)) {
+    return "full";
+  }
+
+  const clampedRatio = Math.min(Math.max(Number(ratio) || 1, 1 / 9), 1);
+  const candidateWidths = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+  let bestWidth = "9";
+  let smallestDistance = Number.POSITIVE_INFINITY;
+
+  candidateWidths.forEach((candidate) => {
+    const candidateRatio = Number.parseFloat(
+      getDocumentTemplateBuilderWidthPercent({
+        type,
+        layoutWidth: candidate,
+      }),
+    ) / 100;
+    const distance = Math.abs((candidateRatio || 1) - clampedRatio);
+    if (distance < smallestDistance) {
+      smallestDistance = distance;
+      bestWidth = candidate;
+    }
+  });
+
+  return normalizeDocumentTemplateFieldLayoutWidth(bestWidth, type);
+}
+
+function flushDocumentTemplateEditorSupportRefresh() {
+  documentTemplateEditorSupportRefreshTimer = 0;
+  renderDocumentTemplatePlaceholderPalette();
+  renderDocumentTemplateLinkSummary();
+  renderDocumentTemplatePreviewContent();
+}
+
+function scheduleDocumentTemplateEditorSupportRefresh({ immediate = false } = {}) {
+  if (documentTemplateEditorSupportRefreshTimer) {
+    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
+    documentTemplateEditorSupportRefreshTimer = 0;
+  }
+
+  if (immediate) {
+    flushDocumentTemplateEditorSupportRefresh();
+    return;
+  }
+
+  documentTemplateEditorSupportRefreshTimer = window.setTimeout(() => {
+    flushDocumentTemplateEditorSupportRefresh();
+  }, 90);
+}
+
 async function copyDocumentTemplateToken(token = "") {
   const safeToken = String(token || "").trim();
   if (!safeToken) {
@@ -28676,6 +28727,9 @@ function renderDocumentTemplateFieldRows() {
   const pageBody = document.createElement("div");
   pageBody.className = "document-template-sheet-panel";
   const chapterShells = new Map();
+  const refreshEditorSupport = ({ immediate = false } = {}) => {
+    scheduleDocumentTemplateEditorSupportRefresh({ immediate });
+  };
   const inspectorShell = document.createElement("div");
   inspectorShell.className = "document-template-field-inspector-shell";
   const inspectorEmpty = document.createElement("p");
@@ -28791,32 +28845,17 @@ function renderDocumentTemplateFieldRows() {
     });
     headActions.append(settingsButton);
 
-    if (field.type !== "chapter" && isDocumentTemplateFieldWidthEditable(field.type)) {
-      const currentWidth = Number.parseInt(normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"), 10) || 3;
-      const shrinkButton = createActionButton("Uze", "ghost-button document-template-canvas-resize", () => {
-        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizeDocumentTemplateFieldLayoutWidth(String(Math.max(1, currentWidth - 1)), field.type || "text");
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
-      });
-      const expandButton = createActionButton("Sire", "ghost-button document-template-canvas-resize", () => {
-        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizeDocumentTemplateFieldLayoutWidth(String(Math.min(9, currentWidth + 1)), field.type || "text");
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
-      });
-      headActions.append(shrinkButton, expandButton);
-    }
-
     if (field.type === "longtext") {
       const currentHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
       const reduceHeightButton = createActionButton("Nize", "ghost-button document-template-canvas-resize", () => {
         documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.max(3, currentHeight - 1)), field.type || "longtext");
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
       const increaseHeightButton = createActionButton("Vise", "ghost-button document-template-canvas-resize", () => {
         documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.min(12, currentHeight + 1)), field.type || "longtext");
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
       headActions.append(reduceHeightButton, increaseHeightButton);
     }
@@ -28886,9 +28925,7 @@ function renderDocumentTemplateFieldRows() {
       clearDocumentTemplateFieldDragState();
       if (moved) {
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePlaceholderPalette();
-        renderDocumentTemplateLinkSummary();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       }
     });
     const grid = document.createElement("div");
@@ -28925,16 +28962,14 @@ function renderDocumentTemplateFieldRows() {
         documentTemplateFieldDrafts[draftIndex].wordLabel || nextLabel,
         `FIELD_${draftIndex + 1}`,
       );
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplateLinkSummary();
-      renderDocumentTemplatePreviewContent();
+      refreshEditorSupport();
       title.textContent = nextLabel || getDocumentTemplateFieldTypeLabel(documentTemplateFieldDrafts[draftIndex].type) || `Blok ${draftIndex + 1}`;
       tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
       if (tokenValue) {
         tokenValue.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
       }
       if (shouldSyncWordLabel && field.type !== "chapter") {
-        const wordLabelTarget = row.querySelector("[data-template-field-word-label]");
+        const wordLabelTarget = documentTemplateFieldInspector?.querySelector("[data-template-field-word-label]");
         if (wordLabelTarget instanceof HTMLInputElement) {
           wordLabelTarget.value = nextLabel;
         }
@@ -28962,8 +28997,7 @@ function renderDocumentTemplateFieldRows() {
         event.currentTarget.value || documentTemplateFieldDrafts[draftIndex].label,
         `FIELD_${draftIndex + 1}`,
       );
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplatePreviewContent();
+      refreshEditorSupport();
       tokenPreview.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
       if (tokenValue) {
         tokenValue.textContent = getDocumentTemplateFieldToken(documentTemplateFieldDrafts[draftIndex], draftIndex);
@@ -28990,7 +29024,7 @@ function renderDocumentTemplateFieldRows() {
         documentTemplateFieldDrafts[draftIndex].type || "text",
       );
       renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePreviewContent();
+      refreshEditorSupport({ immediate: true });
     });
     widthField.append(widthSpan, widthSelect);
 
@@ -29012,7 +29046,7 @@ function renderDocumentTemplateFieldRows() {
         documentTemplateFieldDrafts[draftIndex].type || "longtext",
       );
       renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePreviewContent();
+      refreshEditorSupport({ immediate: true });
     });
     heightField.append(heightSpan, heightSelect);
 
@@ -29028,9 +29062,7 @@ function renderDocumentTemplateFieldRows() {
       documentTemplateFieldDrafts[draftIndex].source = sourceSelect.value || "CUSTOM_VALUE";
       ensureDocumentTemplateDatabaseLookupDraft(documentTemplateFieldDrafts[draftIndex]);
       renderDocumentTemplateFieldRows();
-      renderDocumentTemplatePlaceholderPalette();
-      renderDocumentTemplateLinkSummary();
-      renderDocumentTemplatePreviewContent();
+      refreshEditorSupport({ immediate: true });
     });
     sourceField.append(sourceSpan, sourceSelect);
 
@@ -29063,9 +29095,7 @@ function renderDocumentTemplateFieldRows() {
         setDocumentTemplateLookupMode(draft, lookupModeSelect.value || "WORK_ORDER_NUMBER");
         ensureDocumentTemplateDatabaseLookupDraft(draft);
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePlaceholderPalette();
-        renderDocumentTemplateLinkSummary();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
       lookupModeField.append(lookupModeSpan, lookupModeSelect);
       sourceConfigGrid.append(lookupModeField);
@@ -29090,9 +29120,7 @@ function renderDocumentTemplateFieldRows() {
         draft.valueColumn = defaults.valueColumn;
         ensureDocumentTemplateDatabaseLookupDraft(draft);
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePlaceholderPalette();
-        renderDocumentTemplateLinkSummary();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
       tableField.append(tableSpan, tableSelect);
 
@@ -29109,7 +29137,7 @@ function renderDocumentTemplateFieldRows() {
       );
       lookupColumnSelect.addEventListener("change", () => {
         documentTemplateFieldDrafts[draftIndex].lookupColumn = lookupColumnSelect.value || "";
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
       lookupColumnField.append(lookupColumnSpan, lookupColumnSelect);
 
@@ -29126,7 +29154,7 @@ function renderDocumentTemplateFieldRows() {
       );
       valueColumnSelect.addEventListener("change", () => {
         documentTemplateFieldDrafts[draftIndex].valueColumn = valueColumnSelect.value || "";
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
       valueColumnField.append(valueColumnSpan, valueColumnSelect);
 
@@ -29143,7 +29171,7 @@ function renderDocumentTemplateFieldRows() {
         lookupCustomValueInput.value = field.lookupValue || "";
         lookupCustomValueInput.addEventListener("input", (event) => {
           documentTemplateFieldDrafts[draftIndex].lookupValue = String(event.currentTarget.value || "");
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport();
         });
         lookupCustomValueField.append(lookupCustomValueSpan, lookupCustomValueInput);
         sourceConfigGrid.append(lookupCustomValueField);
@@ -29203,6 +29231,7 @@ function renderDocumentTemplateFieldRows() {
       }
       documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
       renderDocumentTemplateFieldRows();
+      refreshEditorSupport({ immediate: true });
     });
     removeButton.classList.add("document-template-item-remove");
 
@@ -29239,7 +29268,7 @@ function renderDocumentTemplateFieldRows() {
       subtitleInput.value = field.sectionSubtitle || "";
       subtitleInput.addEventListener("input", (event) => {
         documentTemplateFieldDrafts[draftIndex].sectionSubtitle = String(event.currentTarget.value || "");
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
       subtitleField.append(subtitleSpan, subtitleInput);
 
@@ -29265,7 +29294,7 @@ function renderDocumentTemplateFieldRows() {
           createEmptyDocumentTemplateSystemDescriptionRowDraft({}, documentTemplateFieldDrafts[draftIndex].systemRows?.length || 0),
         ];
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
 
       rowsHead.append(rowsCopy, addRowButton);
@@ -29299,7 +29328,7 @@ function renderDocumentTemplateFieldRows() {
             documentTemplateFieldDrafts[draftIndex].systemRows = [createEmptyDocumentTemplateSystemDescriptionRowDraft({}, 0)];
           }
           renderDocumentTemplateFieldRows();
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport({ immediate: true });
         });
         removeRowButton.disabled = systemRows.length <= 1;
         rowHeader.append(rowCounter, removeRowButton);
@@ -29317,7 +29346,7 @@ function renderDocumentTemplateFieldRows() {
         rowSubtitleInput.value = systemRow.subtitle || "";
         rowSubtitleInput.addEventListener("input", (event) => {
           documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].subtitle = String(event.currentTarget.value || "");
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport();
         });
         rowSubtitleField.append(rowSubtitleSpan, rowSubtitleInput);
 
@@ -29335,7 +29364,7 @@ function renderDocumentTemplateFieldRows() {
         rowLineSelect.addEventListener("change", () => {
           documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(rowLineSelect.value);
           renderDocumentTemplateFieldRows();
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport({ immediate: true });
         });
         rowLineField.append(rowLineSpan, rowLineSelect);
 
@@ -29351,7 +29380,7 @@ function renderDocumentTemplateFieldRows() {
         rowDescriptionInput.value = systemRow.description || "";
         rowDescriptionInput.addEventListener("input", (event) => {
           documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].description = String(event.currentTarget.value || "");
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport();
         });
         rowDescriptionField.append(rowDescriptionSpan, rowDescriptionInput);
 
@@ -29383,7 +29412,7 @@ function renderDocumentTemplateFieldRows() {
       );
       signatureAreaSelect.addEventListener("change", () => {
         documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
       specialInfoField.append(signatureAreaSelect);
     } else if (field.type === "legal_list") {
@@ -29432,7 +29461,7 @@ function renderDocumentTemplateFieldRows() {
         documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds = (documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds ?? [])
           .filter((value) => normalizedValues.length === 0 || normalizedValues.includes(String(value)));
         renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport({ immediate: true });
       });
 
       const selectedField = createLegalSelectField("Preselektiraj", defaultLegalIds, (selectedValues) => {
@@ -29440,7 +29469,7 @@ function renderDocumentTemplateFieldRows() {
           ? new Set(documentTemplateFieldDrafts[draftIndex].legalFrameworkIds.map(String))
           : new Set(allLegalFrameworkIds);
         documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds = selectedValues.filter((value) => allowedIds.has(String(value)));
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
 
       const legalHint = document.createElement("div");
@@ -29466,7 +29495,7 @@ function renderDocumentTemplateFieldRows() {
       );
       signatureAreaSelect.addEventListener("change", () => {
         documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
-        renderDocumentTemplatePreviewContent();
+        refreshEditorSupport();
       });
       specialInfoField.append(signatureAreaSelect);
     } else if (field.type === "digital_signature") {
@@ -29482,7 +29511,7 @@ function renderDocumentTemplateFieldRows() {
         replaceSelectOptions(select, options, value);
         select.addEventListener("change", () => {
           onChange(select.value || "");
-          renderDocumentTemplatePreviewContent();
+          refreshEditorSupport();
         });
         shellNode.append(shellLabel, select);
         return shellNode;
@@ -29572,6 +29601,57 @@ function renderDocumentTemplateFieldRows() {
     }
 
     row.append(head, previewShell, canvasMeta);
+
+    if (isDocumentTemplateFieldWidthEditable(field.type)) {
+      const resizeHandle = document.createElement("button");
+      resizeHandle.type = "button";
+      resizeHandle.className = "document-template-canvas-resize-handle";
+      resizeHandle.setAttribute("aria-label", "Povuci za širinu polja");
+      resizeHandle.title = "Povuci mišem za širinu polja";
+
+      const applyCanvasWidth = (nextWidth) => {
+        const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
+        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizedWidth;
+        row.dataset.fieldWidth = normalizedWidth;
+        row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent({
+          ...documentTemplateFieldDrafts[draftIndex],
+          layoutWidth: normalizedWidth,
+        }));
+        widthLabel.textContent = `${normalizedWidth} / 9`;
+      };
+
+      resizeHandle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        activeDocumentTemplateInspectorFieldId = fieldId;
+        row.classList.add("is-active", "is-resizing");
+
+        const canvasBounds = pageBody.getBoundingClientRect();
+        const handlePointerMove = (moveEvent) => {
+          const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+          applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
+        };
+        const stopPointerResize = () => {
+          row.classList.remove("is-resizing");
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", stopPointerResize);
+          window.removeEventListener("pointercancel", stopPointerResize);
+          renderDocumentTemplateFieldRows();
+          refreshEditorSupport({ immediate: true });
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", stopPointerResize);
+        window.addEventListener("pointercancel", stopPointerResize);
+        handlePointerMove(event);
+      });
+
+      row.append(resizeHandle);
+    }
 
     if (isInspectorActive) {
       inspectorShell.replaceChildren();
@@ -29986,6 +30066,11 @@ function resetDocumentTemplateForm() {
     return;
   }
 
+  if (documentTemplateEditorSupportRefreshTimer) {
+    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
+    documentTemplateEditorSupportRefreshTimer = 0;
+  }
+
   documentTemplateForm.reset();
   state.activeDocumentTemplateId = "";
   activeDocumentTemplateSheetIndex = 0;
@@ -30038,6 +30123,11 @@ function hydrateDocumentTemplateForm(
     skipModuleNavigation = false,
   } = {},
 ) {
+  if (documentTemplateEditorSupportRefreshTimer) {
+    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
+    documentTemplateEditorSupportRefreshTimer = 0;
+  }
+
   if (!skipModuleNavigation) {
     state.activeView = "module";
     state.activeModuleItem = "template-development";
