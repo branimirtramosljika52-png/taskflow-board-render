@@ -1808,6 +1808,8 @@ let activeDocumentTemplateTextTarget = null;
 let activeDocumentTemplateInspectorFieldId = "";
 let documentTemplateEditorSupportRefreshTimer = 0;
 let documentTemplateEditorSupportRefreshFrame = 0;
+let documentTemplateDraftCache = null;
+let documentTemplateDraftCacheClearQueued = false;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
@@ -16239,9 +16241,6 @@ function addDocumentTemplateBuilderBlock(tool = "text") {
     }
   }
   renderDocumentTemplateFieldRows();
-  renderDocumentTemplatePlaceholderPalette();
-  renderDocumentTemplateLinkSummary();
-  renderDocumentTemplatePreviewContent();
 
   if (safeTool === "measurement_table") {
     requestAnimationFrame(() => {
@@ -16396,6 +16395,7 @@ function createDefaultDocumentTemplateSectionDrafts() {
 }
 
 function setDocumentTemplateFieldDrafts(fields = [], { ensureOne = false } = {}) {
+  invalidateDocumentTemplateDraftCache();
   const nextDrafts = Array.isArray(fields)
     ? fields
       .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
@@ -16407,6 +16407,7 @@ function setDocumentTemplateFieldDrafts(fields = [], { ensureOne = false } = {})
 }
 
 function setDocumentTemplateEquipmentDrafts(items = [], { ensureOne = false } = {}) {
+  invalidateDocumentTemplateDraftCache();
   const nextDrafts = Array.isArray(items) ? items.map((item, index) => createEmptyDocumentTemplateEquipmentDraft(item, index)) : [];
   documentTemplateEquipmentDrafts = nextDrafts.length > 0
     ? nextDrafts
@@ -16414,6 +16415,7 @@ function setDocumentTemplateEquipmentDrafts(items = [], { ensureOne = false } = 
 }
 
 function setDocumentTemplateSectionDrafts(sections = [], { ensureDefault = true } = {}) {
+  invalidateDocumentTemplateDraftCache();
   if (Array.isArray(sections) && sections.length > 0) {
     documentTemplateSectionDrafts = sections.map((section, index) => createEmptyDocumentTemplateSectionDraft(section, index));
     return;
@@ -16759,18 +16761,42 @@ function cancelDocumentTemplateEditorSupportRefresh() {
   }
 }
 
+function invalidateDocumentTemplateDraftCache() {
+  documentTemplateDraftCache = null;
+  documentTemplateDraftCacheClearQueued = false;
+}
+
+function queueDocumentTemplateDraftCacheClear() {
+  if (documentTemplateDraftCacheClearQueued) {
+    return;
+  }
+  documentTemplateDraftCacheClearQueued = true;
+  queueMicrotask(() => {
+    documentTemplateDraftCache = null;
+    documentTemplateDraftCacheClearQueued = false;
+  });
+}
+
 function flushDocumentTemplateEditorSupportRefresh() {
   cancelDocumentTemplateEditorSupportRefresh();
-  renderDocumentTemplatePlaceholderPalette();
-  renderDocumentTemplateLinkSummary();
-  renderDocumentTemplatePreviewContent();
+  invalidateDocumentTemplateDraftCache();
+  const template = buildDocumentTemplateDraft();
+  const context = buildDocumentTemplatePreviewContext(template);
+  renderDocumentTemplatePlaceholderPalette(template);
+  renderDocumentTemplateLinkSummary(template);
+  renderDocumentTemplatePreviewContent(template, context);
 }
 
 function scheduleDocumentTemplateEditorSupportRefresh({ immediate = false } = {}) {
   cancelDocumentTemplateEditorSupportRefresh();
+  invalidateDocumentTemplateDraftCache();
+  invalidateDocumentTemplateDraftCache();
 
   if (immediate) {
-    flushDocumentTemplateEditorSupportRefresh();
+    documentTemplateEditorSupportRefreshFrame = window.requestAnimationFrame(() => {
+      documentTemplateEditorSupportRefreshFrame = 0;
+      flushDocumentTemplateEditorSupportRefresh();
+    });
     return;
   }
 
@@ -16942,6 +16968,7 @@ function renderDocumentTemplateReferenceMeta() {
 }
 
 function setDocumentTemplateReferenceDocument(referenceDocument = null) {
+  invalidateDocumentTemplateDraftCache();
   documentTemplateReferenceDraft = referenceDocument
     ? {
       fileName: String(referenceDocument.fileName || referenceDocument.name || "").trim(),
@@ -16955,6 +16982,10 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
 }
 
 function buildDocumentTemplateDraft() {
+  if (documentTemplateDraftCache) {
+    return documentTemplateDraftCache;
+  }
+
   const activeTemplate = (state.documentTemplates ?? []).find((item) => (
     String(item.id) === String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "")
   )) ?? null;
@@ -17143,7 +17174,7 @@ function buildDocumentTemplateDraft() {
       ))
     : [];
 
-  return {
+  documentTemplateDraftCache = {
     id: documentTemplateIdInput?.value || "",
     organizationId: state.activeOrganizationId || "",
     title: documentTemplateTitleInput?.value || "",
@@ -17161,6 +17192,8 @@ function buildDocumentTemplateDraft() {
     createdByUserId: state.user?.id || "",
     createdByLabel: state.user?.fullName || state.user?.email || "",
   };
+  queueDocumentTemplateDraftCacheClear();
+  return documentTemplateDraftCache;
 }
 
 function buildDocumentTemplatePayload() {
@@ -19612,14 +19645,21 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   `;
 }
 
-function buildDocumentTemplatePreviewMarkup(template = buildDocumentTemplateDraft(), { placeholderMode = false, sheetTabs = false } = {}) {
-  const context = buildDocumentTemplatePreviewContext(template);
+function buildDocumentTemplatePreviewMarkup(
+  template = buildDocumentTemplateDraft(),
+  {
+    placeholderMode = false,
+    sheetTabs = false,
+    context = null,
+  } = {},
+) {
+  const previewContext = context || buildDocumentTemplatePreviewContext(template);
   const pages = buildDocumentTemplateSheetGroups(template.customFields ?? []);
   const safePageIndex = Math.max(0, Math.min(activeDocumentTemplateSheetIndex, pages.length - 1));
   const pageMarkup = pages.map((page, pageIndex) => buildDocumentTemplatePreviewPageMarkup(
     page,
     template,
-    context,
+    previewContext,
     {
       placeholderMode,
       pageIndex,
@@ -20281,15 +20321,16 @@ async function exportDocumentTemplatePdf() {
   }
 }
 
-function renderDocumentTemplatePreviewContent() {
+function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDraft(), context = null) {
   if (!documentTemplatePreview) {
     return;
   }
 
   clampDocumentTemplateSheetIndex();
-  documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(buildDocumentTemplateDraft(), {
+  documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(template, {
     placeholderMode: false,
     sheetTabs: true,
+    context: context || buildDocumentTemplatePreviewContext(template),
   });
 }
 
@@ -26101,12 +26142,12 @@ function renderSafetyAuthorizationModule() {
   }
 }
 
-function renderDocumentTemplatePlaceholderPalette() {
+function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTemplateDraft()) {
   if (!documentTemplatePlaceholderPalette) {
     return;
   }
 
-  const definitions = getDocumentTemplatePlaceholderDefinitions(buildDocumentTemplateDraft());
+  const definitions = getDocumentTemplatePlaceholderDefinitions(template);
   if (definitions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
@@ -26134,12 +26175,11 @@ function renderDocumentTemplatePlaceholderPalette() {
   }));
 }
 
-function renderDocumentTemplateLinkSummary() {
+function renderDocumentTemplateLinkSummary(template = buildDocumentTemplateDraft()) {
   if (!documentTemplateLinkSummary) {
     return;
   }
 
-  const template = buildDocumentTemplateDraft();
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
   const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
   const fields = Array.isArray(template.customFields) ? template.customFields : [];
@@ -28809,11 +28849,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
   renderDocumentTemplatePreviewContent();
 }
 
-function renderDocumentTemplateFieldRows() {
+function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediate = false } = {}) {
   if (!documentTemplateCustomFields) {
     return;
   }
 
+  invalidateDocumentTemplateDraftCache();
   documentTemplateMeasurementInlineHosts = new Map();
 
   if (isDocumentTemplateRuntimeFillMode()) {
@@ -28953,7 +28994,7 @@ function renderDocumentTemplateFieldRows() {
 
     const selectInspectorField = ({ focus = false } = {}) => {
       activeDocumentTemplateInspectorFieldId = fieldId;
-      renderDocumentTemplateFieldRows();
+      renderDocumentTemplateFieldRows({ renderSupport: false });
       if (focus) {
         requestAnimationFrame(() => {
           const inspectorInput = documentTemplateFieldInspector?.querySelector("input, textarea, select");
@@ -28976,13 +29017,11 @@ function renderDocumentTemplateFieldRows() {
       const currentHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
       const reduceHeightButton = createActionButton("Nize", "ghost-button document-template-canvas-resize", () => {
         documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.max(3, currentHeight - 1)), field.type || "longtext");
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
       const increaseHeightButton = createActionButton("Vise", "ghost-button document-template-canvas-resize", () => {
         documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizeDocumentTemplateFieldHeight(String(Math.min(12, currentHeight + 1)), field.type || "longtext");
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
       headActions.append(reduceHeightButton, increaseHeightButton);
     }
@@ -29017,7 +29056,7 @@ function renderDocumentTemplateFieldRows() {
         return;
       }
       activeDocumentTemplateInspectorFieldId = fieldId;
-      renderDocumentTemplateFieldRows();
+      renderDocumentTemplateFieldRows({ renderSupport: false });
     });
 
     row.addEventListener("dragover", (event) => {
@@ -29051,8 +29090,7 @@ function renderDocumentTemplateFieldRows() {
       );
       clearDocumentTemplateFieldDragState();
       if (moved) {
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       }
     });
     const grid = document.createElement("div");
@@ -29151,8 +29189,7 @@ function renderDocumentTemplateFieldRows() {
         widthSelect.value || "",
         documentTemplateFieldDrafts[draftIndex].type || "text",
       );
-      renderDocumentTemplateFieldRows();
-      refreshEditorSupport({ immediate: true });
+      renderDocumentTemplateFieldRows({ supportImmediate: true });
     });
     widthField.append(widthSpan, widthSelect);
 
@@ -29174,8 +29211,7 @@ function renderDocumentTemplateFieldRows() {
         heightSelect.value || "",
         documentTemplateFieldDrafts[draftIndex].type || "longtext",
       );
-      renderDocumentTemplateFieldRows();
-      refreshEditorSupport({ immediate: true });
+      renderDocumentTemplateFieldRows({ supportImmediate: true });
     });
     heightField.append(heightSpan, heightSelect);
 
@@ -29190,8 +29226,7 @@ function renderDocumentTemplateFieldRows() {
     sourceSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[draftIndex].source = sourceSelect.value || "CUSTOM_VALUE";
       ensureDocumentTemplateDatabaseLookupDraft(documentTemplateFieldDrafts[draftIndex]);
-      renderDocumentTemplateFieldRows();
-      refreshEditorSupport({ immediate: true });
+      renderDocumentTemplateFieldRows({ supportImmediate: true });
     });
     sourceField.append(sourceSpan, sourceSelect);
 
@@ -29223,8 +29258,7 @@ function renderDocumentTemplateFieldRows() {
         const draft = documentTemplateFieldDrafts[draftIndex];
         setDocumentTemplateLookupMode(draft, lookupModeSelect.value || "WORK_ORDER_NUMBER");
         ensureDocumentTemplateDatabaseLookupDraft(draft);
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
       lookupModeField.append(lookupModeSpan, lookupModeSelect);
       sourceConfigGrid.append(lookupModeField);
@@ -29248,8 +29282,7 @@ function renderDocumentTemplateFieldRows() {
         draft.lookupColumn = defaults.lookupColumn;
         draft.valueColumn = defaults.valueColumn;
         ensureDocumentTemplateDatabaseLookupDraft(draft);
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
       tableField.append(tableSpan, tableSelect);
 
@@ -29359,8 +29392,7 @@ function renderDocumentTemplateFieldRows() {
         collapsedDocumentTemplateChapterIds.delete(String(field.id || ""));
       }
       documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((entry) => entry.id !== field.id);
-      renderDocumentTemplateFieldRows();
-      refreshEditorSupport({ immediate: true });
+      renderDocumentTemplateFieldRows({ supportImmediate: true });
     });
     removeButton.classList.add("document-template-item-remove");
 
@@ -29422,8 +29454,7 @@ function renderDocumentTemplateFieldRows() {
           }),
           createEmptyDocumentTemplateSystemDescriptionRowDraft({}, documentTemplateFieldDrafts[draftIndex].systemRows?.length || 0),
         ];
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
 
       rowsHead.append(rowsCopy, addRowButton);
@@ -29456,8 +29487,7 @@ function renderDocumentTemplateFieldRows() {
           if (documentTemplateFieldDrafts[draftIndex].systemRows.length === 0) {
             documentTemplateFieldDrafts[draftIndex].systemRows = [createEmptyDocumentTemplateSystemDescriptionRowDraft({}, 0)];
           }
-          renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
+          renderDocumentTemplateFieldRows({ supportImmediate: true });
         });
         removeRowButton.disabled = systemRows.length <= 1;
         rowHeader.append(rowCounter, removeRowButton);
@@ -29492,8 +29522,7 @@ function renderDocumentTemplateFieldRows() {
         );
         rowLineSelect.addEventListener("change", () => {
           documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(rowLineSelect.value);
-          renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
+          renderDocumentTemplateFieldRows({ supportImmediate: true });
         });
         rowLineField.append(rowLineSpan, rowLineSelect);
 
@@ -29589,8 +29618,7 @@ function renderDocumentTemplateFieldRows() {
         documentTemplateFieldDrafts[draftIndex].legalFrameworkIds = normalizedValues;
         documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds = (documentTemplateFieldDrafts[draftIndex].defaultLegalFrameworkIds ?? [])
           .filter((value) => normalizedValues.length === 0 || normalizedValues.includes(String(value)));
-        renderDocumentTemplateFieldRows();
-        refreshEditorSupport({ immediate: true });
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       });
 
       const selectedField = createLegalSelectField("Preselektiraj", defaultLegalIds, (selectedValues) => {
@@ -29702,7 +29730,7 @@ function renderDocumentTemplateFieldRows() {
         } else {
           collapsedDocumentTemplateChapterIds.add(fieldId);
         }
-        renderDocumentTemplateFieldRows();
+        renderDocumentTemplateFieldRows({ renderSupport: false });
       });
       headActions.append(collapseButton);
     }
@@ -29940,8 +29968,7 @@ function renderDocumentTemplateFieldRows() {
           },
           onEnd: () => {
             applyCanvasWidth(documentTemplateFieldDrafts[draftIndex]?.layoutWidth || field.layoutWidth || "12");
-            renderDocumentTemplateFieldRows();
-            refreshEditorSupport({ immediate: true });
+            renderDocumentTemplateFieldRows({ supportImmediate: true });
           },
         });
       });
@@ -29992,8 +30019,7 @@ function renderDocumentTemplateFieldRows() {
           },
           onEnd: () => {
             applyCanvasHeight(documentTemplateFieldDrafts[draftIndex]?.fieldHeight ?? field.fieldHeight ?? "");
-            renderDocumentTemplateFieldRows();
-            refreshEditorSupport({ immediate: true });
+            renderDocumentTemplateFieldRows({ supportImmediate: true });
           },
         });
       });
@@ -30064,8 +30090,7 @@ function renderDocumentTemplateFieldRows() {
             if (isDocumentTemplateFieldHeightEditable(field.type)) {
               applyCanvasHeight(documentTemplateFieldDrafts[draftIndex]?.fieldHeight ?? field.fieldHeight ?? "");
             }
-            renderDocumentTemplateFieldRows();
-            refreshEditorSupport({ immediate: true });
+            renderDocumentTemplateFieldRows({ supportImmediate: true });
           },
         });
       });
@@ -30191,10 +30216,7 @@ function renderDocumentTemplateFieldRows() {
       tailDropZone.classList.remove("is-active");
       clearDocumentTemplateFieldDragState();
       if (moved) {
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePlaceholderPalette();
-        renderDocumentTemplateLinkSummary();
-        renderDocumentTemplatePreviewContent();
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
       }
     });
     pageBody.append(tailDropZone);
@@ -30237,12 +30259,12 @@ function renderDocumentTemplateFieldRows() {
 
   syncMeasurementSheetPanelMount();
   syncDocumentTemplateInlineExcelPreviewVisibility();
-  renderDocumentTemplatePlaceholderPalette();
-  renderDocumentTemplateLinkSummary();
-  renderDocumentTemplatePreviewContent();
+  if (renderSupport) {
+    scheduleDocumentTemplateEditorSupportRefresh({ immediate: supportImmediate });
+  }
 }
 
-function renderDocumentTemplateEquipmentRows() {
+function renderDocumentTemplateEquipmentRows({ renderSupport = true, supportImmediate = false } = {}) {
   if (!documentTemplateEquipmentItems) {
     return;
   }
@@ -30252,7 +30274,9 @@ function renderDocumentTemplateEquipmentRows() {
     empty.className = "helper-copy";
     empty.textContent = "Dodaj opremu koja ulazi u zapisnik ili ostavi prazno pa ces to unijeti kasnije po dokumentu.";
     documentTemplateEquipmentItems.replaceChildren(empty);
-    renderDocumentTemplatePreviewContent();
+    if (renderSupport) {
+      scheduleDocumentTemplateEditorSupportRefresh({ immediate: supportImmediate });
+    }
     return;
   }
 
@@ -30289,7 +30313,7 @@ function renderDocumentTemplateEquipmentRows() {
         documentTemplateEquipmentDrafts[index][definition.key] = event.currentTarget.value;
         meta.textContent = `${parseTemplateLooseNumber(documentTemplateEquipmentDrafts[index].quantity, 1)} kom`;
         title.textContent = documentTemplateEquipmentDrafts[index].name || `Oprema ${index + 1}`;
-        renderDocumentTemplatePreviewContent();
+        scheduleDocumentTemplateEditorSupportRefresh();
       });
       input.addEventListener("focus", () => rememberDocumentTemplateTextTarget(input, `equipment:${item.id}:${definition.key}`));
       label.append(span, input);
@@ -30308,10 +30332,12 @@ function renderDocumentTemplateEquipmentRows() {
     return row;
   }));
 
-  renderDocumentTemplatePreviewContent();
+  if (renderSupport) {
+    scheduleDocumentTemplateEditorSupportRefresh({ immediate: supportImmediate });
+  }
 }
 
-function renderDocumentTemplateSectionRows() {
+function renderDocumentTemplateSectionRows({ renderSupport = true, supportImmediate = false } = {}) {
   if (!documentTemplateSections) {
     return;
   }
@@ -30347,8 +30373,7 @@ function renderDocumentTemplateSectionRows() {
         documentTemplateSectionDrafts[index].columns = "Pozicija, Opis, Vrijednost, Granica, Napomena";
         documentTemplateSectionDrafts[index].rowCount = "12";
       }
-      renderDocumentTemplateSectionRows();
-      renderDocumentTemplatePreviewContent();
+      renderDocumentTemplateSectionRows({ supportImmediate: true });
     });
     typeField.append(typeSpan, typeSelect);
 
@@ -30362,7 +30387,7 @@ function renderDocumentTemplateSectionRows() {
     titleInput.addEventListener("input", (event) => {
       documentTemplateSectionDrafts[index].title = event.currentTarget.value;
       title.textContent = event.currentTarget.value || `Sekcija ${index + 1}`;
-      renderDocumentTemplatePreviewContent();
+      scheduleDocumentTemplateEditorSupportRefresh();
     });
     titleInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(titleInput, `section-title:${section.id}`));
     titleField.append(titleSpan, titleInput);
@@ -30376,7 +30401,7 @@ function renderDocumentTemplateSectionRows() {
     bodyInput.value = section.body || "";
     bodyInput.addEventListener("input", (event) => {
       documentTemplateSectionDrafts[index].body = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
+      scheduleDocumentTemplateEditorSupportRefresh();
     });
     bodyInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(bodyInput, `section-body:${section.id}`));
     bodyField.append(bodySpan, bodyInput);
@@ -30392,7 +30417,7 @@ function renderDocumentTemplateSectionRows() {
     columnsInput.value = section.columns || "";
     columnsInput.addEventListener("input", (event) => {
       documentTemplateSectionDrafts[index].columns = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
+      scheduleDocumentTemplateEditorSupportRefresh();
     });
     columnsInput.addEventListener("focus", () => rememberDocumentTemplateTextTarget(columnsInput, `section-columns:${section.id}`));
     columnsField.append(columnsSpan, columnsInput);
@@ -30409,7 +30434,7 @@ function renderDocumentTemplateSectionRows() {
     rowCountInput.value = section.rowCount || "12";
     rowCountInput.addEventListener("input", (event) => {
       documentTemplateSectionDrafts[index].rowCount = event.currentTarget.value;
-      renderDocumentTemplatePreviewContent();
+      scheduleDocumentTemplateEditorSupportRefresh();
     });
     rowCountField.append(rowCountSpan, rowCountInput);
 
@@ -30422,8 +30447,7 @@ function renderDocumentTemplateSectionRows() {
       if (documentTemplateSectionDrafts.length === 0) {
         documentTemplateSectionDrafts = createDefaultDocumentTemplateSectionDrafts();
       }
-      renderDocumentTemplateSectionRows();
-      renderDocumentTemplatePreviewContent();
+      renderDocumentTemplateSectionRows({ supportImmediate: true });
     });
     actions.append(removeButton);
 
@@ -30431,7 +30455,9 @@ function renderDocumentTemplateSectionRows() {
     return row;
   }));
 
-  renderDocumentTemplatePreviewContent();
+  if (renderSupport) {
+    scheduleDocumentTemplateEditorSupportRefresh({ immediate: supportImmediate });
+  }
 }
 
 function renderDocumentTemplateLegalFrameworkChecklist() {
