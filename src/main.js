@@ -16687,6 +16687,26 @@ function getDocumentTemplateBuilderFieldHeightPx(field = {}, { preserveAuto = tr
   return Math.max(config.baseHeight, units * config.unitHeight);
 }
 
+function isDocumentTemplatePreviewValueResizeEnabled(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  return normalizedType === "text"
+    || normalizedType === "longtext"
+    || normalizedType === "number"
+    || normalizedType === "date";
+}
+
+function getDocumentTemplateBuilderPreviewValueHeightPx(field = {}, { preserveAuto = true } = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (!isDocumentTemplatePreviewValueResizeEnabled(type)) {
+    return 0;
+  }
+  const fieldHeight = getDocumentTemplateBuilderFieldHeightPx(field, { preserveAuto });
+  if (fieldHeight <= 0) {
+    return 0;
+  }
+  return Math.max(type === "longtext" ? 120 : 52, fieldHeight - 54);
+}
+
 function getDocumentTemplateBuilderHeightMetaLabel(field = {}) {
   const type = String(field?.type || "text").trim().toLowerCase();
   if (!isDocumentTemplateFieldHeightEditable(type)) {
@@ -19193,6 +19213,8 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     : "";
   const customHeightPx = getDocumentTemplateBuilderFieldHeightPx(field);
   const sectionStyle = customHeightPx > 0 ? ` style="min-height:${customHeightPx}px"` : "";
+  const previewValueHeightPx = getDocumentTemplateBuilderPreviewValueHeightPx(field);
+  const fieldValueStyle = previewValueHeightPx > 0 ? ` style="min-height:${previewValueHeightPx}px"` : "";
 
   if (field.type === "chapter") {
     return `
@@ -19571,7 +19593,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         <h2>${title}</h2>
         <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
       </div>
-      <div class="document-template-preview-field-value is-${slugifyValue(field.type || "text")}">${valueHtml}</div>
+      <div class="document-template-preview-field-value is-${slugifyValue(field.type || "text")}"${fieldValueStyle}>${valueHtml}</div>
       <p class="document-template-preview-muted">
         ${placeholderMode ? escapeHtml(token) : escapeHtml(getDocumentTemplateFieldSourceLabel(field.source || "CUSTOM_VALUE"))}
       </p>
@@ -29682,8 +29704,10 @@ function renderDocumentTemplateFieldRows() {
     previewShell.innerHTML = buildDocumentTemplateFieldPreviewMarkup(field, previewContext, draftIndex, {
       placeholderMode: false,
     });
+    const previewFieldValue = previewShell.querySelector(".document-template-preview-field-value");
     const applyCanvasPreviewHeight = (resolvedField = field) => {
       const nextHeight = getDocumentTemplateBuilderFieldHeightPx(resolvedField, { preserveAuto: true });
+      const nextValueHeight = getDocumentTemplateBuilderPreviewValueHeightPx(resolvedField, { preserveAuto: true });
       if (nextHeight > 0) {
         previewShell.style.setProperty("--document-template-canvas-preview-min-height", `${nextHeight}px`);
         row.dataset.fieldHeight = String(
@@ -29692,6 +29716,13 @@ function renderDocumentTemplateFieldRows() {
       } else {
         previewShell.style.removeProperty("--document-template-canvas-preview-min-height");
         row.dataset.fieldHeight = "auto";
+      }
+      if (previewFieldValue instanceof HTMLElement) {
+        if (nextValueHeight > 0) {
+          previewFieldValue.style.minHeight = `${nextValueHeight}px`;
+        } else {
+          previewFieldValue.style.removeProperty("min-height");
+        }
       }
     };
 
@@ -29714,6 +29745,50 @@ function renderDocumentTemplateFieldRows() {
 
     row.append(head, previewShell, canvasMeta);
 
+    const applyCanvasWidth = (nextWidth) => {
+      if (!isDocumentTemplateFieldWidthEditable(field.type)) {
+        return;
+      }
+      const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
+      documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizedWidth;
+      row.dataset.fieldWidth = normalizedWidth;
+      row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent({
+        ...documentTemplateFieldDrafts[draftIndex],
+        layoutWidth: normalizedWidth,
+      }));
+      widthLabel.textContent = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
+      const inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']");
+      if (inspectorWidthSelect instanceof HTMLSelectElement) {
+        inspectorWidthSelect.value = normalizedWidth;
+      }
+    };
+
+    const applyCanvasHeight = (nextHeight) => {
+      if (!isDocumentTemplateFieldHeightEditable(field.type)) {
+        return;
+      }
+      const normalizedHeight = normalizeDocumentTemplateFieldHeight(nextHeight, field.type || "text");
+      documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizedHeight;
+      applyCanvasPreviewHeight({
+        ...documentTemplateFieldDrafts[draftIndex],
+        fieldHeight: normalizedHeight,
+      });
+      if (heightLabel) {
+        heightLabel.textContent = getDocumentTemplateBuilderHeightMetaLabel({
+          ...documentTemplateFieldDrafts[draftIndex],
+          fieldHeight: normalizedHeight,
+        });
+      }
+      if (field.type === "longtext") {
+        const inspectorHeightSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-height-select='true']");
+        if (inspectorHeightSelect instanceof HTMLSelectElement) {
+          inspectorHeightSelect.value = String(
+            normalizeDocumentTemplateFieldHeight(normalizedHeight, field.type || "longtext"),
+          );
+        }
+      }
+    };
+
     if (isDocumentTemplateFieldWidthEditable(field.type)) {
       const resizeHandle = document.createElement("button");
       resizeHandle.type = "button";
@@ -29726,21 +29801,6 @@ function renderDocumentTemplateFieldRows() {
       resizeHandleIcon.setAttribute("aria-hidden", "true");
       resizeHandleIcon.textContent = "↔";
       resizeHandle.append(resizeHandleIcon);
-
-      const applyCanvasWidth = (nextWidth) => {
-        const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
-        documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizedWidth;
-        row.dataset.fieldWidth = normalizedWidth;
-        row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent({
-          ...documentTemplateFieldDrafts[draftIndex],
-          layoutWidth: normalizedWidth,
-        }));
-        widthLabel.textContent = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
-        const inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']");
-        if (inspectorWidthSelect instanceof HTMLSelectElement) {
-          inspectorWidthSelect.value = normalizedWidth;
-        }
-      };
 
       resizeHandle.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) {
@@ -29792,29 +29852,6 @@ function renderDocumentTemplateFieldRows() {
       heightResizeIcon.textContent = "↕";
       heightResizeHandle.append(heightResizeIcon);
 
-      const applyCanvasHeight = (nextHeight) => {
-        const normalizedHeight = normalizeDocumentTemplateFieldHeight(nextHeight, field.type || "text");
-        documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizedHeight;
-        applyCanvasPreviewHeight({
-          ...documentTemplateFieldDrafts[draftIndex],
-          fieldHeight: normalizedHeight,
-        });
-        if (heightLabel) {
-          heightLabel.textContent = getDocumentTemplateBuilderHeightMetaLabel({
-            ...documentTemplateFieldDrafts[draftIndex],
-            fieldHeight: normalizedHeight,
-          });
-        }
-        if (field.type === "longtext") {
-          const inspectorHeightSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-height-select='true']");
-          if (inspectorHeightSelect instanceof HTMLSelectElement) {
-            inspectorHeightSelect.value = String(
-              normalizeDocumentTemplateFieldHeight(normalizedHeight, field.type || "longtext"),
-            );
-          }
-        }
-      };
-
       heightResizeHandle.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) {
           return;
@@ -29859,6 +29896,76 @@ function renderDocumentTemplateFieldRows() {
 
       row.append(heightResizeHandle);
       applyCanvasPreviewHeight(field);
+    }
+
+    if (
+      previewFieldValue instanceof HTMLElement
+      && isDocumentTemplatePreviewValueResizeEnabled(field.type)
+      && (isDocumentTemplateFieldWidthEditable(field.type) || isDocumentTemplateFieldHeightEditable(field.type))
+    ) {
+      previewFieldValue.classList.add("is-resizable-input");
+      const previewResizeHandle = document.createElement("button");
+      previewResizeHandle.type = "button";
+      previewResizeHandle.className = "document-template-canvas-input-resize-handle";
+      previewResizeHandle.setAttribute("aria-label", "Povuci za veličinu textboxa");
+      previewResizeHandle.title = "Povuci za veličinu textboxa";
+
+      const previewResizeIcon = document.createElement("span");
+      previewResizeIcon.className = "document-template-canvas-input-resize-handle-icon";
+      previewResizeIcon.setAttribute("aria-hidden", "true");
+      previewResizeIcon.textContent = "↘";
+      previewResizeHandle.append(previewResizeIcon);
+
+      previewResizeHandle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        activeDocumentTemplateInspectorFieldId = fieldId;
+        row.classList.add("is-active", "is-resizing-inner");
+        document.body.classList.add("is-document-template-resizing-diagonal");
+        previewResizeHandle.setPointerCapture?.(event.pointerId);
+
+        const canvasBounds = pageBody.getBoundingClientRect();
+        const heightConfig = getDocumentTemplateBuilderHeightConfig(field.type || "text");
+        const startY = event.clientY;
+        const startHeight = getDocumentTemplateBuilderFieldHeightValue(
+          documentTemplateFieldDrafts[draftIndex],
+          { preserveAuto: false },
+        );
+        const handlePointerMove = (moveEvent) => {
+          if (isDocumentTemplateFieldWidthEditable(field.type)) {
+            const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+            applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
+          }
+          if (isDocumentTemplateFieldHeightEditable(field.type)) {
+            const delta = Math.round((moveEvent.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
+            const nextValue = Math.max(
+              heightConfig.min,
+              Math.min(heightConfig.max, startHeight + delta),
+            );
+            applyCanvasHeight(String(nextValue));
+          }
+        };
+        const stopPointerResize = () => {
+          row.classList.remove("is-resizing-inner");
+          document.body.classList.remove("is-document-template-resizing-diagonal");
+          window.removeEventListener("pointermove", handlePointerMove);
+          window.removeEventListener("pointerup", stopPointerResize);
+          window.removeEventListener("pointercancel", stopPointerResize);
+          renderDocumentTemplateFieldRows();
+          refreshEditorSupport({ immediate: true });
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", stopPointerResize);
+        window.addEventListener("pointercancel", stopPointerResize);
+        handlePointerMove(event);
+      });
+
+      previewFieldValue.append(previewResizeHandle);
     }
 
     if (isInspectorActive) {
