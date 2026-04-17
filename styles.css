@@ -23598,6 +23598,19 @@ body.is-measurement-equipment-export-open {
   cursor: nwse-resize;
 }
 
+body.is-document-template-resizing .document-template-item-card.is-canvas-field,
+body.is-document-template-resizing-vertical .document-template-item-card.is-canvas-field,
+body.is-document-template-resizing-diagonal .document-template-item-card.is-canvas-field,
+body.is-document-template-resizing .document-template-canvas-preview,
+body.is-document-template-resizing-vertical .document-template-canvas-preview,
+body.is-document-template-resizing-diagonal .document-template-canvas-preview,
+body.is-document-template-resizing .document-template-preview-field-value,
+body.is-document-template-resizing-vertical .document-template-preview-field-value,
+body.is-document-template-resizing-diagonal .document-template-preview-field-value {
+  transition: none !important;
+  will-change: width, min-height;
+}
+
 .document-template-item-card.is-canvas-field.is-active::before {
   background: linear-gradient(180deg, rgba(34, 111, 235, 0.92), rgba(53, 98, 196, 0.82));
 }

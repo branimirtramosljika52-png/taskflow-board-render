@@ -1807,6 +1807,7 @@ let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let activeDocumentTemplateInspectorFieldId = "";
 let documentTemplateEditorSupportRefreshTimer = 0;
+let documentTemplateEditorSupportRefreshFrame = 0;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
@@ -16750,18 +16751,23 @@ function getDocumentTemplateBuilderWidthValueFromRatio(ratio = 1, type = "text")
   return normalizeDocumentTemplateFieldLayoutWidth(bestWidth, type);
 }
 
-function flushDocumentTemplateEditorSupportRefresh() {
+function cancelDocumentTemplateEditorSupportRefresh() {
   documentTemplateEditorSupportRefreshTimer = 0;
+  if (documentTemplateEditorSupportRefreshFrame) {
+    window.cancelAnimationFrame(documentTemplateEditorSupportRefreshFrame);
+    documentTemplateEditorSupportRefreshFrame = 0;
+  }
+}
+
+function flushDocumentTemplateEditorSupportRefresh() {
+  cancelDocumentTemplateEditorSupportRefresh();
   renderDocumentTemplatePlaceholderPalette();
   renderDocumentTemplateLinkSummary();
   renderDocumentTemplatePreviewContent();
 }
 
 function scheduleDocumentTemplateEditorSupportRefresh({ immediate = false } = {}) {
-  if (documentTemplateEditorSupportRefreshTimer) {
-    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
-    documentTemplateEditorSupportRefreshTimer = 0;
-  }
+  cancelDocumentTemplateEditorSupportRefresh();
 
   if (immediate) {
     flushDocumentTemplateEditorSupportRefresh();
@@ -16769,8 +16775,12 @@ function scheduleDocumentTemplateEditorSupportRefresh({ immediate = false } = {}
   }
 
   documentTemplateEditorSupportRefreshTimer = window.setTimeout(() => {
-    flushDocumentTemplateEditorSupportRefresh();
-  }, 90);
+    documentTemplateEditorSupportRefreshTimer = 0;
+    documentTemplateEditorSupportRefreshFrame = window.requestAnimationFrame(() => {
+      documentTemplateEditorSupportRefreshFrame = 0;
+      flushDocumentTemplateEditorSupportRefresh();
+    });
+  }, 140);
 }
 
 async function copyDocumentTemplateToken(token = "") {
@@ -29745,47 +29755,152 @@ function renderDocumentTemplateFieldRows() {
 
     row.append(head, previewShell, canvasMeta);
 
-    const applyCanvasWidth = (nextWidth) => {
+    let inspectorWidthSelect = null;
+    let inspectorHeightSelect = null;
+    const syncInspectorWidthSelect = (value) => {
+      if (!isInspectorActive) {
+        return;
+      }
+      if (!(inspectorWidthSelect instanceof HTMLSelectElement)) {
+        inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']") || null;
+      }
+      if (inspectorWidthSelect instanceof HTMLSelectElement && inspectorWidthSelect.value !== value) {
+        inspectorWidthSelect.value = value;
+      }
+    };
+    const syncInspectorHeightSelect = (value) => {
+      if (!isInspectorActive || field.type !== "longtext") {
+        return;
+      }
+      if (!(inspectorHeightSelect instanceof HTMLSelectElement)) {
+        inspectorHeightSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-height-select='true']") || null;
+      }
+      if (inspectorHeightSelect instanceof HTMLSelectElement) {
+        const nextSelectValue = String(normalizeDocumentTemplateFieldHeight(value, field.type || "longtext"));
+        if (inspectorHeightSelect.value !== nextSelectValue) {
+          inspectorHeightSelect.value = nextSelectValue;
+        }
+      }
+    };
+    const createCanvasResizeSession = ({
+      startEvent,
+      handle,
+      activeClass,
+      bodyClass,
+      onFrame,
+      onEnd = null,
+    }) => {
+      row.classList.add("is-active", activeClass);
+      document.body.classList.add(bodyClass);
+      handle.setPointerCapture?.(startEvent.pointerId);
+
+      let latestPoint = {
+        clientX: startEvent.clientX,
+        clientY: startEvent.clientY,
+      };
+      let frameId = 0;
+      let hasPendingPoint = false;
+
+      const flushFrame = () => {
+        frameId = 0;
+        if (!latestPoint || !hasPendingPoint) {
+          return;
+        }
+        onFrame(latestPoint);
+        hasPendingPoint = false;
+      };
+      const queueFrame = (moveEvent) => {
+        latestPoint = {
+          clientX: moveEvent.clientX,
+          clientY: moveEvent.clientY,
+        };
+        hasPendingPoint = true;
+        if (frameId) {
+          return;
+        }
+        frameId = window.requestAnimationFrame(flushFrame);
+      };
+      const stopSession = () => {
+        if (frameId) {
+          window.cancelAnimationFrame(frameId);
+          frameId = 0;
+        }
+        if (latestPoint && hasPendingPoint) {
+          onFrame(latestPoint);
+          hasPendingPoint = false;
+        }
+        row.classList.remove(activeClass);
+        document.body.classList.remove(bodyClass);
+        handle.releasePointerCapture?.(startEvent.pointerId);
+        window.removeEventListener("pointermove", queueFrame);
+        window.removeEventListener("pointerup", stopSession);
+        window.removeEventListener("pointercancel", stopSession);
+        if (typeof onEnd === "function") {
+          onEnd();
+        }
+      };
+
+      window.addEventListener("pointermove", queueFrame, { passive: true });
+      window.addEventListener("pointerup", stopSession);
+      window.addEventListener("pointercancel", stopSession);
+      queueFrame(startEvent);
+    };
+
+    const applyCanvasWidth = (nextWidth, { syncInspector = true } = {}) => {
       if (!isDocumentTemplateFieldWidthEditable(field.type)) {
         return;
       }
       const normalizedWidth = normalizeDocumentTemplateFieldLayoutWidth(nextWidth, field.type || "text");
-      documentTemplateFieldDrafts[draftIndex].layoutWidth = normalizedWidth;
-      row.dataset.fieldWidth = normalizedWidth;
-      row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent({
-        ...documentTemplateFieldDrafts[draftIndex],
-        layoutWidth: normalizedWidth,
-      }));
-      widthLabel.textContent = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
-      const inspectorWidthSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-width-select='true']");
-      if (inspectorWidthSelect instanceof HTMLSelectElement) {
-        inspectorWidthSelect.value = normalizedWidth;
+      const draft = documentTemplateFieldDrafts[draftIndex];
+      if (!draft) {
+        return;
+      }
+      if (String(draft.layoutWidth || "") !== normalizedWidth) {
+        draft.layoutWidth = normalizedWidth;
+      }
+      if (row.dataset.fieldWidth !== normalizedWidth) {
+        row.dataset.fieldWidth = normalizedWidth;
+        row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent({
+          ...draft,
+          layoutWidth: normalizedWidth,
+        }));
+      }
+      const nextWidthLabel = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
+      if (widthLabel.textContent !== nextWidthLabel) {
+        widthLabel.textContent = nextWidthLabel;
+      }
+      if (syncInspector) {
+        syncInspectorWidthSelect(normalizedWidth);
       }
     };
 
-    const applyCanvasHeight = (nextHeight) => {
+    const applyCanvasHeight = (nextHeight, { syncInspector = true } = {}) => {
       if (!isDocumentTemplateFieldHeightEditable(field.type)) {
         return;
       }
       const normalizedHeight = normalizeDocumentTemplateFieldHeight(nextHeight, field.type || "text");
-      documentTemplateFieldDrafts[draftIndex].fieldHeight = normalizedHeight;
+      const draft = documentTemplateFieldDrafts[draftIndex];
+      if (!draft) {
+        return;
+      }
+      if (String(draft.fieldHeight ?? "") !== String(normalizedHeight ?? "")) {
+        draft.fieldHeight = normalizedHeight;
+      }
       applyCanvasPreviewHeight({
-        ...documentTemplateFieldDrafts[draftIndex],
+        ...draft,
         fieldHeight: normalizedHeight,
       });
       if (heightLabel) {
-        heightLabel.textContent = getDocumentTemplateBuilderHeightMetaLabel({
-          ...documentTemplateFieldDrafts[draftIndex],
+        const nextHeightLabel = getDocumentTemplateBuilderHeightMetaLabel({
+          ...draft,
           fieldHeight: normalizedHeight,
         });
-      }
-      if (field.type === "longtext") {
-        const inspectorHeightSelect = documentTemplateFieldInspector?.querySelector("[data-template-field-height-select='true']");
-        if (inspectorHeightSelect instanceof HTMLSelectElement) {
-          inspectorHeightSelect.value = String(
-            normalizeDocumentTemplateFieldHeight(normalizedHeight, field.type || "longtext"),
-          );
+        if (heightLabel.textContent !== nextHeightLabel) {
+          heightLabel.textContent = nextHeightLabel;
         }
+      }
+      if (syncInspector) {
+        syncInspectorHeightSelect(normalizedHeight);
       }
     };
 
@@ -29810,29 +29925,25 @@ function renderDocumentTemplateFieldRows() {
         event.preventDefault();
         event.stopPropagation();
         activeDocumentTemplateInspectorFieldId = fieldId;
-        row.classList.add("is-active", "is-resizing");
-        document.body.classList.add("is-document-template-resizing");
-        resizeHandle.setPointerCapture?.(event.pointerId);
-
         const canvasBounds = pageBody.getBoundingClientRect();
-        const handlePointerMove = (moveEvent) => {
-          const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
-          applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
-        };
-        const stopPointerResize = () => {
-          row.classList.remove("is-resizing");
-          document.body.classList.remove("is-document-template-resizing");
-          window.removeEventListener("pointermove", handlePointerMove);
-          window.removeEventListener("pointerup", stopPointerResize);
-          window.removeEventListener("pointercancel", stopPointerResize);
-          renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
-        };
-
-        window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("pointerup", stopPointerResize);
-        window.addEventListener("pointercancel", stopPointerResize);
-        handlePointerMove(event);
+        createCanvasResizeSession({
+          startEvent: event,
+          handle: resizeHandle,
+          activeClass: "is-resizing",
+          bodyClass: "is-document-template-resizing",
+          onFrame: (point) => {
+            const ratio = (point.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+            applyCanvasWidth(
+              getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"),
+              { syncInspector: false },
+            );
+          },
+          onEnd: () => {
+            applyCanvasWidth(documentTemplateFieldDrafts[draftIndex]?.layoutWidth || field.layoutWidth || "12");
+            renderDocumentTemplateFieldRows();
+            refreshEditorSupport({ immediate: true });
+          },
+        });
       });
 
       row.append(resizeHandle);
@@ -29860,38 +29971,31 @@ function renderDocumentTemplateFieldRows() {
         event.preventDefault();
         event.stopPropagation();
         activeDocumentTemplateInspectorFieldId = fieldId;
-        row.classList.add("is-active", "is-resizing-height");
-        document.body.classList.add("is-document-template-resizing-vertical");
-        heightResizeHandle.setPointerCapture?.(event.pointerId);
-
         const heightConfig = getDocumentTemplateBuilderHeightConfig(field.type || "text");
         const startY = event.clientY;
         const startHeight = getDocumentTemplateBuilderFieldHeightValue(
           documentTemplateFieldDrafts[draftIndex],
           { preserveAuto: false },
         );
-        const handlePointerMove = (moveEvent) => {
-          const delta = Math.round((moveEvent.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
-          const nextValue = Math.max(
-            heightConfig.min,
-            Math.min(heightConfig.max, startHeight + delta),
-          );
-          applyCanvasHeight(String(nextValue));
-        };
-        const stopPointerResize = () => {
-          row.classList.remove("is-resizing-height");
-          document.body.classList.remove("is-document-template-resizing-vertical");
-          window.removeEventListener("pointermove", handlePointerMove);
-          window.removeEventListener("pointerup", stopPointerResize);
-          window.removeEventListener("pointercancel", stopPointerResize);
-          renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
-        };
-
-        window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("pointerup", stopPointerResize);
-        window.addEventListener("pointercancel", stopPointerResize);
-        handlePointerMove(event);
+        createCanvasResizeSession({
+          startEvent: event,
+          handle: heightResizeHandle,
+          activeClass: "is-resizing-height",
+          bodyClass: "is-document-template-resizing-vertical",
+          onFrame: (point) => {
+            const delta = Math.round((point.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
+            const nextValue = Math.max(
+              heightConfig.min,
+              Math.min(heightConfig.max, startHeight + delta),
+            );
+            applyCanvasHeight(String(nextValue), { syncInspector: false });
+          },
+          onEnd: () => {
+            applyCanvasHeight(documentTemplateFieldDrafts[draftIndex]?.fieldHeight ?? field.fieldHeight ?? "");
+            renderDocumentTemplateFieldRows();
+            refreshEditorSupport({ immediate: true });
+          },
+        });
       });
 
       row.append(heightResizeHandle);
@@ -29924,10 +30028,6 @@ function renderDocumentTemplateFieldRows() {
         event.preventDefault();
         event.stopPropagation();
         activeDocumentTemplateInspectorFieldId = fieldId;
-        row.classList.add("is-active", "is-resizing-inner");
-        document.body.classList.add("is-document-template-resizing-diagonal");
-        previewResizeHandle.setPointerCapture?.(event.pointerId);
-
         const canvasBounds = pageBody.getBoundingClientRect();
         const heightConfig = getDocumentTemplateBuilderHeightConfig(field.type || "text");
         const startY = event.clientY;
@@ -29935,34 +30035,39 @@ function renderDocumentTemplateFieldRows() {
           documentTemplateFieldDrafts[draftIndex],
           { preserveAuto: false },
         );
-        const handlePointerMove = (moveEvent) => {
-          if (isDocumentTemplateFieldWidthEditable(field.type)) {
-            const ratio = (moveEvent.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
-            applyCanvasWidth(getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"));
-          }
-          if (isDocumentTemplateFieldHeightEditable(field.type)) {
-            const delta = Math.round((moveEvent.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
-            const nextValue = Math.max(
-              heightConfig.min,
-              Math.min(heightConfig.max, startHeight + delta),
-            );
-            applyCanvasHeight(String(nextValue));
-          }
-        };
-        const stopPointerResize = () => {
-          row.classList.remove("is-resizing-inner");
-          document.body.classList.remove("is-document-template-resizing-diagonal");
-          window.removeEventListener("pointermove", handlePointerMove);
-          window.removeEventListener("pointerup", stopPointerResize);
-          window.removeEventListener("pointercancel", stopPointerResize);
-          renderDocumentTemplateFieldRows();
-          refreshEditorSupport({ immediate: true });
-        };
-
-        window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("pointerup", stopPointerResize);
-        window.addEventListener("pointercancel", stopPointerResize);
-        handlePointerMove(event);
+        createCanvasResizeSession({
+          startEvent: event,
+          handle: previewResizeHandle,
+          activeClass: "is-resizing-inner",
+          bodyClass: "is-document-template-resizing-diagonal",
+          onFrame: (point) => {
+            if (isDocumentTemplateFieldWidthEditable(field.type)) {
+              const ratio = (point.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+              applyCanvasWidth(
+                getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"),
+                { syncInspector: false },
+              );
+            }
+            if (isDocumentTemplateFieldHeightEditable(field.type)) {
+              const delta = Math.round((point.clientY - startY) / Math.max(heightConfig.pixelStep, 1));
+              const nextValue = Math.max(
+                heightConfig.min,
+                Math.min(heightConfig.max, startHeight + delta),
+              );
+              applyCanvasHeight(String(nextValue), { syncInspector: false });
+            }
+          },
+          onEnd: () => {
+            if (isDocumentTemplateFieldWidthEditable(field.type)) {
+              applyCanvasWidth(documentTemplateFieldDrafts[draftIndex]?.layoutWidth || field.layoutWidth || "12");
+            }
+            if (isDocumentTemplateFieldHeightEditable(field.type)) {
+              applyCanvasHeight(documentTemplateFieldDrafts[draftIndex]?.fieldHeight ?? field.fieldHeight ?? "");
+            }
+            renderDocumentTemplateFieldRows();
+            refreshEditorSupport({ immediate: true });
+          },
+        });
       });
 
       previewFieldValue.append(previewResizeHandle);
@@ -30381,10 +30486,7 @@ function resetDocumentTemplateForm() {
     return;
   }
 
-  if (documentTemplateEditorSupportRefreshTimer) {
-    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
-    documentTemplateEditorSupportRefreshTimer = 0;
-  }
+  cancelDocumentTemplateEditorSupportRefresh();
 
   documentTemplateForm.reset();
   state.activeDocumentTemplateId = "";
@@ -30438,10 +30540,7 @@ function hydrateDocumentTemplateForm(
     skipModuleNavigation = false,
   } = {},
 ) {
-  if (documentTemplateEditorSupportRefreshTimer) {
-    window.clearTimeout(documentTemplateEditorSupportRefreshTimer);
-    documentTemplateEditorSupportRefreshTimer = 0;
-  }
+  cancelDocumentTemplateEditorSupportRefresh();
 
   if (!skipModuleNavigation) {
     state.activeView = "module";
