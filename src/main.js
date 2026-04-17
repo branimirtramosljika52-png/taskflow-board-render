@@ -571,9 +571,9 @@ const SIDEBAR_ITEM_CONFIG = {
   "template-development": { group: "organisations", view: "module", module: "template-development" },
   people: { group: "organisations", view: "management" },
   "safety-authorization": { group: "organisations", view: "module", module: "safety-authorization" },
-  "annual-leave": { group: "organisations", view: "module", module: "annual-leave" },
-  "sick-leave": { group: "organisations", view: "module", module: "sick-leave" },
-  "absence-report": { group: "organisations", view: "module", module: "absence-report" },
+  "annual-leave": { group: "organisations", view: "management", sidebarItem: "people", managementTab: "annual-leave" },
+  "sick-leave": { group: "organisations", view: "management", sidebarItem: "people", managementTab: "sick-leave" },
+  "absence-report": { group: "organisations", view: "management", sidebarItem: "people", managementTab: "absence-report" },
   rn: { group: "operations", view: "selfdash", focus: "list" },
   offers: { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
@@ -635,6 +635,24 @@ const SIDEBAR_ITEM_LABELS = {
   tests: "Test",
   "learning-people": "People",
 };
+const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
+  users: Object.freeze({
+    label: "Korisnici",
+    description: "Popis korisnika, radnih uloga, pristupa i dokumentacije na jednom mjestu.",
+  }),
+  "annual-leave": Object.freeze({
+    label: "GO i dopusti",
+    description: "Zahtjevi za godišnji odmor, plaćene i ostale dopuste sa saldom i odobrenjima.",
+  }),
+  "sick-leave": Object.freeze({
+    label: "Bolovanja",
+    description: "Bolovanja, rodiljni i roditeljski dopusti te ostala medicinska dokumentirana odsutnost.",
+  }),
+  "absence-report": Object.freeze({
+    label: "Mjesečni report",
+    description: "Mjesečni pregled redovnog rada, odsutnosti i izvoza za obračun.",
+  }),
+});
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
   "/auth/signup",
@@ -925,6 +943,7 @@ const state = {
   activeSidebarGroup: "home",
   activeSidebarItem: "dashboard",
   activeModuleItem: "documents",
+  peopleWorkspaceTab: "users",
   sidebarCollapsed: false,
   railHidden: false,
   measurementSheet: {
@@ -1007,6 +1026,37 @@ function createClientSideId(prefix = "id") {
     return `${prefix}-${window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`;
   } catch {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+function normalizePeopleWorkspaceTab(tab = "") {
+  return PEOPLE_WORKSPACE_TAB_DEFINITIONS[tab] ? tab : "users";
+}
+
+function getPeopleWorkspaceTabConfig(tab = state.peopleWorkspaceTab) {
+  return PEOPLE_WORKSPACE_TAB_DEFINITIONS[normalizePeopleWorkspaceTab(tab)] ?? PEOPLE_WORKSPACE_TAB_DEFINITIONS.users;
+}
+
+function getPeopleWorkspaceTabLabel(tab = state.peopleWorkspaceTab) {
+  return getPeopleWorkspaceTabConfig(tab).label;
+}
+
+function setPeopleWorkspaceTab(tab = "users") {
+  const nextTab = normalizePeopleWorkspaceTab(tab);
+  const previousTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
+
+  state.peopleWorkspaceTab = nextTab;
+
+  if (previousTab !== nextTab) {
+    if (previousTab === "users") {
+      state.userEditorOpen = false;
+      syncUserEditorModal();
+    }
+
+    if (previousTab === "annual-leave" || previousTab === "sick-leave") {
+      closeAbsenceEditor();
+      closeAbsenceBalanceEditor();
+    }
   }
 }
 
@@ -2687,6 +2737,9 @@ const managementViewDescription = document.querySelector("#management-view-descr
 const userPanelKicker = document.querySelector("#user-panel-kicker");
 const userPanelTitle = document.querySelector("#user-panel-title");
 const userManagementNote = document.querySelector("#user-management-note");
+const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
+const peopleUsersPanel = document.querySelector("#people-users-panel");
+const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -2790,6 +2843,20 @@ function navigateToBreadcrumb(target) {
     return;
   }
 
+  if (target.kind === "people-tab") {
+    setPeopleWorkspaceTab(target.tab);
+    state.activeView = "management";
+    state.activeSidebarGroup = "organisations";
+    state.activeSidebarItem = "people";
+    renderActiveView();
+    renderManagement();
+    workspaceViews.management?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    return;
+  }
+
   if (target.kind === "work-order-view") {
     setActiveWorkOrderViewMode(target.mode);
   }
@@ -2813,6 +2880,15 @@ function buildTopbarBreadcrumbs() {
       label: getSidebarItemLabel(itemName),
       kind: "item",
       item: itemName,
+    });
+  }
+
+  if (state.activeView === "management" && state.activeSidebarItem === "people") {
+    const activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
+    crumbs.push({
+      label: getPeopleWorkspaceTabLabel(activePeopleTab),
+      kind: "people-tab",
+      tab: activePeopleTab,
     });
   }
 
@@ -4927,14 +5003,10 @@ function renderModuleView() {
   const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
-  const isAbsenceModule = state.activeModuleItem === "annual-leave" || state.activeModuleItem === "sick-leave";
-  const isAbsenceReportModule = state.activeModuleItem === "absence-report";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
-    && !isAbsenceModule
-    && !isAbsenceReportModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isSafetyAuthorizationModule
@@ -5015,14 +5087,6 @@ function renderModuleView() {
     safetyAuthorizationModule.hidden = !isSafetyAuthorizationModule;
   }
 
-  if (absenceModule) {
-    absenceModule.hidden = !isAbsenceModule;
-  }
-
-  if (absenceReportModule) {
-    absenceReportModule.hidden = !isAbsenceReportModule;
-  }
-
   if (templateDevelopmentModule) {
     templateDevelopmentModule.hidden = !isTemplateDevelopmentModule;
   }
@@ -5069,14 +5133,6 @@ function renderModuleView() {
 
   if (isSafetyAuthorizationModule) {
     renderSafetyAuthorizationModule();
-  }
-
-  if (isAbsenceModule) {
-    renderAbsenceModule();
-  }
-
-  if (isAbsenceReportModule) {
-    renderAbsenceReportModule();
   }
 
   if (isTemplateDevelopmentModule) {
@@ -5212,7 +5268,7 @@ function activateSidebarItem(itemName, options = {}) {
   }
 
   ensureSidebarExpanded(expandSidebar);
-  state.activeSidebarItem = itemName;
+  state.activeSidebarItem = itemConfig.sidebarItem || itemName;
 
   if (!preserveGroup && itemConfig.group) {
     state.activeSidebarGroup = itemConfig.group;
@@ -5257,8 +5313,10 @@ function activateSidebarItem(itemName, options = {}) {
   }
 
   if (itemConfig.view === "management") {
+    setPeopleWorkspaceTab(itemConfig.managementTab || "users");
     state.activeView = "management";
     renderActiveView();
+    renderManagement();
     workspaceViews.management?.scrollIntoView({
       behavior: "smooth",
       block: "start",
@@ -26406,6 +26464,13 @@ function renderSafetyAuthorizationModule() {
 }
 
 function getCurrentAbsenceModuleMode() {
+  const activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
+  if (activePeopleTab === "sick-leave") {
+    return "medical";
+  }
+  if (activePeopleTab === "annual-leave") {
+    return "request";
+  }
   return state.activeModuleItem === "sick-leave" ? "medical" : "request";
 }
 
@@ -26875,12 +26940,16 @@ function resetAbsenceForm() {
 }
 
 function hydrateAbsenceForm(entry) {
-  state.activeView = "module";
-  state.activeModuleItem = ABSENCE_MEDICAL_TYPE_OPTIONS.some((option) => option.value === entry.type)
-    ? "sick-leave"
-    : "annual-leave";
+  setPeopleWorkspaceTab(
+    ABSENCE_MEDICAL_TYPE_OPTIONS.some((option) => option.value === entry.type)
+      ? "sick-leave"
+      : "annual-leave",
+  );
+  state.activeSidebarGroup = "organisations";
+  state.activeSidebarItem = "people";
+  state.activeView = "management";
   renderActiveView();
-  renderModuleView();
+  renderManagement();
   state.activeAbsenceId = entry.id;
   if (absenceIdInput) {
     absenceIdInput.value = entry.id || "";
@@ -32222,6 +32291,8 @@ function renderAuthState() {
   if (!authenticated) {
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
+    state.userEditorOpen = false;
+    syncUserEditorModal();
     state.reminderEditorOpen = false;
     syncReminderEditorModal();
     state.todoEditorOpen = false;
@@ -32240,6 +32311,11 @@ function renderAuthState() {
     syncVehicleEditorModal();
     state.vehicleReservationEditorOpen = false;
     syncVehicleReservationModal();
+    state.absenceEditorOpen = false;
+    syncAbsenceEditorModal();
+    state.absenceBalanceEditorOpen = false;
+    syncAbsenceBalanceModal();
+    state.peopleWorkspaceTab = "users";
     resetCompanyForm();
     resetLocationForm();
     resetOfferForm();
@@ -33128,12 +33204,17 @@ function populateOrganizationForm(organization) {
 function hydrateOrganizationForm(organization) {
   state.activeView = "management";
   renderActiveView();
+  renderManagement();
   populateOrganizationForm(organization);
 }
 
 function hydrateUserForm(user) {
+  setPeopleWorkspaceTab("users");
+  state.activeSidebarGroup = "organisations";
+  state.activeSidebarItem = "people";
   state.activeView = "management";
   renderActiveView();
+  renderManagement();
   const electricalQualification = getUserElectricalQualification(user);
   const switchQualification = getUserElectricalQualification(user, "tipkalo");
   userIdInput.value = user.id;
@@ -40648,6 +40729,8 @@ function renderActiveView() {
 
   if (state.activeView !== "management") {
     state.userEditorOpen = false;
+    state.absenceEditorOpen = false;
+    state.absenceBalanceEditorOpen = false;
   }
 
   renderDashboardOverview();
@@ -40666,6 +40749,8 @@ function renderActiveView() {
   syncMeasurementEquipmentEditorModal();
   syncMeasurementEquipmentExportDialogModal();
   syncSafetyAuthorizationEditorModal();
+  syncAbsenceEditorModal();
+  syncAbsenceBalanceModal();
   syncDocumentTemplateEditorModal();
 }
 
@@ -49721,13 +49806,50 @@ function renderManagement() {
   const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
     ?? state.organizations[0]
     ?? null;
+  const activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
+  const activePeopleTabConfig = getPeopleWorkspaceTabConfig(activePeopleTab);
+  const isUsersTab = activePeopleTab === "users";
+  const isAbsenceTab = activePeopleTab === "annual-leave" || activePeopleTab === "sick-leave";
+  const isAbsenceReportTab = activePeopleTab === "absence-report";
 
   if (managementIntroPanel) {
     managementIntroPanel.hidden = true;
   }
 
   if (organizationPanel) {
-    organizationPanel.hidden = !getIsSuperAdmin();
+    organizationPanel.hidden = true;
+  }
+
+  if (signupRequestsPanel) {
+    signupRequestsPanel.hidden = true;
+  }
+
+  if (loginContentPanel) {
+    loginContentPanel.hidden = true;
+  }
+
+  if (peopleWorkspaceCopy) {
+    peopleWorkspaceCopy.textContent = activePeopleTabConfig.description;
+  }
+
+  peopleWorkspaceTabButtons.forEach((button) => {
+    const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
+    const isActive = tabValue === activePeopleTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
+  });
+
+  if (peopleUsersPanel) {
+    peopleUsersPanel.hidden = !isUsersTab;
+  }
+
+  if (absenceModule) {
+    absenceModule.hidden = !isAbsenceTab;
+  }
+
+  if (absenceReportModule) {
+    absenceReportModule.hidden = !isAbsenceReportTab;
   }
 
   if (getIsSuperAdmin()) {
@@ -49735,38 +49857,48 @@ function renderManagement() {
       managementViewKicker.textContent = "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = "Korisnici";
+      managementViewTitle.textContent = getPeopleWorkspaceTabLabel(activePeopleTab);
     }
     if (managementViewDescription) {
-      managementViewDescription.textContent = "Popis korisnika, radnih uloga i ovlaštenja za odabranu organizaciju.";
+      managementViewDescription.textContent = activePeopleTabConfig.description;
     }
     if (userManagementNote) {
-      userManagementNote.textContent = "U People modulu ostaju samo korisnici, njihove role i ovlaštenja.";
+      userManagementNote.hidden = !isUsersTab;
+      userManagementNote.textContent = "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.";
     }
   } else if (getIsAdmin()) {
     if (managementViewKicker) {
       managementViewKicker.textContent = "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = "Korisnici";
+      managementViewTitle.textContent = getPeopleWorkspaceTabLabel(activePeopleTab);
     }
     if (managementViewDescription) {
-      managementViewDescription.textContent = currentOrganization
-        ? `Upravljaj korisnicima za organizaciju ${currentOrganization.name}.`
-        : "Upravljaj korisnicima svoje organizacije.";
+      managementViewDescription.textContent = activePeopleTabConfig.description;
     }
     if (userManagementNote) {
+      userManagementNote.hidden = !isUsersTab;
       userManagementNote.textContent = currentOrganization
         ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
         : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
     }
+  } else if (userManagementNote) {
+    userManagementNote.hidden = !isUsersTab;
   }
 
   if (!userIdInput.value) {
     syncUserEditorChrome(false);
   }
 
-  renderUsers();
+  if (isUsersTab) {
+    renderUsers();
+  }
+  if (isAbsenceTab) {
+    renderAbsenceModule();
+  }
+  if (isAbsenceReportTab) {
+    renderAbsenceReportModule();
+  }
   renderSignupRequests();
   renderLoginContentItems();
 }
@@ -53338,6 +53470,19 @@ userOpenFormButton?.addEventListener("click", () => {
   openUserEditor();
   requestAnimationFrame(() => {
     userFirstNameInput?.focus({ preventScroll: true });
+  });
+});
+
+peopleWorkspaceTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextTab = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
+    if (nextTab === normalizePeopleWorkspaceTab(state.peopleWorkspaceTab)) {
+      return;
+    }
+
+    setPeopleWorkspaceTab(nextTab);
+    renderTopbarBreadcrumbs();
+    renderManagement();
   });
 });
 
