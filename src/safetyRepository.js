@@ -2,6 +2,8 @@ import mysql from "mysql2/promise";
 
 import {
   applyDashboardWidgetGridLayout,
+  createAbsenceEntry,
+  normalizeAbsenceBalanceEntry,
   buildLocationContacts,
   createCompany,
   createDashboardWidget,
@@ -29,6 +31,8 @@ import {
   syncLocationFieldsFromWorkOrder,
   updateCompany,
   updateDashboardWidget,
+  updateAbsenceBalanceEntry,
+  updateAbsenceEntry,
   updateDocumentTemplate,
   updateLearningTest,
   updateLegalFramework,
@@ -257,6 +261,10 @@ const DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
 });
+const DEFAULT_ABSENCE_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeStart: 14,
+  repeatEveryDays: 3,
+});
 const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   registrationLeadDaysBeforeExpiry: 30,
   registrationRepeatEveryDays: 7,
@@ -335,6 +343,25 @@ function normalizeVehicleNotificationSettings(value = {}) {
     tireRepeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
       source.tireRepeatEveryDays ?? source.tireRepeatDays ?? source.tyreRepeatDays ?? source.tiresRepeatDays,
       fallback.tireRepeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function normalizeAbsenceNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_ABSENCE_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeStart: normalizeMeasurementEquipmentNotificationDay(
+      source.leadDaysBeforeStart ?? source.leadDays ?? source.leadDaysBeforeExpiry,
+      fallback.leadDaysBeforeStart,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeMeasurementEquipmentNotificationDay(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
       { min: 1, max: 90 },
     ),
   };
@@ -1375,6 +1402,71 @@ function mapSafetyAuthorizationNotificationSettingsEntry(row = {}) {
   };
 }
 
+function mapAbsenceNotificationSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const normalized = normalizeAbsenceNotificationSettings(parseJsonObject(row.notification_rules_json));
+  return {
+    organizationId,
+    ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapAbsenceEntryRow(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const userId = dbString(row.user_id);
+  if (!organizationId || !userId) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    organizationId,
+    userId,
+    userLabel: row.user_label ?? "",
+    type: row.absence_type ?? "annual_leave",
+    typeLabel: row.type_label ?? "",
+    status: row.status_key ?? "pending",
+    statusLabel: row.status_label ?? "",
+    startDate: normalizeDateOnly(row.start_date),
+    endDate: normalizeDateOnly(row.end_date),
+    dayCount: Number(row.day_count ?? 0) || 0,
+    note: row.note ?? "",
+    documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
+    requestedByUserId: dbString(row.requested_by_user_id),
+    requestedByLabel: row.requested_by_label ?? "",
+    approvedByUserId: dbString(row.approved_by_user_id),
+    approvedByLabel: row.approved_by_label ?? "",
+    approvedAt: normalizeTimestamp(row.approved_at),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapAbsenceBalanceRow(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const userId = dbString(row.user_id);
+  if (!organizationId || !userId) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    organizationId,
+    userId,
+    userLabel: row.user_label ?? "",
+    annualLeaveInitialDays: Number(row.annual_leave_initial_days ?? 0) || 0,
+    sickLeaveInitialDays: Number(row.sick_leave_initial_days ?? 0) || 0,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -2389,6 +2481,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapSafetyAuthorizationNotificationSettingsEntry(row))
     .filter(Boolean);
 
+  const [absenceSettingsRows] = await connection.query(`
+    SELECT organization_id, notification_rules_json, created_at, updated_at
+    FROM web_absence_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const absenceNotificationSettings = absenceSettingsRows
+    .map((row) => mapAbsenceNotificationSettingsEntry(row))
+    .filter(Boolean);
+
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
            linked_template_ids_json, documents_json, created_at, updated_at
@@ -2421,6 +2523,31 @@ async function fetchSnapshotFromConnection(connection) {
       updatedAt: normalizeTimestamp(row.updated_at),
     };
   });
+
+  const [absenceEntryRows] = await connection.query(`
+    SELECT id, organization_id, user_id, user_label, absence_type, type_label, status_key, status_label,
+           start_date, end_date, day_count, note, documents_json,
+           requested_by_user_id, requested_by_label,
+           approved_by_user_id, approved_by_label, approved_at,
+           created_at, updated_at
+    FROM web_absence_entries
+    ORDER BY start_date DESC, updated_at DESC, id DESC
+  `);
+
+  const absenceEntries = absenceEntryRows
+    .map((row) => mapAbsenceEntryRow(row))
+    .filter(Boolean);
+
+  const [absenceBalanceRows] = await connection.query(`
+    SELECT id, organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days,
+           created_at, updated_at
+    FROM web_absence_balances
+    ORDER BY organization_id ASC, user_label ASC, id ASC
+  `);
+
+  const absenceBalances = absenceBalanceRows
+    .map((row) => mapAbsenceBalanceRow(row))
+    .filter(Boolean);
 
   const [dashboardWidgetRows] = await connection.query(`
     SELECT id, organization_id, user_id, title, widget_type, source_type, metric_key,
@@ -2466,8 +2593,11 @@ async function fetchSnapshotFromConnection(connection) {
     measurementEquipmentCardTemplates,
     measurementEquipmentNotificationSettings,
     safetyAuthorizationNotificationSettings,
+    absenceNotificationSettings,
     vehicleNotificationSettings,
     safetyAuthorizations,
+    absenceEntries,
+    absenceBalances,
     dashboardWidgets,
   };
 }
@@ -2556,8 +2686,11 @@ export class InMemorySafetyRepository {
       measurementEquipmentCardTemplates: [],
       measurementEquipmentNotificationSettings: [],
       safetyAuthorizationNotificationSettings: [],
+      absenceNotificationSettings: [],
       vehicleNotificationSettings: [],
       safetyAuthorizations: [],
+      absenceEntries: [],
+      absenceBalances: [],
       dashboardWidgets: [],
     };
     this.refreshTokens = new Map();
@@ -2712,6 +2845,9 @@ export class InMemorySafetyRepository {
       safetyAuthorizationNotificationSettings: this.snapshot.safetyAuthorizationNotificationSettings.map((item) => ({
         ...item,
       })),
+      absenceNotificationSettings: this.snapshot.absenceNotificationSettings.map((item) => ({
+        ...item,
+      })),
       vehicleNotificationSettings: this.snapshot.vehicleNotificationSettings.map((item) => ({
         ...item,
       })),
@@ -2720,6 +2856,13 @@ export class InMemorySafetyRepository {
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      absenceEntries: this.snapshot.absenceEntries.map((item) => ({
+        ...item,
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      absenceBalances: this.snapshot.absenceBalances.map((item) => ({
+        ...item,
       })),
       dashboardWidgets: [...this.snapshot.dashboardWidgets].map((item) => ({
         ...item,
@@ -3544,6 +3687,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertAbsenceNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija odsutnosti.");
+    }
+
+    const normalizedSettings = normalizeAbsenceNotificationSettings(notificationSettings);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.absenceNotificationSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.absenceNotificationSettings[currentIndex];
+      this.snapshot.absenceNotificationSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.absenceNotificationSettings.push(nextEntry);
+    }
+
+    return this.snapshot.absenceNotificationSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
     const safeOrganizationId = dbString(organizationId);
     if (!safeOrganizationId) {
@@ -3618,6 +3795,52 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.safetyAuthorizations.length;
     this.snapshot.safetyAuthorizations = this.snapshot.safetyAuthorizations.filter((item) => item.id !== id);
     return this.snapshot.safetyAuthorizations.length !== before;
+  }
+
+  async createAbsenceEntry(input) {
+    const item = createAbsenceEntry(input, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.absenceEntries = [item, ...this.snapshot.absenceEntries];
+    return item;
+  }
+
+  async updateAbsenceEntry(id, patch) {
+    const current = this.snapshot.absenceEntries.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateAbsenceEntry(current, patch, () => new Date().toISOString());
+    this.snapshot.absenceEntries = this.snapshot.absenceEntries.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteAbsenceEntry(id) {
+    const before = this.snapshot.absenceEntries.length;
+    this.snapshot.absenceEntries = this.snapshot.absenceEntries.filter((item) => item.id !== id);
+    return this.snapshot.absenceEntries.length !== before;
+  }
+
+  async upsertAbsenceBalance(input = {}) {
+    const draft = normalizeAbsenceBalanceEntry(input, () => crypto.randomUUID(), () => new Date().toISOString());
+    const currentIndex = this.snapshot.absenceBalances.findIndex((entry) => (
+      String(entry.organizationId) === String(draft.organizationId)
+      && String(entry.userId) === String(draft.userId)
+    ));
+
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.absenceBalances[currentIndex];
+      const next = updateAbsenceBalanceEntry(previous, draft, () => new Date().toISOString());
+      this.snapshot.absenceBalances[currentIndex] = {
+        ...next,
+        id: previous.id || next.id,
+        createdAt: previous.createdAt || next.createdAt,
+      };
+      return this.snapshot.absenceBalances[currentIndex];
+    }
+
+    this.snapshot.absenceBalances = [draft, ...this.snapshot.absenceBalances];
+    return draft;
   }
 
   async createDocumentTemplate(input, actor = null) {
@@ -4105,6 +4328,16 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_absence_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        notification_rules_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_absence_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_safety_authorizations (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -4119,6 +4352,46 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_safety_authorizations_org_valid (organization_id, valid_until)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_absence_entries (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        user_id INT NOT NULL,
+        user_label VARCHAR(180) NOT NULL DEFAULT '',
+        absence_type VARCHAR(40) NOT NULL DEFAULT 'annual_leave',
+        type_label VARCHAR(180) NOT NULL DEFAULT '',
+        status_key VARCHAR(24) NOT NULL DEFAULT 'pending',
+        status_label VARCHAR(120) NOT NULL DEFAULT '',
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        day_count INT NOT NULL DEFAULT 0,
+        note TEXT NULL,
+        documents_json LONGTEXT NULL,
+        requested_by_user_id INT NULL,
+        requested_by_label VARCHAR(180) NOT NULL DEFAULT '',
+        approved_by_user_id INT NULL,
+        approved_by_label VARCHAR(180) NOT NULL DEFAULT '',
+        approved_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_absence_entries_org_user_dates (organization_id, user_id, start_date, end_date),
+        INDEX idx_web_absence_entries_status_dates (organization_id, status_key, start_date, end_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_absence_balances (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        user_id INT NOT NULL,
+        user_label VARCHAR(180) NOT NULL DEFAULT '',
+        annual_leave_initial_days INT NOT NULL DEFAULT 0,
+        sick_leave_initial_days INT NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_absence_balances_org_user (organization_id, user_id),
+        INDEX idx_web_absence_balances_org_label (organization_id, user_label)
       )
     `);
     await this.pool.query(`
@@ -6284,6 +6557,34 @@ export class MySqlSafetyRepository {
     };
   }
 
+  async upsertAbsenceNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za postavke notifikacija odsutnosti.");
+    }
+
+    const normalizedSettings = normalizeAbsenceNotificationSettings(notificationSettings);
+    await this.pool.query(
+      `
+        INSERT INTO web_absence_settings
+          (organization_id, notification_rules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          notification_rules_json = VALUES(notification_rules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedSettings),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      ...normalizedSettings,
+    };
+  }
+
   async upsertVehicleNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
     const safeOrganizationId = Number(organizationId);
     if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
@@ -6516,6 +6817,190 @@ export class MySqlSafetyRepository {
     } finally {
       connection.release();
     }
+  }
+
+  async createAbsenceEntry(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const draft = createAbsenceEntry(input, () => "pending-absence-entry", () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents, {
+        keyPrefix: `absence-entries/${dbString(draft.organizationId) || "shared"}/${dbString(draft.userId) || "user"}`,
+      });
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_absence_entries
+            (organization_id, user_id, user_label, absence_type, type_label, status_key, status_label,
+             start_date, end_date, day_count, note, documents_json,
+             requested_by_user_id, requested_by_label,
+             approved_by_user_id, approved_by_label, approved_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.userId),
+          draft.userLabel,
+          draft.type,
+          draft.typeLabel,
+          draft.status,
+          draft.statusLabel,
+          draft.startDate,
+          draft.endDate,
+          Number(draft.dayCount ?? 0),
+          draft.note,
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          draft.requestedByUserId ? Number(draft.requestedByUserId) : null,
+          draft.requestedByLabel,
+          draft.approvedByUserId ? Number(draft.approvedByUserId) : null,
+          draft.approvedByLabel,
+          draft.approvedAt,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateAbsenceEntry(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.absenceEntries.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateAbsenceEntry(current, patch, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents, {
+        keyPrefix: `absence-entries/${dbString(next.organizationId) || "shared"}/${dbString(next.userId) || "user"}`,
+        currentDocuments: current.documents,
+      });
+
+      await connection.query(
+        `
+          UPDATE web_absence_entries
+          SET user_id = ?, user_label = ?, absence_type = ?, type_label = ?,
+              status_key = ?, status_label = ?, start_date = ?, end_date = ?, day_count = ?,
+              note = ?, documents_json = ?,
+              requested_by_user_id = ?, requested_by_label = ?,
+              approved_by_user_id = ?, approved_by_label = ?, approved_at = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.userId),
+          next.userLabel,
+          next.type,
+          next.typeLabel,
+          next.status,
+          next.statusLabel,
+          next.startDate,
+          next.endDate,
+          Number(next.dayCount ?? 0),
+          next.note,
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          next.requestedByUserId ? Number(next.requestedByUserId) : null,
+          next.requestedByLabel,
+          next.approvedByUserId ? Number(next.approvedByUserId) : null,
+          next.approvedByLabel,
+          next.approvedAt,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(preparedDocuments.staleDocuments ?? []);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteAbsenceEntry(id) {
+    const connection = await this.pool.getConnection();
+    let currentDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      currentDocuments = snapshot.absenceEntries.find((item) => item.id === id)?.documents ?? [];
+      const [result] = await connection.query("DELETE FROM web_absence_entries WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(currentDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async upsertAbsenceBalance(input = {}) {
+    const normalized = normalizeAbsenceBalanceEntry(input, () => "pending-absence-balance", () => new Date().toISOString());
+    const safeOrganizationId = Number(normalized.organizationId);
+    const safeUserId = Number(normalized.userId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za saldo odsutnosti.");
+    }
+    if (!Number.isFinite(safeUserId) || safeUserId <= 0) {
+      throw new Error("Korisnik je obavezan za saldo odsutnosti.");
+    }
+
+    await this.pool.query(
+      `
+        INSERT INTO web_absence_balances
+          (organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          user_label = VALUES(user_label),
+          annual_leave_initial_days = VALUES(annual_leave_initial_days),
+          sick_leave_initial_days = VALUES(sick_leave_initial_days),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        safeUserId,
+        normalized.userLabel,
+        Number(normalized.annualLeaveInitialDays ?? 0),
+        Number(normalized.sickLeaveInitialDays ?? 0),
+      ],
+    );
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT id, organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days,
+               created_at, updated_at
+        FROM web_absence_balances
+        WHERE organization_id = ? AND user_id = ?
+        LIMIT 1
+      `,
+      [safeOrganizationId, safeUserId],
+    );
+
+    return mapAbsenceBalanceRow(rows[0] ?? {}) ?? normalized;
   }
 
   async createLegalFramework(input) {

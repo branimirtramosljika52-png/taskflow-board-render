@@ -76,6 +76,27 @@ export const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS = [
   { value: "servis", label: "Servis" },
 ];
 
+export const ABSENCE_TYPE_OPTIONS = [
+  { value: "annual_leave", label: "Godišnji odmor", group: "request" },
+  { value: "personal_leave", label: "Plaćeni dopust", group: "request" },
+  { value: "unpaid_leave", label: "Neplaćeni dopust", group: "request" },
+  { value: "exam_leave", label: "Polaganje ispita", group: "request" },
+  { value: "other_leave", label: "Drugi dopust", group: "request" },
+  { value: "sick_leave", label: "Bolovanje", group: "medical" },
+  { value: "pregnancy_care", label: "Čuvanje trudnoće", group: "medical" },
+  { value: "maternity_leave", label: "Porodiljni dopust", group: "medical" },
+  { value: "childbirth_leave", label: "Rodiljni dopust", group: "medical" },
+  { value: "parental_leave", label: "Roditeljski dopust", group: "medical" },
+  { value: "other_medical_leave", label: "Drugi opravdani izostanak", group: "medical" },
+];
+
+export const ABSENCE_STATUS_OPTIONS = [
+  { value: "pending", label: "Na čekanju" },
+  { value: "approved", label: "Odobreno" },
+  { value: "rejected", label: "Odbijeno" },
+  { value: "cancelled", label: "Otkazano" },
+];
+
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -336,6 +357,8 @@ const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((o
 const SERVICE_CATALOG_TYPE_SET = new Set(SERVICE_CATALOG_TYPE_OPTIONS.map((option) => option.value));
 const MEASUREMENT_EQUIPMENT_KIND_SET = new Set(MEASUREMENT_EQUIPMENT_KIND_OPTIONS.map((option) => option.value));
 const MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_SET = new Set(MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS.map((option) => option.value));
+const ABSENCE_TYPE_SET = new Set(ABSENCE_TYPE_OPTIONS.map((option) => option.value));
+const ABSENCE_STATUS_SET = new Set(ABSENCE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_STATUS_SET = new Set(DOCUMENT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
@@ -400,6 +423,17 @@ const VEHICLE_RESERVATION_STATUS_RANK = {
   completed: 2,
   cancelled: 3,
 };
+const ABSENCE_STATUS_RANK = {
+  pending: 0,
+  approved: 1,
+  rejected: 2,
+  cancelled: 3,
+};
+const REQUEST_ABSENCE_TYPES = new Set(
+  ABSENCE_TYPE_OPTIONS
+    .filter((option) => option.group === "request")
+    .map((option) => option.value),
+);
 
 function isoNow() {
   return new Date().toISOString();
@@ -580,6 +614,27 @@ function normalizeMeasurementEquipmentActivityType(value) {
   return MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_SET.has(type) ? type : "pregled";
 }
 
+function normalizeAbsenceType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return ABSENCE_TYPE_SET.has(type) ? type : "annual_leave";
+}
+
+function normalizeAbsenceStatus(value, fallback = "pending") {
+  const status = normalizeText(value).toLowerCase();
+  if (ABSENCE_STATUS_SET.has(status)) {
+    return status;
+  }
+  return ABSENCE_STATUS_SET.has(fallback) ? fallback : "pending";
+}
+
+function normalizeAbsenceDayAllowance(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(0, Math.round(Number(fallback) || 0));
+  }
+  return Math.max(0, Math.min(365, Math.round(numeric)));
+}
+
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
@@ -684,6 +739,92 @@ function normalizeAttachmentDocuments(items = []) {
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? isoNow(),
     };
   }).filter(Boolean);
+}
+
+function buildDateFromKey(value) {
+  const normalized = normalizeOptionalDate(value);
+  if (!normalized) {
+    return null;
+  }
+  const date = new Date(`${normalized}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toIsoDateKey(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function isBusinessDay(date) {
+  const day = date.getUTCDay();
+  return day !== 0 && day !== 6;
+}
+
+function listBusinessDayKeysBetween(startDate, endDate) {
+  const start = buildDateFromKey(startDate);
+  const end = buildDateFromKey(endDate);
+  if (!start || !end || end < start) {
+    return [];
+  }
+
+  const keys = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (isBusinessDay(cursor)) {
+      keys.push(toIsoDateKey(cursor));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
+function getMonthBusinessDayKeys(monthKey = "") {
+  const normalizedMonth = String(monthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(normalizedMonth)) {
+    return [];
+  }
+
+  const start = buildDateFromKey(`${normalizedMonth}-01`);
+  if (!start) {
+    return [];
+  }
+
+  const keys = [];
+  const cursor = new Date(start);
+  while (toIsoDateKey(cursor).startsWith(normalizedMonth)) {
+    if (isBusinessDay(cursor)) {
+      keys.push(toIsoDateKey(cursor));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
+function getAbsenceTypeLabel(value = "") {
+  const normalized = normalizeAbsenceType(value);
+  return ABSENCE_TYPE_OPTIONS.find((option) => option.value === normalized)?.label || "Drugi izostanak";
+}
+
+function normalizeAbsenceDateRange(startDate, endDate) {
+  const normalizedStart = normalizeOptionalDate(startDate);
+  const normalizedEnd = normalizeOptionalDate(endDate ?? startDate);
+
+  if (!normalizedStart) {
+    throw new Error("Početni datum izostanka je obavezan.");
+  }
+  if (!normalizedEnd) {
+    throw new Error("Završni datum izostanka je obavezan.");
+  }
+  if (normalizedEnd < normalizedStart) {
+    throw new Error("Završni datum ne može biti prije početnog datuma.");
+  }
+
+  return {
+    startDate: normalizedStart,
+    endDate: normalizedEnd,
+  };
 }
 
 function compareMeasurementEquipmentActivityRecency(left = {}, right = {}) {
@@ -3556,6 +3697,382 @@ export function sortSafetyAuthorizations(items) {
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
   });
+}
+
+export function doesAbsenceTypeRequireApproval(value = "") {
+  return REQUEST_ABSENCE_TYPES.has(normalizeAbsenceType(value));
+}
+
+export function getAbsenceBusinessDayCount(startDate, endDate) {
+  return listBusinessDayKeysBetween(startDate, endDate).length;
+}
+
+export function createAbsenceEntry(
+  input,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const normalizedType = normalizeAbsenceType(input.type);
+  const normalizedStatus = normalizeAbsenceStatus(
+    input.status,
+    doesAbsenceTypeRequireApproval(normalizedType) ? "pending" : "approved",
+  );
+  const { startDate, endDate } = normalizeAbsenceDateRange(input.startDate, input.endDate);
+
+  return {
+    id: createId(),
+    organizationId: requireText(input.organizationId, "Organizacija"),
+    userId: requireText(input.userId, "Korisnik"),
+    userLabel: requireText(input.userLabel, "Ime korisnika"),
+    type: normalizedType,
+    typeLabel: getAbsenceTypeLabel(normalizedType),
+    status: normalizedStatus,
+    statusLabel: ABSENCE_STATUS_OPTIONS.find((option) => option.value === normalizedStatus)?.label || "Na čekanju",
+    startDate,
+    endDate,
+    dayCount: getAbsenceBusinessDayCount(startDate, endDate),
+    note: normalizeText(input.note),
+    documents: normalizeAttachmentDocuments(input.documents),
+    requestedByUserId: normalizeText(input.requestedByUserId),
+    requestedByLabel: normalizeText(input.requestedByLabel),
+    approvedByUserId: normalizeText(input.approvedByUserId),
+    approvedByLabel: normalizeText(input.approvedByLabel),
+    approvedAt: normalizeOptionalDateTime(input.approvedAt),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateAbsenceEntry(current, patch, now = isoNow) {
+  const nextType = hasOwn(patch, "type")
+    ? normalizeAbsenceType(patch.type)
+    : normalizeAbsenceType(current.type);
+  const nextStatus = hasOwn(patch, "status")
+    ? normalizeAbsenceStatus(
+      patch.status,
+      doesAbsenceTypeRequireApproval(nextType)
+        ? (current.status || "pending")
+        : "approved",
+    )
+    : normalizeAbsenceStatus(
+      current.status,
+      doesAbsenceTypeRequireApproval(nextType) ? "pending" : "approved",
+    );
+  const dateRange = hasOwn(patch, "startDate") || hasOwn(patch, "endDate")
+    ? normalizeAbsenceDateRange(
+      hasOwn(patch, "startDate") ? patch.startDate : current.startDate,
+      hasOwn(patch, "endDate") ? patch.endDate : current.endDate,
+    )
+    : {
+      startDate: normalizeOptionalDate(current.startDate),
+      endDate: normalizeOptionalDate(current.endDate),
+    };
+
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : current.organizationId,
+    userId: hasOwn(patch, "userId")
+      ? requireText(patch.userId, "Korisnik")
+      : current.userId,
+    userLabel: hasOwn(patch, "userLabel")
+      ? requireText(patch.userLabel, "Ime korisnika")
+      : current.userLabel,
+    type: nextType,
+    typeLabel: getAbsenceTypeLabel(nextType),
+    status: nextStatus,
+    statusLabel: ABSENCE_STATUS_OPTIONS.find((option) => option.value === nextStatus)?.label || current.statusLabel,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    dayCount: getAbsenceBusinessDayCount(dateRange.startDate, dateRange.endDate),
+    note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    documents: hasOwn(patch, "documents")
+      ? normalizeAttachmentDocuments(patch.documents)
+      : normalizeAttachmentDocuments(current.documents),
+    requestedByUserId: hasOwn(patch, "requestedByUserId")
+      ? normalizeText(patch.requestedByUserId)
+      : current.requestedByUserId,
+    requestedByLabel: hasOwn(patch, "requestedByLabel")
+      ? normalizeText(patch.requestedByLabel)
+      : current.requestedByLabel,
+    approvedByUserId: hasOwn(patch, "approvedByUserId")
+      ? normalizeText(patch.approvedByUserId)
+      : current.approvedByUserId,
+    approvedByLabel: hasOwn(patch, "approvedByLabel")
+      ? normalizeText(patch.approvedByLabel)
+      : current.approvedByLabel,
+    approvedAt: hasOwn(patch, "approvedAt")
+      ? normalizeOptionalDateTime(patch.approvedAt)
+      : current.approvedAt,
+    updatedAt: now(),
+  };
+}
+
+export function normalizeAbsenceBalanceEntry(
+  input,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  return {
+    id: normalizeId(input.id) || createId(),
+    organizationId: requireText(input.organizationId, "Organizacija"),
+    userId: requireText(input.userId, "Korisnik"),
+    userLabel: requireText(input.userLabel, "Ime korisnika"),
+    annualLeaveInitialDays: normalizeAbsenceDayAllowance(input.annualLeaveInitialDays, 0),
+    sickLeaveInitialDays: normalizeAbsenceDayAllowance(input.sickLeaveInitialDays, 0),
+    createdAt: normalizeOptionalDateTime(input.createdAt) ?? timestamp,
+    updatedAt: normalizeOptionalDateTime(input.updatedAt) ?? timestamp,
+  };
+}
+
+export function updateAbsenceBalanceEntry(current, patch, now = isoNow) {
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : current.organizationId,
+    userId: hasOwn(patch, "userId")
+      ? requireText(patch.userId, "Korisnik")
+      : current.userId,
+    userLabel: hasOwn(patch, "userLabel")
+      ? requireText(patch.userLabel, "Ime korisnika")
+      : current.userLabel,
+    annualLeaveInitialDays: hasOwn(patch, "annualLeaveInitialDays")
+      ? normalizeAbsenceDayAllowance(patch.annualLeaveInitialDays, current.annualLeaveInitialDays)
+      : current.annualLeaveInitialDays,
+    sickLeaveInitialDays: hasOwn(patch, "sickLeaveInitialDays")
+      ? normalizeAbsenceDayAllowance(patch.sickLeaveInitialDays, current.sickLeaveInitialDays)
+      : current.sickLeaveInitialDays,
+    updatedAt: now(),
+  };
+}
+
+export function filterAbsenceEntries(
+  items,
+  {
+    query = "",
+    userId = "",
+    type = "all",
+    status = "all",
+  } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedUserId = normalizeText(userId);
+  const normalizedType = normalizeText(type).toLowerCase();
+  const normalizedStatus = normalizeText(status).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (normalizedUserId && String(item.userId) !== normalizedUserId) {
+      return false;
+    }
+    if (normalizedType && normalizedType !== "all" && normalizeAbsenceType(item.type) !== normalizedType) {
+      return false;
+    }
+    if (normalizedStatus && normalizedStatus !== "all" && normalizeAbsenceStatus(item.status) !== normalizedStatus) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.userLabel,
+      item.note,
+      item.typeLabel,
+      getAbsenceTypeLabel(item.type),
+      item.statusLabel,
+      item.startDate,
+      item.endDate,
+      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortAbsenceEntries(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftStatus = ABSENCE_STATUS_RANK[normalizeAbsenceStatus(left.status)] ?? 99;
+    const rightStatus = ABSENCE_STATUS_RANK[normalizeAbsenceStatus(right.status)] ?? 99;
+    if (leftStatus !== rightStatus) {
+      return leftStatus - rightStatus;
+    }
+
+    const leftStart = String(left.startDate || "");
+    const rightStart = String(right.startDate || "");
+    if (leftStart !== rightStart) {
+      return rightStart.localeCompare(leftStart);
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function buildAbsenceBalanceSummaries(
+  balances = [],
+  entries = [],
+  { userIds = [] } = {},
+) {
+  const requestedUserIds = new Set((Array.isArray(userIds) ? userIds : [userIds]).map((value) => normalizeId(value)).filter(Boolean));
+  const approvedEntries = (entries ?? []).filter((entry) => normalizeAbsenceStatus(entry.status) === "approved");
+  const summaryMap = new Map();
+
+  (balances ?? []).forEach((entry) => {
+    const userId = normalizeId(entry.userId);
+    if (!userId) {
+      return;
+    }
+    if (requestedUserIds.size > 0 && !requestedUserIds.has(userId)) {
+      return;
+    }
+    summaryMap.set(userId, {
+      userId,
+      userLabel: normalizeText(entry.userLabel) || "Korisnik",
+      annualLeaveInitialDays: normalizeAbsenceDayAllowance(entry.annualLeaveInitialDays, 0),
+      annualLeaveUsedDays: 0,
+      annualLeaveRemainingDays: normalizeAbsenceDayAllowance(entry.annualLeaveInitialDays, 0),
+      sickLeaveInitialDays: normalizeAbsenceDayAllowance(entry.sickLeaveInitialDays, 0),
+      sickLeaveUsedDays: 0,
+      sickLeaveRemainingDays: normalizeAbsenceDayAllowance(entry.sickLeaveInitialDays, 0),
+    });
+  });
+
+  approvedEntries.forEach((entry) => {
+    const userId = normalizeId(entry.userId);
+    if (!userId) {
+      return;
+    }
+    if (requestedUserIds.size > 0 && !requestedUserIds.has(userId)) {
+      return;
+    }
+
+    const current = summaryMap.get(userId) ?? {
+      userId,
+      userLabel: normalizeText(entry.userLabel) || "Korisnik",
+      annualLeaveInitialDays: 0,
+      annualLeaveUsedDays: 0,
+      annualLeaveRemainingDays: 0,
+      sickLeaveInitialDays: 0,
+      sickLeaveUsedDays: 0,
+      sickLeaveRemainingDays: 0,
+    };
+
+    if (normalizeAbsenceType(entry.type) === "annual_leave") {
+      current.annualLeaveUsedDays += Number(entry.dayCount ?? getAbsenceBusinessDayCount(entry.startDate, entry.endDate)) || 0;
+      current.annualLeaveRemainingDays = Math.max(0, current.annualLeaveInitialDays - current.annualLeaveUsedDays);
+    }
+
+    if (normalizeAbsenceType(entry.type) === "sick_leave") {
+      current.sickLeaveUsedDays += Number(entry.dayCount ?? getAbsenceBusinessDayCount(entry.startDate, entry.endDate)) || 0;
+      current.sickLeaveRemainingDays = Math.max(0, current.sickLeaveInitialDays - current.sickLeaveUsedDays);
+    }
+
+    summaryMap.set(userId, current);
+  });
+
+  return Array.from(summaryMap.values()).sort((left, right) => (
+    String(left.userLabel || "").localeCompare(String(right.userLabel || ""), "hr", { sensitivity: "base" })
+  ));
+}
+
+export function buildMonthlyWorkStatusReport(
+  {
+    users = [],
+    absenceEntries = [],
+    absenceBalances = [],
+    workOrders = [],
+  } = {},
+  monthKey = todayString().slice(0, 7),
+) {
+  const businessDayKeys = getMonthBusinessDayKeys(monthKey);
+  const businessDaySet = new Set(businessDayKeys);
+  const approvedEntries = sortAbsenceEntries((absenceEntries ?? []).filter((entry) => (
+    normalizeAbsenceStatus(entry.status) === "approved"
+  )));
+  const timelineByUserId = new Map();
+
+  approvedEntries.forEach((entry) => {
+    const userId = normalizeId(entry.userId);
+    if (!userId) {
+      return;
+    }
+    const timeline = timelineByUserId.get(userId) ?? new Map();
+    listBusinessDayKeysBetween(entry.startDate, entry.endDate).forEach((dateKey) => {
+      if (!businessDaySet.has(dateKey) || timeline.has(dateKey)) {
+        return;
+      }
+      timeline.set(dateKey, entry);
+    });
+    timelineByUserId.set(userId, timeline);
+  });
+
+  const balanceByUserId = new Map(
+    buildAbsenceBalanceSummaries(absenceBalances, approvedEntries).map((entry) => [entry.userId, entry]),
+  );
+
+  const workOrderCountsByUserId = new Map();
+  (workOrders ?? []).forEach((workOrder) => {
+    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    if (!dueDate || !dueDate.startsWith(monthKey)) {
+      return;
+    }
+    const executors = getWorkOrderExecutors(workOrder);
+    executors.forEach((executorLabel) => {
+      const key = normalizeText(executorLabel);
+      if (!key) {
+        return;
+      }
+      workOrderCountsByUserId.set(key, (workOrderCountsByUserId.get(key) ?? 0) + 1);
+    });
+  });
+
+  return (users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .map((user) => {
+      const userId = normalizeId(user.id);
+      const timeline = timelineByUserId.get(userId) ?? new Map();
+      const dayBreakdown = {};
+
+      businessDayKeys.forEach((dateKey) => {
+        const entry = timeline.get(dateKey);
+        const key = entry ? normalizeAbsenceType(entry.type) : "regular_work";
+        dayBreakdown[key] = (dayBreakdown[key] ?? 0) + 1;
+      });
+
+      const absenceDays = Object.entries(dayBreakdown)
+        .filter(([key]) => key !== "regular_work")
+        .reduce((sum, [, count]) => sum + Number(count || 0), 0);
+      const regularWorkDays = dayBreakdown.regular_work ?? Math.max(0, businessDayKeys.length - absenceDays);
+      const balance = balanceByUserId.get(userId) ?? {
+        annualLeaveInitialDays: 0,
+        annualLeaveUsedDays: 0,
+        annualLeaveRemainingDays: 0,
+        sickLeaveInitialDays: 0,
+        sickLeaveUsedDays: 0,
+        sickLeaveRemainingDays: 0,
+      };
+      const fullName = normalizeText(user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "));
+
+      return {
+        userId,
+        userLabel: fullName || normalizeText(user.email) || "Korisnik",
+        businessDayCount: businessDayKeys.length,
+        regularWorkDays,
+        absenceDays,
+        dayBreakdown,
+        annualLeaveInitialDays: balance.annualLeaveInitialDays,
+        annualLeaveUsedDays: balance.annualLeaveUsedDays,
+        annualLeaveRemainingDays: balance.annualLeaveRemainingDays,
+        sickLeaveInitialDays: balance.sickLeaveInitialDays,
+        sickLeaveUsedDays: balance.sickLeaveUsedDays,
+        sickLeaveRemainingDays: balance.sickLeaveRemainingDays,
+        assignedWorkOrderCount: workOrderCountsByUserId.get(fullName) ?? 0,
+      };
+    })
+    .sort((left, right) => String(left.userLabel || "").localeCompare(String(right.userLabel || ""), "hr", { sensitivity: "base" }));
 }
 
 export function createDocumentTemplate(

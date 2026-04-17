@@ -1352,6 +1352,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       .filter((assignment) => String(assignment.organizationId) === String(organizationId))
       .map((assignment) => String(assignment.companyId)),
   );
+  const actorRole = normalizeRole(actor?.role);
+  const canViewSensitiveAbsenceData = actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN;
+  const actorId = String(actor?.id ?? "");
 
   return {
     companies: (rawSnapshot.companies ?? []).filter((item) => allowedCompanyIds.has(String(item.id))),
@@ -1481,6 +1484,27 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : defaults.repeatEveryDays,
       };
     })(),
+    absenceNotificationSettings: (() => {
+      const defaults = {
+        leadDaysBeforeStart: 14,
+        repeatEveryDays: 3,
+      };
+      const settingsEntry = (rawSnapshot.absenceNotificationSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return defaults;
+      }
+
+      return {
+        leadDaysBeforeStart: Number.isFinite(Number(settingsEntry.leadDaysBeforeStart))
+          ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.leadDaysBeforeStart))))
+          : defaults.leadDaysBeforeStart,
+        repeatEveryDays: Number.isFinite(Number(settingsEntry.repeatEveryDays))
+          ? Math.max(1, Math.min(90, Math.round(Number(settingsEntry.repeatEveryDays))))
+          : defaults.repeatEveryDays,
+      };
+    })(),
     vehicleNotificationSettings: (() => {
       const defaults = {
         registrationLeadDaysBeforeExpiry: 30,
@@ -1518,6 +1542,22 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
+    absenceEntries: (rawSnapshot.absenceEntries ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => {
+      const ownsEntry = String(item.userId) === actorId || String(item.requestedByUserId || "") === actorId;
+      return {
+        ...item,
+        note: canViewSensitiveAbsenceData || ownsEntry ? item.note : "",
+        documents: canViewSensitiveAbsenceData || ownsEntry
+          ? (item.documents ?? []).map((document) => ({ ...document }))
+          : [],
+      };
+    }),
+    absenceBalances: (rawSnapshot.absenceBalances ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      && (canViewSensitiveAbsenceData || String(item.userId) === actorId)
+    )).map((item) => ({ ...item })),
     dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && String(item.userId) === String(actor?.id ?? "")
@@ -1967,7 +2007,10 @@ export class MemoryTenantRepository {
     measurementEquipment: [],
     measurementEquipmentNotificationSettings: [],
     safetyAuthorizationNotificationSettings: [],
+    absenceNotificationSettings: [],
     safetyAuthorizations: [],
+    absenceEntries: [],
+    absenceBalances: [],
     dashboardWidgets: [],
   }) {
     const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, this.organizations);
@@ -2628,7 +2671,11 @@ export class MySqlTenantRepository {
     serviceCatalog: [],
     measurementEquipment: [],
     measurementEquipmentNotificationSettings: [],
+    safetyAuthorizationNotificationSettings: [],
+    absenceNotificationSettings: [],
     safetyAuthorizations: [],
+    absenceEntries: [],
+    absenceBalances: [],
     dashboardWidgets: [],
   }) {
     const connection = await this.pool.getConnection();
@@ -2653,7 +2700,10 @@ export class MySqlTenantRepository {
         measurementEquipment: [],
         measurementEquipmentNotificationSettings: [],
         safetyAuthorizationNotificationSettings: [],
+        absenceNotificationSettings: [],
         safetyAuthorizations: [],
+        absenceEntries: [],
+        absenceBalances: [],
         dashboardWidgets: [],
       };
 

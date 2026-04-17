@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildAbsenceBalanceSummaries,
+  buildMonthlyWorkStatusReport,
   buildWorkOrderCalendarLanes,
   buildWorkOrderCalendarWeekColumns,
   buildWorkOrderCalendarMonthWeeks,
   buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   buildLocationContacts,
+  createAbsenceEntry,
   createCompany,
   createDashboardWidget,
   createDocumentTemplate,
@@ -25,6 +28,7 @@ import {
   createVehicleReservation,
   createWorkOrder,
   deriveOfferInitials,
+  filterAbsenceEntries,
   filterReminders,
   filterDocumentTemplates,
   filterLegalFrameworks,
@@ -43,6 +47,7 @@ import {
   getWorkOrderCompletedServiceCount,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
+  sortAbsenceEntries,
     groupWorkOrdersByExecutorSet,
     nextOfferNumber,
     nextWorkOrderNumber,
@@ -61,6 +66,7 @@ import {
   updateVehicle,
   updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
+  updateAbsenceEntry,
   updateDashboardWidget,
   updateDocumentTemplate,
   updateCompany,
@@ -209,6 +215,148 @@ test("createLocation requires a real company and keeps names unique per company"
     ),
     /lokacija/i,
   );
+});
+
+test("absence entries default to sensible statuses and support filtering/sorting", () => {
+  const annualLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      type: "annual_leave",
+      startDate: "2026-04-06",
+      endDate: "2026-04-08",
+      note: "Godišnji odmor",
+    },
+    () => "absence-1",
+    () => "2026-04-01T08:00:00.000Z",
+  );
+
+  const sickLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-2",
+      userLabel: "Boris Vukorepa",
+      type: "sick_leave",
+      startDate: "2026-04-02",
+      endDate: "2026-04-03",
+      note: "Bolovanje",
+    },
+    () => "absence-2",
+    () => "2026-04-01T09:00:00.000Z",
+  );
+
+  const updatedAnnualLeave = updateAbsenceEntry(
+    annualLeave,
+    {
+      status: "approved",
+      approvedByUserId: "admin-1",
+      approvedByLabel: "Admin",
+      approvedAt: "2026-04-02T10:00:00.000Z",
+    },
+    () => "2026-04-02T10:00:00.000Z",
+  );
+
+  assert.equal(annualLeave.status, "pending");
+  assert.equal(sickLeave.status, "approved");
+  assert.equal(updatedAnnualLeave.status, "approved");
+  assert.equal(updatedAnnualLeave.dayCount, 3);
+
+  const filtered = filterAbsenceEntries(
+    [updatedAnnualLeave, sickLeave],
+    { query: "bolovanje", status: "approved", type: "all", userId: "" },
+  );
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "absence-2");
+
+  const sorted = sortAbsenceEntries([updatedAnnualLeave, sickLeave]);
+  assert.equal(sorted[0].id, "absence-1");
+});
+
+test("absence balances and monthly work report count regular work vs absence types", () => {
+  const balances = [
+    {
+      id: "balance-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      annualLeaveInitialDays: 24,
+      sickLeaveInitialDays: 30,
+    },
+  ];
+  const approvedAnnualLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      type: "annual_leave",
+      status: "approved",
+      startDate: "2026-04-06",
+      endDate: "2026-04-08",
+    },
+    () => "absence-approved-go",
+    () => "2026-04-01T08:00:00.000Z",
+  );
+  const approvedSickLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      type: "sick_leave",
+      status: "approved",
+      startDate: "2026-04-20",
+      endDate: "2026-04-21",
+    },
+    () => "absence-approved-sick",
+    () => "2026-04-01T08:00:00.000Z",
+  );
+
+  const summaries = buildAbsenceBalanceSummaries(
+    balances,
+    [approvedAnnualLeave, approvedSickLeave],
+  );
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].annualLeaveUsedDays, 3);
+  assert.equal(summaries[0].annualLeaveRemainingDays, 21);
+  assert.equal(summaries[0].sickLeaveUsedDays, 2);
+  assert.equal(summaries[0].sickLeaveRemainingDays, 28);
+
+  const state = buildState();
+  const workOrder = createWorkOrder(
+    {
+      companyId: "company-1",
+      locationId: "location-1",
+      dueDate: "2026-04-10",
+      workOrderNumber: "25-001",
+      status: "Otvoreni RN",
+      description: "Redovni pregled sustava",
+      executors: ["Ana Savanovic"],
+    },
+    state,
+    () => "work-order-1",
+    () => "2026-04-01T10:00:00.000Z",
+  );
+
+  const report = buildMonthlyWorkStatusReport(
+    {
+      users: [{
+        id: "user-1",
+        isActive: true,
+        fullName: "Ana Savanovic",
+        email: "ana@example.com",
+      }],
+      absenceEntries: [approvedAnnualLeave, approvedSickLeave],
+      absenceBalances: balances,
+      workOrders: [workOrder],
+    },
+    "2026-04",
+  );
+
+  assert.equal(report.length, 1);
+  assert.equal(report[0].absenceDays, 5);
+  assert.equal(report[0].dayBreakdown.annual_leave, 3);
+  assert.equal(report[0].dayBreakdown.sick_leave, 2);
+  assert.equal(report[0].assignedWorkOrderCount, 1);
 });
 
 test("legal framework create, update, filter and sort work together", () => {

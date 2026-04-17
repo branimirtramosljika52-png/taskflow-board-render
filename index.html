@@ -347,6 +347,37 @@
                   </span>
                   <strong id="management-nav-label">People</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="annual-leave">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M7 4v4M17 4v4"></path>
+                      <rect x="4" y="6" width="16" height="14" rx="3"></rect>
+                      <path d="M4 10h16"></path>
+                      <path d="M9 14h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Godišnji odmori</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="sick-leave">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M8.5 6.5a2.5 2.5 0 1 1 5 0c0 1.3-.7 2-1.4 2.7L10.5 11"></path>
+                      <path d="M12 13v.1"></path>
+                      <rect x="4" y="4" width="16" height="16" rx="4"></rect>
+                    </svg>
+                  </span>
+                  <strong>Bolovanja</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="absence-report">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M5 19V9"></path>
+                      <path d="M12 19V5"></path>
+                      <path d="M19 19v-7"></path>
+                    </svg>
+                  </span>
+                  <strong>Mjesečni report</strong>
+                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="safety-authorization">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -2153,6 +2184,7 @@
                   <option value="reminder">Reminders</option>
                   <option value="equipment">Mjerna oprema</option>
                   <option value="authorization">Ovlastenja</option>
+                  <option value="absence">Odsutnosti</option>
                   <option value="vehicle">Vozila</option>
                   <option value="todo_comment">Komentari</option>
                 </select>
@@ -3085,6 +3117,30 @@
                   </div>
                 </div>
                 <p id="settings-vehicle-notifications-feedback" class="form-error" aria-live="polite"></p>
+              </section>
+              <section class="panel settings-notifications-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Odsutnosti</p>
+                    <h3>Podsjetnici za GO i bolovanja</h3>
+                  </div>
+                </div>
+                <div class="settings-notification-stack">
+                  <div class="settings-notification-group">
+                    <strong>Najava odsutnosti</strong>
+                    <div class="settings-notification-inline">
+                      <label class="field">
+                        <span>Dana prije početka</span>
+                        <input id="settings-absence-lead-days" type="number" min="1" max="365" inputmode="numeric" />
+                      </label>
+                      <label class="field">
+                        <span>Ponavljaj svakih (dana)</span>
+                        <input id="settings-absence-repeat-days" type="number" min="1" max="90" inputmode="numeric" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <p id="settings-absence-notifications-feedback" class="form-error" aria-live="polite"></p>
               </section>
               <section class="panel settings-notifications-panel">
                 <div class="section-heading offers-section-heading">
@@ -4372,6 +4428,189 @@
                     </div>
                   </form>
                 </div>
+              </section>
+            </section>
+
+            <section id="absence-module" class="absence-module" hidden>
+              <section class="panel absence-summary-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p id="absence-module-kicker" class="section-kicker">Requests</p>
+                    <h3 id="absence-module-title">Godišnji odmori i dopusti</h3>
+                  </div>
+                  <div class="vehicles-panel-head-actions">
+                    <button id="absence-open-balances" type="button" class="ghost-button">Saldo dana</button>
+                    <button id="absence-open-form" type="button" class="primary-button">+ Novi zahtjev</button>
+                  </div>
+                </div>
+                <p id="absence-module-copy" class="helper-copy module-copy">Zahtjevi za godišnji, plaćene i druge dopuste s admin odobrenjima i pregledom stanja dana.</p>
+                <div class="absence-summary-grid">
+                  <article class="absence-summary-card">
+                    <span>Ukupno</span>
+                    <strong id="absence-summary-total">0</strong>
+                  </article>
+                  <article class="absence-summary-card">
+                    <span>Na čekanju</span>
+                    <strong id="absence-summary-pending">0</strong>
+                  </article>
+                  <article class="absence-summary-card">
+                    <span>Odobreno</span>
+                    <strong id="absence-summary-approved">0</strong>
+                  </article>
+                  <article class="absence-summary-card">
+                    <span>Saldo</span>
+                    <strong id="absence-summary-balance">0</strong>
+                  </article>
+                </div>
+              </section>
+
+              <section class="panel absence-list-panel">
+                <div class="absence-toolbar">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="absence-search" type="search" placeholder="Korisnik, vrsta odsutnosti, napomena..." />
+                  </label>
+                  <label class="field">
+                    <span>Korisnik</span>
+                    <select id="absence-filter-user"></select>
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="absence-filter-status"></select>
+                  </label>
+                  <label class="field">
+                    <span>Vrsta</span>
+                    <select id="absence-filter-type"></select>
+                  </label>
+                </div>
+
+                <p id="absence-helper" class="helper-copy module-copy">Prikaz odsutnosti po korisnicima i statusu.</p>
+                <div id="absence-list" class="safety-authorization-list absence-list"></div>
+                <p id="absence-empty" class="helper-copy" hidden>Nema odsutnosti za prikaz u aktivnoj organizaciji.</p>
+              </section>
+
+              <div id="absence-editor-backdrop" class="offer-editor-backdrop safety-authorization-editor-backdrop" hidden></div>
+              <section id="absence-editor-panel" class="panel safety-authorization-editor-panel absence-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Absence</p>
+                      <h3 id="absence-editor-title">Zahtjev za dopust</h3>
+                    </div>
+                    <button id="absence-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="safety-authorization-editor-body absence-editor-body" tabindex="-1">
+                  <form id="absence-form" class="entity-form absence-form">
+                    <input id="absence-id" type="hidden" />
+
+                    <div class="form-grid safety-authorization-form-grid">
+                      <label class="field">
+                        <span>Korisnik</span>
+                        <select id="absence-user-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Vrsta odsutnosti</span>
+                        <select id="absence-type"></select>
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="absence-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Početak</span>
+                        <input id="absence-start-date" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Završetak</span>
+                        <input id="absence-end-date" type="date" />
+                      </label>
+                      <div class="field absence-inline-summary">
+                        <span>Obračun</span>
+                        <strong id="absence-day-count-preview">0 radnih dana</strong>
+                        <small id="absence-balance-preview">Saldo će se prikazati nakon odabira korisnika.</small>
+                      </div>
+                    </div>
+
+                    <section class="service-catalog-template-block legal-framework-documents-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Documents</p>
+                          <h3>Dokumentacija odsutnosti</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="absence-documents-input" type="file" multiple hidden />
+                          <button id="absence-documents-upload" type="button" class="ghost-button">Dodaj datoteke</button>
+                        </div>
+                      </div>
+                      <div id="absence-documents-list" class="module-attachment-list"></div>
+                    </section>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="absence-note" rows="4" placeholder="Napomena, razlog, dodatna pojašnjenja..."></textarea>
+                    </label>
+
+                    <p id="absence-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi odsutnost</button>
+                      <button id="absence-reset" type="button" class="ghost-button">Nova odsutnost</button>
+                      <button id="absence-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+
+              <div id="absence-balance-backdrop" class="offer-editor-backdrop safety-authorization-editor-backdrop" hidden></div>
+              <section id="absence-balance-panel" class="panel safety-authorization-editor-panel absence-balance-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Balances</p>
+                      <h3>Početni saldo dana</h3>
+                    </div>
+                    <button id="absence-balance-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+                <div class="safety-authorization-editor-body absence-editor-body" tabindex="-1">
+                  <form id="absence-balance-form" class="entity-form">
+                    <div id="absence-balance-list" class="absence-balance-list"></div>
+                    <p id="absence-balance-error" class="form-error" aria-live="polite"></p>
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi saldo</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </section>
+
+            <section id="absence-report-module" class="absence-report-module" hidden>
+              <section class="panel absence-report-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Report</p>
+                    <h3>Mjesečni pregled rada i odsutnosti</h3>
+                  </div>
+                  <div class="vehicle-schedule-toolbar">
+                    <button id="absence-report-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni mjesec">&#8592;</button>
+                    <button id="absence-report-today" type="button" class="ghost-button">Tekući mjesec</button>
+                    <input id="absence-report-month" type="month" class="vehicle-schedule-date-input" />
+                    <button id="absence-report-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći mjesec">&#8594;</button>
+                    <label class="field absence-report-user-field">
+                      <span>Korisnik</span>
+                      <select id="absence-report-user"></select>
+                    </label>
+                    <button id="absence-report-export" type="button" class="primary-button">Preuzmi CSV</button>
+                  </div>
+                </div>
+                <p id="absence-report-summary" class="helper-copy module-copy">Nema podataka za odabrani mjesec.</p>
+              </section>
+
+              <section class="panel absence-report-list-panel">
+                <div id="absence-report-list" class="absence-report-list"></div>
+                <p id="absence-report-empty" class="helper-copy" hidden>Nema podataka za prikaz u odabranom mjesecu.</p>
               </section>
             </section>
 

@@ -32,6 +32,7 @@ import {
   resolveJwtSecret,
   verifyToken,
 } from "./src/webAuth.js";
+import { doesAbsenceTypeRequireApproval } from "./src/safetyModel.js";
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = resolve(process.cwd());
@@ -695,6 +696,28 @@ function normalizeInputValue(value) {
   return String(value ?? "").trim();
 }
 
+function getScopedUserDisplayLabel(userLike = {}) {
+  return String(
+    userLike.fullName
+    || [userLike.firstName, userLike.lastName].filter(Boolean).join(" ")
+    || userLike.email
+    || userLike.username
+    || "User",
+  ).trim() || "User";
+}
+
+function canManageAbsenceEntry(user, entry = {}) {
+  if (canManageMasterData(user)) {
+    return true;
+  }
+
+  const actorId = String(user?.id ?? "");
+  return Boolean(actorId) && (
+    String(entry.userId ?? "") === actorId
+    || String(entry.requestedByUserId ?? "") === actorId
+  );
+}
+
 function resolveAssignedUserPayload(scopedSnapshot, body = {}) {
   if (!Object.prototype.hasOwnProperty.call(body, "assignedToUserId")) {
     return {};
@@ -1049,6 +1072,7 @@ async function handleApiRequest(request, response, url) {
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
+    const absenceEntryMatch = url.pathname.match(/^\/api\/absence-entries\/([^/]+)$/);
     const measurementEquipmentExcelExportMatch = url.pathname === "/api/measurement-equipment/export-list-excel";
     const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
     const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
@@ -1425,6 +1449,74 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/absence-entries") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo evidentirati odsutnosti.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const isAdmin = canManageMasterData(user);
+      const requestedUserId = normalizeInputValue(body.userId) || String(user.id);
+
+      if (!isAdmin && requestedUserId !== String(user.id)) {
+        sendError(response, 403, "Možete unositi odsutnost samo za sebe.");
+        return true;
+      }
+
+      const targetUser = assertInScope(
+        scopedSnapshot.users ?? [],
+        requestedUserId,
+        "Odabrani korisnik nije dostupan za aktivnu organizaciju.",
+      );
+      const normalizedType = normalizeInputValue(body.type).toLowerCase();
+      const finalStatus = isAdmin
+        ? normalizeInputValue(body.status).toLowerCase()
+        : (doesAbsenceTypeRequireApproval(normalizedType) ? "pending" : "approved");
+      const actorLabel = getScopedUserDisplayLabel(user);
+
+      await domainRepository.createAbsenceEntry({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+        userId: String(targetUser.id),
+        userLabel: getScopedUserDisplayLabel(targetUser),
+        status: finalStatus,
+        requestedByUserId: String(user.id),
+        requestedByLabel: actorLabel,
+        approvedByUserId: finalStatus === "approved" ? String(user.id) : "",
+        approvedByLabel: finalStatus === "approved" ? actorLabel : "",
+        approvedAt: finalStatus === "approved" ? new Date().toISOString() : null,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/absence-balances") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo uređivati saldo odsutnosti.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const targetUser = assertInScope(
+        scopedSnapshot.users ?? [],
+        body.userId,
+        "Odabrani korisnik nije dostupan za aktivnu organizaciju.",
+      );
+
+      await domainRepository.upsertAbsenceBalance({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        userId: String(targetUser.id),
+        userLabel: getScopedUserDisplayLabel(targetUser),
+        annualLeaveInitialDays: body?.annualLeaveInitialDays,
+        sickLeaveInitialDays: body?.sickLeaveInitialDays,
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/measurement-equipment/card-template") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo spremati karton template.");
@@ -1507,6 +1599,25 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
         notificationSettings: {
           leadDaysBeforeExpiry: body?.leadDaysBeforeExpiry,
+          repeatEveryDays: body?.repeatEveryDays,
+        },
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/absence/notification-settings") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati postavke notifikacija odsutnosti.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertAbsenceNotificationSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        notificationSettings: {
+          leadDaysBeforeStart: body?.leadDaysBeforeStart,
           repeatEveryDays: body?.repeatEveryDays,
         },
       });
@@ -2522,6 +2633,73 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (absenceEntryMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo uređivati odsutnosti.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const current = assertInScope(scopedSnapshot.absenceEntries ?? [], absenceEntryMatch[1], "Odsutnost nije pronađena.");
+
+      if (!canManageAbsenceEntry(user, current)) {
+        sendError(response, 403, "Nemate pravo uređivati ovu odsutnost.");
+        return true;
+      }
+
+      const isAdmin = canManageMasterData(user);
+      const requestedUserId = isAdmin
+        ? (normalizeInputValue(body.userId) || String(current.userId))
+        : String(current.userId);
+      const targetUser = assertInScope(
+        scopedSnapshot.users ?? [],
+        requestedUserId,
+        "Odabrani korisnik nije dostupan za aktivnu organizaciju.",
+      );
+      const normalizedType = normalizeInputValue(body.type || current.type).toLowerCase();
+      const requestedStatus = isAdmin
+        ? (normalizeInputValue(body.status).toLowerCase() || String(current.status || "").toLowerCase())
+        : (doesAbsenceTypeRequireApproval(normalizedType) ? String(current.status || "pending").toLowerCase() : "approved");
+      const actorLabel = getScopedUserDisplayLabel(user);
+      const approvedMeta = requestedStatus === "approved"
+        ? {
+          approvedByUserId: String(user.id),
+          approvedByLabel: actorLabel,
+          approvedAt: new Date().toISOString(),
+        }
+        : (requestedStatus === "pending"
+          ? {
+            approvedByUserId: "",
+            approvedByLabel: "",
+            approvedAt: null,
+          }
+          : {
+            approvedByUserId: isAdmin ? String(user.id) : String(current.approvedByUserId ?? ""),
+            approvedByLabel: isAdmin ? actorLabel : String(current.approvedByLabel ?? ""),
+            approvedAt: isAdmin ? new Date().toISOString() : current.approvedAt,
+          });
+
+      const updated = await domainRepository.updateAbsenceEntry(absenceEntryMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+        userId: String(targetUser.id),
+        userLabel: getScopedUserDisplayLabel(targetUser),
+        status: requestedStatus,
+        requestedByUserId: String(current.requestedByUserId || user.id),
+        requestedByLabel: current.requestedByLabel || actorLabel,
+        ...approvedMeta,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Odsutnost nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (documentTemplateMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati templateima.");
@@ -2795,6 +2973,33 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Ovlaštenje nije pronađeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (absenceEntryMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati odsutnosti.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const current = assertInScope(scopedSnapshot.absenceEntries ?? [], absenceEntryMatch[1], "Odsutnost nije pronađena.");
+      const canDeleteOwnPending = String(current.userId ?? "") === String(user.id ?? "")
+        && String(current.status ?? "").toLowerCase() === "pending";
+
+      if (!canManageMasterData(user) && !canDeleteOwnPending) {
+        sendError(response, 403, "Nemate pravo brisati ovu odsutnost.");
+        return true;
+      }
+
+      const deleted = await domainRepository.deleteAbsenceEntry(absenceEntryMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Odsutnost nije pronađena.");
         return true;
       }
 

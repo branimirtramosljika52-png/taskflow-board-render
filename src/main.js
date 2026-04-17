@@ -6,6 +6,8 @@
   DASHBOARD_WIDGET_SIZE_OPTIONS,
   DASHBOARD_WIDGET_SOURCE_OPTIONS,
   DASHBOARD_WIDGET_VISUALIZATION_OPTIONS,
+  ABSENCE_STATUS_OPTIONS,
+  ABSENCE_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS,
   LEARNING_TEST_STATUS_OPTIONS,
@@ -25,18 +27,22 @@
   VEHICLE_STATUS_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   buildLocationContacts,
+  buildAbsenceBalanceSummaries,
+  buildMonthlyWorkStatusReport,
   buildWorkOrderCalendarLanes,
   buildWorkOrderCalendarWeekColumns,
   buildWorkOrderCalendarMonthWeeks,
   buildWorkOrderCalendarTeamWeeks,
   buildWorkOrderMapMarkers,
   createDashboardWidget,
+  doesAbsenceTypeRequireApproval,
   deriveOfferInitials,
   filterDocumentTemplates,
   filterLegalFrameworks,
   filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterAbsenceEntries,
   filterReminders,
   filterSafetyAuthorizations,
   filterServiceCatalogItems,
@@ -57,6 +63,7 @@
   getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
+  getAbsenceBusinessDayCount,
   groupWorkOrdersByExecutorSet,
   sortOffers,
   sortReminders,
@@ -65,6 +72,7 @@
   sortLegalFrameworks,
   sortLearningTests,
   sortMeasurementEquipmentItems,
+  sortAbsenceEntries,
   sortTodoTasks,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
@@ -187,6 +195,31 @@ const VEHICLE_ACTIVITY_TYPE_OPTIONS = Object.freeze([
 const VEHICLE_ACTIVITY_TYPE_LABELS = new Map(
   VEHICLE_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
 );
+const ABSENCE_REQUEST_TYPE_OPTIONS = Object.freeze(
+  ABSENCE_TYPE_OPTIONS.filter((option) => option.group === "request"),
+);
+const ABSENCE_MEDICAL_TYPE_OPTIONS = Object.freeze(
+  ABSENCE_TYPE_OPTIONS.filter((option) => option.group === "medical"),
+);
+const ABSENCE_STATUS_LABELS = new Map(
+  ABSENCE_STATUS_OPTIONS.map((option) => [String(option.value), option.label]),
+);
+const ABSENCE_TYPE_LABELS = new Map(
+  ABSENCE_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
+);
+const ABSENCE_CALENDAR_BADGE_TONES = Object.freeze({
+  annual_leave: "is-annual",
+  personal_leave: "is-annual",
+  unpaid_leave: "is-annual",
+  exam_leave: "is-annual",
+  other_leave: "is-annual",
+  sick_leave: "is-medical",
+  pregnancy_care: "is-medical",
+  maternity_leave: "is-medical",
+  childbirth_leave: "is-medical",
+  parental_leave: "is-medical",
+  other_medical_leave: "is-medical",
+});
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
 const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
@@ -198,6 +231,10 @@ const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
 const DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
+});
+const DEFAULT_ABSENCE_NOTIFICATION_SETTINGS = Object.freeze({
+  leadDaysBeforeStart: 14,
+  repeatEveryDays: 3,
 });
 const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   registrationLeadDaysBeforeExpiry: 30,
@@ -459,6 +496,24 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Prostor za ovlasti, autorizacije i evidenciju sigurnosnih prava zaposlenika i suradnika.",
     chips: ["Authorizations", "Validity", "Access levels"],
   },
+  "annual-leave": {
+    kicker: "Organisations",
+    title: "Godišnji odmori",
+    description: "Zahtjevi za godišnji odmor, plaćene i ostale dopuste s pregledom stanja dana i admin odobrenjima.",
+    chips: ["Requests", "Approval", "Balances"],
+  },
+  "sick-leave": {
+    kicker: "Organisations",
+    title: "Bolovanja i dopusti",
+    description: "Evidencija bolovanja, porodiljnih, roditeljskih i drugih opravdanih izostanaka uz dokumentaciju.",
+    chips: ["Medical", "Documents", "Calendar"],
+  },
+  "absence-report": {
+    kicker: "Organisations",
+    title: "Mjesečni report rada",
+    description: "Pregled redovnog rada i svih vrsta odsutnosti po korisnicima za odabrani mjesec.",
+    chips: ["Monthly", "Users", "Status report"],
+  },
   offers: {
     kicker: "Operations",
     title: "Offers",
@@ -516,6 +571,9 @@ const SIDEBAR_ITEM_CONFIG = {
   "template-development": { group: "organisations", view: "module", module: "template-development" },
   people: { group: "organisations", view: "management" },
   "safety-authorization": { group: "organisations", view: "module", module: "safety-authorization" },
+  "annual-leave": { group: "organisations", view: "module", module: "annual-leave" },
+  "sick-leave": { group: "organisations", view: "module", module: "sick-leave" },
+  "absence-report": { group: "organisations", view: "module", module: "absence-report" },
   rn: { group: "operations", view: "selfdash", focus: "list" },
   offers: { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
@@ -561,6 +619,9 @@ const SIDEBAR_ITEM_LABELS = {
   "template-development": "Template Development",
   people: "People",
   "safety-authorization": "Safety Authorization",
+  "annual-leave": "Godišnji odmori",
+  "sick-leave": "Bolovanja",
+  "absence-report": "Mjesečni report",
   rn: "RN",
   offers: "Offers",
   periodics: "Periodics",
@@ -609,10 +670,15 @@ const state = {
   safetyAuthorizationNotificationSettings: {
     ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
   },
+  absenceNotificationSettings: {
+    ...DEFAULT_ABSENCE_NOTIFICATION_SETTINGS,
+  },
   vehicleNotificationSettings: {
     ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
   },
   safetyAuthorizations: [],
+  absenceEntries: [],
+  absenceBalances: [],
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
@@ -627,6 +693,7 @@ const state = {
   activeServiceCatalogId: "",
   activeMeasurementEquipmentId: "",
   activeSafetyAuthorizationId: "",
+  activeAbsenceId: "",
   activeDocumentTemplateId: "",
   userEditorOpen: false,
   companyEditorOpen: false,
@@ -647,6 +714,8 @@ const state = {
   measurementEquipmentActivitySectionExpanded: false,
   measurementEquipmentDocumentsSectionExpanded: false,
   safetyAuthorizationEditorOpen: false,
+  absenceEditorOpen: false,
+  absenceBalanceEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
   vehicleScheduleDate: new Date().toISOString().slice(0, 10),
@@ -682,6 +751,22 @@ const state = {
   },
   safetyAuthorizationFilters: {
     query: "",
+  },
+  annualLeaveFilters: {
+    query: "",
+    userId: "all",
+    status: "all",
+    type: "all",
+  },
+  sickLeaveFilters: {
+    query: "",
+    userId: "all",
+    status: "all",
+    type: "all",
+  },
+  absenceReportMonth: new Date().toISOString().slice(0, 7),
+  absenceReportFilters: {
+    userId: "all",
   },
   documentTemplateFilters: {
     query: "",
@@ -1319,6 +1404,8 @@ const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measu
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
 const settingsSafetyAuthorizationLeadDaysInput = document.querySelector("#settings-safety-authorization-lead-days");
 const settingsSafetyAuthorizationRepeatDaysInput = document.querySelector("#settings-safety-authorization-repeat-days");
+const settingsAbsenceLeadDaysInput = document.querySelector("#settings-absence-lead-days");
+const settingsAbsenceRepeatDaysInput = document.querySelector("#settings-absence-repeat-days");
 const settingsVehicleRegistrationLeadDaysInput = document.querySelector("#settings-vehicle-registration-lead-days");
 const settingsVehicleRegistrationRepeatDaysInput = document.querySelector("#settings-vehicle-registration-repeat-days");
 const settingsVehicleTireLeadDaysInput = document.querySelector("#settings-vehicle-tire-lead-days");
@@ -1326,6 +1413,7 @@ const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-veh
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector("#settings-safety-authorization-notifications-feedback");
+const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
@@ -1751,6 +1839,60 @@ const safetyAuthorizationNoteInput = document.querySelector("#safety-authorizati
 const safetyAuthorizationError = document.querySelector("#safety-authorization-error");
 const safetyAuthorizationResetButton = document.querySelector("#safety-authorization-reset");
 const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
+const absenceModule = document.querySelector("#absence-module");
+const absenceModuleKicker = document.querySelector("#absence-module-kicker");
+const absenceModuleTitle = document.querySelector("#absence-module-title");
+const absenceModuleCopy = document.querySelector("#absence-module-copy");
+const absenceSummaryTotal = document.querySelector("#absence-summary-total");
+const absenceSummaryPending = document.querySelector("#absence-summary-pending");
+const absenceSummaryApproved = document.querySelector("#absence-summary-approved");
+const absenceSummaryBalance = document.querySelector("#absence-summary-balance");
+const absenceSearchInput = document.querySelector("#absence-search");
+const absenceUserFilterInput = document.querySelector("#absence-filter-user");
+const absenceStatusFilterInput = document.querySelector("#absence-filter-status");
+const absenceTypeFilterInput = document.querySelector("#absence-filter-type");
+const absenceOpenFormButton = document.querySelector("#absence-open-form");
+const absenceOpenBalancesButton = document.querySelector("#absence-open-balances");
+const absenceHelper = document.querySelector("#absence-helper");
+const absenceList = document.querySelector("#absence-list");
+const absenceEmpty = document.querySelector("#absence-empty");
+const absenceEditorBackdrop = document.querySelector("#absence-editor-backdrop");
+const absenceEditorPanel = document.querySelector("#absence-editor-panel");
+const absenceEditorCloseButton = document.querySelector("#absence-editor-close");
+const absenceEditorBody = absenceEditorPanel?.querySelector(".absence-editor-body");
+const absenceEditorTitle = document.querySelector("#absence-editor-title");
+const absenceForm = document.querySelector("#absence-form");
+const absenceIdInput = document.querySelector("#absence-id");
+const absenceUserIdInput = document.querySelector("#absence-user-id");
+const absenceTypeInput = document.querySelector("#absence-type");
+const absenceStatusInput = document.querySelector("#absence-status");
+const absenceStartDateInput = document.querySelector("#absence-start-date");
+const absenceEndDateInput = document.querySelector("#absence-end-date");
+const absenceDayCountPreview = document.querySelector("#absence-day-count-preview");
+const absenceBalancePreview = document.querySelector("#absence-balance-preview");
+const absenceDocumentsInput = document.querySelector("#absence-documents-input");
+const absenceDocumentsUploadButton = document.querySelector("#absence-documents-upload");
+const absenceDocumentsList = document.querySelector("#absence-documents-list");
+const absenceNoteInput = document.querySelector("#absence-note");
+const absenceError = document.querySelector("#absence-error");
+const absenceResetButton = document.querySelector("#absence-reset");
+const absenceDeleteButton = document.querySelector("#absence-delete");
+const absenceBalanceBackdrop = document.querySelector("#absence-balance-backdrop");
+const absenceBalancePanel = document.querySelector("#absence-balance-panel");
+const absenceBalanceCloseButton = document.querySelector("#absence-balance-close");
+const absenceBalanceForm = document.querySelector("#absence-balance-form");
+const absenceBalanceList = document.querySelector("#absence-balance-list");
+const absenceBalanceError = document.querySelector("#absence-balance-error");
+const absenceReportModule = document.querySelector("#absence-report-module");
+const absenceReportMonthInput = document.querySelector("#absence-report-month");
+const absenceReportPrevButton = document.querySelector("#absence-report-prev");
+const absenceReportTodayButton = document.querySelector("#absence-report-today");
+const absenceReportNextButton = document.querySelector("#absence-report-next");
+const absenceReportUserFilterInput = document.querySelector("#absence-report-user");
+const absenceReportExportButton = document.querySelector("#absence-report-export");
+const absenceReportSummary = document.querySelector("#absence-report-summary");
+const absenceReportList = document.querySelector("#absence-report-list");
+const absenceReportEmpty = document.querySelector("#absence-report-empty");
 const learningTestsModule = document.querySelector("#learning-tests-module");
 const learningTestsTotalCount = document.querySelector("#learning-tests-total-count");
 const learningTestsActiveCount = document.querySelector("#learning-tests-active-count");
@@ -1823,6 +1965,8 @@ let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
 let legalFrameworkDocumentDrafts = [];
 let safetyAuthorizationDocumentDrafts = [];
+let absenceDocumentDrafts = [];
+let absenceBalanceDrafts = [];
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
@@ -3062,6 +3206,29 @@ function getSafetyAuthorizationNotificationSettings() {
   return normalizeSafetyAuthorizationNotificationSettings(state.safetyAuthorizationNotificationSettings);
 }
 
+function normalizeAbsenceNotificationSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_ABSENCE_NOTIFICATION_SETTINGS;
+  return {
+    leadDaysBeforeStart: normalizeNotificationDayValue(
+      source.leadDaysBeforeStart ?? source.leadDays ?? source.leadDaysBeforeExpiry,
+      fallback.leadDaysBeforeStart,
+      { min: 1, max: 365 },
+    ),
+    repeatEveryDays: normalizeNotificationDayValue(
+      source.repeatEveryDays ?? source.repeatIntervalDays ?? source.repeatDays,
+      fallback.repeatEveryDays,
+      { min: 1, max: 90 },
+    ),
+  };
+}
+
+function getAbsenceNotificationSettings() {
+  return normalizeAbsenceNotificationSettings(state.absenceNotificationSettings);
+}
+
 function normalizeVehicleNotificationSettings(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -3324,10 +3491,15 @@ function applySnapshot(payload) {
   state.safetyAuthorizationNotificationSettings = normalizeSafetyAuthorizationNotificationSettings(
     payload.safetyAuthorizationNotificationSettings,
   );
+  state.absenceNotificationSettings = normalizeAbsenceNotificationSettings(
+    payload.absenceNotificationSettings,
+  );
   state.vehicleNotificationSettings = normalizeVehicleNotificationSettings(
     payload.vehicleNotificationSettings,
   );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
+  state.absenceEntries = payload.absenceEntries ?? [];
+  state.absenceBalances = payload.absenceBalances ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = payload.dashboardWidgets ?? [];
   state.expandedWorkOrderIds = new Set(
@@ -3349,6 +3521,9 @@ function applySnapshot(payload) {
     if (state.dashboardBuilder.draftMode === "edit") {
       closeDashboardBuilder();
     }
+  }
+  if (!state.absenceEntries.some((item) => String(item.id) === String(state.activeAbsenceId))) {
+    state.activeAbsenceId = "";
   }
   if (!state.vehicles.some((item) => String(item.id) === String(state.activeVehicleId))) {
     state.activeVehicleId = "";
@@ -4752,10 +4927,14 @@ function renderModuleView() {
   const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
+  const isAbsenceModule = state.activeModuleItem === "annual-leave" || state.activeModuleItem === "sick-leave";
+  const isAbsenceReportModule = state.activeModuleItem === "absence-report";
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
+    && !isAbsenceModule
+    && !isAbsenceReportModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isSafetyAuthorizationModule
@@ -4836,6 +5015,14 @@ function renderModuleView() {
     safetyAuthorizationModule.hidden = !isSafetyAuthorizationModule;
   }
 
+  if (absenceModule) {
+    absenceModule.hidden = !isAbsenceModule;
+  }
+
+  if (absenceReportModule) {
+    absenceReportModule.hidden = !isAbsenceReportModule;
+  }
+
   if (templateDevelopmentModule) {
     templateDevelopmentModule.hidden = !isTemplateDevelopmentModule;
   }
@@ -4882,6 +5069,14 @@ function renderModuleView() {
 
   if (isSafetyAuthorizationModule) {
     renderSafetyAuthorizationModule();
+  }
+
+  if (isAbsenceModule) {
+    renderAbsenceModule();
+  }
+
+  if (isAbsenceReportModule) {
+    renderAbsenceReportModule();
   }
 
   if (isTemplateDevelopmentModule) {
@@ -7870,6 +8065,7 @@ function renderSettingsModule() {
   const canManageSettings = getCanManageMasterData();
   const measurementNotificationSettings = getMeasurementEquipmentNotificationSettings();
   const safetyAuthorizationNotificationSettings = getSafetyAuthorizationNotificationSettings();
+  const absenceNotificationSettings = getAbsenceNotificationSettings();
   const vehicleNotificationSettings = getVehicleNotificationSettings();
 
   if (settingsMeasurementLeadDaysInput) {
@@ -7898,6 +8094,20 @@ function renderSettingsModule() {
       settingsSafetyAuthorizationRepeatDaysInput.value = String(safetyAuthorizationNotificationSettings.repeatEveryDays);
     }
     settingsSafetyAuthorizationRepeatDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsAbsenceLeadDaysInput) {
+    if (document.activeElement !== settingsAbsenceLeadDaysInput) {
+      settingsAbsenceLeadDaysInput.value = String(absenceNotificationSettings.leadDaysBeforeStart);
+    }
+    settingsAbsenceLeadDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsAbsenceRepeatDaysInput) {
+    if (document.activeElement !== settingsAbsenceRepeatDaysInput) {
+      settingsAbsenceRepeatDaysInput.value = String(absenceNotificationSettings.repeatEveryDays);
+    }
+    settingsAbsenceRepeatDaysInput.disabled = !canManageSettings;
   }
 
   if (settingsVehicleRegistrationLeadDaysInput) {
@@ -7933,7 +8143,12 @@ function renderSettingsModule() {
     settingsSaveAllButton.hidden = !canManageSettings;
   }
 
-  [settingsNotificationsFeedback, settingsSafetyAuthorizationNotificationsFeedback, settingsVehicleNotificationsFeedback].forEach((feedbackNode) => {
+  [
+    settingsNotificationsFeedback,
+    settingsSafetyAuthorizationNotificationsFeedback,
+    settingsAbsenceNotificationsFeedback,
+    settingsVehicleNotificationsFeedback,
+  ].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
     }
@@ -8036,6 +8251,51 @@ async function saveSafetyAuthorizationNotificationSettings(options = {}) {
   return success;
 }
 
+async function saveAbsenceNotificationSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Postavke su spremljene.";
+
+  if (!getCanManageMasterData()) {
+    if (settingsAbsenceNotificationsFeedback) {
+      settingsAbsenceNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
+    }
+    return false;
+  }
+
+  const leadDaysBeforeStart = normalizeNotificationDayValue(
+    settingsAbsenceLeadDaysInput?.value,
+    DEFAULT_ABSENCE_NOTIFICATION_SETTINGS.leadDaysBeforeStart,
+    { min: 1, max: 365 },
+  );
+  const repeatEveryDays = normalizeNotificationDayValue(
+    settingsAbsenceRepeatDaysInput?.value,
+    DEFAULT_ABSENCE_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+
+  if (settingsAbsenceLeadDaysInput) {
+    settingsAbsenceLeadDaysInput.value = String(leadDaysBeforeStart);
+  }
+  if (settingsAbsenceRepeatDaysInput) {
+    settingsAbsenceRepeatDaysInput.value = String(repeatEveryDays);
+  }
+
+  const success = await runMutation(() => apiRequest("/absence/notification-settings", {
+    method: "POST",
+    body: {
+      leadDaysBeforeStart,
+      repeatEveryDays,
+    },
+  }), settingsAbsenceNotificationsFeedback);
+
+  if (success && settingsAbsenceNotificationsFeedback) {
+    settingsAbsenceNotificationsFeedback.textContent = successMessage;
+  }
+
+  return success;
+}
+
 async function saveVehicleNotificationSettings(options = {}) {
   const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
     ? options.successMessage.trim()
@@ -8106,10 +8366,13 @@ async function saveAllSettingsBlocks() {
   const safetyAuthorizationSaved = await saveSafetyAuthorizationNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
+  const absenceSaved = await saveAbsenceNotificationSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
   const vehicleSaved = await saveVehicleNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
-  return measurementSaved && safetyAuthorizationSaved && vehicleSaved;
+  return measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved;
 }
 
 function renderDocumentsModule() {
@@ -26142,6 +26405,975 @@ function renderSafetyAuthorizationModule() {
   }
 }
 
+function getCurrentAbsenceModuleMode() {
+  return state.activeModuleItem === "sick-leave" ? "medical" : "request";
+}
+
+function getAbsenceModuleConfig() {
+  if (getCurrentAbsenceModuleMode() === "medical") {
+    return {
+      kicker: "Medical",
+      title: "Bolovanja i posebni dopusti",
+      copy: "Evidencija bolovanja, porodiljnih, roditeljskih i drugih opravdanih izostanaka uz dokumentaciju.",
+      createLabel: "+ Nova odsutnost",
+      balanceLabel: "Bolovanje saldo",
+      typeOptions: ABSENCE_MEDICAL_TYPE_OPTIONS,
+    };
+  }
+
+  return {
+    kicker: "Requests",
+    title: "Godišnji odmori i dopusti",
+    copy: "Zahtjevi za godišnji, plaćene i druge dopuste s admin odobrenjima i pregledom stanja dana.",
+    createLabel: "+ Novi zahtjev",
+    balanceLabel: "GO saldo",
+    typeOptions: ABSENCE_REQUEST_TYPE_OPTIONS,
+  };
+}
+
+function getAbsenceFiltersStateForCurrentMode() {
+  return getCurrentAbsenceModuleMode() === "medical"
+    ? state.sickLeaveFilters
+    : state.annualLeaveFilters;
+}
+
+function updateAbsenceFiltersStateForCurrentMode(patch = {}) {
+  if (getCurrentAbsenceModuleMode() === "medical") {
+    state.sickLeaveFilters = {
+      ...state.sickLeaveFilters,
+      ...patch,
+    };
+    return;
+  }
+
+  state.annualLeaveFilters = {
+    ...state.annualLeaveFilters,
+    ...patch,
+  };
+}
+
+function getAbsenceEntriesForCurrentMode() {
+  const allowedTypes = new Set(getAbsenceModuleConfig().typeOptions.map((option) => option.value));
+  return (state.absenceEntries ?? []).filter((entry) => allowedTypes.has(String(entry.type || "").trim().toLowerCase()));
+}
+
+function canManageAbsenceEntryClient(entry = {}) {
+  if (getCanManageMasterData()) {
+    return true;
+  }
+
+  const actorId = String(state.user?.id ?? "");
+  return Boolean(actorId) && (
+    String(entry.userId ?? "") === actorId
+    || String(entry.requestedByUserId ?? "") === actorId
+  );
+}
+
+function getAbsenceBalanceSummaryForUser(userId = "") {
+  return buildAbsenceBalanceSummaries(state.absenceBalances ?? [], state.absenceEntries ?? [], { userIds: [userId] })[0] ?? {
+    userId: String(userId || ""),
+    userLabel: "",
+    annualLeaveInitialDays: 0,
+    annualLeaveUsedDays: 0,
+    annualLeaveRemainingDays: 0,
+    sickLeaveInitialDays: 0,
+    sickLeaveUsedDays: 0,
+    sickLeaveRemainingDays: 0,
+  };
+}
+
+function getAbsenceTypeLabelClient(type = "") {
+  return ABSENCE_TYPE_LABELS.get(String(type || "").trim().toLowerCase()) || "Izostanak";
+}
+
+function getAbsenceStatusLabelClient(status = "") {
+  return ABSENCE_STATUS_LABELS.get(String(status || "").trim().toLowerCase()) || "Na čekanju";
+}
+
+function getAbsenceStatusBadgeClass(status = "") {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "approved") {
+    return "document-template-status-badge is-active";
+  }
+  if (normalized === "rejected" || normalized === "cancelled") {
+    return "document-template-status-badge is-archived";
+  }
+  return "document-template-status-badge";
+}
+
+function getApprovedAbsenceEntries(source = state.absenceEntries ?? []) {
+  return (source ?? []).filter((entry) => String(entry?.status || "").trim().toLowerCase() === "approved");
+}
+
+function isAbsenceEntryActiveOnDate(entry = {}, dateKey = "") {
+  const safeDateKey = String(dateKey || "").trim();
+  if (!safeDateKey) {
+    return false;
+  }
+
+  const startDate = String(entry?.startDate || "").trim();
+  const endDate = String(entry?.endDate || startDate).trim();
+  return Boolean(startDate) && safeDateKey >= startDate && safeDateKey <= endDate;
+}
+
+function getAbsenceEntriesForDate(dateKey = "", { approvedOnly = true } = {}) {
+  const source = approvedOnly ? getApprovedAbsenceEntries() : (state.absenceEntries ?? []);
+  return source.filter((entry) => isAbsenceEntryActiveOnDate(entry, dateKey));
+}
+
+function getExecutorAbsenceEntriesForWorkOrder(workOrder = {}, dateKey = "") {
+  const matchedUserIds = new Set(
+    getWorkOrderExecutors(workOrder)
+      .map((executor) => findUserForExecutor(executor)?.id)
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+
+  if (matchedUserIds.size === 0) {
+    return [];
+  }
+
+  return getAbsenceEntriesForDate(dateKey, { approvedOnly: true })
+    .filter((entry) => matchedUserIds.has(String(entry.userId || "").trim()));
+}
+
+function createAbsenceCalendarBadge(entry = {}, {
+  compact = false,
+  showUserLabel = true,
+  showDateRange = false,
+} = {}) {
+  const typeKey = String(entry.type || "").trim().toLowerCase();
+  const tone = ABSENCE_CALENDAR_BADGE_TONES[typeKey] || "is-other";
+  const parts = [];
+
+  if (showUserLabel && entry.userLabel) {
+    parts.push(entry.userLabel);
+  }
+  parts.push(getAbsenceTypeLabelClient(typeKey));
+  if (showDateRange && entry.startDate) {
+    parts.push(
+      entry.endDate && entry.endDate !== entry.startDate
+        ? `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)}`
+        : formatCompactDate(entry.startDate),
+    );
+  }
+
+  const badge = document.createElement("span");
+  badge.className = `work-order-calendar-absence-badge ${tone}${compact ? " is-compact" : ""}`;
+  badge.textContent = parts.filter(Boolean).join(" · ") || "Odsutnost";
+  badge.title = [
+    entry.userLabel || "",
+    getAbsenceTypeLabelClient(typeKey),
+    entry.startDate
+      ? (entry.endDate && entry.endDate !== entry.startDate
+        ? `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)}`
+        : formatCompactDate(entry.startDate))
+      : "",
+  ].filter(Boolean).join(" · ");
+  return badge;
+}
+
+function setAbsenceDocumentDrafts(items = []) {
+  absenceDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+}
+
+function renderAbsenceDocuments() {
+  if (!absenceDocumentsList) {
+    return;
+  }
+
+  if (absenceDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema dodanih dokumenata.";
+    absenceDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  absenceDocumentsList.replaceChildren(...absenceDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "Dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      entry.fileType || "Dokument",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Preuzmi dokument", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni dokument", "trash", "card-danger", () => {
+        absenceDocumentDrafts = absenceDocumentDrafts.filter((item) => String(item.id) !== String(entry.id));
+        renderAbsenceDocuments();
+      }),
+    );
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueAbsenceDocuments(files) {
+  const uploads = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (uploads.length === 0) {
+    return;
+  }
+
+  for (const file of uploads) {
+    if (!isWorkOrderDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podržan. Dozvoljeno: ${WORK_ORDER_DOCUMENT_ACCEPT_LABEL}`);
+    }
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  const nextDocuments = await Promise.all(uploads.map(async (file) => createModuleAttachmentDraft({
+    fileName: file.name,
+    fileType: file.type || "application/octet-stream",
+    fileSize: file.size || 0,
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  absenceDocumentDrafts = [
+    ...absenceDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderAbsenceDocuments();
+}
+
+function renderAbsenceUserSelectOptions(selectedValue = "") {
+  const options = [
+    { value: "", label: "Odaberi korisnika" },
+    ...state.users
+      .filter((user) => user?.isActive !== false)
+      .slice()
+      .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+      .map((user) => ({
+        value: String(user.id),
+        label: getUserDisplayLabel(user),
+      })),
+  ];
+  replaceSelectOptions(absenceUserIdInput, options, selectedValue || "");
+}
+
+function renderAbsenceFilterOptions() {
+  const config = getAbsenceModuleConfig();
+  const filters = getAbsenceFiltersStateForCurrentMode();
+  const typeOptions = [
+    { value: "all", label: "Sve vrste" },
+    ...config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
+  ];
+  const statusOptions = [
+    { value: "all", label: "Svi statusi" },
+    ...ABSENCE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+  ];
+  const userOptions = [
+    { value: "all", label: "Svi korisnici" },
+    ...state.users
+      .filter((user) => user?.isActive !== false)
+      .slice()
+      .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+      .map((user) => ({
+        value: String(user.id),
+        label: getUserDisplayLabel(user),
+      })),
+  ];
+
+  replaceSelectOptions(absenceTypeFilterInput, typeOptions, filters.type || "all");
+  replaceSelectOptions(absenceStatusFilterInput, statusOptions, filters.status || "all");
+  replaceSelectOptions(absenceUserFilterInput, userOptions, filters.userId || "all");
+}
+
+function syncAbsenceDayCountPreview() {
+  if (!absenceDayCountPreview) {
+    return;
+  }
+
+  const startDate = absenceStartDateInput?.value || "";
+  const endDate = absenceEndDateInput?.value || startDate;
+  const dayCount = startDate ? getAbsenceBusinessDayCount(startDate, endDate) : 0;
+  absenceDayCountPreview.textContent = startDate
+    ? `${dayCount} radnih dana`
+    : "Odaberi datume";
+}
+
+function syncAbsenceBalancePreview() {
+  if (!absenceBalancePreview) {
+    return;
+  }
+
+  const selectedUserId = String(absenceUserIdInput?.value || state.user?.id || "").trim();
+  if (!selectedUserId) {
+    absenceBalancePreview.textContent = "Saldo će se prikazati nakon odabira korisnika.";
+    return;
+  }
+
+  const summary = getAbsenceBalanceSummaryForUser(selectedUserId);
+  if (getCurrentAbsenceModuleMode() === "medical") {
+    absenceBalancePreview.textContent = `Početno ${summary.sickLeaveInitialDays} · iskorišteno ${summary.sickLeaveUsedDays} · preostalo ${summary.sickLeaveRemainingDays}`;
+    return;
+  }
+
+  absenceBalancePreview.textContent = `Početno ${summary.annualLeaveInitialDays} · iskorišteno ${summary.annualLeaveUsedDays} · preostalo ${summary.annualLeaveRemainingDays}`;
+}
+
+function syncAbsenceEditorChrome() {
+  const config = getAbsenceModuleConfig();
+  const isAdmin = getCanManageMasterData();
+  const selectedType = String(absenceTypeInput?.value || config.typeOptions[0]?.value || "").trim().toLowerCase();
+  const requiresApproval = doesAbsenceTypeRequireApproval(selectedType);
+  const ownUserId = String(state.user?.id || "");
+
+  renderAbsenceUserSelectOptions(absenceUserIdInput?.value || ownUserId);
+  replaceSelectOptions(
+    absenceTypeInput,
+    config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
+    absenceTypeInput?.value || config.typeOptions[0]?.value || "",
+  );
+  replaceSelectOptions(absenceStatusInput, ABSENCE_STATUS_OPTIONS, absenceStatusInput?.value || (requiresApproval ? "pending" : "approved"));
+
+  if (!isAdmin) {
+    if (absenceUserIdInput) {
+      absenceUserIdInput.value = ownUserId;
+      absenceUserIdInput.disabled = true;
+    }
+    if (absenceStatusInput) {
+      absenceStatusInput.value = requiresApproval ? "pending" : "approved";
+      absenceStatusInput.disabled = true;
+    }
+  } else {
+    if (absenceUserIdInput) {
+      absenceUserIdInput.disabled = false;
+    }
+    if (absenceStatusInput) {
+      absenceStatusInput.disabled = false;
+    }
+  }
+
+  if (absenceEditorTitle) {
+    const titlePrefix = getCurrentAbsenceModuleMode() === "medical" ? "Bolovanje / dopust" : "Zahtjev za dopust";
+    absenceEditorTitle.textContent = absenceIdInput?.value
+      ? `Uredi odsutnost | ${titlePrefix}`
+      : titlePrefix;
+  }
+
+  if (absenceDeleteButton) {
+    const canDelete = getCanManageMasterData() || String(state.user?.id ?? "") === String(absenceUserIdInput?.value || "");
+    absenceDeleteButton.hidden = !absenceIdInput?.value || !canDelete;
+  }
+
+  if (absenceOpenFormButton) {
+    absenceOpenFormButton.textContent = config.createLabel;
+  }
+
+  syncAbsenceDayCountPreview();
+  syncAbsenceBalancePreview();
+}
+
+function buildAbsencePayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    userId: absenceUserIdInput?.value || state.user?.id || "",
+    type: absenceTypeInput?.value || "",
+    status: absenceStatusInput?.value || "",
+    startDate: absenceStartDateInput?.value || "",
+    endDate: absenceEndDateInput?.value || absenceStartDateInput?.value || "",
+    note: absenceNoteInput?.value || "",
+    documents: absenceDocumentDrafts.map((entry) => ({ ...entry })),
+  };
+}
+
+function syncAbsenceEditorModal() {
+  const isOpen = Boolean(state.absenceEditorOpen);
+  if (absenceEditorBackdrop) {
+    absenceEditorBackdrop.hidden = !isOpen;
+  }
+  if (absenceEditorPanel) {
+    absenceEditorPanel.hidden = !isOpen;
+  }
+  absenceEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-absence-editor-open", isOpen);
+}
+
+function openAbsenceEditor() {
+  state.absenceEditorOpen = true;
+  syncAbsenceEditorModal();
+}
+
+function closeAbsenceEditor({ reset = false } = {}) {
+  state.absenceEditorOpen = false;
+  syncAbsenceEditorModal();
+  if (reset) {
+    resetAbsenceForm();
+  }
+}
+
+function dismissAbsenceEditor() {
+  closeAbsenceEditor({ reset: true });
+}
+
+function syncAbsenceBalanceModal() {
+  const isOpen = Boolean(state.absenceBalanceEditorOpen);
+  if (absenceBalanceBackdrop) {
+    absenceBalanceBackdrop.hidden = !isOpen;
+  }
+  if (absenceBalancePanel) {
+    absenceBalancePanel.hidden = !isOpen;
+  }
+  absenceBalancePanel?.classList.toggle("is-modal-open", isOpen);
+}
+
+function openAbsenceBalanceEditor() {
+  state.absenceBalanceEditorOpen = true;
+  syncAbsenceBalanceModal();
+}
+
+function closeAbsenceBalanceEditor() {
+  state.absenceBalanceEditorOpen = false;
+  syncAbsenceBalanceModal();
+}
+
+function resetAbsenceForm() {
+  absenceForm?.reset();
+  state.activeAbsenceId = "";
+  if (absenceIdInput) {
+    absenceIdInput.value = "";
+  }
+  if (absenceError) {
+    absenceError.textContent = "";
+  }
+  if (absenceStartDateInput) {
+    absenceStartDateInput.value = new Date().toISOString().slice(0, 10);
+  }
+  if (absenceEndDateInput) {
+    absenceEndDateInput.value = new Date().toISOString().slice(0, 10);
+  }
+  if (absenceUserIdInput) {
+    absenceUserIdInput.value = String(state.user?.id || "");
+  }
+  setAbsenceDocumentDrafts([]);
+  renderAbsenceDocuments();
+  syncAbsenceEditorChrome();
+}
+
+function hydrateAbsenceForm(entry) {
+  state.activeView = "module";
+  state.activeModuleItem = ABSENCE_MEDICAL_TYPE_OPTIONS.some((option) => option.value === entry.type)
+    ? "sick-leave"
+    : "annual-leave";
+  renderActiveView();
+  renderModuleView();
+  state.activeAbsenceId = entry.id;
+  if (absenceIdInput) {
+    absenceIdInput.value = entry.id || "";
+  }
+  if (absenceUserIdInput) {
+    absenceUserIdInput.value = entry.userId || "";
+  }
+  if (absenceTypeInput) {
+    absenceTypeInput.value = entry.type || "";
+  }
+  if (absenceStatusInput) {
+    absenceStatusInput.value = entry.status || "pending";
+  }
+  if (absenceStartDateInput) {
+    absenceStartDateInput.value = entry.startDate || "";
+  }
+  if (absenceEndDateInput) {
+    absenceEndDateInput.value = entry.endDate || "";
+  }
+  if (absenceNoteInput) {
+    absenceNoteInput.value = entry.note || "";
+  }
+  if (absenceError) {
+    absenceError.textContent = "";
+  }
+  setAbsenceDocumentDrafts(entry.documents ?? []);
+  renderAbsenceDocuments();
+  syncAbsenceEditorChrome();
+  openAbsenceEditor();
+  requestAnimationFrame(() => {
+    absenceStartDateInput?.focus({ preventScroll: true });
+  });
+}
+
+function resetAbsenceBalanceDrafts() {
+  const currentByUserId = new Map((state.absenceBalances ?? []).map((entry) => [String(entry.userId), entry]));
+  absenceBalanceDrafts = state.users
+    .filter((user) => user?.isActive !== false)
+    .slice()
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+    .map((user) => {
+      const current = currentByUserId.get(String(user.id));
+      return {
+        userId: String(user.id),
+        userLabel: getUserDisplayLabel(user),
+        annualLeaveInitialDays: Number(current?.annualLeaveInitialDays ?? 0) || 0,
+        sickLeaveInitialDays: Number(current?.sickLeaveInitialDays ?? 0) || 0,
+      };
+    });
+}
+
+function renderAbsenceBalanceList() {
+  if (!absenceBalanceList) {
+    return;
+  }
+
+  absenceBalanceList.replaceChildren(...absenceBalanceDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "absence-balance-row";
+
+    const name = document.createElement("div");
+    name.className = "absence-balance-row-copy";
+    const title = document.createElement("strong");
+    title.textContent = entry.userLabel;
+    const meta = document.createElement("span");
+    meta.textContent = "Početni saldo po korisniku";
+    name.append(title, meta);
+
+    const controls = document.createElement("div");
+    controls.className = "absence-balance-row-fields";
+
+    const annualField = document.createElement("label");
+    annualField.className = "field";
+    annualField.innerHTML = `<span>GO početno</span>`;
+    const annualInput = document.createElement("input");
+    annualInput.type = "number";
+    annualInput.min = "0";
+    annualInput.max = "365";
+    annualInput.value = String(entry.annualLeaveInitialDays ?? 0);
+    annualInput.addEventListener("input", () => {
+      entry.annualLeaveInitialDays = Math.max(0, Number(annualInput.value || 0) || 0);
+    });
+    annualField.append(annualInput);
+
+    const sickField = document.createElement("label");
+    sickField.className = "field";
+    sickField.innerHTML = `<span>Bolovanje početno</span>`;
+    const sickInput = document.createElement("input");
+    sickInput.type = "number";
+    sickInput.min = "0";
+    sickInput.max = "365";
+    sickInput.value = String(entry.sickLeaveInitialDays ?? 0);
+    sickInput.addEventListener("input", () => {
+      entry.sickLeaveInitialDays = Math.max(0, Number(sickInput.value || 0) || 0);
+    });
+    sickField.append(sickInput);
+
+    controls.append(annualField, sickField);
+    row.append(name, controls);
+    return row;
+  }));
+}
+
+async function saveAbsenceBalanceDrafts() {
+  const currentByUserId = new Map((state.absenceBalances ?? []).map((entry) => [String(entry.userId), entry]));
+  const changedEntries = absenceBalanceDrafts.filter((entry) => {
+    const current = currentByUserId.get(String(entry.userId));
+    return Number(current?.annualLeaveInitialDays ?? 0) !== Number(entry.annualLeaveInitialDays ?? 0)
+      || Number(current?.sickLeaveInitialDays ?? 0) !== Number(entry.sickLeaveInitialDays ?? 0);
+  });
+
+  if (changedEntries.length === 0) {
+    if (absenceBalanceError) {
+      absenceBalanceError.textContent = "Nema promjena za spremanje.";
+    }
+    return true;
+  }
+
+  const success = await runMutation(async () => {
+    for (const entry of changedEntries) {
+      await apiRequest("/absence-balances", {
+        method: "POST",
+        body: {
+          userId: entry.userId,
+          annualLeaveInitialDays: entry.annualLeaveInitialDays,
+          sickLeaveInitialDays: entry.sickLeaveInitialDays,
+        },
+      });
+    }
+  }, absenceBalanceError);
+
+  if (success && absenceBalanceError) {
+    absenceBalanceError.textContent = "Saldo dana je spremljen.";
+  }
+  return success;
+}
+
+function createAbsenceCardDocumentActions(entry = {}) {
+  const documents = (Array.isArray(entry.documents) ? entry.documents : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((item) => item.fileName && (item.dataUrl || item.storageUrl));
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "safety-authorization-card-actions";
+  documents.slice(0, 3).forEach((item) => {
+    const button = createIconActionButton(`Preuzmi ${item.fileName}`, "download", "", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerModuleAttachmentDownload(item);
+    });
+    button.classList.add("safety-authorization-card-download-button");
+    actions.append(button);
+  });
+  return actions;
+}
+
+function renderAbsenceModule() {
+  if (!absenceModule || !absenceList || !absenceEmpty) {
+    return;
+  }
+
+  const config = getAbsenceModuleConfig();
+  const filters = getAbsenceFiltersStateForCurrentMode();
+  const canManage = getCanManageMasterData();
+  const allItems = sortAbsenceEntries(getAbsenceEntriesForCurrentMode());
+  const visibleItems = sortAbsenceEntries(filterAbsenceEntries(allItems, filters));
+  const selectedUserId = filters.userId && filters.userId !== "all"
+    ? filters.userId
+    : String(state.user?.id || "");
+  const selectedBalance = selectedUserId ? getAbsenceBalanceSummaryForUser(selectedUserId) : null;
+
+  if (absenceModuleKicker) {
+    absenceModuleKicker.textContent = config.kicker;
+  }
+  if (absenceModuleTitle) {
+    absenceModuleTitle.textContent = config.title;
+  }
+  if (absenceModuleCopy) {
+    absenceModuleCopy.textContent = config.copy;
+  }
+  if (absenceOpenFormButton) {
+    absenceOpenFormButton.textContent = config.createLabel;
+  }
+  if (absenceOpenBalancesButton) {
+    absenceOpenBalancesButton.hidden = !canManage;
+  }
+
+  if (absenceSearchInput && document.activeElement !== absenceSearchInput) {
+    absenceSearchInput.value = filters.query || "";
+  }
+  renderAbsenceFilterOptions();
+
+  if (absenceSummaryTotal) {
+    absenceSummaryTotal.textContent = String(allItems.length);
+  }
+  if (absenceSummaryPending) {
+    absenceSummaryPending.textContent = String(allItems.filter((entry) => String(entry.status).toLowerCase() === "pending").length);
+  }
+  if (absenceSummaryApproved) {
+    absenceSummaryApproved.textContent = String(allItems.filter((entry) => String(entry.status).toLowerCase() === "approved").length);
+  }
+  if (absenceSummaryBalance) {
+    absenceSummaryBalance.textContent = selectedBalance
+      ? String(getCurrentAbsenceModuleMode() === "medical"
+        ? selectedBalance.sickLeaveRemainingDays
+        : selectedBalance.annualLeaveRemainingDays)
+      : "0";
+  }
+  if (absenceHelper) {
+    const balanceText = selectedBalance
+      ? `${config.balanceLabel}: ${getCurrentAbsenceModuleMode() === "medical" ? selectedBalance.sickLeaveRemainingDays : selectedBalance.annualLeaveRemainingDays}`
+      : "Bez odabranog salda";
+    absenceHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} stavki. ${balanceText}.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} stavki. ${balanceText}.`;
+  }
+
+  absenceList.replaceChildren(...visibleItems.map((entry) => {
+    const card = document.createElement("article");
+    card.className = "safety-authorization-card absence-card";
+    if (String(entry.id) === String(state.activeAbsenceId || "")) {
+      card.classList.add("is-active");
+    }
+
+    const canOpen = canManageAbsenceEntryClient(entry);
+    if (canOpen) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
+
+    const head = document.createElement("div");
+    head.className = "safety-authorization-card-head";
+
+    const copy = document.createElement("div");
+    copy.className = "safety-authorization-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = entry.userLabel || "Korisnik";
+    const meta = document.createElement("p");
+    meta.className = "safety-authorization-card-meta";
+    meta.textContent = `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)} · ${entry.dayCount || 0} dana`;
+    copy.append(title, meta);
+
+    const chips = document.createElement("div");
+    chips.className = "safety-authorization-card-chips";
+    chips.append(
+      createBadge(getAbsenceTypeLabelClient(entry.type), "measurement-equipment-chip"),
+      createBadge(getAbsenceStatusLabelClient(entry.status), getAbsenceStatusBadgeClass(entry.status)),
+    );
+    head.append(copy, chips);
+
+    const note = document.createElement("p");
+    note.className = "safety-authorization-card-note";
+    note.textContent = entry.note || "Bez dodatne napomene.";
+
+    const footer = document.createElement("div");
+    footer.className = "safety-authorization-card-footer";
+    const info = document.createElement("div");
+    info.className = "safety-authorization-card-chips";
+    const requestedLabel = entry.requestedByLabel ? `Zahtjev: ${entry.requestedByLabel}` : "Bez pošiljatelja";
+    info.append(createBadge(requestedLabel, "service-catalog-template-badge"));
+    if (entry.approvedByLabel && String(entry.status).toLowerCase() === "approved") {
+      info.append(createBadge(`Odobrio: ${entry.approvedByLabel}`, "service-catalog-template-badge"));
+    }
+    const documentCount = Array.isArray(entry.documents) ? entry.documents.length : 0;
+    info.append(createBadge(
+      documentCount > 0 ? `${documentCount} dok.` : "Bez dokumenata",
+      documentCount > 0 ? "service-catalog-template-badge" : "service-catalog-template-badge is-muted",
+    ));
+    footer.append(info);
+
+    if (canManage && String(entry.status).toLowerCase() === "pending" && doesAbsenceTypeRequireApproval(entry.type)) {
+      const actions = document.createElement("div");
+      actions.className = "absence-card-actions";
+      const approveButton = document.createElement("button");
+      approveButton.type = "button";
+      approveButton.className = "ghost-button";
+      approveButton.textContent = "Odobri";
+      approveButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runMutation(() => apiRequest(`/absence-entries/${entry.id}`, {
+          method: "PATCH",
+          body: { status: "approved" },
+        }), absenceError).then(() => {
+          renderAbsenceModule();
+          renderAbsenceReportModule();
+          renderNotifications();
+          renderWorkOrderCalendarView();
+        });
+      });
+
+      const rejectButton = document.createElement("button");
+      rejectButton.type = "button";
+      rejectButton.className = "ghost-button card-danger";
+      rejectButton.textContent = "Odbij";
+      rejectButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runMutation(() => apiRequest(`/absence-entries/${entry.id}`, {
+          method: "PATCH",
+          body: { status: "rejected" },
+        }), absenceError).then(() => {
+          renderAbsenceModule();
+          renderAbsenceReportModule();
+          renderNotifications();
+          renderWorkOrderCalendarView();
+        });
+      });
+
+      actions.append(approveButton, rejectButton);
+      footer.append(actions);
+    }
+
+    const documentActions = createAbsenceCardDocumentActions(entry);
+    if (documentActions) {
+      footer.append(documentActions);
+    }
+
+    card.append(head, note, footer);
+
+    if (canOpen) {
+      const openEntry = () => hydrateAbsenceForm(entry);
+      card.addEventListener("click", openEntry);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openEntry();
+      });
+    }
+
+    return card;
+  }));
+
+  absenceEmpty.hidden = visibleItems.length !== 0;
+  if (visibleItems.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = getCurrentAbsenceModuleMode() === "medical"
+      ? "Nema evidentiranih bolovanja ili posebnih dopusta za zadane filtere."
+      : "Nema zahtjeva za godišnji ili druge dopuste za zadane filtere.";
+    absenceList.replaceChildren(empty);
+  }
+}
+
+function getAbsenceReportRows() {
+  const rows = buildMonthlyWorkStatusReport({
+    users: state.users ?? [],
+    absenceEntries: state.absenceEntries ?? [],
+    absenceBalances: state.absenceBalances ?? [],
+    workOrders: state.workOrders ?? [],
+  }, state.absenceReportMonth || new Date().toISOString().slice(0, 7));
+
+  if (!state.absenceReportFilters.userId || state.absenceReportFilters.userId === "all") {
+    return rows;
+  }
+
+  return rows.filter((row) => String(row.userId) === String(state.absenceReportFilters.userId));
+}
+
+function exportAbsenceReportCsv() {
+  const rows = getAbsenceReportRows();
+  const breakdownHeaders = ABSENCE_TYPE_OPTIONS.map((option) => ({
+    key: option.value,
+    label: option.label,
+  }));
+  const headers = [
+    "Korisnik",
+    "Mjesec",
+    "Radni dani u mjesecu",
+    "Redovni rad",
+    "Dani odsutnosti",
+    "Dodijeljeni RN",
+    "GO početno",
+    "GO iskorišteno",
+    "GO preostalo",
+    "Bolovanje početno",
+    "Bolovanje iskorišteno",
+    "Bolovanje preostalo",
+    ...breakdownHeaders.map((entry) => entry.label),
+  ];
+
+  const csvRows = [
+    headers.join(";"),
+    ...rows.map((row) => [
+      row.userLabel,
+      state.absenceReportMonth,
+      row.businessDayCount,
+      row.regularWorkDays,
+      row.absenceDays,
+      row.assignedWorkOrderCount,
+      row.annualLeaveInitialDays,
+      row.annualLeaveUsedDays,
+      row.annualLeaveRemainingDays,
+      row.sickLeaveInitialDays,
+      row.sickLeaveUsedDays,
+      row.sickLeaveRemainingDays,
+      ...breakdownHeaders.map((entry) => row.dayBreakdown?.[entry.key] ?? 0),
+    ].map((value) => `"${String(value ?? "").replace(/"/g, "\"\"")}"`).join(";")),
+  ];
+
+  triggerBlobDownload(
+    new Blob(["\ufeff", csvRows.join("\r\n")], { type: "text/csv;charset=utf-8" }),
+    `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}.csv`,
+  );
+}
+
+function renderAbsenceReportModule() {
+  if (!absenceReportModule || !absenceReportList || !absenceReportEmpty) {
+    return;
+  }
+
+  const userOptions = [
+    { value: "all", label: "Svi korisnici" },
+    ...state.users
+      .filter((user) => user?.isActive !== false)
+      .slice()
+      .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+      .map((user) => ({
+        value: String(user.id),
+        label: getUserDisplayLabel(user),
+      })),
+  ];
+  replaceSelectOptions(absenceReportUserFilterInput, userOptions, state.absenceReportFilters.userId || "all");
+
+  if (absenceReportMonthInput && document.activeElement !== absenceReportMonthInput) {
+    absenceReportMonthInput.value = state.absenceReportMonth || new Date().toISOString().slice(0, 7);
+  }
+
+  const rows = getAbsenceReportRows();
+  const totalRegularDays = rows.reduce((sum, row) => sum + Number(row.regularWorkDays || 0), 0);
+  const totalAbsenceDays = rows.reduce((sum, row) => sum + Number(row.absenceDays || 0), 0);
+
+  if (absenceReportSummary) {
+    absenceReportSummary.textContent = `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`;
+  }
+
+  absenceReportList.replaceChildren(...rows.map((row) => {
+    const card = document.createElement("article");
+    card.className = "absence-report-card";
+
+    const head = document.createElement("div");
+    head.className = "absence-report-card-head";
+    const title = document.createElement("strong");
+    title.textContent = row.userLabel;
+    const meta = document.createElement("span");
+    meta.textContent = `${row.businessDayCount} radnih dana · ${row.assignedWorkOrderCount} RN`;
+    head.append(title, meta);
+
+    const stats = document.createElement("div");
+    stats.className = "absence-report-card-stats";
+    [
+      { label: "Redovni rad", value: row.regularWorkDays },
+      { label: "Odsutnosti", value: row.absenceDays },
+      { label: "GO preostalo", value: row.annualLeaveRemainingDays },
+      { label: "Bolovanje preostalo", value: row.sickLeaveRemainingDays },
+    ].forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "absence-report-card-stat";
+      item.innerHTML = `<span>${entry.label}</span><strong>${entry.value}</strong>`;
+      stats.append(item);
+    });
+
+    const breakdown = document.createElement("div");
+    breakdown.className = "absence-report-card-breakdown";
+    Object.entries(row.dayBreakdown || {})
+      .filter(([, count]) => Number(count || 0) > 0)
+      .forEach(([key, count]) => {
+        breakdown.append(createBadge(
+          key === "regular_work"
+            ? `Redovni rad ${count}`
+            : `${getAbsenceTypeLabelClient(key)} ${count}`,
+          key === "regular_work" ? "service-catalog-template-badge" : "measurement-equipment-chip",
+        ));
+      });
+
+    card.append(head, stats, breakdown);
+    return card;
+  }));
+
+  absenceReportEmpty.hidden = rows.length !== 0;
+  if (rows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = "Nema podataka za odabrani mjesec i filtere.";
+    absenceReportList.replaceChildren(empty);
+  }
+}
+
 function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTemplateDraft()) {
   if (!documentTemplatePlaceholderPalette) {
     return;
@@ -33717,6 +34949,9 @@ function getNotificationKindLabel(kind = "") {
   if (kind === "todo_comment") {
     return "Komentar";
   }
+  if (kind === "absence") {
+    return "Odsutnost";
+  }
   if (kind === "equipment") {
     return "Oprema";
   }
@@ -33970,6 +35205,97 @@ function buildSafetyAuthorizationNotifications() {
       };
     })
     .filter(Boolean);
+}
+
+function buildAbsenceNotifications() {
+  const notificationSettings = getAbsenceNotificationSettings();
+  const leadDaysBeforeStart = notificationSettings.leadDaysBeforeStart;
+  const repeatEveryDays = notificationSettings.repeatEveryDays;
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    const deltaMs = targetDate.getTime() - todayDate.getTime();
+    return Math.round(deltaMs / (1000 * 60 * 60 * 24));
+  };
+
+  const shouldSend = (daysUntilStart) => {
+    if (!Number.isFinite(daysUntilStart) || daysUntilStart < 0 || daysUntilStart > leadDaysBeforeStart) {
+      return false;
+    }
+
+    if (daysUntilStart === 0 || daysUntilStart === leadDaysBeforeStart) {
+      return true;
+    }
+
+    return ((leadDaysBeforeStart - daysUntilStart) % repeatEveryDays) === 0;
+  };
+
+  const pendingApprovalNotifications = getCanManageMasterData()
+    ? (state.absenceEntries ?? [])
+      .filter((entry) => (
+        String(entry?.status || "").trim().toLowerCase() === "pending"
+        && doesAbsenceTypeRequireApproval(entry?.type)
+      ))
+      .map((entry) => ({
+        id: `absence-pending-${entry.id}`,
+        kind: "absence",
+        level: "warning",
+        title: "Zahtjev za odsutnost čeka odobrenje",
+        message: entry.userLabel || "Korisnik",
+        context: [
+          getAbsenceTypeLabelClient(entry.type),
+          entry.startDate
+            ? (entry.endDate && entry.endDate !== entry.startDate
+              ? `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)}`
+              : formatCompactDate(entry.startDate))
+            : "",
+        ].filter(Boolean).join(" · "),
+        dueDate: entry.startDate || "",
+        referenceId: String(entry.id || ""),
+      }))
+    : [];
+
+  const upcomingApprovedNotifications = getApprovedAbsenceEntries()
+    .map((entry) => {
+      const startDate = String(entry.startDate || "").trim();
+      if (!startDate) {
+        return null;
+      }
+
+      const daysUntilStart = getDaysUntil(startDate);
+      if (!shouldSend(daysUntilStart)) {
+        return null;
+      }
+
+      return {
+        id: `absence-start-${entry.id}-${startDate}`,
+        kind: "absence",
+        level: daysUntilStart === 0 ? "warning" : "info",
+        title: daysUntilStart === 0 ? "Odsutnost počinje danas" : "Odsutnost uskoro počinje",
+        message: entry.userLabel || "Korisnik",
+        context: [
+          getAbsenceTypeLabelClient(entry.type),
+          entry.endDate && entry.endDate !== startDate
+            ? `${formatCompactDate(startDate)} - ${formatCompactDate(entry.endDate)}`
+            : formatCompactDate(startDate),
+        ].filter(Boolean).join(" · "),
+        dueDate: startDate,
+        referenceId: String(entry.id || ""),
+      };
+    })
+    .filter(Boolean);
+
+  return [
+    ...pendingApprovalNotifications,
+    ...upcomingApprovedNotifications,
+  ];
 }
 
 function buildVehicleNotifications() {
@@ -34317,6 +35643,7 @@ function getAllNotifications() {
     ...buildReminderNotifications(),
     ...buildMeasurementEquipmentNotifications(),
     ...buildSafetyAuthorizationNotifications(),
+    ...buildAbsenceNotifications(),
     ...buildVehicleNotifications(),
     ...buildTodoCommentNotifications(),
   ].map((entry) => ({
@@ -34403,6 +35730,20 @@ function openNotificationEntry(entry) {
     if (authorization && getCanManageMasterData()) {
       window.requestAnimationFrame(() => {
         hydrateSafetyAuthorizationForm(authorization);
+      });
+    }
+    return;
+  }
+
+  if (entry.kind === "absence") {
+    const absenceEntry = (state.absenceEntries ?? []).find((item) => String(item.id) === String(entry.referenceId)) ?? null;
+    const targetModule = ABSENCE_MEDICAL_TYPE_OPTIONS.some((option) => option.value === absenceEntry?.type)
+      ? "sick-leave"
+      : "annual-leave";
+    activateSidebarItem(targetModule, { expandSidebar: state.sidebarCollapsed });
+    if (absenceEntry) {
+      window.requestAnimationFrame(() => {
+        hydrateAbsenceForm(absenceEntry);
       });
     }
     return;
@@ -40439,6 +41780,32 @@ function getWorkOrderExecutorOptions(currentValues = [], { includeEmpty = false 
   return options;
 }
 
+function createWorkOrderCalendarAbsenceStrip(entries = [], {
+  compact = false,
+  maxVisible = 4,
+  className = "",
+} = {}) {
+  const visibleEntries = (Array.isArray(entries) ? entries : []).filter(Boolean);
+  if (visibleEntries.length === 0) {
+    return null;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = ["work-order-calendar-absence-strip", className].filter(Boolean).join(" ");
+  visibleEntries.slice(0, maxVisible).forEach((entry) => {
+    wrap.append(createAbsenceCalendarBadge(entry, {
+      compact,
+      showUserLabel: true,
+    }));
+  });
+
+  if (visibleEntries.length > maxVisible) {
+    wrap.append(createBadge(`+${visibleEntries.length - maxVisible}`, "work-order-calendar-absence-more"));
+  }
+
+  return wrap;
+}
+
 function createWorkOrderCalendarCard(workOrder) {
   const card = document.createElement("button");
   card.type = "button";
@@ -40472,6 +41839,9 @@ function createWorkOrderCalendarCard(workOrder) {
   footer.className = "work-order-calendar-card-footer";
   footer.append(due);
 
+  const dueDateKey = String(workOrder?.dueDate || "").trim();
+  const executorAbsenceEntries = dueDateKey ? getExecutorAbsenceEntriesForWorkOrder(workOrder, dueDateKey) : [];
+
   const executors = getWorkOrderExecutors(workOrder);
   if (executors.length > 0) {
     const executorWrap = document.createElement("div");
@@ -40483,7 +41853,18 @@ function createWorkOrderCalendarCard(workOrder) {
     footer.append(executorWrap);
   }
 
-  card.append(top, title, meta, footer);
+  card.append(top, title, meta);
+  if (executorAbsenceEntries.length > 0) {
+    const absenceStrip = createWorkOrderCalendarAbsenceStrip(executorAbsenceEntries, {
+      compact: true,
+      maxVisible: 2,
+      className: "work-order-calendar-card-absence-strip",
+    });
+    if (absenceStrip) {
+      card.append(absenceStrip);
+    }
+  }
+  card.append(footer);
 
   if (workOrder.priority) {
     const priority = createBadge(
@@ -41293,13 +42674,25 @@ function createWorkOrderCalendarDayCell(day) {
 
   const dayMeta = document.createElement("span");
   dayMeta.className = "work-order-calendar-day-meta";
-  dayMeta.textContent = day.items.length === 0 ? "Bez RN" : `${day.items.length} RN`;
+  const dayAbsenceEntries = getAbsenceEntriesForDate(day.key);
+  dayMeta.textContent = [
+    day.items.length === 0 ? "Bez RN" : `${day.items.length} RN`,
+    dayAbsenceEntries.length > 0 ? `${dayAbsenceEntries.length} odsut.` : "",
+  ].filter(Boolean).join(" · ");
 
   topCopy.append(dayLabel, dayDate, dayMeta);
   top.append(topCopy, createWorkOrderCalendarAddButton(day.key));
 
   const body = document.createElement("div");
   body.className = "work-order-calendar-month-day-body";
+
+  const absenceStrip = createWorkOrderCalendarAbsenceStrip(dayAbsenceEntries, {
+    compact: true,
+    maxVisible: 3,
+  });
+  if (absenceStrip) {
+    body.append(absenceStrip);
+  }
 
   if (day.items.length === 0) {
     const placeholder = document.createElement("span");
@@ -42274,6 +43667,15 @@ function createWorkOrderCalendarWeekCell(day, group, items) {
     void applyWorkOrderCalendarDropPayload(dragPayload, day.key);
   });
 
+  const absenceStrip = createWorkOrderCalendarAbsenceStrip(getAbsenceEntriesForDate(day.key), {
+    compact: true,
+    maxVisible: 2,
+    className: "work-order-calendar-week-absence-strip",
+  });
+  if (absenceStrip) {
+    cell.append(absenceStrip);
+  }
+
   if (items.length === 0) {
     const placeholder = document.createElement("span");
     placeholder.className = "work-order-calendar-cell-placeholder";
@@ -42567,6 +43969,14 @@ function renderWorkOrderCalendarSchedulerView() {
       date.textContent = formatCompactDate(day.key);
 
       dayHead.append(label, date);
+      const absenceStrip = createWorkOrderCalendarAbsenceStrip(getAbsenceEntriesForDate(day.key), {
+        compact: true,
+        maxVisible: 2,
+        className: "work-order-calendar-head-absence-strip",
+      });
+      if (absenceStrip) {
+        dayHead.append(absenceStrip);
+      }
       headerRow.append(dayHead);
     });
 
@@ -50530,6 +51940,192 @@ safetyAuthorizationForm?.addEventListener("submit", (event) => {
   });
 });
 
+absenceSearchInput?.addEventListener("input", () => {
+  updateAbsenceFiltersStateForCurrentMode({
+    query: absenceSearchInput.value.trim(),
+  });
+  renderAbsenceModule();
+});
+
+absenceUserFilterInput?.addEventListener("change", () => {
+  updateAbsenceFiltersStateForCurrentMode({
+    userId: absenceUserFilterInput.value || "all",
+  });
+  renderAbsenceModule();
+});
+
+absenceStatusFilterInput?.addEventListener("change", () => {
+  updateAbsenceFiltersStateForCurrentMode({
+    status: absenceStatusFilterInput.value || "all",
+  });
+  renderAbsenceModule();
+});
+
+absenceTypeFilterInput?.addEventListener("change", () => {
+  updateAbsenceFiltersStateForCurrentMode({
+    type: absenceTypeFilterInput.value || "all",
+  });
+  renderAbsenceModule();
+});
+
+absenceOpenFormButton?.addEventListener("click", () => {
+  resetAbsenceForm();
+  renderAbsenceModule();
+  openAbsenceEditor();
+  requestAnimationFrame(() => {
+    absenceStartDateInput?.focus({ preventScroll: true });
+  });
+});
+
+absenceOpenBalancesButton?.addEventListener("click", () => {
+  if (!getCanManageMasterData()) {
+    return;
+  }
+  resetAbsenceBalanceDrafts();
+  renderAbsenceBalanceList();
+  if (absenceBalanceError) {
+    absenceBalanceError.textContent = "";
+  }
+  openAbsenceBalanceEditor();
+});
+
+absenceEditorCloseButton?.addEventListener("click", () => {
+  dismissAbsenceEditor();
+});
+
+absenceEditorBackdrop?.addEventListener("click", () => {
+  dismissAbsenceEditor();
+});
+
+absenceResetButton?.addEventListener("click", () => {
+  resetAbsenceForm();
+  openAbsenceEditor();
+});
+
+absenceDeleteButton?.addEventListener("click", () => {
+  const absenceId = absenceIdInput?.value || "";
+  if (!absenceId || !window.confirm("Obrisati ovu odsutnost?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/absence-entries/${absenceId}`, {
+    method: "DELETE",
+  }), absenceError).then((success) => {
+    if (success) {
+      closeAbsenceEditor({ reset: true });
+      renderAbsenceModule();
+      renderAbsenceReportModule();
+      renderNotifications();
+      renderWorkOrderCalendarView();
+    }
+  });
+});
+
+absenceDocumentsUploadButton?.addEventListener("click", () => {
+  absenceDocumentsInput?.click();
+});
+
+absenceDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(absenceDocumentsInput.files ?? []);
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueAbsenceDocuments(files), absenceError).then(() => {
+    absenceDocumentsInput.value = "";
+  });
+});
+
+[absenceTypeInput, absenceUserIdInput, absenceStatusInput, absenceStartDateInput, absenceEndDateInput].forEach((input) => {
+  input?.addEventListener("change", () => {
+    syncAbsenceEditorChrome();
+  });
+});
+
+absenceForm?.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target.closest("#absence-documents-list")) {
+    return;
+  }
+  syncAbsenceEditorChrome();
+});
+
+absenceForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const isEditing = Boolean(absenceIdInput?.value);
+  const path = isEditing ? `/absence-entries/${absenceIdInput.value}` : "/absence-entries";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildAbsencePayload(),
+  }), absenceError).then((success) => {
+    if (success) {
+      closeAbsenceEditor({ reset: true });
+      renderAbsenceModule();
+      renderAbsenceReportModule();
+      renderNotifications();
+      renderWorkOrderCalendarView();
+    }
+  });
+});
+
+absenceBalanceCloseButton?.addEventListener("click", () => {
+  closeAbsenceBalanceEditor();
+});
+
+absenceBalanceBackdrop?.addEventListener("click", () => {
+  closeAbsenceBalanceEditor();
+});
+
+absenceBalanceForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveAbsenceBalanceDrafts().then((success) => {
+    if (success) {
+      closeAbsenceBalanceEditor();
+      renderAbsenceModule();
+      renderAbsenceReportModule();
+    }
+  });
+});
+
+absenceReportMonthInput?.addEventListener("change", () => {
+  state.absenceReportMonth = absenceReportMonthInput.value || new Date().toISOString().slice(0, 7);
+  renderAbsenceReportModule();
+});
+
+absenceReportUserFilterInput?.addEventListener("change", () => {
+  state.absenceReportFilters = {
+    ...state.absenceReportFilters,
+    userId: absenceReportUserFilterInput.value || "all",
+  };
+  renderAbsenceReportModule();
+});
+
+absenceReportPrevButton?.addEventListener("click", () => {
+  const [year, month] = String(state.absenceReportMonth || new Date().toISOString().slice(0, 7)).split("-").map(Number);
+  const date = new Date(Date.UTC(year, Math.max(0, (month || 1) - 2), 1));
+  state.absenceReportMonth = date.toISOString().slice(0, 7);
+  renderAbsenceReportModule();
+});
+
+absenceReportTodayButton?.addEventListener("click", () => {
+  state.absenceReportMonth = new Date().toISOString().slice(0, 7);
+  renderAbsenceReportModule();
+});
+
+absenceReportNextButton?.addEventListener("click", () => {
+  const [year, month] = String(state.absenceReportMonth || new Date().toISOString().slice(0, 7)).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month || 1, 1));
+  state.absenceReportMonth = date.toISOString().slice(0, 7);
+  renderAbsenceReportModule();
+});
+
+absenceReportExportButton?.addEventListener("click", () => {
+  exportAbsenceReportCsv();
+});
+
 documentTemplateSearchInput?.addEventListener("input", () => {
   state.documentTemplateFilters.query = documentTemplateSearchInput.value.trim();
   renderDocumentTemplateModule();
@@ -51046,6 +52642,20 @@ settingsSafetyAuthorizationLeadDaysInput?.addEventListener("keydown", (event) =>
 });
 
 settingsSafetyAuthorizationRepeatDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsAbsenceLeadDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsAbsenceRepeatDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     void saveAllSettingsBlocks();
@@ -51618,6 +53228,9 @@ logoutButton?.addEventListener("click", () => {
     };
     state.safetyAuthorizationNotificationSettings = {
       ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
+    };
+    state.absenceNotificationSettings = {
+      ...DEFAULT_ABSENCE_NOTIFICATION_SETTINGS,
     };
     state.vehicleNotificationSettings = {
       ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
