@@ -17479,6 +17479,19 @@ body.is-vehicle-reservation-open {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
+  padding: 2px 0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.periodics-section-heading:hover {
+  background: rgba(244, 248, 255, 0.6);
+}
+
+.periodics-section-heading:focus-visible {
+  outline: 2px solid rgba(119, 142, 217, 0.56);
+  outline-offset: 2px;
 }
 
 .periodics-section-title-wrap {
@@ -17506,12 +17519,12 @@ body.is-vehicle-reservation-open {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-width: 168px;
+  min-width: 234px;
 }
 
 .periodics-section-kpis {
   display: grid;
-  grid-template-columns: repeat(2, minmax(58px, 58px));
+  grid-template-columns: repeat(3, minmax(58px, 58px));
   align-items: center;
   justify-items: center;
   gap: 7px;
@@ -17534,6 +17547,30 @@ body.is-vehicle-reservation-open {
   border-color: rgba(213, 87, 102, 0.54);
   background: rgba(255, 234, 238, 0.94);
   color: #ac394f;
+}
+
+.periodics-section-trend.is-warning {
+  border-color: rgba(205, 167, 92, 0.56);
+  background: rgba(255, 249, 232, 0.95);
+  color: #8f6a1e;
+}
+
+.periodics-section-trend.is-warning.has-pulse-warning {
+  position: relative;
+  padding-left: 18px;
+}
+
+.periodics-section-trend.is-warning.has-pulse-warning::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e0b449;
+  transform: translateY(-50%);
+  animation: periodicsPulseWarningDot 1.2s ease-out infinite;
 }
 
 .periodics-section-trend.is-valid {

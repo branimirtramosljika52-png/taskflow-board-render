@@ -1545,35 +1545,43 @@ const periodicsHorizonInput = document.querySelector("#periodics-horizon");
 const periodicsRefreshButton = document.querySelector("#periodics-refresh");
 const periodicsHelper = document.querySelector("#periodics-helper");
 const periodicsInspectionsCount = document.querySelector("#periodics-inspections-count");
+const periodicsInspectionsHeading = document.querySelector("#periodics-inspections-heading");
 const periodicsInspectionsToggleButton = document.querySelector("#periodics-inspections-toggle");
 const periodicsInspectionsBody = document.querySelector("#periodics-inspections-body");
 const periodicsInspectionsList = document.querySelector("#periodics-inspections-list");
 const periodicsInspectionsEmpty = document.querySelector("#periodics-inspections-empty");
 const periodicsInspectionsOverdue = document.querySelector("#periodics-inspections-overdue");
+const periodicsInspectionsWarning = document.querySelector("#periodics-inspections-warning");
 const periodicsInspectionsValid = document.querySelector("#periodics-inspections-valid");
 const periodicsInspectionsAlertDot = document.querySelector("#periodics-inspections-alert-dot");
 const periodicsVehiclesCount = document.querySelector("#periodics-vehicles-count");
+const periodicsVehiclesHeading = document.querySelector("#periodics-vehicles-heading");
 const periodicsVehiclesToggleButton = document.querySelector("#periodics-vehicles-toggle");
 const periodicsVehiclesBody = document.querySelector("#periodics-vehicles-body");
 const periodicsVehiclesList = document.querySelector("#periodics-vehicles-list");
 const periodicsVehiclesEmpty = document.querySelector("#periodics-vehicles-empty");
 const periodicsVehiclesOverdue = document.querySelector("#periodics-vehicles-overdue");
+const periodicsVehiclesWarning = document.querySelector("#periodics-vehicles-warning");
 const periodicsVehiclesValid = document.querySelector("#periodics-vehicles-valid");
 const periodicsVehiclesAlertDot = document.querySelector("#periodics-vehicles-alert-dot");
 const periodicsPeopleCount = document.querySelector("#periodics-people-count");
+const periodicsPeopleHeading = document.querySelector("#periodics-people-heading");
 const periodicsPeopleToggleButton = document.querySelector("#periodics-people-toggle");
 const periodicsPeopleBody = document.querySelector("#periodics-people-body");
 const periodicsPeopleList = document.querySelector("#periodics-people-list");
 const periodicsPeopleEmpty = document.querySelector("#periodics-people-empty");
 const periodicsPeopleOverdue = document.querySelector("#periodics-people-overdue");
+const periodicsPeopleWarning = document.querySelector("#periodics-people-warning");
 const periodicsPeopleValid = document.querySelector("#periodics-people-valid");
 const periodicsPeopleAlertDot = document.querySelector("#periodics-people-alert-dot");
 const periodicsEquipmentCount = document.querySelector("#periodics-equipment-count");
+const periodicsEquipmentHeading = document.querySelector("#periodics-equipment-heading");
 const periodicsEquipmentToggleButton = document.querySelector("#periodics-equipment-toggle");
 const periodicsEquipmentBody = document.querySelector("#periodics-equipment-body");
 const periodicsEquipmentList = document.querySelector("#periodics-equipment-list");
 const periodicsEquipmentEmpty = document.querySelector("#periodics-equipment-empty");
 const periodicsEquipmentOverdue = document.querySelector("#periodics-equipment-overdue");
+const periodicsEquipmentWarning = document.querySelector("#periodics-equipment-warning");
 const periodicsEquipmentValid = document.querySelector("#periodics-equipment-valid");
 const periodicsEquipmentAlertDot = document.querySelector("#periodics-equipment-alert-dot");
 const vehiclesModule = document.querySelector("#vehicles-module");
@@ -9343,6 +9351,7 @@ function getPeriodicsEntryCounts(entries = []) {
 function syncPeriodicsSectionMetrics(
   {
     overdueNode = null,
+    warningNode = null,
     validNode = null,
     alertNode = null,
     bodyNode = null,
@@ -9354,6 +9363,10 @@ function syncPeriodicsSectionMetrics(
   const hasWarning = !hasOverdue && warningCount > 0;
   if (overdueNode) {
     overdueNode.textContent = `-${overdueCount}`;
+  }
+  if (warningNode) {
+    warningNode.textContent = `~${warningCount}`;
+    warningNode.classList.toggle("has-pulse-warning", warningCount > 0);
   }
   if (validNode) {
     validNode.textContent = `+${validCount}`;
@@ -9431,43 +9444,91 @@ function renderPeriodicsRows(target, rows = []) {
   target.replaceChildren(...rows);
 }
 
-function syncPeriodicsSectionToggle(button, body, collapsed = false, title = "sekciju") {
+function syncPeriodicsSectionToggle(button, body, heading, collapsed = false, title = "sekciju") {
   if (body) {
     body.hidden = collapsed;
     const hostCard = body.closest(".periodics-section-card");
     hostCard?.classList.toggle("is-collapsed", collapsed);
   }
+  const expanded = !collapsed;
+  if (heading) {
+    heading.classList.toggle("is-collapsed", collapsed);
+    heading.setAttribute("aria-expanded", String(expanded));
+  }
   if (!button) {
     return;
   }
-  const expanded = !collapsed;
   button.textContent = expanded ? "−" : "+";
   button.setAttribute("aria-expanded", String(expanded));
   button.setAttribute("aria-label", expanded ? `Sakrij ${title}` : `Prikaži ${title}`);
+}
+
+function togglePeriodicsSection(sectionKey = "") {
+  if (!Object.prototype.hasOwnProperty.call(state.periodicsSections, sectionKey)) {
+    return;
+  }
+  state.periodicsSections[sectionKey] = !state.periodicsSections[sectionKey];
+  syncPeriodicsSections();
+}
+
+function bindPeriodicsSectionHeaderToggle(headingNode, toggleButton, sectionKey = "") {
+  if (!headingNode) {
+    return;
+  }
+  const shouldSkipHeaderToggle = (target) => {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return Boolean(target.closest("button, a, input, select, textarea, [role='button']"));
+  };
+  headingNode.addEventListener("click", (event) => {
+    if (shouldSkipHeaderToggle(event.target)) {
+      return;
+    }
+    togglePeriodicsSection(sectionKey);
+  });
+  headingNode.addEventListener("keydown", (event) => {
+    if (shouldSkipHeaderToggle(event.target)) {
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    togglePeriodicsSection(sectionKey);
+  });
+  toggleButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    togglePeriodicsSection(sectionKey);
+  });
 }
 
 function syncPeriodicsSections() {
   syncPeriodicsSectionToggle(
     periodicsInspectionsToggleButton,
     periodicsInspectionsBody,
+    periodicsInspectionsHeading,
     Boolean(state.periodicsSections.inspectionsCollapsed),
     "blok ispitivanja",
   );
   syncPeriodicsSectionToggle(
     periodicsVehiclesToggleButton,
     periodicsVehiclesBody,
+    periodicsVehiclesHeading,
     Boolean(state.periodicsSections.vehiclesCollapsed),
     "blok vozila",
   );
   syncPeriodicsSectionToggle(
     periodicsPeopleToggleButton,
     periodicsPeopleBody,
+    periodicsPeopleHeading,
     Boolean(state.periodicsSections.peopleCollapsed),
     "blok ljudi",
   );
   syncPeriodicsSectionToggle(
     periodicsEquipmentToggleButton,
     periodicsEquipmentBody,
+    periodicsEquipmentHeading,
     Boolean(state.periodicsSections.equipmentCollapsed),
     "blok mjerne opreme",
   );
@@ -9571,6 +9632,7 @@ function renderPeriodicsModule() {
   syncPeriodicsSectionMetrics(
     {
       overdueNode: periodicsInspectionsOverdue,
+      warningNode: periodicsInspectionsWarning,
       validNode: periodicsInspectionsValid,
       alertNode: periodicsInspectionsAlertDot,
       bodyNode: periodicsInspectionsBody,
@@ -9580,6 +9642,7 @@ function renderPeriodicsModule() {
   syncPeriodicsSectionMetrics(
     {
       overdueNode: periodicsVehiclesOverdue,
+      warningNode: periodicsVehiclesWarning,
       validNode: periodicsVehiclesValid,
       alertNode: periodicsVehiclesAlertDot,
       bodyNode: periodicsVehiclesBody,
@@ -9589,6 +9652,7 @@ function renderPeriodicsModule() {
   syncPeriodicsSectionMetrics(
     {
       overdueNode: periodicsPeopleOverdue,
+      warningNode: periodicsPeopleWarning,
       validNode: periodicsPeopleValid,
       alertNode: periodicsPeopleAlertDot,
       bodyNode: periodicsPeopleBody,
@@ -9598,6 +9662,7 @@ function renderPeriodicsModule() {
   syncPeriodicsSectionMetrics(
     {
       overdueNode: periodicsEquipmentOverdue,
+      warningNode: periodicsEquipmentWarning,
       validNode: periodicsEquipmentValid,
       alertNode: periodicsEquipmentAlertDot,
       bodyNode: periodicsEquipmentBody,
@@ -52388,25 +52453,26 @@ periodicsRefreshButton?.addEventListener("click", () => {
   void loadPeriodicsFeed({ force: true });
 });
 
-periodicsInspectionsToggleButton?.addEventListener("click", () => {
-  state.periodicsSections.inspectionsCollapsed = !state.periodicsSections.inspectionsCollapsed;
-  syncPeriodicsSections();
-});
-
-periodicsVehiclesToggleButton?.addEventListener("click", () => {
-  state.periodicsSections.vehiclesCollapsed = !state.periodicsSections.vehiclesCollapsed;
-  syncPeriodicsSections();
-});
-
-periodicsPeopleToggleButton?.addEventListener("click", () => {
-  state.periodicsSections.peopleCollapsed = !state.periodicsSections.peopleCollapsed;
-  syncPeriodicsSections();
-});
-
-periodicsEquipmentToggleButton?.addEventListener("click", () => {
-  state.periodicsSections.equipmentCollapsed = !state.periodicsSections.equipmentCollapsed;
-  syncPeriodicsSections();
-});
+bindPeriodicsSectionHeaderToggle(
+  periodicsInspectionsHeading,
+  periodicsInspectionsToggleButton,
+  "inspectionsCollapsed",
+);
+bindPeriodicsSectionHeaderToggle(
+  periodicsVehiclesHeading,
+  periodicsVehiclesToggleButton,
+  "vehiclesCollapsed",
+);
+bindPeriodicsSectionHeaderToggle(
+  periodicsPeopleHeading,
+  periodicsPeopleToggleButton,
+  "peopleCollapsed",
+);
+bindPeriodicsSectionHeaderToggle(
+  periodicsEquipmentHeading,
+  periodicsEquipmentToggleButton,
+  "equipmentCollapsed",
+);
 
 offersSearchInput?.addEventListener("input", () => {
   renderOffersModule();
