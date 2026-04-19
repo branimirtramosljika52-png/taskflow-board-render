@@ -3193,6 +3193,32 @@ function getUserAuthorizationSummary(user = {}) {
   };
 }
 
+function isUserAuthorizationCurrentlyActive(qualification = {}) {
+  if (!hasQualificationCapability(qualification)) {
+    return false;
+  }
+
+  if (qualification?.validForever) {
+    return true;
+  }
+
+  const validUntil = String(qualification?.validUntil || "").trim();
+  if (!validUntil) {
+    return true;
+  }
+
+  return validUntil >= new Date().toISOString().slice(0, 10);
+}
+
+function getUserActiveAuthorizationCount(user = {}) {
+  const areas = [
+    getUserElectricalQualification(user, "elektro"),
+    getUserElectricalQualification(user, "tipkalo"),
+  ];
+
+  return areas.filter((qualification) => isUserAuthorizationCurrentlyActive(qualification)).length;
+}
+
 function getUserDocumentDisplayName(user = null) {
   const displayName = String(user?.displayName || "").trim();
   if (displayName) {
@@ -13580,16 +13606,13 @@ function createUserIdentityCell(user) {
   const copy = document.createElement("div");
   copy.className = "people-list-copy";
   const fullName = String(user.fullName || "").trim();
-  const displayName = String(user.displayName || "").trim();
-  const primaryName = displayName || fullName || user.email || "User";
-  const secondaryParts = [
-    displayName && fullName && displayName !== fullName ? fullName : "",
-    user.title ? String(user.title).trim() : "",
-  ].filter(Boolean);
+  const primaryName = fullName || String(user.displayName || "").trim() || user.email || "User";
+  const oib = String(user.oib || "").trim();
   copy.append(
     createListLine(getUserOrganizationSummary(user), "list-eyebrow"),
     createListLine(primaryName, "list-primary"),
-    secondaryParts.length > 0 ? createListLine(secondaryParts.join(" · "), "list-secondary") : createListLine(user.email || "Bez emaila", "list-secondary"),
+    createListLine(user.email || "Bez emaila", "list-secondary"),
+    createListLine(oib ? `OIB ${oib}` : "OIB nije upisan", "list-tertiary"),
   );
 
   stack.append(avatar, copy);
@@ -49632,10 +49655,9 @@ function renderUsers() {
   usersBody.replaceChildren(...sortedUsers.map((user) => {
     const row = document.createElement("tr");
     row.className = "list-row";
-    const actionsCell = document.createElement("td");
-    actionsCell.className = "table-actions";
     const canEditUser = canManageRenderedUser(user);
     const roleSummary = getUserRoleSummary(user);
+    const activeAuthorizationCount = getUserActiveAuthorizationCount(user);
 
     if (canEditUser) {
       row.classList.add("is-clickable");
@@ -49657,27 +49679,19 @@ function renderUsers() {
           hydrateUserForm(user);
         }
       });
-      actionsCell.append(
-        createActionButton("Uredi", "card-button", () => hydrateUserForm(user)),
-      );
     }
 
     row.append(
       createUserIdentityCell(user),
       createStackCell({
-        title: user.email || "Bez emaila",
-        subtitle: user.lastLoginAt ? `Zadnja prijava ${formatDate(user.lastLoginAt)}` : "Još bez prijave",
+        title: roleSummary.title
       }),
-      createStackCell({
-        title: roleSummary.title,
-        subtitle: roleSummary.subtitle,
-      }),
-      createUserElectricalCell(user),
       createBadgeCell(
-        createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive),
-        user.isActive ? "Pristup omogućen" : "Pristup blokiran",
+        createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive)
       ),
-      actionsCell,
+      createStackCell({
+        title: `${activeAuthorizationCount} aktivnih`
+      })
     );
 
     return row;
