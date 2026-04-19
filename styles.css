@@ -25096,9 +25096,9 @@ body.is-document-template-resizing-diagonal * {
 .auth-form.auth-form-tenant input:active {
   background: #ffffff !important;
   background-color: #ffffff !important;
-  color: #1f2430 !important;
-  -webkit-text-fill-color: #1f2430 !important;
-  caret-color: #1f2430 !important;
+  color: var(--login-input-fg, #1f2430) !important;
+  -webkit-text-fill-color: var(--login-input-fg, #1f2430) !important;
+  caret-color: var(--login-input-fg, #1f2430) !important;
 }
 
 .auth-form-tenant #login-email::placeholder,
@@ -25107,7 +25107,7 @@ body.is-document-template-resizing-diagonal * {
 }
 
 .auth-form.auth-form-tenant input::placeholder {
-  color: #8b96ab !important;
+  color: var(--login-input-placeholder, #8b96ab) !important;
 }
 
 .auth-form-tenant #login-email:-webkit-autofill,
@@ -25132,8 +25132,8 @@ body.is-document-template-resizing-diagonal * {
 .auth-form.auth-form-tenant input:-webkit-autofill:focus,
 .auth-form.auth-form-tenant input:-webkit-autofill:active,
 .auth-form.auth-form-tenant input:autofill {
-  -webkit-text-fill-color: #1f2430 !important;
-  caret-color: #1f2430 !important;
+  -webkit-text-fill-color: var(--login-input-fg, #1f2430) !important;
+  caret-color: var(--login-input-fg, #1f2430) !important;
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
   box-shadow: 0 0 0 1000px #ffffff inset !important;
   background: #ffffff !important;
