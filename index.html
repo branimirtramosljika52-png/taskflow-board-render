@@ -3410,6 +3410,28 @@
                 </div>
                 <p id="settings-safety-authorization-notifications-feedback" class="form-error" aria-live="polite"></p>
               </section>
+              <section class="panel settings-notifications-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Periodics</p>
+                    <h3>Vizualni pragovi periodike</h3>
+                  </div>
+                </div>
+                <div class="settings-notification-group">
+                  <strong>Boje statusa po danima do isteka</strong>
+                  <div class="settings-notification-inline">
+                    <label class="field">
+                      <span>Kritično (narančasto) do</span>
+                      <input id="settings-periodics-critical-days" type="number" min="1" max="120" inputmode="numeric" />
+                    </label>
+                    <label class="field">
+                      <span>Upozorenje (žuto) do</span>
+                      <input id="settings-periodics-warning-days" type="number" min="1" max="365" inputmode="numeric" />
+                    </label>
+                  </div>
+                </div>
+                <p id="settings-periodics-visual-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>
               </div>
@@ -4003,11 +4025,11 @@
                   <strong id="periodics-overdue-count" class="periodics-stat-value">0</strong>
                 </article>
                 <article class="periodics-stat-card is-soon">
-                  <span class="periodics-stat-label">Rok do 60 dana</span>
+                  <span id="periodics-next30-label" class="periodics-stat-label">Rok do 60 dana</span>
                   <strong id="periodics-next30-count" class="periodics-stat-value">0</strong>
                 </article>
                 <article class="periodics-stat-card is-critical">
-                  <span class="periodics-stat-label">Kritično (7 dana)</span>
+                  <span id="periodics-critical-label" class="periodics-stat-label">Kritično (7 dana)</span>
                   <strong id="periodics-critical-count" class="periodics-stat-value">0</strong>
                 </article>
               </div>

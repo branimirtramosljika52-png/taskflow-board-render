@@ -1534,6 +1534,30 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : defaults.tireRepeatEveryDays,
       };
     })(),
+    periodicsVisualSettings: (() => {
+      const defaults = {
+        criticalDays: 7,
+        warningDays: 60,
+      };
+      const settingsEntry = (rawSnapshot.periodicsVisualSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return defaults;
+      }
+
+      const criticalDays = Number.isFinite(Number(settingsEntry.criticalDays))
+        ? Math.max(1, Math.min(120, Math.round(Number(settingsEntry.criticalDays))))
+        : defaults.criticalDays;
+      const warningDaysRaw = Number.isFinite(Number(settingsEntry.warningDays))
+        ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.warningDays))))
+        : defaults.warningDays;
+
+      return {
+        criticalDays,
+        warningDays: Math.max(criticalDays, warningDaysRaw),
+      };
+    })(),
     safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -2008,6 +2032,8 @@ export class MemoryTenantRepository {
     measurementEquipmentNotificationSettings: [],
     safetyAuthorizationNotificationSettings: [],
     absenceNotificationSettings: [],
+    vehicleNotificationSettings: [],
+    periodicsVisualSettings: [],
     safetyAuthorizations: [],
     absenceEntries: [],
     absenceBalances: [],
@@ -2673,6 +2699,8 @@ export class MySqlTenantRepository {
     measurementEquipmentNotificationSettings: [],
     safetyAuthorizationNotificationSettings: [],
     absenceNotificationSettings: [],
+    vehicleNotificationSettings: [],
+    periodicsVisualSettings: [],
     safetyAuthorizations: [],
     absenceEntries: [],
     absenceBalances: [],
@@ -2701,6 +2729,8 @@ export class MySqlTenantRepository {
         measurementEquipmentNotificationSettings: [],
         safetyAuthorizationNotificationSettings: [],
         absenceNotificationSettings: [],
+        vehicleNotificationSettings: [],
+        periodicsVisualSettings: [],
         safetyAuthorizations: [],
         absenceEntries: [],
         absenceBalances: [],

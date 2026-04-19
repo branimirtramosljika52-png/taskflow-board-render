@@ -271,6 +271,10 @@ const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   tireLeadDaysBeforeDue: 30,
   tireRepeatEveryDays: 7,
 });
+const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
+  criticalDays: 7,
+  warningDays: 60,
+});
 
 function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min = 1, max = 365 } = {}) {
   const numeric = Number(value);
@@ -364,6 +368,27 @@ function normalizeAbsenceNotificationSettings(value = {}) {
       fallback.repeatEveryDays,
       { min: 1, max: 90 },
     ),
+  };
+}
+
+function normalizePeriodicsVisualSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_PERIODICS_VISUAL_SETTINGS;
+  const criticalDays = normalizeMeasurementEquipmentNotificationDay(
+    source.criticalDays ?? source.alertDays ?? source.criticalThresholdDays,
+    fallback.criticalDays,
+    { min: 1, max: 120 },
+  );
+  const warningDaysRaw = normalizeMeasurementEquipmentNotificationDay(
+    source.warningDays ?? source.yellowDays ?? source.warningThresholdDays,
+    fallback.warningDays,
+    { min: 1, max: 365 },
+  );
+  return {
+    criticalDays,
+    warningDays: Math.max(criticalDays, warningDaysRaw),
   };
 }
 
@@ -1409,6 +1434,21 @@ function mapAbsenceNotificationSettingsEntry(row = {}) {
   }
 
   const normalized = normalizeAbsenceNotificationSettings(parseJsonObject(row.notification_rules_json));
+  return {
+    organizationId,
+    ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapPeriodicsVisualSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const normalized = normalizePeriodicsVisualSettings(parseJsonObject(row.visual_rules_json));
   return {
     organizationId,
     ...normalized,
@@ -2491,6 +2531,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapAbsenceNotificationSettingsEntry(row))
     .filter(Boolean);
 
+  const [periodicsSettingsRows] = await connection.query(`
+    SELECT organization_id, visual_rules_json, created_at, updated_at
+    FROM web_periodics_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const periodicsVisualSettings = periodicsSettingsRows
+    .map((row) => mapPeriodicsVisualSettingsEntry(row))
+    .filter(Boolean);
+
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
            linked_template_ids_json, documents_json, created_at, updated_at
@@ -2595,6 +2645,7 @@ async function fetchSnapshotFromConnection(connection) {
     safetyAuthorizationNotificationSettings,
     absenceNotificationSettings,
     vehicleNotificationSettings,
+    periodicsVisualSettings,
     safetyAuthorizations,
     absenceEntries,
     absenceBalances,
@@ -2688,6 +2739,7 @@ export class InMemorySafetyRepository {
       safetyAuthorizationNotificationSettings: [],
       absenceNotificationSettings: [],
       vehicleNotificationSettings: [],
+      periodicsVisualSettings: [],
       safetyAuthorizations: [],
       absenceEntries: [],
       absenceBalances: [],
@@ -2849,6 +2901,9 @@ export class InMemorySafetyRepository {
         ...item,
       })),
       vehicleNotificationSettings: this.snapshot.vehicleNotificationSettings.map((item) => ({
+        ...item,
+      })),
+      periodicsVisualSettings: this.snapshot.periodicsVisualSettings.map((item) => ({
         ...item,
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
@@ -3755,6 +3810,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertPeriodicsVisualSettings({ organizationId = "", visualSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za postavke periodike.");
+    }
+
+    const normalizedSettings = normalizePeriodicsVisualSettings(visualSettings);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.periodicsVisualSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.periodicsVisualSettings[currentIndex];
+      this.snapshot.periodicsVisualSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.periodicsVisualSettings.push(nextEntry);
+    }
+
+    return this.snapshot.periodicsVisualSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async updateMeasurementEquipmentItem(id, patch) {
     const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
 
@@ -4335,6 +4424,16 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_absence_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_periodics_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        visual_rules_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_periodics_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -6599,6 +6698,34 @@ export class MySqlSafetyRepository {
         VALUES (?, ?)
         ON DUPLICATE KEY UPDATE
           notification_rules_json = VALUES(notification_rules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedSettings),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      ...normalizedSettings,
+    };
+  }
+
+  async upsertPeriodicsVisualSettings({ organizationId = "", visualSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za postavke periodike.");
+    }
+
+    const normalizedSettings = normalizePeriodicsVisualSettings(visualSettings);
+    await this.pool.query(
+      `
+        INSERT INTO web_periodics_settings
+          (organization_id, visual_rules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          visual_rules_json = VALUES(visual_rules_json),
           updated_at = CURRENT_TIMESTAMP
       `,
       [

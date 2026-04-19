@@ -1625,6 +1625,25 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/periodics/visual-settings") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati postavke periodike.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertPeriodicsVisualSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        visualSettings: {
+          criticalDays: body?.criticalDays,
+          warningDays: body?.warningDays,
+        },
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/document-records") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo pregledavati zapisnike.");

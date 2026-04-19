@@ -285,6 +285,10 @@ const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
   tireLeadDaysBeforeDue: 30,
   tireRepeatEveryDays: 7,
 });
+const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
+  criticalDays: 7,
+  warningDays: 60,
+});
 const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
   { value: "new_user", label: "New User" },
   { value: "junior_user", label: "Junior User" },
@@ -736,6 +740,9 @@ const state = {
   },
   vehicleNotificationSettings: {
     ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
+  },
+  periodicsVisualSettings: {
+    ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
   },
   safetyAuthorizations: [],
   absenceEntries: [],
@@ -1520,11 +1527,14 @@ const settingsVehicleRegistrationLeadDaysInput = document.querySelector("#settin
 const settingsVehicleRegistrationRepeatDaysInput = document.querySelector("#settings-vehicle-registration-repeat-days");
 const settingsVehicleTireLeadDaysInput = document.querySelector("#settings-vehicle-tire-lead-days");
 const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-vehicle-tire-repeat-days");
+const settingsPeriodicsCriticalDaysInput = document.querySelector("#settings-periodics-critical-days");
+const settingsPeriodicsWarningDaysInput = document.querySelector("#settings-periodics-warning-days");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector("#settings-safety-authorization-notifications-feedback");
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
+const settingsPeriodicsVisualFeedback = document.querySelector("#settings-periodics-visual-feedback");
 const documentsCompanyCount = document.querySelector("#documents-company-count");
 const documentsLocationCount = document.querySelector("#documents-location-count");
 const documentsRnCount = document.querySelector("#documents-rn-count");
@@ -1538,7 +1548,9 @@ const documentsExplorerEmpty = document.querySelector("#documents-explorer-empty
 const periodicsModule = document.querySelector("#periodics-module");
 const periodicsTotalCount = document.querySelector("#periodics-total-count");
 const periodicsOverdueCount = document.querySelector("#periodics-overdue-count");
+const periodicsNext30Label = document.querySelector("#periodics-next30-label");
 const periodicsNext30Count = document.querySelector("#periodics-next30-count");
+const periodicsCriticalLabel = document.querySelector("#periodics-critical-label");
 const periodicsCriticalCount = document.querySelector("#periodics-critical-count");
 const periodicsSearchInput = document.querySelector("#periodics-search");
 const periodicsHorizonInput = document.querySelector("#periodics-horizon");
@@ -3477,6 +3489,32 @@ function getVehicleNotificationSettings() {
   return normalizeVehicleNotificationSettings(state.vehicleNotificationSettings);
 }
 
+function normalizePeriodicsVisualSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const fallback = DEFAULT_PERIODICS_VISUAL_SETTINGS;
+  const criticalDays = normalizeNotificationDayValue(
+    source.criticalDays ?? source.alertDays ?? source.criticalThresholdDays,
+    fallback.criticalDays,
+    { min: 1, max: 120 },
+  );
+  const warningDaysRaw = normalizeNotificationDayValue(
+    source.warningDays ?? source.yellowDays ?? source.warningThresholdDays,
+    fallback.warningDays,
+    { min: 1, max: 365 },
+  );
+  const warningDays = Math.max(criticalDays, warningDaysRaw);
+  return {
+    criticalDays,
+    warningDays,
+  };
+}
+
+function getPeriodicsVisualSettings() {
+  return normalizePeriodicsVisualSettings(state.periodicsVisualSettings);
+}
+
 function showGlobalLoadingIndicator(message = globalLoadingState.message) {
   if (!globalLoadingIndicator) {
     return;
@@ -3711,6 +3749,9 @@ function applySnapshot(payload) {
   );
   state.vehicleNotificationSettings = normalizeVehicleNotificationSettings(
     payload.vehicleNotificationSettings,
+  );
+  state.periodicsVisualSettings = normalizePeriodicsVisualSettings(
+    payload.periodicsVisualSettings,
   );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.absenceEntries = payload.absenceEntries ?? [];
@@ -8274,6 +8315,7 @@ function renderSettingsModule() {
   const safetyAuthorizationNotificationSettings = getSafetyAuthorizationNotificationSettings();
   const absenceNotificationSettings = getAbsenceNotificationSettings();
   const vehicleNotificationSettings = getVehicleNotificationSettings();
+  const periodicsVisualSettings = getPeriodicsVisualSettings();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
@@ -8345,6 +8387,20 @@ function renderSettingsModule() {
     settingsVehicleTireRepeatDaysInput.disabled = !canManageSettings;
   }
 
+  if (settingsPeriodicsCriticalDaysInput) {
+    if (document.activeElement !== settingsPeriodicsCriticalDaysInput) {
+      settingsPeriodicsCriticalDaysInput.value = String(periodicsVisualSettings.criticalDays);
+    }
+    settingsPeriodicsCriticalDaysInput.disabled = !canManageSettings;
+  }
+
+  if (settingsPeriodicsWarningDaysInput) {
+    if (document.activeElement !== settingsPeriodicsWarningDaysInput) {
+      settingsPeriodicsWarningDaysInput.value = String(periodicsVisualSettings.warningDays);
+    }
+    settingsPeriodicsWarningDaysInput.disabled = !canManageSettings;
+  }
+
   if (settingsSaveAllButton) {
     settingsSaveAllButton.disabled = !canManageSettings;
     settingsSaveAllButton.hidden = !canManageSettings;
@@ -8355,6 +8411,7 @@ function renderSettingsModule() {
     settingsSafetyAuthorizationNotificationsFeedback,
     settingsAbsenceNotificationsFeedback,
     settingsVehicleNotificationsFeedback,
+    settingsPeriodicsVisualFeedback,
   ].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
@@ -8566,6 +8623,52 @@ async function saveVehicleNotificationSettings(options = {}) {
   return success;
 }
 
+async function savePeriodicsVisualSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Postavke su spremljene.";
+
+  if (!getCanManageMasterData()) {
+    if (settingsPeriodicsVisualFeedback) {
+      settingsPeriodicsVisualFeedback.textContent = "Nemate pravo spremati postavke.";
+    }
+    return false;
+  }
+
+  const criticalDays = normalizeNotificationDayValue(
+    settingsPeriodicsCriticalDaysInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.criticalDays,
+    { min: 1, max: 120 },
+  );
+  const warningDaysRaw = normalizeNotificationDayValue(
+    settingsPeriodicsWarningDaysInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.warningDays,
+    { min: 1, max: 365 },
+  );
+  const warningDays = Math.max(criticalDays, warningDaysRaw);
+
+  if (settingsPeriodicsCriticalDaysInput) {
+    settingsPeriodicsCriticalDaysInput.value = String(criticalDays);
+  }
+  if (settingsPeriodicsWarningDaysInput) {
+    settingsPeriodicsWarningDaysInput.value = String(warningDays);
+  }
+
+  const success = await runMutation(() => apiRequest("/periodics/visual-settings", {
+    method: "POST",
+    body: {
+      criticalDays,
+      warningDays,
+    },
+  }), settingsPeriodicsVisualFeedback);
+
+  if (success && settingsPeriodicsVisualFeedback) {
+    settingsPeriodicsVisualFeedback.textContent = successMessage;
+  }
+
+  return success;
+}
+
 async function saveAllSettingsBlocks() {
   const measurementSaved = await saveMeasurementEquipmentNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
@@ -8579,7 +8682,10 @@ async function saveAllSettingsBlocks() {
   const vehicleSaved = await saveVehicleNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
-  return measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved;
+  const periodicsSaved = await savePeriodicsVisualSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
+  return measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved && periodicsSaved;
 }
 
 function renderDocumentsModule() {
@@ -8855,7 +8961,7 @@ function extractPeriodicsDocumentDueDates(record = {}) {
   return Array.from(dueDates).sort((left, right) => left.localeCompare(right));
 }
 
-function getPeriodicsDueState(dueDate = "", todayDate = null) {
+function getPeriodicsDueState(dueDate = "", todayDate = null, visualSettings = getPeriodicsVisualSettings()) {
   const parsedDate = parseDateValue(dueDate);
   if (!parsedDate) {
     return {
@@ -8873,6 +8979,9 @@ function getPeriodicsDueState(dueDate = "", todayDate = null) {
   baselineDate.setHours(0, 0, 0, 0);
 
   const daysUntil = Math.round((targetDate.getTime() - baselineDate.getTime()) / (1000 * 60 * 60 * 24));
+  const normalizedVisualSettings = normalizePeriodicsVisualSettings(visualSettings);
+  const criticalDays = normalizedVisualSettings.criticalDays;
+  const warningDays = normalizedVisualSettings.warningDays;
   if (daysUntil < 0) {
     return {
       daysUntil,
@@ -8887,14 +8996,14 @@ function getPeriodicsDueState(dueDate = "", todayDate = null) {
       badgeLabel: "Danas",
     };
   }
-  if (daysUntil <= 7) {
+  if (daysUntil <= criticalDays) {
     return {
       daysUntil,
       toneClass: "is-critical",
       badgeLabel: `${daysUntil} d`,
     };
   }
-  if (daysUntil <= 60) {
+  if (daysUntil <= warningDays) {
     return {
       daysUntil,
       toneClass: "is-warning",
@@ -8937,6 +9046,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
   const rows = [];
   const seenKeys = new Set();
   const todayDate = new Date();
+  const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
 
   (Array.isArray(records) ? records : []).forEach((record) => {
@@ -9023,7 +9133,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
       }
       seenKeys.add(dedupeKey);
 
-      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
       const searchText = [
         companyName,
         headquarters,
@@ -9060,6 +9170,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
 function buildPeriodicsVehicleEntries() {
   const rows = [];
   const todayDate = new Date();
+  const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
 
@@ -9078,7 +9189,7 @@ function buildPeriodicsVehicleEntries() {
 
     const registrationDueDate = String(vehicle?.registrationExpiresOn || "").trim();
     if (registrationDueDate) {
-      const dueState = getPeriodicsDueState(registrationDueDate, todayDate);
+      const dueState = getPeriodicsDueState(registrationDueDate, todayDate, visualSettings);
       rows.push({
         id: `periodics-vehicle-registration-${String(vehicle?.id || "")}-${registrationDueDate}`,
         dueDate: registrationDueDate,
@@ -9094,7 +9205,7 @@ function buildPeriodicsVehicleEntries() {
 
     const serviceDueDate = String(vehicle?.serviceDueDate || "").trim();
     if (serviceDueDate) {
-      const dueState = getPeriodicsDueState(serviceDueDate, todayDate);
+      const dueState = getPeriodicsDueState(serviceDueDate, todayDate, visualSettings);
       rows.push({
         id: `periodics-vehicle-service-${String(vehicle?.id || "")}-${serviceDueDate}`,
         dueDate: serviceDueDate,
@@ -9119,7 +9230,7 @@ function buildPeriodicsVehicleEntries() {
         String(activityItem?.performedBy || "").trim(),
         String(activityItem?.workSummary || "").trim(),
       ].filter(Boolean).join(" · ");
-      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
       rows.push({
         id: `periodics-vehicle-activity-${String(vehicle?.id || "")}-${String(activityItem?.id || "")}-${dueDate}`,
         dueDate,
@@ -9143,6 +9254,7 @@ function buildPeriodicsVehicleEntries() {
 function buildPeriodicsPeopleEntries() {
   const rows = [];
   const todayDate = new Date();
+  const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
   const areaDefinitions = [
     { key: "elektro", label: "Panik rasvjeta" },
@@ -9164,7 +9276,7 @@ function buildPeriodicsPeopleEntries() {
         return;
       }
 
-      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
       const capabilityLabel = qualification.canInspect && qualification.canAuthorize
         ? "Ispitivanje + ovjeravanje"
         : (qualification.canAuthorize ? "Ovjeravanje" : "Ispitivanje");
@@ -9203,6 +9315,7 @@ function buildPeriodicsPeopleEntries() {
 function buildPeriodicsMeasurementEquipmentEntries() {
   const rows = [];
   const todayDate = new Date();
+  const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
 
@@ -9269,7 +9382,7 @@ function buildPeriodicsMeasurementEquipmentEntries() {
         if (!dueDate) {
           return;
         }
-        const dueState = getPeriodicsDueState(dueDate, todayDate);
+        const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
         const periodicLabel = String(entry?.periodicLabel || "Rok opreme").trim() || "Rok opreme";
         const detail = String(entry?.detail || "").trim();
         const searchText = [
@@ -9331,7 +9444,9 @@ function applyPeriodicsFilters(entries = [], filters = state.periodicsFilters) {
   });
 }
 
-function getPeriodicsEntryCounts(entries = []) {
+function getPeriodicsEntryCounts(entries = [], visualSettings = getPeriodicsVisualSettings()) {
+  const normalizedVisualSettings = normalizePeriodicsVisualSettings(visualSettings);
+  const warningDays = normalizedVisualSettings.warningDays;
   let overdueCount = 0;
   let warningCount = 0;
   let validCount = 0;
@@ -9345,7 +9460,7 @@ function getPeriodicsEntryCounts(entries = []) {
       return;
     }
     validCount += 1;
-    if (daysUntil <= 60) {
+    if (daysUntil <= warningDays) {
       warningCount += 1;
     }
   });
@@ -9362,8 +9477,9 @@ function syncPeriodicsSectionMetrics(
     bodyNode = null,
   } = {},
   entries = [],
+  visualSettings = getPeriodicsVisualSettings(),
 ) {
-  const { overdueCount, warningCount, validCount } = getPeriodicsEntryCounts(entries);
+  const { overdueCount, warningCount, validCount } = getPeriodicsEntryCounts(entries, visualSettings);
   const hasOverdue = overdueCount > 0;
   const hasWarning = warningCount > 0;
   if (overdueNode) {
@@ -9541,6 +9657,9 @@ function renderPeriodicsModule() {
   if (!periodicsModule) {
     return;
   }
+  const visualSettings = getPeriodicsVisualSettings();
+  const warningDays = visualSettings.warningDays;
+  const criticalDays = visualSettings.criticalDays;
 
   const filters = {
     query: periodicsSearchInput?.value?.trim() || state.periodicsFilters.query || "",
@@ -9642,6 +9761,7 @@ function renderPeriodicsModule() {
       bodyNode: periodicsInspectionsBody,
     },
     inspectionEntries,
+    visualSettings,
   );
   syncPeriodicsSectionMetrics(
     {
@@ -9653,6 +9773,7 @@ function renderPeriodicsModule() {
       bodyNode: periodicsVehiclesBody,
     },
     vehicleEntries,
+    visualSettings,
   );
   syncPeriodicsSectionMetrics(
     {
@@ -9664,6 +9785,7 @@ function renderPeriodicsModule() {
       bodyNode: periodicsPeopleBody,
     },
     peopleEntries,
+    visualSettings,
   );
   syncPeriodicsSectionMetrics(
     {
@@ -9675,6 +9797,7 @@ function renderPeriodicsModule() {
       bodyNode: periodicsEquipmentBody,
     },
     equipmentEntries,
+    visualSettings,
   );
 
   const allEntries = [
@@ -9686,11 +9809,11 @@ function renderPeriodicsModule() {
   const overdueEntries = allEntries.filter((entry) => Number(entry?.dueState?.daysUntil) < 0);
   const nextSixtyDaysEntries = allEntries.filter((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
-    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 60;
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= warningDays;
   });
   const criticalEntries = allEntries.filter((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
-    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 7;
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= criticalDays;
   });
 
   if (periodicsTotalCount) {
@@ -9702,8 +9825,14 @@ function renderPeriodicsModule() {
   if (periodicsNext30Count) {
     periodicsNext30Count.textContent = String(nextSixtyDaysEntries.length);
   }
+  if (periodicsNext30Label) {
+    periodicsNext30Label.textContent = `Rok do ${warningDays} dana`;
+  }
   if (periodicsCriticalCount) {
     periodicsCriticalCount.textContent = String(criticalEntries.length);
+  }
+  if (periodicsCriticalLabel) {
+    periodicsCriticalLabel.textContent = `Kritično (${criticalDays} dana)`;
   }
   periodicsOverdueCount?.closest(".periodics-stat-card")?.classList.toggle("has-overdue-pulse", overdueEntries.length > 0);
 
@@ -54021,6 +54150,20 @@ settingsAbsenceRepeatDaysInput?.addEventListener("keydown", (event) => {
   }
 });
 
+settingsPeriodicsCriticalDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsPeriodicsWarningDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
 notificationsTrigger?.addEventListener("click", (event) => {
   event.stopPropagation();
   setNotificationsMenuOpen(!notificationsMenuOpen);
@@ -54593,6 +54736,9 @@ logoutButton?.addEventListener("click", () => {
     };
     state.vehicleNotificationSettings = {
       ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
+    };
+    state.periodicsVisualSettings = {
+      ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
     };
     measurementEquipmentSideComments = [];
     state.measurementEquipmentActivityFeed = {

@@ -17769,7 +17769,8 @@ body.is-vehicle-reservation-open {
 
 .periodics-grid-row.is-overdue {
   background:
-    linear-gradient(90deg, rgba(237, 130, 140, 0.12), rgba(255, 255, 255, 0.98) 40%);
+    linear-gradient(90deg, rgba(234, 82, 102, 0.2), rgba(255, 240, 243, 0.92) 28%, rgba(255, 255, 255, 0.98) 48%);
+  animation: periodicsOverdueRowPulse 1.2s ease-out infinite;
 }
 
 .periodics-grid-row.is-today,
@@ -17783,14 +17784,21 @@ body.is-vehicle-reservation-open {
     linear-gradient(90deg, rgba(225, 180, 65, 0.12), rgba(255, 255, 255, 0.98) 40%);
 }
 
+.periodics-grid-row.is-future {
+  background:
+    linear-gradient(90deg, rgba(82, 173, 111, 0.1), rgba(255, 255, 255, 0.98) 40%);
+}
+
 .periodics-grid-row.is-overdue .periodics-cell:first-child,
-.periodics-grid-row.is-warning .periodics-cell:first-child {
+.periodics-grid-row.is-warning .periodics-cell:first-child,
+.periodics-grid-row.is-future .periodics-cell:first-child {
   position: relative;
   padding-left: 30px;
 }
 
 .periodics-grid-row.is-overdue .periodics-cell:first-child::before,
-.periodics-grid-row.is-warning .periodics-cell:first-child::before {
+.periodics-grid-row.is-warning .periodics-cell:first-child::before,
+.periodics-grid-row.is-future .periodics-cell:first-child::before {
   content: "";
   position: absolute;
   left: 12px;
@@ -17811,6 +17819,11 @@ body.is-vehicle-reservation-open {
   background: #e0b449;
   box-shadow: 0 0 0 0 rgba(224, 180, 73, 0.62);
   animation: periodicsPulseWarningDot 1.2s ease-out infinite;
+}
+
+.periodics-grid-row.is-future .periodics-cell:first-child::before {
+  background: #49a56f;
+  box-shadow: 0 0 0 2px rgba(225, 247, 233, 0.92);
 }
 
 .periodics-cell {
@@ -17923,9 +17936,9 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-due-pill.is-future {
-  border-color: rgba(98, 151, 214, 0.52);
-  background: rgba(234, 244, 255, 0.92);
-  color: #325a89;
+  border-color: rgba(86, 163, 120, 0.56);
+  background: rgba(232, 250, 238, 0.95);
+  color: #2f7a52;
 }
 
 .periodics-stat-card.has-overdue-pulse::after {
@@ -17979,6 +17992,23 @@ body.is-vehicle-reservation-open {
   100% {
     opacity: 0.96;
     box-shadow: 0 0 0 8px rgba(224, 180, 73, 0);
+  }
+}
+
+@keyframes periodicsOverdueRowPulse {
+  0% {
+    background:
+      linear-gradient(90deg, rgba(234, 82, 102, 0.16), rgba(255, 240, 243, 0.9) 28%, rgba(255, 255, 255, 0.98) 48%);
+  }
+
+  50% {
+    background:
+      linear-gradient(90deg, rgba(234, 82, 102, 0.28), rgba(255, 231, 236, 0.95) 28%, rgba(255, 255, 255, 0.98) 50%);
+  }
+
+  100% {
+    background:
+      linear-gradient(90deg, rgba(234, 82, 102, 0.16), rgba(255, 240, 243, 0.9) 28%, rgba(255, 255, 255, 0.98) 48%);
   }
 }
 
