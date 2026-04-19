@@ -9367,14 +9367,14 @@ function syncPeriodicsSectionMetrics(
   const hasOverdue = overdueCount > 0;
   const hasWarning = warningCount > 0;
   if (overdueNode) {
-    overdueNode.textContent = `-${overdueCount}`;
+    overdueNode.textContent = String(overdueCount);
   }
   if (warningNode) {
-    warningNode.textContent = `~${warningCount}`;
+    warningNode.textContent = String(warningCount);
     warningNode.classList.toggle("has-pulse-warning", warningCount > 0);
   }
   if (validNode) {
-    validNode.textContent = `+${validCount}`;
+    validNode.textContent = String(validCount);
   }
   if (alertOverdueNode) {
     alertOverdueNode.hidden = !hasOverdue;
