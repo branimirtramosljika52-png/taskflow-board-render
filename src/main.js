@@ -3185,10 +3185,40 @@ function setLoginBusy(isBusy) {
 
   if (loginEmailInput) {
     loginEmailInput.disabled = isBusy;
+    enforceLoginInputContrast(loginEmailInput);
   }
   if (loginPasswordInput) {
     loginPasswordInput.disabled = isBusy;
+    enforceLoginInputContrast(loginPasswordInput);
   }
+}
+
+function enforceLoginInputContrast(input) {
+  if (!input || input.dataset.loginContrastBound === "true") {
+    return;
+  }
+
+  const apply = () => {
+    input.style.setProperty("color-scheme", "light", "important");
+    input.style.setProperty("background", "#ffffff", "important");
+    input.style.setProperty("background-color", "#ffffff", "important");
+    input.style.setProperty("color", "#1f2430", "important");
+    input.style.setProperty("-webkit-text-fill-color", "#1f2430", "important");
+    input.style.setProperty("caret-color", "#1f2430", "important");
+    input.style.setProperty("-webkit-box-shadow", "0 0 0 1000px #ffffff inset", "important");
+    input.style.setProperty("box-shadow", "0 0 0 1000px #ffffff inset", "important");
+  };
+
+  input.dataset.loginContrastBound = "true";
+  apply();
+
+  ["focus", "blur", "input", "change", "keydown", "keyup", "animationstart"].forEach((eventName) => {
+    input.addEventListener(eventName, apply);
+  });
+
+  window.setTimeout(apply, 0);
+  window.setTimeout(apply, 120);
+  window.setTimeout(apply, 380);
 }
 
 function applyLoginRedirectState() {
@@ -55243,6 +55273,8 @@ renderActiveView();
 renderAuthState();
 applyLoginRedirectState();
 syncPasswordToggleLabel();
+enforceLoginInputContrast(loginEmailInput);
+enforceLoginInputContrast(loginPasswordInput);
 
 refreshLoginContent().catch(() => {
   renderLoginContent();

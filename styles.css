@@ -25073,6 +25073,73 @@ body.is-document-template-resizing-diagonal * {
   box-shadow: 0 1px 0 0 #248dff;
 }
 
+.auth-form-tenant #login-email,
+.auth-form-tenant #login-password,
+.auth-form-tenant #login-email:focus,
+.auth-form-tenant #login-password:focus,
+.auth-form-tenant #login-email:active,
+.auth-form-tenant #login-password:active {
+  background-color: #ffffff !important;
+  color: #1f2430 !important;
+  -webkit-text-fill-color: #1f2430 !important;
+}
+
+.auth-form.auth-form-tenant,
+.auth-form.auth-form-tenant .auth-input-shell,
+.auth-form.auth-form-tenant input {
+  color-scheme: light;
+}
+
+.auth-form.auth-form-tenant input,
+.auth-form.auth-form-tenant input:hover,
+.auth-form.auth-form-tenant input:focus,
+.auth-form.auth-form-tenant input:active {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #1f2430 !important;
+  -webkit-text-fill-color: #1f2430 !important;
+  caret-color: #1f2430 !important;
+}
+
+.auth-form-tenant #login-email::placeholder,
+.auth-form-tenant #login-password::placeholder {
+  color: #8b96ab;
+}
+
+.auth-form.auth-form-tenant input::placeholder {
+  color: #8b96ab !important;
+}
+
+.auth-form-tenant #login-email:-webkit-autofill,
+.auth-form-tenant #login-password:-webkit-autofill,
+.auth-form-tenant #login-email:-webkit-autofill:hover,
+.auth-form-tenant #login-password:-webkit-autofill:hover,
+.auth-form-tenant #login-email:-webkit-autofill:focus,
+.auth-form-tenant #login-password:-webkit-autofill:focus,
+.auth-form-tenant #login-email:-webkit-autofill:active,
+.auth-form-tenant #login-password:-webkit-autofill:active,
+.auth-form-tenant #login-email:autofill,
+.auth-form-tenant #login-password:autofill {
+  -webkit-text-fill-color: #1f2430 !important;
+  caret-color: #1f2430;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  background-color: #ffffff !important;
+}
+
+.auth-form.auth-form-tenant input:-webkit-autofill,
+.auth-form.auth-form-tenant input:-webkit-autofill:hover,
+.auth-form.auth-form-tenant input:-webkit-autofill:focus,
+.auth-form.auth-form-tenant input:-webkit-autofill:active,
+.auth-form.auth-form-tenant input:autofill {
+  -webkit-text-fill-color: #1f2430 !important;
+  caret-color: #1f2430 !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
 .auth-submit-button {
   background: linear-gradient(90deg, #11367c 0%, #1763e2 52%, #43c3ff 100%);
   box-shadow: 0 20px 36px rgba(18, 77, 174, 0.24);
