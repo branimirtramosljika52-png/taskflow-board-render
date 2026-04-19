@@ -17475,26 +17475,51 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  gap: 14px;
 }
 
-.periodics-section-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.periodics-section-kpis {
-  display: inline-flex;
-  align-items: center;
+.periodics-section-title-wrap {
+  min-width: 0;
+  display: grid;
   gap: 6px;
 }
 
+.periodics-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.periodics-section-title-row h3 {
+  margin: 0;
+  min-width: 0;
+}
+
+.periodics-section-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 168px;
+}
+
+.periodics-section-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(58px, 58px));
+  align-items: center;
+  justify-items: center;
+  gap: 7px;
+}
+
 .periodics-section-trend {
-  min-width: 44px;
-  padding: 3px 9px;
+  min-width: 58px;
+  padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid rgba(156, 167, 197, 0.52);
   background: rgba(243, 246, 255, 0.95);
@@ -17518,21 +17543,40 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-section-alert-dot {
+  --periodics-dot-color: #e24a60;
+  --periodics-dot-halo: rgba(226, 74, 96, 0.52);
   position: relative;
-  width: 10px;
-  height: 10px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #e24a60;
-  box-shadow: 0 0 0 2px rgba(255, 214, 221, 0.9);
+  background: var(--periodics-dot-color);
+  box-shadow:
+    0 0 0 2px rgba(255, 214, 221, 0.98),
+    0 0 0 6px rgba(255, 232, 238, 0.72);
+  filter: drop-shadow(0 2px 6px rgba(197, 73, 93, 0.42));
+}
+
+.periodics-section-alert-dot[data-tone="warning"] {
+  --periodics-dot-color: #e2ae2f;
+  --periodics-dot-halo: rgba(226, 174, 47, 0.52);
+  box-shadow:
+    0 0 0 2px rgba(255, 243, 201, 0.96),
+    0 0 0 6px rgba(255, 247, 216, 0.74);
+  filter: drop-shadow(0 2px 6px rgba(175, 126, 19, 0.36));
+}
+
+.periodics-section-alert-dot[data-tone="overdue"] {
+  --periodics-dot-color: #e24a60;
+  --periodics-dot-halo: rgba(226, 74, 96, 0.52);
 }
 
 .periodics-section-alert-dot::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -9px;
   border-radius: 50%;
-  border: 2px solid rgba(226, 74, 96, 0.56);
-  animation: periodicsPulseAlert 1.4s ease-out infinite;
+  border: 2.5px solid var(--periodics-dot-halo);
+  animation: periodicsPulseAlert 1.15s ease-out infinite;
 }
 
 .periodics-section-card.has-overdue {
@@ -17540,6 +17584,13 @@ body.is-vehicle-reservation-open {
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     0 16px 28px rgba(52, 67, 112, 0.08),
     0 0 0 1px rgba(226, 74, 96, 0.22);
+}
+
+.periodics-section-card.has-warning {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 16px 28px rgba(52, 67, 112, 0.08),
+    0 0 0 1px rgba(219, 176, 78, 0.26);
 }
 
 .periodics-section-card.is-collapsed {
@@ -17558,15 +17609,7 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-section-count {
-  min-width: 38px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(116, 129, 174, 0.42);
-  background: rgba(248, 250, 255, 0.95);
-  color: #33406a;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-align: center;
+  display: none;
 }
 
 .periodics-section-body {
@@ -17576,6 +17619,10 @@ body.is-vehicle-reservation-open {
 
 .periodics-section-body.has-overdue .periodics-grid {
   border-color: rgba(226, 74, 96, 0.32);
+}
+
+.periodics-section-body.has-warning .periodics-grid {
+  border-color: rgba(221, 181, 90, 0.34);
 }
 
 .periodics-grid {
@@ -17643,6 +17690,11 @@ body.is-vehicle-reservation-open {
   text-transform: uppercase;
   font-weight: 700;
   color: #526084;
+  border-right: 1px solid rgba(205, 216, 241, 0.72);
+}
+
+.periodics-grid-head span:last-child {
+  border-right: 0;
 }
 
 .periodics-grid-body {
@@ -17673,12 +17725,22 @@ body.is-vehicle-reservation-open {
     linear-gradient(90deg, rgba(230, 162, 87, 0.12), rgba(255, 255, 255, 0.98) 40%);
 }
 
+.periodics-grid-row.is-warning {
+  background:
+    linear-gradient(90deg, rgba(225, 180, 65, 0.12), rgba(255, 255, 255, 0.98) 40%);
+}
+
 .periodics-cell {
   min-width: 0;
   display: grid;
   gap: 2px;
   padding: 10px 12px;
   align-content: center;
+  border-right: 1px solid rgba(227, 233, 247, 0.84);
+}
+
+.periodics-grid-row .periodics-cell:last-child {
+  border-right: 0;
 }
 
 .periodics-cell.is-dimmed .periodics-cell-primary {
@@ -17738,6 +17800,24 @@ body.is-vehicle-reservation-open {
   background: #df3a55;
   transform: translateY(-50%);
   animation: periodicsPulseDot 1.2s ease-out infinite;
+}
+
+.periodics-due-pill.has-pulse-warning {
+  position: relative;
+  padding-left: 18px;
+}
+
+.periodics-due-pill.has-pulse-warning::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e0b449;
+  transform: translateY(-50%);
+  animation: periodicsPulseWarningDot 1.2s ease-out infinite;
 }
 
 .periodics-due-pill.is-overdue {
@@ -17807,9 +17887,33 @@ body.is-vehicle-reservation-open {
   }
 }
 
+@keyframes periodicsPulseWarningDot {
+  0% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(224, 180, 73, 0.62);
+  }
+
+  100% {
+    opacity: 0.96;
+    box-shadow: 0 0 0 8px rgba(224, 180, 73, 0);
+  }
+}
+
 @media (max-width: 1180px) {
   .periodics-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .periodics-section-heading {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .periodics-section-actions {
+    grid-auto-flow: row;
+    justify-items: end;
+    align-content: start;
   }
 
   .periodics-filters {
@@ -17831,6 +17935,7 @@ body.is-vehicle-reservation-open {
   .periodics-cell {
     padding: 9px 12px;
     border-bottom: 1px solid rgba(227, 233, 247, 0.78);
+    border-right: 0;
   }
 
   .periodics-grid-row .periodics-cell:last-child {

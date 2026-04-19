@@ -8882,7 +8882,7 @@ function getPeriodicsDueState(dueDate = "", todayDate = null) {
       badgeLabel: `${daysUntil} d`,
     };
   }
-  if (daysUntil <= 30) {
+  if (daysUntil <= 60) {
     return {
       daysUntil,
       toneClass: "is-warning",
@@ -9321,6 +9321,7 @@ function applyPeriodicsFilters(entries = [], filters = state.periodicsFilters) {
 
 function getPeriodicsEntryCounts(entries = []) {
   let overdueCount = 0;
+  let warningCount = 0;
   let validCount = 0;
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
@@ -9332,8 +9333,11 @@ function getPeriodicsEntryCounts(entries = []) {
       return;
     }
     validCount += 1;
+    if (daysUntil <= 60) {
+      warningCount += 1;
+    }
   });
-  return { overdueCount, validCount };
+  return { overdueCount, warningCount, validCount };
 }
 
 function syncPeriodicsSectionMetrics(
@@ -9345,7 +9349,9 @@ function syncPeriodicsSectionMetrics(
   } = {},
   entries = [],
 ) {
-  const { overdueCount, validCount } = getPeriodicsEntryCounts(entries);
+  const { overdueCount, warningCount, validCount } = getPeriodicsEntryCounts(entries);
+  const hasOverdue = overdueCount > 0;
+  const hasWarning = !hasOverdue && warningCount > 0;
   if (overdueNode) {
     overdueNode.textContent = `-${overdueCount}`;
   }
@@ -9353,12 +9359,20 @@ function syncPeriodicsSectionMetrics(
     validNode.textContent = `+${validCount}`;
   }
   if (alertNode) {
-    alertNode.hidden = overdueCount <= 0;
+    const showAlert = hasOverdue || hasWarning;
+    alertNode.hidden = !showAlert;
+    if (showAlert) {
+      alertNode.dataset.tone = hasOverdue ? "overdue" : "warning";
+    } else {
+      delete alertNode.dataset.tone;
+    }
   }
   if (bodyNode) {
-    bodyNode.classList.toggle("has-overdue", overdueCount > 0);
+    bodyNode.classList.toggle("has-overdue", hasOverdue);
+    bodyNode.classList.toggle("has-warning", hasWarning);
     const hostCard = bodyNode.closest(".periodics-section-card");
-    hostCard?.classList.toggle("has-overdue", overdueCount > 0);
+    hostCard?.classList.toggle("has-overdue", hasOverdue);
+    hostCard?.classList.toggle("has-warning", hasWarning);
   }
 }
 
@@ -9394,6 +9408,8 @@ function createPeriodicsDueCell(dueDate = "", dueState = {}) {
   badge.className = `periodics-due-pill ${dueState?.toneClass || "is-unknown"}`;
   if (String(dueState?.toneClass || "") === "is-overdue") {
     badge.classList.add("has-pulse-alert");
+  } else if (String(dueState?.toneClass || "") === "is-warning") {
+    badge.classList.add("has-pulse-warning");
   }
   badge.textContent = dueState?.badgeLabel || "Bez roka";
   cell.append(badge);
@@ -9596,9 +9612,9 @@ function renderPeriodicsModule() {
     ...equipmentEntries,
   ];
   const overdueEntries = allEntries.filter((entry) => Number(entry?.dueState?.daysUntil) < 0);
-  const nextThirtyDaysEntries = allEntries.filter((entry) => {
+  const nextSixtyDaysEntries = allEntries.filter((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
-    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 30;
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 60;
   });
   const criticalEntries = allEntries.filter((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
@@ -9612,7 +9628,7 @@ function renderPeriodicsModule() {
     periodicsOverdueCount.textContent = String(overdueEntries.length);
   }
   if (periodicsNext30Count) {
-    periodicsNext30Count.textContent = String(nextThirtyDaysEntries.length);
+    periodicsNext30Count.textContent = String(nextSixtyDaysEntries.length);
   }
   if (periodicsCriticalCount) {
     periodicsCriticalCount.textContent = String(criticalEntries.length);
