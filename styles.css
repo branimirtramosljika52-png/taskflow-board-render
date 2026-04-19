@@ -17579,40 +17579,43 @@ body.is-vehicle-reservation-open {
   color: #2f7a52;
 }
 
+.periodics-section-alert-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .periodics-section-alert-dot {
   --periodics-dot-color: #e24a60;
   --periodics-dot-halo: rgba(226, 74, 96, 0.52);
+  --periodics-dot-shadow: rgba(197, 73, 93, 0.42);
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--periodics-dot-color);
   box-shadow:
     0 0 0 2px rgba(255, 214, 221, 0.98),
-    0 0 0 6px rgba(255, 232, 238, 0.72);
-  filter: drop-shadow(0 2px 6px rgba(197, 73, 93, 0.42));
+    0 0 0 5px rgba(255, 232, 238, 0.72);
+  filter: drop-shadow(0 2px 6px var(--periodics-dot-shadow));
 }
 
-.periodics-section-alert-dot[data-tone="warning"] {
+.periodics-section-alert-dot.is-warning {
   --periodics-dot-color: #e2ae2f;
   --periodics-dot-halo: rgba(226, 174, 47, 0.52);
+  --periodics-dot-shadow: rgba(175, 126, 19, 0.36);
   box-shadow:
     0 0 0 2px rgba(255, 243, 201, 0.96),
-    0 0 0 6px rgba(255, 247, 216, 0.74);
-  filter: drop-shadow(0 2px 6px rgba(175, 126, 19, 0.36));
-}
-
-.periodics-section-alert-dot[data-tone="overdue"] {
-  --periodics-dot-color: #e24a60;
-  --periodics-dot-halo: rgba(226, 74, 96, 0.52);
+    0 0 0 5px rgba(255, 247, 216, 0.74);
 }
 
 .periodics-section-alert-dot::after {
   content: "";
   position: absolute;
-  inset: -9px;
+  inset: -8px;
   border-radius: 50%;
-  border: 2.5px solid var(--periodics-dot-halo);
+  border: 2px solid var(--periodics-dot-halo);
   animation: periodicsPulseAlert 1.15s ease-out infinite;
 }
 
@@ -17628,6 +17631,14 @@ body.is-vehicle-reservation-open {
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     0 16px 28px rgba(52, 67, 112, 0.08),
     0 0 0 1px rgba(219, 176, 78, 0.26);
+}
+
+.periodics-section-card.has-overdue.has-warning {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 16px 28px rgba(52, 67, 112, 0.08),
+    0 0 0 1px rgba(226, 74, 96, 0.24),
+    0 0 0 3px rgba(219, 176, 78, 0.18);
 }
 
 .periodics-section-card.is-collapsed {
@@ -17660,6 +17671,11 @@ body.is-vehicle-reservation-open {
 
 .periodics-section-body.has-warning .periodics-grid {
   border-color: rgba(221, 181, 90, 0.34);
+}
+
+.periodics-section-body.has-overdue.has-warning .periodics-grid {
+  border-color: rgba(226, 74, 96, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(221, 181, 90, 0.24);
 }
 
 .periodics-grid {
@@ -17765,6 +17781,36 @@ body.is-vehicle-reservation-open {
 .periodics-grid-row.is-warning {
   background:
     linear-gradient(90deg, rgba(225, 180, 65, 0.12), rgba(255, 255, 255, 0.98) 40%);
+}
+
+.periodics-grid-row.is-overdue .periodics-cell:first-child,
+.periodics-grid-row.is-warning .periodics-cell:first-child {
+  position: relative;
+  padding-left: 30px;
+}
+
+.periodics-grid-row.is-overdue .periodics-cell:first-child::before,
+.periodics-grid-row.is-warning .periodics-cell:first-child::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+.periodics-grid-row.is-overdue .periodics-cell:first-child::before {
+  background: #df3a55;
+  box-shadow: 0 0 0 0 rgba(223, 58, 85, 0.62);
+  animation: periodicsPulseDot 1.2s ease-out infinite;
+}
+
+.periodics-grid-row.is-warning .periodics-cell:first-child::before {
+  background: #e0b449;
+  box-shadow: 0 0 0 0 rgba(224, 180, 73, 0.62);
+  animation: periodicsPulseWarningDot 1.2s ease-out infinite;
 }
 
 .periodics-cell {

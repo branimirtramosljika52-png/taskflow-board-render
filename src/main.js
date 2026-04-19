@@ -1553,7 +1553,8 @@ const periodicsInspectionsEmpty = document.querySelector("#periodics-inspections
 const periodicsInspectionsOverdue = document.querySelector("#periodics-inspections-overdue");
 const periodicsInspectionsWarning = document.querySelector("#periodics-inspections-warning");
 const periodicsInspectionsValid = document.querySelector("#periodics-inspections-valid");
-const periodicsInspectionsAlertDot = document.querySelector("#periodics-inspections-alert-dot");
+const periodicsInspectionsOverdueDot = document.querySelector("#periodics-inspections-overdue-dot");
+const periodicsInspectionsWarningDot = document.querySelector("#periodics-inspections-warning-dot");
 const periodicsVehiclesCount = document.querySelector("#periodics-vehicles-count");
 const periodicsVehiclesHeading = document.querySelector("#periodics-vehicles-heading");
 const periodicsVehiclesToggleButton = document.querySelector("#periodics-vehicles-toggle");
@@ -1563,7 +1564,8 @@ const periodicsVehiclesEmpty = document.querySelector("#periodics-vehicles-empty
 const periodicsVehiclesOverdue = document.querySelector("#periodics-vehicles-overdue");
 const periodicsVehiclesWarning = document.querySelector("#periodics-vehicles-warning");
 const periodicsVehiclesValid = document.querySelector("#periodics-vehicles-valid");
-const periodicsVehiclesAlertDot = document.querySelector("#periodics-vehicles-alert-dot");
+const periodicsVehiclesOverdueDot = document.querySelector("#periodics-vehicles-overdue-dot");
+const periodicsVehiclesWarningDot = document.querySelector("#periodics-vehicles-warning-dot");
 const periodicsPeopleCount = document.querySelector("#periodics-people-count");
 const periodicsPeopleHeading = document.querySelector("#periodics-people-heading");
 const periodicsPeopleToggleButton = document.querySelector("#periodics-people-toggle");
@@ -1573,7 +1575,8 @@ const periodicsPeopleEmpty = document.querySelector("#periodics-people-empty");
 const periodicsPeopleOverdue = document.querySelector("#periodics-people-overdue");
 const periodicsPeopleWarning = document.querySelector("#periodics-people-warning");
 const periodicsPeopleValid = document.querySelector("#periodics-people-valid");
-const periodicsPeopleAlertDot = document.querySelector("#periodics-people-alert-dot");
+const periodicsPeopleOverdueDot = document.querySelector("#periodics-people-overdue-dot");
+const periodicsPeopleWarningDot = document.querySelector("#periodics-people-warning-dot");
 const periodicsEquipmentCount = document.querySelector("#periodics-equipment-count");
 const periodicsEquipmentHeading = document.querySelector("#periodics-equipment-heading");
 const periodicsEquipmentToggleButton = document.querySelector("#periodics-equipment-toggle");
@@ -1583,7 +1586,8 @@ const periodicsEquipmentEmpty = document.querySelector("#periodics-equipment-emp
 const periodicsEquipmentOverdue = document.querySelector("#periodics-equipment-overdue");
 const periodicsEquipmentWarning = document.querySelector("#periodics-equipment-warning");
 const periodicsEquipmentValid = document.querySelector("#periodics-equipment-valid");
-const periodicsEquipmentAlertDot = document.querySelector("#periodics-equipment-alert-dot");
+const periodicsEquipmentOverdueDot = document.querySelector("#periodics-equipment-overdue-dot");
+const periodicsEquipmentWarningDot = document.querySelector("#periodics-equipment-warning-dot");
 const vehiclesModule = document.querySelector("#vehicles-module");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
@@ -9353,14 +9357,15 @@ function syncPeriodicsSectionMetrics(
     overdueNode = null,
     warningNode = null,
     validNode = null,
-    alertNode = null,
+    alertOverdueNode = null,
+    alertWarningNode = null,
     bodyNode = null,
   } = {},
   entries = [],
 ) {
   const { overdueCount, warningCount, validCount } = getPeriodicsEntryCounts(entries);
   const hasOverdue = overdueCount > 0;
-  const hasWarning = !hasOverdue && warningCount > 0;
+  const hasWarning = warningCount > 0;
   if (overdueNode) {
     overdueNode.textContent = `-${overdueCount}`;
   }
@@ -9371,14 +9376,11 @@ function syncPeriodicsSectionMetrics(
   if (validNode) {
     validNode.textContent = `+${validCount}`;
   }
-  if (alertNode) {
-    const showAlert = hasOverdue || hasWarning;
-    alertNode.hidden = !showAlert;
-    if (showAlert) {
-      alertNode.dataset.tone = hasOverdue ? "overdue" : "warning";
-    } else {
-      delete alertNode.dataset.tone;
-    }
+  if (alertOverdueNode) {
+    alertOverdueNode.hidden = !hasOverdue;
+  }
+  if (alertWarningNode) {
+    alertWarningNode.hidden = !hasWarning;
   }
   if (bodyNode) {
     bodyNode.classList.toggle("has-overdue", hasOverdue);
@@ -9479,7 +9481,8 @@ function bindPeriodicsSectionHeaderToggle(headingNode, toggleButton, sectionKey 
     if (!(target instanceof Element)) {
       return false;
     }
-    return Boolean(target.closest("button, a, input, select, textarea, [role='button']"));
+    const interactiveAncestor = target.closest("button, a, input, select, textarea, [role='button']");
+    return Boolean(interactiveAncestor && interactiveAncestor !== headingNode);
   };
   headingNode.addEventListener("click", (event) => {
     if (shouldSkipHeaderToggle(event.target)) {
@@ -9634,7 +9637,8 @@ function renderPeriodicsModule() {
       overdueNode: periodicsInspectionsOverdue,
       warningNode: periodicsInspectionsWarning,
       validNode: periodicsInspectionsValid,
-      alertNode: periodicsInspectionsAlertDot,
+      alertOverdueNode: periodicsInspectionsOverdueDot,
+      alertWarningNode: periodicsInspectionsWarningDot,
       bodyNode: periodicsInspectionsBody,
     },
     inspectionEntries,
@@ -9644,7 +9648,8 @@ function renderPeriodicsModule() {
       overdueNode: periodicsVehiclesOverdue,
       warningNode: periodicsVehiclesWarning,
       validNode: periodicsVehiclesValid,
-      alertNode: periodicsVehiclesAlertDot,
+      alertOverdueNode: periodicsVehiclesOverdueDot,
+      alertWarningNode: periodicsVehiclesWarningDot,
       bodyNode: periodicsVehiclesBody,
     },
     vehicleEntries,
@@ -9654,7 +9659,8 @@ function renderPeriodicsModule() {
       overdueNode: periodicsPeopleOverdue,
       warningNode: periodicsPeopleWarning,
       validNode: periodicsPeopleValid,
-      alertNode: periodicsPeopleAlertDot,
+      alertOverdueNode: periodicsPeopleOverdueDot,
+      alertWarningNode: periodicsPeopleWarningDot,
       bodyNode: periodicsPeopleBody,
     },
     peopleEntries,
@@ -9664,7 +9670,8 @@ function renderPeriodicsModule() {
       overdueNode: periodicsEquipmentOverdue,
       warningNode: periodicsEquipmentWarning,
       validNode: periodicsEquipmentValid,
-      alertNode: periodicsEquipmentAlertDot,
+      alertOverdueNode: periodicsEquipmentOverdueDot,
+      alertWarningNode: periodicsEquipmentWarningDot,
       bodyNode: periodicsEquipmentBody,
     },
     equipmentEntries,
