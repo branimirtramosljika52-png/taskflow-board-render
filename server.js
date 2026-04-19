@@ -111,10 +111,14 @@ const { domainRepository, tenantRepository } = await createRepositoryWithRetry()
 const liveChatStore = createLiveChatStore();
 
 const contentTypes = {
+  ".ico": "image/x-icon",
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 
 function sendJson(response, statusCode, payload) {
