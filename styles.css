@@ -25073,41 +25073,59 @@ body.is-document-template-resizing-diagonal * {
   box-shadow: 0 1px 0 0 #248dff;
 }
 
-.auth-form-tenant #login-email,
-.auth-form-tenant #login-password,
-.auth-form-tenant #login-email:focus,
-.auth-form-tenant #login-password:focus,
-.auth-form-tenant #login-email:active,
-.auth-form-tenant #login-password:active {
-  background-color: #ffffff !important;
-  color: #1f2430 !important;
-  -webkit-text-fill-color: #1f2430 !important;
-}
-
 .auth-form.auth-form-tenant,
 .auth-form.auth-form-tenant .auth-input-shell,
 .auth-form.auth-form-tenant input {
   color-scheme: light;
 }
 
+.auth-form.auth-form-tenant .auth-input-shell {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  border: 1px solid #d9e3f2;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 8px 18px rgba(17, 54, 124, 0.06);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.auth-form.auth-form-tenant .auth-input-shell:focus-within {
+  border-color: #248dff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 0 0 3px rgba(36, 141, 255, 0.12);
+}
+
 .auth-form.auth-form-tenant input,
 .auth-form.auth-form-tenant input:hover,
 .auth-form.auth-form-tenant input:focus,
 .auth-form.auth-form-tenant input:active {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  color: var(--login-input-fg, #1f2430) !important;
-  -webkit-text-fill-color: var(--login-input-fg, #1f2430) !important;
-  caret-color: var(--login-input-fg, #1f2430) !important;
-}
-
-.auth-form-tenant #login-email::placeholder,
-.auth-form-tenant #login-password::placeholder {
-  color: #8b96ab;
+  min-height: 44px;
+  border: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 14px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #1f2430 !important;
+  -webkit-text-fill-color: #1f2430 !important;
+  caret-color: #1f2430 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 10px 14px 10px 30px;
 }
 
 .auth-form.auth-form-tenant input::placeholder {
-  color: var(--login-input-placeholder, #8b96ab) !important;
+  color: #8b96ab !important;
+}
+
+.auth-form.auth-form-tenant input::selection {
+  background: rgba(36, 141, 255, 0.16);
+  color: #1f2430;
 }
 
 .auth-form-tenant #login-email:-webkit-autofill,
@@ -25121,10 +25139,14 @@ body.is-document-template-resizing-diagonal * {
 .auth-form-tenant #login-email:autofill,
 .auth-form-tenant #login-password:autofill {
   -webkit-text-fill-color: #1f2430 !important;
-  caret-color: #1f2430;
+  caret-color: #1f2430 !important;
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
   box-shadow: 0 0 0 1000px #ffffff inset !important;
   background-color: #ffffff !important;
+  border: 0 !important;
+  transition:
+    background-color 999999s ease-in-out 0s,
+    color 999999s ease-in-out 0s;
 }
 
 .auth-form.auth-form-tenant input:-webkit-autofill,
@@ -25132,12 +25154,16 @@ body.is-document-template-resizing-diagonal * {
 .auth-form.auth-form-tenant input:-webkit-autofill:focus,
 .auth-form.auth-form-tenant input:-webkit-autofill:active,
 .auth-form.auth-form-tenant input:autofill {
-  -webkit-text-fill-color: var(--login-input-fg, #1f2430) !important;
-  caret-color: var(--login-input-fg, #1f2430) !important;
+  -webkit-text-fill-color: #1f2430 !important;
+  caret-color: #1f2430 !important;
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
   box-shadow: 0 0 0 1000px #ffffff inset !important;
-  background: #ffffff !important;
-  background-color: #ffffff !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  transition:
+    background-color 999999s ease-in-out 0s,
+    color 999999s ease-in-out 0s;
 }
 
 .auth-submit-button {

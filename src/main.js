@@ -3185,85 +3185,10 @@ function setLoginBusy(isBusy) {
 
   if (loginEmailInput) {
     loginEmailInput.disabled = isBusy;
-    enforceLoginInputContrast(loginEmailInput);
   }
   if (loginPasswordInput) {
     loginPasswordInput.disabled = isBusy;
-    enforceLoginInputContrast(loginPasswordInput);
   }
-}
-
-function parseRgbColor(value = "") {
-  const match = String(value || "").match(/rgba?\(([^)]+)\)/i);
-  if (!match?.[1]) {
-    return null;
-  }
-  const channels = match[1]
-    .split(",")
-    .slice(0, 3)
-    .map((channel) => Number.parseFloat(channel.trim()));
-  if (channels.length < 3 || channels.some((channel) => !Number.isFinite(channel))) {
-    return null;
-  }
-  return channels;
-}
-
-function isLoginInputBackgroundDark(input) {
-  if (!input) {
-    return false;
-  }
-  const rgb = parseRgbColor(window.getComputedStyle(input).backgroundColor);
-  if (!rgb) {
-    return false;
-  }
-  const [red, green, blue] = rgb;
-  const luminance = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
-  return luminance < 148;
-}
-
-function enforceLoginInputContrast(input) {
-  if (!input || input.dataset.loginContrastBound === "true") {
-    return;
-  }
-
-  const apply = () => {
-    const darkBackground = isLoginInputBackgroundDark(input);
-    const foreground = darkBackground ? "#ffffff" : "#1f2430";
-    const placeholder = darkBackground ? "rgba(255, 255, 255, 0.74)" : "#8b96ab";
-
-    input.style.setProperty("color-scheme", "light", "important");
-    input.style.setProperty("--login-input-fg", foreground, "important");
-    input.style.setProperty("--login-input-placeholder", placeholder, "important");
-    input.style.setProperty("color", foreground, "important");
-    input.style.setProperty("-webkit-text-fill-color", foreground, "important");
-    input.style.setProperty("caret-color", foreground, "important");
-
-    if (darkBackground) {
-      input.style.setProperty("background", "rgba(16, 20, 31, 0.94)", "important");
-      input.style.setProperty("background-color", "rgba(16, 20, 31, 0.94)", "important");
-      input.style.setProperty("-webkit-box-shadow", "0 0 0 1000px rgba(16, 20, 31, 0.94) inset", "important");
-      input.style.setProperty("box-shadow", "0 0 0 1000px rgba(16, 20, 31, 0.94) inset", "important");
-      return;
-    }
-
-    input.style.setProperty("background", "#ffffff", "important");
-    input.style.setProperty("background-color", "#ffffff", "important");
-    input.style.setProperty("-webkit-box-shadow", "0 0 0 1000px #ffffff inset", "important");
-    input.style.setProperty("box-shadow", "0 0 0 1000px #ffffff inset", "important");
-  };
-
-  input.dataset.loginContrastBound = "true";
-  apply();
-
-  ["focus", "blur", "input", "change", "keydown", "keyup", "animationstart"].forEach((eventName) => {
-    input.addEventListener(eventName, apply);
-  });
-
-  window.setTimeout(apply, 0);
-  window.setTimeout(apply, 120);
-  window.setTimeout(apply, 380);
-  window.setTimeout(apply, 1200);
-  window.setTimeout(apply, 2400);
 }
 
 function applyLoginRedirectState() {
@@ -55318,8 +55243,6 @@ renderActiveView();
 renderAuthState();
 applyLoginRedirectState();
 syncPasswordToggleLabel();
-enforceLoginInputContrast(loginEmailInput);
-enforceLoginInputContrast(loginPasswordInput);
 
 refreshLoginContent().catch(() => {
   renderLoginContent();
