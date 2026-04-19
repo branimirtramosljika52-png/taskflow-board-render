@@ -40,6 +40,36 @@ const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
 const requestUserSymbol = Symbol("requestUser");
 const jwtSecret = resolveJwtSecret();
+const publicAppUrl = String(process.env.PUBLIC_APP_URL || process.env.APP_URL || "").trim().replace(/\/+$/, "");
+const canonicalAppOrigin = (() => {
+  if (!publicAppUrl) {
+    return "";
+  }
+
+  try {
+    return new URL(publicAppUrl).origin;
+  } catch {
+    console.warn(`Invalid PUBLIC_APP_URL/APP_URL value "${publicAppUrl}", canonical redirect disabled.`);
+    return "";
+  }
+})();
+const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
+const securityContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'self' https://unpkg.com",
+  "style-src 'self' 'unsafe-inline' https://unpkg.com",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https://unpkg.com",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "media-src 'self' blob: data: https:",
+  "upgrade-insecure-requests",
+].join("; ");
 
 function sleep(durationMs) {
   return new Promise((resolveSleep) => {
@@ -579,6 +609,80 @@ function redirect(response, location, statusCode = 303) {
   response.statusCode = statusCode;
   response.setHeader("Location", location);
   response.end();
+}
+
+function getForwardedProto(request) {
+  return String(request.headers["x-forwarded-proto"] ?? "").split(",")[0].trim().toLowerCase();
+}
+
+function getRequestProtocol(request) {
+  const forwardedProto = getForwardedProto(request);
+
+  if (forwardedProto === "http" || forwardedProto === "https") {
+    return forwardedProto;
+  }
+
+  return shouldUseSecureCookies(request) ? "https" : "http";
+}
+
+function getRequestHost(request) {
+  return String(request.headers.host ?? "").split(",")[0].trim().toLowerCase();
+}
+
+function isLocalDevelopmentHost(host = "") {
+  return host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]");
+}
+
+function setSecurityHeaders(response, request) {
+  response.setHeader("Content-Security-Policy", securityContentSecurityPolicy);
+  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Permissions-Policy", [
+    "accelerometer=()",
+    "autoplay=()",
+    "camera=()",
+    "display-capture=()",
+    "geolocation=()",
+    "gyroscope=()",
+    "magnetometer=()",
+    "microphone=()",
+    "payment=()",
+    "usb=()",
+    "screen-wake-lock=()",
+  ].join(", "));
+  response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  response.setHeader("Origin-Agent-Cluster", "?1");
+
+  if (getRequestProtocol(request) === "https") {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+}
+
+function getCanonicalRedirectTarget(request, url) {
+  if (!canonicalAppOrigin) {
+    return "";
+  }
+
+  if (url.pathname === "/api/health") {
+    return "";
+  }
+
+  const host = getRequestHost(request);
+  if (!host || isLocalDevelopmentHost(host)) {
+    return "";
+  }
+
+  const requestOrigin = `${getRequestProtocol(request)}://${host}`;
+  if (requestOrigin === canonicalAppOrigin && host === canonicalAppHost) {
+    return "";
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return "";
+  }
+
+  return new URL(`${url.pathname}${url.search}`, canonicalAppOrigin).toString();
 }
 
 function getRequestedOrganizationId(request) {
@@ -3130,6 +3234,13 @@ async function handleStaticRequest(response, url) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  setSecurityHeaders(response, request);
+
+  const canonicalRedirectTarget = getCanonicalRedirectTarget(request, url);
+  if (canonicalRedirectTarget) {
+    redirect(response, canonicalRedirectTarget, 308);
+    return;
+  }
 
   if (request.method === "POST" && url.pathname === "/auth/login-form") {
     try {
