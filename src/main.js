@@ -3191,6 +3191,74 @@ function setLoginBusy(isBusy) {
   }
 }
 
+const LOGIN_INPUT_LOCK_STYLES = Object.freeze([
+  ["color-scheme", "only light"],
+  ["background", "#ffffff"],
+  ["background-color", "#ffffff"],
+  ["color", "#1f2430"],
+  ["-webkit-text-fill-color", "#1f2430"],
+  ["caret-color", "#1f2430"],
+  ["-webkit-box-shadow", "0 0 0 1000px #ffffff inset"],
+  ["box-shadow", "0 0 0 1000px #ffffff inset"],
+]);
+
+function lockLoginInputAppearance(input) {
+  if (!input) {
+    return;
+  }
+  for (const [property, value] of LOGIN_INPUT_LOCK_STYLES) {
+    input.style.setProperty(property, value, "important");
+  }
+}
+
+function bindLoginInputAppearanceLock(input) {
+  if (!input || input.dataset.loginAppearanceLocked === "true") {
+    return;
+  }
+
+  input.dataset.loginAppearanceLocked = "true";
+  let animationFrameId = 0;
+  let animationFramesRemaining = 0;
+
+  const stop = () => {
+    if (animationFrameId) {
+      window.cancelAnimationFrame(animationFrameId);
+      animationFrameId = 0;
+    }
+  };
+
+  const tick = () => {
+    lockLoginInputAppearance(input);
+    if (document.activeElement !== input || animationFramesRemaining <= 0) {
+      animationFrameId = 0;
+      return;
+    }
+    animationFramesRemaining -= 1;
+    animationFrameId = window.requestAnimationFrame(tick);
+  };
+
+  const start = () => {
+    stop();
+    animationFramesRemaining = 24;
+    tick();
+  };
+
+  lockLoginInputAppearance(input);
+
+  ["focus", "pointerdown", "mousedown", "keydown", "input", "change"].forEach((eventName) => {
+    input.addEventListener(eventName, start);
+  });
+
+  input.addEventListener("blur", () => {
+    stop();
+    lockLoginInputAppearance(input);
+  });
+
+  window.setTimeout(() => lockLoginInputAppearance(input), 0);
+  window.setTimeout(() => lockLoginInputAppearance(input), 180);
+  window.setTimeout(() => lockLoginInputAppearance(input), 1200);
+}
+
 function applyLoginRedirectState() {
   const params = new URLSearchParams(window.location.search);
   const loginErrorCode = params.get("loginError");
@@ -55243,6 +55311,8 @@ renderActiveView();
 renderAuthState();
 applyLoginRedirectState();
 syncPasswordToggleLabel();
+bindLoginInputAppearanceLock(loginEmailInput);
+bindLoginInputAppearanceLock(loginPasswordInput);
 
 refreshLoginContent().catch(() => {
   renderLoginContent();

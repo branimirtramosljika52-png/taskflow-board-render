@@ -25108,6 +25108,8 @@ body.is-document-template-resizing-diagonal * {
 .auth-form.auth-form-tenant input:focus,
 .auth-form.auth-form-tenant input:active {
   min-height: 44px;
+  appearance: none !important;
+  -webkit-appearance: none !important;
   border: 0 !important;
   border-bottom: 0 !important;
   border-radius: 14px !important;
