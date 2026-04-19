@@ -1599,11 +1599,11 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(detailedOffer.showTotalAmount, false);
   assert.equal(detailedOffer.items[0].breakdowns.length, 6);
   assert.equal(detailedOffer.items[0].breakdownTotal, 286);
-  assert.equal(detailedOffer.items[0].totalPrice, 90);
-  assert.equal(detailedOffer.subtotal, 90);
-  assert.equal(detailedOffer.discountTotal, 9);
-  assert.equal(detailedOffer.taxableSubtotal, 81);
-  assert.equal(detailedOffer.total, 101.25);
+  assert.equal(detailedOffer.items[0].totalPrice, 257.4);
+  assert.equal(detailedOffer.subtotal, 257.4);
+  assert.equal(detailedOffer.discountTotal, 25.74);
+  assert.equal(detailedOffer.taxableSubtotal, 231.66);
+  assert.equal(detailedOffer.total, 289.58);
   assert.equal(allLocationsOffer.locationScope, "all");
   assert.equal(allLocationsOffer.locationName, "Sve lokacije");
   assert.equal(allLocationsOffer.contactName, "");

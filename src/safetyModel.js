@@ -364,7 +364,7 @@ const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((o
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_FIELD_TYPE_SET = new Set(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS.map((option) => option.value));
 const ACTIVE_VEHICLE_RESERVATION_STATUSES = new Set(["reserved", "checked_out"]);
-const OFFER_LOCATION_SCOPE_SET = new Set(["single", "all", "none"]);
+const OFFER_LOCATION_SCOPE_SET = new Set(["single", "selection", "all", "none"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
@@ -1825,11 +1825,15 @@ function normalizeOfferItems(items = []) {
       const breakdownTotal = roundCurrencyAmount(
         breakdowns.reduce((sum, entry) => sum + roundCurrencyAmount(entry.amount), 0),
       );
-      const grossTotal = roundCurrencyAmount(quantity * unitPrice);
+      const grossTotal = breakdowns.length > 0
+        ? breakdownTotal
+        : roundCurrencyAmount(quantity * unitPrice);
       const discountRate = normalizeOfferDiscountRate(item?.discountRate);
       const discountTotal = roundCurrencyAmount(grossTotal * (discountRate / 100));
 
       return {
+        serviceCatalogId: normalizeText(item?.serviceCatalogId),
+        serviceCode: normalizeText(item?.serviceCode),
         description: normalizeText(item?.description),
         unit: normalizeText(item?.unit),
         quantity,
@@ -2351,35 +2355,63 @@ function hydrateOfferCore({
     throw new Error("Odabrana tvrtka ne postoji.");
   }
 
-  const fallbackLocationScope = normalizeId(
-    hasOwn(input, "locationId") ? input.locationId : current?.locationId,
-  ) ? "single" : "none";
+  const requestedLocationIds = hasOwn(input, "selectedLocationIds")
+    ? normalizeIdList(input.selectedLocationIds)
+    : normalizeIdList(current?.selectedLocationIds ?? []);
+  const fallbackLocationScope = requestedLocationIds.length > 1
+    ? "selection"
+    : normalizeId(hasOwn(input, "locationId") ? input.locationId : current?.locationId)
+      ? "single"
+      : "none";
   const nextLocationScope = hasOwn(input, "locationScope")
     ? normalizeOfferLocationScope(input.locationScope, fallbackLocationScope)
     : normalizeOfferLocationScope(current?.locationScope, fallbackLocationScope);
-  const locationWasExplicitlyChanged = hasOwn(input, "locationId") || hasOwn(input, "locationScope");
-  let locationId = nextLocationScope === "single"
-    ? (hasOwn(input, "locationId") ? normalizeId(input.locationId) : normalizeId(current?.locationId))
-    : "";
+  const locationWasExplicitlyChanged = hasOwn(input, "locationId")
+    || hasOwn(input, "selectedLocationIds")
+    || hasOwn(input, "locationScope");
+  const companyLocations = (state.locations ?? []).filter((item) => item.companyId === companyId);
+  const companyLocationIds = new Set(companyLocations.map((item) => item.id));
+  let selectedLocationIds = requestedLocationIds.filter((locationId) => companyLocationIds.has(locationId));
 
-  if (nextLocationScope === "single" && !locationId) {
-    throw new Error("Odaberi lokaciju ili odaberi Sve lokacije / Bez lokacije.");
-  }
-
-  if (locationId) {
-    const belongsToCompany = (state.locations ?? []).some((item) => item.id === locationId && item.companyId === companyId);
-
-    if (!belongsToCompany) {
-      if (locationWasExplicitlyChanged) {
-        throw new Error("Odabrana lokacija ne pripada tvrtki.");
-      }
-
-      locationId = "";
+  if (hasOwn(input, "locationId")) {
+    const directLocationId = normalizeId(input.locationId);
+    if (directLocationId && !selectedLocationIds.includes(directLocationId)) {
+      selectedLocationIds = [directLocationId, ...selectedLocationIds].filter((locationId, index, list) => (
+        companyLocationIds.has(locationId) && list.indexOf(locationId) === index
+      ));
+    }
+  } else if (!selectedLocationIds.length) {
+    const currentLocationId = normalizeId(current?.locationId);
+    if (currentLocationId) {
+      selectedLocationIds = [currentLocationId].filter((locationId) => companyLocationIds.has(locationId));
     }
   }
 
-  const locationScope = nextLocationScope === "single" && !locationId ? "none" : nextLocationScope;
-  const location = locationScope === "single" ? findOfferLocation(state, locationId, companyId) : null;
+  if (locationWasExplicitlyChanged && requestedLocationIds.some((locationId) => !companyLocationIds.has(locationId))) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  if (nextLocationScope === "all") {
+    selectedLocationIds = companyLocations.map((location) => location.id);
+  }
+
+  if (nextLocationScope === "single" && selectedLocationIds.length > 1) {
+    selectedLocationIds = selectedLocationIds.slice(0, 1);
+  }
+
+  const locationScope = nextLocationScope === "all"
+    ? (selectedLocationIds.length > 0 ? "all" : "none")
+    : nextLocationScope === "single"
+      ? (selectedLocationIds.length > 0 ? "single" : "none")
+      : nextLocationScope === "selection"
+        ? (selectedLocationIds.length > 1 ? "selection" : selectedLocationIds.length === 1 ? "single" : "none")
+        : "none";
+  const locationId = selectedLocationIds[0] || "";
+  const location = locationId ? findOfferLocation(state, locationId, companyId) : null;
+  const selectedLocations = selectedLocationIds
+    .map((selectedId) => findOfferLocation(state, selectedId, companyId))
+    .filter(Boolean);
+  const selectedLocationNames = selectedLocations.map((entry) => entry.name || "").filter(Boolean);
   const organizationId = hasOwn(input, "organizationId")
     ? requireText(input.organizationId, "Organizacija")
     : requireText(current?.organizationId, "Organizacija");
@@ -2396,36 +2428,50 @@ function hydrateOfferCore({
     ? normalizeOfferItems(input.items)
     : (current?.items ?? []);
   const totals = calculateOfferTotals(items, taxRate, discountRate);
-  const selectedContact = locationScope === "single" && location
-    ? selectLocationContact(location, hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot)
-    : null;
   const fallbackOfferDate = current?.offerDate ?? timestamp.slice(0, 10);
   const offerDate = hasOwn(input, "offerDate")
     ? (normalizeOptionalDate(input.offerDate) ?? timestamp.slice(0, 10))
     : (normalizeOptionalDate(fallbackOfferDate) ?? timestamp.slice(0, 10));
-  const contactSlot = locationScope === "single"
-    ? normalizeText(hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot ?? selectedContact?.slot)
-    : "";
-  const contactName = locationScope === "single"
-    ? (hasOwn(input, "contactName")
-      ? normalizeText(input.contactName)
-      : (normalizeText(current?.contactName) || selectedContact?.name || ""))
-    : "";
-  const contactPhone = locationScope === "single"
-    ? (hasOwn(input, "contactPhone")
-      ? normalizeText(input.contactPhone)
-      : (normalizeText(current?.contactPhone) || selectedContact?.phone || ""))
-    : "";
-  const contactEmail = locationScope === "single"
-    ? (hasOwn(input, "contactEmail")
-      ? normalizeText(input.contactEmail)
-      : (normalizeText(current?.contactEmail) || selectedContact?.email || ""))
-    : "";
+  const contactSlot = normalizeText(hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot);
+  const shouldRefreshContactFromLocation = !hasOwn(input, "contactName")
+    && !hasOwn(input, "contactPhone")
+    && !hasOwn(input, "contactEmail")
+    && locationScope === "single"
+    && Boolean(location)
+    && (
+      !current
+      || hasOwn(input, "companyId")
+      || hasOwn(input, "locationId")
+      || hasOwn(input, "selectedLocationIds")
+      || hasOwn(input, "locationScope")
+      || hasOwn(input, "contactSlot")
+    );
+  const selectedContact = shouldRefreshContactFromLocation
+    ? selectLocationContact(location, contactSlot)
+    : null;
+  const contactName = hasOwn(input, "contactName")
+    ? normalizeText(input.contactName)
+    : selectedContact
+      ? selectedContact.name
+      : normalizeText(current?.contactName);
+  const contactPhone = hasOwn(input, "contactPhone")
+    ? normalizeText(input.contactPhone)
+    : selectedContact
+      ? selectedContact.phone
+      : normalizeText(current?.contactPhone);
+  const contactEmail = hasOwn(input, "contactEmail")
+    ? normalizeText(input.contactEmail)
+    : selectedContact
+      ? selectedContact.email
+      : normalizeText(current?.contactEmail);
+  const companyLocationCount = companyLocations.length;
   const locationName = locationScope === "all"
     ? "Sve lokacije"
     : locationScope === "none"
       ? "Bez lokacije"
-      : (location?.name ?? "");
+      : locationScope === "selection"
+        ? `${selectedLocationNames.length} od ${companyLocationCount} lokacija`
+        : (location?.name ?? "");
 
   return {
     id: current?.id ?? "",
@@ -2435,6 +2481,8 @@ function hydrateOfferCore({
     companyOib: company.oib ?? "",
     headquarters: company.headquarters ?? "",
     locationId,
+    selectedLocationIds,
+    selectedLocationNames,
     locationScope,
     locationName,
     region: location?.region ?? "",
@@ -4768,11 +4816,13 @@ export function filterOffers(
       item.title,
       item.companyName,
       item.locationName,
+      ...(item.selectedLocationNames ?? []),
       item.contactName,
       item.serviceLine,
       item.createdByLabel,
       item.note,
       ...(item.items ?? []).map((entry) => entry.description),
+      ...(item.items ?? []).map((entry) => entry.serviceCode),
       ...(item.items ?? []).flatMap((entry) => (entry.breakdowns ?? []).map((detail) => detail.label)),
     ].join(" ").toLowerCase();
 

@@ -1894,6 +1894,252 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
   return pdfBufferFromDocument(doc);
 }
 
+function formatOfferPdfDate(value = "") {
+  const normalized = clean(value);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return normalized || "—";
+  }
+
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+function formatOfferPdfCurrency(value = 0, currency = "EUR") {
+  const amount = Number(value ?? 0) || 0;
+
+  try {
+    return new Intl.NumberFormat("hr-HR", {
+      style: "currency",
+      currency: clean(currency) || "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${(clean(currency) || "EUR").toUpperCase()}`;
+  }
+}
+
+function writeOfferPdfMetaRow(doc, label, value, {
+  labelWidth = 118,
+  valueWidth = 390,
+} = {}) {
+  doc.font("dejavu-bold").fontSize(9.5).fillColor("#5f6f95").text(label, {
+    continued: true,
+    width: labelWidth,
+  });
+  doc.font("dejavu").fillColor("#1f2333").text(` ${normalizePdfText(value)}`, {
+    width: valueWidth,
+  });
+}
+
+function drawOfferPdfSectionTitle(doc, text) {
+  doc.moveDown(0.25);
+  const startY = doc.y;
+  doc.save();
+  doc.roundedRect(doc.page.margins.left, startY, doc.page.width - doc.page.margins.left - doc.page.margins.right, 18, 10);
+  doc.fillColor("#eef4ff").fill();
+  doc.restore();
+  doc.font("dejavu-bold").fontSize(11).fillColor("#1e3a8a").text(text, doc.page.margins.left + 12, startY + 4, {
+    width: doc.page.width - doc.page.margins.left - doc.page.margins.right - 24,
+  });
+  doc.y = startY + 24;
+}
+
+export async function buildOfferPdfBuffer(offer = {}, options = {}) {
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 38,
+      bottom: 38,
+      left: 38,
+      right: 38,
+    },
+    info: {
+      Title: clean(offer.title) || clean(offer.offerNumber) || "Ponuda",
+      Author: "SafeNexus",
+      Subject: "Ponuda",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  const currency = clean(options.currency || offer.currency || "EUR") || "EUR";
+  const title = clean(offer.title) || "Ponuda";
+  const offerNumber = clean(offer.offerNumber) || "Nacrt ponude";
+  const locationNames = normalizePdfLines(offer.selectedLocationNames || offer.locationName || "");
+  const items = Array.isArray(offer.items) ? offer.items : [];
+  const hasDiscount = Number(offer.discountRate ?? 0) > 0 || Number(offer.discountTotal ?? 0) > 0;
+
+  helpers.ensureSpace(120);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("SAFE NEXUS · PONUDA");
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(22).fillColor("#111827").text(title, {
+    width: helpers.availableWidth - 140,
+  });
+  doc.font("dejavu").fontSize(10.5).fillColor("#64748b").text(
+    normalizePdfLines([
+      offerNumber,
+      offer.companyName || "",
+      formatOfferPdfDate(offer.offerDate),
+    ]).join(" · "),
+  );
+
+  const badgeWidth = 128;
+  const badgeX = doc.page.width - doc.page.margins.right - badgeWidth;
+  const badgeY = doc.page.margins.top;
+  doc.save();
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 54, 16);
+  doc.fillColor("#eff6ff").fill();
+  doc.restore();
+  doc.font("dejavu-bold").fontSize(9).fillColor("#2563eb").text("STATUS", badgeX + 14, badgeY + 12, {
+    width: badgeWidth - 28,
+  });
+  doc.font("dejavu-bold").fontSize(13).fillColor("#0f172a").text(clean(offer.status || "draft").toUpperCase(), badgeX + 14, badgeY + 26, {
+    width: badgeWidth - 28,
+  });
+
+  doc.moveDown(1);
+  drawOfferPdfSectionTitle(doc, "Podaci o ponudi");
+  writeOfferPdfMetaRow(doc, "Broj ponude", offerNumber);
+  writeOfferPdfMetaRow(doc, "Datum ponude", formatOfferPdfDate(offer.offerDate));
+  writeOfferPdfMetaRow(doc, "Vrijedi do", formatOfferPdfDate(offer.validUntil));
+  writeOfferPdfMetaRow(doc, "Vrsta usluge", offer.serviceLine || "—");
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Narucitelj");
+  writeOfferPdfMetaRow(doc, "Tvrtka", offer.companyName || "—");
+  writeOfferPdfMetaRow(doc, "OIB", offer.companyOib || "—");
+  writeOfferPdfMetaRow(doc, "Sjediste", offer.headquarters || "—");
+  writeOfferPdfMetaRow(doc, "Lokacije", locationNames.join(", ") || offer.locationName || "Bez lokacije");
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Kontakt");
+  writeOfferPdfMetaRow(doc, "Kontakt osoba", offer.contactName || "—");
+  writeOfferPdfMetaRow(doc, "Telefon", offer.contactPhone || "—");
+  writeOfferPdfMetaRow(doc, "Email", offer.contactEmail || "—");
+
+  if (clean(offer.note)) {
+    doc.moveDown(0.45);
+    drawOfferPdfSectionTitle(doc, "Napomena");
+    doc.font("dejavu").fontSize(10.5).fillColor("#1f2937").text(normalizePdfText(offer.note), {
+      width: helpers.availableWidth,
+    });
+  }
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Stavke ponude");
+
+  if (items.length === 0) {
+    doc.font("dejavu-italic").fontSize(10).fillColor("#64748b").text("Ponuda jos nema dodanih stavki.", {
+      width: helpers.availableWidth,
+    });
+  } else {
+    items.forEach((item, index) => {
+      helpers.ensureSpace(74 + ((item.breakdowns?.length ?? 0) * 20));
+      const startY = doc.y;
+      const cardWidth = helpers.availableWidth;
+      const breakdowns = Array.isArray(item.breakdowns) ? item.breakdowns : [];
+      const rowHeight = 64 + (breakdowns.length * 20) + (Number(item.discountRate ?? 0) > 0 ? 18 : 0);
+
+      drawRoundedOutline(doc, doc.page.margins.left, startY, cardWidth, rowHeight, 16, "#cfd8ea");
+
+      doc.font("dejavu-bold").fontSize(11).fillColor("#111827").text(
+        `${index + 1}. ${normalizePdfText(item.description || item.serviceCode || "Stavka")}`,
+        doc.page.margins.left + 14,
+        startY + 12,
+        { width: cardWidth - 150 },
+      );
+
+      const metricParts = normalizePdfLines([
+        item.serviceCode ? `Sifra: ${item.serviceCode}` : "",
+        item.unit ? `Jedinica: ${item.unit}` : "",
+        item.quantity != null ? `Kolicina: ${item.quantity}` : "",
+        breakdowns.length === 0 ? `Cijena: ${formatOfferPdfCurrency(item.unitPrice ?? 0, currency)}` : "Razrada aktivna",
+      ]);
+      doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(metricParts.join(" · "), doc.page.margins.left + 14, startY + 30, {
+        width: cardWidth - 160,
+      });
+
+      let contentY = startY + 48;
+      breakdowns.forEach((entry) => {
+        doc.font("dejavu").fontSize(9.5).fillColor("#334155").text(
+          `• ${normalizePdfText(entry.label)}`,
+          doc.page.margins.left + 18,
+          contentY,
+          { width: cardWidth - 170 },
+        );
+        doc.font("dejavu-bold").fontSize(9.5).fillColor("#0f172a").text(
+          formatOfferPdfCurrency(entry.amount ?? 0, currency),
+          doc.page.margins.left + cardWidth - 126,
+          contentY,
+          { width: 108, align: "right" },
+        );
+        contentY += 18;
+      });
+
+      if (Number(item.discountRate ?? 0) > 0) {
+        doc.font("dejavu").fontSize(9).fillColor("#b45309").text(
+          `Rabat stavke: ${Number(item.discountRate ?? 0)}%`,
+          doc.page.margins.left + 18,
+          contentY,
+          { width: cardWidth - 170 },
+        );
+      }
+
+      doc.font("dejavu-bold").fontSize(10.5).fillColor("#1d4ed8").text(
+        formatOfferPdfCurrency(item.totalPrice ?? 0, currency),
+        doc.page.margins.left + cardWidth - 132,
+        startY + 18,
+        { width: 118, align: "right" },
+      );
+
+      doc.y = startY + rowHeight + 8;
+    });
+  }
+
+  helpers.ensureSpace(150);
+  doc.moveDown(0.25);
+  drawOfferPdfSectionTitle(doc, "Ukupni iznosi");
+  writeOfferPdfMetaRow(doc, "Meduzbroj", formatOfferPdfCurrency(offer.subtotal ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+  if (hasDiscount) {
+    writeOfferPdfMetaRow(doc, "Rabat", formatOfferPdfCurrency(offer.discountTotal ?? 0, currency), {
+      labelWidth: 130,
+      valueWidth: 240,
+    });
+    writeOfferPdfMetaRow(doc, "Osnovica", formatOfferPdfCurrency(offer.taxableSubtotal ?? 0, currency), {
+      labelWidth: 130,
+      valueWidth: 240,
+    });
+  }
+  writeOfferPdfMetaRow(doc, "PDV", formatOfferPdfCurrency(offer.taxTotal ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+  writeOfferPdfMetaRow(doc, "Ukupno", formatOfferPdfCurrency(offer.total ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+
+  if (offer.showTotalAmount === false) {
+    doc.moveDown(0.35);
+    doc.font("dejavu-italic").fontSize(9).fillColor("#64748b").text(
+      "Ukupni iznos je skriven u ponudi; prikazana je interna kalkulacija radi pregleda.",
+      { width: helpers.availableWidth },
+    );
+  }
+
+  return pdfBufferFromDocument(doc);
+}
+
 export async function mergePdfBuffers(buffers = []) {
   const sourceBuffers = (Array.isArray(buffers) ? buffers : [])
     .filter((entry) => Buffer.isBuffer(entry) && entry.length > 0);

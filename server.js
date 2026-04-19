@@ -11,6 +11,7 @@ import {
   canManageWorkOrders,
 } from "./src/accessControl.js";
 import {
+  buildOfferPdfBuffer,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   isWordTemplateFile,
@@ -19,6 +20,7 @@ import {
   sanitizeGeneratedDocumentFileName,
 } from "./src/documentExport.js";
 import { createLiveChatStore } from "./src/liveChatStore.js";
+import { sendMail } from "./src/mailer.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
 import { createTenantRepository } from "./src/tenantRepository.js";
 import {
@@ -430,6 +432,130 @@ async function generatePdfBufferForTemplate(template = {}, {
   });
 }
 
+function formatOfferDocumentDate(value = "") {
+  const normalized = String(value ?? "").trim();
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return normalized;
+  }
+
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+function formatOfferTemplateMoney(value = 0, currency = "EUR") {
+  const numeric = Number(value ?? 0) || 0;
+
+  try {
+    return new Intl.NumberFormat("hr-HR", {
+      style: "currency",
+      currency: String(currency || "EUR").trim() || "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${numeric.toFixed(2)} ${String(currency || "EUR").trim().toUpperCase() || "EUR"}`;
+  }
+}
+
+function getOfferStatusLabel(value = "") {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "sent") {
+    return "Poslano";
+  }
+  if (normalized === "accepted") {
+    return "Prihvaceno";
+  }
+  if (normalized === "rejected") {
+    return "Odbijeno";
+  }
+  return "Skica";
+}
+
+function buildOfferTemplatePlaceholderPayload(offer = {}) {
+  const normalizedOffer = offer && typeof offer === "object" ? offer : {};
+  const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
+  const items = Array.isArray(normalizedOffer.items) ? normalizedOffer.items : [];
+  const itemsSummary = items
+    .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
+    .join("\n");
+  const itemsTable = items
+    .map((item, index) => {
+      const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
+        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
+        : "";
+      return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
+    })
+    .join("\n");
+
+  return {
+    OFFER_NUMBER: normalizedOffer.offerNumber || "Dodijeljen nakon spremanja",
+    OFFER_TITLE: normalizedOffer.title || "",
+    OFFER_STATUS: getOfferStatusLabel(normalizedOffer.status || "draft"),
+    OFFER_DATE: normalizedOffer.offerDate ? formatOfferDocumentDate(normalizedOffer.offerDate) : "",
+    VALID_UNTIL: normalizedOffer.validUntil ? formatOfferDocumentDate(normalizedOffer.validUntil) : "",
+    COMPANY_NAME: normalizedOffer.companyName || "",
+    COMPANY_OIB: normalizedOffer.companyOib || "",
+    COMPANY_HEADQUARTERS: normalizedOffer.headquarters || "",
+    LOCATION_SUMMARY: normalizedOffer.locationName || "Bez lokacije",
+    LOCATION_LIST: Array.isArray(normalizedOffer.selectedLocationNames) && normalizedOffer.selectedLocationNames.length > 0
+      ? normalizedOffer.selectedLocationNames.join("\n")
+      : "Bez lokacije",
+    CONTACT_NAME: normalizedOffer.contactName || "",
+    CONTACT_PHONE: normalizedOffer.contactPhone || "",
+    CONTACT_EMAIL: normalizedOffer.contactEmail || "",
+    SERVICE_LINE: normalizedOffer.serviceLine || "",
+    ITEMS_TABLE: itemsTable,
+    ITEMS_SUMMARY: itemsSummary,
+    NOTE: normalizedOffer.note || "",
+    SUBTOTAL: formatOfferTemplateMoney(normalizedOffer.subtotal || 0, currency),
+    DISCOUNT_RATE: Number(normalizedOffer.discountRate || 0) > 0 ? `${normalizedOffer.discountRate}%` : "",
+    DISCOUNT_TOTAL: formatOfferTemplateMoney(normalizedOffer.discountTotal || 0, currency),
+    TAX_RATE: `${normalizedOffer.taxRate || 0}%`,
+    TAX_TOTAL: formatOfferTemplateMoney(normalizedOffer.taxTotal || 0, currency),
+    TOTAL: formatOfferTemplateMoney(normalizedOffer.total || 0, currency),
+  };
+}
+
+function escapeEmailHtml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildOfferExportBaseName(offer = {}) {
+  return offer.offerNumber || offer.title || offer.companyName || "ponuda";
+}
+
+async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
+  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
+  const baseName = buildOfferExportBaseName(offer);
+  const fileName = sanitizeGeneratedDocumentFileName(baseName, {
+    fallback: "ponuda",
+    extension: "pdf",
+  });
+
+  if (offerTemplateSettings?.referenceDocument && isWordTemplateFile(offerTemplateSettings.referenceDocument)) {
+    const referenceDocument = await readStoredDocumentBuffer(offerTemplateSettings.referenceDocument);
+    const pdfBuffer = await buildPdfFromTemplateBuffer(
+      referenceDocument.buffer,
+      buildOfferTemplatePlaceholderPayload(offer),
+      {
+        fileName: sanitizeGeneratedDocumentFileName(baseName, {
+          fallback: "ponuda",
+          extension: "docx",
+        }),
+      },
+    );
+    return { pdfBuffer, fileName };
+  }
+
+  const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
+  return { pdfBuffer, fileName };
+}
+
 function shouldUseSecureCookies(request) {
   const forwardedProto = String(request.headers["x-forwarded-proto"] ?? "").toLowerCase();
   const host = String(request.headers.host ?? "");
@@ -726,11 +852,16 @@ function assertCompanyPayloadInScope(scopedSnapshot, body = {}) {
 }
 
 function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
-  if (!body.locationId) {
-    return;
-  }
+  const locationIds = [
+    body.locationId,
+    ...(Array.isArray(body.selectedLocationIds) ? body.selectedLocationIds : []),
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
 
-  assertInScope(scopedSnapshot.locations, body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+  locationIds.forEach((locationId) => {
+    assertInScope(scopedSnapshot.locations, locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+  });
 }
 
 function assertSampleCompanyPayloadInScope(scopedSnapshot, body = {}) {
@@ -1175,6 +1306,8 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+    const offerPdfExportMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/export-pdf$/);
+    const offerEmailMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/email$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
     const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
@@ -1436,6 +1569,50 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/offers/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entry = await domainRepository.getOfferTemplateSettings(scopedSnapshot.activeOrganizationId).catch(() => null);
+      sendJson(response, 200, {
+        item: entry?.referenceDocument ?? null,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/offers/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entry = await domainRepository.upsertOfferTemplateSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        referenceDocument: body?.referenceDocument ?? null,
+      });
+      sendJson(response, 200, {
+        item: entry?.referenceDocument ?? null,
+      });
+      return true;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/offers/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.deleteOfferTemplateSettings(scopedSnapshot.activeOrganizationId);
+      sendJson(response, 200, { ok: true });
       return true;
     }
 
@@ -2615,6 +2792,75 @@ async function handleApiRequest(request, response, url) {
       }
 
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (offerPdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF ponude.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const offer = assertInScope(scopedSnapshot.offers, offerPdfExportMatch[1], "Ponuda nije pronađena.");
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (offerEmailMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo slati ponude emailom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const offer = assertInScope(scopedSnapshot.offers, offerEmailMatch[1], "Ponuda nije pronađena.");
+      const to = String(body?.to ?? "").trim();
+
+      if (!to) {
+        sendError(response, 400, "Email primatelja je obavezan.");
+        return true;
+      }
+
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      const subject = String(body?.subject ?? "").trim() || `${offer.offerNumber || "Ponuda"} · ${offer.title || offer.companyName || "SafeNexus"}`;
+      const message = String(body?.message ?? "").trim();
+      const htmlMessage = message
+        ? message.split(/\r?\n/).map((line) => `<div>${escapeEmailHtml(line)}</div>`).join("")
+        : "<div>U privitku saljemo trazenu ponudu.</div>";
+      const result = await sendMail({
+        to,
+        subject,
+        text: message || `U privitku saljemo ponudu ${offer.offerNumber || ""}.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;">
+            ${htmlMessage}
+            <div style="margin-top:16px;color:#64748b;">SafeNexus · ${escapeEmailHtml(offer.companyName || "")}</div>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      if (!result.ok) {
+        sendError(response, 400, result.error || "Slanje emaila nije uspjelo.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        message: `Ponuda je poslana na ${to}.`,
+      });
       return true;
     }
 

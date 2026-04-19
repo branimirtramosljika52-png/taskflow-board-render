@@ -210,6 +210,32 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
 ]);
 const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
+const OFFER_TEMPLATE_ACCEPT_LABEL = ".doc,.docx,.dot,.dotx";
+const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
+  Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
+  Object.freeze({ key: "OFFER_TITLE", label: "Naziv ponude", description: "Naslov ponude." }),
+  Object.freeze({ key: "OFFER_STATUS", label: "Status", description: "Aktualni status ponude." }),
+  Object.freeze({ key: "OFFER_DATE", label: "Datum ponude", description: "Datum izdavanja ponude." }),
+  Object.freeze({ key: "VALID_UNTIL", label: "Vrijedi do", description: "Datum isteka valjanosti ponude." }),
+  Object.freeze({ key: "COMPANY_NAME", label: "Tvrtka", description: "Naziv odabrane tvrtke." }),
+  Object.freeze({ key: "COMPANY_OIB", label: "OIB", description: "OIB odabrane tvrtke." }),
+  Object.freeze({ key: "COMPANY_HEADQUARTERS", label: "Sjedište", description: "Sjedište ili adresa tvrtke." }),
+  Object.freeze({ key: "LOCATION_SUMMARY", label: "Sažetak lokacija", description: "Sažeti prikaz odabranih lokacija." }),
+  Object.freeze({ key: "LOCATION_LIST", label: "Popis lokacija", description: "Sve odabrane lokacije, svaka u novom retku." }),
+  Object.freeze({ key: "CONTACT_NAME", label: "Kontakt osoba", description: "Ime odabranog kontakta." }),
+  Object.freeze({ key: "CONTACT_PHONE", label: "Kontakt telefon", description: "Telefon kontakta." }),
+  Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
+  Object.freeze({ key: "SERVICE_LINE", label: "Vrsta usluge", description: "Glavna vrsta usluge za ponudu." }),
+  Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
+  Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
+  Object.freeze({ key: "NOTE", label: "Napomena", description: "Napomena i dodatni uvjeti." }),
+  Object.freeze({ key: "SUBTOTAL", label: "Međuzbroj", description: "Iznos prije rabata i PDV-a." }),
+  Object.freeze({ key: "DISCOUNT_RATE", label: "Rabat %", description: "Ukupni rabat na ponudu u postocima." }),
+  Object.freeze({ key: "DISCOUNT_TOTAL", label: "Iznos rabata", description: "Ukupni iznos rabata." }),
+  Object.freeze({ key: "TAX_RATE", label: "PDV %", description: "Postotak PDV-a." }),
+  Object.freeze({ key: "TAX_TOTAL", label: "PDV iznos", description: "Ukupni iznos PDV-a." }),
+  Object.freeze({ key: "TOTAL", label: "Ukupno", description: "Ukupni iznos ponude." }),
+]);
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
@@ -794,6 +820,9 @@ const state = {
   todoEditorOpen: false,
   todoInvitedPickerOpen: false,
   offerEditorOpen: false,
+  offerTemplateModalOpen: false,
+  offerLocationPickerOpen: false,
+  offerTemplateReferenceCollapsed: false,
   legalFrameworkFilters: {
     query: "",
     status: "all",
@@ -1694,6 +1723,7 @@ const offersHelper = document.querySelector("#offers-helper");
 const offersList = document.querySelector("#offers-list");
 const offersEmpty = document.querySelector("#offers-empty");
 const offerOpenFormButton = document.querySelector("#offer-open-form");
+const offerOpenTemplateButton = document.querySelector("#offer-open-template");
 const offerEditorBackdrop = document.querySelector("#offer-editor-backdrop");
 const offerEditorPanel = document.querySelector("#offer-editor-panel");
 const offerEditorCloseButton = document.querySelector("#offer-editor-close");
@@ -1709,9 +1739,12 @@ const offerCompanyPreview = document.querySelector("#offer-company-preview");
 const offerCompanyPreviewLogo = document.querySelector("#offer-company-preview-logo");
 const offerCompanyPreviewName = document.querySelector("#offer-company-preview-name");
 const offerCompanyPreviewMeta = document.querySelector("#offer-company-preview-meta");
-const offerLocationIdInput = document.querySelector("#offer-location-id");
+const offerLocationTrigger = document.querySelector("#offer-location-trigger");
+const offerLocationPreview = document.querySelector("#offer-location-preview");
+const offerLocationPanel = document.querySelector("#offer-location-panel");
 const offerContactSlotInput = document.querySelector("#offer-contact-slot");
 const offerServiceLineInput = document.querySelector("#offer-service-line");
+const offerItemServiceOptions = document.querySelector("#offer-item-service-options");
 const offerStatusInput = document.querySelector("#offer-status");
 const offerDateInput = document.querySelector("#offer-date");
 const offerTaxRateInput = document.querySelector("#offer-tax-rate");
@@ -1731,9 +1764,26 @@ const offerToggleDiscountButton = document.querySelector("#offer-toggle-discount
 const offerToggleTotalButton = document.querySelector("#offer-toggle-total");
 const offerDiscountRateWrap = document.querySelector("#offer-discount-rate-wrap");
 const offerDiscountRateInput = document.querySelector("#offer-discount-rate");
+const offerPreviewButton = document.querySelector("#offer-preview");
+const offerDownloadPdfButton = document.querySelector("#offer-download-pdf");
+const offerSendEmailButton = document.querySelector("#offer-send-email");
 const offerError = document.querySelector("#offer-error");
 const offerResetButton = document.querySelector("#offer-reset");
 const offerDeleteButton = document.querySelector("#offer-delete");
+const offerTemplateBackdrop = document.querySelector("#offer-template-backdrop");
+const offerTemplatePanel = document.querySelector("#offer-template-panel");
+const offerTemplateCloseButton = document.querySelector("#offer-template-close");
+const offerTemplateBody = offerTemplatePanel?.querySelector(".offer-template-body");
+const offerTemplateDownloadPlaceholdersButton = document.querySelector("#offer-template-download-placeholders");
+const offerTemplateUploadButton = document.querySelector("#offer-template-upload");
+const offerTemplateDownloadButton = document.querySelector("#offer-template-download");
+const offerTemplateRemoveButton = document.querySelector("#offer-template-remove");
+const offerTemplateFileInput = document.querySelector("#offer-template-file-input");
+const offerTemplateReferenceMeta = document.querySelector("#offer-template-reference-meta");
+const offerTemplatePlaceholderList = document.querySelector("#offer-template-placeholder-list");
+const offerTemplateError = document.querySelector("#offer-template-error");
+const offerTemplateToggleReferenceButton = document.querySelector("#offer-template-toggle-reference");
+const offerTemplateReferenceBody = document.querySelector("#offer-template-reference-body");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
@@ -2116,6 +2166,8 @@ const learningPeopleList = document.querySelector("#learning-people-list");
 const learningPeopleEmpty = document.querySelector("#learning-people-empty");
 
 let offerFormItems = [];
+let offerFormSelectedLocationIds = [];
+let offerTemplateReferenceDraft = null;
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
 let documentTemplateSectionDrafts = [];
@@ -2418,6 +2470,14 @@ if (offerEditorBackdrop?.parentElement !== document.body) {
 
 if (offerEditorPanel?.parentElement !== document.body) {
   document.body.append(offerEditorPanel);
+}
+
+if (offerTemplateBackdrop?.parentElement !== document.body) {
+  document.body.append(offerTemplateBackdrop);
+}
+
+if (offerTemplatePanel?.parentElement !== document.body) {
+  document.body.append(offerTemplatePanel);
 }
 
 if (vehicleEditorBackdrop?.parentElement !== document.body) {
@@ -5940,6 +6000,7 @@ function getWorkOrderIconMarkup(iconName) {
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     preview: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10 10 2.75 2.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     download: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    mail: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 4.25h10.5v7.5H2.75zM3.25 4.75 8 8.5l4.75-3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     edit: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.25 11.75 4 9.25l5.9-5.9a1 1 0 0 1 1.41 0l1.34 1.34a1 1 0 0 1 0 1.41L6.75 12l-2.5.75Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/><path d="M8.75 4.5 11.5 7.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     trash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.25h9M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25M5 4.25l.45 7.15c.03.5.45.89.95.89h3.2c.5 0 .92-.39.95-.89L11 4.25M6.75 6.25v3.75M9.25 6.25v3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
   };
@@ -15829,6 +15890,46 @@ function syncOfferEditorModal() {
   }
 }
 
+function syncOfferTemplateModal() {
+  if (state.offerTemplateModalOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "offers"
+    || !state.user
+  )) {
+    state.offerTemplateModalOpen = false;
+  }
+
+  const isOpen = Boolean(state.offerTemplateModalOpen);
+  offerTemplatePanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-offer-template-open", isOpen);
+
+  if (offerTemplatePanel) {
+    offerTemplatePanel.hidden = !isOpen;
+    offerTemplatePanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (offerTemplateBackdrop) {
+    offerTemplateBackdrop.hidden = !isOpen;
+  }
+
+  if (offerTemplateCloseButton) {
+    offerTemplateCloseButton.hidden = !isOpen;
+  }
+
+  if (offerTemplateReferenceBody) {
+    offerTemplateReferenceBody.hidden = Boolean(state.offerTemplateReferenceCollapsed);
+  }
+  if (offerTemplateToggleReferenceButton) {
+    offerTemplateToggleReferenceButton.textContent = state.offerTemplateReferenceCollapsed ? "Prikaži" : "Sakrij";
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      offerTemplateBody?.focus({ preventScroll: true });
+    });
+  }
+}
+
 function openOfferEditor() {
   state.offerEditorOpen = true;
   syncOfferEditorModal();
@@ -15846,6 +15947,31 @@ function closeOfferEditor({ reset = false } = {}) {
 function dismissOfferEditor() {
   closeOfferEditor({ reset: true });
   renderOffersModule();
+}
+
+function openOfferTemplateModal() {
+  state.offerTemplateModalOpen = true;
+  syncOfferTemplateModal();
+}
+
+function closeOfferTemplateModal() {
+  state.offerTemplateModalOpen = false;
+  syncOfferTemplateModal();
+}
+
+function decorateOfferActionIcon(button, iconName) {
+  if (!(button instanceof HTMLButtonElement) || button.dataset.decorated === "true") {
+    return;
+  }
+
+  button.innerHTML = getWorkOrderIconMarkup(iconName);
+  button.dataset.decorated = "true";
+}
+
+function enhanceOfferChrome() {
+  decorateOfferActionIcon(offerPreviewButton, "preview");
+  decorateOfferActionIcon(offerDownloadPdfButton, "download");
+  decorateOfferActionIcon(offerSendEmailButton, "mail");
 }
 
 function scrollUserEditorToTop() {
@@ -16635,6 +16761,180 @@ function createWordHtmlBlob(title, bodyHtml) {
   return new Blob(["\ufeff", html], {
     type: "application/msword;charset=utf-8",
   });
+}
+
+function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = "") {
+  const normalizedIds = Array.from(new Set(
+    (Array.isArray(locationIds) ? locationIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  ));
+  const companyLocations = state.locations
+    .filter((location) => String(location.companyId) === String(companyId))
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+
+  if (!companyId || companyLocations.length === 0 || normalizedIds.length === 0) {
+    return {
+      scope: "none",
+      ids: [],
+      names: [],
+      summary: "Bez lokacije",
+    };
+  }
+
+  const names = normalizedIds
+    .map((locationId) => companyLocations.find((location) => String(location.id) === String(locationId))?.name ?? "")
+    .filter(Boolean);
+
+  if (normalizedIds.length >= companyLocations.length) {
+    return {
+      scope: "all",
+      ids: companyLocations.map((location) => String(location.id)),
+      names: companyLocations.map((location) => location.name),
+      summary: `Sve lokacije (${companyLocations.length})`,
+    };
+  }
+
+  if (normalizedIds.length === 1) {
+    return {
+      scope: "single",
+      ids: normalizedIds,
+      names,
+      summary: names[0] || "1 lokacija",
+    };
+  }
+
+  return {
+    scope: "selection",
+    ids: normalizedIds,
+    names,
+    summary: `${normalizedIds.length} od ${companyLocations.length} lokacija`,
+  };
+}
+
+function buildOfferDraftPreviewData() {
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  const company = state.companies.find((item) => String(item.id) === companyId) ?? null;
+  const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
+  const contactSnapshot = getSelectedOfferContactSnapshot();
+  const totals = getOfferDraftTotals();
+
+  return {
+    id: String(offerIdInput?.value || "").trim(),
+    offerNumber: String(offerNumberPreview?.textContent || "").trim(),
+    title: String(offerTitleInput?.value || "").trim(),
+    status: String(offerStatusInput?.value || "draft").trim(),
+    offerDate: String(offerDateInput?.value || "").trim(),
+    validUntil: "",
+    companyId,
+    companyName: company?.name || "",
+    companyOib: company?.oib || "",
+    headquarters: company?.headquarters || "",
+    selectedLocationIds: [...locationSelection.ids],
+    selectedLocationNames: [...locationSelection.names],
+    locationScope: locationSelection.scope,
+    locationName: locationSelection.summary,
+    contactName: contactSnapshot.contactName || "",
+    contactPhone: contactSnapshot.contactPhone || "",
+    contactEmail: contactSnapshot.contactEmail || "",
+    serviceLine: String(offerServiceLineInput?.value || "").trim(),
+    note: String(offerNoteInput?.value || "").trim(),
+    currency: "EUR",
+    taxRate: totals.taxRate,
+    discountRate: totals.discountRate,
+    subtotal: totals.subtotal,
+    discountTotal: totals.discountTotal,
+    taxableSubtotal: totals.taxableSubtotal,
+    taxTotal: totals.taxTotal,
+    total: totals.total,
+    showTotalAmount: isOfferTotalVisible(),
+    items: offerFormItems.map((item) => ({
+      description: String(item?.description || "").trim(),
+      unit: String(item?.unit || "").trim(),
+      quantity: parseOfferMoneyInput(item?.quantity, 0),
+      unitPrice: parseOfferMoneyInput(item?.unitPrice, 0),
+      breakdowns: Array.isArray(item?.breakdowns)
+        ? item.breakdowns.map((entry) => ({
+          label: String(entry?.label || "").trim(),
+          amount: parseOfferMoneyInput(entry?.amount, 0),
+        })).filter((entry) => entry.label || entry.amount)
+        : [],
+      discountRate: parseOfferMoneyInput(item?.discountRate, 0),
+      totalPrice: getOfferLineTotal(item),
+    })),
+  };
+}
+
+function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData()) {
+  const normalizedOffer = offer || {};
+  const itemsSummary = (normalizedOffer.items ?? [])
+    .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}` : ""}`)
+    .join("\n");
+  const itemsTable = (normalizedOffer.items ?? [])
+    .map((item, index) => {
+      const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
+        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatCurrencyAmount(entry.amount || 0, normalizedOffer.currency || "EUR")}`).join("\n")}`
+        : "";
+      return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}${breakdownText}`;
+    })
+    .join("\n");
+
+  return {
+    OFFER_NUMBER: normalizedOffer.id ? (normalizedOffer.offerNumber || "Dodijeljen nakon spremanja") : "Dodijeljen nakon spremanja",
+    OFFER_TITLE: normalizedOffer.title || "",
+    OFFER_STATUS: getOptionLabel(OFFER_STATUS_OPTIONS, normalizedOffer.status || "draft"),
+    OFFER_DATE: normalizedOffer.offerDate ? formatDate(normalizedOffer.offerDate) : "",
+    VALID_UNTIL: normalizedOffer.validUntil ? formatDate(normalizedOffer.validUntil) : "",
+    COMPANY_NAME: normalizedOffer.companyName || "",
+    COMPANY_OIB: normalizedOffer.companyOib || "",
+    COMPANY_HEADQUARTERS: normalizedOffer.headquarters || "",
+    LOCATION_SUMMARY: normalizedOffer.locationName || "Bez lokacije",
+    LOCATION_LIST: (normalizedOffer.selectedLocationNames ?? []).join("\n") || "Bez lokacije",
+    CONTACT_NAME: normalizedOffer.contactName || "",
+    CONTACT_PHONE: normalizedOffer.contactPhone || "",
+    CONTACT_EMAIL: normalizedOffer.contactEmail || "",
+    SERVICE_LINE: normalizedOffer.serviceLine || "",
+    ITEMS_TABLE: itemsTable,
+    ITEMS_SUMMARY: itemsSummary,
+    NOTE: normalizedOffer.note || "",
+    SUBTOTAL: formatCurrencyAmount(normalizedOffer.subtotal || 0, normalizedOffer.currency || "EUR"),
+    DISCOUNT_RATE: Number(normalizedOffer.discountRate || 0) > 0 ? `${normalizedOffer.discountRate}%` : "",
+    DISCOUNT_TOTAL: formatCurrencyAmount(normalizedOffer.discountTotal || 0, normalizedOffer.currency || "EUR"),
+    TAX_RATE: `${normalizedOffer.taxRate || 0}%`,
+    TAX_TOTAL: formatCurrencyAmount(normalizedOffer.taxTotal || 0, normalizedOffer.currency || "EUR"),
+    TOTAL: formatCurrencyAmount(normalizedOffer.total || 0, normalizedOffer.currency || "EUR"),
+  };
+}
+
+function buildOfferTemplatePlaceholderWordMarkup(offer = buildOfferDraftPreviewData()) {
+  const payload = buildOfferTemplatePlaceholderPayload(offer);
+  const rows = OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS.map((entry) => `
+    <tr>
+      <td>{{${escapeHtml(entry.key)}}}</td>
+      <td>${escapeHtml(entry.label)}</td>
+      <td>${escapeHtml(entry.description)}</td>
+      <td>${escapeHtml(payload[entry.key] || "")}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div class="cover">
+      <h1>SafeNexus · Offer placeholderi</h1>
+      <p>Ove tokene koristiš u Word predlošku za ponude. Vrijednosti desno su primjer iz trenutne forme.</p>
+      <table class="placeholder-table">
+        <thead>
+          <tr>
+            <th>Placeholder</th>
+            <th>Polje</th>
+            <th>Opis</th>
+            <th>Primjer</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function parseTemplateLooseNumber(value, fallback = 0) {
@@ -39486,6 +39786,8 @@ function createOfferStatusDropdown(item) {
 
 function createEmptyOfferItemDraft(item = {}) {
   return {
+    serviceCatalogId: String(item?.serviceCatalogId ?? ""),
+    serviceCode: String(item?.serviceCode ?? ""),
     description: String(item?.description ?? ""),
     unit: String(item?.unit ?? ""),
     quantity: String(item?.quantity ?? ""),
@@ -39551,6 +39853,10 @@ function getOfferLineTotal(item = {}) {
 }
 
 function getOfferLineGrossTotal(item = {}) {
+  const breakdownTotal = getOfferLineBreakdownTotal(item);
+  if (breakdownTotal > 0) {
+    return breakdownTotal;
+  }
   const quantity = Math.max(0, parseOfferMoneyInput(item.quantity, 0));
   const unitPrice = Math.max(0, parseOfferMoneyInput(item.unitPrice, 0));
   return roundMoneyAmount(quantity * unitPrice);
@@ -39593,11 +39899,7 @@ function syncOfferNumberPreview() {
     return;
   }
 
-  const preview = nextOfferNumber(state.offers ?? [], {
-    year: Number(new Date().toISOString().slice(0, 4)),
-    initials: deriveOfferInitials(state.user?.fullName || state.user?.username || "SafeNexus") || "SN",
-  });
-  offerNumberPreview.textContent = preview.offerNumber;
+  offerNumberPreview.textContent = "Dodjeljuje se nakon spremanja.";
 }
 
 function syncOfferTotals() {
@@ -39639,6 +39941,11 @@ function syncOfferTotals() {
     const item = offerFormItems[index] ?? {};
     node.textContent = formatCurrencyAmount(getOfferLineTotal(item), currency);
   });
+
+  syncOfferActionButtons();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 }
 
 function scrollOfferFormToTop() {
@@ -39677,6 +39984,7 @@ function setOfferDiscountVisibility(visible, { clearValue = false } = {}) {
     offerToggleDiscountButton.textContent = label;
     offerToggleDiscountButton.setAttribute("aria-label", label);
     offerToggleDiscountButton.title = label;
+    offerToggleDiscountButton.classList.toggle("is-active", visible);
   }
 
   if (!visible && clearValue && offerDiscountRateInput) {
@@ -39705,9 +40013,43 @@ function setOfferTotalVisibility(visible) {
     offerToggleTotalButton.textContent = label;
     offerToggleTotalButton.setAttribute("aria-label", label);
     offerToggleTotalButton.title = label;
+    offerToggleTotalButton.classList.toggle("is-active", visible);
   }
 
   syncOfferTotals();
+}
+
+function previewBlobInNewTab(blob, fallbackFileName = "preview.pdf") {
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+
+  if (!opened) {
+    triggerBlobDownload(blob, fallbackFileName);
+  }
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 60_000);
+}
+
+function syncOfferActionButtons() {
+  const isSavedOffer = Boolean(String(offerIdInput?.value || "").trim());
+  const currentOffer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || "")) ?? null;
+  const hasContactEmail = Boolean((currentOffer?.contactEmail || getSelectedOfferContactSnapshot().contactEmail || "").trim());
+
+  [offerPreviewButton, offerDownloadPdfButton, offerSendEmailButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+
+    button.disabled = !isSavedOffer;
+    button.classList.toggle("is-disabled", !isSavedOffer);
+  });
+
+  if (offerSendEmailButton) {
+    offerSendEmailButton.disabled = !isSavedOffer || !hasContactEmail;
+    offerSendEmailButton.classList.toggle("is-disabled", offerSendEmailButton.disabled);
+  }
 }
 
 function setOfferFormItems(items = [], { ensureOne = true } = {}) {
@@ -39861,14 +40203,25 @@ function renderOfferItemRows() {
   offerItems.replaceChildren(...offerFormItems.map((item, index) => {
     const row = document.createElement("div");
     row.className = "offer-item-row";
+    row.classList.toggle("has-breakdown", Boolean(item.showBreakdowns));
+    row.classList.toggle("has-discount", Boolean(item.showDiscount));
+
+    const matchedService = state.serviceCatalog.find((entry) => (
+      String(entry.id) === String(item.serviceCatalogId)
+      || normalizeLooseName(entry.name || "") === normalizeLooseName(item.description || "")
+      || normalizeLooseName(entry.serviceCode || "") === normalizeLooseName(item.description || "")
+    )) ?? null;
 
     const createInputField = (labelText, key, {
       type = "text",
       placeholder = "",
       inputMode = "",
+      list = "",
+      hidden = false,
     } = {}) => {
       const label = document.createElement("label");
       label.className = "field";
+      label.hidden = hidden;
 
       const span = document.createElement("span");
       span.textContent = labelText;
@@ -39877,12 +40230,37 @@ function renderOfferItemRows() {
       input.type = type;
       input.placeholder = placeholder;
       input.value = item[key] ?? "";
+      if (list) {
+        input.setAttribute("list", list);
+      }
       if (inputMode) {
         input.inputMode = inputMode;
       }
       input.addEventListener("input", (event) => {
         updateOfferFormItem(index, key, event.currentTarget.value);
       });
+      if (key === "description") {
+        input.addEventListener("change", (event) => {
+          const rawValue = String(event.currentTarget.value || "").trim();
+          const matchedCatalogItem = state.serviceCatalog.find((entry) => (
+            normalizeLooseName(entry.name || "") === normalizeLooseName(rawValue)
+            || normalizeLooseName(entry.serviceCode || "") === normalizeLooseName(rawValue)
+            || normalizeLooseName(`${entry.serviceCode || ""} ${entry.name || ""}`) === normalizeLooseName(rawValue)
+          )) ?? null;
+
+          offerFormItems = offerFormItems.map((entry, entryIndex) => (
+            entryIndex === index
+              ? {
+                ...entry,
+                description: matchedCatalogItem?.name || rawValue,
+                serviceCatalogId: matchedCatalogItem?.id ? String(matchedCatalogItem.id) : "",
+                serviceCode: matchedCatalogItem?.serviceCode || "",
+              }
+              : entry
+          ));
+          renderOfferItemRows();
+        });
+      }
 
       label.append(span, input);
       return label;
@@ -39895,12 +40273,19 @@ function renderOfferItemRows() {
     title.className = "offer-item-head-title";
     title.textContent = `Stavka ${index + 1}`;
 
+    const titleMeta = document.createElement("div");
+    titleMeta.className = "offer-item-head-copy";
+    titleMeta.append(title);
+    if (matchedService?.serviceCode || item.serviceCode) {
+      titleMeta.append(createMetaPill(matchedService?.serviceCode || item.serviceCode, "is-muted"));
+    }
+
     const headActions = document.createElement("div");
     headActions.className = "offer-item-head-actions";
 
     const discountButton = createActionButton(
       item.showDiscount ? "Makni rabat" : "Dodaj rabat",
-      "ghost-button offer-item-mini-action is-discount is-icon-only",
+      `ghost-button offer-item-mini-action is-discount is-icon-only${item.showDiscount ? " is-active" : ""}`,
       () => {
         toggleOfferItemDiscount(index);
       },
@@ -39908,7 +40293,7 @@ function renderOfferItemRows() {
 
     const breakdownButton = createActionButton(
       item.showBreakdowns ? "Makni razradu" : "Dodaj razradu",
-      "ghost-button offer-item-mini-action is-breakdown is-icon-only",
+      `ghost-button offer-item-mini-action is-breakdown is-icon-only${item.showBreakdowns ? " is-active" : ""}`,
       () => {
         toggleOfferItemBreakdowns(index);
       },
@@ -39929,9 +40314,12 @@ function renderOfferItemRows() {
       removeOfferFormItem(index);
     });
     headActions.append(discountButton, breakdownButton, removeButton);
-    head.append(title, headActions);
+    head.append(titleMeta, headActions);
 
-    const descriptionField = createInputField("Usluga", "description", { placeholder: "Opis usluge ili stavke" });
+    const descriptionField = createInputField("Usluga", "description", {
+      placeholder: "Opis usluge ili stavke",
+      list: "offer-item-service-options",
+    });
     descriptionField.classList.add("offer-item-field", "is-description");
 
     const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj..." });
@@ -39940,12 +40328,20 @@ function renderOfferItemRows() {
     const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal" });
     quantityField.classList.add("offer-item-field", "is-quantity");
 
-    const priceField = createInputField("Cijena", "unitPrice", { placeholder: "0,00", inputMode: "decimal" });
+    const priceField = createInputField("Cijena", "unitPrice", {
+      placeholder: "0,00",
+      inputMode: "decimal",
+      hidden: item.showBreakdowns,
+    });
     priceField.classList.add("offer-item-field", "is-price");
+
+    const content = document.createElement("div");
+    content.className = "offer-item-main-grid";
 
     const metrics = document.createElement("div");
     metrics.className = "offer-item-metrics";
     metrics.append(unitField, quantityField, priceField);
+    content.append(descriptionField, metrics);
 
     const optionalFields = document.createElement("div");
     optionalFields.className = "offer-item-optionals";
@@ -40030,7 +40426,7 @@ function renderOfferItemRows() {
     actions.className = "offer-item-actions";
     actions.append(total);
 
-    row.append(head, descriptionField, metrics);
+    row.append(head, content);
 
     if (optionalFields.childNodes.length > 0) {
       row.append(optionalFields);
@@ -40063,46 +40459,165 @@ function rebuildOfferCompanyOptions(selectedValue = "") {
   replaceSelectOptions(offerCompanyIdInput, options, selectedValue || offerCompanyIdInput.value || "");
 }
 
-function getOfferLocationSelectionValue(offerLike = {}) {
-  if (offerLike.locationScope === "all") {
-    return OFFER_LOCATION_ALL_VALUE;
-  }
-
-  if (offerLike.locationScope === "none") {
-    return OFFER_LOCATION_NONE_VALUE;
-  }
-
-  return offerLike.locationId || OFFER_LOCATION_NONE_VALUE;
+function getOfferCompanyLocations(companyId = "") {
+  return state.locations
+    .filter((location) => String(location.companyId) === String(companyId))
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
 }
 
-function rebuildOfferLocationOptions(selectedValue = "") {
-  if (!offerLocationIdInput) {
+function getOfferSelectedLocationIdsFromOffer(offerLike = {}) {
+  if (Array.isArray(offerLike?.selectedLocationIds) && offerLike.selectedLocationIds.length > 0) {
+    return offerLike.selectedLocationIds.map((value) => String(value ?? "").trim()).filter(Boolean);
+  }
+
+  if (offerLike?.locationScope === "all") {
+    return getOfferCompanyLocations(offerLike.companyId).map((location) => String(location.id));
+  }
+
+  if (offerLike?.locationScope === "single" && offerLike?.locationId) {
+    return [String(offerLike.locationId)];
+  }
+
+  return [];
+}
+
+function syncOfferLocationPreview() {
+  if (!offerLocationPreview || !offerLocationTrigger) {
     return;
   }
 
-  const companyId = offerCompanyIdInput?.value || "";
-  const options = companyId
-    ? [
-      { value: OFFER_LOCATION_ALL_VALUE, label: "Sve lokacije" },
-      { value: OFFER_LOCATION_NONE_VALUE, label: "Bez lokacije" },
-      ...state.locations
-        .filter((location) => location.companyId === companyId)
-        .slice()
-        .sort((left, right) => left.name.localeCompare(right.name, "hr"))
-        .map((location) => ({
-          value: location.id,
-          label: location.name,
-        })),
-    ]
-    : [
-      { value: "", label: "Prvo odaberi tvrtku" },
-    ];
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  const summary = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
+  const previewLines = [];
 
-  replaceSelectOptions(
-    offerLocationIdInput,
-    options,
-    selectedValue || offerLocationIdInput.value || (companyId ? OFFER_LOCATION_ALL_VALUE : ""),
+  const title = document.createElement("strong");
+  title.className = "offer-location-preview-title";
+  title.textContent = companyId
+    ? summary.summary
+    : "Prvo odaberi tvrtku";
+  previewLines.push(title);
+
+  const meta = document.createElement("span");
+  meta.className = "offer-location-preview-meta";
+  meta.textContent = companyId
+    ? summary.names.slice(0, 3).join(" · ") || "Bez lokacije"
+    : "Lokacije su dostupne nakon odabira tvrtke.";
+  previewLines.push(meta);
+
+  offerLocationPreview.replaceChildren(...previewLines);
+  offerLocationTrigger.disabled = !companyId;
+  offerLocationTrigger.setAttribute("aria-expanded", String(Boolean(state.offerLocationPickerOpen && companyId)));
+}
+
+function renderOfferLocationPicker() {
+  if (!offerLocationPanel) {
+    return;
+  }
+
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  const locations = getOfferCompanyLocations(companyId);
+
+  if (!companyId) {
+    const empty = document.createElement("p");
+    empty.className = "offer-location-empty";
+    empty.textContent = "Odaberi tvrtku da možeš birati lokacije.";
+    offerLocationPanel.replaceChildren(empty);
+    syncOfferLocationPreview();
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "offer-location-list";
+  const selectedSet = new Set(offerFormSelectedLocationIds.map((value) => String(value)));
+
+  locations.forEach((location) => {
+    const option = document.createElement("label");
+    option.className = "offer-location-option";
+    option.classList.toggle("is-selected", selectedSet.has(String(location.id)));
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedSet.has(String(location.id));
+    checkbox.addEventListener("change", (event) => {
+      const nextSelected = new Set(offerFormSelectedLocationIds.map((value) => String(value)));
+      if (event.currentTarget.checked) {
+        nextSelected.add(String(location.id));
+      } else {
+        nextSelected.delete(String(location.id));
+      }
+      setOfferSelectedLocationIds([...nextSelected]);
+    });
+
+    const copy = document.createElement("span");
+    copy.className = "offer-location-option-copy";
+    const title = document.createElement("strong");
+    title.textContent = location.name || "Lokacija";
+    const meta = document.createElement("span");
+    meta.textContent = [location.region || "", buildLocationContacts(location).length ? `${buildLocationContacts(location).length} kontakata` : ""]
+      .filter(Boolean)
+      .join(" · ") || "Bez dodatnih podataka";
+    copy.append(title, meta);
+
+    option.append(checkbox, copy);
+    wrap.append(option);
+  });
+
+  const summary = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
+  const actions = document.createElement("div");
+  actions.className = "offer-location-actions";
+
+  const allButton = createActionButton(
+    "Sve lokacije",
+    "ghost-button offer-location-mini-action",
+    () => {
+      setOfferSelectedLocationIds(locations.map((location) => String(location.id)));
+    },
   );
+  const clearButton = createActionButton(
+    "Bez lokacije",
+    "ghost-button offer-location-mini-action",
+    () => {
+      setOfferSelectedLocationIds([]);
+    },
+  );
+  const summaryChip = document.createElement("span");
+  summaryChip.className = "offer-location-summary-chip";
+  summaryChip.textContent = summary.summary;
+
+  actions.append(summaryChip, allButton, clearButton);
+  offerLocationPanel.replaceChildren(actions, wrap);
+  syncOfferLocationPreview();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+}
+
+function syncOfferLocationPicker() {
+  if (!offerLocationPanel) {
+    return;
+  }
+
+  const shouldShow = Boolean(state.offerLocationPickerOpen && offerCompanyIdInput?.value);
+  offerLocationPanel.hidden = !shouldShow;
+  offerLocationTrigger?.setAttribute("aria-expanded", String(shouldShow));
+}
+
+function setOfferLocationPickerOpen(isOpen) {
+  state.offerLocationPickerOpen = Boolean(isOpen);
+  syncOfferLocationPicker();
+}
+
+function setOfferSelectedLocationIds(selectedIds = []) {
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  const allowedIds = new Set(getOfferCompanyLocations(companyId).map((location) => String(location.id)));
+  offerFormSelectedLocationIds = Array.from(new Set(
+    (Array.isArray(selectedIds) ? selectedIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter((value) => allowedIds.has(value)),
+  ));
+  renderOfferLocationPicker();
+  rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
 }
 
 function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
@@ -40110,16 +40625,12 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
     return;
   }
 
-  const locationId = offerLocationIdInput?.value || "";
-  const isSingleLocation = Boolean(locationId && locationId !== OFFER_LOCATION_ALL_VALUE && locationId !== OFFER_LOCATION_NONE_VALUE);
-
-  if (!isSingleLocation) {
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  if (!companyId) {
     replaceSelectOptions(offerContactSlotInput, [
       {
         value: "",
-        label: offerCompanyIdInput?.value
-          ? "Kontakt je dostupan samo za pojedinacnu lokaciju"
-          : "Prvo odaberi tvrtku",
+        label: "Prvo odaberi tvrtku",
         data: {
           contactName: "",
           contactPhone: "",
@@ -40131,11 +40642,29 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
     return;
   }
 
-  const location = getLocation(locationId);
-  const contacts = buildLocationContacts(location);
+  const selectedLocationIds = offerFormSelectedLocationIds.length > 0
+    ? offerFormSelectedLocationIds
+    : getOfferCompanyLocations(companyId).map((location) => String(location.id));
+  const contacts = selectedLocationIds
+    .map((locationId) => state.locations.find((location) => String(location.id) === String(locationId)) ?? null)
+    .filter(Boolean)
+    .flatMap((location) => buildLocationContacts(location).map((contact) => ({
+      locationId: String(location.id),
+      locationName: location.name || "",
+      slot: String(contact.slot || ""),
+      name: contact.name || `Kontakt ${contact.slot}`,
+      phone: contact.phone || "",
+      email: contact.email || "",
+    })));
+  const uniqueContacts = Array.from(new Map(
+    contacts.map((contact) => [
+      [contact.locationId, contact.slot, contact.name, contact.phone, contact.email].join("::"),
+      contact,
+    ]),
+  ).values());
   const options = [];
 
-  if (contacts.length === 0 && snapshot.contactName) {
+  if (uniqueContacts.length === 0 && snapshot.contactName) {
     options.push({
       value: snapshot.contactSlot || "",
       label: `${snapshot.contactName} (snapshot)`,
@@ -40148,7 +40677,7 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
   } else {
     options.push({
       value: "",
-      label: contacts.length === 0 ? "Nema kontakata na lokaciji" : "Bez kontakta",
+      label: uniqueContacts.length === 0 ? "Nema kontakata na odabranim lokacijama" : "Bez kontakta",
       data: {
         contactName: "",
         contactPhone: "",
@@ -40157,10 +40686,10 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
     });
   }
 
-  contacts.forEach((contact) => {
+  uniqueContacts.forEach((contact) => {
     options.push({
-      value: String(contact.slot),
-      label: contact.name || `Kontakt ${contact.slot}`,
+      value: `${contact.locationId}:${contact.slot}:${contact.email || contact.phone || contact.name}`,
+      label: [contact.name || `Kontakt ${contact.slot}`, contact.locationName].filter(Boolean).join(" · "),
       data: {
         contactName: contact.name || `Kontakt ${contact.slot}`,
         contactPhone: contact.phone || "",
@@ -40171,6 +40700,9 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
 
   replaceSelectOptions(offerContactSlotInput, options, selectedSlot);
   offerContactSlotInput.disabled = false;
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 }
 
 function getSelectedOfferContactSnapshot() {
@@ -40185,26 +40717,16 @@ function getSelectedOfferContactSnapshot() {
 }
 
 function buildOfferPayload() {
-  const locationSelection = offerLocationIdInput.value;
-  const locationScope = locationSelection === OFFER_LOCATION_ALL_VALUE
-    ? "all"
-    : locationSelection === OFFER_LOCATION_NONE_VALUE || !locationSelection
-      ? "none"
-      : "single";
-  const contactSnapshot = locationScope === "single"
-    ? getSelectedOfferContactSnapshot()
-    : {
-      contactSlot: "",
-      contactName: "",
-      contactPhone: "",
-      contactEmail: "",
-    };
+  const companyId = String(offerCompanyIdInput?.value || "").trim();
+  const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
+  const contactSnapshot = getSelectedOfferContactSnapshot();
 
   return {
     title: offerTitleInput.value,
-    companyId: offerCompanyIdInput.value,
-    locationId: locationScope === "single" ? locationSelection : "",
-    locationScope,
+    companyId,
+    locationId: locationSelection.ids[0] || "",
+    selectedLocationIds: [...locationSelection.ids],
+    locationScope: locationSelection.scope,
     contactSlot: contactSnapshot.contactSlot,
     contactName: contactSnapshot.contactName,
     contactPhone: contactSnapshot.contactPhone,
@@ -40217,6 +40739,8 @@ function buildOfferPayload() {
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
     note: offerNoteInput.value,
     items: offerFormItems.map((item) => ({
+      serviceCatalogId: item.serviceCatalogId || "",
+      serviceCode: item.serviceCode || "",
       description: item.description,
       unit: item.unit,
       quantity: item.quantity,
@@ -40262,7 +40786,9 @@ function resetOfferForm() {
   if (offerCompanyIdInput) {
     offerCompanyIdInput.value = "";
   }
-  rebuildOfferLocationOptions("");
+  offerFormSelectedLocationIds = [];
+  renderOfferLocationPicker();
+  setOfferLocationPickerOpen(false);
   rebuildOfferContactOptions("", {});
   syncCompanySelectionPreview(
     "",
@@ -40298,8 +40824,9 @@ function hydrateOfferForm(offer) {
     offerCompanyPreviewName,
     offerCompanyPreviewMeta,
   );
-  rebuildOfferLocationOptions(getOfferLocationSelectionValue(offer));
-  offerLocationIdInput.value = getOfferLocationSelectionValue(offer);
+  offerFormSelectedLocationIds = getOfferSelectedLocationIdsFromOffer(offer);
+  renderOfferLocationPicker();
+  setOfferLocationPickerOpen(false);
   rebuildOfferContactOptions(offer.contactSlot || "", {
     contactSlot: offer.contactSlot || "",
     contactName: offer.contactName || "",
@@ -40331,6 +40858,171 @@ function hydrateOfferForm(offer) {
   });
 }
 
+function renderOfferTemplateReferenceMeta() {
+  if (!offerTemplateReferenceMeta) {
+    return;
+  }
+
+  const entry = offerTemplateReferenceDraft;
+  if (!entry?.fileName || !entry?.dataUrl) {
+    const empty = document.createElement("div");
+    empty.className = "offer-template-reference-empty";
+    empty.textContent = "Još nema učitanog Word predloška za ponude.";
+    offerTemplateReferenceMeta.replaceChildren(empty);
+    if (offerTemplateDownloadButton) {
+      offerTemplateDownloadButton.disabled = true;
+    }
+    if (offerTemplateRemoveButton) {
+      offerTemplateRemoveButton.disabled = true;
+    }
+    return;
+  }
+
+  const card = document.createElement("article");
+  card.className = "offer-template-reference-card";
+  const badge = createMetaPill("Word povezan", "is-success");
+  const title = document.createElement("strong");
+  title.textContent = entry.fileName;
+  const meta = document.createElement("span");
+  meta.textContent = entry.updatedAt ? `Ažurirano ${formatDateTime(entry.updatedAt)}` : "Predložak je spreman za korištenje.";
+  card.append(badge, title, meta);
+  offerTemplateReferenceMeta.replaceChildren(card);
+
+  if (offerTemplateDownloadButton) {
+    offerTemplateDownloadButton.disabled = false;
+  }
+  if (offerTemplateRemoveButton) {
+    offerTemplateRemoveButton.disabled = false;
+  }
+}
+
+function renderOfferTemplatePlaceholderList(offer = buildOfferDraftPreviewData()) {
+  if (!offerTemplatePlaceholderList) {
+    return;
+  }
+
+  const payload = buildOfferTemplatePlaceholderPayload(offer);
+  offerTemplatePlaceholderList.replaceChildren(...OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS.map((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "offer-template-placeholder-chip";
+    button.innerHTML = `
+      <strong>{{${escapeHtml(entry.key)}}}</strong>
+      <span>${escapeHtml(entry.label)}</span>
+      <small>${escapeHtml(entry.description)}</small>
+    `;
+    button.title = `Kopiraj {{${entry.key}}}`;
+    button.addEventListener("click", () => {
+      const token = `{{${entry.key}}}`;
+      navigator.clipboard?.writeText(token)
+        .then(() => {
+          if (offerTemplateError) {
+            offerTemplateError.textContent = `Kopirano ${token}`;
+          }
+        })
+        .catch(() => {
+          if (offerTemplateError) {
+            offerTemplateError.textContent = `Ne mogu kopirati ${token}`;
+          }
+        });
+    });
+
+    const preview = document.createElement("code");
+    preview.className = "offer-template-placeholder-preview";
+    preview.textContent = payload[entry.key] || "—";
+    button.append(preview);
+    return button;
+  }));
+}
+
+async function loadOfferTemplateSettings({ force = false } = {}) {
+  if (offerTemplateReferenceDraft && !force) {
+    renderOfferTemplateReferenceMeta();
+    renderOfferTemplatePlaceholderList();
+    return;
+  }
+
+  const payload = await apiRequest("/offers/template-settings", {
+    method: "GET",
+  });
+  offerTemplateReferenceDraft = payload?.item ?? null;
+  renderOfferTemplateReferenceMeta();
+  renderOfferTemplatePlaceholderList();
+}
+
+async function saveOfferTemplateReference(file) {
+  const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`);
+  const payload = await apiRequest("/offers/template-settings", {
+    method: "POST",
+    body: {
+      referenceDocument: {
+        fileName: file.name,
+        fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        dataUrl,
+      },
+    },
+  });
+  offerTemplateReferenceDraft = payload?.item ?? null;
+  renderOfferTemplateReferenceMeta();
+  renderOfferTemplatePlaceholderList();
+}
+
+async function removeOfferTemplateReference() {
+  await apiRequest("/offers/template-settings", {
+    method: "DELETE",
+  });
+  offerTemplateReferenceDraft = null;
+  renderOfferTemplateReferenceMeta();
+  renderOfferTemplatePlaceholderList();
+}
+
+async function downloadOfferPdf(offerId, { preview = false } = {}) {
+  const response = await apiBinaryRequest(`/offers/${offerId}/export-pdf`, {
+    method: "POST",
+  });
+
+  if (preview) {
+    previewBlobInNewTab(response.blob, response.fileName || "ponuda.pdf");
+    return;
+  }
+
+  triggerBlobDownload(response.blob, response.fileName || "ponuda.pdf");
+}
+
+async function sendOfferByEmail(offer) {
+  const initialTo = String(offer?.contactEmail || "").trim();
+  const to = window.prompt("Na koji email poslati ponudu?", initialTo);
+  if (!to) {
+    return;
+  }
+
+  const subject = window.prompt(
+    "Naslov emaila",
+    `${offer?.offerNumber || "Ponuda"} · ${offer?.title || offer?.companyName || "SafeNexus"}`,
+  );
+  if (!subject) {
+    return;
+  }
+
+  const message = window.prompt(
+    "Poruka emaila",
+    `Poštovani,\n\nu privitku šaljemo ponudu ${offer?.offerNumber || ""}.\n\nLijep pozdrav,\nSafeNexus`,
+  );
+
+  const payload = await apiRequest(`/offers/${offer.id}/email`, {
+    method: "POST",
+    body: {
+      to,
+      subject,
+      message: message || "",
+    },
+  });
+
+  if (offerError) {
+    offerError.textContent = payload?.message || `Ponuda je poslana na ${to}.`;
+  }
+}
+
 function renderOffersModule() {
   if (!offersModule || !offersList || !offersEmpty) {
     return;
@@ -40355,9 +41047,7 @@ function renderOffersModule() {
     offersAcceptedCount.textContent = String(allOffers.filter((item) => item.status === "accepted").length);
   }
   if (offersHelper) {
-    offersHelper.textContent = visibleOffers.length === allOffers.length
-      ? `Prikazano ${visibleOffers.length} ponuda.`
-      : `Prikazano ${visibleOffers.length} od ${allOffers.length} ponuda.`;
+    offersHelper.textContent = "";
   }
 
   offersList.replaceChildren(...visibleOffers.map((offer) => {
@@ -40374,50 +41064,72 @@ function renderOffersModule() {
     const head = document.createElement("div");
     head.className = "offer-list-card-head";
 
-    const copy = document.createElement("div");
-    copy.className = "offer-list-card-copy";
     const number = document.createElement("span");
     number.className = "offer-list-card-number";
     number.textContent = offer.offerNumber || "Bez broja";
     const title = document.createElement("h4");
     title.className = "offer-list-card-title";
     title.textContent = offer.title || "Nova ponuda";
+
+    const copy = document.createElement("div");
+    copy.className = "offer-list-card-copy";
     copy.append(number, title);
 
-    head.append(createOfferStatusDropdown(offer), copy);
-
-    const meta = document.createElement("p");
-    meta.className = "offer-list-card-meta";
-    meta.textContent = [
-      offer.companyName,
+    const companyLine = document.createElement("p");
+    companyLine.className = "offer-list-card-meta";
+    companyLine.textContent = [
+      offer.companyName || "",
       offer.locationName || "Bez lokacije",
-      offer.contactName || "",
     ].filter(Boolean).join(" · ");
 
-    const services = document.createElement("p");
-    services.className = "offer-list-card-services";
-    services.textContent = [
-      offer.serviceLine || "Bez vrste usluge",
-      offer.offerDate ? `Datum ${formatDate(offer.offerDate)}` : "",
-      offer.items?.length ? `${offer.items.length} stavki` : "",
-      Number(offer.discountRate ?? 0) > 0 ? `Rabat ${offer.discountRate}%` : "",
-    ].filter(Boolean).join(" · ");
+    const chips = document.createElement("div");
+    chips.className = "offer-list-card-chips";
+    chips.append(
+      createMetaPill(getOptionLabel(OFFER_STATUS_OPTIONS, offer.status || "draft"), `is-${slugifyValue(offer.status || "draft")}`),
+      ...(offer.serviceLine ? [createMetaPill(offer.serviceLine)] : []),
+      ...(offer.offerDate ? [createMetaPill(formatDate(offer.offerDate), "is-muted")] : []),
+      ...(offer.items?.length ? [createMetaPill(`${offer.items.length} stavki`, "is-muted")] : []),
+      ...(Number(offer.discountRate ?? 0) > 0 ? [createMetaPill(`Rabat ${offer.discountRate}%`, "is-attention")] : []),
+    );
+
+    const body = document.createElement("div");
+    body.className = "offer-list-card-body";
+    body.append(copy, companyLine, chips);
+
+    head.append(body, createOfferStatusDropdown(offer));
+
+    const contact = document.createElement("p");
+    contact.className = "offer-list-card-services";
+    contact.textContent = offer.contactName
+      ? [offer.contactName, offer.contactEmail || offer.contactPhone || ""].filter(Boolean).join(" · ")
+      : "Bez odabranog kontakta";
 
     const footer = document.createElement("div");
     footer.className = "offer-list-card-footer";
+    const footerLeft = document.createElement("div");
+    footerLeft.className = "offer-list-card-footer-copy";
     const creator = document.createElement("span");
     creator.className = "offer-list-card-number";
     creator.textContent = offer.createdByLabel || "SafeNexus";
-    footer.append(creator);
+    footerLeft.append(creator);
+
+    const actions = document.createElement("div");
+    actions.className = "offer-list-card-actions";
+    actions.append(
+      createIconActionButton("Preuzmi PDF", "download", "", () => {
+        void runMutation(() => downloadOfferPdf(offer.id), offerError);
+      }),
+    );
 
     if (offer.showTotalAmount !== false) {
       const total = document.createElement("strong");
       total.className = "offer-list-card-total";
       total.textContent = formatCurrencyAmount(offer.total || 0, offer.currency || "EUR");
-      footer.append(total);
+      actions.append(total);
     }
 
-    card.append(head, meta, services, footer);
+    footer.append(footerLeft, actions);
+    card.append(head, contact, footer);
     const openOffer = () => {
       hydrateOfferForm(offer);
     };
@@ -42152,6 +42864,7 @@ function renderActiveView() {
   syncCompanyEditorModal();
   syncLocationEditorModal();
   syncOfferEditorModal();
+  syncOfferTemplateModal();
   syncVehicleEditorModal();
   syncVehicleReservationModal();
   syncLegalFrameworkEditorModal();
@@ -42336,8 +43049,30 @@ function renderSharedOptions() {
   rebuildVehicleReservationUserOptions(getVehicleReservationSelectedUserIds());
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
-  rebuildOfferLocationOptions(offerLocationIdInput?.value || "");
+  renderOfferLocationPicker();
+  syncOfferLocationPicker();
   rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
+  if (offerItemServiceOptions) {
+    offerItemServiceOptions.replaceChildren(...sortServiceCatalogItems(state.serviceCatalog ?? []).map((item) => {
+      const option = document.createElement("option");
+      option.value = item.name || item.serviceCode || "";
+      option.label = [item.serviceCode || "", item.name || ""].filter(Boolean).join(" · ");
+      return option;
+    }));
+  }
+  if (offerServiceLineInput) {
+    const serviceLineDatalist = document.querySelector("#offer-service-line-options");
+    if (serviceLineDatalist) {
+      serviceLineDatalist.replaceChildren(...sortServiceCatalogItems(state.serviceCatalog ?? [])
+        .slice(0, 60)
+        .map((item) => {
+          const option = document.createElement("option");
+          option.value = item.name || item.serviceCode || "";
+          option.label = [item.serviceCode || "", item.name || ""].filter(Boolean).join(" · ");
+          return option;
+        }));
+    }
+  }
   rebuildDocumentTemplateCompanyOptions(documentTemplateCompanyIdInput?.value || "");
   rebuildDocumentTemplateLocationOptions(documentTemplateLocationIdInput?.value || "");
   closeOpenWorkOrderStatusMenus();
@@ -51475,6 +52210,7 @@ bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileIn
 bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
 bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
 enhanceWorkOrderEditorChrome();
+enhanceOfferChrome();
 renderWorkOrderEditorExecutorPicker();
 renderWorkOrderServicePicker();
 renderWorkOrderServiceSelection();
@@ -52709,16 +53445,28 @@ offerCompanyIdInput?.addEventListener("change", () => {
     offerCompanyPreviewName,
     offerCompanyPreviewMeta,
   );
-  rebuildOfferLocationOptions(OFFER_LOCATION_ALL_VALUE);
+  offerFormSelectedLocationIds = getOfferCompanyLocations(offerCompanyIdInput.value).map((location) => String(location.id));
+  renderOfferLocationPicker();
+  setOfferLocationPickerOpen(false);
   rebuildOfferContactOptions("", {});
 });
 
-offerLocationIdInput?.addEventListener("change", () => {
-  rebuildOfferContactOptions("", {});
+offerLocationTrigger?.addEventListener("click", () => {
+  if (!offerCompanyIdInput?.value) {
+    return;
+  }
+  setOfferLocationPickerOpen(!state.offerLocationPickerOpen);
 });
 
 offerStatusInput?.addEventListener("change", () => {
   syncOfferStatusTheme();
+});
+
+offerContactSlotInput?.addEventListener("change", () => {
+  syncOfferActionButtons();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 });
 
 offerTaxRateInput?.addEventListener("input", () => {
@@ -52799,6 +53547,110 @@ offerEditorCloseButton?.addEventListener("click", () => {
 
 offerEditorBackdrop?.addEventListener("click", () => {
   dismissOfferEditor();
+});
+
+offerOpenTemplateButton?.addEventListener("click", () => {
+  if (offerTemplateError) {
+    offerTemplateError.textContent = "";
+  }
+  void runMutation(() => loadOfferTemplateSettings({ force: true }), offerTemplateError).then((success) => {
+    if (success) {
+      openOfferTemplateModal();
+    }
+  });
+});
+
+offerTemplateCloseButton?.addEventListener("click", () => {
+  closeOfferTemplateModal();
+});
+
+offerTemplateBackdrop?.addEventListener("click", () => {
+  closeOfferTemplateModal();
+});
+
+offerTemplateToggleReferenceButton?.addEventListener("click", () => {
+  state.offerTemplateReferenceCollapsed = !state.offerTemplateReferenceCollapsed;
+  syncOfferTemplateModal();
+});
+
+offerTemplateDownloadPlaceholdersButton?.addEventListener("click", () => {
+  triggerBlobDownload(
+    createWordHtmlBlob("SafeNexus · Offer placeholderi", buildOfferTemplatePlaceholderWordMarkup()),
+    `safe-nexus-offer-placeholderi-${new Date().toISOString().slice(0, 10)}.doc`,
+  );
+});
+
+offerTemplateUploadButton?.addEventListener("click", () => {
+  if (offerTemplateFileInput) {
+    offerTemplateFileInput.accept = OFFER_TEMPLATE_ACCEPT_LABEL;
+    offerTemplateFileInput.click();
+  }
+});
+
+offerTemplateFileInput?.addEventListener("change", () => {
+  const [file] = Array.from(offerTemplateFileInput.files ?? []);
+  if (!file) {
+    return;
+  }
+
+  void runMutation(() => saveOfferTemplateReference(file), offerTemplateError).then(() => {
+    offerTemplateFileInput.value = "";
+  });
+});
+
+offerTemplateDownloadButton?.addEventListener("click", () => {
+  if (offerTemplateReferenceDraft) {
+    triggerModuleAttachmentDownload(offerTemplateReferenceDraft);
+  }
+});
+
+offerTemplateRemoveButton?.addEventListener("click", () => {
+  if (!offerTemplateReferenceDraft || !window.confirm("Maknuti Word predložak za ponude?")) {
+    return;
+  }
+
+  void runMutation(() => removeOfferTemplateReference(), offerTemplateError);
+});
+
+offerPreviewButton?.addEventListener("click", () => {
+  const offerId = String(offerIdInput?.value || "").trim();
+  if (!offerId) {
+    return;
+  }
+  void runMutation(() => downloadOfferPdf(offerId, { preview: true }), offerError);
+});
+
+offerDownloadPdfButton?.addEventListener("click", () => {
+  const offerId = String(offerIdInput?.value || "").trim();
+  if (!offerId) {
+    return;
+  }
+  void runMutation(() => downloadOfferPdf(offerId), offerError);
+});
+
+offerSendEmailButton?.addEventListener("click", () => {
+  const offer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || "")) ?? null;
+  if (!offer) {
+    return;
+  }
+  void runMutation(() => sendOfferByEmail(offer), offerError);
+});
+
+document.addEventListener("click", (event) => {
+  if (!state.offerLocationPickerOpen) {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof Node)) {
+    return;
+  }
+
+  if (offerLocationTrigger?.contains(target) || offerLocationPanel?.contains(target)) {
+    return;
+  }
+
+  setOfferLocationPickerOpen(false);
 });
 
 legalFrameworkSearchInput?.addEventListener("input", () => {

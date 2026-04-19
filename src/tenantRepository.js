@@ -1376,6 +1376,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
+      selectedLocationIds: [...(item.selectedLocationIds ?? [])],
+      selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
     })),
     vehicles: (rawSnapshot.vehicles ?? []).filter((item) => (

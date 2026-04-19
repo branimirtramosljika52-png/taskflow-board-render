@@ -1382,6 +1382,28 @@ function mapMeasurementEquipmentCardTemplateEntry(row = {}) {
   };
 }
 
+function mapOfferTemplateSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const referenceDocument = mapStoredAttachmentDocument(parseJsonObject(row.reference_document_json));
+  if (!referenceDocument.fileName || !referenceDocument.dataUrl) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    referenceDocument: {
+      ...referenceDocument,
+      updatedAt: normalizeTimestamp(referenceDocument.updatedAt) ?? normalizeTimestamp(row.updated_at),
+    },
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -2052,7 +2074,7 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
            offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
            tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
-           show_total_amount,
+           show_total_amount, location_ids_json, location_names_json,
            tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
            contact_email, created_by_user_id, created_by_label, created_at, updated_at
     FROM web_offers
@@ -2073,10 +2095,25 @@ async function fetchSnapshotFromConnection(connection) {
     const company = companiesById.get(dbString(row.company_id));
     const location = locationsById.get(dbString(row.location_id));
     const rawLocationScope = dbString(row.location_scope).toLowerCase();
-    const locationScope = ["all", "single", "none"].includes(rawLocationScope)
+    const locationScope = ["all", "single", "selection", "none"].includes(rawLocationScope)
       ? (rawLocationScope === "single" && !dbString(row.location_id) ? "none" : rawLocationScope)
       : (dbString(row.location_id) ? "single" : "none");
+    const companyLocations = locations.filter((entry) => String(entry.companyId) === dbString(row.company_id));
+    const selectedLocationIds = locationScope === "all"
+      ? companyLocations.map((entry) => String(entry.id))
+      : parseJsonArray(row.location_ids_json).map((entry) => dbString(entry)).filter(Boolean);
+    const selectedLocationNames = (locationScope === "all"
+      ? companyLocations.map((entry) => entry.name).filter(Boolean)
+      : parseJsonArray(row.location_names_json).map((entry) => dbString(entry)).filter(Boolean))
+      || [];
+    const hydratedSelectedLocationNames = selectedLocationNames.length > 0
+      ? selectedLocationNames
+      : selectedLocationIds
+        .map((selectedId) => companyLocations.find((entry) => String(entry.id) === selectedId)?.name ?? "")
+        .filter(Boolean);
     const items = parseJsonArray(row.items_json).map((item) => ({
+      serviceCatalogId: dbString(item.serviceCatalogId),
+      serviceCode: dbString(item.serviceCode),
       description: dbString(item.description),
       unit: dbString(item.unit),
       quantity: Number(item.quantity ?? 0) || 0,
@@ -2100,11 +2137,15 @@ async function fetchSnapshotFromConnection(connection) {
       headquarters: company?.headquarters ?? "",
       locationId: dbString(row.location_id),
       locationScope,
+      selectedLocationIds,
+      selectedLocationNames: hydratedSelectedLocationNames,
       locationName: locationScope === "all"
         ? "Sve lokacije"
-        : locationScope === "none"
-          ? "Bez lokacije"
-          : (location?.name ?? ""),
+        : locationScope === "selection"
+          ? `${selectedLocationIds.length} od ${companyLocations.length} lokacija`
+          : locationScope === "none"
+            ? "Bez lokacije"
+            : (hydratedSelectedLocationNames[0] || location?.name || ""),
       region: location?.region ?? "",
       coordinates: location?.coordinates ?? "",
       contactSlot: dbString(row.contact_slot),
@@ -2501,6 +2542,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapMeasurementEquipmentNotificationSettingsEntry(row))
     .filter(Boolean);
 
+  const [offerTemplateSettingsRows] = await connection.query(`
+    SELECT organization_id, reference_document_json, created_at, updated_at
+    FROM web_offer_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const offerTemplateSettings = offerTemplateSettingsRows
+    .map((row) => mapOfferTemplateSettingsEntry(row))
+    .filter(Boolean);
+
   const [vehicleSettingsRows] = await connection.query(`
     SELECT organization_id, notification_rules_json, created_at, updated_at
     FROM web_vehicle_settings
@@ -2634,6 +2685,7 @@ async function fetchSnapshotFromConnection(connection) {
     reminders,
     todoTasks,
     offers,
+    offerTemplateSettings,
     vehicles,
     legalFrameworks,
     documentTemplates,
@@ -2735,6 +2787,7 @@ export class InMemorySafetyRepository {
       serviceCatalog: [],
       measurementEquipment: [],
       measurementEquipmentCardTemplates: [],
+      offerTemplateSettings: [],
       measurementEquipmentNotificationSettings: [],
       safetyAuthorizationNotificationSettings: [],
       absenceNotificationSettings: [],
@@ -2843,6 +2896,8 @@ export class InMemorySafetyRepository {
       })),
       offers: this.snapshot.offers.map((item) => ({
         ...item,
+        selectedLocationIds: [...(item.selectedLocationIds ?? [])],
+        selectedLocationNames: [...(item.selectedLocationNames ?? [])],
         items: (item.items ?? []).map((entry) => ({
           ...entry,
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
@@ -2890,6 +2945,10 @@ export class InMemorySafetyRepository {
       measurementEquipmentCardTemplates: this.snapshot.measurementEquipmentCardTemplates.map((item) => ({
         ...item,
         templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
+      })),
+      offerTemplateSettings: this.snapshot.offerTemplateSettings.map((item) => ({
+        ...item,
+        referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
       })),
       measurementEquipmentNotificationSettings: this.snapshot.measurementEquipmentNotificationSettings.map((item) => ({
         ...item,
@@ -3344,6 +3403,69 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.offers.length;
     this.snapshot.offers = this.snapshot.offers.filter((item) => item.id !== id);
     return this.snapshot.offers.length !== before;
+  }
+
+  async getOfferTemplateSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return null;
+    }
+
+    const entry = this.snapshot.offerTemplateSettings.find((item) => String(item.organizationId) === safeOrganizationId) ?? null;
+    return entry
+      ? {
+        ...entry,
+        referenceDocument: entry.referenceDocument ? { ...entry.referenceDocument } : null,
+      }
+      : null;
+  }
+
+  async upsertOfferTemplateSettings({ organizationId = "", referenceDocument = null } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za offer template.");
+    }
+
+    const normalizedReference = mapStoredAttachmentDocument(referenceDocument ?? {});
+    if (!normalizedReference.fileName || !normalizedReference.dataUrl) {
+      throw new Error("Offer template mora biti valjana Word datoteka.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      referenceDocument: {
+        ...normalizedReference,
+        updatedAt: timestamp,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const currentIndex = this.snapshot.offerTemplateSettings.findIndex((item) => String(item.organizationId) === safeOrganizationId);
+
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.offerTemplateSettings[currentIndex];
+      this.snapshot.offerTemplateSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.offerTemplateSettings.push(nextEntry);
+    }
+
+    return this.snapshot.offerTemplateSettings.find((item) => String(item.organizationId) === safeOrganizationId) ?? nextEntry;
+  }
+
+  async deleteOfferTemplateSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return false;
+    }
+
+    const before = this.snapshot.offerTemplateSettings.length;
+    this.snapshot.offerTemplateSettings = this.snapshot.offerTemplateSettings.filter((item) => String(item.organizationId) !== safeOrganizationId);
+    return this.snapshot.offerTemplateSettings.length !== before;
   }
 
   async createVehicle(input) {
@@ -4269,6 +4391,8 @@ export class MySqlSafetyRepository {
         company_id INT NOT NULL,
         location_id INT NULL,
         location_scope VARCHAR(16) NOT NULL DEFAULT 'single',
+        location_ids_json LONGTEXT NULL,
+        location_names_json LONGTEXT NULL,
         offer_number VARCHAR(64) NOT NULL,
         offer_year INT NOT NULL,
         offer_sequence INT NOT NULL,
@@ -4302,6 +4426,16 @@ export class MySqlSafetyRepository {
         INDEX idx_web_offers_company (company_id),
         INDEX idx_web_offers_location (location_id),
         INDEX idx_web_offers_valid_until (valid_until)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_offer_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        reference_document_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_offer_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -4671,6 +4805,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_url", "TEXT NULL AFTER reference_document_storage_key");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
+    await ensureColumnExists(this.pool, "web_offers", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
+    await ensureColumnExists(this.pool, "web_offers", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
     await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
@@ -4680,6 +4816,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
+    await ensureColumnExists(this.pool, "web_offer_settings", "reference_document_json", "LONGTEXT NULL");
     await this.pool.query(`
       UPDATE web_offers
       SET location_scope = CASE
@@ -6005,18 +6142,21 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_offers
-            (organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
+            (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
+             offer_number, offer_year, offer_sequence,
              offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
              tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
              show_total_amount, tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name,
              contact_phone, contact_email, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           Number(draft.companyId),
           parseNullableInteger(draft.locationId),
           draft.locationScope || "single",
+          JSON.stringify(draft.selectedLocationIds ?? []),
+          JSON.stringify(draft.selectedLocationNames ?? []),
           draft.offerNumber,
           Number(draft.offerYear),
           Number(draft.offerSequence),
@@ -6082,7 +6222,8 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_offers
-          SET company_id = ?, location_id = ?, location_scope = ?, title = ?, service_line = ?, status = ?,
+          SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
+              title = ?, service_line = ?, status = ?,
               offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
               subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
               tax_total_amount = ?, grand_total_amount = ?, items_json = ?, contact_slot = ?, contact_name = ?,
@@ -6093,6 +6234,8 @@ export class MySqlSafetyRepository {
           Number(next.companyId),
           parseNullableInteger(next.locationId),
           next.locationScope || "single",
+          JSON.stringify(next.selectedLocationIds ?? []),
+          JSON.stringify(next.selectedLocationNames ?? []),
           next.title,
           next.serviceLine,
           next.status,
@@ -6133,6 +6276,140 @@ export class MySqlSafetyRepository {
     try {
       const [result] = await connection.query("DELETE FROM web_offers WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getOfferTemplateSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za offer template.");
+    }
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT organization_id, reference_document_json, created_at, updated_at
+        FROM web_offer_settings
+        WHERE organization_id = ?
+        LIMIT 1
+      `,
+      [safeOrganizationId],
+    );
+
+    return mapOfferTemplateSettingsEntry(rows[0]) ?? null;
+  }
+
+  async upsertOfferTemplateSettings({ organizationId = "", referenceDocument = null } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za offer template.");
+    }
+
+    const normalizedReference = mapStoredAttachmentDocument(referenceDocument ?? {});
+    if (!normalizedReference.fileName || !normalizedReference.dataUrl) {
+      throw new Error("Offer template mora biti valjana Word datoteka.");
+    }
+
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT reference_document_json
+          FROM web_offer_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.reference_document_json));
+      const preparedTemplate = await prepareStoredAttachmentDocuments([normalizedReference], {
+        keyPrefix: `offers/${safeOrganizationId}/reference-template`,
+        currentDocuments: currentTemplate.fileName && currentTemplate.dataUrl ? [currentTemplate] : [],
+      });
+      const nextTemplate = preparedTemplate.nextDocuments[0];
+
+      if (!nextTemplate?.fileName || !nextTemplate?.dataUrl) {
+        throw new Error("Ne mogu spremiti offer template.");
+      }
+
+      staleDocuments = preparedTemplate.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          INSERT INTO web_offer_settings
+            (organization_id, reference_document_json)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE
+            reference_document_json = VALUES(reference_document_json),
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          safeOrganizationId,
+          JSON.stringify(nextTemplate),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        organizationId: String(safeOrganizationId),
+        referenceDocument: {
+          ...nextTemplate,
+          updatedAt: nextTemplate.updatedAt || new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteOfferTemplateSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za offer template.");
+    }
+
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT reference_document_json
+          FROM web_offer_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.reference_document_json));
+      staleDocuments = currentTemplate.storageKey ? [currentTemplate] : [];
+
+      const [result] = await connection.query(
+        "DELETE FROM web_offer_settings WHERE organization_id = ?",
+        [safeOrganizationId],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
