@@ -13609,7 +13609,6 @@ function createUserIdentityCell(user) {
   const primaryName = fullName || String(user.displayName || "").trim() || user.email || "User";
   const oib = String(user.oib || "").trim();
   copy.append(
-    createListLine(getUserOrganizationSummary(user), "list-eyebrow"),
     createListLine(primaryName, "list-primary"),
     createListLine(user.email || "Bez emaila", "list-secondary"),
     createListLine(oib ? `OIB ${oib}` : "OIB nije upisan", "list-tertiary"),
@@ -49683,6 +49682,9 @@ function renderUsers() {
 
     row.append(
       createUserIdentityCell(user),
+      createStackCell({
+        title: getUserOrganizationSummary(user)
+      }),
       createStackCell({
         title: roleSummary.title
       }),

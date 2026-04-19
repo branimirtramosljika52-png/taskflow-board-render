@@ -3136,6 +3136,10 @@ body.is-location-editor-open {
   min-width: 180px;
 }
 
+.people-management-panel .data-table td:nth-child(5) {
+  min-width: 170px;
+}
+
 .checkbox-field {
   display: inline-flex;
   align-items: center;
