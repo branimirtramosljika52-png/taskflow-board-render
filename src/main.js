@@ -159,6 +159,49 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
   "OPISRADOVA",
   "RADILOSE",
 ]);
+const PERIODICS_MAX_RECORDS = 1000;
+const PERIODICS_DUE_DATE_KEY_HINTS = Object.freeze([
+  "VRIJEDIDO",
+  "VRIJEDI",
+  "VAZIDO",
+  "VAZI",
+  "VAZENJE",
+  "VAZENJEDO",
+  "ROKVAZENJA",
+  "DATUMISTEKA",
+  "VALIDUNTIL",
+  "VALIDTO",
+  "EXPIRY",
+  "EXPIRES",
+  "ISTEK",
+  "ROK",
+]);
+const PERIODICS_COMPANY_KEY_HINTS = Object.freeze([
+  "TVRTKA",
+  "NAZIVTVRTKE",
+  "COMPANY",
+  "KLIJENT",
+  "NARUCITELJ",
+  "CUSTOMER",
+]);
+const PERIODICS_LOCATION_KEY_HINTS = Object.freeze([
+  "LOKACIJA",
+  "MJESTOISPITIVANJA",
+  "OBJEKT",
+  "ADRESAOBJEKTA",
+  "ADRESALOKACIJE",
+  "LOCATION",
+  "SITE",
+]);
+const PERIODICS_HEADQUARTERS_KEY_HINTS = Object.freeze([
+  "SJEDISTE",
+  "HEADQUARTERS",
+  "ADRESA",
+  "ADDRESS",
+]);
+const PERIODICS_OIB_KEY_HINTS = Object.freeze([
+  "OIB",
+]);
 const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
   { value: "due-asc", label: "Rok umjeravanja (najbliži)" },
   { value: "due-desc", label: "Rok umjeravanja (najdalji)" },
@@ -804,6 +847,23 @@ const state = {
     records: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
+  },
+  periodicsFeed: {
+    organizationId: "",
+    loaded: false,
+    loading: false,
+    error: "",
+    records: [],
+  },
+  periodicsFilters: {
+    query: "",
+    horizon: "all",
+  },
+  periodicsSections: {
+    inspectionsCollapsed: false,
+    vehiclesCollapsed: false,
+    peopleCollapsed: false,
+    equipmentCollapsed: false,
   },
   workOrderCalendar: {
     weekStart: new Date().toISOString().slice(0, 10),
@@ -1475,6 +1535,35 @@ const documentsRefreshButton = document.querySelector("#documents-refresh");
 const documentsHelper = document.querySelector("#documents-helper");
 const documentsExplorerList = document.querySelector("#documents-explorer-list");
 const documentsExplorerEmpty = document.querySelector("#documents-explorer-empty");
+const periodicsModule = document.querySelector("#periodics-module");
+const periodicsTotalCount = document.querySelector("#periodics-total-count");
+const periodicsOverdueCount = document.querySelector("#periodics-overdue-count");
+const periodicsNext30Count = document.querySelector("#periodics-next30-count");
+const periodicsCriticalCount = document.querySelector("#periodics-critical-count");
+const periodicsSearchInput = document.querySelector("#periodics-search");
+const periodicsHorizonInput = document.querySelector("#periodics-horizon");
+const periodicsRefreshButton = document.querySelector("#periodics-refresh");
+const periodicsHelper = document.querySelector("#periodics-helper");
+const periodicsInspectionsCount = document.querySelector("#periodics-inspections-count");
+const periodicsInspectionsToggleButton = document.querySelector("#periodics-inspections-toggle");
+const periodicsInspectionsBody = document.querySelector("#periodics-inspections-body");
+const periodicsInspectionsList = document.querySelector("#periodics-inspections-list");
+const periodicsInspectionsEmpty = document.querySelector("#periodics-inspections-empty");
+const periodicsVehiclesCount = document.querySelector("#periodics-vehicles-count");
+const periodicsVehiclesToggleButton = document.querySelector("#periodics-vehicles-toggle");
+const periodicsVehiclesBody = document.querySelector("#periodics-vehicles-body");
+const periodicsVehiclesList = document.querySelector("#periodics-vehicles-list");
+const periodicsVehiclesEmpty = document.querySelector("#periodics-vehicles-empty");
+const periodicsPeopleCount = document.querySelector("#periodics-people-count");
+const periodicsPeopleToggleButton = document.querySelector("#periodics-people-toggle");
+const periodicsPeopleBody = document.querySelector("#periodics-people-body");
+const periodicsPeopleList = document.querySelector("#periodics-people-list");
+const periodicsPeopleEmpty = document.querySelector("#periodics-people-empty");
+const periodicsEquipmentCount = document.querySelector("#periodics-equipment-count");
+const periodicsEquipmentToggleButton = document.querySelector("#periodics-equipment-toggle");
+const periodicsEquipmentBody = document.querySelector("#periodics-equipment-body");
+const periodicsEquipmentList = document.querySelector("#periodics-equipment-list");
+const periodicsEquipmentEmpty = document.querySelector("#periodics-equipment-empty");
 const vehiclesModule = document.querySelector("#vehicles-module");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
@@ -5022,6 +5111,7 @@ function renderModuleView() {
   const isCloudModule = state.activeModuleItem === "cloud";
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
+  const isPeriodicsModule = state.activeModuleItem === "periodics";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
@@ -5038,6 +5128,7 @@ function renderModuleView() {
     && !isSafetyAuthorizationModule
     && !isServiceCatalogModule
     && !isSettingsModule
+    && !isPeriodicsModule
     && !isVehiclesModule;
 
   if (moduleViewKicker) {
@@ -5101,6 +5192,10 @@ function renderModuleView() {
     offersModule.hidden = !isOffersModule;
   }
 
+  if (periodicsModule) {
+    periodicsModule.hidden = !isPeriodicsModule;
+  }
+
   if (legalFrameworkModule) {
     legalFrameworkModule.hidden = !isLegalFrameworkModule;
   }
@@ -5147,6 +5242,10 @@ function renderModuleView() {
 
   if (isOffersModule) {
     renderOffersModule();
+  }
+
+  if (isPeriodicsModule) {
+    renderPeriodicsModule();
   }
 
   if (isLegalFrameworkModule) {
@@ -8600,11 +8699,903 @@ function upsertDocumentsExplorerRecord(record = null) {
     };
   }
 
+  const periodicsScopeId = String(state.periodicsFeed.organizationId || "").trim();
+  if (periodicsScopeId && periodicsScopeId === activeOrganizationId) {
+    const periodicsRecords = Array.isArray(state.periodicsFeed.records)
+      ? state.periodicsFeed.records
+      : [];
+    state.periodicsFeed = {
+      ...state.periodicsFeed,
+      loaded: true,
+      error: "",
+      records: [
+        record,
+        ...periodicsRecords.filter((item) => String(item?.id || "").trim() !== normalizedId),
+      ],
+    };
+  }
+
   if (state.activeView === "module" && state.activeModuleItem === "documents") {
     renderDocumentsModule();
   }
+  if (state.activeView === "module" && state.activeModuleItem === "periodics") {
+    renderPeriodicsModule();
+  }
   if (state.measurementEquipmentEditorOpen) {
     renderMeasurementEquipmentSideActivityPanel();
+  }
+}
+
+function normalizePeriodicsDateToken(value = "") {
+  const token = String(value || "").trim();
+  if (!token) {
+    return "";
+  }
+
+  const isoMatch = token.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  if (isoMatch?.[0]) {
+    return isoMatch[0];
+  }
+
+  const localMatch = token.match(/\b\d{2}[./]\d{2}[./]\d{4}\b/);
+  if (localMatch?.[0]) {
+    const normalized = localMatch[0].replace(/\./g, "/");
+    const [dayValue, monthValue, yearValue] = normalized.split("/");
+    const day = Number.parseInt(dayValue, 10);
+    const month = Number.parseInt(monthValue, 10);
+    const year = Number.parseInt(yearValue, 10);
+    if (Number.isFinite(day) && Number.isFinite(month) && Number.isFinite(year)) {
+      const candidate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const parsedCandidate = parseDateValue(candidate);
+      if (parsedCandidate) {
+        return toDateKey(parsedCandidate);
+      }
+    }
+  }
+
+  const parsedDate = parseDateValue(token);
+  return parsedDate ? toDateKey(parsedDate) : "";
+}
+
+function collectPeriodicsDateTokensFromText(value = "", bucket = new Set()) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return;
+  }
+
+  const isoMatches = text.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? [];
+  isoMatches.forEach((token) => {
+    const normalizedToken = normalizePeriodicsDateToken(token);
+    if (normalizedToken) {
+      bucket.add(normalizedToken);
+    }
+  });
+
+  const localMatches = text.match(/\b\d{2}[./]\d{2}[./]\d{4}\b/g) ?? [];
+  localMatches.forEach((token) => {
+    const normalizedToken = normalizePeriodicsDateToken(token);
+    if (normalizedToken) {
+      bucket.add(normalizedToken);
+    }
+  });
+
+  if (isoMatches.length === 0 && localMatches.length === 0) {
+    const normalizedToken = normalizePeriodicsDateToken(text);
+    if (normalizedToken) {
+      bucket.add(normalizedToken);
+    }
+  }
+}
+
+function isPeriodicsDueDateKey(key = "") {
+  const normalizedKey = normalizeDocumentsExplorerKey(key);
+  if (!normalizedKey) {
+    return false;
+  }
+  return PERIODICS_DUE_DATE_KEY_HINTS.some((hint) => normalizedKey.includes(hint));
+}
+
+function collectPeriodicsDueDatesFromValue(value, bucket = new Set(), keyPath = "") {
+  if (value == null) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      collectPeriodicsDueDatesFromValue(entry, bucket, keyPath);
+    });
+    return;
+  }
+
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([nestedKey, nestedValue]) => {
+      const nextKeyPath = [keyPath, nestedKey].filter(Boolean).join("_");
+      collectPeriodicsDueDatesFromValue(nestedValue, bucket, nextKeyPath);
+    });
+    return;
+  }
+
+  if (!isPeriodicsDueDateKey(keyPath)) {
+    return;
+  }
+  collectPeriodicsDateTokensFromText(value, bucket);
+}
+
+function extractPeriodicsDocumentDueDates(record = {}) {
+  const dueDates = new Set();
+
+  Object.entries(record?.fieldValues ?? {}).forEach(([fieldKey, fieldValue]) => {
+    collectPeriodicsDueDatesFromValue(fieldValue, dueDates, fieldKey);
+  });
+
+  return Array.from(dueDates).sort((left, right) => left.localeCompare(right));
+}
+
+function getPeriodicsDueState(dueDate = "", todayDate = null) {
+  const parsedDate = parseDateValue(dueDate);
+  if (!parsedDate) {
+    return {
+      daysUntil: Number.NaN,
+      toneClass: "is-unknown",
+      badgeLabel: "Bez roka",
+    };
+  }
+
+  const targetDate = new Date(parsedDate);
+  targetDate.setHours(0, 0, 0, 0);
+  const baselineDate = todayDate instanceof Date
+    ? new Date(todayDate)
+    : new Date();
+  baselineDate.setHours(0, 0, 0, 0);
+
+  const daysUntil = Math.round((targetDate.getTime() - baselineDate.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysUntil < 0) {
+    return {
+      daysUntil,
+      toneClass: "is-overdue",
+      badgeLabel: `Isteklo ${Math.abs(daysUntil)} d`,
+    };
+  }
+  if (daysUntil === 0) {
+    return {
+      daysUntil,
+      toneClass: "is-today",
+      badgeLabel: "Danas",
+    };
+  }
+  if (daysUntil <= 7) {
+    return {
+      daysUntil,
+      toneClass: "is-critical",
+      badgeLabel: `${daysUntil} d`,
+    };
+  }
+  if (daysUntil <= 30) {
+    return {
+      daysUntil,
+      toneClass: "is-warning",
+      badgeLabel: `${daysUntil} d`,
+    };
+  }
+  return {
+    daysUntil,
+    toneClass: "is-future",
+    badgeLabel: `${daysUntil} d`,
+  };
+}
+
+function getPeriodicsDocumentRecords() {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const periodicsFeedScope = String(state.periodicsFeed.organizationId || "").trim();
+  if (
+    state.periodicsFeed.loaded
+    && activeOrganizationId
+    && periodicsFeedScope === activeOrganizationId
+    && Array.isArray(state.periodicsFeed.records)
+  ) {
+    return state.periodicsFeed.records;
+  }
+
+  const documentsScope = String(state.documentsExplorer.organizationId || "").trim();
+  if (
+    state.documentsExplorer.loaded
+    && activeOrganizationId
+    && documentsScope === activeOrganizationId
+    && Array.isArray(state.documentsExplorer.records)
+  ) {
+    return state.documentsExplorer.records;
+  }
+
+  return [];
+}
+
+function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()) {
+  const rows = [];
+  const seenKeys = new Set();
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    const dueDates = extractPeriodicsDocumentDueDates(record);
+    if (dueDates.length === 0) {
+      return;
+    }
+
+    const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
+    const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
+    const companyId = String(linkedWorkOrder?.companyId || record?.companyId || "").trim();
+    const locationId = String(linkedWorkOrder?.locationId || record?.locationId || "").trim();
+    const company = getCompany(companyId);
+    const location = getLocation(locationId);
+    const serviceFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS,
+    );
+    const companyFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      PERIODICS_COMPANY_KEY_HINTS,
+    );
+    const locationFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      PERIODICS_LOCATION_KEY_HINTS,
+    );
+    const headquartersFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      PERIODICS_HEADQUARTERS_KEY_HINTS,
+    );
+    const oibFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      PERIODICS_OIB_KEY_HINTS,
+    );
+    const serviceLabel = String(
+      getWorkOrderServiceSummary(linkedWorkOrder)
+      || linkedWorkOrder?.serviceLine
+      || serviceFromRecord
+      || record?.templateTitle
+      || record?.documentType
+      || "Ispitivanje",
+    ).trim() || "Ispitivanje";
+
+    const companyName = String(
+      company?.name
+      || linkedWorkOrder?.companyName
+      || linkedWorkOrder?.company
+      || companyFromRecord
+      || "Bez tvrtke",
+    ).trim() || "Bez tvrtke";
+    const headquarters = String(
+      company?.headquarters
+      || linkedWorkOrder?.headquarters
+      || headquartersFromRecord
+      || "",
+    ).trim();
+    const companyOib = String(
+      company?.oib
+      || linkedWorkOrder?.companyOib
+      || oibFromRecord
+      || "",
+    ).trim();
+    const locationName = String(
+      location?.name
+      || linkedWorkOrder?.locationName
+      || locationFromRecord
+      || "",
+    ).trim();
+    const compactLocationName = createCompactLocationLabel(locationName);
+    const templateLabel = String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik";
+    const workOrderNumber = String(linkedWorkOrder?.workOrderNumber || extractedWorkOrderNumber || "").trim();
+
+    dueDates.forEach((dueDate, index) => {
+      const dedupeKey = [
+        String(record?.id || ""),
+        companyId,
+        locationId,
+        serviceLabel,
+        dueDate,
+        index,
+      ].join("|");
+      if (!dueDate || seenKeys.has(dedupeKey)) {
+        return;
+      }
+      seenKeys.add(dedupeKey);
+
+      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      const searchText = [
+        companyName,
+        headquarters,
+        companyOib,
+        compactLocationName,
+        serviceLabel,
+        templateLabel,
+        workOrderNumber,
+      ].filter(Boolean).join(" ");
+
+      rows.push({
+        id: `periodics-inspection-${String(record?.id || crypto.randomUUID())}-${dueDate}-${index}`,
+        dueDate,
+        dueState,
+        companyName,
+        headquarters,
+        companyOib,
+        locationName: compactLocationName,
+        serviceLabel,
+        templateLabel,
+        workOrderNumber,
+        searchText,
+      });
+    });
+  });
+
+  return rows.sort((left, right) => (
+    String(left.dueDate || "").localeCompare(String(right.dueDate || ""))
+    || String(left.companyName || "").localeCompare(String(right.companyName || ""), "hr")
+    || String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr")
+  ));
+}
+
+function buildPeriodicsVehicleEntries() {
+  const rows = [];
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+
+  (state.vehicles ?? [])
+    .filter((vehicle) => {
+      if (!activeOrganizationId) {
+        return true;
+      }
+      const vehicleOrganizationId = String(vehicle?.organizationId || vehicle?.orgId || "").trim();
+      return !vehicleOrganizationId || vehicleOrganizationId === activeOrganizationId;
+    })
+    .forEach((vehicle) => {
+    const vehicleName = String(vehicle?.name || "Vozilo").trim() || "Vozilo";
+    const plateNumber = String(vehicle?.plateNumber || "").trim();
+    const vinNumber = String(vehicle?.vinNumber || "").trim();
+
+    const registrationDueDate = String(vehicle?.registrationExpiresOn || "").trim();
+    if (registrationDueDate) {
+      const dueState = getPeriodicsDueState(registrationDueDate, todayDate);
+      rows.push({
+        id: `periodics-vehicle-registration-${String(vehicle?.id || "")}-${registrationDueDate}`,
+        dueDate: registrationDueDate,
+        dueState,
+        vehicleName,
+        plateNumber,
+        vinNumber,
+        periodicLabel: "Registracija",
+        detail: "Istek prometne dozvole",
+        searchText: [vehicleName, plateNumber, vinNumber, "registracija"].filter(Boolean).join(" "),
+      });
+    }
+
+    const serviceDueDate = String(vehicle?.serviceDueDate || "").trim();
+    if (serviceDueDate) {
+      const dueState = getPeriodicsDueState(serviceDueDate, todayDate);
+      rows.push({
+        id: `periodics-vehicle-service-${String(vehicle?.id || "")}-${serviceDueDate}`,
+        dueDate: serviceDueDate,
+        dueState,
+        vehicleName,
+        plateNumber,
+        vinNumber,
+        periodicLabel: "Servis",
+        detail: "Planirani servisni rok",
+        searchText: [vehicleName, plateNumber, vinNumber, "servis"].filter(Boolean).join(" "),
+      });
+    }
+
+    (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).forEach((activityItem) => {
+      const dueDate = String(activityItem?.validUntil || "").trim();
+      if (!dueDate) {
+        return;
+      }
+      const activityType = normalizeVehicleActivityTypeValue(activityItem?.activityType || activityItem?.type || "");
+      const activityLabel = getVehicleActivityTypeLabel(activityType);
+      const detail = [
+        String(activityItem?.performedBy || "").trim(),
+        String(activityItem?.workSummary || "").trim(),
+      ].filter(Boolean).join(" · ");
+      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      rows.push({
+        id: `periodics-vehicle-activity-${String(vehicle?.id || "")}-${String(activityItem?.id || "")}-${dueDate}`,
+        dueDate,
+        dueState,
+        vehicleName,
+        plateNumber,
+        vinNumber,
+        periodicLabel: activityLabel,
+        detail: detail || "Evidencija vozila",
+        searchText: [vehicleName, plateNumber, vinNumber, activityLabel, detail].filter(Boolean).join(" "),
+      });
+    });
+    });
+
+  return rows.sort((left, right) => (
+    String(left.dueDate || "").localeCompare(String(right.dueDate || ""))
+    || String(left.vehicleName || "").localeCompare(String(right.vehicleName || ""), "hr")
+  ));
+}
+
+function buildPeriodicsPeopleEntries() {
+  const rows = [];
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const areaDefinitions = [
+    { key: "elektro", label: "Panik rasvjeta" },
+    { key: "tipkalo", label: "Tipkalo" },
+  ];
+
+  getActiveOrganizationUsers().forEach((user) => {
+    const userName = getUserDocumentDisplayName(user);
+    const userEmail = String(user?.email || "").trim();
+
+    areaDefinitions.forEach((areaDefinition) => {
+      const qualification = getUserElectricalQualification(user, areaDefinition.key);
+      if (!hasQualificationCapability(qualification) || qualification.validForever) {
+        return;
+      }
+
+      const dueDate = String(qualification.validUntil || "").trim();
+      if (!dueDate) {
+        return;
+      }
+
+      const dueState = getPeriodicsDueState(dueDate, todayDate);
+      const capabilityLabel = qualification.canInspect && qualification.canAuthorize
+        ? "Ispitivanje + ovjeravanje"
+        : (qualification.canAuthorize ? "Ovjeravanje" : "Ispitivanje");
+      const qualificationLabel = [
+        capabilityLabel,
+        qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+      ].filter(Boolean).join(" · ");
+
+      rows.push({
+        id: `periodics-people-${String(user?.id || "")}-${areaDefinition.key}-${dueDate}`,
+        dueDate,
+        dueState,
+        userName,
+        userEmail,
+        areaLabel: areaDefinition.label,
+        qualificationLabel: qualificationLabel || capabilityLabel,
+        searchText: [
+          userName,
+          userEmail,
+          areaDefinition.label,
+          capabilityLabel,
+          qualification.classCode,
+          qualification.urbroj,
+          qualification.eBroj,
+        ].filter(Boolean).join(" "),
+      });
+    });
+  });
+
+  return rows.sort((left, right) => (
+    String(left.dueDate || "").localeCompare(String(right.dueDate || ""))
+    || String(left.userName || "").localeCompare(String(right.userName || ""), "hr")
+  ));
+}
+
+function buildPeriodicsMeasurementEquipmentEntries() {
+  const rows = [];
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+
+  (state.measurementEquipment ?? [])
+    .filter((item) => {
+      if (!activeOrganizationId) {
+        return true;
+      }
+      const itemOrganizationId = String(item?.organizationId || item?.orgId || "").trim();
+      return !itemOrganizationId || itemOrganizationId === activeOrganizationId;
+    })
+    .forEach((item) => {
+      const equipmentName = String(item?.name || "Oprema").trim() || "Oprema";
+      const manufacturerModel = [
+        String(item?.manufacturer || "").trim(),
+        String(item?.deviceType || "").trim(),
+      ].filter(Boolean).join(" · ");
+      const kindLabel = getOptionLabel(
+        MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
+        String(item?.equipmentKind || "combined").trim() || "combined",
+      );
+      const codeSummary = [
+        String(item?.deviceCode || "").trim() ? `Ozn. ${String(item.deviceCode || "").trim()}` : "",
+        String(item?.serialNumber || "").trim() ? `Ser. ${String(item.serialNumber || "").trim()}` : "",
+        String(item?.inventoryNumber || "").trim() ? `Inv. ${String(item.inventoryNumber || "").trim()}` : "",
+      ].filter(Boolean).join(" · ");
+      const templateSummary = (Array.isArray(item?.linkedTemplateTitles) ? item.linkedTemplateTitles : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(", ");
+
+      const dueCandidates = [];
+
+      const calibrationDueDate = String(item?.validUntil || "").trim();
+      if (calibrationDueDate) {
+        dueCandidates.push({
+          dueDate: calibrationDueDate,
+          periodicLabel: "Umjernica",
+          detail: item?.requiresCalibration ? "Glavni rok umjeravanja" : "Rok evidencije opreme",
+        });
+      }
+
+      (Array.isArray(item?.activityItems) ? item.activityItems : []).forEach((entry) => {
+        const dueDate = String(entry?.validUntil || "").trim();
+        if (!dueDate) {
+          return;
+        }
+        const activityType = normalizeMeasurementEquipmentActivityTypeValue(entry?.activityType || entry?.type || "");
+        const activityLabel = getMeasurementEquipmentActivityTypeLabel(activityType);
+        const detail = [
+          String(entry?.performedBy || "").trim(),
+          String(entry?.note || "").trim(),
+        ].filter(Boolean).join(" · ");
+        dueCandidates.push({
+          dueDate,
+          periodicLabel: activityLabel,
+          detail: detail || "Aktivnost opreme",
+        });
+      });
+
+      dueCandidates.forEach((entry, index) => {
+        const dueDate = String(entry?.dueDate || "").trim();
+        if (!dueDate) {
+          return;
+        }
+        const dueState = getPeriodicsDueState(dueDate, todayDate);
+        const periodicLabel = String(entry?.periodicLabel || "Rok opreme").trim() || "Rok opreme";
+        const detail = String(entry?.detail || "").trim();
+        const searchText = [
+          equipmentName,
+          manufacturerModel,
+          kindLabel,
+          periodicLabel,
+          detail,
+          codeSummary,
+          templateSummary,
+        ].filter(Boolean).join(" ");
+
+        rows.push({
+          id: `periodics-equipment-${String(item?.id || "")}-${dueDate}-${index}`,
+          dueDate,
+          dueState,
+          equipmentName,
+          manufacturerModel,
+          kindLabel,
+          periodicLabel,
+          detail,
+          codeSummary,
+          templateSummary,
+          searchText,
+        });
+      });
+    });
+
+  return rows.sort((left, right) => (
+    String(left.dueDate || "").localeCompare(String(right.dueDate || ""))
+    || String(left.equipmentName || "").localeCompare(String(right.equipmentName || ""), "hr")
+  ));
+}
+
+function applyPeriodicsFilters(entries = [], filters = state.periodicsFilters) {
+  const queryNeedle = normalizeLooseName(filters?.query || "");
+  const horizon = String(filters?.horizon || "all").trim().toLowerCase();
+  const horizonDays = Number.parseInt(horizon, 10);
+
+  return (Array.isArray(entries) ? entries : []).filter((entry) => {
+    const daysUntil = Number(entry?.dueState?.daysUntil);
+
+    if (horizon === "overdue") {
+      if (!Number.isFinite(daysUntil) || daysUntil >= 0) {
+        return false;
+      }
+    } else if (Number.isFinite(horizonDays)) {
+      if (!Number.isFinite(daysUntil) || daysUntil > horizonDays) {
+        return false;
+      }
+    }
+
+    if (!queryNeedle) {
+      return true;
+    }
+
+    const haystack = normalizeLooseName(entry?.searchText || "");
+    return haystack.includes(queryNeedle);
+  });
+}
+
+function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = {}) {
+  const cell = document.createElement("div");
+  cell.className = `periodics-cell${dimmed ? " is-dimmed" : ""}`;
+
+  const primaryLine = document.createElement("strong");
+  primaryLine.className = "periodics-cell-primary";
+  primaryLine.textContent = primary || "—";
+  cell.append(primaryLine);
+
+  if (secondary) {
+    const secondaryLine = document.createElement("span");
+    secondaryLine.className = "periodics-cell-secondary";
+    secondaryLine.textContent = secondary;
+    cell.append(secondaryLine);
+  }
+
+  return cell;
+}
+
+function createPeriodicsDueCell(dueDate = "", dueState = {}) {
+  const cell = document.createElement("div");
+  cell.className = "periodics-cell periodics-cell-due";
+
+  const primaryLine = document.createElement("strong");
+  primaryLine.className = "periodics-cell-primary";
+  primaryLine.textContent = dueDate ? formatCompactDate(dueDate) : "Bez roka";
+  cell.append(primaryLine);
+
+  const badge = document.createElement("span");
+  badge.className = `periodics-due-pill ${dueState?.toneClass || "is-unknown"}`;
+  badge.textContent = dueState?.badgeLabel || "Bez roka";
+  cell.append(badge);
+
+  return cell;
+}
+
+function createPeriodicsRow(cells = [], toneClass = "") {
+  const row = document.createElement("article");
+  row.className = `periodics-grid-row ${toneClass || ""}`.trim();
+  row.append(...cells);
+  return row;
+}
+
+function renderPeriodicsRows(target, rows = []) {
+  if (!target) {
+    return;
+  }
+  target.replaceChildren(...rows);
+}
+
+function syncPeriodicsSectionToggle(button, body, collapsed = false, title = "sekciju") {
+  if (body) {
+    body.hidden = collapsed;
+  }
+  if (!button) {
+    return;
+  }
+  const expanded = !collapsed;
+  button.textContent = expanded ? "−" : "+";
+  button.setAttribute("aria-expanded", String(expanded));
+  button.setAttribute("aria-label", expanded ? `Sakrij ${title}` : `Prikaži ${title}`);
+}
+
+function syncPeriodicsSections() {
+  syncPeriodicsSectionToggle(
+    periodicsInspectionsToggleButton,
+    periodicsInspectionsBody,
+    Boolean(state.periodicsSections.inspectionsCollapsed),
+    "blok ispitivanja",
+  );
+  syncPeriodicsSectionToggle(
+    periodicsVehiclesToggleButton,
+    periodicsVehiclesBody,
+    Boolean(state.periodicsSections.vehiclesCollapsed),
+    "blok vozila",
+  );
+  syncPeriodicsSectionToggle(
+    periodicsPeopleToggleButton,
+    periodicsPeopleBody,
+    Boolean(state.periodicsSections.peopleCollapsed),
+    "blok ljudi",
+  );
+  syncPeriodicsSectionToggle(
+    periodicsEquipmentToggleButton,
+    periodicsEquipmentBody,
+    Boolean(state.periodicsSections.equipmentCollapsed),
+    "blok mjerne opreme",
+  );
+}
+
+function renderPeriodicsModule() {
+  if (!periodicsModule) {
+    return;
+  }
+
+  const filters = {
+    query: periodicsSearchInput?.value?.trim() || state.periodicsFilters.query || "",
+    horizon: periodicsHorizonInput?.value || state.periodicsFilters.horizon || "all",
+  };
+  state.periodicsFilters = filters;
+
+  if (periodicsSearchInput && periodicsSearchInput.value !== filters.query) {
+    periodicsSearchInput.value = filters.query;
+  }
+  if (periodicsHorizonInput && periodicsHorizonInput.value !== filters.horizon) {
+    periodicsHorizonInput.value = filters.horizon;
+  }
+
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const periodicsOrganizationId = String(state.periodicsFeed.organizationId || "").trim();
+  if (
+    periodicsOrganizationId
+    && activeOrganizationId
+    && periodicsOrganizationId !== activeOrganizationId
+  ) {
+    state.periodicsFeed.loaded = false;
+    state.periodicsFeed.records = [];
+    state.periodicsFeed.error = "";
+  }
+
+  if (
+    !state.periodicsFeed.loading
+    && (
+      !state.periodicsFeed.loaded
+      || !periodicsOrganizationId
+      || periodicsOrganizationId !== activeOrganizationId
+    )
+  ) {
+    void loadPeriodicsFeed();
+  }
+
+  const inspectionEntries = applyPeriodicsFilters(buildPeriodicsInspectionEntries(), filters);
+  const vehicleEntries = applyPeriodicsFilters(buildPeriodicsVehicleEntries(), filters);
+  const peopleEntries = applyPeriodicsFilters(buildPeriodicsPeopleEntries(), filters);
+  const equipmentEntries = applyPeriodicsFilters(buildPeriodicsMeasurementEquipmentEntries(), filters);
+
+  const inspectionRows = inspectionEntries.map((entry) => createPeriodicsRow([
+    createPeriodicsCell(entry.companyName, entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : ""),
+    createPeriodicsCell(entry.headquarters || "—", "", { dimmed: !entry.headquarters }),
+    createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
+    createPeriodicsCell(entry.locationName || "Bez lokacije"),
+    createPeriodicsCell(entry.serviceLabel, entry.templateLabel),
+    createPeriodicsDueCell(entry.dueDate, entry.dueState),
+  ], entry.dueState?.toneClass));
+
+  const vehicleRows = vehicleEntries.map((entry) => createPeriodicsRow([
+    createPeriodicsCell(entry.vehicleName, entry.plateNumber || "Bez registracije"),
+    createPeriodicsCell(entry.vinNumber || "—", "", { dimmed: !entry.vinNumber }),
+    createPeriodicsCell(entry.periodicLabel),
+    createPeriodicsCell(entry.detail),
+    createPeriodicsDueCell(entry.dueDate, entry.dueState),
+  ], entry.dueState?.toneClass));
+
+  const peopleRows = peopleEntries.map((entry) => createPeriodicsRow([
+    createPeriodicsCell(entry.userName, entry.userEmail || "Bez e-maila"),
+    createPeriodicsCell(entry.areaLabel),
+    createPeriodicsCell(entry.qualificationLabel),
+    createPeriodicsDueCell(entry.dueDate, entry.dueState),
+  ], entry.dueState?.toneClass));
+
+  const equipmentRows = equipmentEntries.map((entry) => createPeriodicsRow([
+    createPeriodicsCell(entry.equipmentName, entry.manufacturerModel || "Bez modela"),
+    createPeriodicsCell(entry.kindLabel, entry.periodicLabel),
+    createPeriodicsCell(entry.detail || "Bez detalja", entry.templateSummary || ""),
+    createPeriodicsCell(entry.codeSummary || "—", "", { dimmed: !entry.codeSummary }),
+    createPeriodicsDueCell(entry.dueDate, entry.dueState),
+  ], entry.dueState?.toneClass));
+
+  renderPeriodicsRows(periodicsInspectionsList, inspectionRows);
+  renderPeriodicsRows(periodicsVehiclesList, vehicleRows);
+  renderPeriodicsRows(periodicsPeopleList, peopleRows);
+  renderPeriodicsRows(periodicsEquipmentList, equipmentRows);
+
+  if (periodicsInspectionsCount) {
+    periodicsInspectionsCount.textContent = String(inspectionEntries.length);
+  }
+  if (periodicsVehiclesCount) {
+    periodicsVehiclesCount.textContent = String(vehicleEntries.length);
+  }
+  if (periodicsPeopleCount) {
+    periodicsPeopleCount.textContent = String(peopleEntries.length);
+  }
+  if (periodicsEquipmentCount) {
+    periodicsEquipmentCount.textContent = String(equipmentEntries.length);
+  }
+
+  const allEntries = [
+    ...inspectionEntries,
+    ...vehicleEntries,
+    ...peopleEntries,
+    ...equipmentEntries,
+  ];
+  const overdueEntries = allEntries.filter((entry) => Number(entry?.dueState?.daysUntil) < 0);
+  const nextThirtyDaysEntries = allEntries.filter((entry) => {
+    const daysUntil = Number(entry?.dueState?.daysUntil);
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 30;
+  });
+  const criticalEntries = allEntries.filter((entry) => {
+    const daysUntil = Number(entry?.dueState?.daysUntil);
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= 7;
+  });
+
+  if (periodicsTotalCount) {
+    periodicsTotalCount.textContent = String(allEntries.length);
+  }
+  if (periodicsOverdueCount) {
+    periodicsOverdueCount.textContent = String(overdueEntries.length);
+  }
+  if (periodicsNext30Count) {
+    periodicsNext30Count.textContent = String(nextThirtyDaysEntries.length);
+  }
+  if (periodicsCriticalCount) {
+    periodicsCriticalCount.textContent = String(criticalEntries.length);
+  }
+
+  if (periodicsInspectionsEmpty) {
+    periodicsInspectionsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
+    periodicsInspectionsEmpty.textContent = state.periodicsFeed.error
+      ? "Zapisnici trenutno nisu učitani. Klikni osvježi ili provjeri dokumente."
+      : "Nema zapisa s poljem \"vrijedi do\" za odabrane filtere.";
+  }
+  if (periodicsVehiclesEmpty) {
+    periodicsVehiclesEmpty.hidden = vehicleEntries.length > 0;
+  }
+  if (periodicsPeopleEmpty) {
+    periodicsPeopleEmpty.hidden = peopleEntries.length > 0;
+  }
+  if (periodicsEquipmentEmpty) {
+    periodicsEquipmentEmpty.hidden = equipmentEntries.length > 0;
+  }
+
+  if (periodicsHelper) {
+    if (!activeOrganizationId) {
+      periodicsHelper.textContent = "Odaberi organizaciju za pregled periodike.";
+    } else if (state.periodicsFeed.loading) {
+      periodicsHelper.textContent = "Učitavanje periodike...";
+    } else if (state.periodicsFeed.error && allEntries.length === 0) {
+      periodicsHelper.textContent = state.periodicsFeed.error;
+    } else if (allEntries.length === 0) {
+      periodicsHelper.textContent = "Nema periodičkih obveza za odabrane filtere. Dodaj datum \"vrijedi do\" u zapisniku, vozilu, korisničkoj ovlasti ili mjernoj opremi.";
+    } else if (state.periodicsFeed.error) {
+      periodicsHelper.textContent = `Prikazano ${allEntries.length} stavki (zapisnici trenutno nisu učitani) · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+    } else {
+      periodicsHelper.textContent = `Prikazano ${allEntries.length} stavki · Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+    }
+  }
+
+  syncPeriodicsSections();
+}
+
+async function loadPeriodicsFeed({ force = false } = {}) {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  if (!activeOrganizationId || state.periodicsFeed.loading) {
+    return;
+  }
+
+  const isSameOrganization = String(state.periodicsFeed.organizationId || "").trim() === activeOrganizationId;
+  if (!force && state.periodicsFeed.loaded && isSameOrganization) {
+    return;
+  }
+
+  state.periodicsFeed.loading = true;
+  state.periodicsFeed.error = "";
+  if (state.activeView === "module" && state.activeModuleItem === "periodics") {
+    renderPeriodicsModule();
+  }
+
+  try {
+    const response = await apiRequest(`/document-records?limit=${PERIODICS_MAX_RECORDS}`);
+    state.periodicsFeed = {
+      organizationId: activeOrganizationId,
+      loaded: true,
+      loading: false,
+      error: "",
+      records: Array.isArray(response?.items) ? response.items : [],
+    };
+  } catch (error) {
+    state.periodicsFeed = {
+      ...state.periodicsFeed,
+      organizationId: activeOrganizationId,
+      loaded: false,
+      loading: false,
+      error: error?.message || "Ne mogu učitati periodičke zapise.",
+      records: [],
+    };
+  }
+
+  if (state.activeView === "module" && state.activeModuleItem === "periodics") {
+    renderPeriodicsModule();
   }
 }
 
@@ -51270,6 +52261,40 @@ documentsRefreshButton?.addEventListener("click", () => {
   void loadDocumentsExplorerRecords({ force: true });
 });
 
+periodicsSearchInput?.addEventListener("input", () => {
+  state.periodicsFilters.query = periodicsSearchInput.value.trim();
+  renderPeriodicsModule();
+});
+
+periodicsHorizonInput?.addEventListener("change", () => {
+  state.periodicsFilters.horizon = periodicsHorizonInput.value || "all";
+  renderPeriodicsModule();
+});
+
+periodicsRefreshButton?.addEventListener("click", () => {
+  void loadPeriodicsFeed({ force: true });
+});
+
+periodicsInspectionsToggleButton?.addEventListener("click", () => {
+  state.periodicsSections.inspectionsCollapsed = !state.periodicsSections.inspectionsCollapsed;
+  syncPeriodicsSections();
+});
+
+periodicsVehiclesToggleButton?.addEventListener("click", () => {
+  state.periodicsSections.vehiclesCollapsed = !state.periodicsSections.vehiclesCollapsed;
+  syncPeriodicsSections();
+});
+
+periodicsPeopleToggleButton?.addEventListener("click", () => {
+  state.periodicsSections.peopleCollapsed = !state.periodicsSections.peopleCollapsed;
+  syncPeriodicsSections();
+});
+
+periodicsEquipmentToggleButton?.addEventListener("click", () => {
+  state.periodicsSections.equipmentCollapsed = !state.periodicsSections.equipmentCollapsed;
+  syncPeriodicsSections();
+});
+
 offersSearchInput?.addEventListener("input", () => {
   renderOffersModule();
 });
@@ -53390,6 +54415,23 @@ logoutButton?.addEventListener("click", () => {
       loading: false,
       error: "",
       records: [],
+    };
+    state.periodicsFeed = {
+      organizationId: "",
+      loaded: false,
+      loading: false,
+      error: "",
+      records: [],
+    };
+    state.periodicsFilters = {
+      query: "",
+      horizon: "all",
+    };
+    state.periodicsSections = {
+      inspectionsCollapsed: false,
+      vehiclesCollapsed: false,
+      peopleCollapsed: false,
+      equipmentCollapsed: false,
     };
     state.safetyAuthorizations = [];
     state.documentTemplates = [];

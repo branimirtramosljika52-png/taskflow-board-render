@@ -17261,6 +17261,7 @@ body.is-vehicle-reservation-open {
 
 .documents-module,
 .cloud-module,
+.periodics-module,
 .legal-framework-module,
 .service-catalog-module,
 .measurement-equipment-module,
@@ -17273,6 +17274,7 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-summary-grid,
+.periodics-summary-grid,
 .legal-framework-summary-grid,
 .service-catalog-summary-grid,
 .measurement-equipment-summary-grid,
@@ -17284,6 +17286,7 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-stat-card,
+.periodics-stat-card,
 .legal-framework-stat-card,
 .service-catalog-stat-card,
 .measurement-equipment-stat-card,
@@ -17298,6 +17301,7 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-stat-label,
+.periodics-stat-label,
 .legal-framework-stat-label,
 .service-catalog-stat-label,
 .measurement-equipment-stat-label,
@@ -17310,6 +17314,7 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-stat-value,
+.periodics-stat-value,
 .legal-framework-stat-value,
 .service-catalog-stat-value,
 .measurement-equipment-stat-value,
@@ -17321,6 +17326,7 @@ body.is-vehicle-reservation-open {
 
 .documents-toolbar-panel,
 .documents-explorer-panel,
+.periodics-toolbar-panel,
 .legal-framework-toolbar-panel,
 .legal-framework-list-panel,
 .legal-framework-editor-panel,
@@ -17348,6 +17354,7 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-filters,
+.periodics-filters,
 .legal-framework-filters,
 .service-catalog-filters,
 .measurement-equipment-filters,
@@ -17375,6 +17382,329 @@ body.is-vehicle-reservation-open {
 
 .safety-authorization-filters {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.periodics-module {
+  gap: 14px;
+}
+
+.periodics-stat-card {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 28px rgba(42, 55, 90, 0.1);
+}
+
+.periodics-stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: linear-gradient(180deg, rgba(108, 129, 235, 0.9), rgba(65, 176, 255, 0.85));
+}
+
+.periodics-stat-card.is-overdue::before {
+  background: linear-gradient(180deg, rgba(229, 94, 105, 0.92), rgba(201, 54, 84, 0.88));
+}
+
+.periodics-stat-card.is-soon::before {
+  background: linear-gradient(180deg, rgba(236, 170, 82, 0.92), rgba(222, 136, 54, 0.88));
+}
+
+.periodics-stat-card.is-critical::before {
+  background: linear-gradient(180deg, rgba(204, 89, 210, 0.92), rgba(135, 92, 232, 0.88));
+}
+
+.periodics-toolbar-panel,
+.periodics-section-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px;
+}
+
+.periodics-toolbar-panel {
+  position: relative;
+  border: 1px solid rgba(128, 151, 214, 0.28);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(142, 171, 255, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(253, 254, 255, 0.98), rgba(246, 249, 255, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 16px 30px rgba(59, 74, 118, 0.09);
+}
+
+.periodics-section-card {
+  position: relative;
+  border: 1px solid rgba(128, 151, 214, 0.28);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(142, 171, 255, 0.1), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 16px 28px rgba(52, 67, 112, 0.08);
+}
+
+.periodics-section-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 4px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(90deg, rgba(104, 133, 228, 0.9), rgba(104, 198, 241, 0.9));
+}
+
+.periodics-section-card.is-inspections::before {
+  background: linear-gradient(90deg, rgba(104, 133, 228, 0.9), rgba(104, 198, 241, 0.9));
+}
+
+.periodics-section-card.is-vehicles::before {
+  background: linear-gradient(90deg, rgba(110, 178, 134, 0.9), rgba(80, 199, 176, 0.9));
+}
+
+.periodics-section-card.is-people::before {
+  background: linear-gradient(90deg, rgba(206, 118, 193, 0.9), rgba(137, 148, 234, 0.9));
+}
+
+.periodics-section-card.is-equipment::before {
+  background: linear-gradient(90deg, rgba(78, 171, 201, 0.9), rgba(98, 143, 231, 0.9));
+}
+
+.periodics-section-heading {
+  align-items: center;
+}
+
+.periodics-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.periodics-section-count {
+  min-width: 38px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(116, 129, 174, 0.42);
+  background: rgba(248, 250, 255, 0.95);
+  color: #33406a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.periodics-section-body {
+  display: grid;
+  gap: 10px;
+}
+
+.periodics-grid {
+  border: 1px solid rgba(163, 176, 214, 0.5);
+  border-radius: 16px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.periodics-grid-head,
+.periodics-grid-row {
+  display: grid;
+  align-items: stretch;
+}
+
+.periodics-grid.is-inspections .periodics-grid-head,
+.periodics-grid.is-inspections .periodics-grid-row {
+  grid-template-columns:
+    minmax(190px, 1.15fr)
+    minmax(150px, 0.96fr)
+    minmax(140px, 0.72fr)
+    minmax(190px, 1.12fr)
+    minmax(220px, 1.34fr)
+    minmax(130px, 0.72fr);
+}
+
+.periodics-grid.is-vehicles .periodics-grid-head,
+.periodics-grid.is-vehicles .periodics-grid-row {
+  grid-template-columns:
+    minmax(200px, 1.2fr)
+    minmax(170px, 0.95fr)
+    minmax(180px, 0.9fr)
+    minmax(230px, 1.3fr)
+    minmax(130px, 0.75fr);
+}
+
+.periodics-grid.is-people .periodics-grid-head,
+.periodics-grid.is-people .periodics-grid-row {
+  grid-template-columns:
+    minmax(220px, 1.2fr)
+    minmax(170px, 0.8fr)
+    minmax(220px, 1.15fr)
+    minmax(130px, 0.7fr);
+}
+
+.periodics-grid.is-equipment .periodics-grid-head,
+.periodics-grid.is-equipment .periodics-grid-row {
+  grid-template-columns:
+    minmax(220px, 1.2fr)
+    minmax(170px, 0.82fr)
+    minmax(250px, 1.35fr)
+    minmax(220px, 1.1fr)
+    minmax(130px, 0.7fr);
+}
+
+.periodics-grid-head {
+  background: linear-gradient(180deg, rgba(236, 243, 255, 0.92), rgba(246, 247, 255, 0.96));
+  border-bottom: 1px solid rgba(163, 176, 214, 0.5);
+}
+
+.periodics-grid-head span {
+  padding: 11px 12px;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #526084;
+}
+
+.periodics-grid-body {
+  display: grid;
+}
+
+.periodics-grid-row {
+  border-bottom: 1px solid rgba(210, 219, 240, 0.8);
+  transition: background-color 140ms ease;
+}
+
+.periodics-grid-row:last-child {
+  border-bottom: 0;
+}
+
+.periodics-grid-row:hover {
+  background: rgba(247, 250, 255, 0.96);
+}
+
+.periodics-grid-row.is-overdue {
+  background:
+    linear-gradient(90deg, rgba(237, 130, 140, 0.12), rgba(255, 255, 255, 0.98) 40%);
+}
+
+.periodics-grid-row.is-today,
+.periodics-grid-row.is-critical {
+  background:
+    linear-gradient(90deg, rgba(230, 162, 87, 0.12), rgba(255, 255, 255, 0.98) 40%);
+}
+
+.periodics-cell {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  align-content: center;
+}
+
+.periodics-cell.is-dimmed .periodics-cell-primary {
+  color: rgba(103, 117, 143, 0.82);
+}
+
+.periodics-cell-primary {
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.32;
+  color: #233154;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.periodics-cell-secondary {
+  min-width: 0;
+  font-size: 0.76rem;
+  line-height: 1.32;
+  color: rgba(84, 96, 126, 0.88);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.periodics-cell-due {
+  gap: 6px;
+}
+
+.periodics-due-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(156, 167, 197, 0.56);
+  background: rgba(243, 246, 255, 0.9);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #3c4a71;
+}
+
+.periodics-due-pill.is-overdue {
+  border-color: rgba(213, 87, 102, 0.56);
+  background: rgba(255, 234, 238, 0.92);
+  color: #ac394f;
+}
+
+.periodics-due-pill.is-today,
+.periodics-due-pill.is-critical {
+  border-color: rgba(214, 142, 61, 0.52);
+  background: rgba(255, 243, 226, 0.92);
+  color: #a56216;
+}
+
+.periodics-due-pill.is-warning {
+  border-color: rgba(205, 167, 92, 0.56);
+  background: rgba(255, 249, 232, 0.92);
+  color: #8f6a1e;
+}
+
+.periodics-due-pill.is-future {
+  border-color: rgba(98, 151, 214, 0.52);
+  background: rgba(234, 244, 255, 0.92);
+  color: #325a89;
+}
+
+@media (max-width: 1180px) {
+  .periodics-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .periodics-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .periodics-grid-head {
+    display: none;
+  }
+
+  .periodics-grid.is-inspections .periodics-grid-row,
+  .periodics-grid.is-vehicles .periodics-grid-row,
+  .periodics-grid.is-people .periodics-grid-row,
+  .periodics-grid.is-equipment .periodics-grid-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .periodics-cell {
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(227, 233, 247, 0.78);
+  }
+
+  .periodics-grid-row .periodics-cell:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .periodics-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .legal-framework-list,

@@ -3992,6 +3992,193 @@
               </div>
             </section>
 
+            <section id="periodics-module" class="periodics-module" hidden>
+              <div class="periodics-summary-grid">
+                <article class="periodics-stat-card is-total">
+                  <span class="periodics-stat-label">Ukupno stavki</span>
+                  <strong id="periodics-total-count" class="periodics-stat-value">0</strong>
+                </article>
+                <article class="periodics-stat-card is-overdue">
+                  <span class="periodics-stat-label">Isteklo</span>
+                  <strong id="periodics-overdue-count" class="periodics-stat-value">0</strong>
+                </article>
+                <article class="periodics-stat-card is-soon">
+                  <span class="periodics-stat-label">Rok do 30 dana</span>
+                  <strong id="periodics-next30-count" class="periodics-stat-value">0</strong>
+                </article>
+                <article class="periodics-stat-card is-critical">
+                  <span class="periodics-stat-label">Kritično (7 dana)</span>
+                  <strong id="periodics-critical-count" class="periodics-stat-value">0</strong>
+                </article>
+              </div>
+
+              <section class="panel periodics-toolbar-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Periodika</p>
+                    <h3>Pregled svih istjeka</h3>
+                  </div>
+                  <button id="periodics-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
+                </div>
+
+                <div class="periodics-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="periodics-search" type="search" placeholder="Tvrtka, lokacija, OIB, usluga, vozilo, osoba..." />
+                  </label>
+                  <label class="field">
+                    <span>Rok</span>
+                    <select id="periodics-horizon">
+                      <option value="all">Svi rokovi</option>
+                      <option value="overdue">Samo isteklo</option>
+                      <option value="7">Do 7 dana</option>
+                      <option value="30">Do 30 dana</option>
+                      <option value="60">Do 60 dana</option>
+                      <option value="90">Do 90 dana</option>
+                    </select>
+                  </label>
+                </div>
+
+                <p id="periodics-helper" class="helper-copy module-copy">Periodika objedinjuje ispitivanja, vozila i korisničke ovlasti.</p>
+              </section>
+
+              <section class="panel periodics-section-card is-inspections">
+                <div class="section-heading offers-section-heading periodics-section-heading">
+                  <div>
+                    <p class="section-kicker">Ispitivanja</p>
+                    <h3>Zapisnici i &quot;vrijedi do&quot; datumi</h3>
+                  </div>
+                  <div class="periodics-section-actions">
+                    <span id="periodics-inspections-count" class="periodics-section-count">0</span>
+                    <button
+                      id="periodics-inspections-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="periodics-inspections-body"
+                    >
+                      −
+                    </button>
+                  </div>
+                </div>
+                <div id="periodics-inspections-body" class="periodics-section-body">
+                  <div class="periodics-grid is-inspections" role="table" aria-label="Ispitivanja i isteci">
+                    <div class="periodics-grid-head" role="row">
+                      <span>Tvrtka</span>
+                      <span>Sjedište</span>
+                      <span>OIB</span>
+                      <span>Lokacija</span>
+                      <span>Usluga / zapisnik</span>
+                      <span>Vrijedi do</span>
+                    </div>
+                    <div id="periodics-inspections-list" class="periodics-grid-body"></div>
+                  </div>
+                  <p id="periodics-inspections-empty" class="helper-copy" hidden>Nema zapisa s poljem "vrijedi do" za odabrane filtere.</p>
+                </div>
+              </section>
+
+              <section class="panel periodics-section-card is-vehicles">
+                <div class="section-heading offers-section-heading periodics-section-heading">
+                  <div>
+                    <p class="section-kicker">Vozila</p>
+                    <h3>Registracije, servisi i ostala periodika</h3>
+                  </div>
+                  <div class="periodics-section-actions">
+                    <span id="periodics-vehicles-count" class="periodics-section-count">0</span>
+                    <button
+                      id="periodics-vehicles-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="periodics-vehicles-body"
+                    >
+                      −
+                    </button>
+                  </div>
+                </div>
+                <div id="periodics-vehicles-body" class="periodics-section-body">
+                  <div class="periodics-grid is-vehicles" role="table" aria-label="Rokovi vozila">
+                    <div class="periodics-grid-head" role="row">
+                      <span>Vozilo</span>
+                      <span>Broj šasije</span>
+                      <span>Vrsta periodike</span>
+                      <span>Detalji</span>
+                      <span>Vrijedi do</span>
+                    </div>
+                    <div id="periodics-vehicles-list" class="periodics-grid-body"></div>
+                  </div>
+                  <p id="periodics-vehicles-empty" class="helper-copy" hidden>Nema vozila s aktivnim rokovima po trenutnom filtru.</p>
+                </div>
+              </section>
+
+              <section class="panel periodics-section-card is-people">
+                <div class="section-heading offers-section-heading periodics-section-heading">
+                  <div>
+                    <p class="section-kicker">Ljudi</p>
+                    <h3>Ovlasti, ispiti i važenje korisnika</h3>
+                  </div>
+                  <div class="periodics-section-actions">
+                    <span id="periodics-people-count" class="periodics-section-count">0</span>
+                    <button
+                      id="periodics-people-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="periodics-people-body"
+                    >
+                      −
+                    </button>
+                  </div>
+                </div>
+                <div id="periodics-people-body" class="periodics-section-body">
+                  <div class="periodics-grid is-people" role="table" aria-label="Ovlasti korisnika i rokovi">
+                    <div class="periodics-grid-head" role="row">
+                      <span>Osoba</span>
+                      <span>Područje</span>
+                      <span>Ovlast / razina</span>
+                      <span>Vrijedi do</span>
+                    </div>
+                    <div id="periodics-people-list" class="periodics-grid-body"></div>
+                  </div>
+                  <p id="periodics-people-empty" class="helper-copy" hidden>Nema korisničkih ovlasti s istekom za odabrane filtere.</p>
+                </div>
+              </section>
+
+              <section class="panel periodics-section-card is-equipment">
+                <div class="section-heading offers-section-heading periodics-section-heading">
+                  <div>
+                    <p class="section-kicker">Mjerna oprema</p>
+                    <h3>Umjeravanje i aktivnosti opreme</h3>
+                  </div>
+                  <div class="periodics-section-actions">
+                    <span id="periodics-equipment-count" class="periodics-section-count">0</span>
+                    <button
+                      id="periodics-equipment-toggle"
+                      type="button"
+                      class="ghost-button module-collapse-button"
+                      aria-expanded="true"
+                      aria-controls="periodics-equipment-body"
+                    >
+                      −
+                    </button>
+                  </div>
+                </div>
+                <div id="periodics-equipment-body" class="periodics-section-body">
+                  <div class="periodics-grid is-equipment" role="table" aria-label="Mjerna oprema i rokovi">
+                    <div class="periodics-grid-head" role="row">
+                      <span>Oprema</span>
+                      <span>Vrsta</span>
+                      <span>Aktivnost / detalj</span>
+                      <span>Oznake</span>
+                      <span>Vrijedi do</span>
+                    </div>
+                    <div id="periodics-equipment-list" class="periodics-grid-body"></div>
+                  </div>
+                  <p id="periodics-equipment-empty" class="helper-copy" hidden>Nema rokova za mjernu opremu po trenutnom filtru.</p>
+                </div>
+              </section>
+            </section>
+
             <section id="legal-framework-module" class="legal-framework-module" hidden>
               <section class="panel legal-framework-list-panel">
                 <div class="section-heading offers-section-heading legal-framework-list-heading">
