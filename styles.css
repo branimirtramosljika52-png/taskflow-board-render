@@ -17481,7 +17481,80 @@ body.is-vehicle-reservation-open {
 .periodics-section-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.periodics-section-kpis {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.periodics-section-trend {
+  min-width: 44px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(156, 167, 197, 0.52);
+  background: rgba(243, 246, 255, 0.95);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: #3c4a71;
+}
+
+.periodics-section-trend.is-overdue {
+  border-color: rgba(213, 87, 102, 0.54);
+  background: rgba(255, 234, 238, 0.94);
+  color: #ac394f;
+}
+
+.periodics-section-trend.is-valid {
+  border-color: rgba(86, 163, 120, 0.52);
+  background: rgba(232, 250, 238, 0.95);
+  color: #2f7a52;
+}
+
+.periodics-section-alert-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e24a60;
+  box-shadow: 0 0 0 2px rgba(255, 214, 221, 0.9);
+}
+
+.periodics-section-alert-dot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(226, 74, 96, 0.56);
+  animation: periodicsPulseAlert 1.4s ease-out infinite;
+}
+
+.periodics-section-card.has-overdue {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 16px 28px rgba(52, 67, 112, 0.08),
+    0 0 0 1px rgba(226, 74, 96, 0.22);
+}
+
+.periodics-section-card.is-collapsed {
+  border-color: rgba(138, 150, 178, 0.48);
+  background:
+    linear-gradient(180deg, rgba(239, 243, 250, 0.98), rgba(233, 239, 247, 0.96));
+  filter: saturate(0.45);
+}
+
+.periodics-section-card.is-collapsed::before {
+  opacity: 0.5;
+}
+
+.periodics-section-card.is-collapsed .periodics-section-heading {
+  opacity: 0.92;
 }
 
 .periodics-section-count {
@@ -17499,6 +17572,10 @@ body.is-vehicle-reservation-open {
 .periodics-section-body {
   display: grid;
   gap: 10px;
+}
+
+.periodics-section-body.has-overdue .periodics-grid {
+  border-color: rgba(226, 74, 96, 0.32);
 }
 
 .periodics-grid {
@@ -17645,6 +17722,24 @@ body.is-vehicle-reservation-open {
   color: #3c4a71;
 }
 
+.periodics-due-pill.has-pulse-alert {
+  position: relative;
+  padding-left: 18px;
+}
+
+.periodics-due-pill.has-pulse-alert::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #df3a55;
+  transform: translateY(-50%);
+  animation: periodicsPulseDot 1.2s ease-out infinite;
+}
+
 .periodics-due-pill.is-overdue {
   border-color: rgba(213, 87, 102, 0.56);
   background: rgba(255, 234, 238, 0.92);
@@ -17668,6 +17763,48 @@ body.is-vehicle-reservation-open {
   border-color: rgba(98, 151, 214, 0.52);
   background: rgba(234, 244, 255, 0.92);
   color: #325a89;
+}
+
+.periodics-stat-card.has-overdue-pulse::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e24a60;
+  box-shadow: 0 0 0 2px rgba(255, 213, 221, 0.9);
+  animation: periodicsPulseAlert 1.3s ease-out infinite;
+}
+
+@keyframes periodicsPulseAlert {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  70% {
+    transform: scale(1.9);
+    opacity: 0.14;
+  }
+
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes periodicsPulseDot {
+  0% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(223, 58, 85, 0.6);
+  }
+
+  100% {
+    opacity: 0.95;
+    box-shadow: 0 0 0 8px rgba(223, 58, 85, 0);
+  }
 }
 
 @media (max-width: 1180px) {

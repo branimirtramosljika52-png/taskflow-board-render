@@ -1549,21 +1549,33 @@ const periodicsInspectionsToggleButton = document.querySelector("#periodics-insp
 const periodicsInspectionsBody = document.querySelector("#periodics-inspections-body");
 const periodicsInspectionsList = document.querySelector("#periodics-inspections-list");
 const periodicsInspectionsEmpty = document.querySelector("#periodics-inspections-empty");
+const periodicsInspectionsOverdue = document.querySelector("#periodics-inspections-overdue");
+const periodicsInspectionsValid = document.querySelector("#periodics-inspections-valid");
+const periodicsInspectionsAlertDot = document.querySelector("#periodics-inspections-alert-dot");
 const periodicsVehiclesCount = document.querySelector("#periodics-vehicles-count");
 const periodicsVehiclesToggleButton = document.querySelector("#periodics-vehicles-toggle");
 const periodicsVehiclesBody = document.querySelector("#periodics-vehicles-body");
 const periodicsVehiclesList = document.querySelector("#periodics-vehicles-list");
 const periodicsVehiclesEmpty = document.querySelector("#periodics-vehicles-empty");
+const periodicsVehiclesOverdue = document.querySelector("#periodics-vehicles-overdue");
+const periodicsVehiclesValid = document.querySelector("#periodics-vehicles-valid");
+const periodicsVehiclesAlertDot = document.querySelector("#periodics-vehicles-alert-dot");
 const periodicsPeopleCount = document.querySelector("#periodics-people-count");
 const periodicsPeopleToggleButton = document.querySelector("#periodics-people-toggle");
 const periodicsPeopleBody = document.querySelector("#periodics-people-body");
 const periodicsPeopleList = document.querySelector("#periodics-people-list");
 const periodicsPeopleEmpty = document.querySelector("#periodics-people-empty");
+const periodicsPeopleOverdue = document.querySelector("#periodics-people-overdue");
+const periodicsPeopleValid = document.querySelector("#periodics-people-valid");
+const periodicsPeopleAlertDot = document.querySelector("#periodics-people-alert-dot");
 const periodicsEquipmentCount = document.querySelector("#periodics-equipment-count");
 const periodicsEquipmentToggleButton = document.querySelector("#periodics-equipment-toggle");
 const periodicsEquipmentBody = document.querySelector("#periodics-equipment-body");
 const periodicsEquipmentList = document.querySelector("#periodics-equipment-list");
 const periodicsEquipmentEmpty = document.querySelector("#periodics-equipment-empty");
+const periodicsEquipmentOverdue = document.querySelector("#periodics-equipment-overdue");
+const periodicsEquipmentValid = document.querySelector("#periodics-equipment-valid");
+const periodicsEquipmentAlertDot = document.querySelector("#periodics-equipment-alert-dot");
 const vehiclesModule = document.querySelector("#vehicles-module");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
@@ -9307,6 +9319,49 @@ function applyPeriodicsFilters(entries = [], filters = state.periodicsFilters) {
   });
 }
 
+function getPeriodicsEntryCounts(entries = []) {
+  let overdueCount = 0;
+  let validCount = 0;
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const daysUntil = Number(entry?.dueState?.daysUntil);
+    if (!Number.isFinite(daysUntil)) {
+      return;
+    }
+    if (daysUntil < 0) {
+      overdueCount += 1;
+      return;
+    }
+    validCount += 1;
+  });
+  return { overdueCount, validCount };
+}
+
+function syncPeriodicsSectionMetrics(
+  {
+    overdueNode = null,
+    validNode = null,
+    alertNode = null,
+    bodyNode = null,
+  } = {},
+  entries = [],
+) {
+  const { overdueCount, validCount } = getPeriodicsEntryCounts(entries);
+  if (overdueNode) {
+    overdueNode.textContent = `-${overdueCount}`;
+  }
+  if (validNode) {
+    validNode.textContent = `+${validCount}`;
+  }
+  if (alertNode) {
+    alertNode.hidden = overdueCount <= 0;
+  }
+  if (bodyNode) {
+    bodyNode.classList.toggle("has-overdue", overdueCount > 0);
+    const hostCard = bodyNode.closest(".periodics-section-card");
+    hostCard?.classList.toggle("has-overdue", overdueCount > 0);
+  }
+}
+
 function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = {}) {
   const cell = document.createElement("div");
   cell.className = `periodics-cell${dimmed ? " is-dimmed" : ""}`;
@@ -9337,6 +9392,9 @@ function createPeriodicsDueCell(dueDate = "", dueState = {}) {
 
   const badge = document.createElement("span");
   badge.className = `periodics-due-pill ${dueState?.toneClass || "is-unknown"}`;
+  if (String(dueState?.toneClass || "") === "is-overdue") {
+    badge.classList.add("has-pulse-alert");
+  }
   badge.textContent = dueState?.badgeLabel || "Bez roka";
   cell.append(badge);
 
@@ -9360,6 +9418,8 @@ function renderPeriodicsRows(target, rows = []) {
 function syncPeriodicsSectionToggle(button, body, collapsed = false, title = "sekciju") {
   if (body) {
     body.hidden = collapsed;
+    const hostCard = body.closest(".periodics-section-card");
+    hostCard?.classList.toggle("is-collapsed", collapsed);
   }
   if (!button) {
     return;
@@ -9492,6 +9552,42 @@ function renderPeriodicsModule() {
   if (periodicsEquipmentCount) {
     periodicsEquipmentCount.textContent = String(equipmentEntries.length);
   }
+  syncPeriodicsSectionMetrics(
+    {
+      overdueNode: periodicsInspectionsOverdue,
+      validNode: periodicsInspectionsValid,
+      alertNode: periodicsInspectionsAlertDot,
+      bodyNode: periodicsInspectionsBody,
+    },
+    inspectionEntries,
+  );
+  syncPeriodicsSectionMetrics(
+    {
+      overdueNode: periodicsVehiclesOverdue,
+      validNode: periodicsVehiclesValid,
+      alertNode: periodicsVehiclesAlertDot,
+      bodyNode: periodicsVehiclesBody,
+    },
+    vehicleEntries,
+  );
+  syncPeriodicsSectionMetrics(
+    {
+      overdueNode: periodicsPeopleOverdue,
+      validNode: periodicsPeopleValid,
+      alertNode: periodicsPeopleAlertDot,
+      bodyNode: periodicsPeopleBody,
+    },
+    peopleEntries,
+  );
+  syncPeriodicsSectionMetrics(
+    {
+      overdueNode: periodicsEquipmentOverdue,
+      validNode: periodicsEquipmentValid,
+      alertNode: periodicsEquipmentAlertDot,
+      bodyNode: periodicsEquipmentBody,
+    },
+    equipmentEntries,
+  );
 
   const allEntries = [
     ...inspectionEntries,
@@ -9521,6 +9617,7 @@ function renderPeriodicsModule() {
   if (periodicsCriticalCount) {
     periodicsCriticalCount.textContent = String(criticalEntries.length);
   }
+  periodicsOverdueCount?.closest(".periodics-stat-card")?.classList.toggle("has-overdue-pulse", overdueEntries.length > 0);
 
   if (periodicsInspectionsEmpty) {
     periodicsInspectionsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
