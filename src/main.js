@@ -5624,6 +5624,27 @@ function parseDateValue(value) {
     return directDate;
   }
 
+  const croatianDateMatch = rawValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\.?$/);
+  if (croatianDateMatch) {
+    const day = Number(croatianDateMatch[1]);
+    const month = Number(croatianDateMatch[2]);
+    const year = Number(croatianDateMatch[3]);
+    if (
+      Number.isFinite(day)
+      && Number.isFinite(month)
+      && Number.isFinite(year)
+      && day >= 1
+      && day <= 31
+      && month >= 1
+      && month <= 12
+    ) {
+      const normalizedCroatianDate = new Date(year, month - 1, day, 12, 0, 0, 0);
+      if (!Number.isNaN(normalizedCroatianDate.getTime())) {
+        return normalizedCroatianDate;
+      }
+    }
+  }
+
   const normalizedDateOnly = new Date(`${rawValue.slice(0, 10)}T12:00:00`);
 
   if (!Number.isNaN(normalizedDateOnly.getTime())) {
@@ -5640,7 +5661,7 @@ function formatDate(value) {
     return "Bez datuma";
   }
 
-  return new Intl.DateTimeFormat("hr-HR", { dateStyle: "medium" }).format(parsedDate);
+  return formatCompactDate(parsedDate);
 }
 
 function formatCompactDate(value) {
@@ -5653,7 +5674,7 @@ function formatCompactDate(value) {
   const day = String(parsedDate.getDate()).padStart(2, "0");
   const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
   const year = parsedDate.getFullYear();
-  return `${day}.${month}.${year}.`;
+  return `${day}.${month}.${year}`;
 }
 
 function formatCompactTime(value) {
@@ -5701,13 +5722,7 @@ function formatDateTime(value) {
     return "Bez datuma";
   }
 
-  return new Intl.DateTimeFormat("hr-HR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsedDate);
+  return [formatCompactDate(parsedDate), formatCompactTime(parsedDate)].filter(Boolean).join(" | ");
 }
 
 function toDateKey(value) {
