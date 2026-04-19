@@ -11,6 +11,7 @@ await mkdir(resolve(distDir, "assets"), { recursive: true });
 await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
 await cp(resolve(rootDir, "learning-test.html"), resolve(distDir, "learning-test.html"));
 await cp(resolve(rootDir, "request-access.html"), resolve(distDir, "request-access.html"));
+await cp(resolve(rootDir, "site.webmanifest"), resolve(distDir, "site.webmanifest"));
 await cp(resolve(rootDir, "styles.css"), resolve(distDir, "styles.css"));
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
