@@ -3096,6 +3096,17 @@ const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
 const companiesHelper = document.querySelector("#companies-helper");
 
+function hoistModalElementToBody(element) {
+  if (!(element instanceof HTMLElement) || !document.body || element.parentElement === document.body) {
+    return;
+  }
+
+  document.body.append(element);
+}
+
+hoistModalElementToBody(companyEditorBackdrop);
+hoistModalElementToBody(companyEditorPanel);
+
 const locationForm = document.querySelector("#location-form");
 const locationError = document.querySelector("#location-error");
 const locationOpenFormButton = document.querySelector("#location-open-form");
@@ -16384,6 +16395,17 @@ function syncCompanyEditorModal() {
   if (companyEditorPanel) {
     companyEditorPanel.hidden = !isOpen;
     companyEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+    if (isOpen) {
+      companyEditorPanel.style.display = "grid";
+      companyEditorPanel.style.visibility = "visible";
+      companyEditorPanel.style.opacity = "1";
+      companyEditorPanel.style.pointerEvents = "auto";
+    } else {
+      companyEditorPanel.style.display = "";
+      companyEditorPanel.style.visibility = "";
+      companyEditorPanel.style.opacity = "";
+      companyEditorPanel.style.pointerEvents = "";
+    }
   }
 
   if (companyEditorBackdrop) {
