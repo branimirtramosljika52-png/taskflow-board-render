@@ -3488,6 +3488,15 @@ function buildDefaultDrawingLayers() {
     },
     {
       id: crypto.randomUUID(),
+      name: "Kote",
+      color: "#da8a1f",
+      visible: true,
+      locked: false,
+      lineWidth: 2,
+      lineStyle: "dashed",
+    },
+    {
+      id: crypto.randomUUID(),
       name: "Sigurnosni simboli",
       color: "#d64d50",
       visible: true,
@@ -3538,6 +3547,8 @@ function getDrawingElementDefaults(type = "rectangle") {
       return { width: 220, height: 0, stroke: "#4564d1", fill: "transparent", lineWidth: 2 };
     case "wall":
       return { width: 280, height: 0, stroke: "#21385f", fill: "transparent", lineWidth: 12 };
+    case "dimension":
+      return { width: 220, height: 0, stroke: "#da8a1f", fill: "transparent", lineWidth: 2 };
     case "frame":
       return { width: 1380, height: 860, stroke: "#20416f", fill: "rgba(255,255,255,0.9)", lineWidth: 2 };
     case "door":
@@ -3548,6 +3559,18 @@ function getDrawingElementDefaults(type = "rectangle") {
       return { width: 52, height: 70, stroke: "#cc4f57", fill: "#fff1f2", lineWidth: 2 };
     case "hydrant":
       return { width: 52, height: 52, stroke: "#c83d48", fill: "#fff1f2", lineWidth: 2 };
+    case "stairs":
+      return { width: 180, height: 120, stroke: "#3561cf", fill: "#edf3ff", lineWidth: 2 };
+    case "assembly_point":
+      return { width: 170, height: 72, stroke: "#1e9e68", fill: "#e8fbf2", lineWidth: 2 };
+    case "first_aid":
+      return { width: 84, height: 84, stroke: "#239c6d", fill: "#e7faf1", lineWidth: 2 };
+    case "detector":
+      return { width: 58, height: 58, stroke: "#4564d1", fill: "#eef3ff", lineWidth: 2 };
+    case "panel":
+      return { width: 96, height: 72, stroke: "#cc4f57", fill: "#fff1f2", lineWidth: 2 };
+    case "arrow":
+      return { width: 150, height: 44, stroke: "#1e9e68", fill: "#e8fbf2", lineWidth: 2 };
     case "text":
       return { width: 220, height: 40, stroke: "#4a5b78", fill: "transparent", lineWidth: 0 };
     default:
@@ -3560,6 +3583,8 @@ function normalizeDrawingElementMetadata(metadata = {}, type = "rectangle") {
     subtitle: normalizeText(metadata?.subtitle).slice(0, 180),
     footer: normalizeText(metadata?.footer).slice(0, 180),
     note: normalizeText(metadata?.note).slice(0, 240),
+    unit: normalizeText(metadata?.unit).slice(0, 16),
+    autoLabel: normalizeBoolean(metadata?.autoLabel, type === "dimension"),
     openDirection: ["left", "right"].includes(normalizeText(metadata?.openDirection).toLowerCase())
       ? normalizeText(metadata?.openDirection).toLowerCase()
       : "left",
@@ -3567,6 +3592,9 @@ function normalizeDrawingElementMetadata(metadata = {}, type = "rectangle") {
 
   if (type === "frame") {
     normalized.footer = normalized.footer || "Plan evakuacije i spasavanja";
+  }
+  if (type === "dimension") {
+    normalized.unit = normalized.unit || "mm";
   }
 
   return normalized;
@@ -3577,7 +3605,7 @@ function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = 
   const defaultLayerId = allowedLayerIds.has(String(fallbackLayerId))
     ? String(fallbackLayerId)
     : (layers?.[0]?.id ? String(layers[0].id) : "");
-  const allowedTypes = new Set(["line", "wall", "rectangle", "frame", "door", "exit", "extinguisher", "hydrant", "text"]);
+  const allowedTypes = new Set(["line", "wall", "dimension", "rectangle", "frame", "door", "exit", "extinguisher", "hydrant", "text", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
 
   return (Array.isArray(elements) ? elements : []).map((entry) => {
     const type = allowedTypes.has(normalizeText(entry?.type).toLowerCase())
@@ -3591,7 +3619,8 @@ function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = 
     const x2 = normalizeDrawingCoordinate(entry?.x2, x + defaults.width);
     const y2 = normalizeDrawingCoordinate(entry?.y2, y + defaults.height);
 
-    return {
+    const metadata = normalizeDrawingElementMetadata(entry?.metadata, type);
+    const normalizedEntry = {
       id: normalizeId(entry?.id) || crypto.randomUUID(),
       type,
       layerId: allowedLayerIds.has(String(entry?.layerId)) ? String(entry.layerId) : defaultLayerId,
@@ -3608,8 +3637,22 @@ function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = 
         : normalizeDrawingColor(entry?.fill, defaults.fill === "transparent" ? "#ffffff" : defaults.fill),
       lineWidth: Math.max(0, Math.min(24, normalizeDrawingCoordinate(entry?.lineWidth, defaults.lineWidth))),
       label: normalizeText(entry?.label || entry?.text).slice(0, 220),
-      metadata: normalizeDrawingElementMetadata(entry?.metadata, type),
+      metadata,
     };
+
+    if (["line", "wall", "dimension"].includes(type)) {
+      normalizedEntry.width = Math.abs(normalizedEntry.x2 - normalizedEntry.x);
+      normalizedEntry.height = Math.abs(normalizedEntry.y2 - normalizedEntry.y);
+    }
+
+    if (type === "dimension" && metadata.autoLabel !== false) {
+      const deltaX = normalizedEntry.x2 - normalizedEntry.x;
+      const deltaY = normalizedEntry.y2 - normalizedEntry.y;
+      const length = Math.max(0, Math.round(Math.sqrt((deltaX ** 2) + (deltaY ** 2))));
+      normalizedEntry.label = `${length} ${metadata.unit || "mm"}`;
+    }
+
+    return normalizedEntry;
   }).filter((entry) => entry.layerId);
 }
 

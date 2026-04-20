@@ -1849,6 +1849,7 @@ const drawingNoteInput = document.querySelector("#drawing-note");
 const drawingResetButton = document.querySelector("#drawing-reset");
 const drawingDeleteButton = document.querySelector("#drawing-delete");
 const drawingSaveButton = document.querySelector("#drawing-save");
+const drawingClearReferenceButton = document.querySelector("#drawing-clear-reference");
 const drawingReferenceUploadButton = document.querySelector("#drawing-reference-upload");
 const drawingReferenceFileInput = document.querySelector("#drawing-reference-file-input");
 const drawingReferenceList = document.querySelector("#drawing-reference-list");
@@ -1856,16 +1857,22 @@ const drawingReferenceEmpty = document.querySelector("#drawing-reference-empty")
 const drawingAddLayerButton = document.querySelector("#drawing-add-layer");
 const drawingLayerList = document.querySelector("#drawing-layer-list");
 const drawingToolButtons = Array.from(document.querySelectorAll("[data-drawing-tool]"));
+const drawingBlockButtons = Array.from(document.querySelectorAll("[data-drawing-block]"));
 const drawingZoomOutButton = document.querySelector("#drawing-zoom-out");
 const drawingZoomInButton = document.querySelector("#drawing-zoom-in");
 const drawingZoomInput = document.querySelector("#drawing-zoom");
 const drawingGridSizeInput = document.querySelector("#drawing-grid-size");
+const drawingCanvasWidthInput = document.querySelector("#drawing-canvas-width");
+const drawingCanvasHeightInput = document.querySelector("#drawing-canvas-height");
 const drawingSnapToggle = document.querySelector("#drawing-snap-toggle");
 const drawingGridToggle = document.querySelector("#drawing-grid-toggle");
+const drawingExportSvgButton = document.querySelector("#drawing-export-svg");
+const drawingExportPdfButton = document.querySelector("#drawing-export-pdf");
 const drawingStageScroll = document.querySelector("#drawing-stage-scroll");
 const drawingStage = document.querySelector("#drawing-stage");
 const drawingStageReference = document.querySelector("#drawing-stage-reference");
 const drawingStageSvg = document.querySelector("#drawing-stage-svg");
+const drawingStageHelper = document.querySelector("#drawing-stage-helper");
 const drawingSelectedTitle = document.querySelector("#drawing-selected-title");
 const drawingSelectedLayerInput = document.querySelector("#drawing-selected-layer");
 const drawingSelectedLabelInput = document.querySelector("#drawing-selected-label");
@@ -1878,6 +1885,7 @@ const drawingSelectedHeightInput = document.querySelector("#drawing-selected-hei
 const drawingSelectedStrokeInput = document.querySelector("#drawing-selected-stroke");
 const drawingSelectedFillInput = document.querySelector("#drawing-selected-fill");
 const drawingSelectedLineWidthInput = document.querySelector("#drawing-selected-line-width");
+const drawingSelectedRotationInput = document.querySelector("#drawing-selected-rotation");
 const drawingSelectedSubtitleInput = document.querySelector("#drawing-selected-subtitle");
 const drawingSelectedFooterInput = document.querySelector("#drawing-selected-footer");
 const drawingDeleteSelectedButton = document.querySelector("#drawing-delete-selected");
@@ -2567,6 +2575,23 @@ let drawingActiveLayerId = "";
 let drawingCurrentTool = "select";
 let drawingPointerSession = null;
 let drawingDraftLayerCounter = 0;
+const DRAWING_DIMENSION_UNIT = "mm";
+const DRAWING_DIMENSION_TYPES = new Set(["line", "wall", "dimension"]);
+const DRAWING_ROTATABLE_TYPES = new Set([
+  "rectangle",
+  "frame",
+  "door",
+  "exit",
+  "extinguisher",
+  "hydrant",
+  "text",
+  "stairs",
+  "assembly_point",
+  "first_aid",
+  "detector",
+  "panel",
+  "arrow",
+]);
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -5907,8 +5932,9 @@ function createDrawingDefaultLayers() {
     createDrawingLayerDraft(0, { name: "Podloga", color: "#8a9ab8", lineWidth: 1 }),
     createDrawingLayerDraft(1, { name: "Zidovi", color: "#21385f", lineWidth: 6 }),
     createDrawingLayerDraft(2, { name: "Vrata i prolazi", color: "#25a37d", lineWidth: 2 }),
-    createDrawingLayerDraft(3, { name: "Sigurnosni simboli", color: "#d64d50", lineWidth: 2 }),
-    createDrawingLayerDraft(4, { name: "Napomene", color: "#7b5fd1", lineWidth: 1, lineStyle: "dashed" }),
+    createDrawingLayerDraft(3, { name: "Kote", color: "#da8a1f", lineWidth: 2, lineStyle: "dashed" }),
+    createDrawingLayerDraft(4, { name: "Sigurnosni simboli", color: "#d64d50", lineWidth: 2 }),
+    createDrawingLayerDraft(5, { name: "Napomene", color: "#7b5fd1", lineWidth: 1, lineStyle: "dashed" }),
   ];
 }
 
@@ -5931,6 +5957,8 @@ function getDrawingDefaultElementStyle(type = "rectangle", layer = null) {
       return { stroke: layerColor || "#4564d1", fill: "transparent", lineWidth: 2, width: 220, height: 0 };
     case "wall":
       return { stroke: layerColor || "#21385f", fill: "transparent", lineWidth: 12, width: 280, height: 0 };
+    case "dimension":
+      return { stroke: layerColor || "#da8a1f", fill: "transparent", lineWidth: 2, width: 220, height: 0 };
     case "frame":
       return { stroke: layerColor || "#20416f", fill: "transparent", lineWidth: 2, width: 1380, height: 860 };
     case "door":
@@ -5941,6 +5969,18 @@ function getDrawingDefaultElementStyle(type = "rectangle", layer = null) {
       return { stroke: layerColor || "#cc4f57", fill: "#fff1f2", lineWidth: 2, width: 52, height: 70 };
     case "hydrant":
       return { stroke: layerColor || "#c83d48", fill: "#fff1f2", lineWidth: 2, width: 52, height: 52 };
+    case "stairs":
+      return { stroke: layerColor || "#3561cf", fill: "#edf3ff", lineWidth: 2, width: 180, height: 120 };
+    case "assembly_point":
+      return { stroke: layerColor || "#1e9e68", fill: "#e8fbf2", lineWidth: 2, width: 170, height: 72 };
+    case "first_aid":
+      return { stroke: layerColor || "#239c6d", fill: "#e7faf1", lineWidth: 2, width: 84, height: 84 };
+    case "detector":
+      return { stroke: layerColor || "#4564d1", fill: "#eef3ff", lineWidth: 2, width: 58, height: 58 };
+    case "panel":
+      return { stroke: layerColor || "#cc4f57", fill: "#fff1f2", lineWidth: 2, width: 96, height: 72 };
+    case "arrow":
+      return { stroke: layerColor || "#1e9e68", fill: "#e8fbf2", lineWidth: 2, width: 150, height: 44 };
     case "text":
       return { stroke: layerColor || "#23324f", fill: "transparent", lineWidth: 0, width: 220, height: 40 };
     default:
@@ -5962,6 +6002,86 @@ function getDrawingActiveLayer() {
   }
 
   return drawingLayerDrafts.find((layer) => layer.visible !== false && !layer.locked) ?? drawingLayerDrafts[0] ?? null;
+}
+
+function getDrawingPreferredLayerName(tool = "rectangle") {
+  const normalizedTool = String(tool || "").trim().toLowerCase();
+  if (normalizedTool === "wall") {
+    return "Zidovi";
+  }
+  if (normalizedTool === "door") {
+    return "Vrata i prolazi";
+  }
+  if (normalizedTool === "dimension") {
+    return "Kote";
+  }
+  if (["exit", "extinguisher", "hydrant", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"].includes(normalizedTool)) {
+    return "Sigurnosni simboli";
+  }
+  if (["frame", "text"].includes(normalizedTool)) {
+    return "Napomene";
+  }
+  return "";
+}
+
+function syncDrawingActiveLayerForTool(tool = "rectangle") {
+  const preferredLayerName = getDrawingPreferredLayerName(tool);
+  if (!preferredLayerName) {
+    return;
+  }
+  const preferredLayer = drawingLayerDrafts.find((layer) => String(layer.name || "").trim().toLowerCase() === preferredLayerName.toLowerCase());
+  if (preferredLayer) {
+    drawingActiveLayerId = String(preferredLayer.id);
+  }
+}
+
+function getDrawingStageInsertPoint() {
+  const zoom = Math.max(0.5, Math.min(2.5, Number(drawingViewportDraft.zoom || 1)));
+  const viewportWidth = Math.max(320, Number(drawingStageScroll?.clientWidth || 760));
+  const viewportHeight = Math.max(240, Number(drawingStageScroll?.clientHeight || 640));
+  const scrollLeft = Number(drawingStageScroll?.scrollLeft || 0);
+  const scrollTop = Number(drawingStageScroll?.scrollTop || 0);
+  const x = (scrollLeft + viewportWidth / 2) / zoom;
+  const y = (scrollTop + viewportHeight / 2) / zoom;
+  return {
+    x: Math.max(40, Math.round(x)),
+    y: Math.max(40, Math.round(y)),
+  };
+}
+
+function getDrawingDimensionLabel(element = {}) {
+  const deltaX = Number(element.x2 || 0) - Number(element.x || 0);
+  const deltaY = Number(element.y2 || 0) - Number(element.y || 0);
+  const length = Math.max(0, Math.round(Math.sqrt((deltaX ** 2) + (deltaY ** 2))));
+  return `${length} ${DRAWING_DIMENSION_UNIT}`;
+}
+
+function syncDrawingElementDerivedFields(element = {}) {
+  const next = {
+    ...element,
+    metadata: { ...(element.metadata ?? {}) },
+  };
+  const type = String(next.type || "").trim().toLowerCase();
+
+  if (DRAWING_DIMENSION_TYPES.has(type)) {
+    next.width = Math.abs(Number(next.x2 || 0) - Number(next.x || 0));
+    next.height = Math.abs(Number(next.y2 || 0) - Number(next.y || 0));
+  } else {
+    next.x2 = Number(next.x2 ?? (Number(next.x || 0) + Number(next.width || 0)));
+    next.y2 = Number(next.y2 ?? (Number(next.y || 0) + Number(next.height || 0)));
+  }
+
+  if (type === "dimension" && next.metadata.autoLabel !== false) {
+    next.label = getDrawingDimensionLabel(next);
+    next.metadata.autoLabel = true;
+    next.metadata.unit = DRAWING_DIMENSION_UNIT;
+  }
+
+  if (!DRAWING_ROTATABLE_TYPES.has(type)) {
+    next.rotation = 0;
+  }
+
+  return next;
 }
 
 function createDrawingEmptyDraft(overrides = {}) {
@@ -6403,6 +6523,11 @@ function renderDrawingInspector() {
     input.disabled = !hasSelected;
   });
 
+  if (drawingSelectedRotationInput) {
+    drawingSelectedRotationInput.value = hasSelected ? String(Math.round(Number(selected?.rotation ?? 0))) : "";
+    drawingSelectedRotationInput.disabled = !hasSelected || !DRAWING_ROTATABLE_TYPES.has(String(selected?.type || "").trim().toLowerCase());
+  }
+
   if (drawingSelectedStrokeInput) {
     drawingSelectedStrokeInput.value = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(selected?.stroke || "") ? selected.stroke : "#4564d1";
     drawingSelectedStrokeInput.disabled = !hasSelected;
@@ -6411,7 +6536,7 @@ function renderDrawingInspector() {
   if (drawingSelectedFillInput) {
     const fillValue = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(selected?.fill || "") ? selected.fill : "#e8efff";
     drawingSelectedFillInput.value = fillValue;
-    drawingSelectedFillInput.disabled = !hasSelected || ["line", "wall", "text", "door"].includes(String(selected?.type || ""));
+    drawingSelectedFillInput.disabled = !hasSelected || ["line", "wall", "dimension", "text", "door"].includes(String(selected?.type || ""));
   }
 
   if (drawingDeleteSelectedButton) {
@@ -6492,11 +6617,22 @@ function renderDrawingStudioModule() {
   if (drawingGridSizeInput) {
     drawingGridSizeInput.value = String(drawingViewportDraft.gridSize || 20);
   }
+  if (drawingCanvasWidthInput) {
+    drawingCanvasWidthInput.value = String(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
+  }
+  if (drawingCanvasHeightInput) {
+    drawingCanvasHeightInput.value = String(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
+  }
   if (drawingSnapToggle) {
     drawingSnapToggle.checked = drawingViewportDraft.snapToGrid !== false;
   }
   if (drawingGridToggle) {
     drawingGridToggle.checked = drawingViewportDraft.showGrid !== false;
+  }
+  if (drawingStageHelper) {
+    drawingStageHelper.textContent = drawingActiveReferenceId
+      ? "Učitana podloga služi kao referenca, a iznad nje crtaš zidove, kote, simbole i okvire."
+      : "Radiš na praznom platnu. Možeš crtati odmah ili naknadno dodati DWG, DXF, PDF ili sliku kao podlogu.";
   }
 
   drawingToolButtons.forEach((button) => {
@@ -6541,7 +6677,7 @@ function getDrawingStagePoint(clientX, clientY) {
 
 function getDrawingElementBounds(element = {}) {
   const type = String(element.type || "").trim().toLowerCase();
-  if (type === "line" || type === "wall") {
+  if (DRAWING_DIMENSION_TYPES.has(type)) {
     const minX = Math.min(Number(element.x || 0), Number(element.x2 || 0));
     const minY = Math.min(Number(element.y || 0), Number(element.y2 || 0));
     const maxX = Math.max(Number(element.x || 0), Number(element.x2 || 0));
@@ -6562,17 +6698,34 @@ function getDrawingElementBounds(element = {}) {
   };
 }
 
+function getDrawingElementTransform(element = {}) {
+  const type = String(element.type || "").trim().toLowerCase();
+  if (!DRAWING_ROTATABLE_TYPES.has(type)) {
+    return "";
+  }
+
+  const rotation = Math.max(-360, Math.min(360, Number(element.rotation || 0)));
+  if (!rotation) {
+    return "";
+  }
+
+  const bounds = getDrawingElementBounds(element);
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  return ` transform="rotate(${rotation} ${centerX} ${centerY})"`;
+}
+
 function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
   const safeId = escapeHtml(String(element.id || ""));
   const stroke = escapeHtml(element.stroke || "#4564d1");
   const fill = String(element.fill || "").trim() === "transparent" ? "transparent" : escapeHtml(element.fill || "#e8efff");
   const strokeWidth = Number(element.lineWidth ?? 2) || 0;
-  const bounds = getDrawingElementBounds(element);
   const label = escapeHtml(element.label || "");
   const subtitle = escapeHtml(element.metadata?.subtitle || "");
   const footer = escapeHtml(element.metadata?.footer || "");
   const type = String(element.type || "").trim().toLowerCase();
   const selectionClass = selected ? " drawing-element-selected" : "";
+  const transform = getDrawingElementTransform(element);
 
   if (type === "line" || type === "wall") {
     const hitStrokeWidth = Math.max(strokeWidth + 18, 18);
@@ -6580,6 +6733,21 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
       <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
         <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="transparent" stroke-width="${hitStrokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
         <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
+      </g>
+    `;
+  }
+
+  if (type === "dimension") {
+    const midX = (Number(element.x || 0) + Number(element.x2 || 0)) / 2;
+    const midY = (Number(element.y || 0) + Number(element.y2 || 0)) / 2;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="transparent" stroke-width="18" stroke-linecap="round" data-element-id="${safeId}"></line>
+        <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth)}" stroke-dasharray="8 6" marker-start="url(#drawing-dimension-arrow)" marker-end="url(#drawing-dimension-arrow)" data-element-id="${safeId}"></line>
+        <line x1="${element.x}" y1="${element.y - 14}" x2="${element.x}" y2="${element.y + 14}" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.2)}" data-element-id="${safeId}"></line>
+        <line x1="${element.x2}" y1="${element.y2 - 14}" x2="${element.x2}" y2="${element.y2 + 14}" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.2)}" data-element-id="${safeId}"></line>
+        <rect x="${midX - 54}" y="${midY - 18}" width="108" height="28" rx="14" fill="rgba(255,255,255,0.92)" stroke="${stroke}" stroke-width="1" data-element-id="${safeId}"></rect>
+        <text x="${midX}" y="${midY + 2}" text-anchor="middle" class="drawing-stage-label">${label || getDrawingDimensionLabel(element)}</text>
       </g>
     `;
   }
@@ -6594,7 +6762,7 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
     const sweepEndX = openRight ? pivotX : pivotX + width;
     const sweepFlag = openRight ? 0 : 1;
     return `
-      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
         <rect x="${pivotX}" y="${pivotY}" width="${width}" height="${height}" fill="transparent" stroke="transparent" stroke-width="18" data-element-id="${safeId}"></rect>
         <line x1="${pivotX}" y1="${pivotY}" x2="${pivotX}" y2="${pivotY + height}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></line>
         <line x1="${pivotX}" y1="${pivotY}" x2="${doorLeafX}" y2="${pivotY}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></line>
@@ -6606,7 +6774,7 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
 
   if (type === "exit") {
     return `
-      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
         <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
         <text x="${Number(element.x || 0) + Number(element.width || 0) / 2}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || "EXIT"}</text>
       </g>
@@ -6616,16 +6784,90 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
   if (type === "extinguisher" || type === "hydrant") {
     const symbol = type === "extinguisher" ? "A" : "H";
     return `
-      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
         <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
         <text x="${Number(element.x || 0) + Number(element.width || 0) / 2}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || symbol}</text>
       </g>
     `;
   }
 
+  if (type === "stairs") {
+    const stepCount = 5;
+    const width = Math.max(90, Number(element.width || 180));
+    const height = Math.max(60, Number(element.height || 120));
+    const stepSize = width / stepCount;
+    const lines = Array.from({ length: stepCount }, (_, index) => {
+      const currentX = Number(element.x || 0) + (index * stepSize);
+      return `<path d="M ${currentX} ${Number(element.y || 0) + height} L ${currentX + stepSize} ${Number(element.y || 0) + height} L ${currentX + stepSize} ${Number(element.y || 0)}" fill="none" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.3)}" data-element-id="${safeId}"></path>`;
+    }).join("");
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <rect x="${element.x}" y="${element.y}" width="${width}" height="${height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        ${lines}
+        <text x="${Number(element.x || 0) + width / 2}" y="${Number(element.y || 0) + height + 24}" text-anchor="middle" class="drawing-stage-label">${label || "Stube"}</text>
+      </g>
+    `;
+  }
+
+  if (type === "assembly_point") {
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <circle cx="${Number(element.x || 0) + 30}" cy="${Number(element.y || 0) + Number(element.height || 0) / 2}" r="12" fill="${stroke}" data-element-id="${safeId}"></circle>
+        <text x="${Number(element.x || 0) + Number(element.width || 0) / 2 + 12}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || "ZBORNO"}</text>
+      </g>
+    `;
+  }
+
+  if (type === "first_aid") {
+    const centerX = Number(element.x || 0) + Number(element.width || 0) / 2;
+    const centerY = Number(element.y || 0) + Number(element.height || 0) / 2;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <rect x="${centerX - 10}" y="${centerY - 24}" width="20" height="48" rx="6" fill="${stroke}" data-element-id="${safeId}"></rect>
+        <rect x="${centerX - 24}" y="${centerY - 10}" width="48" height="20" rx="6" fill="${stroke}" data-element-id="${safeId}"></rect>
+      </g>
+    `;
+  }
+
+  if (type === "detector") {
+    const centerX = Number(element.x || 0) + Number(element.width || 0) / 2;
+    const centerY = Number(element.y || 0) + Number(element.height || 0) / 2;
+    const radius = Math.max(18, Math.min(Number(element.width || 0), Number(element.height || 0)) / 2);
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></circle>
+        <circle cx="${centerX}" cy="${centerY}" r="${Math.max(5, radius / 3)}" fill="${stroke}" data-element-id="${safeId}"></circle>
+      </g>
+    `;
+  }
+
+  if (type === "panel") {
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <text x="${Number(element.x || 0) + Number(element.width || 0) / 2}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || "C"}</text>
+      </g>
+    `;
+  }
+
+  if (type === "arrow") {
+    const startX = Number(element.x || 0);
+    const startY = Number(element.y || 0) + Number(element.height || 0) / 2;
+    const endX = startX + Number(element.width || 0);
+    const endY = startY;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" stroke="${stroke}" stroke-width="${Math.max(2, strokeWidth + 1)}" marker-end="url(#drawing-arrow-head)" data-element-id="${safeId}"></line>
+        ${label ? `<text x="${startX + Number(element.width || 0) / 2}" y="${Number(element.y || 0) - 8}" text-anchor="middle" class="drawing-stage-label">${label}</text>` : ""}
+      </g>
+    `;
+  }
+
   if (type === "text") {
     return `
-      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
         <rect x="${element.x}" y="${element.y}" width="${Math.max(60, element.width || 220)}" height="${Math.max(24, element.height || 40)}" fill="transparent" stroke="transparent" data-element-id="${safeId}"></rect>
         <text x="${Number(element.x || 0) + 6}" y="${Number(element.y || 0) + 24}" class="drawing-stage-label">${label || "Tekst"}</text>
       </g>
@@ -6639,7 +6881,7 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
     const innerHeight = Math.max(120, Number(element.height || 0) - 90);
     const footerY = Number(element.y || 0) + Number(element.height || 0) - 72;
     return `
-      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
         <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
         <rect x="${innerX}" y="${innerY}" width="${innerWidth}" height="${innerHeight}" rx="12" fill="transparent" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.5)}" data-element-id="${safeId}"></rect>
         <line x1="${element.x}" y1="${footerY}" x2="${Number(element.x || 0) + Number(element.width || 0)}" y2="${footerY}" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.5)}" data-element-id="${safeId}"></line>
@@ -6651,7 +6893,7 @@ function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
   }
 
   return `
-    <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+    <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
       <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
       ${label ? `<text x="${Number(element.x || 0) + 18}" y="${Number(element.y || 0) + 28}" class="drawing-stage-label">${label}</text>` : ""}
     </g>
@@ -6665,7 +6907,7 @@ function renderDrawingStageReference() {
 
   const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
   if (!activeReference) {
-    drawingStageReference.innerHTML = '<div class="drawing-stage-reference-empty">Nema aktivne podloge. Uploadaj DWG, PDF ili sliku i nastavi crtati po layerima.</div>';
+    drawingStageReference.innerHTML = '<div class="drawing-stage-reference-empty">Nema aktivne podloge. Crtaj odmah na praznom platnu ili naknadno dodaj DWG, DXF, PDF ili sliku.</div>';
     return;
   }
 
@@ -6725,17 +6967,28 @@ function renderDrawingStage() {
   );
   const gridSize = Math.max(8, Number(drawingViewportDraft.gridSize || 20));
   const majorGrid = gridSize * 5;
-  const gridMarkup = drawingViewportDraft.showGrid === false
-    ? ""
-    : `
+  const defsMarkup = `
       <defs>
+        <marker id="drawing-arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#1e9e68"></path>
+        </marker>
+        <marker id="drawing-dimension-arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+          <path d="M 0 5 L 10 0 L 8 5 L 10 10 z" fill="#da8a1f"></path>
+        </marker>
+        ${drawingViewportDraft.showGrid === false ? "" : `
         <pattern id="drawing-grid-small" width="${gridSize}" height="${gridSize}" patternUnits="userSpaceOnUse">
           <path d="M ${gridSize} 0 L 0 0 0 ${gridSize}" fill="none" stroke="rgba(90,112,162,0.13)" stroke-width="1"></path>
         </pattern>
         <pattern id="drawing-grid-major" width="${majorGrid}" height="${majorGrid}" patternUnits="userSpaceOnUse">
           <path d="M ${majorGrid} 0 L 0 0 0 ${majorGrid}" fill="none" stroke="rgba(90,112,162,0.22)" stroke-width="1.2"></path>
         </pattern>
+        `}
       </defs>
+    `;
+  const gridMarkup = drawingViewportDraft.showGrid === false
+    ? defsMarkup
+    : `
+      ${defsMarkup}
       <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-grid-small)"></rect>
       <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-grid-major)"></rect>
     `;
@@ -6754,7 +7007,7 @@ function renderDrawingStage() {
     const handleY = bounds.y + bounds.height;
     selectionMarkup = `
       <rect class="drawing-stage-selection-box" x="${bounds.x - 8}" y="${bounds.y - 8}" width="${bounds.width + 16}" height="${bounds.height + 16}" rx="12"></rect>
-      ${(selected.type === "line" || selected.type === "wall") ? "" : `<circle class="drawing-resize-handle" data-drawing-resize-handle="1" cx="${handleX}" cy="${handleY}" r="10" fill="#ffffff" stroke="#496ad6" stroke-width="2"></circle>`}
+      ${DRAWING_DIMENSION_TYPES.has(String(selected.type || "").trim().toLowerCase()) ? "" : `<circle class="drawing-resize-handle" data-drawing-resize-handle="1" cx="${handleX}" cy="${handleY}" r="10" fill="#ffffff" stroke="#496ad6" stroke-width="2"></circle>`}
     `;
   }
 
@@ -6785,10 +7038,11 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
     fill: style.fill,
     lineWidth: style.lineWidth,
     label: "",
+    rotation: 0,
     metadata: {},
   };
 
-  if (tool === "line" || tool === "wall") {
+  if (tool === "line" || tool === "wall" || tool === "dimension") {
     return {
       ...base,
       x,
@@ -6797,6 +7051,13 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
       y2: endY,
       width: Math.abs(endX - x),
       height: Math.abs(endY - y),
+      label: tool === "dimension" ? getDrawingDimensionLabel({ x, y, x2: endX, y2: endY }) : "",
+      metadata: tool === "dimension"
+        ? {
+          autoLabel: true,
+          unit: DRAWING_DIMENSION_UNIT,
+        }
+        : {},
     };
   }
 
@@ -6869,6 +7130,31 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
     };
   }
 
+  if (["stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"].includes(tool)) {
+    const defaultLabels = {
+      stairs: "Stube",
+      assembly_point: "ZBORNO",
+      first_aid: "",
+      detector: "",
+      panel: "C",
+      arrow: "Smjer",
+    };
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: defaultLabels[tool] || "",
+      metadata: {
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
   if (tool === "text") {
     return {
       ...base,
@@ -6920,9 +7206,10 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
 }
 
 function appendDrawingElement(element) {
-  drawingElementDrafts = [...drawingElementDrafts, cloneDrawingElementDraft(element)];
-  drawingSelectedElementId = String(element.id);
-  drawingActiveLayerId = String(element.layerId || drawingActiveLayerId);
+  const normalizedElement = syncDrawingElementDerivedFields(cloneDrawingElementDraft(element));
+  drawingElementDrafts = [...drawingElementDrafts, normalizedElement];
+  drawingSelectedElementId = String(normalizedElement.id);
+  drawingActiveLayerId = String(normalizedElement.layerId || drawingActiveLayerId);
   drawingCurrentTool = "select";
   renderDrawingStudioModule();
 }
@@ -6930,14 +7217,14 @@ function appendDrawingElement(element) {
 function updateDrawingElementDraft(elementId, patch = {}) {
   drawingElementDrafts = drawingElementDrafts.map((item) => (
     String(item.id) === String(elementId)
-      ? {
+      ? syncDrawingElementDerivedFields({
         ...item,
         ...patch,
         metadata: {
           ...(item.metadata ?? {}),
           ...(patch.metadata ?? {}),
         },
-      }
+      })
       : item
   ));
 }
@@ -6973,7 +7260,7 @@ function handleDrawingStagePointerDown(event) {
   if (drawingCurrentTool === "select") {
     if (resizeHandle && drawingSelectedElementId) {
       const current = getDrawingSelectedElement();
-      if (!current || ["line", "wall"].includes(String(current.type || ""))) {
+      if (!current || DRAWING_DIMENSION_TYPES.has(String(current.type || "").trim().toLowerCase())) {
         return;
       }
 
@@ -7012,7 +7299,7 @@ function handleDrawingStagePointerDown(event) {
     return;
   }
 
-  if (["door", "exit", "extinguisher", "hydrant", "text"].includes(drawingCurrentTool)) {
+  if (["door", "exit", "extinguisher", "hydrant", "text", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"].includes(drawingCurrentTool)) {
     appendDrawingElement(getDrawingElementFromTool(drawingCurrentTool, point));
     event.preventDefault();
     return;
@@ -7131,14 +7418,126 @@ function buildDrawingPayload() {
     layers: drawingLayerDrafts.map((layer) => ({
       ...layer,
     })),
-    elements: drawingElementDrafts.map((element) => ({
-      ...element,
-      metadata: { ...(element.metadata ?? {}) },
-    })),
+    elements: drawingElementDrafts.map((element) => {
+      const normalizedElement = syncDrawingElementDerivedFields(element);
+      return {
+        ...normalizedElement,
+        metadata: { ...(normalizedElement.metadata ?? {}) },
+      };
+    }),
     viewport: {
       ...drawingViewportDraft,
     },
   };
+}
+
+function buildDrawingExportSvg(includeReference = true) {
+  const canvasWidth = Math.max(960, Number(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH));
+  const canvasHeight = Math.max(680, Number(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT));
+  const visibleLayerIds = new Set(
+    drawingLayerDrafts
+      .filter((layer) => layer.visible !== false)
+      .map((layer) => String(layer.id)),
+  );
+  const gridSize = Math.max(8, Number(drawingViewportDraft.gridSize || 20));
+  const majorGrid = gridSize * 5;
+  const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+  const activeReferenceHref = String(activeReference?.dataUrl || activeReference?.storageUrl || "").trim();
+  const fileName = String(activeReference?.fileName || "").trim().toLowerCase();
+  const fileType = String(activeReference?.fileType || "").trim().toLowerCase();
+  const referenceIsImage = includeReference
+    && Boolean(activeReferenceHref)
+    && (fileType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".svg"].some((extension) => fileName.endsWith(extension)));
+  const referenceMarkup = referenceIsImage
+    ? `<image href="${escapeHtml(activeReferenceHref)}" x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" preserveAspectRatio="xMidYMid meet"></image>`
+    : "";
+  const defsMarkup = `
+      <defs>
+        <marker id="drawing-export-arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#1e9e68"></path>
+        </marker>
+        <marker id="drawing-export-dimension-arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+          <path d="M 0 5 L 10 0 L 8 5 L 10 10 z" fill="#da8a1f"></path>
+        </marker>
+        ${drawingViewportDraft.showGrid === false ? "" : `
+        <pattern id="drawing-export-grid-small" width="${gridSize}" height="${gridSize}" patternUnits="userSpaceOnUse">
+          <path d="M ${gridSize} 0 L 0 0 0 ${gridSize}" fill="none" stroke="rgba(90,112,162,0.13)" stroke-width="1"></path>
+        </pattern>
+        <pattern id="drawing-export-grid-major" width="${majorGrid}" height="${majorGrid}" patternUnits="userSpaceOnUse">
+          <path d="M ${majorGrid} 0 L 0 0 0 ${majorGrid}" fill="none" stroke="rgba(90,112,162,0.22)" stroke-width="1.2"></path>
+        </pattern>
+        `}
+      </defs>
+    `;
+  const gridMarkup = drawingViewportDraft.showGrid === false
+    ? defsMarkup
+    : `
+      ${defsMarkup}
+      <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-export-grid-small)"></rect>
+      <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-export-grid-major)"></rect>
+    `;
+  const elementMarkup = drawingElementDrafts
+    .filter((element) => visibleLayerIds.has(String(element.layerId)))
+    .map((element) => renderDrawingElementMarkup(element, { selected: false })
+      .replaceAll("url(#drawing-arrow-head)", "url(#drawing-export-arrow-head)")
+      .replaceAll("url(#drawing-dimension-arrow)", "url(#drawing-export-dimension-arrow)"))
+    .join("");
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}">
+      <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="#f9fbff"></rect>
+      ${gridMarkup}
+      ${referenceMarkup}
+      ${elementMarkup}
+    </svg>
+  `.trim();
+}
+
+function downloadDrawingSvgFile() {
+  const fileName = `${sanitizeDocumentTemplateFileName(drawingProjectDraft?.title || "drawing-studio", "drawing-studio")}.svg`;
+  triggerBlobDownload(new Blob([buildDrawingExportSvg(true)], { type: "image/svg+xml;charset=utf-8" }), fileName);
+}
+
+function printDrawingAsPdf() {
+  const title = escapeHtml(drawingProjectDraft?.title || "Drawing Studio");
+  const company = escapeHtml(
+    getSortedDrawingCompanies(state.companies).find((item) => String(item.id) === String(drawingProjectDraft?.companyId || ""))?.name
+    || "Bez tvrtke",
+  );
+  const location = escapeHtml(
+    getSortedDrawingLocations(state.locations).find((item) => String(item.id) === String(drawingProjectDraft?.locationId || ""))?.name
+    || "Bez lokacije",
+  );
+  const scaleLabel = escapeHtml(drawingProjectDraft?.scaleLabel || "Bez mjerila");
+  const svgMarkup = buildDrawingExportSvg(true);
+  const html = `<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      @page { size: landscape; margin: 16mm; }
+      body { margin: 0; font-family: Arial, sans-serif; color: #22314f; }
+      .sheet { display: grid; gap: 12px; }
+      .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+      .meta-card { border: 1px solid #c9d7f2; border-radius: 14px; padding: 10px 12px; background: #f8fbff; }
+      .meta-card strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #6280bf; margin-bottom: 4px; }
+      .stage { border: 1px solid #c9d7f2; border-radius: 18px; overflow: hidden; background: #ffffff; }
+      svg { width: 100%; height: auto; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div class="meta">
+        <div class="meta-card"><strong>Crtež</strong>${title}</div>
+        <div class="meta-card"><strong>Tvrtka</strong>${company}</div>
+        <div class="meta-card"><strong>Lokacija</strong>${location}</div>
+        <div class="meta-card"><strong>Mjerilo</strong>${scaleLabel}</div>
+      </div>
+      <div class="stage">${svgMarkup}</div>
+    </div>
+  </body>
+</html>`;
+  triggerBlobPrint(new Blob(["\ufeff", html], { type: "text/html;charset=utf-8" }), `${sanitizeDocumentTemplateFileName(drawingProjectDraft?.title || "drawing-studio", "drawing-studio")}.pdf`);
 }
 
 async function queueDrawingReferenceFiles(files = []) {
@@ -7191,12 +7590,20 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
 
   if (fieldName === "label") {
     patch.label = String(rawValue || "").trim();
+    if (type === "dimension") {
+      patch.metadata = {
+        ...(selected.metadata ?? {}),
+        autoLabel: false,
+      };
+    }
   } else if (fieldName === "stroke") {
     patch.stroke = String(rawValue || "").trim();
   } else if (fieldName === "fill") {
     patch.fill = String(rawValue || "").trim();
   } else if (fieldName === "lineWidth" && isNumeric) {
     patch.lineWidth = Math.max(0, Math.min(24, Math.round(numericValue)));
+  } else if (fieldName === "rotation" && isNumeric) {
+    patch.rotation = Math.max(-360, Math.min(360, Math.round(numericValue)));
   } else if (fieldName === "layerId") {
     patch.layerId = String(rawValue || "").trim();
     drawingActiveLayerId = patch.layerId;
@@ -7211,7 +7618,7 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
       footer: String(rawValue || "").trim(),
     };
   } else if (fieldName === "x" && isNumeric) {
-    if (type === "line" || type === "wall") {
+    if (DRAWING_DIMENSION_TYPES.has(type)) {
       const delta = numericValue - Number(selected.x || 0);
       patch.x = numericValue;
       patch.x2 = Number(selected.x2 || 0) + delta;
@@ -7220,7 +7627,7 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
       patch.x2 = numericValue + Number(selected.width || 0);
     }
   } else if (fieldName === "y" && isNumeric) {
-    if (type === "line" || type === "wall") {
+    if (DRAWING_DIMENSION_TYPES.has(type)) {
       const delta = numericValue - Number(selected.y || 0);
       patch.y = numericValue;
       patch.y2 = Number(selected.y2 || 0) + delta;
@@ -7230,12 +7637,12 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
     }
   } else if (fieldName === "x2" && isNumeric) {
     patch.x2 = numericValue;
-    if (type !== "line" && type !== "wall") {
+    if (!DRAWING_DIMENSION_TYPES.has(type)) {
       patch.width = Math.max(4, numericValue - Number(selected.x || 0));
     }
   } else if (fieldName === "y2" && isNumeric) {
     patch.y2 = numericValue;
-    if (type !== "line" && type !== "wall") {
+    if (!DRAWING_DIMENSION_TYPES.has(type)) {
       patch.height = Math.max(4, numericValue - Number(selected.y || 0));
     }
   } else if (fieldName === "width" && isNumeric) {
@@ -59841,6 +60248,14 @@ drawingReferenceUploadButton?.addEventListener("click", () => {
   drawingReferenceFileInput?.click();
 });
 
+drawingClearReferenceButton?.addEventListener("click", () => {
+  drawingActiveReferenceId = "";
+  renderDrawingStage();
+  if (drawingStageScroll) {
+    drawingStageScroll.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  }
+});
+
 drawingReferenceFileInput?.addEventListener("change", () => {
   const files = Array.from(drawingReferenceFileInput.files ?? []);
   if (!files.length) {
@@ -59865,10 +60280,22 @@ drawingAddLayerButton?.addEventListener("click", () => {
 drawingToolButtons.forEach((button) => {
   button.addEventListener("click", () => {
     drawingCurrentTool = button.dataset.drawingTool || "select";
+    syncDrawingActiveLayerForTool(drawingCurrentTool);
     if (drawingStageSvg) {
       drawingStageSvg.classList.toggle("is-tool-select", drawingCurrentTool === "select");
     }
     renderDrawingStudioModule();
+  });
+});
+
+drawingBlockButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const blockType = String(button.dataset.drawingBlock || "").trim().toLowerCase();
+    if (!blockType) {
+      return;
+    }
+    syncDrawingActiveLayerForTool(blockType);
+    appendDrawingElement(getDrawingElementFromTool(blockType, getDrawingStageInsertPoint()));
   });
 });
 
@@ -59889,6 +60316,16 @@ drawingZoomInput?.addEventListener("input", () => {
 
 drawingGridSizeInput?.addEventListener("input", () => {
   drawingViewportDraft.gridSize = Math.max(8, Math.min(80, Math.round(Number(drawingGridSizeInput.value) || 20)));
+  renderDrawingStage();
+});
+
+drawingCanvasWidthInput?.addEventListener("input", () => {
+  drawingViewportDraft.canvasWidth = Math.max(960, Math.min(2400, Math.round(Number(drawingCanvasWidthInput.value) || DRAWING_STAGE_DEFAULT_WIDTH)));
+  renderDrawingStage();
+});
+
+drawingCanvasHeightInput?.addEventListener("input", () => {
+  drawingViewportDraft.canvasHeight = Math.max(680, Math.min(1800, Math.round(Number(drawingCanvasHeightInput.value) || DRAWING_STAGE_DEFAULT_HEIGHT)));
   renderDrawingStage();
 });
 
@@ -59913,6 +60350,7 @@ drawingGridToggle?.addEventListener("change", () => {
   [drawingSelectedStrokeInput, "stroke"],
   [drawingSelectedFillInput, "fill"],
   [drawingSelectedLineWidthInput, "lineWidth"],
+  [drawingSelectedRotationInput, "rotation"],
   [drawingSelectedSubtitleInput, "subtitle"],
   [drawingSelectedFooterInput, "footer"],
 ].forEach(([input, fieldName]) => {
@@ -59923,6 +60361,14 @@ drawingGridToggle?.addEventListener("change", () => {
 
 drawingDeleteSelectedButton?.addEventListener("click", () => {
   deleteSelectedDrawingElement();
+});
+
+drawingExportSvgButton?.addEventListener("click", () => {
+  downloadDrawingSvgFile();
+});
+
+drawingExportPdfButton?.addEventListener("click", () => {
+  printDrawingAsPdf();
 });
 
 drawingResetButton?.addEventListener("click", () => {

@@ -2056,6 +2056,15 @@ test("drawing projects keep references, layers and CAD elements through create a
           lineStyle: "solid",
         },
         {
+          id: "layer-dimension",
+          name: "Kote",
+          color: "#da8a1f",
+          visible: true,
+          locked: false,
+          lineWidth: 2,
+          lineStyle: "dashed",
+        },
+        {
           id: "layer-safety",
           name: "Sigurnosni simboli",
           color: "#d64d50",
@@ -2084,9 +2093,22 @@ test("drawing projects keep references, layers and CAD elements through create a
           y: 120,
           width: 120,
           height: 90,
+          rotation: 90,
           label: "Ulazna vrata",
           metadata: {
             openDirection: "right",
+          },
+        },
+        {
+          id: "dimension-1",
+          type: "dimension",
+          layerId: "layer-dimension",
+          x: 100,
+          y: 180,
+          x2: 520,
+          y2: 180,
+          metadata: {
+            autoLabel: true,
           },
         },
       ],
@@ -2125,6 +2147,16 @@ test("drawing projects keep references, layers and CAD elements through create a
             subtitle: "Objekt A",
           },
         },
+        {
+          id: "assembly-1",
+          type: "assembly_point",
+          layerId: "layer-safety",
+          x: 920,
+          y: 120,
+          width: 170,
+          height: 72,
+          label: "ZBORNO",
+        },
       ],
     },
     {
@@ -2160,10 +2192,13 @@ test("drawing projects keep references, layers and CAD elements through create a
   assert.equal(created.companyName, "Acme d.o.o.");
   assert.equal(created.locationName, "Pogon Jankomir");
   assert.equal(created.referenceDocuments[0].fileName, "tlocrt-prizemlje.pdf");
-  assert.equal(created.layers.length, 2);
+  assert.equal(created.layers.length, 3);
   assert.equal(created.elements[1].metadata.openDirection, "right");
-  assert.equal(updated.elements.length, 3);
-  assert.equal(updated.elements[2].type, "frame");
+  assert.equal(created.elements[1].rotation, 90);
+  assert.equal(created.elements[2].label, "420 mm");
+  assert.equal(updated.elements.length, 5);
+  assert.equal(updated.elements[3].type, "frame");
+  assert.equal(updated.elements[4].type, "assembly_point");
   assert.equal(filtered.length, 1);
   assert.deepEqual(
     sortDrawingProjects([archived, updated]).map((item) => item.id),

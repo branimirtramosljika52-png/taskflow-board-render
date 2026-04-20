@@ -4709,6 +4709,7 @@
                             <button type="button" class="drawing-tool-button is-active" data-drawing-tool="select">Odabir</button>
                             <button type="button" class="drawing-tool-button" data-drawing-tool="line">Linija</button>
                             <button type="button" class="drawing-tool-button" data-drawing-tool="wall">Zid</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="dimension">Kota</button>
                             <button type="button" class="drawing-tool-button" data-drawing-tool="rectangle">Pravokutnik</button>
                             <button type="button" class="drawing-tool-button" data-drawing-tool="frame">Okvir</button>
                             <button type="button" class="drawing-tool-button" data-drawing-tool="door">Vrata</button>
@@ -4722,14 +4723,34 @@
                         <section class="drawing-studio-card">
                           <div class="drawing-studio-card-head">
                             <div>
+                              <p class="section-kicker">Blokovi</p>
+                              <h4>Biblioteka simbola</h4>
+                            </div>
+                          </div>
+                          <div class="drawing-block-buttons">
+                            <button type="button" class="drawing-tool-button" data-drawing-block="stairs">Stube</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-block="assembly_point">Zborno mjesto</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-block="first_aid">Prva pomoć</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-block="detector">Detektor</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-block="panel">Centrala</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-block="arrow">Smjer</button>
+                          </div>
+                        </section>
+
+                        <section class="drawing-studio-card">
+                          <div class="drawing-studio-card-head">
+                            <div>
                               <p class="section-kicker">Reference</p>
                               <h4>DWG / PDF podloga</h4>
                             </div>
-                            <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
+                            <div class="drawing-studio-head-actions">
+                              <button id="drawing-clear-reference" type="button" class="ghost-button">Bez podloge</button>
+                              <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
+                            </div>
                           </div>
                           <input id="drawing-reference-file-input" type="file" accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg,.webp,.svg" multiple hidden />
                           <div id="drawing-reference-list" class="drawing-reference-list"></div>
-                          <p id="drawing-reference-empty" class="helper-copy">Dodaj DWG, PDF ili sliku kao podlogu ispod layera.</p>
+                          <p id="drawing-reference-empty" class="helper-copy">Možeš crtati direktno na praznom platnu ili dodati DWG, PDF ili sliku kao podlogu.</p>
                         </section>
 
                         <section class="drawing-studio-card">
@@ -4759,6 +4780,14 @@
                               <span>Grid</span>
                               <input id="drawing-grid-size" type="number" min="8" max="80" step="1" value="20" />
                             </label>
+                            <label class="field drawing-canvas-field">
+                              <span>Širina</span>
+                              <input id="drawing-canvas-width" type="number" min="960" max="2400" step="20" value="1600" />
+                            </label>
+                            <label class="field drawing-canvas-field">
+                              <span>Visina</span>
+                              <input id="drawing-canvas-height" type="number" min="680" max="1800" step="20" value="1000" />
+                            </label>
                             <label class="checkbox-field">
                               <input id="drawing-snap-toggle" type="checkbox" checked />
                               <span>Snap</span>
@@ -4769,6 +4798,8 @@
                             </label>
                           </div>
                           <div class="drawing-stage-toolbar-group">
+                            <button id="drawing-export-svg" type="button" class="ghost-button">SVG</button>
+                            <button id="drawing-export-pdf" type="button" class="ghost-button">PDF / ispis</button>
                             <button id="drawing-save" type="submit" class="primary-button">Spremi crtež</button>
                           </div>
                         </div>
@@ -4781,7 +4812,7 @@
                         </div>
 
                         <p id="drawing-stage-helper" class="helper-copy drawing-stage-helper">
-                          PDF i DWG služe kao podloga, a na layerima iznad dodaješ zidove, vrata, simbole i okvire.
+                          Možeš crtati i bez podloge. Ako učitaš PDF ili DWG, on služi kao referenca, a iznad njega dodaješ zidove, vrata, kote, simbole i okvire.
                         </p>
                       </section>
 
@@ -4838,6 +4869,10 @@
                             <label class="field">
                               <span>Debljina</span>
                               <input id="drawing-selected-line-width" type="number" min="0" max="24" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Rotacija</span>
+                              <input id="drawing-selected-rotation" type="number" min="-360" max="360" step="1" />
                             </label>
                             <label class="field">
                               <span>Podnaslov</span>
