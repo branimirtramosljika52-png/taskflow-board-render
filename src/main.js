@@ -3074,6 +3074,9 @@ const workOrderCompanyPreview = document.querySelector("#work-order-company-prev
 const workOrderCompanyPreviewLogo = document.querySelector("#work-order-company-preview-logo");
 const workOrderCompanyPreviewName = document.querySelector("#work-order-company-preview-name");
 const workOrderCompanyPreviewMeta = document.querySelector("#work-order-company-preview-meta");
+const workOrderRelationActions = document.querySelector("#work-order-relation-actions");
+const workOrderOpenCompanyButton = document.querySelector("#work-order-open-company");
+const workOrderOpenLocationButton = document.querySelector("#work-order-open-location");
 const workOrderHeadquartersInput = document.querySelector("#work-order-headquarters");
 const workOrderCompanyOibInput = document.querySelector("#work-order-company-oib");
 const workOrderContractTypeInput = document.querySelector("#work-order-contract-type");
@@ -3237,6 +3240,9 @@ const companyContactEmailInput = document.querySelector("#company-contact-email"
 const companyLinkedContractsList = document.querySelector("#company-linked-contracts-list");
 const companyLinkedContractsEmpty = document.querySelector("#company-linked-contracts-empty");
 const companyLinkedContractsCount = document.querySelector("#company-linked-contracts-count");
+const companyLinkedLocationsList = document.querySelector("#company-linked-locations-list");
+const companyLinkedLocationsEmpty = document.querySelector("#company-linked-locations-empty");
+const companyLinkedLocationsCount = document.querySelector("#company-linked-locations-count");
 const companyActivityList = document.querySelector("#company-activity-list");
 const companyActivityEmpty = document.querySelector("#company-activity-empty");
 const companyActivityCount = document.querySelector("#company-activity-count");
@@ -3271,6 +3277,8 @@ const locationCompanyPreview = document.querySelector("#location-company-preview
 const locationCompanyPreviewLogo = document.querySelector("#location-company-preview-logo");
 const locationCompanyPreviewName = document.querySelector("#location-company-preview-name");
 const locationCompanyPreviewMeta = document.querySelector("#location-company-preview-meta");
+const locationCompanyActions = document.querySelector("#location-company-actions");
+const locationOpenCompanyButton = document.querySelector("#location-open-company");
 const locationNameInput = document.querySelector("#location-name");
 const locationRegionInput = document.querySelector("#location-region");
 const locationCoordinatesInput = document.querySelector("#location-coordinates");
@@ -3280,6 +3288,9 @@ const locationIsActiveInput = document.querySelector("#location-is-active");
 const locationContactsList = document.querySelector("#location-contacts-list");
 const locationAddContactButton = document.querySelector("#location-add-contact");
 const locationNoteInput = document.querySelector("#location-note");
+const locationLinkedWorkOrdersList = document.querySelector("#location-linked-work-orders-list");
+const locationLinkedWorkOrdersEmpty = document.querySelector("#location-linked-work-orders-empty");
+const locationLinkedWorkOrdersCount = document.querySelector("#location-linked-work-orders-count");
 const locationsBody = document.querySelector("#locations-body");
 const locationsEmpty = document.querySelector("#locations-empty");
 const locationsHelper = document.querySelector("#locations-helper");
@@ -9197,6 +9208,18 @@ function renderWorkOrderEditorSummary() {
   }
 
   workOrderEditorCompanySummary.replaceChildren(...companySummaryNodes);
+
+  if (workOrderRelationActions) {
+    workOrderRelationActions.hidden = !company && !location;
+  }
+  if (workOrderOpenCompanyButton) {
+    workOrderOpenCompanyButton.hidden = !company;
+    workOrderOpenCompanyButton.disabled = !company;
+  }
+  if (workOrderOpenLocationButton) {
+    workOrderOpenLocationButton.hidden = !location;
+    workOrderOpenLocationButton.disabled = !location;
+  }
 
   if (workOrderNumberPreview) {
     workOrderNumberPreview.dataset.mode = workOrderNumber ? "assigned" : "pending";
@@ -37264,6 +37287,24 @@ function getCompanyLinkedContracts(companyId = "") {
   return sortContracts((state.contracts ?? []).filter((item) => String(item.companyId) === normalizedCompanyId));
 }
 
+function getCompanyLinkedLocations(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  return getLocationsForCompany(normalizedCompanyId);
+}
+
+function getLocationLinkedWorkOrders(locationId = "") {
+  const normalizedLocationId = String(locationId || "").trim();
+  if (!normalizedLocationId) {
+    return [];
+  }
+
+  return sortWorkOrders((state.workOrders ?? []).filter((item) => String(item.locationId) === normalizedLocationId));
+}
+
 function openCompanyContextRecord(target = {}) {
   if (!target?.kind || !target?.record) {
     return;
@@ -37280,6 +37321,7 @@ function openCompanyContextRecord(target = {}) {
   }
 
   if (target.kind === "location") {
+    activateSidebarItem("list-location", { expandSidebar: state.sidebarCollapsed });
     requestAnimationFrame(() => {
       hydrateLocationForm(target.record);
     });
@@ -37294,8 +37336,64 @@ function openCompanyContextRecord(target = {}) {
   }
 
   if (target.kind === "work-order") {
+    activateSidebarItem("rn", { expandSidebar: state.sidebarCollapsed });
     requestAnimationFrame(() => {
       hydrateWorkOrderForm(target.record);
+    });
+  }
+}
+
+function openLocationContextRecord(target = {}) {
+  if (!target?.kind || !target?.record) {
+    return;
+  }
+
+  closeLocationEditor({ reset: false });
+
+  if (target.kind === "company") {
+    activateSidebarItem("list-company", { expandSidebar: state.sidebarCollapsed });
+    requestAnimationFrame(() => {
+      hydrateCompanyForm(target.record);
+    });
+    return;
+  }
+
+  if (target.kind === "work-order") {
+    activateSidebarItem("rn", { expandSidebar: state.sidebarCollapsed });
+    requestAnimationFrame(() => {
+      hydrateWorkOrderForm(target.record);
+    });
+  }
+}
+
+function openWorkOrderTraceabilityTarget(kind = "company") {
+  const activeWorkOrderId = String(workOrderIdInput?.value || "").trim();
+  const persistedWorkOrder = state.workOrders.find((item) => String(item.id) === activeWorkOrderId) ?? null;
+
+  if (kind === "company") {
+    const company = getCompany(workOrderCompanyIdInput?.value || persistedWorkOrder?.companyId || "");
+    if (!company) {
+      return;
+    }
+
+    closeWorkOrderEditor({ reset: false });
+    activateSidebarItem("list-company", { expandSidebar: state.sidebarCollapsed });
+    requestAnimationFrame(() => {
+      hydrateCompanyForm(company);
+    });
+    return;
+  }
+
+  if (kind === "location") {
+    const location = getLocation(workOrderLocationIdInput?.value || persistedWorkOrder?.locationId || "");
+    if (!location) {
+      return;
+    }
+
+    closeWorkOrderEditor({ reset: false });
+    activateSidebarItem("list-location", { expandSidebar: state.sidebarCollapsed });
+    requestAnimationFrame(() => {
+      hydrateLocationForm(location);
     });
   }
 }
@@ -37387,6 +37485,189 @@ function renderCompanyLinkedContracts(companyId = companyIdInput?.value || "") {
       }
       event.preventDefault();
       openContract();
+    });
+
+    card.append(copy, actions);
+    return card;
+  }));
+}
+
+function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
+  if (!companyLinkedLocationsList || !companyLinkedLocationsEmpty || !companyLinkedLocationsCount) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  const linkedLocations = getCompanyLinkedLocations(normalizedCompanyId);
+  companyLinkedLocationsCount.textContent = String(linkedLocations.length);
+
+  if (!normalizedCompanyId) {
+    companyLinkedLocationsList.replaceChildren();
+    companyLinkedLocationsEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti lokacije i RN-ovi.";
+    companyLinkedLocationsEmpty.hidden = false;
+    return;
+  }
+
+  if (linkedLocations.length === 0) {
+    companyLinkedLocationsList.replaceChildren();
+    companyLinkedLocationsEmpty.textContent = "Još nema lokacija vezanih uz ovu tvrtku.";
+    companyLinkedLocationsEmpty.hidden = false;
+    return;
+  }
+
+  companyLinkedLocationsEmpty.hidden = true;
+  companyLinkedLocationsList.replaceChildren(...linkedLocations.map((location) => {
+    const linkedWorkOrders = getLocationLinkedWorkOrders(location.id);
+    const contactCount = buildLocationContacts(location).length;
+    const card = document.createElement("article");
+    card.className = "company-contract-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori lokaciju ${location.name}`);
+
+    const copy = document.createElement("div");
+    copy.className = "company-contract-card-copy";
+
+    const head = document.createElement("div");
+    head.className = "company-contract-card-head";
+    const number = document.createElement("strong");
+    number.textContent = location.name || "Lokacija";
+    const countBadge = createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length > 0 ? "is-info" : "is-muted");
+    head.append(number, countBadge);
+
+    const title = document.createElement("span");
+    title.className = "company-contract-card-title";
+    title.textContent = location.representative || location.region || "Povezana lokacija";
+
+    const meta = document.createElement("span");
+    meta.className = "company-contract-card-meta";
+    meta.textContent = [
+      location.region || "",
+      location.period ? `Periodika ${location.period}` : "",
+      contactCount > 0 ? `${contactCount} kontakta` : "",
+      linkedWorkOrders.length === 0 ? "Bez RN-a" : "",
+    ].filter(Boolean).join(" · ");
+
+    copy.append(head, title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "company-contract-card-actions";
+    actions.append(
+      createActionButton("Otvori", "card-button card-button-light", (event) => {
+        event.stopPropagation();
+        openCompanyContextRecord({ kind: "location", record: location });
+      }),
+    );
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      openCompanyContextRecord({ kind: "location", record: location });
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openCompanyContextRecord({ kind: "location", record: location });
+    });
+
+    card.append(copy, actions);
+    return card;
+  }));
+}
+
+function syncLocationCompanyActions() {
+  const company = getCompany(locationCompanyIdInput?.value || "");
+  if (locationCompanyActions) {
+    locationCompanyActions.hidden = !company;
+  }
+  if (locationOpenCompanyButton) {
+    locationOpenCompanyButton.disabled = !company;
+  }
+}
+
+function renderLocationLinkedWorkOrders(locationId = locationIdInput?.value || "") {
+  if (!locationLinkedWorkOrdersList || !locationLinkedWorkOrdersEmpty || !locationLinkedWorkOrdersCount) {
+    return;
+  }
+
+  const normalizedLocationId = String(locationId || "").trim();
+  const linkedWorkOrders = getLocationLinkedWorkOrders(normalizedLocationId);
+  locationLinkedWorkOrdersCount.textContent = String(linkedWorkOrders.length);
+
+  if (!normalizedLocationId) {
+    locationLinkedWorkOrdersList.replaceChildren();
+    locationLinkedWorkOrdersEmpty.textContent = "Spremi lokaciju pa će se ovdje pojaviti povezani RN-ovi.";
+    locationLinkedWorkOrdersEmpty.hidden = false;
+    return;
+  }
+
+  if (linkedWorkOrders.length === 0) {
+    locationLinkedWorkOrdersList.replaceChildren();
+    locationLinkedWorkOrdersEmpty.textContent = "Još nema radnih naloga vezanih uz ovu lokaciju.";
+    locationLinkedWorkOrdersEmpty.hidden = false;
+    return;
+  }
+
+  locationLinkedWorkOrdersEmpty.hidden = true;
+  locationLinkedWorkOrdersList.replaceChildren(...linkedWorkOrders.map((workOrder) => {
+    const card = document.createElement("article");
+    card.className = "company-contract-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori RN ${workOrder.workOrderNumber || "bez broja"}`);
+
+    const copy = document.createElement("div");
+    copy.className = "company-contract-card-copy";
+
+    const head = document.createElement("div");
+    head.className = "company-contract-card-head";
+    const number = document.createElement("strong");
+    number.textContent = workOrder.workOrderNumber || "RN bez broja";
+    const status = createMetaPill(
+      getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder.status || "") || (workOrder.status || "RN"),
+      `is-${slugifyValue(workOrder.status || "rn")}`,
+    );
+    head.append(number, status);
+
+    const title = document.createElement("span");
+    title.className = "company-contract-card-title";
+    title.textContent = getWorkOrderServiceSummary(workOrder) || workOrder.department || "Radni nalog";
+
+    const meta = document.createElement("span");
+    meta.className = "company-contract-card-meta";
+    meta.textContent = [
+      workOrder.companyName || "",
+      workOrder.openedDate ? `otvoren ${formatDate(workOrder.openedDate)}` : "",
+      workOrder.dueDate ? `rok ${formatDate(workOrder.dueDate)}` : "",
+      getWorkOrderExecutors(workOrder).slice(0, 2).join(", "),
+    ].filter(Boolean).join(" · ");
+
+    copy.append(head, title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "company-contract-card-actions";
+    actions.append(
+      createActionButton("Otvori RN", "card-button card-button-light", (event) => {
+        event.stopPropagation();
+        openLocationContextRecord({ kind: "work-order", record: workOrder });
+      }),
+    );
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      openLocationContextRecord({ kind: "work-order", record: workOrder });
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openLocationContextRecord({ kind: "work-order", record: workOrder });
     });
 
     card.append(copy, actions);
@@ -37662,6 +37943,22 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
   }
 
   try {
+    renderCompanyLinkedLocations(companyId);
+  } catch (error) {
+    console.error("Company linked locations render failed", error);
+    if (companyLinkedLocationsList) {
+      companyLinkedLocationsList.replaceChildren();
+    }
+    if (companyLinkedLocationsCount) {
+      companyLinkedLocationsCount.textContent = "0";
+    }
+    if (companyLinkedLocationsEmpty) {
+      companyLinkedLocationsEmpty.textContent = "Povezane lokacije trenutno nije moguće prikazati.";
+      companyLinkedLocationsEmpty.hidden = false;
+    }
+  }
+
+  try {
     renderCompanyActivityPanel(companyId);
   } catch (error) {
     console.error("Company activity render failed", error);
@@ -37674,6 +37971,24 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
     if (companyActivityEmpty) {
       companyActivityEmpty.textContent = "Activity trenutno nije moguće prikazati.";
       companyActivityEmpty.hidden = false;
+    }
+  }
+}
+
+function renderLocationEditorRelatedData(locationId = locationIdInput?.value || "") {
+  try {
+    renderLocationLinkedWorkOrders(locationId);
+  } catch (error) {
+    console.error("Location linked work orders render failed", error);
+    if (locationLinkedWorkOrdersList) {
+      locationLinkedWorkOrdersList.replaceChildren();
+    }
+    if (locationLinkedWorkOrdersCount) {
+      locationLinkedWorkOrdersCount.textContent = "0";
+    }
+    if (locationLinkedWorkOrdersEmpty) {
+      locationLinkedWorkOrdersEmpty.textContent = "Povezane RN-ove trenutno nije moguće prikazati.";
+      locationLinkedWorkOrdersEmpty.hidden = false;
     }
   }
 }
@@ -37990,6 +38305,8 @@ function resetLocationForm() {
     locationCompanyPreviewName,
     locationCompanyPreviewMeta,
   );
+  syncLocationCompanyActions();
+  renderLocationEditorRelatedData("");
 }
 
 function resetOrganizationForm() {
@@ -38146,7 +38463,11 @@ function hydrateLocationForm(location) {
     locationCompanyPreviewName,
     locationCompanyPreviewMeta,
   );
+  syncLocationCompanyActions();
   openLocationEditor();
+  requestAnimationFrame(() => {
+    renderLocationEditorRelatedData(location.id);
+  });
 }
 
 function hydrateWorkOrderForm(workOrder, options = {}) {
@@ -59654,6 +59975,15 @@ locationCompanyIdInput?.addEventListener("change", () => {
     locationCompanyPreviewName,
     locationCompanyPreviewMeta,
   );
+  syncLocationCompanyActions();
+});
+
+locationOpenCompanyButton?.addEventListener("click", () => {
+  const company = getCompany(locationCompanyIdInput?.value || "");
+  if (!company) {
+    return;
+  }
+  openLocationContextRecord({ kind: "company", record: company });
 });
 
 locationForm.addEventListener("submit", (event) => {
@@ -59683,6 +60013,14 @@ locationResetButton.addEventListener("click", () => {
   requestAnimationFrame(() => {
     locationNameInput?.focus({ preventScroll: true });
   });
+});
+
+workOrderOpenCompanyButton?.addEventListener("click", () => {
+  openWorkOrderTraceabilityTarget("company");
+});
+
+workOrderOpenLocationButton?.addEventListener("click", () => {
+  openWorkOrderTraceabilityTarget("location");
 });
 
 userBadge?.addEventListener("click", (event) => {

@@ -2894,9 +2894,22 @@ body.is-location-editor-open {
   font-size: 0.8rem;
 }
 
-.company-linked-contracts-list {
+.company-linked-contracts-list,
+.company-linked-records-list {
   display: grid;
   gap: 10px;
+}
+
+.entity-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.entity-link-actions .ghost-button {
+  min-height: 38px;
+  padding-inline: 14px;
 }
 
 .company-contract-card {
