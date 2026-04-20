@@ -6715,7 +6715,7 @@ function getDrawingElementTransform(element = {}) {
   return ` transform="rotate(${rotation} ${centerX} ${centerY})"`;
 }
 
-function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
+function renderDrawingElementMarkup(element = {}, { selected = false } = {}) {
   const safeId = escapeHtml(String(element.id || ""));
   const stroke = escapeHtml(element.stroke || "#4564d1");
   const fill = String(element.fill || "").trim() === "transparent" ? "transparent" : escapeHtml(element.fill || "#e8efff");
