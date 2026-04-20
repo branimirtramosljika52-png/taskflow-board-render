@@ -179,7 +179,7 @@ const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
 const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
-const DRAWING_VENDOR_VERSION = "20260420i";
+const DRAWING_VENDOR_VERSION = "20260420j";
 const DRAWING_STAGE_DEFAULT_WIDTH = 2400;
 const DRAWING_STAGE_DEFAULT_HEIGHT = 1500;
 const DRAWING_STAGE_MIN_WIDTH = 1200;
@@ -6164,12 +6164,35 @@ async function readDrawingReferenceArrayBuffer(reference = null) {
     throw new Error("Nema aktivne CAD podloge.");
   }
 
+  const drawingId = String(drawingProjectDraft?.id || state.activeDrawingId || "").trim();
+  const referenceId = String(reference.id || "").trim();
   const dataUrl = String(reference.dataUrl || "").trim();
   const storageUrl = String(reference.storageUrl || "").trim();
+  const organizationHeader = state.activeOrganizationId
+    ? { "X-Organization-Id": state.activeOrganizationId }
+    : {};
 
   if (dataUrl.startsWith("data:")) {
     const response = await fetch(dataUrl);
     return response.arrayBuffer();
+  }
+
+  if (drawingId && referenceId) {
+    const response = await fetch(`${API_BASE}/drawings/${encodeURIComponent(drawingId)}/references/${encodeURIComponent(referenceId)}/content`, {
+      headers: organizationHeader,
+      credentials: "same-origin",
+    });
+
+    if (response.status === 401) {
+      const refreshed = await requestTokenRefresh();
+      if (refreshed) {
+        return readDrawingReferenceArrayBuffer(reference);
+      }
+    }
+
+    if (response.ok) {
+      return response.arrayBuffer();
+    }
   }
 
   if (storageUrl) {

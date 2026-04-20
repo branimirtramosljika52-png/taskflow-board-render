@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
-const vendorVersion = "20260420i";
+const vendorVersion = "20260420j";
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(resolve(distDir, "src"), { recursive: true });

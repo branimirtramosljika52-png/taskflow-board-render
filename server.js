@@ -1553,6 +1553,7 @@ async function handleApiRequest(request, response, url) {
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
     const drawingProjectMatch = url.pathname.match(/^\/api\/drawings\/([^/]+)$/);
+    const drawingReferenceContentMatch = url.pathname.match(/^\/api\/drawings\/([^/]+)\/references\/([^/]+)\/content$/);
     const contractWordExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-word$/);
     const contractPdfExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-pdf$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
@@ -2026,6 +2027,24 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (drawingReferenceContentMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const drawing = assertInScope(scopedSnapshot.drawings ?? [], drawingReferenceContentMatch[1], "Crtez nije pronaden.");
+      const reference = (drawing.referenceDocuments ?? []).find((item) => String(item?.id) === String(drawingReferenceContentMatch[2]));
+
+      if (!reference) {
+        sendError(response, 404, "CAD podloga nije pronadena.");
+        return true;
+      }
+
+      const stored = await readStoredDocumentBuffer(reference);
+      sendBinary(response, 200, stored.buffer, {
+        contentType: stored.mimeType || reference.fileType || "application/octet-stream",
+        fileName: reference.fileName || "drawing-reference.bin",
+      });
       return true;
     }
 
