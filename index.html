@@ -4618,8 +4618,9 @@
             </section>
 
             <section id="drawing-studio-module" class="drawing-studio-module" hidden>
-              <div class="drawing-studio-layout">
-                <section class="panel drawing-studio-list-panel">
+              <section class="panel drawing-studio-shell-panel">
+                <div class="drawing-studio-layout">
+                  <section class="drawing-studio-list-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Crteži</p>
@@ -4647,9 +4648,9 @@
 
                   <div id="drawing-list" class="drawing-project-list"></div>
                   <p id="drawing-empty" class="helper-copy" hidden>Nema spremljenih crteža u aktivnoj organizaciji.</p>
-                </section>
+                  </section>
 
-                <section class="panel drawing-studio-workspace-panel">
+                  <section class="drawing-studio-workspace-panel">
                   <div class="section-heading offers-section-heading drawing-studio-workspace-heading">
                     <div>
                       <p class="section-kicker">CAD workspace</p>
@@ -4753,15 +4754,15 @@
                         <div class="drawing-status-bar-group">
                           <label class="field drawing-grid-field">
                             <span>Grid</span>
-                              <input id="drawing-grid-size" type="number" min="8" max="120" step="1" value="20" />
-                            </label>
-                            <label class="field drawing-canvas-field">
-                              <span>Širina</span>
-                              <input id="drawing-canvas-width" type="number" min="1200" max="5000" step="20" value="2400" />
-                            </label>
-                            <label class="field drawing-canvas-field">
-                              <span>Visina</span>
-                              <input id="drawing-canvas-height" type="number" min="800" max="3200" step="20" value="1500" />
+                            <input id="drawing-grid-size" type="number" min="8" max="120" step="1" value="20" />
+                          </label>
+                          <label class="field drawing-canvas-field">
+                            <span>Širina</span>
+                            <input id="drawing-canvas-width" type="number" min="1200" max="5000" step="20" value="2400" />
+                          </label>
+                          <label class="field drawing-canvas-field">
+                            <span>Visina</span>
+                            <input id="drawing-canvas-height" type="number" min="800" max="3200" step="20" value="1500" />
                           </label>
                         </div>
 
@@ -4956,8 +4957,9 @@
 
                     <p id="drawing-error" class="form-error" aria-live="polite"></p>
                   </form>
-                </section>
-              </div>
+                  </section>
+                </div>
+              </section>
             </section>
 
             <section id="legal-framework-module" class="legal-framework-module" hidden>

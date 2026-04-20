@@ -26577,11 +26577,16 @@ body.is-offer-template-open {
   }
 }
 
+.drawing-studio-shell-panel {
+  padding: 18px 20px;
+}
+
 .drawing-studio-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+  grid-template-columns: minmax(290px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: calc(100vh - 250px);
 }
 
 .drawing-studio-list-panel,
@@ -26589,13 +26594,42 @@ body.is-offer-template-open {
   min-width: 0;
 }
 
+.drawing-studio-list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+  padding: 6px 18px 6px 2px;
+  border-right: 1px solid rgba(116, 148, 210, 0.22);
+}
+
+.drawing-studio-workspace-panel {
+  min-height: 100%;
+  padding-left: 4px;
+}
+
 .drawing-project-list {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 270px);
+  flex: 1 1 auto;
+  min-height: 340px;
+  max-height: calc(100vh - 320px);
   overflow: auto;
   padding-right: 4px;
+}
+
+#drawing-empty.helper-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  margin: 0;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px dashed rgba(117, 144, 206, 0.22);
+  background: rgba(248, 251, 255, 0.84);
+  text-align: center;
 }
 
 .drawing-project-card {
@@ -26929,6 +26963,7 @@ body.is-offer-template-open {
 }
 
 .drawing-stage-reference.is-cad-reference {
+  place-items: stretch;
   background:
     linear-gradient(180deg, rgba(227, 237, 255, 0.8), rgba(243, 248, 255, 0.58)),
     repeating-linear-gradient(
@@ -26968,18 +27003,51 @@ body.is-offer-template-open {
   line-height: 1.6;
 }
 
+.drawing-stage-dwg-reference {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.drawing-stage-dwg-reference::before,
+.drawing-stage-dwg-reference::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drawing-stage-dwg-reference::before {
+  background:
+    linear-gradient(90deg, rgba(56, 91, 167, 0.08) 0 2px, transparent 2px 100%),
+    linear-gradient(rgba(56, 91, 167, 0.08) 0 2px, transparent 2px 100%);
+  background-size: 120px 120px;
+  opacity: 0.35;
+}
+
+.drawing-stage-dwg-reference::after {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(70, 116, 212, 0.16), transparent 18%),
+    radial-gradient(circle at 78% 72%, rgba(70, 116, 212, 0.12), transparent 22%);
+}
+
 .drawing-stage-dwg-preview {
-  width: min(720px, calc(100% - 72px));
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  right: 28px;
   display: grid;
   gap: 12px;
-  padding: 28px 30px;
-  border-radius: 30px;
-  border: 1px solid rgba(55, 93, 172, 0.24);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(235, 243, 255, 0.88));
-  box-shadow: 0 24px 60px rgba(70, 93, 152, 0.14);
+  max-width: 960px;
+  padding: 24px 26px;
+  border-radius: 28px;
+  border: 1px solid rgba(55, 93, 172, 0.18);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(237, 244, 255, 0.78));
+  box-shadow: 0 22px 56px rgba(70, 93, 152, 0.12);
   color: #31415f;
   text-align: left;
+  z-index: 2;
 }
 
 .drawing-stage-dwg-preview strong {
@@ -26990,6 +27058,36 @@ body.is-offer-template-open {
 .drawing-stage-dwg-preview p {
   margin: 0;
   line-height: 1.65;
+}
+
+.drawing-stage-dwg-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 80px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.drawing-stage-dwg-watermark span {
+  display: block;
+  font-size: clamp(3.8rem, 8vw, 8rem);
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(43, 70, 129, 0.12);
+  transform: rotate(-12deg);
+  user-select: none;
+}
+
+.drawing-stage-dwg-watermark small {
+  display: block;
+  margin-top: 18px;
+  font-size: clamp(1rem, 1.9vw, 1.6rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(43, 70, 129, 0.18);
 }
 
 .drawing-stage-dwg-chip {
@@ -27170,6 +27268,16 @@ button.drawing-status-pill.is-active {
   .drawing-studio-layout,
   .drawing-studio-shell {
     grid-template-columns: 1fr;
+  }
+
+  .drawing-studio-list-panel {
+    padding: 0 0 18px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(116, 148, 210, 0.22);
+  }
+
+  .drawing-studio-workspace-panel {
+    padding-left: 0;
   }
 
   .drawing-project-list {

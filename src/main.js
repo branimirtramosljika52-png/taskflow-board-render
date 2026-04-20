@@ -7097,11 +7097,23 @@ function renderDrawingStageReference() {
 
   if (isCad) {
     drawingStageReference.classList.add("is-cad-reference");
+    const extensionLabel = fileName.endsWith(".dxf") ? "DXF" : "DWG";
+    const displayName = escapeHtml(activeReference.fileName || `${extensionLabel} podloga`);
+    const fileSizeLabel = escapeHtml(formatFileSize(activeReference.fileSize));
     drawingStageReference.innerHTML = `
-      <div class="drawing-stage-dwg-preview">
-        <span class="drawing-stage-dwg-chip">${fileName.endsWith(".dxf") ? "DXF" : "DWG"}</span>
-        <strong>${escapeHtml(activeReference.fileName || "DWG podloga")}</strong>
-        <p>Datoteka je uspješno učitana kao CAD referenca za ovaj crtež. U browseru trenutno crtaš iznad nje, po layerima i simbolima, a izvornu datoteku možeš preuzeti ili zamijeniti novom verzijom.</p>
+      <div class="drawing-stage-dwg-reference">
+        <div class="drawing-stage-dwg-preview">
+          <span class="drawing-stage-dwg-chip">${extensionLabel}</span>
+          <strong>${displayName}</strong>
+          <p>CAD datoteka je aktivna podloga ovog crteža. U ovom workspaceu sada crtaš iznad reference, a izvornu datoteku možeš preuzeti ili zamijeniti novom verzijom.</p>
+          <p><strong>Datoteka:</strong> ${displayName} · <strong>Veličina:</strong> ${fileSizeLabel}</p>
+        </div>
+        <div class="drawing-stage-dwg-watermark" aria-hidden="true">
+          <div>
+            <span>${extensionLabel}</span>
+            <small>${displayName}</small>
+          </div>
+        </div>
       </div>
     `;
     return;
