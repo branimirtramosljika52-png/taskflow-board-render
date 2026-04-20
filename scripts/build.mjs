@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const rootDir = process.cwd();
@@ -16,7 +16,12 @@ await cp(resolve(rootDir, "site.webmanifest"), resolve(distDir, "site.webmanifes
 await cp(resolve(rootDir, "styles.css"), resolve(distDir, "styles.css"));
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
-await cp(resolve(rootDir, "node_modules", "@cadview", "core", "dist", "index.js"), resolve(distDir, "assets", "vendor", "cadview-core.js"));
+const cadviewCoreSource = await readFile(resolve(rootDir, "node_modules", "@cadview", "core", "dist", "index.js"), "utf8");
+await writeFile(
+  resolve(distDir, "assets", "vendor", "cadview-core.js"),
+  cadviewCoreSource.replace("from 'rbush';", "from '/assets/vendor/rbush.js';"),
+  "utf8",
+);
 await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "index.js"), resolve(distDir, "assets", "vendor", "cadview-dwg.js"));
 await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.js"), resolve(distDir, "assets", "vendor", "libredwg.js"));
 await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.wasm"), resolve(distDir, "assets", "vendor", "libredwg.wasm"));

@@ -6193,8 +6193,8 @@ async function ensureDrawingCadViewer() {
 
   if (!drawingCadViewerState.runtimePromise) {
     drawingCadViewerState.runtimePromise = Promise.all([
-      import("@cadview/core"),
-      import("@cadview/dwg"),
+      import("/assets/vendor/cadview-core.js"),
+      import("/assets/vendor/cadview-dwg.js"),
     ])
       .then(([coreModule, dwgModule]) => {
         const dwgFormatConverter = dwgModule?.isDwg && dwgModule?.convertDwgToDxf
