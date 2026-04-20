@@ -2855,18 +2855,38 @@ body.is-location-editor-open {
 }
 
 .masterdata-company-contact-card {
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+  gap: 14px 16px;
+  align-items: start;
+}
+
+.masterdata-company-contact-card > .masterdata-group-head {
+  grid-column: 1 / -1;
+}
+
+.masterdata-company-contact-card > .masterdata-company-contact-grid {
+  grid-column: 1;
+}
+
+.masterdata-company-contact-card > .company-related-contracts {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: start;
 }
 
 .company-related-contracts {
   display: grid;
   gap: 10px;
-  padding-top: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 221, 236, 0.94);
+  background: linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(245, 249, 255, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .company-related-contracts-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -2885,9 +2905,12 @@ body.is-location-editor-open {
 }
 
 .work-order-activity-count.is-compact {
-  min-width: 28px;
-  min-height: 28px;
+  min-width: 32px;
+  min-height: 32px;
+  padding-inline: 10px;
   font-size: 0.74rem;
+  line-height: 1;
+  align-self: center;
 }
 
 .work-order-activity-empty.is-compact {
@@ -2897,7 +2920,7 @@ body.is-location-editor-open {
 .company-linked-contracts-list,
 .company-linked-records-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .entity-link-actions {
@@ -2916,7 +2939,7 @@ body.is-location-editor-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: start;
+  align-items: center;
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid rgba(206, 214, 231, 0.94);
@@ -2947,17 +2970,27 @@ body.is-location-editor-open {
 }
 
 .company-contract-card-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.company-contract-card-head > strong {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.company-contract-card-head .list-meta-pill {
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .company-contract-card-title {
   color: #253348;
   font-size: 0.92rem;
   font-weight: 700;
+  line-height: 1.4;
 }
 
 .company-contract-card-meta {
@@ -2969,6 +3002,8 @@ body.is-location-editor-open {
 .company-contract-card-actions {
   display: inline-flex;
   align-items: center;
+  justify-self: end;
+  align-self: center;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -3011,7 +3046,7 @@ body.is-location-editor-open {
 .masterdata-company-sections {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 12px;
   align-items: start;
 }
 
@@ -3058,7 +3093,7 @@ body.is-location-editor-open {
 }
 
 .field-company-contract-type {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 .field-company-contract-number {
@@ -3066,7 +3101,7 @@ body.is-location-editor-open {
 }
 
 .field-company-period {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .field-company-status {
@@ -3074,7 +3109,7 @@ body.is-location-editor-open {
 }
 
 .field-company-representative {
-  grid-column: span 7;
+  grid-column: span 6;
 }
 
 .field-company-representative-role {
@@ -3082,15 +3117,15 @@ body.is-location-editor-open {
 }
 
 .field-company-representative-oib {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .field-company-contact-phone {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 .field-company-contact-email {
-  grid-column: span 8;
+  grid-column: span 9;
 }
 
 .company-editor-panel .field,
@@ -3102,54 +3137,6 @@ body.is-location-editor-open {
 #company-note {
   min-height: 56px;
   max-width: 100%;
-}
-
-.field-company-name {
-  grid-column: span 5;
-}
-
-.field-company-headquarters {
-  grid-column: span 4;
-}
-
-.field-company-oib {
-  grid-column: span 3;
-}
-
-.field-company-contract-type {
-  grid-column: span 4;
-}
-
-.field-company-contract-number {
-  grid-column: span 3;
-}
-
-.field-company-period {
-  grid-column: span 2;
-}
-
-.field-company-status {
-  grid-column: span 3;
-}
-
-.field-company-representative {
-  grid-column: span 4;
-}
-
-.field-company-representative-role {
-  grid-column: span 3;
-}
-
-.field-company-representative-oib {
-  grid-column: span 2;
-}
-
-.field-company-contact-phone {
-  grid-column: span 3;
-}
-
-.field-company-contact-email {
-  grid-column: span 6;
 }
 
 .company-logo-upload-row {
@@ -3459,6 +3446,15 @@ body.is-location-editor-open {
     grid-template-columns: 1fr;
   }
 
+  .masterdata-company-contact-card {
+    grid-template-columns: 1fr;
+  }
+
+  .masterdata-company-contact-card > .company-related-contracts {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
   .company-activity-panel {
     max-height: 320px;
     border-left: 0;
@@ -3511,19 +3507,19 @@ body.is-location-editor-open {
 
   .field-company-name,
   .field-company-headquarters,
-  .field-company-contract-type,
+  .field-company-oib,
   .field-company-representative,
-  .field-company-representative-role,
-  .field-company-contact-phone,
   .field-company-contact-email {
     grid-column: span 6;
   }
 
-  .field-company-oib,
+  .field-company-contract-type,
   .field-company-contract-number,
   .field-company-period,
   .field-company-status,
-  .field-company-representative-oib {
+  .field-company-representative-role,
+  .field-company-representative-oib,
+  .field-company-contact-phone {
     grid-column: span 3;
   }
 }
@@ -14953,6 +14949,12 @@ body.is-document-template-editor-open .chat-dock {
 .list-meta-pill.is-danger {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.list-meta-pill.is-info {
+  background: rgba(226, 238, 255, 0.95);
+  border-color: rgba(140, 170, 224, 0.5);
+  color: #3863b3;
 }
 
 .table-actions {
