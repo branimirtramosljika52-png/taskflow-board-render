@@ -14,7 +14,16 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260420f" />
+<link rel="stylesheet" href="/styles.css?v=20260420g" />
+    <script type="importmap">
+      {
+        "imports": {
+          "@cadview/core": "/assets/vendor/cadview-core.js",
+          "@cadview/dwg": "/assets/vendor/cadview-dwg.js",
+          "rbush": "/assets/vendor/rbush.js"
+        }
+      }
+    </script>
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -4727,6 +4736,7 @@
                         <div id="drawing-stage-scroll" class="drawing-stage-scroll">
                           <div id="drawing-stage" class="drawing-stage">
                             <div id="drawing-stage-reference" class="drawing-stage-reference"></div>
+                            <canvas id="drawing-stage-cad-canvas" class="drawing-stage-cad-canvas" hidden aria-label="CAD preview"></canvas>
                             <div id="drawing-stage-cad-status" class="drawing-stage-cad-status" hidden></div>
                             <svg id="drawing-stage-svg" class="drawing-stage-svg" viewBox="0 0 2400 1500" aria-label="Drawing stage"></svg>
                           </div>
@@ -6232,6 +6242,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-<script type="module" src="/src/main.js?v=20260420d"></script>
+<script type="module" src="/src/main.js?v=20260420g"></script>
   </body>
 </html>

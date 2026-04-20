@@ -178,6 +178,7 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
 const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
+const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
 const DRAWING_STAGE_DEFAULT_WIDTH = 2400;
 const DRAWING_STAGE_DEFAULT_HEIGHT = 1500;
 const DRAWING_STAGE_MIN_WIDTH = 1200;
@@ -1880,6 +1881,7 @@ const drawingExportPdfButton = document.querySelector("#drawing-export-pdf");
 const drawingStageScroll = document.querySelector("#drawing-stage-scroll");
 const drawingStage = document.querySelector("#drawing-stage");
 const drawingStageReference = document.querySelector("#drawing-stage-reference");
+const drawingStageCadCanvas = document.querySelector("#drawing-stage-cad-canvas");
 const drawingStageCadStatus = document.querySelector("#drawing-stage-cad-status");
 const drawingStageSvg = document.querySelector("#drawing-stage-svg");
 const drawingStageHelper = document.querySelector("#drawing-stage-helper");
@@ -2596,6 +2598,12 @@ let drawingCursorPositionDraft = { x: 0, y: 0 };
 let drawingViewMode = "canvas";
 let drawingSidebarCollapsed = true;
 let drawingSidebarTab = "symbols";
+const drawingCadViewerState = {
+  runtimePromise: null,
+  viewer: null,
+  activeKey: "",
+  rasterDataUrl: "",
+};
 const DRAWING_DIMENSION_UNIT = "mm";
 const DRAWING_LINEAR_TYPES = new Set(["line", "curve", "wall", "dimension"]);
 const DRAWING_SYMBOL_TYPES = new Set(["exit", "extinguisher", "hydrant", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
@@ -6089,9 +6097,42 @@ function getDrawingActiveReference() {
   return drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
 }
 
+function isDrawingDerivedReference(reference = null) {
+  return String(reference?.documentCategory || "").trim().toLowerCase() === DRAWING_REFERENCE_PREVIEW_CATEGORY;
+}
+
+function getDrawingVisibleReferenceDrafts() {
+  return drawingReferenceDrafts.filter((item) => !isDrawingDerivedReference(item));
+}
+
+function getDrawingRenderableReference(reference = null) {
+  if (!reference) {
+    return null;
+  }
+
+  if (isDrawingDerivedReference(reference)) {
+    return reference;
+  }
+
+  if (!isDrawingCadReference(reference)) {
+    return reference;
+  }
+
+  return drawingReferenceDrafts.find((item) => (
+    isDrawingDerivedReference(item)
+    && String(item.sourceDocumentId || "").trim() === String(reference.id || "").trim()
+  )) ?? reference;
+}
+
 function isDrawingCadReference(reference = null) {
   const fileName = String(reference?.fileName || "").trim().toLowerCase();
   return fileName.endsWith(".dwg") || fileName.endsWith(".dxf");
+}
+
+function isDrawingDxfReference(reference = null) {
+  const fileName = String(reference?.fileName || "").trim().toLowerCase();
+  const fileType = String(reference?.fileType || "").trim().toLowerCase();
+  return fileName.endsWith(".dxf") || fileType.includes("dxf");
 }
 
 function isDrawingPdfReference(reference = null) {
@@ -6115,6 +6156,124 @@ function showDrawingCadStatus(message = "", tone = "info") {
   drawingStageCadStatus.hidden = !text;
   drawingStageCadStatus.textContent = text;
   drawingStageCadStatus.dataset.tone = text ? tone : "";
+}
+
+async function readDrawingReferenceArrayBuffer(reference = null) {
+  if (!reference) {
+    throw new Error("Nema aktivne CAD podloge.");
+  }
+
+  const dataUrl = String(reference.dataUrl || "").trim();
+  const storageUrl = String(reference.storageUrl || "").trim();
+
+  if (dataUrl.startsWith("data:")) {
+    const response = await fetch(dataUrl);
+    return response.arrayBuffer();
+  }
+
+  if (storageUrl) {
+    const response = await fetch(storageUrl, { credentials: "same-origin" });
+    if (!response.ok) {
+      throw new Error(`Preuzimanje CAD podloge nije uspjelo (${response.status}).`);
+    }
+    return response.arrayBuffer();
+  }
+
+  throw new Error("CAD datoteku nije moguće pročitati.");
+}
+
+async function ensureDrawingCadViewer() {
+  if (drawingCadViewerState.viewer) {
+    return drawingCadViewerState.viewer;
+  }
+
+  if (!drawingStageCadCanvas) {
+    throw new Error("CAD canvas nije pronađen.");
+  }
+
+  if (!drawingCadViewerState.runtimePromise) {
+    drawingCadViewerState.runtimePromise = Promise.all([
+      import("@cadview/core"),
+      import("@cadview/dwg"),
+    ])
+      .then(([coreModule, dwgModule]) => {
+        const dwgFormatConverter = dwgModule?.isDwg && dwgModule?.convertDwgToDxf
+          ? {
+            detect: (buffer) => dwgModule.isDwg(buffer),
+            convert: (buffer) => dwgModule.convertDwgToDxf(buffer, {
+              wasmUrl: "/assets/vendor/libredwg.wasm",
+            }),
+          }
+          : null;
+        void dwgModule.initWasm?.({ wasmUrl: "/assets/vendor/libredwg.wasm" }).catch(() => {});
+        const viewer = new coreModule.CadViewer(drawingStageCadCanvas, {
+          theme: "light",
+          initialTool: "pan",
+          formatConverters: dwgFormatConverter ? [dwgFormatConverter] : [],
+        });
+        viewer.setBackgroundColor?.("#f8fbff");
+        viewer.setTheme?.("light");
+        viewer.setTool?.("pan");
+        drawingCadViewerState.viewer = viewer;
+        return viewer;
+      })
+      .catch((error) => {
+        drawingCadViewerState.runtimePromise = null;
+        throw error;
+      });
+  }
+
+  return drawingCadViewerState.runtimePromise;
+}
+
+function resetDrawingCadViewer() {
+  drawingCadViewerState.activeKey = "";
+  drawingCadViewerState.rasterDataUrl = "";
+  drawingCadViewerState.viewer?.clearDocument?.();
+  if (drawingStageCadCanvas) {
+    drawingStageCadCanvas.hidden = true;
+  }
+}
+
+async function renderDrawingCadReference(reference = null) {
+  if (!reference || !isDrawingCadReference(reference) || !drawingStageCadCanvas) {
+    resetDrawingCadViewer();
+    return;
+  }
+
+  const previewKey = [
+    reference.id,
+    reference.updatedAt,
+    reference.fileName,
+    reference.fileSize,
+  ].filter(Boolean).join(":");
+
+  const viewer = await ensureDrawingCadViewer();
+  drawingStageCadCanvas.hidden = false;
+
+  if (drawingCadViewerState.activeKey !== previewKey) {
+    const buffer = await readDrawingReferenceArrayBuffer(reference);
+    if (isDrawingDxfReference(reference)) {
+      viewer.loadArrayBuffer(buffer.slice(0));
+    } else {
+      showDrawingCadStatus(`Učitavam ${String(reference.fileName || "DWG podloga").trim()}...`, "info");
+      await viewer.loadBuffer(buffer.slice(0));
+    }
+    viewer.fitToView();
+    drawingCadViewerState.activeKey = previewKey;
+  } else {
+    viewer.resize?.();
+  }
+
+  showDrawingCadStatus("");
+
+  requestAnimationFrame(() => {
+    try {
+      drawingCadViewerState.rasterDataUrl = drawingStageCadCanvas.toDataURL("image/png");
+    } catch {
+      drawingCadViewerState.rasterDataUrl = "";
+    }
+  });
 }
 
 function setDrawingViewMode(nextMode = "canvas") {
@@ -6324,9 +6483,10 @@ function loadDrawingDraft(project = null) {
     showGrid: project?.viewport?.showGrid !== false,
     orthoMode: project?.viewport?.orthoMode === true,
   };
+  const visibleReferences = drawingReferenceDrafts.filter((document) => !isDrawingDerivedReference(document));
   drawingActiveReferenceId = String(
     project?.activeReferenceDocumentId
-    || drawingReferenceDrafts[0]?.id
+    || visibleReferences[0]?.id
     || "",
   ).trim();
   drawingSelectedElementId = "";
@@ -6337,6 +6497,7 @@ function loadDrawingDraft(project = null) {
   drawingSidebarTab = "symbols";
   drawingPointerSession = null;
   drawingCursorPositionDraft = { x: 0, y: 0 };
+  resetDrawingCadViewer();
   showDrawingCadStatus("");
   if (drawingError) {
     drawingError.textContent = "";
@@ -6501,14 +6662,15 @@ function renderDrawingReferenceList() {
     return;
   }
 
-  drawingReferenceEmpty.hidden = drawingReferenceDrafts.length > 0;
+  const visibleReferences = getDrawingVisibleReferenceDrafts();
+  drawingReferenceEmpty.hidden = visibleReferences.length > 0;
 
-  if (drawingReferenceDrafts.length === 0) {
+  if (visibleReferences.length === 0) {
     drawingReferenceList.replaceChildren();
     return;
   }
 
-  drawingReferenceList.replaceChildren(...drawingReferenceDrafts.map((entry) => {
+  drawingReferenceList.replaceChildren(...visibleReferences.map((entry) => {
     const card = document.createElement("article");
     card.className = "drawing-reference-card";
     if (String(entry.id) === String(drawingActiveReferenceId)) {
@@ -6526,9 +6688,19 @@ function renderDrawingReferenceList() {
     head.append(title, type);
 
     const meta = document.createElement("p");
+    const previewReference = getDrawingRenderableReference(entry);
+    const previewReady = previewReference && String(previewReference.id || "") !== String(entry.id || "");
+    const previewStatusLabel = entry.previewStatus === "error"
+      ? "DXF preview greška"
+      : entry.previewStatus === "ready"
+        ? "DXF preview spreman"
+        : entry.previewStatus === "pending"
+          ? "Čeka DXF preview"
+          : "";
     meta.textContent = [
       formatFileSize(entry.fileSize),
       entry.fileType || "",
+      previewReady ? "DXF preview spreman" : previewStatusLabel,
       entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
     ].filter(Boolean).join(" · ");
 
@@ -6559,9 +6731,12 @@ function renderDrawingReferenceList() {
     removeButton.className = "ghost-button card-danger";
     removeButton.textContent = "Makni";
     removeButton.addEventListener("click", () => {
-      drawingReferenceDrafts = drawingReferenceDrafts.filter((item) => String(item.id) !== String(entry.id));
+      drawingReferenceDrafts = drawingReferenceDrafts.filter((item) => (
+        String(item.id) !== String(entry.id)
+        && String(item.sourceDocumentId || "").trim() !== String(entry.id)
+      ));
       if (String(drawingActiveReferenceId) === String(entry.id)) {
-        drawingActiveReferenceId = drawingReferenceDrafts[0]?.id || "";
+        drawingActiveReferenceId = getDrawingVisibleReferenceDrafts()[0]?.id || "";
       }
       if (!drawingActiveReferenceId) {
         setDrawingViewMode("canvas");
@@ -6753,8 +6928,8 @@ function renderDrawingStudioModule() {
   if (drawingSelectedElementId && !drawingElementDrafts.some((item) => String(item.id) === String(drawingSelectedElementId))) {
     drawingSelectedElementId = "";
   }
-  if (drawingActiveReferenceId && !drawingReferenceDrafts.some((item) => String(item.id) === String(drawingActiveReferenceId))) {
-    drawingActiveReferenceId = drawingReferenceDrafts[0]?.id || "";
+  if (drawingActiveReferenceId && !getDrawingVisibleReferenceDrafts().some((item) => String(item.id) === String(drawingActiveReferenceId))) {
+    drawingActiveReferenceId = getDrawingVisibleReferenceDrafts()[0]?.id || "";
   }
   if (drawingActiveLayerId && !drawingLayerDrafts.some((item) => String(item.id) === String(drawingActiveLayerId))) {
     drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
@@ -6837,17 +7012,25 @@ function renderDrawingStudioModule() {
   }
   if (drawingReferenceStatusLabel) {
     const activeReference = getDrawingActiveReference();
+    const renderableReference = getDrawingRenderableReference(activeReference);
     drawingReferenceStatusLabel.textContent = activeReference
-      ? `Podloga: ${activeReference.fileName || "Datoteka"}`
+      ? `Podloga: ${activeReference.fileName || "Datoteka"}${renderableReference && String(renderableReference.id || "") !== String(activeReference.id || "") ? " · DXF preview" : ""}`
       : "Podloga: prazno platno";
   }
   if (drawingStageHelper) {
     const activeReference = getDrawingActiveReference();
+    const renderableReference = getDrawingRenderableReference(activeReference);
+    const hasDxfPreview = Boolean(
+      activeReference
+      && renderableReference
+      && String(renderableReference.id || "") !== String(activeReference.id || "")
+      && isDrawingDxfReference(renderableReference)
+    );
     drawingStageHelper.textContent = !activeReference
       ? "Radiš na praznom platnu. Gore biraš alat, desno po potrebi otvaraš blokove, layere i inspector, a podlogu možeš dodati naknadno."
       : drawingViewMode === "reference"
-        ? `Trenutno gledaš podlogu ${activeReference.fileName || "datoteka"}. Vrati se na "Crtanje" kad želiš dodavati zidove, kote i blokove.`
-        : `Podloga ${activeReference.fileName || "datoteka"} je aktivna. Crtaj preko nje ili prebaci na "Podloga" za puni pregled reference.`;
+        ? `Trenutno gledaš podlogu ${activeReference.fileName || "datoteka"}${hasDxfPreview ? " preko DXF previewa" : ""}. Vrati se na "Crtanje" kad želiš dodavati zidove, kote i blokove.`
+        : `Podloga ${activeReference.fileName || "datoteka"}${hasDxfPreview ? " ima DXF preview za rad u editoru" : ""}. Crtaj preko nje ili prebaci na "Podloga" za puni pregled reference.`;
   }
 
   drawingToolButtons.forEach((button) => {
@@ -7178,14 +7361,15 @@ function renderDrawingStageReference() {
 
   drawingStageReference.classList.remove("is-cad-reference");
   const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+  const renderableReference = getDrawingRenderableReference(activeReference);
   if (!activeReference) {
     drawingStageReference.innerHTML = '<div class="drawing-stage-reference-empty">Nema aktivne podloge. Crtaj odmah na praznom platnu ili naknadno dodaj DWG, DXF, PDF ili sliku.</div>';
     return;
   }
 
-  const fileName = String(activeReference.fileName || "").trim().toLowerCase();
-  const fileType = String(activeReference.fileType || "").trim().toLowerCase();
-  const href = String(activeReference.storageUrl || activeReference.dataUrl || "").trim();
+  const fileName = String(renderableReference?.fileName || activeReference.fileName || "").trim().toLowerCase();
+  const fileType = String(renderableReference?.fileType || activeReference.fileType || "").trim().toLowerCase();
+  const href = String(renderableReference?.storageUrl || renderableReference?.dataUrl || activeReference.storageUrl || activeReference.dataUrl || "").trim();
   const isPdf = fileType.includes("pdf") || fileName.endsWith(".pdf");
   const isImage = fileType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".svg"].some((extension) => fileName.endsWith(extension));
   const isCad = fileName.endsWith(".dwg") || fileName.endsWith(".dxf");
@@ -7204,22 +7388,13 @@ function renderDrawingStageReference() {
     drawingStageReference.classList.add("is-cad-reference");
     const extensionLabel = fileName.endsWith(".dxf") ? "DXF" : "DWG";
     const displayName = escapeHtml(activeReference.fileName || `${extensionLabel} podloga`);
-    const fileSizeLabel = escapeHtml(formatFileSize(activeReference.fileSize));
+    const renderableName = escapeHtml(renderableReference?.fileName || "");
+    const previewReady = renderableReference && String(renderableReference.id || "") !== String(activeReference.id || "") && isDrawingDxfReference(renderableReference);
     drawingStageReference.innerHTML = `
-      <div class="drawing-stage-dwg-reference">
-        <div class="drawing-stage-dwg-preview">
-          <span class="drawing-stage-dwg-chip">${extensionLabel}</span>
-          <strong>${displayName}</strong>
-          <p>CAD datoteka je spremljena kao aktivna podloga ovog crteža. U ovom editoru možeš crtati iznad reference, mijenjati layere i slagati simbole bez dodatnog otvaranja zasebnog prozora.</p>
-          <p><strong>Datoteka:</strong> ${displayName} · <strong>Veličina:</strong> ${fileSizeLabel}</p>
-          <p><strong>Napomena:</strong> za puni prikaz sirove DWG geometrije treba poseban CAD viewer / konverzija. PDF i slike imaju direktan pregled u browseru.</p>
-        </div>
-        <div class="drawing-stage-dwg-watermark" aria-hidden="true">
-          <div>
-            <span>${extensionLabel}</span>
-            <small>${displayName}</small>
-          </div>
-        </div>
+      <div class="drawing-stage-cad-badge">
+        <span>${extensionLabel}</span>
+        <strong>${displayName}</strong>
+        <small>${previewReady ? `DXF preview: ${renderableName}` : `${extensionLabel} podloga aktivna`}</small>
       </div>
     `;
     return;
@@ -7242,6 +7417,7 @@ function renderDrawingStage() {
   const canvasWidth = clampDrawingCanvasWidth(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
   const canvasHeight = clampDrawingCanvasHeight(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
   const activeReference = getDrawingActiveReference();
+  const renderableReference = getDrawingRenderableReference(activeReference);
   const isReferenceMode = drawingViewMode === "reference" && Boolean(activeReference);
   drawingStage.style.width = `${Math.round(canvasWidth * zoom)}px`;
   drawingStage.style.height = `${Math.round(canvasHeight * zoom)}px`;
@@ -7252,12 +7428,16 @@ function renderDrawingStage() {
   if (drawingStageReference) {
     drawingStageReference.hidden = false;
   }
-  if (isReferenceMode && isDrawingCadReference(activeReference)) {
-    showDrawingCadStatus(
-      `${String(activeReference?.fileName || "DWG podloga").trim()} je učitan kao CAD referenca. Za pravi prikaz sirove DWG geometrije treba licencirani CAD viewer ili konverzija u pregledni format.`,
-      "info",
-    );
+  if (renderableReference && isDrawingCadReference(renderableReference)) {
+    void renderDrawingCadReference(renderableReference).catch((error) => {
+      console.error("Drawing CAD preview failed", error);
+      resetDrawingCadViewer();
+      showDrawingCadStatus(`CAD pregled nije moguće učitati. ${error?.message || "Provjeri datoteku i pokušaj ponovno."}`, "error");
+    });
   } else {
+    resetDrawingCadViewer();
+  }
+  if (!renderableReference || !isDrawingCadReference(renderableReference)) {
     showDrawingCadStatus("");
   }
 
@@ -7769,15 +7949,32 @@ function buildDrawingExportSvg(includeReference = true) {
   const gridSize = Math.max(8, Number(drawingViewportDraft.gridSize || 20));
   const majorGrid = gridSize * 5;
   const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
-  const activeReferenceHref = String(activeReference?.dataUrl || activeReference?.storageUrl || "").trim();
-  const fileName = String(activeReference?.fileName || "").trim().toLowerCase();
-  const fileType = String(activeReference?.fileType || "").trim().toLowerCase();
+  const renderableReference = getDrawingRenderableReference(activeReference);
+  const activeReferenceHref = String(renderableReference?.dataUrl || renderableReference?.storageUrl || activeReference?.dataUrl || activeReference?.storageUrl || "").trim();
+  const fileName = String(renderableReference?.fileName || activeReference?.fileName || "").trim().toLowerCase();
+  const fileType = String(renderableReference?.fileType || activeReference?.fileType || "").trim().toLowerCase();
   const referenceIsImage = includeReference
     && Boolean(activeReferenceHref)
     && (fileType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".svg"].some((extension) => fileName.endsWith(extension)));
+  const referenceIsCadRaster = includeReference
+    && Boolean(drawingCadViewerState.rasterDataUrl || (drawingStageCadCanvas && !drawingStageCadCanvas.hidden))
+    && Boolean(renderableReference)
+    && isDrawingCadReference(renderableReference);
+  const cadRasterHref = drawingCadViewerState.rasterDataUrl
+    || (() => {
+      try {
+        return drawingStageCadCanvas && !drawingStageCadCanvas.hidden
+          ? drawingStageCadCanvas.toDataURL("image/png")
+          : "";
+      } catch {
+        return "";
+      }
+    })();
   const referenceMarkup = referenceIsImage
     ? `<image href="${escapeHtml(activeReferenceHref)}" x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" preserveAspectRatio="xMidYMid meet"></image>`
-    : "";
+    : referenceIsCadRaster
+      ? `<image href="${escapeHtml(cadRasterHref)}" x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" preserveAspectRatio="xMidYMid meet"></image>`
+      : "";
   const defsMarkup = `
       <defs>
         <marker id="drawing-export-arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
@@ -7887,6 +8084,7 @@ async function queueDrawingReferenceFiles(files = []) {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
+      previewStatus: "",
       dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
       updatedAt: new Date().toISOString(),
     }));
@@ -25524,6 +25722,9 @@ function createModuleAttachmentDraft(document = {}) {
     fileType: String(document.fileType || "").trim(),
     fileSize: Number(document.fileSize || 0) || 0,
     documentCategory,
+    sourceDocumentId: String(document.sourceDocumentId || document.parentDocumentId || "").trim(),
+    previewStatus: String(document.previewStatus || "").trim(),
+    previewError: String(document.previewError || "").trim(),
     documentCategoryLocked: Boolean(document.documentCategoryLocked) || (Boolean(document.isPersisted || document.persisted) && Boolean(documentCategory)),
     description: String(document.description || "").trim(),
     dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
@@ -42805,6 +43006,9 @@ function serializeModuleAttachmentDraft(document = {}) {
     fileType: String(document.fileType || "").trim(),
     fileSize: Number(document.fileSize || 0) || 0,
     documentCategory: String(document.documentCategory || "").trim(),
+    sourceDocumentId: String(document.sourceDocumentId || "").trim(),
+    previewStatus: String(document.previewStatus || "").trim(),
+    previewError: String(document.previewError || "").trim(),
     description: String(document.description || "").trim(),
     dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
     storageProvider: String(document.storageProvider || "").trim(),
