@@ -26583,10 +26583,10 @@ body.is-offer-template-open {
 
 .drawing-studio-layout {
   display: grid;
-  grid-template-columns: minmax(290px, 320px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
-  align-items: stretch;
-  min-height: calc(100vh - 250px);
+  align-items: start;
+  min-height: 0;
 }
 
 .drawing-studio-list-panel,
@@ -26595,41 +26595,52 @@ body.is-offer-template-open {
 }
 
 .drawing-studio-list-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 100%;
-  padding: 6px 18px 6px 2px;
-  border-right: 1px solid rgba(116, 148, 210, 0.22);
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px 18px;
+  align-items: end;
+  min-height: 0;
+  padding: 0 0 18px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(116, 148, 210, 0.22);
 }
 
 .drawing-studio-workspace-panel {
-  min-height: 100%;
-  padding-left: 4px;
+  min-height: 0;
+  padding-left: 0;
 }
 
 .drawing-project-list {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  flex: 1 1 auto;
-  min-height: 340px;
-  max-height: calc(100vh - 320px);
+  grid-column: 1 / -1;
+  min-height: 0;
+  max-height: 220px;
   overflow: auto;
-  padding-right: 4px;
+  padding: 4px 4px 0 0;
 }
 
 #drawing-empty.helper-copy {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 180px;
+  grid-column: 1 / -1;
+  min-height: 88px;
   margin: 0;
-  padding: 18px;
+  padding: 14px 18px;
   border-radius: 22px;
   border: 1px dashed rgba(117, 144, 206, 0.22);
   background: rgba(248, 251, 255, 0.84);
   text-align: center;
+}
+
+.drawing-studio-list-panel > .section-heading {
+  margin: 0;
+}
+
+.drawing-studio-list-panel > .drawing-studio-filters {
+  margin: 0;
 }
 
 .drawing-project-card {
@@ -27271,8 +27282,8 @@ button.drawing-status-pill.is-active {
   }
 
   .drawing-studio-list-panel {
+    grid-template-columns: 1fr;
     padding: 0 0 18px;
-    border-right: 0;
     border-bottom: 1px solid rgba(116, 148, 210, 0.22);
   }
 
