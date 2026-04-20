@@ -34767,7 +34767,7 @@ function buildCompanyPayload() {
   };
 }
 
-function syncCompanyEditorChrome({ includeRelatedData = true } = {}) {
+function syncCompanyEditorChrome() {
   const companyName = companyNameInput?.value?.trim() || "Tvrtka";
   const isActive = companyIsActiveInput?.value !== "false";
 
@@ -34788,10 +34788,6 @@ function syncCompanyEditorChrome({ includeRelatedData = true } = {}) {
 
   if (companyDeleteButton) {
     companyDeleteButton.hidden = !companyIdInput?.value;
-  }
-
-  if (includeRelatedData) {
-    renderCompanyEditorRelatedData();
   }
 }
 
@@ -35185,8 +35181,37 @@ function renderCompanyActivityPanel(companyId = companyIdInput?.value || "") {
 }
 
 function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "") {
-  renderCompanyLinkedContracts(companyId);
-  renderCompanyActivityPanel(companyId);
+  try {
+    renderCompanyLinkedContracts(companyId);
+  } catch (error) {
+    console.error("Company linked contracts render failed", error);
+    if (companyLinkedContractsList) {
+      companyLinkedContractsList.replaceChildren();
+    }
+    if (companyLinkedContractsCount) {
+      companyLinkedContractsCount.textContent = "0";
+    }
+    if (companyLinkedContractsEmpty) {
+      companyLinkedContractsEmpty.textContent = "Povezane ugovore trenutno nije moguće prikazati.";
+      companyLinkedContractsEmpty.hidden = false;
+    }
+  }
+
+  try {
+    renderCompanyActivityPanel(companyId);
+  } catch (error) {
+    console.error("Company activity render failed", error);
+    if (companyActivityList) {
+      companyActivityList.replaceChildren();
+    }
+    if (companyActivityCount) {
+      companyActivityCount.textContent = "0";
+    }
+    if (companyActivityEmpty) {
+      companyActivityEmpty.textContent = "Activity trenutno nije moguće prikazati.";
+      companyActivityEmpty.hidden = false;
+    }
+  }
 }
 
 function createEmptyLocationContactDraft() {
@@ -35481,6 +35506,7 @@ function resetCompanyForm() {
     companyEditorTitle.textContent = "Nova tvrtka";
   }
   syncCompanyEditorChrome();
+  renderCompanyEditorRelatedData("");
 }
 
 function resetLocationForm() {
@@ -35627,6 +35653,9 @@ function hydrateCompanyForm(company) {
   }
   syncCompanyEditorChrome();
   openCompanyEditor();
+  requestAnimationFrame(() => {
+    renderCompanyEditorRelatedData(company.id);
+  });
 }
 
 function hydrateLocationForm(location) {
@@ -57024,7 +57053,7 @@ companyLogoClearButton?.addEventListener("click", () => {
   if (companyLogoFileInput) {
     companyLogoFileInput.value = "";
   }
-  syncCompanyEditorChrome({ includeRelatedData: false });
+  syncCompanyEditorChrome();
 });
 
 companyLogoFileInput?.addEventListener("change", () => {
@@ -57045,7 +57074,7 @@ companyLogoFileInput?.addEventListener("change", () => {
       companyLogoDataUrlInput.value = logoDataUrl;
     }
     companyError.textContent = "";
-    syncCompanyEditorChrome({ includeRelatedData: false });
+    syncCompanyEditorChrome();
   }).catch((error) => {
     companyError.textContent = error.message;
   }).finally(() => {
@@ -57056,11 +57085,11 @@ companyLogoFileInput?.addEventListener("change", () => {
 });
 
 companyNameInput?.addEventListener("input", () => {
-  syncCompanyEditorChrome({ includeRelatedData: false });
+  syncCompanyEditorChrome();
 });
 
 companyIsActiveInput?.addEventListener("change", () => {
-  syncCompanyEditorChrome({ includeRelatedData: false });
+  syncCompanyEditorChrome();
 });
 
 companyOpenFormButton?.addEventListener("click", () => {
