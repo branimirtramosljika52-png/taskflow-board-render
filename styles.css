@@ -26024,6 +26024,7 @@ body.is-offer-template-open {
 
 .offer-template-body {
   padding-top: 14px;
+  align-content: stretch;
 }
 
 .offer-template-layout {
@@ -26031,6 +26032,7 @@ body.is-offer-template-open {
   grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.25fr);
   gap: 14px;
   align-items: start;
+  min-height: 0;
 }
 
 .offer-template-card {
@@ -26043,6 +26045,11 @@ body.is-offer-template-open {
     radial-gradient(circle at top right, rgba(80, 142, 255, 0.05), transparent 34%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 255, 0.94));
   box-shadow: 0 16px 32px rgba(39, 56, 87, 0.1);
+  min-height: 0;
+}
+
+.offer-template-card:last-child {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .offer-template-card-head {
@@ -26093,6 +26100,12 @@ body.is-offer-template-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  min-height: 0;
+  max-height: calc(100vh - 290px);
+  overflow-y: auto;
+  padding-right: 6px;
+  align-content: start;
+  scrollbar-gutter: stable;
 }
 
 .offer-template-placeholder-chip {

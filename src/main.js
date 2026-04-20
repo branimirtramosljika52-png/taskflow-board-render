@@ -236,6 +236,11 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "TAX_TOTAL", label: "PDV iznos", description: "Ukupni iznos PDV-a." }),
   Object.freeze({ key: "TOTAL", label: "Ukupno", description: "Ukupni iznos ponude." }),
 ]);
+const OFFER_SERVICE_LINE_OPTIONS = Object.freeze([
+  "Fixed Fee",
+  "Base fee + variable fee",
+  "Offer",
+]);
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
@@ -43063,14 +43068,12 @@ function renderSharedOptions() {
   if (offerServiceLineInput) {
     const serviceLineDatalist = document.querySelector("#offer-service-line-options");
     if (serviceLineDatalist) {
-      serviceLineDatalist.replaceChildren(...sortServiceCatalogItems(state.serviceCatalog ?? [])
-        .slice(0, 60)
-        .map((item) => {
-          const option = document.createElement("option");
-          option.value = item.name || item.serviceCode || "";
-          option.label = [item.serviceCode || "", item.name || ""].filter(Boolean).join(" · ");
-          return option;
-        }));
+      serviceLineDatalist.replaceChildren(...OFFER_SERVICE_LINE_OPTIONS.map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.label = value;
+        return option;
+      }));
     }
   }
   rebuildDocumentTemplateCompanyOptions(documentTemplateCompanyIdInput?.value || "");

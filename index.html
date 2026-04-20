@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260419g" />
+<link rel="stylesheet" href="/styles.css?v=20260420a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3892,9 +3892,9 @@
                       <input id="offer-id" type="hidden" />
 
                       <datalist id="offer-service-line-options">
-                        <option value="Flat plan"></option>
-                        <option value="One-Time"></option>
-                        <option value="Monthly+Per Services"></option>
+                        <option value="Fixed Fee"></option>
+                        <option value="Base fee + variable fee"></option>
+                        <option value="Offer"></option>
                       </datalist>
                       <datalist id="offer-item-service-options"></datalist>
 
@@ -3954,7 +3954,7 @@
                         </label>
                         <label class="field">
                           <span>Vrsta usluge</span>
-                          <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Flat plan, One-Time..." required />
+                          <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Fixed Fee, Base fee + variable fee, Offer..." required />
                         </label>
                         <label class="field">
                           <span>PDV %</span>
@@ -5543,6 +5543,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260419f"></script>
+    <script type="module" src="/src/main.js?v=20260420a"></script>
   </body>
 </html>
