@@ -26025,6 +26025,8 @@ body.is-offer-template-open {
 .offer-template-body {
   padding-top: 14px;
   align-content: stretch;
+  min-height: 0;
+  overflow-x: hidden;
 }
 
 .offer-template-layout {
@@ -26033,6 +26035,7 @@ body.is-offer-template-open {
   gap: 14px;
   align-items: start;
   min-height: 0;
+  min-width: 0;
 }
 
 .offer-template-card {
@@ -26046,6 +26049,7 @@ body.is-offer-template-open {
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 255, 0.94));
   box-shadow: 0 16px 32px rgba(39, 56, 87, 0.1);
   min-height: 0;
+  min-width: 0;
 }
 
 .offer-template-card:last-child {
@@ -26103,7 +26107,9 @@ body.is-offer-template-open {
   min-height: 0;
   max-height: calc(100vh - 290px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 6px;
+  padding-bottom: 10px;
   align-content: start;
   scrollbar-gutter: stable;
 }
@@ -26153,6 +26159,29 @@ body.is-offer-template-open {
   overflow-wrap: anywhere;
 }
 
+@media (min-width: 1121px) {
+  .offer-template-body {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100%;
+    overflow-y: hidden;
+  }
+
+  .offer-template-layout {
+    height: 100%;
+    align-items: stretch;
+  }
+
+  .offer-template-card:last-child {
+    height: 100%;
+  }
+
+  .offer-template-placeholder-list {
+    height: 100%;
+    max-height: none;
+  }
+}
+
 @media (max-width: 1120px) {
   .offers-editor-panel.is-modal-open,
   .offers-template-panel.is-modal-open {
@@ -26168,6 +26197,14 @@ body.is-offer-template-open {
   .offer-item-main-grid,
   .offer-template-layout {
     grid-template-columns: 1fr;
+  }
+
+  .offer-template-body {
+    overflow-y: auto;
+  }
+
+  .offer-template-placeholder-list {
+    max-height: min(52vh, 520px);
   }
 }
 
