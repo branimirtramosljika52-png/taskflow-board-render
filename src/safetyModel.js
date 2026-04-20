@@ -58,6 +58,20 @@ export const CONTRACT_TEMPLATE_STATUS_OPTIONS = [
   { value: "archived", label: "Arhiviran" },
 ];
 
+export const DRAWING_PROJECT_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "active", label: "Aktivan" },
+  { value: "archived", label: "Arhiviran" },
+];
+
+export const DRAWING_PROJECT_TYPE_OPTIONS = [
+  { value: "evacuation", label: "Plan evakuacije" },
+  { value: "floor_plan", label: "Tlocrt" },
+  { value: "fire_safety", label: "Protupozarni plan" },
+  { value: "technical", label: "Tehnicki crtez" },
+  { value: "custom", label: "Custom" },
+];
+
 export const VEHICLE_STATUS_OPTIONS = [
   { value: "available", label: "Dostupno" },
   { value: "service", label: "Servis" },
@@ -446,6 +460,11 @@ const CONTRACT_STATUS_RANK = {
 const CONTRACT_TEMPLATE_STATUS_RANK = {
   active: 0,
   draft: 1,
+  archived: 2,
+};
+const DRAWING_PROJECT_STATUS_RANK = {
+  draft: 0,
+  active: 1,
   archived: 2,
 };
 const LEGAL_FRAMEWORK_STATUS_RANK = {
@@ -3412,6 +3431,288 @@ function hydrateContractCore({
   };
 }
 
+function normalizeDrawingProjectStatus(value, fallback = "draft") {
+  const normalized = normalizeText(value).toLowerCase();
+  const allowed = new Set(DRAWING_PROJECT_STATUS_OPTIONS.map((option) => option.value));
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function normalizeDrawingProjectType(value, fallback = "custom") {
+  const normalized = normalizeText(value).toLowerCase();
+  const allowed = new Set(DRAWING_PROJECT_TYPE_OPTIONS.map((option) => option.value));
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function normalizeDrawingLineStyle(value, fallback = "solid") {
+  const normalized = normalizeText(value).toLowerCase();
+  return ["solid", "dashed", "dotted"].includes(normalized) ? normalized : fallback;
+}
+
+function normalizeDrawingColor(value, fallback = "#4564d1") {
+  const normalized = normalizeText(value);
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalized) ? normalized : fallback;
+}
+
+function normalizeDrawingCoordinate(value, fallback = 0) {
+  return Math.round(normalizeFiniteNumber(value, fallback) * 10) / 10;
+}
+
+function buildDefaultDrawingLayers() {
+  return [
+    {
+      id: crypto.randomUUID(),
+      name: "Podloga",
+      color: "#8a9ab8",
+      visible: true,
+      locked: false,
+      lineWidth: 1,
+      lineStyle: "solid",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Zidovi",
+      color: "#21385f",
+      visible: true,
+      locked: false,
+      lineWidth: 6,
+      lineStyle: "solid",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Vrata i prolazi",
+      color: "#25a37d",
+      visible: true,
+      locked: false,
+      lineWidth: 2,
+      lineStyle: "solid",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Sigurnosni simboli",
+      color: "#d64d50",
+      visible: true,
+      locked: false,
+      lineWidth: 2,
+      lineStyle: "solid",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Napomene",
+      color: "#7b5fd1",
+      visible: true,
+      locked: false,
+      lineWidth: 1,
+      lineStyle: "dashed",
+    },
+  ];
+}
+
+function normalizeDrawingLayers(layers = [], fallbackLayers = []) {
+  const source = Array.isArray(layers) && layers.length > 0
+    ? layers
+    : (Array.isArray(fallbackLayers) && fallbackLayers.length > 0 ? fallbackLayers : buildDefaultDrawingLayers());
+  const seenIds = new Set();
+  const normalized = source.map((entry, index) => {
+    const id = normalizeId(entry?.id) || crypto.randomUUID();
+    if (seenIds.has(id)) {
+      return null;
+    }
+    seenIds.add(id);
+    return {
+      id,
+      name: normalizeText(entry?.name) || `Layer ${index + 1}`,
+      color: normalizeDrawingColor(entry?.color, buildDefaultDrawingLayers()[index]?.color || "#4564d1"),
+      visible: normalizeBoolean(entry?.visible, true),
+      locked: normalizeBoolean(entry?.locked, false),
+      lineWidth: Math.max(1, Math.min(18, Math.round(normalizeFiniteNumber(entry?.lineWidth, 2)))),
+      lineStyle: normalizeDrawingLineStyle(entry?.lineStyle),
+    };
+  }).filter(Boolean);
+
+  return normalized.length > 0 ? normalized : buildDefaultDrawingLayers();
+}
+
+function getDrawingElementDefaults(type = "rectangle") {
+  switch (type) {
+    case "line":
+      return { width: 220, height: 0, stroke: "#4564d1", fill: "transparent", lineWidth: 2 };
+    case "wall":
+      return { width: 280, height: 0, stroke: "#21385f", fill: "transparent", lineWidth: 12 };
+    case "frame":
+      return { width: 1380, height: 860, stroke: "#20416f", fill: "rgba(255,255,255,0.9)", lineWidth: 2 };
+    case "door":
+      return { width: 120, height: 90, stroke: "#22a06b", fill: "transparent", lineWidth: 2 };
+    case "exit":
+      return { width: 140, height: 56, stroke: "#1e9e68", fill: "#e8fbf2", lineWidth: 2 };
+    case "extinguisher":
+      return { width: 52, height: 70, stroke: "#cc4f57", fill: "#fff1f2", lineWidth: 2 };
+    case "hydrant":
+      return { width: 52, height: 52, stroke: "#c83d48", fill: "#fff1f2", lineWidth: 2 };
+    case "text":
+      return { width: 220, height: 40, stroke: "#4a5b78", fill: "transparent", lineWidth: 0 };
+    default:
+      return { width: 260, height: 140, stroke: "#4564d1", fill: "rgba(232,238,255,0.72)", lineWidth: 2 };
+  }
+}
+
+function normalizeDrawingElementMetadata(metadata = {}, type = "rectangle") {
+  const normalized = {
+    subtitle: normalizeText(metadata?.subtitle).slice(0, 180),
+    footer: normalizeText(metadata?.footer).slice(0, 180),
+    note: normalizeText(metadata?.note).slice(0, 240),
+    openDirection: ["left", "right"].includes(normalizeText(metadata?.openDirection).toLowerCase())
+      ? normalizeText(metadata?.openDirection).toLowerCase()
+      : "left",
+  };
+
+  if (type === "frame") {
+    normalized.footer = normalized.footer || "Plan evakuacije i spasavanja";
+  }
+
+  return normalized;
+}
+
+function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = []) {
+  const allowedLayerIds = new Set((layers ?? []).map((layer) => String(layer.id)));
+  const defaultLayerId = allowedLayerIds.has(String(fallbackLayerId))
+    ? String(fallbackLayerId)
+    : (layers?.[0]?.id ? String(layers[0].id) : "");
+  const allowedTypes = new Set(["line", "wall", "rectangle", "frame", "door", "exit", "extinguisher", "hydrant", "text"]);
+
+  return (Array.isArray(elements) ? elements : []).map((entry) => {
+    const type = allowedTypes.has(normalizeText(entry?.type).toLowerCase())
+      ? normalizeText(entry?.type).toLowerCase()
+      : "rectangle";
+    const defaults = getDrawingElementDefaults(type);
+    const x = normalizeDrawingCoordinate(entry?.x, 160);
+    const y = normalizeDrawingCoordinate(entry?.y, 160);
+    const width = Math.max(0, normalizeDrawingCoordinate(entry?.width, defaults.width));
+    const height = Math.max(0, normalizeDrawingCoordinate(entry?.height, defaults.height));
+    const x2 = normalizeDrawingCoordinate(entry?.x2, x + defaults.width);
+    const y2 = normalizeDrawingCoordinate(entry?.y2, y + defaults.height);
+
+    return {
+      id: normalizeId(entry?.id) || crypto.randomUUID(),
+      type,
+      layerId: allowedLayerIds.has(String(entry?.layerId)) ? String(entry.layerId) : defaultLayerId,
+      x,
+      y,
+      x2,
+      y2,
+      width,
+      height,
+      rotation: Math.max(-360, Math.min(360, normalizeDrawingCoordinate(entry?.rotation, 0))),
+      stroke: normalizeDrawingColor(entry?.stroke, defaults.stroke),
+      fill: entry?.fill === "transparent"
+        ? "transparent"
+        : normalizeDrawingColor(entry?.fill, defaults.fill === "transparent" ? "#ffffff" : defaults.fill),
+      lineWidth: Math.max(0, Math.min(24, normalizeDrawingCoordinate(entry?.lineWidth, defaults.lineWidth))),
+      label: normalizeText(entry?.label || entry?.text).slice(0, 220),
+      metadata: normalizeDrawingElementMetadata(entry?.metadata, type),
+    };
+  }).filter((entry) => entry.layerId);
+}
+
+function normalizeDrawingViewport(viewport = {}, fallback = {}) {
+  return {
+    zoom: Math.max(0.5, Math.min(2.5, normalizeFiniteNumber(viewport?.zoom, fallback?.zoom ?? 1))),
+    gridSize: Math.max(8, Math.min(80, Math.round(normalizeFiniteNumber(viewport?.gridSize, fallback?.gridSize ?? 20)))),
+    canvasWidth: Math.max(960, Math.min(2400, Math.round(normalizeFiniteNumber(viewport?.canvasWidth, fallback?.canvasWidth ?? 1600)))),
+    canvasHeight: Math.max(680, Math.min(1800, Math.round(normalizeFiniteNumber(viewport?.canvasHeight, fallback?.canvasHeight ?? 1000)))),
+    snapToGrid: normalizeBoolean(viewport?.snapToGrid, fallback?.snapToGrid ?? true),
+    showGrid: normalizeBoolean(viewport?.showGrid, fallback?.showGrid ?? true),
+  };
+}
+
+function hydrateDrawingProjectCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const requestedCompanyId = hasOwn(input, "companyId")
+    ? normalizeId(input.companyId)
+    : normalizeId(current?.companyId);
+  const requestedLocationId = hasOwn(input, "locationId")
+    ? normalizeId(input.locationId)
+    : normalizeId(current?.locationId);
+
+  let company = requestedCompanyId ? findOfferCompany(state, requestedCompanyId) : null;
+  if (requestedCompanyId && !company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  let location = requestedLocationId
+    ? findOfferLocation(state, requestedLocationId, requestedCompanyId || current?.companyId || "")
+    : null;
+
+  if (!location && requestedLocationId) {
+    location = (state.locations ?? []).find((item) => item.id === requestedLocationId) ?? null;
+  }
+
+  if (requestedLocationId && !location) {
+    throw new Error("Odabrana lokacija ne postoji.");
+  }
+
+  if (!company && location?.companyId) {
+    company = findOfferCompany(state, location.companyId);
+  }
+
+  const companyId = company?.id ?? "";
+  const locationId = location?.id ?? "";
+  const normalizedLayers = hasOwn(input, "layers")
+    ? normalizeDrawingLayers(input.layers, current?.layers ?? [])
+    : normalizeDrawingLayers(current?.layers ?? []);
+  const normalizedElements = hasOwn(input, "elements")
+    ? normalizeDrawingElements(input.elements, normalizedLayers[0]?.id, normalizedLayers)
+    : normalizeDrawingElements(current?.elements ?? [], normalizedLayers[0]?.id, normalizedLayers);
+  const referenceDocuments = hasOwn(input, "referenceDocuments")
+    ? normalizeAttachmentDocuments(input.referenceDocuments)
+    : normalizeAttachmentDocuments(current?.referenceDocuments ?? []);
+  const requestedActiveReferenceId = hasOwn(input, "activeReferenceDocumentId")
+    ? normalizeId(input.activeReferenceDocumentId)
+    : normalizeId(current?.activeReferenceDocumentId);
+  const activeReferenceDocumentId = referenceDocuments.some((document) => String(document.id) === requestedActiveReferenceId)
+    ? requestedActiveReferenceId
+    : (referenceDocuments[0]?.id ?? "");
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company?.name ?? "",
+    companyOib: company?.oib ?? "",
+    headquarters: company?.headquarters ?? "",
+    locationId,
+    locationName: location?.name ?? "",
+    region: location?.region ?? "",
+    coordinates: location?.coordinates ?? "",
+    title: hasOwn(input, "title") ? requireText(input.title, "Naziv crteza") : requireText(current?.title, "Naziv crteza"),
+    drawingType: hasOwn(input, "drawingType")
+      ? normalizeDrawingProjectType(input.drawingType)
+      : normalizeDrawingProjectType(current?.drawingType, "custom"),
+    status: hasOwn(input, "status")
+      ? normalizeDrawingProjectStatus(input.status)
+      : normalizeDrawingProjectStatus(current?.status, "draft"),
+    scaleLabel: hasOwn(input, "scaleLabel") ? normalizeText(input.scaleLabel).slice(0, 48) : normalizeText(current?.scaleLabel).slice(0, 48),
+    note: hasOwn(input, "note") ? normalizeText(input.note) : normalizeText(current?.note),
+    referenceDocuments,
+    activeReferenceDocumentId,
+    layers: normalizedLayers,
+    elements: normalizedElements,
+    viewport: hasOwn(input, "viewport")
+      ? normalizeDrawingViewport(input.viewport, current?.viewport)
+      : normalizeDrawingViewport(current?.viewport),
+    createdByUserId: hasOwn(input, "createdByUserId") ? normalizeText(input.createdByUserId) : normalizeText(current?.createdByUserId),
+    createdByLabel: hasOwn(input, "createdByLabel") ? normalizeText(input.createdByLabel) : normalizeText(current?.createdByLabel),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function hydratePurchaseOrderCore({
   current = null,
   state,
@@ -5320,6 +5621,36 @@ export function updateContract(current, patch, state, now = isoNow) {
   });
 }
 
+export function createDrawingProject(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const project = hydrateDrawingProjectCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...project,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateDrawingProject(current, patch, state, now = isoNow) {
+  return hydrateDrawingProjectCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createTodoTaskComment(
   currentTask,
   input,
@@ -5567,6 +5898,43 @@ export function filterContracts(
   });
 }
 
+export function filterDrawingProjects(
+  projects,
+  { query = "", status = "all", companyId = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedCompanyId = normalizeText(companyId);
+
+  return (projects ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (normalizedCompanyId && normalizedCompanyId !== "all" && String(item.companyId) !== normalizedCompanyId) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.companyName,
+      item.companyOib,
+      item.locationName,
+      item.scaleLabel,
+      item.note,
+      item.drawingType,
+      ...(item.layers ?? []).flatMap((layer) => [layer.name, layer.color]),
+      ...(item.referenceDocuments ?? []).map((document) => document.fileName),
+      ...(item.elements ?? []).flatMap((element) => [element.type, element.label, element.metadata?.subtitle, element.metadata?.footer]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function sortOffers(offers) {
   return [...offers].sort((left, right) => {
     const leftRank = OFFER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
@@ -5652,6 +6020,19 @@ export function sortContracts(contracts) {
 
     if (!leftDate && rightDate) {
       return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortDrawingProjects(projects) {
+  return [...(projects ?? [])].sort((left, right) => {
+    const leftRank = DRAWING_PROJECT_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = DRAWING_PROJECT_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
     }
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));

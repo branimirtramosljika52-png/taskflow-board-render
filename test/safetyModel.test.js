@@ -13,6 +13,7 @@ import {
   createAbsenceEntry,
   createCompany,
   createContract,
+  createDrawingProject,
   createContractTemplate,
   createDashboardWidget,
   createDocumentTemplate,
@@ -33,6 +34,7 @@ import {
   deriveOfferInitials,
   filterAbsenceEntries,
   filterContracts,
+  filterDrawingProjects,
   filterContractTemplates,
   filterReminders,
   filterDocumentTemplates,
@@ -62,6 +64,7 @@ import {
   normalizeWorkOrderMeasurementSheet,
   parseCoordinates,
   sortContracts,
+  sortDrawingProjects,
   sortContractTemplates,
   sortReminders,
   sortDashboardWidgets,
@@ -81,6 +84,7 @@ import {
   updateDashboardWidget,
   updateDocumentTemplate,
   updateCompany,
+  updateDrawingProject,
   updateLegalFramework,
   updateLocation,
   updateMeasurementEquipmentItem,
@@ -135,6 +139,7 @@ function buildState() {
     offers: [],
     purchaseOrders: [],
     contracts: [],
+    drawings: [],
     contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
@@ -2014,6 +2019,155 @@ test("contracts generate numbering, link company offers and keep annexes", () =>
   assert.deepEqual(
     sortContracts([updatedContract, createdContract, existingContract]).map((item) => item.id),
     ["contract-existing", "contract-2", "contract-3"],
+  );
+});
+
+test("drawing projects keep references, layers and CAD elements through create and update", () => {
+  const state = buildState();
+
+  const created = createDrawingProject(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Plan evakuacije · Jankomir",
+      drawingType: "evacuation",
+      status: "active",
+      scaleLabel: "M 1:100",
+      note: "Glavni plan za prizemlje.",
+      referenceDocuments: [
+        {
+          id: "drawing-ref-1",
+          fileName: "tlocrt-prizemlje.pdf",
+          fileType: "application/pdf",
+          fileSize: 4096,
+          dataUrl: "data:application/pdf;base64,AAA",
+        },
+      ],
+      activeReferenceDocumentId: "drawing-ref-1",
+      layers: [
+        {
+          id: "layer-walls",
+          name: "Zidovi",
+          color: "#203a62",
+          visible: true,
+          locked: false,
+          lineWidth: 8,
+          lineStyle: "solid",
+        },
+        {
+          id: "layer-safety",
+          name: "Sigurnosni simboli",
+          color: "#d64d50",
+          visible: true,
+          locked: false,
+          lineWidth: 2,
+          lineStyle: "solid",
+        },
+      ],
+      elements: [
+        {
+          id: "wall-1",
+          type: "wall",
+          layerId: "layer-walls",
+          x: 100,
+          y: 120,
+          x2: 520,
+          y2: 120,
+          lineWidth: 12,
+        },
+        {
+          id: "door-1",
+          type: "door",
+          layerId: "layer-safety",
+          x: 240,
+          y: 120,
+          width: 120,
+          height: 90,
+          label: "Ulazna vrata",
+          metadata: {
+            openDirection: "right",
+          },
+        },
+      ],
+      viewport: {
+        zoom: 1.15,
+        gridSize: 24,
+        canvasWidth: 1800,
+        canvasHeight: 1200,
+        snapToGrid: true,
+        showGrid: true,
+      },
+    },
+    state,
+    () => "drawing-1",
+    () => "2026-04-12T08:00:00.000Z",
+  );
+
+  const updated = updateDrawingProject(
+    created,
+    {
+      title: "Plan evakuacije · Jankomir A",
+      status: "draft",
+      note: "Dodana nova vrata i okvir.",
+      elements: [
+        ...created.elements,
+        {
+          id: "frame-1",
+          type: "frame",
+          layerId: "layer-safety",
+          x: 40,
+          y: 40,
+          width: 1480,
+          height: 920,
+          label: "Plan evakuacije i spasavanja",
+          metadata: {
+            subtitle: "Objekt A",
+          },
+        },
+      ],
+    },
+    {
+      ...state,
+      drawings: [created],
+    },
+    () => "2026-04-12T09:00:00.000Z",
+  );
+
+  const archived = createDrawingProject(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Arhiva",
+      drawingType: "custom",
+      status: "archived",
+    },
+    {
+      ...state,
+      drawings: [updated],
+    },
+    () => "drawing-2",
+    () => "2026-04-11T08:00:00.000Z",
+  );
+
+  const filtered = filterDrawingProjects([updated], {
+    query: "objekt a",
+    status: "draft",
+    companyId: "company-1",
+  });
+
+  assert.equal(created.companyName, "Acme d.o.o.");
+  assert.equal(created.locationName, "Pogon Jankomir");
+  assert.equal(created.referenceDocuments[0].fileName, "tlocrt-prizemlje.pdf");
+  assert.equal(created.layers.length, 2);
+  assert.equal(created.elements[1].metadata.openDirection, "right");
+  assert.equal(updated.elements.length, 3);
+  assert.equal(updated.elements[2].type, "frame");
+  assert.equal(filtered.length, 1);
+  assert.deepEqual(
+    sortDrawingProjects([archived, updated]).map((item) => item.id),
+    ["drawing-1", "drawing-2"],
   );
 });
 

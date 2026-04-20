@@ -8,6 +8,7 @@ import {
   createCompany,
   createContract,
   createContractTemplate,
+  createDrawingProject,
   createDashboardWidget,
   createDocumentTemplate,
   createLearningTest,
@@ -36,6 +37,7 @@ import {
   updateCompany,
   updateContract,
   updateContractTemplate,
+  updateDrawingProject,
   updateDashboardWidget,
   updateAbsenceBalanceEntry,
   updateAbsenceEntry,
@@ -1514,6 +1516,43 @@ function mapContractEntry(row = {}) {
   };
 }
 
+function mapDrawingProjectEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const id = dbString(row.id);
+  if (!organizationId || !id) {
+    return null;
+  }
+
+  return {
+    id,
+    organizationId,
+    companyId: dbString(row.company_id),
+    companyName: dbString(row.company_name),
+    companyOib: dbString(row.company_oib),
+    headquarters: dbString(row.headquarters),
+    locationId: dbString(row.location_id),
+    locationName: dbString(row.location_name),
+    region: dbString(row.region),
+    coordinates: dbString(row.coordinates),
+    title: dbString(row.title),
+    drawingType: dbString(row.drawing_type) || "custom",
+    status: dbString(row.status) || "draft",
+    scaleLabel: dbString(row.scale_label),
+    note: dbString(row.note),
+    referenceDocuments: parseJsonArray(row.reference_documents_json)
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.fileName && document.dataUrl),
+    activeReferenceDocumentId: dbString(row.active_reference_document_id),
+    layers: parseJsonArray(row.layers_json),
+    elements: parseJsonArray(row.elements_json),
+    viewport: parseJsonObject(row.viewport_json),
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: dbString(row.created_by_label),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -2834,6 +2873,28 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapContractEntry(row))
     .filter(Boolean);
 
+  const [drawingRows] = await connection.query(`
+    SELECT id, organization_id, company_id, company_name, company_oib, headquarters,
+           location_id, location_name, region, coordinates, title, drawing_type, status,
+           scale_label, note, reference_documents_json, active_reference_document_id,
+           layers_json, elements_json, viewport_json,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_drawings
+    ORDER BY
+      CASE status
+        WHEN 'draft' THEN 0
+        WHEN 'active' THEN 1
+        WHEN 'archived' THEN 2
+        ELSE 9
+      END ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const drawings = drawingRows
+    .map((row) => mapDrawingProjectEntry(row))
+    .filter(Boolean);
+
   const [vehicleSettingsRows] = await connection.query(`
     SELECT organization_id, notification_rules_json, created_at, updated_at
     FROM web_vehicle_settings
@@ -2972,6 +3033,7 @@ async function fetchSnapshotFromConnection(connection) {
     purchaseOrderTemplateSettings,
     contracts,
     contractTemplates,
+    drawings,
     vehicles,
     legalFrameworks,
     documentTemplates,
@@ -3068,6 +3130,7 @@ export class InMemorySafetyRepository {
       purchaseOrders: [],
       contracts: [],
       contractTemplates: [],
+      drawings: [],
       vehicles: [],
       legalFrameworks: [],
       documentTemplates: [],
@@ -3210,6 +3273,16 @@ export class InMemorySafetyRepository {
         linkedOffers: (item.linkedOffers ?? []).map((entry) => ({ ...entry })),
         annexes: (item.annexes ?? []).map((entry) => ({ ...entry })),
       })),
+      drawings: this.snapshot.drawings.map((item) => ({
+        ...item,
+        referenceDocuments: (item.referenceDocuments ?? []).map((document) => ({ ...document })),
+        layers: (item.layers ?? []).map((layer) => ({ ...layer })),
+        elements: (item.elements ?? []).map((element) => ({
+          ...element,
+          metadata: { ...(element.metadata ?? {}) },
+        })),
+        viewport: { ...(item.viewport ?? {}) },
+      })),
       contractTemplates: this.snapshot.contractTemplates.map((item) => ({
         ...item,
         referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
@@ -3332,9 +3405,10 @@ export class InMemorySafetyRepository {
     const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
     const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.companyId === id);
     const hasContracts = this.snapshot.contracts.some((item) => item.companyId === id);
+    const hasDrawings = this.snapshot.drawings.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasContracts) {
-      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima ili radnim nalozima.");
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasContracts || hasDrawings) {
+      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
     }
 
     this.snapshot.companies = this.snapshot.companies.filter((item) => item.id !== id);
@@ -3371,9 +3445,10 @@ export class InMemorySafetyRepository {
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.locationId === id);
     const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.locationId === id);
+    const hasDrawings = this.snapshot.drawings.some((item) => item.locationId === id);
 
-    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders) {
-      throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama ili radnim nalozima.");
+    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasDrawings) {
+      throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima ili radnim nalozima.");
     }
 
     this.snapshot.locations = this.snapshot.locations.filter((item) => item.id !== id);
@@ -3957,6 +4032,38 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.contracts.length;
     this.snapshot.contracts = this.snapshot.contracts.filter((item) => item.id !== id);
     return this.snapshot.contracts.length !== before;
+  }
+
+  async createDrawingProject(input, actor = null) {
+    const project = createDrawingProject({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.drawings = [project, ...this.snapshot.drawings];
+    return project;
+  }
+
+  async updateDrawingProject(id, patch, actor = null) {
+    const current = this.snapshot.drawings.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateDrawingProject(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.drawings = this.snapshot.drawings.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteDrawingProject(id) {
+    const before = this.snapshot.drawings.length;
+    this.snapshot.drawings = this.snapshot.drawings.filter((item) => item.id !== id);
+    return this.snapshot.drawings.length !== before;
   }
 
   async createVehicle(input) {
@@ -5037,6 +5144,37 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_drawings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NULL,
+        company_name VARCHAR(180) NOT NULL DEFAULT '',
+        company_oib VARCHAR(32) NOT NULL DEFAULT '',
+        headquarters VARCHAR(180) NOT NULL DEFAULT '',
+        location_id INT NULL,
+        location_name VARCHAR(180) NOT NULL DEFAULT '',
+        region VARCHAR(180) NOT NULL DEFAULT '',
+        coordinates VARCHAR(160) NOT NULL DEFAULT '',
+        title VARCHAR(180) NOT NULL,
+        drawing_type VARCHAR(48) NOT NULL DEFAULT 'custom',
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        scale_label VARCHAR(48) NOT NULL DEFAULT '',
+        note TEXT NULL,
+        reference_documents_json LONGTEXT NULL,
+        active_reference_document_id VARCHAR(64) NOT NULL DEFAULT '',
+        layers_json LONGTEXT NULL,
+        elements_json LONGTEXT NULL,
+        viewport_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_drawings_org_status (organization_id, status),
+        INDEX idx_web_drawings_company (company_id),
+        INDEX idx_web_drawings_location (location_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_vehicles (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -5824,9 +5962,13 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_contracts WHERE company_id = ?",
         [Number(id)],
       );
+      const [[drawingCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_drawings WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -6015,10 +6157,14 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_purchase_orders WHERE location_id = ?",
         [Number(id)],
       );
+      const [[drawingCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_drawings WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || drawingCount.total > 0) {
         await connection.rollback();
-        throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama ili radnim nalozima.");
+        throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima ili radnim nalozima.");
       }
 
       await connection.query("DELETE FROM web_location_contacts WHERE location_id = ?", [Number(id)]);
@@ -7710,6 +7856,185 @@ export class MySqlSafetyRepository {
     try {
       const [result] = await connection.query("DELETE FROM web_contracts WHERE id = ?", [Number(id)]);
       return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createDrawingProject(input, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createDrawingProject({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+      const preparedReferences = await prepareStoredAttachmentDocuments(draft.referenceDocuments ?? [], {
+        keyPrefix: `drawings/${draft.organizationId}/references`,
+        currentDocuments: [],
+      });
+      staleDocuments = preparedReferences.staleDocuments ?? [];
+      const nextReferenceDocuments = preparedReferences.nextDocuments ?? [];
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_drawings
+            (organization_id, company_id, company_name, company_oib, headquarters,
+             location_id, location_name, region, coordinates, title, drawing_type, status,
+             scale_label, note, reference_documents_json, active_reference_document_id,
+             layers_json, elements_json, viewport_json, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          parseNullableInteger(draft.companyId),
+          draft.companyName,
+          draft.companyOib,
+          draft.headquarters,
+          parseNullableInteger(draft.locationId),
+          draft.locationName,
+          draft.region,
+          draft.coordinates,
+          draft.title,
+          draft.drawingType,
+          draft.status,
+          draft.scaleLabel,
+          draft.note,
+          JSON.stringify(nextReferenceDocuments),
+          draft.activeReferenceDocumentId,
+          JSON.stringify(draft.layers ?? []),
+          JSON.stringify(draft.elements ?? []),
+          JSON.stringify(draft.viewport ?? {}),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...draft,
+        id: String(result.insertId),
+        referenceDocuments: nextReferenceDocuments,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateDrawingProject(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.drawings.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateDrawingProject(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+      }, snapshot, () => new Date().toISOString());
+      const preparedReferences = await prepareStoredAttachmentDocuments(next.referenceDocuments ?? [], {
+        keyPrefix: `drawings/${next.organizationId}/references`,
+        currentDocuments: current.referenceDocuments ?? [],
+      });
+      staleDocuments = preparedReferences.staleDocuments ?? [];
+      const nextReferenceDocuments = preparedReferences.nextDocuments ?? [];
+
+      await connection.query(
+        `
+          UPDATE web_drawings
+          SET company_id = ?, company_name = ?, company_oib = ?, headquarters = ?,
+              location_id = ?, location_name = ?, region = ?, coordinates = ?,
+              title = ?, drawing_type = ?, status = ?, scale_label = ?, note = ?,
+              reference_documents_json = ?, active_reference_document_id = ?,
+              layers_json = ?, elements_json = ?, viewport_json = ?,
+              created_by_user_id = ?, created_by_label = ?
+          WHERE id = ?
+        `,
+        [
+          parseNullableInteger(next.companyId),
+          next.companyName,
+          next.companyOib,
+          next.headquarters,
+          parseNullableInteger(next.locationId),
+          next.locationName,
+          next.region,
+          next.coordinates,
+          next.title,
+          next.drawingType,
+          next.status,
+          next.scaleLabel,
+          next.note,
+          JSON.stringify(nextReferenceDocuments),
+          next.activeReferenceDocumentId,
+          JSON.stringify(next.layers ?? []),
+          JSON.stringify(next.elements ?? []),
+          JSON.stringify(next.viewport ?? {}),
+          parseNullableInteger(next.createdByUserId),
+          next.createdByLabel,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        referenceDocuments: nextReferenceDocuments,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteDrawingProject(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query(
+        `
+          SELECT reference_documents_json
+          FROM web_drawings
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [Number(id)],
+      );
+      staleDocuments = parseJsonArray(rows[0]?.reference_documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.storageKey);
+
+      const [result] = await connection.query("DELETE FROM web_drawings WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

@@ -1552,6 +1552,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
+    const drawingProjectMatch = url.pathname.match(/^\/api\/drawings\/([^/]+)$/);
     const contractWordExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-word$/);
     const contractPdfExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-pdf$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
@@ -2003,6 +2004,24 @@ async function handleApiRequest(request, response, url) {
       assertContractTemplatePayloadInScope(scopedSnapshot, body);
       assertOfferIdsPayloadInScope(scopedSnapshot, body);
       await domainRepository.createContract({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/drawings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati crtezima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createDrawingProject({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
@@ -3234,6 +3253,44 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.contracts ?? [], contractMatch[1], "Ugovor nije pronađen.");
       await domainRepository.deleteContract(contractMatch[1]);
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (drawingProjectMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati crtezima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.drawings ?? [], drawingProjectMatch[1], "Crtez nije pronaden.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateDrawingProject(drawingProjectMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Crtez nije pronaden.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (drawingProjectMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati crtezima.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.drawings ?? [], drawingProjectMatch[1], "Crtez nije pronaden.");
+      await domainRepository.deleteDrawingProject(drawingProjectMatch[1]);
       await writeSnapshot(response, user, request);
       return true;
     }

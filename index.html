@@ -460,6 +460,16 @@
                   </span>
                   <strong>Periodics</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="drawing-studio">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M4 17.5 16.5 5a2.1 2.1 0 0 1 3 3L7 20.5H4Z"></path>
+                      <path d="M13 8l3 3"></path>
+                      <path d="M4 20.5h16"></path>
+                    </svg>
+                  </span>
+                  <strong>Drawing Studio</strong>
+                </button>
               </div>
             </section>
 
@@ -4605,6 +4615,251 @@
                   <p id="periodics-equipment-empty" class="helper-copy" hidden>Nema rokova za mjernu opremu po trenutnom filtru.</p>
                 </div>
               </section>
+            </section>
+
+            <section id="drawing-studio-module" class="drawing-studio-module" hidden>
+              <div class="drawing-studio-layout">
+                <section class="panel drawing-studio-list-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Crteži</p>
+                      <h3>Drawing Studio</h3>
+                    </div>
+                    <div class="offers-panel-actions">
+                      <button id="drawing-open-form" type="button" class="primary-button">+ Novi crtež</button>
+                    </div>
+                  </div>
+
+                  <div class="offers-filters drawing-studio-filters">
+                    <label class="field">
+                      <span>Pretraga</span>
+                      <input id="drawing-search" type="search" placeholder="Naziv, tvrtka, lokacija, layer, DWG/PDF..." />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="drawing-filter-status"></select>
+                    </label>
+                    <label class="field">
+                      <span>Tvrtka</span>
+                      <select id="drawing-filter-company"></select>
+                    </label>
+                  </div>
+
+                  <div id="drawing-list" class="drawing-project-list"></div>
+                  <p id="drawing-empty" class="helper-copy" hidden>Nema spremljenih crteža u aktivnoj organizaciji.</p>
+                </section>
+
+                <section class="panel drawing-studio-workspace-panel">
+                  <div class="section-heading offers-section-heading drawing-studio-workspace-heading">
+                    <div>
+                      <p class="section-kicker">CAD workspace</p>
+                      <h3 id="drawing-editor-title">Novi crtež</h3>
+                    </div>
+                    <div class="drawing-studio-head-actions">
+                      <button id="drawing-reset" type="button" class="ghost-button">Novi</button>
+                      <button id="drawing-delete" type="button" class="ghost-button card-danger" hidden>Obriši</button>
+                    </div>
+                  </div>
+
+                  <form id="drawing-form" class="drawing-studio-form">
+                    <input id="drawing-id" type="hidden" />
+
+                    <div class="form-grid drawing-studio-meta-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv crteža</span>
+                        <input id="drawing-title" maxlength="180" placeholder="Plan evakuacije · Objekt A · Prizemlje" required />
+                      </label>
+                      <label class="field">
+                        <span>Tvrtka</span>
+                        <select id="drawing-company-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Lokacija</span>
+                        <select id="drawing-location-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Vrsta crteža</span>
+                        <select id="drawing-type"></select>
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="drawing-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Mjerilo</span>
+                        <input id="drawing-scale" maxlength="48" placeholder="M 1:100" />
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="drawing-note" rows="2" placeholder="Podloga za tlocrt, faza razrade, posebne upute za plan..."></textarea>
+                    </label>
+
+                    <div class="drawing-studio-shell">
+                      <aside class="drawing-studio-sidebar is-left">
+                        <section class="drawing-studio-card">
+                          <div class="drawing-studio-card-head">
+                            <div>
+                              <p class="section-kicker">Alati</p>
+                              <h4>CAD alati</h4>
+                            </div>
+                          </div>
+                          <div id="drawing-tool-buttons" class="drawing-tool-buttons">
+                            <button type="button" class="drawing-tool-button is-active" data-drawing-tool="select">Odabir</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="line">Linija</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="wall">Zid</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="rectangle">Pravokutnik</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="frame">Okvir</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="door">Vrata</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="exit">Exit</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="extinguisher">Aparat</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="hydrant">Hidrant</button>
+                            <button type="button" class="drawing-tool-button" data-drawing-tool="text">Tekst</button>
+                          </div>
+                        </section>
+
+                        <section class="drawing-studio-card">
+                          <div class="drawing-studio-card-head">
+                            <div>
+                              <p class="section-kicker">Reference</p>
+                              <h4>DWG / PDF podloga</h4>
+                            </div>
+                            <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
+                          </div>
+                          <input id="drawing-reference-file-input" type="file" accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg,.webp,.svg" multiple hidden />
+                          <div id="drawing-reference-list" class="drawing-reference-list"></div>
+                          <p id="drawing-reference-empty" class="helper-copy">Dodaj DWG, PDF ili sliku kao podlogu ispod layera.</p>
+                        </section>
+
+                        <section class="drawing-studio-card">
+                          <div class="drawing-studio-card-head">
+                            <div>
+                              <p class="section-kicker">Layeri</p>
+                              <h4>Slojevi crteža</h4>
+                            </div>
+                            <button id="drawing-add-layer" type="button" class="ghost-button">+ Layer</button>
+                          </div>
+                          <div id="drawing-layer-list" class="drawing-layer-list"></div>
+                        </section>
+                      </aside>
+
+                      <section class="drawing-studio-canvas-column">
+                        <div class="drawing-stage-toolbar">
+                          <div class="drawing-stage-toolbar-group">
+                            <button id="drawing-zoom-out" type="button" class="ghost-button">-</button>
+                            <label class="field drawing-zoom-field">
+                              <span>Zoom</span>
+                              <input id="drawing-zoom" type="range" min="0.5" max="2.5" step="0.05" value="1" />
+                            </label>
+                            <button id="drawing-zoom-in" type="button" class="ghost-button">+</button>
+                          </div>
+                          <div class="drawing-stage-toolbar-group">
+                            <label class="field drawing-grid-field">
+                              <span>Grid</span>
+                              <input id="drawing-grid-size" type="number" min="8" max="80" step="1" value="20" />
+                            </label>
+                            <label class="checkbox-field">
+                              <input id="drawing-snap-toggle" type="checkbox" checked />
+                              <span>Snap</span>
+                            </label>
+                            <label class="checkbox-field">
+                              <input id="drawing-grid-toggle" type="checkbox" checked />
+                              <span>Prikaži grid</span>
+                            </label>
+                          </div>
+                          <div class="drawing-stage-toolbar-group">
+                            <button id="drawing-save" type="submit" class="primary-button">Spremi crtež</button>
+                          </div>
+                        </div>
+
+                        <div id="drawing-stage-scroll" class="drawing-stage-scroll">
+                          <div id="drawing-stage" class="drawing-stage">
+                            <div id="drawing-stage-reference" class="drawing-stage-reference"></div>
+                            <svg id="drawing-stage-svg" class="drawing-stage-svg" viewBox="0 0 1600 1000" aria-label="Drawing stage"></svg>
+                          </div>
+                        </div>
+
+                        <p id="drawing-stage-helper" class="helper-copy drawing-stage-helper">
+                          PDF i DWG služe kao podloga, a na layerima iznad dodaješ zidove, vrata, simbole i okvire.
+                        </p>
+                      </section>
+
+                      <aside class="drawing-studio-sidebar is-right">
+                        <section class="drawing-studio-card">
+                          <div class="drawing-studio-card-head">
+                            <div>
+                              <p class="section-kicker">Inspector</p>
+                              <h4 id="drawing-selected-title">Bez odabira</h4>
+                            </div>
+                          </div>
+
+                          <div class="form-grid drawing-inspector-grid">
+                            <label class="field">
+                              <span>Layer</span>
+                              <select id="drawing-selected-layer"></select>
+                            </label>
+                            <label class="field">
+                              <span>Labela</span>
+                              <input id="drawing-selected-label" maxlength="220" placeholder="Naziv elementa" />
+                            </label>
+                            <label class="field">
+                              <span>X</span>
+                              <input id="drawing-selected-x" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Y</span>
+                              <input id="drawing-selected-y" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>X2</span>
+                              <input id="drawing-selected-x2" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Y2</span>
+                              <input id="drawing-selected-y2" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Širina</span>
+                              <input id="drawing-selected-width" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Visina</span>
+                              <input id="drawing-selected-height" type="number" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Linija</span>
+                              <input id="drawing-selected-stroke" type="color" value="#4564d1" />
+                            </label>
+                            <label class="field">
+                              <span>Ispuna</span>
+                              <input id="drawing-selected-fill" type="color" value="#e8efff" />
+                            </label>
+                            <label class="field">
+                              <span>Debljina</span>
+                              <input id="drawing-selected-line-width" type="number" min="0" max="24" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Podnaslov</span>
+                              <input id="drawing-selected-subtitle" maxlength="180" placeholder="Objekt / zona" />
+                            </label>
+                            <label class="field field-span-full">
+                              <span>Footer / opis</span>
+                              <textarea id="drawing-selected-footer" rows="2" placeholder="Opis okvira, bloka ili dodatne napomene..."></textarea>
+                            </label>
+                          </div>
+
+                          <div class="form-actions">
+                            <button id="drawing-delete-selected" type="button" class="ghost-button card-danger">Makni element</button>
+                          </div>
+                        </section>
+                      </aside>
+                    </div>
+
+                    <p id="drawing-error" class="form-error" aria-live="polite"></p>
+                  </form>
+                </section>
+              </div>
             </section>
 
             <section id="legal-framework-module" class="legal-framework-module" hidden>

@@ -16,6 +16,8 @@
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
   CONTRACT_STATUS_OPTIONS,
   CONTRACT_TEMPLATE_STATUS_OPTIONS,
+  DRAWING_PROJECT_STATUS_OPTIONS,
+  DRAWING_PROJECT_TYPE_OPTIONS,
   LEGAL_FRAMEWORK_STATUS_OPTIONS,
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
   MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
@@ -88,9 +90,13 @@
   createLearningTest,
   filterContracts,
   filterContractTemplates,
+  filterDrawingProjects,
   updateLearningTest,
   sortContracts,
   sortContractTemplates,
+  createDrawingProject,
+  sortDrawingProjects,
+  updateDrawingProject,
   updateDashboardWidget,
 } from "./safetyModel.js";
 import {
@@ -170,6 +176,10 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
   "RADILOSE",
 ]);
 const PERIODICS_MAX_RECORDS = 1000;
+const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
+const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
+const DRAWING_STAGE_DEFAULT_WIDTH = 1600;
+const DRAWING_STAGE_DEFAULT_HEIGHT = 1000;
 const PERIODICS_DUE_DATE_KEY_HINTS = Object.freeze([
   "VRIJEDIDO",
   "VRIJEDI",
@@ -765,6 +775,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Pregled periodicnih obveza, kontrola i ponavljajucih naloga za organizaciju i klijente.",
     chips: ["Cycles", "Recurring", "Service plans"],
   },
+  "drawing-studio": {
+    kicker: "Operations",
+    title: "Drawing Studio",
+    description: "CAD-like prostor za podloge, layere, blokove i izradu planova evakuacije, tlocrta i sigurnosnih shema.",
+    chips: ["DWG / PDF", "Layers", "Planovi"],
+  },
   contract: {
     kicker: "Company",
     title: "Contract",
@@ -817,6 +833,7 @@ const SIDEBAR_ITEM_CONFIG = {
   offers: { group: "operations", view: "module", module: "offers" },
   "purchase-orders": { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
+  "drawing-studio": { group: "operations", view: "module", module: "drawing-studio" },
   "list-company": { group: "company", view: "companies", focus: "list" },
   "add-company": { group: "company", view: "companies", focus: "form" },
   contract: { group: "company", view: "module", module: "contract" },
@@ -866,6 +883,7 @@ const SIDEBAR_ITEM_LABELS = {
   offers: "Offers",
   "purchase-orders": "Purchase Orders",
   periodics: "Periodics",
+  "drawing-studio": "Drawing Studio",
   "list-company": "List Company",
   "add-company": "Add New",
   contract: "Contract",
@@ -918,6 +936,7 @@ const state = {
   offers: [],
   purchaseOrders: [],
   contracts: [],
+  drawings: [],
   contractTemplates: [],
   vehicles: [],
   legalFrameworks: [],
@@ -959,6 +978,7 @@ const state = {
   activeMeasurementEquipmentId: "",
   activeSafetyAuthorizationId: "",
   activeAbsenceId: "",
+  activeDrawingId: "",
   activeDocumentTemplateId: "",
   userEditorOpen: false,
   companyEditorOpen: false,
@@ -1809,6 +1829,59 @@ const periodicsEquipmentWarning = document.querySelector("#periodics-equipment-w
 const periodicsEquipmentValid = document.querySelector("#periodics-equipment-valid");
 const periodicsEquipmentOverdueDot = document.querySelector("#periodics-equipment-overdue-dot");
 const periodicsEquipmentWarningDot = document.querySelector("#periodics-equipment-warning-dot");
+const drawingStudioModule = document.querySelector("#drawing-studio-module");
+const drawingList = document.querySelector("#drawing-list");
+const drawingEmpty = document.querySelector("#drawing-empty");
+const drawingSearchInput = document.querySelector("#drawing-search");
+const drawingFilterStatusInput = document.querySelector("#drawing-filter-status");
+const drawingFilterCompanyInput = document.querySelector("#drawing-filter-company");
+const drawingOpenFormButton = document.querySelector("#drawing-open-form");
+const drawingForm = document.querySelector("#drawing-form");
+const drawingIdInput = document.querySelector("#drawing-id");
+const drawingEditorTitle = document.querySelector("#drawing-editor-title");
+const drawingTitleInput = document.querySelector("#drawing-title");
+const drawingCompanyIdInput = document.querySelector("#drawing-company-id");
+const drawingLocationIdInput = document.querySelector("#drawing-location-id");
+const drawingTypeInput = document.querySelector("#drawing-type");
+const drawingStatusInput = document.querySelector("#drawing-status");
+const drawingScaleInput = document.querySelector("#drawing-scale");
+const drawingNoteInput = document.querySelector("#drawing-note");
+const drawingResetButton = document.querySelector("#drawing-reset");
+const drawingDeleteButton = document.querySelector("#drawing-delete");
+const drawingSaveButton = document.querySelector("#drawing-save");
+const drawingReferenceUploadButton = document.querySelector("#drawing-reference-upload");
+const drawingReferenceFileInput = document.querySelector("#drawing-reference-file-input");
+const drawingReferenceList = document.querySelector("#drawing-reference-list");
+const drawingReferenceEmpty = document.querySelector("#drawing-reference-empty");
+const drawingAddLayerButton = document.querySelector("#drawing-add-layer");
+const drawingLayerList = document.querySelector("#drawing-layer-list");
+const drawingToolButtons = Array.from(document.querySelectorAll("[data-drawing-tool]"));
+const drawingZoomOutButton = document.querySelector("#drawing-zoom-out");
+const drawingZoomInButton = document.querySelector("#drawing-zoom-in");
+const drawingZoomInput = document.querySelector("#drawing-zoom");
+const drawingGridSizeInput = document.querySelector("#drawing-grid-size");
+const drawingSnapToggle = document.querySelector("#drawing-snap-toggle");
+const drawingGridToggle = document.querySelector("#drawing-grid-toggle");
+const drawingStageScroll = document.querySelector("#drawing-stage-scroll");
+const drawingStage = document.querySelector("#drawing-stage");
+const drawingStageReference = document.querySelector("#drawing-stage-reference");
+const drawingStageSvg = document.querySelector("#drawing-stage-svg");
+const drawingSelectedTitle = document.querySelector("#drawing-selected-title");
+const drawingSelectedLayerInput = document.querySelector("#drawing-selected-layer");
+const drawingSelectedLabelInput = document.querySelector("#drawing-selected-label");
+const drawingSelectedXInput = document.querySelector("#drawing-selected-x");
+const drawingSelectedYInput = document.querySelector("#drawing-selected-y");
+const drawingSelectedX2Input = document.querySelector("#drawing-selected-x2");
+const drawingSelectedY2Input = document.querySelector("#drawing-selected-y2");
+const drawingSelectedWidthInput = document.querySelector("#drawing-selected-width");
+const drawingSelectedHeightInput = document.querySelector("#drawing-selected-height");
+const drawingSelectedStrokeInput = document.querySelector("#drawing-selected-stroke");
+const drawingSelectedFillInput = document.querySelector("#drawing-selected-fill");
+const drawingSelectedLineWidthInput = document.querySelector("#drawing-selected-line-width");
+const drawingSelectedSubtitleInput = document.querySelector("#drawing-selected-subtitle");
+const drawingSelectedFooterInput = document.querySelector("#drawing-selected-footer");
+const drawingDeleteSelectedButton = document.querySelector("#drawing-delete-selected");
+const drawingError = document.querySelector("#drawing-error");
 const vehiclesModule = document.querySelector("#vehicles-module");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
@@ -2476,6 +2549,24 @@ let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
 let learningTestQuestionGroupDrafts = [];
 let learningTestEditorStep = "group";
+let drawingProjectDraft = null;
+let drawingReferenceDrafts = [];
+let drawingLayerDrafts = [];
+let drawingElementDrafts = [];
+let drawingViewportDraft = {
+  zoom: 1,
+  gridSize: 20,
+  canvasWidth: 1600,
+  canvasHeight: 1000,
+  snapToGrid: true,
+  showGrid: true,
+};
+let drawingActiveReferenceId = "";
+let drawingSelectedElementId = "";
+let drawingActiveLayerId = "";
+let drawingCurrentTool = "select";
+let drawingPointerSession = null;
+let drawingDraftLayerCounter = 0;
 
 const companiesCount = document.querySelector("#companies-count");
 const locationsCount = document.querySelector("#locations-count");
@@ -4153,6 +4244,7 @@ function applySnapshot(payload) {
   state.offers = payload.offers ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
   state.contracts = payload.contracts ?? [];
+  state.drawings = payload.drawings ?? [];
   state.contractTemplates = payload.contractTemplates ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
@@ -4205,6 +4297,19 @@ function applySnapshot(payload) {
     && !state.contractTemplates.some((item) => String(item.id) === String(state.activeContractTemplateId))
   ) {
     state.activeContractTemplateId = state.contractTemplates[0]?.id ?? "";
+  }
+  if (state.activeDrawingId) {
+    const nextActiveDrawing = state.drawings.find((item) => String(item.id) === String(state.activeDrawingId)) ?? null;
+    if (nextActiveDrawing) {
+      if (!drawingProjectDraft || String(drawingProjectDraft.id) !== String(nextActiveDrawing.id)) {
+        loadDrawingDraft(nextActiveDrawing);
+      }
+    } else {
+      state.activeDrawingId = "";
+      if (drawingProjectDraft?.id) {
+        loadDrawingDraft(null);
+      }
+    }
   }
   if (!state.absenceEntries.some((item) => String(item.id) === String(state.activeAbsenceId))) {
     state.activeAbsenceId = "";
@@ -5609,6 +5714,7 @@ function renderModuleView() {
   const isOffersModule = state.activeModuleItem === "offers";
   const isContractModule = state.activeModuleItem === "contract";
   const isPeriodicsModule = state.activeModuleItem === "periodics";
+  const isDrawingStudioModule = state.activeModuleItem === "drawing-studio";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
@@ -5627,6 +5733,7 @@ function renderModuleView() {
     && !isServiceCatalogModule
     && !isSettingsModule
     && !isPeriodicsModule
+    && !isDrawingStudioModule
     && !isVehiclesModule;
 
   if (moduleViewKicker) {
@@ -5698,6 +5805,10 @@ function renderModuleView() {
     periodicsModule.hidden = !isPeriodicsModule;
   }
 
+  if (drawingStudioModule) {
+    drawingStudioModule.hidden = !isDrawingStudioModule;
+  }
+
   if (legalFrameworkModule) {
     legalFrameworkModule.hidden = !isLegalFrameworkModule;
   }
@@ -5754,6 +5865,10 @@ function renderModuleView() {
     renderPeriodicsModule();
   }
 
+  if (isDrawingStudioModule) {
+    renderDrawingStudioModule();
+  }
+
   if (isLegalFrameworkModule) {
     renderLegalFrameworkModule();
   }
@@ -5769,6 +5884,1373 @@ function renderModuleView() {
   if (isTemplateDevelopmentModule) {
     renderDocumentTemplateModule();
   }
+}
+
+function createDrawingLayerDraft(index = 0, overrides = {}) {
+  const palette = ["#8a9ab8", "#21385f", "#25a37d", "#d64d50", "#7b5fd1", "#da8a1f", "#3a8ec9"];
+  drawingDraftLayerCounter += 1;
+  return {
+    id: String(overrides.id || crypto.randomUUID()),
+    name: String(overrides.name || `Layer ${drawingDraftLayerCounter}`).trim() || `Layer ${drawingDraftLayerCounter}`,
+    color: String(overrides.color || palette[index % palette.length]).trim() || palette[index % palette.length],
+    visible: overrides.visible !== false,
+    locked: Boolean(overrides.locked),
+    lineWidth: Number.isFinite(Number(overrides.lineWidth)) ? Math.max(1, Math.min(18, Math.round(Number(overrides.lineWidth)))) : 2,
+    lineStyle: ["solid", "dashed", "dotted"].includes(String(overrides.lineStyle || "").trim().toLowerCase())
+      ? String(overrides.lineStyle).trim().toLowerCase()
+      : "solid",
+  };
+}
+
+function createDrawingDefaultLayers() {
+  return [
+    createDrawingLayerDraft(0, { name: "Podloga", color: "#8a9ab8", lineWidth: 1 }),
+    createDrawingLayerDraft(1, { name: "Zidovi", color: "#21385f", lineWidth: 6 }),
+    createDrawingLayerDraft(2, { name: "Vrata i prolazi", color: "#25a37d", lineWidth: 2 }),
+    createDrawingLayerDraft(3, { name: "Sigurnosni simboli", color: "#d64d50", lineWidth: 2 }),
+    createDrawingLayerDraft(4, { name: "Napomene", color: "#7b5fd1", lineWidth: 1, lineStyle: "dashed" }),
+  ];
+}
+
+function getSortedDrawingCompanies(items = []) {
+  return [...(items ?? [])].sort((left, right) => (
+    String(left?.name || "").localeCompare(String(right?.name || ""), "hr", { sensitivity: "base" })
+  ));
+}
+
+function getSortedDrawingLocations(items = []) {
+  return [...(items ?? [])].sort((left, right) => (
+    String(left?.name || "").localeCompare(String(right?.name || ""), "hr", { sensitivity: "base" })
+  ));
+}
+
+function getDrawingDefaultElementStyle(type = "rectangle", layer = null) {
+  const layerColor = String(layer?.color || "").trim();
+  switch (String(type || "").trim().toLowerCase()) {
+    case "line":
+      return { stroke: layerColor || "#4564d1", fill: "transparent", lineWidth: 2, width: 220, height: 0 };
+    case "wall":
+      return { stroke: layerColor || "#21385f", fill: "transparent", lineWidth: 12, width: 280, height: 0 };
+    case "frame":
+      return { stroke: layerColor || "#20416f", fill: "transparent", lineWidth: 2, width: 1380, height: 860 };
+    case "door":
+      return { stroke: layerColor || "#22a06b", fill: "transparent", lineWidth: 2, width: 120, height: 90 };
+    case "exit":
+      return { stroke: layerColor || "#1e9e68", fill: "#e8fbf2", lineWidth: 2, width: 140, height: 56 };
+    case "extinguisher":
+      return { stroke: layerColor || "#cc4f57", fill: "#fff1f2", lineWidth: 2, width: 52, height: 70 };
+    case "hydrant":
+      return { stroke: layerColor || "#c83d48", fill: "#fff1f2", lineWidth: 2, width: 52, height: 52 };
+    case "text":
+      return { stroke: layerColor || "#23324f", fill: "transparent", lineWidth: 0, width: 220, height: 40 };
+    default:
+      return { stroke: layerColor || "#4564d1", fill: "#e8efff", lineWidth: 2, width: 260, height: 140 };
+  }
+}
+
+function getDrawingActiveLayer() {
+  const explicit = drawingLayerDrafts.find((layer) => String(layer.id) === String(drawingActiveLayerId));
+  if (explicit) {
+    return explicit;
+  }
+
+  if (drawingSelectedElementId) {
+    const selected = drawingElementDrafts.find((item) => String(item.id) === String(drawingSelectedElementId));
+    if (selected) {
+      return drawingLayerDrafts.find((layer) => String(layer.id) === String(selected.layerId)) ?? null;
+    }
+  }
+
+  return drawingLayerDrafts.find((layer) => layer.visible !== false && !layer.locked) ?? drawingLayerDrafts[0] ?? null;
+}
+
+function createDrawingEmptyDraft(overrides = {}) {
+  const companyId = String(overrides.companyId || state.companies[0]?.id || "").trim();
+  const locationId = String(
+    overrides.locationId
+    || (companyId ? (state.locations.find((item) => String(item.companyId) === companyId)?.id ?? "") : "")
+    || "",
+  ).trim();
+  return {
+    id: "",
+    organizationId: String(state.activeOrganizationId || overrides.organizationId || "").trim(),
+    companyId,
+    locationId,
+    title: "",
+    drawingType: "evacuation",
+    status: "draft",
+    scaleLabel: "",
+    note: "",
+    createdByUserId: String(state.user?.id || "").trim(),
+    createdByLabel: getUserDisplayLabel(state.user ?? {}),
+  };
+}
+
+function cloneDrawingElementDraft(item = {}) {
+  return {
+    ...item,
+    metadata: { ...(item.metadata ?? {}) },
+  };
+}
+
+function loadDrawingDraft(project = null) {
+  drawingProjectDraft = project
+    ? {
+      id: String(project.id || "").trim(),
+      organizationId: String(project.organizationId || state.activeOrganizationId || "").trim(),
+      companyId: String(project.companyId || "").trim(),
+      locationId: String(project.locationId || "").trim(),
+      title: String(project.title || "").trim(),
+      drawingType: String(project.drawingType || "custom").trim() || "custom",
+      status: String(project.status || "draft").trim() || "draft",
+      scaleLabel: String(project.scaleLabel || "").trim(),
+      note: String(project.note || "").trim(),
+      createdByUserId: String(project.createdByUserId || "").trim(),
+      createdByLabel: String(project.createdByLabel || "").trim(),
+    }
+    : createDrawingEmptyDraft();
+  drawingReferenceDrafts = (project?.referenceDocuments ?? []).map((document) => createModuleAttachmentDraft({
+    ...document,
+    isPersisted: true,
+  }));
+  drawingLayerDrafts = (project?.layers ?? []).length > 0
+    ? (project.layers ?? []).map((layer, index) => createDrawingLayerDraft(index, layer))
+    : createDrawingDefaultLayers();
+  drawingElementDrafts = (project?.elements ?? []).map((item) => cloneDrawingElementDraft(item));
+  drawingViewportDraft = {
+    zoom: Math.max(0.5, Math.min(2.5, Number(project?.viewport?.zoom ?? 1) || 1)),
+    gridSize: Math.max(8, Math.min(80, Math.round(Number(project?.viewport?.gridSize ?? 20) || 20))),
+    canvasWidth: Math.max(960, Math.min(2400, Math.round(Number(project?.viewport?.canvasWidth ?? DRAWING_STAGE_DEFAULT_WIDTH) || DRAWING_STAGE_DEFAULT_WIDTH))),
+    canvasHeight: Math.max(680, Math.min(1800, Math.round(Number(project?.viewport?.canvasHeight ?? DRAWING_STAGE_DEFAULT_HEIGHT) || DRAWING_STAGE_DEFAULT_HEIGHT))),
+    snapToGrid: project?.viewport?.snapToGrid !== false,
+    showGrid: project?.viewport?.showGrid !== false,
+  };
+  drawingActiveReferenceId = String(
+    project?.activeReferenceDocumentId
+    || drawingReferenceDrafts[0]?.id
+    || "",
+  ).trim();
+  drawingSelectedElementId = "";
+  drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
+  drawingCurrentTool = "select";
+  drawingPointerSession = null;
+  if (drawingError) {
+    drawingError.textContent = "";
+  }
+}
+
+function resetDrawingForm() {
+  state.activeDrawingId = "";
+  loadDrawingDraft(null);
+  renderDrawingStudioModule();
+}
+
+function getDrawingProjectById(projectId = "") {
+  return (state.drawings ?? []).find((item) => String(item.id) === String(projectId)) ?? null;
+}
+
+function getFilteredDrawingProjects() {
+  return sortDrawingProjects(filterDrawingProjects(state.drawings ?? [], {
+    query: drawingSearchInput?.value || "",
+    status: drawingFilterStatusInput?.value || "all",
+    companyId: drawingFilterCompanyInput?.value || "all",
+  }));
+}
+
+function renderDrawingSelectOptions() {
+  if (drawingFilterStatusInput) {
+    const currentValue = drawingFilterStatusInput.value || "all";
+    drawingFilterStatusInput.replaceChildren(
+      new Option("Svi statusi", "all"),
+      ...DRAWING_PROJECT_STATUS_OPTIONS.map((option) => new Option(option.label, option.value)),
+    );
+    drawingFilterStatusInput.value = currentValue;
+  }
+
+  if (drawingFilterCompanyInput) {
+    const currentValue = drawingFilterCompanyInput.value || "all";
+    drawingFilterCompanyInput.replaceChildren(
+      new Option("Sve tvrtke", "all"),
+      ...getSortedDrawingCompanies(state.companies).map((company) => new Option(company.name || "Tvrtka", String(company.id))),
+    );
+    drawingFilterCompanyInput.value = Array.from(drawingFilterCompanyInput.options).some((option) => option.value === currentValue)
+      ? currentValue
+      : "all";
+  }
+
+  if (drawingCompanyIdInput) {
+    const currentValue = drawingProjectDraft?.companyId || "";
+    drawingCompanyIdInput.replaceChildren(
+      new Option("Bez tvrtke", ""),
+      ...getSortedDrawingCompanies(state.companies).map((company) => new Option(company.name || "Tvrtka", String(company.id))),
+    );
+    drawingCompanyIdInput.value = Array.from(drawingCompanyIdInput.options).some((option) => option.value === currentValue)
+      ? currentValue
+      : "";
+  }
+
+  if (drawingTypeInput) {
+    const currentValue = drawingProjectDraft?.drawingType || "evacuation";
+    drawingTypeInput.replaceChildren(...DRAWING_PROJECT_TYPE_OPTIONS.map((option) => new Option(option.label, option.value)));
+    drawingTypeInput.value = Array.from(drawingTypeInput.options).some((option) => option.value === currentValue)
+      ? currentValue
+      : DRAWING_PROJECT_TYPE_OPTIONS[0]?.value || "custom";
+  }
+
+  if (drawingStatusInput) {
+    const currentValue = drawingProjectDraft?.status || "draft";
+    drawingStatusInput.replaceChildren(...DRAWING_PROJECT_STATUS_OPTIONS.map((option) => new Option(option.label, option.value)));
+    drawingStatusInput.value = Array.from(drawingStatusInput.options).some((option) => option.value === currentValue)
+      ? currentValue
+      : DRAWING_PROJECT_STATUS_OPTIONS[0]?.value || "draft";
+  }
+}
+
+function syncDrawingLocationOptions() {
+  if (!drawingLocationIdInput) {
+    return;
+  }
+
+  const companyId = String(drawingProjectDraft?.companyId || "").trim();
+  const locations = companyId
+    ? getSortedDrawingLocations(state.locations.filter((item) => String(item.companyId) === companyId))
+    : [];
+  const currentValue = String(drawingProjectDraft?.locationId || "").trim();
+  drawingLocationIdInput.replaceChildren(
+    new Option("Bez lokacije", ""),
+    ...locations.map((location) => new Option(location.name || "Lokacija", String(location.id))),
+  );
+  drawingLocationIdInput.value = Array.from(drawingLocationIdInput.options).some((option) => option.value === currentValue)
+    ? currentValue
+    : "";
+  if (drawingProjectDraft) {
+    drawingProjectDraft.locationId = drawingLocationIdInput.value;
+  }
+}
+
+function renderDrawingProjectList() {
+  if (!drawingList || !drawingEmpty) {
+    return;
+  }
+
+  const items = getFilteredDrawingProjects();
+  drawingEmpty.hidden = items.length > 0;
+
+  if (items.length === 0) {
+    drawingList.replaceChildren();
+    return;
+  }
+
+  drawingList.replaceChildren(...items.map((item) => {
+    const card = document.createElement("article");
+    card.className = "drawing-project-card";
+    if (String(item.id) === String(state.activeDrawingId || drawingProjectDraft?.id || "")) {
+      card.classList.add("is-active");
+    }
+
+    const head = document.createElement("div");
+    head.className = "drawing-project-card-head";
+
+    const titleWrap = document.createElement("div");
+    const kicker = document.createElement("span");
+    kicker.className = "drawing-project-card-kicker";
+    kicker.textContent = getOptionLabel(DRAWING_PROJECT_TYPE_OPTIONS, item.drawingType) || "Crtez";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Novi crtež";
+    titleWrap.append(kicker, title);
+
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `drawing-project-card-badge is-${item.status || "draft"}`;
+    statusBadge.textContent = getOptionLabel(DRAWING_PROJECT_STATUS_OPTIONS, item.status) || "Skica";
+    head.append(titleWrap, statusBadge);
+
+    const meta = document.createElement("div");
+    meta.className = "drawing-project-card-meta";
+    [
+      item.companyName || "Bez tvrtke",
+      item.locationName || "Bez lokacije",
+      item.scaleLabel || "Bez mjerila",
+      `${(item.layers ?? []).length} layera`,
+      `${(item.elements ?? []).length} elemenata`,
+    ].filter(Boolean).forEach((value) => {
+      const chip = document.createElement("span");
+      chip.className = "drawing-layer-count";
+      chip.textContent = value;
+      meta.append(chip);
+    });
+
+    const note = document.createElement("p");
+    note.textContent = item.note || "DWG/PDF podloga, layeri i CAD elementi.";
+
+    card.append(head, meta, note);
+    card.addEventListener("click", () => {
+      state.activeDrawingId = String(item.id);
+      loadDrawingDraft(item);
+      renderDrawingStudioModule();
+    });
+    return card;
+  }));
+}
+
+function renderDrawingReferenceList() {
+  if (!drawingReferenceList || !drawingReferenceEmpty) {
+    return;
+  }
+
+  drawingReferenceEmpty.hidden = drawingReferenceDrafts.length > 0;
+
+  if (drawingReferenceDrafts.length === 0) {
+    drawingReferenceList.replaceChildren();
+    return;
+  }
+
+  drawingReferenceList.replaceChildren(...drawingReferenceDrafts.map((entry) => {
+    const card = document.createElement("article");
+    card.className = "drawing-reference-card";
+    if (String(entry.id) === String(drawingActiveReferenceId)) {
+      card.classList.add("is-active");
+    }
+
+    const head = document.createElement("div");
+    head.className = "drawing-reference-card-head";
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "Podloga";
+    const type = document.createElement("span");
+    type.className = "drawing-reference-type";
+    const extension = String(entry.fileName || "").split(".").pop()?.toUpperCase() || "FILE";
+    type.textContent = extension;
+    head.append(title, type);
+
+    const meta = document.createElement("p");
+    meta.textContent = [
+      formatFileSize(entry.fileSize),
+      entry.fileType || "",
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" · ");
+
+    const actions = document.createElement("div");
+    actions.className = "drawing-reference-card-actions";
+
+    const activateButton = document.createElement("button");
+    activateButton.type = "button";
+    activateButton.className = "ghost-button";
+    activateButton.textContent = String(entry.id) === String(drawingActiveReferenceId) ? "Aktivno" : "Prikaži";
+    activateButton.addEventListener("click", () => {
+      drawingActiveReferenceId = String(entry.id);
+      renderDrawingStudioModule();
+    });
+
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "ghost-button";
+    downloadButton.textContent = "Preuzmi";
+    downloadButton.addEventListener("click", () => {
+      triggerModuleAttachmentDownload(entry);
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost-button card-danger";
+    removeButton.textContent = "Makni";
+    removeButton.addEventListener("click", () => {
+      drawingReferenceDrafts = drawingReferenceDrafts.filter((item) => String(item.id) !== String(entry.id));
+      if (String(drawingActiveReferenceId) === String(entry.id)) {
+        drawingActiveReferenceId = drawingReferenceDrafts[0]?.id || "";
+      }
+      renderDrawingStudioModule();
+    });
+
+    actions.append(activateButton, downloadButton, removeButton);
+    card.append(head, meta, actions);
+    return card;
+  }));
+}
+
+function renderDrawingLayerList() {
+  if (!drawingLayerList) {
+    return;
+  }
+
+  drawingLayerList.replaceChildren(...drawingLayerDrafts.map((layer) => {
+    const row = document.createElement("article");
+    row.className = "drawing-layer-row";
+
+    const main = document.createElement("div");
+    main.className = "drawing-layer-main";
+    const swatch = document.createElement("span");
+    swatch.className = "drawing-layer-swatch";
+    swatch.style.background = layer.color || "#4564d1";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = layer.name || "Layer";
+    const meta = document.createElement("div");
+    meta.className = "drawing-layer-meta";
+    [layer.visible === false ? "Sakriven" : "Vidljiv", layer.locked ? "Zaključan" : "Otključan", `${layer.lineWidth || 1}px`].forEach((value) => {
+      const chip = document.createElement("span");
+      chip.className = "drawing-layer-count";
+      chip.textContent = value;
+      meta.append(chip);
+    });
+    copy.append(title, meta);
+    main.append(swatch, copy);
+
+    const actions = document.createElement("div");
+    actions.className = "drawing-layer-actions";
+
+    const activateButton = document.createElement("button");
+    activateButton.type = "button";
+    activateButton.className = "drawing-layer-toggle";
+    activateButton.title = "Aktivni layer";
+    activateButton.textContent = String(layer.id) === String(getDrawingActiveLayer()?.id || "") ? "●" : "○";
+    activateButton.addEventListener("click", () => {
+      drawingActiveLayerId = String(layer.id);
+      renderDrawingStudioModule();
+    });
+
+    const visibleButton = document.createElement("button");
+    visibleButton.type = "button";
+    visibleButton.className = "drawing-layer-toggle";
+    visibleButton.title = "Prikaži / sakrij";
+    visibleButton.textContent = layer.visible === false ? "S" : "V";
+    visibleButton.addEventListener("click", () => {
+      layer.visible = layer.visible === false;
+      renderDrawingStudioModule();
+    });
+
+    const lockButton = document.createElement("button");
+    lockButton.type = "button";
+    lockButton.className = "drawing-layer-toggle";
+    lockButton.title = "Zaključaj";
+    lockButton.textContent = layer.locked ? "L" : "O";
+    lockButton.addEventListener("click", () => {
+      layer.locked = !layer.locked;
+      renderDrawingStudioModule();
+    });
+
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(layer.color || "") ? layer.color : "#4564d1";
+    colorInput.addEventListener("input", () => {
+      layer.color = colorInput.value;
+      renderDrawingStudioModule();
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "drawing-layer-toggle";
+    removeButton.title = "Makni layer";
+    removeButton.textContent = "×";
+    removeButton.disabled = drawingLayerDrafts.length <= 1;
+    removeButton.addEventListener("click", () => {
+      if (drawingLayerDrafts.length <= 1) {
+        return;
+      }
+      const fallbackLayer = drawingLayerDrafts.find((item) => String(item.id) !== String(layer.id)) ?? null;
+      drawingLayerDrafts = drawingLayerDrafts.filter((item) => String(item.id) !== String(layer.id));
+      if (fallbackLayer) {
+        drawingElementDrafts = drawingElementDrafts.map((item) => (
+          String(item.layerId) === String(layer.id)
+            ? { ...item, layerId: String(fallbackLayer.id) }
+            : item
+        ));
+        drawingActiveLayerId = String(fallbackLayer.id);
+      }
+      renderDrawingStudioModule();
+    });
+
+    actions.append(activateButton, visibleButton, lockButton, colorInput, removeButton);
+    row.append(main, actions);
+    return row;
+  }));
+}
+
+function renderDrawingInspector() {
+  const selected = drawingElementDrafts.find((item) => String(item.id) === String(drawingSelectedElementId)) ?? null;
+  const layerValue = selected?.layerId || getDrawingActiveLayer()?.id || "";
+  const layerOptions = [
+    new Option("Odaberi layer", ""),
+    ...drawingLayerDrafts.map((layer) => new Option(layer.name || "Layer", String(layer.id))),
+  ];
+  drawingSelectedLayerInput?.replaceChildren(...layerOptions);
+  if (drawingSelectedLayerInput) {
+    drawingSelectedLayerInput.value = layerValue;
+    drawingSelectedLayerInput.disabled = !selected;
+  }
+
+  const hasSelected = Boolean(selected);
+  if (drawingSelectedTitle) {
+    drawingSelectedTitle.textContent = hasSelected
+      ? `${selected.type || "element"} · ${selected.label || "Element"}`
+      : "Bez odabira";
+  }
+
+  [
+    [drawingSelectedLabelInput, selected?.label || ""],
+    [drawingSelectedXInput, hasSelected ? String(Math.round(Number(selected?.x ?? 0))) : ""],
+    [drawingSelectedYInput, hasSelected ? String(Math.round(Number(selected?.y ?? 0))) : ""],
+    [drawingSelectedX2Input, hasSelected ? String(Math.round(Number(selected?.x2 ?? 0))) : ""],
+    [drawingSelectedY2Input, hasSelected ? String(Math.round(Number(selected?.y2 ?? 0))) : ""],
+    [drawingSelectedWidthInput, hasSelected ? String(Math.round(Number(selected?.width ?? 0))) : ""],
+    [drawingSelectedHeightInput, hasSelected ? String(Math.round(Number(selected?.height ?? 0))) : ""],
+    [drawingSelectedLineWidthInput, hasSelected ? String(Math.round(Number(selected?.lineWidth ?? 0))) : ""],
+    [drawingSelectedSubtitleInput, selected?.metadata?.subtitle || ""],
+    [drawingSelectedFooterInput, selected?.metadata?.footer || ""],
+  ].forEach(([input, value]) => {
+    if (!input) {
+      return;
+    }
+    input.value = value;
+    input.disabled = !hasSelected;
+  });
+
+  if (drawingSelectedStrokeInput) {
+    drawingSelectedStrokeInput.value = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(selected?.stroke || "") ? selected.stroke : "#4564d1";
+    drawingSelectedStrokeInput.disabled = !hasSelected;
+  }
+
+  if (drawingSelectedFillInput) {
+    const fillValue = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(selected?.fill || "") ? selected.fill : "#e8efff";
+    drawingSelectedFillInput.value = fillValue;
+    drawingSelectedFillInput.disabled = !hasSelected || ["line", "wall", "text", "door"].includes(String(selected?.type || ""));
+  }
+
+  if (drawingDeleteSelectedButton) {
+    drawingDeleteSelectedButton.disabled = !hasSelected;
+  }
+}
+
+function renderDrawingStudioModule() {
+  if (!drawingStudioModule) {
+    return;
+  }
+
+  if (!drawingProjectDraft) {
+    const selectedProject = getDrawingProjectById(state.activeDrawingId);
+    loadDrawingDraft(selectedProject);
+  }
+
+  if (state.activeDrawingId && !getDrawingProjectById(state.activeDrawingId)) {
+    state.activeDrawingId = "";
+    if (drawingProjectDraft?.id) {
+      loadDrawingDraft(null);
+    }
+  }
+
+  if (drawingSelectedElementId && !drawingElementDrafts.some((item) => String(item.id) === String(drawingSelectedElementId))) {
+    drawingSelectedElementId = "";
+  }
+  if (drawingActiveReferenceId && !drawingReferenceDrafts.some((item) => String(item.id) === String(drawingActiveReferenceId))) {
+    drawingActiveReferenceId = drawingReferenceDrafts[0]?.id || "";
+  }
+  if (drawingActiveLayerId && !drawingLayerDrafts.some((item) => String(item.id) === String(drawingActiveLayerId))) {
+    drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
+  }
+
+  renderDrawingSelectOptions();
+  syncDrawingLocationOptions();
+  renderDrawingProjectList();
+  renderDrawingReferenceList();
+  renderDrawingLayerList();
+
+  if (drawingEditorTitle) {
+    drawingEditorTitle.textContent = drawingProjectDraft?.title?.trim()
+      ? drawingProjectDraft.title.trim()
+      : (drawingProjectDraft?.id ? "Crtež" : "Novi crtež");
+  }
+
+  if (drawingIdInput) {
+    drawingIdInput.value = drawingProjectDraft?.id || "";
+  }
+  if (drawingTitleInput) {
+    drawingTitleInput.value = drawingProjectDraft?.title || "";
+  }
+  if (drawingCompanyIdInput) {
+    drawingCompanyIdInput.value = drawingProjectDraft?.companyId || "";
+  }
+  if (drawingLocationIdInput) {
+    drawingLocationIdInput.value = drawingProjectDraft?.locationId || "";
+  }
+  if (drawingTypeInput) {
+    drawingTypeInput.value = drawingProjectDraft?.drawingType || DRAWING_PROJECT_TYPE_OPTIONS[0]?.value || "custom";
+  }
+  if (drawingStatusInput) {
+    drawingStatusInput.value = drawingProjectDraft?.status || DRAWING_PROJECT_STATUS_OPTIONS[0]?.value || "draft";
+  }
+  if (drawingScaleInput) {
+    drawingScaleInput.value = drawingProjectDraft?.scaleLabel || "";
+  }
+  if (drawingNoteInput) {
+    drawingNoteInput.value = drawingProjectDraft?.note || "";
+  }
+  if (drawingDeleteButton) {
+    drawingDeleteButton.hidden = !drawingProjectDraft?.id;
+  }
+
+  if (drawingZoomInput) {
+    drawingZoomInput.value = String(drawingViewportDraft.zoom || 1);
+  }
+  if (drawingGridSizeInput) {
+    drawingGridSizeInput.value = String(drawingViewportDraft.gridSize || 20);
+  }
+  if (drawingSnapToggle) {
+    drawingSnapToggle.checked = drawingViewportDraft.snapToGrid !== false;
+  }
+  if (drawingGridToggle) {
+    drawingGridToggle.checked = drawingViewportDraft.showGrid !== false;
+  }
+
+  drawingToolButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.drawingTool === drawingCurrentTool);
+  });
+
+  renderDrawingInspector();
+  renderDrawingStage();
+}
+
+function getDrawingSelectedElement() {
+  return drawingElementDrafts.find((item) => String(item.id) === String(drawingSelectedElementId)) ?? null;
+}
+
+function getDrawingStagePoint(clientX, clientY) {
+  if (!drawingStageSvg) {
+    return { x: 0, y: 0 };
+  }
+
+  const rect = drawingStageSvg.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return { x: 0, y: 0 };
+  }
+
+  const width = Number(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
+  const height = Number(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
+  const rawX = ((clientX - rect.left) / rect.width) * width;
+  const rawY = ((clientY - rect.top) / rect.height) * height;
+  if (drawingViewportDraft.snapToGrid !== false) {
+    const gridSize = Math.max(8, Number(drawingViewportDraft.gridSize || 20));
+    return {
+      x: Math.round(rawX / gridSize) * gridSize,
+      y: Math.round(rawY / gridSize) * gridSize,
+    };
+  }
+
+  return {
+    x: Math.round(rawX * 10) / 10,
+    y: Math.round(rawY * 10) / 10,
+  };
+}
+
+function getDrawingElementBounds(element = {}) {
+  const type = String(element.type || "").trim().toLowerCase();
+  if (type === "line" || type === "wall") {
+    const minX = Math.min(Number(element.x || 0), Number(element.x2 || 0));
+    const minY = Math.min(Number(element.y || 0), Number(element.y2 || 0));
+    const maxX = Math.max(Number(element.x || 0), Number(element.x2 || 0));
+    const maxY = Math.max(Number(element.y || 0), Number(element.y2 || 0));
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(4, maxX - minX),
+      height: Math.max(4, maxY - minY),
+    };
+  }
+
+  return {
+    x: Number(element.x || 0),
+    y: Number(element.y || 0),
+    width: Math.max(4, Number(element.width || 0)),
+    height: Math.max(4, Number(element.height || 0)),
+  };
+}
+
+function getDrawingElementMarkup(element = {}, { selected = false } = {}) {
+  const safeId = escapeHtml(String(element.id || ""));
+  const stroke = escapeHtml(element.stroke || "#4564d1");
+  const fill = String(element.fill || "").trim() === "transparent" ? "transparent" : escapeHtml(element.fill || "#e8efff");
+  const strokeWidth = Number(element.lineWidth ?? 2) || 0;
+  const bounds = getDrawingElementBounds(element);
+  const label = escapeHtml(element.label || "");
+  const subtitle = escapeHtml(element.metadata?.subtitle || "");
+  const footer = escapeHtml(element.metadata?.footer || "");
+  const type = String(element.type || "").trim().toLowerCase();
+  const selectionClass = selected ? " drawing-element-selected" : "";
+
+  if (type === "line" || type === "wall") {
+    const hitStrokeWidth = Math.max(strokeWidth + 18, 18);
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="transparent" stroke-width="${hitStrokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
+        <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
+      </g>
+    `;
+  }
+
+  if (type === "door") {
+    const openRight = String(element.metadata?.openDirection || "left") === "right";
+    const pivotX = Number(element.x || 0);
+    const pivotY = Number(element.y || 0);
+    const width = Math.max(40, Number(element.width || 120));
+    const height = Math.max(30, Number(element.height || 90));
+    const doorLeafX = openRight ? pivotX + width : pivotX;
+    const sweepEndX = openRight ? pivotX : pivotX + width;
+    const sweepFlag = openRight ? 0 : 1;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <rect x="${pivotX}" y="${pivotY}" width="${width}" height="${height}" fill="transparent" stroke="transparent" stroke-width="18" data-element-id="${safeId}"></rect>
+        <line x1="${pivotX}" y1="${pivotY}" x2="${pivotX}" y2="${pivotY + height}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></line>
+        <line x1="${pivotX}" y1="${pivotY}" x2="${doorLeafX}" y2="${pivotY}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></line>
+        <path d="M ${pivotX} ${pivotY} A ${width} ${height} 0 0 ${sweepFlag} ${sweepEndX} ${pivotY + height}" fill="none" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.5)}" stroke-dasharray="7 5" data-element-id="${safeId}"></path>
+        ${label ? `<text x="${pivotX + width / 2}" y="${pivotY + height + 24}" text-anchor="middle" class="drawing-stage-label">${label}</text>` : ""}
+      </g>
+    `;
+  }
+
+  if (type === "exit") {
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <text x="${Number(element.x || 0) + Number(element.width || 0) / 2}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || "EXIT"}</text>
+      </g>
+    `;
+  }
+
+  if (type === "extinguisher" || type === "hydrant") {
+    const symbol = type === "extinguisher" ? "A" : "H";
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <text x="${Number(element.x || 0) + Number(element.width || 0) / 2}" y="${Number(element.y || 0) + Number(element.height || 0) / 2 + 6}" text-anchor="middle" class="drawing-stage-label">${label || symbol}</text>
+      </g>
+    `;
+  }
+
+  if (type === "text") {
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <rect x="${element.x}" y="${element.y}" width="${Math.max(60, element.width || 220)}" height="${Math.max(24, element.height || 40)}" fill="transparent" stroke="transparent" data-element-id="${safeId}"></rect>
+        <text x="${Number(element.x || 0) + 6}" y="${Number(element.y || 0) + 24}" class="drawing-stage-label">${label || "Tekst"}</text>
+      </g>
+    `;
+  }
+
+  if (type === "frame") {
+    const innerX = Number(element.x || 0) + 18;
+    const innerY = Number(element.y || 0) + 18;
+    const innerWidth = Math.max(120, Number(element.width || 0) - 36);
+    const innerHeight = Math.max(120, Number(element.height || 0) - 90);
+    const footerY = Number(element.y || 0) + Number(element.height || 0) - 72;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+        <rect x="${innerX}" y="${innerY}" width="${innerWidth}" height="${innerHeight}" rx="12" fill="transparent" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.5)}" data-element-id="${safeId}"></rect>
+        <line x1="${element.x}" y1="${footerY}" x2="${Number(element.x || 0) + Number(element.width || 0)}" y2="${footerY}" stroke="${stroke}" stroke-width="${Math.max(1, strokeWidth - 0.5)}" data-element-id="${safeId}"></line>
+        <text x="${Number(element.x || 0) + 24}" y="${footerY + 28}" class="drawing-stage-label">${label || "Plan evakuacije i spasavanja"}</text>
+        ${subtitle ? `<text x="${Number(element.x || 0) + 24}" y="${footerY + 50}" class="drawing-stage-label">${subtitle}</text>` : ""}
+        ${footer ? `<text x="${Number(element.x || 0) + Number(element.width || 0) - 24}" y="${footerY + 50}" text-anchor="end" class="drawing-stage-label">${footer}</text>` : ""}
+      </g>
+    `;
+  }
+
+  return `
+    <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+      <rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="16" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></rect>
+      ${label ? `<text x="${Number(element.x || 0) + 18}" y="${Number(element.y || 0) + 28}" class="drawing-stage-label">${label}</text>` : ""}
+    </g>
+  `;
+}
+
+function renderDrawingStageReference() {
+  if (!drawingStageReference) {
+    return;
+  }
+
+  const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+  if (!activeReference) {
+    drawingStageReference.innerHTML = '<div class="drawing-stage-reference-empty">Nema aktivne podloge. Uploadaj DWG, PDF ili sliku i nastavi crtati po layerima.</div>';
+    return;
+  }
+
+  const fileName = String(activeReference.fileName || "").trim().toLowerCase();
+  const fileType = String(activeReference.fileType || "").trim().toLowerCase();
+  const href = String(activeReference.storageUrl || activeReference.dataUrl || "").trim();
+  const isPdf = fileType.includes("pdf") || fileName.endsWith(".pdf");
+  const isImage = fileType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".svg"].some((extension) => fileName.endsWith(extension));
+  const isCad = fileName.endsWith(".dwg") || fileName.endsWith(".dxf");
+
+  if (isPdf && href) {
+    drawingStageReference.innerHTML = `<object data="${escapeHtml(href)}" type="application/pdf" aria-label="PDF podloga"></object>`;
+    return;
+  }
+
+  if (isImage && href) {
+    drawingStageReference.innerHTML = `<img src="${escapeHtml(href)}" alt="${escapeHtml(activeReference.fileName || "Podloga")}" />`;
+    return;
+  }
+
+  if (isCad) {
+    drawingStageReference.innerHTML = `
+      <div class="drawing-stage-reference-unsupported">
+        <strong>${escapeHtml(activeReference.fileName || "DWG podloga")}</strong><br />
+        DWG/DXF je učitan kao referentna datoteka. U browseru crtamo preko podloge i layera iznad nje, dok datoteku možeš uvijek preuzeti i zamijeniti novom verzijom.
+      </div>
+    `;
+    return;
+  }
+
+  drawingStageReference.innerHTML = `
+    <div class="drawing-stage-reference-unsupported">
+      <strong>${escapeHtml(activeReference.fileName || "Datoteka")}</strong><br />
+      Datoteka je spremljena kao referenca za crtež, ali nema ugrađeni preview u browseru.
+    </div>
+  `;
+}
+
+function renderDrawingStage() {
+  if (!drawingStage || !drawingStageSvg) {
+    return;
+  }
+
+  const zoom = Math.max(0.5, Math.min(2.5, Number(drawingViewportDraft.zoom || 1)));
+  const canvasWidth = Math.max(960, Number(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH));
+  const canvasHeight = Math.max(680, Number(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT));
+  drawingStage.style.width = `${Math.round(canvasWidth * zoom)}px`;
+  drawingStage.style.height = `${Math.round(canvasHeight * zoom)}px`;
+  drawingStageSvg.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
+  drawingStageSvg.classList.toggle("is-tool-select", drawingCurrentTool === "select");
+  renderDrawingStageReference();
+
+  const visibleLayerIds = new Set(
+    drawingLayerDrafts
+      .filter((layer) => layer.visible !== false)
+      .map((layer) => String(layer.id)),
+  );
+  const gridSize = Math.max(8, Number(drawingViewportDraft.gridSize || 20));
+  const majorGrid = gridSize * 5;
+  const gridMarkup = drawingViewportDraft.showGrid === false
+    ? ""
+    : `
+      <defs>
+        <pattern id="drawing-grid-small" width="${gridSize}" height="${gridSize}" patternUnits="userSpaceOnUse">
+          <path d="M ${gridSize} 0 L 0 0 0 ${gridSize}" fill="none" stroke="rgba(90,112,162,0.13)" stroke-width="1"></path>
+        </pattern>
+        <pattern id="drawing-grid-major" width="${majorGrid}" height="${majorGrid}" patternUnits="userSpaceOnUse">
+          <path d="M ${majorGrid} 0 L 0 0 0 ${majorGrid}" fill="none" stroke="rgba(90,112,162,0.22)" stroke-width="1.2"></path>
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-grid-small)"></rect>
+      <rect x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" fill="url(#drawing-grid-major)"></rect>
+    `;
+  const elementMarkup = drawingElementDrafts
+    .filter((element) => visibleLayerIds.has(String(element.layerId)))
+    .map((element) => renderDrawingElementMarkup(element, {
+      selected: String(element.id) === String(drawingSelectedElementId),
+    }))
+    .join("");
+
+  let selectionMarkup = "";
+  const selected = getDrawingSelectedElement();
+  if (selected) {
+    const bounds = getDrawingElementBounds(selected);
+    const handleX = bounds.x + bounds.width;
+    const handleY = bounds.y + bounds.height;
+    selectionMarkup = `
+      <rect class="drawing-stage-selection-box" x="${bounds.x - 8}" y="${bounds.y - 8}" width="${bounds.width + 16}" height="${bounds.height + 16}" rx="12"></rect>
+      ${(selected.type === "line" || selected.type === "wall") ? "" : `<circle class="drawing-resize-handle" data-drawing-resize-handle="1" cx="${handleX}" cy="${handleY}" r="10" fill="#ffffff" stroke="#496ad6" stroke-width="2"></circle>`}
+    `;
+  }
+
+  let previewMarkup = "";
+  if (drawingPointerSession?.mode === "draw" && drawingPointerSession.previewElement) {
+    previewMarkup = renderDrawingElementMarkup(drawingPointerSession.previewElement, { selected: false });
+  }
+
+  drawingStageSvg.innerHTML = `${gridMarkup}${elementMarkup}${selectionMarkup}${previewMarkup}`;
+}
+
+function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 }, endPoint = null) {
+  const layer = getDrawingActiveLayer();
+  const style = getDrawingDefaultElementStyle(tool, layer);
+  const x = Number(point.x || 0);
+  const y = Number(point.y || 0);
+  const endX = Number(endPoint?.x ?? x + style.width);
+  const endY = Number(endPoint?.y ?? y + style.height);
+  const minX = Math.min(x, endX);
+  const minY = Math.min(y, endY);
+  const width = Math.max(4, Math.abs(endX - x) || style.width);
+  const height = Math.max(4, Math.abs(endY - y) || style.height);
+  const base = {
+    id: crypto.randomUUID(),
+    type: tool,
+    layerId: String(layer?.id || drawingLayerDrafts[0]?.id || ""),
+    stroke: style.stroke,
+    fill: style.fill,
+    lineWidth: style.lineWidth,
+    label: "",
+    metadata: {},
+  };
+
+  if (tool === "line" || tool === "wall") {
+    return {
+      ...base,
+      x,
+      y,
+      x2: endX,
+      y2: endY,
+      width: Math.abs(endX - x),
+      height: Math.abs(endY - y),
+    };
+  }
+
+  if (tool === "door") {
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: "Vrata",
+      metadata: {
+        openDirection: "left",
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
+  if (tool === "exit") {
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: "EXIT",
+      metadata: {
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
+  if (tool === "extinguisher") {
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: "A",
+      metadata: {
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
+  if (tool === "hydrant") {
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: "H",
+      metadata: {
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
+  if (tool === "text") {
+    return {
+      ...base,
+      x,
+      y,
+      width: style.width,
+      height: style.height,
+      x2: x + style.width,
+      y2: y + style.height,
+      label: "Tekst",
+      metadata: {
+        subtitle: "",
+        footer: "",
+      },
+    };
+  }
+
+  if (tool === "frame") {
+    return {
+      ...base,
+      x: minX,
+      y: minY,
+      width,
+      height,
+      x2: minX + width,
+      y2: minY + height,
+      label: "Plan evakuacije i spasavanja",
+      metadata: {
+        subtitle: "",
+        footer: "Plan evakuacije i spasavanja",
+      },
+    };
+  }
+
+  return {
+    ...base,
+    x: minX,
+    y: minY,
+    width,
+    height,
+    x2: minX + width,
+    y2: minY + height,
+    label: tool === "rectangle" ? "Blok" : "",
+    metadata: {
+      subtitle: "",
+      footer: "",
+    },
+  };
+}
+
+function appendDrawingElement(element) {
+  drawingElementDrafts = [...drawingElementDrafts, cloneDrawingElementDraft(element)];
+  drawingSelectedElementId = String(element.id);
+  drawingActiveLayerId = String(element.layerId || drawingActiveLayerId);
+  drawingCurrentTool = "select";
+  renderDrawingStudioModule();
+}
+
+function updateDrawingElementDraft(elementId, patch = {}) {
+  drawingElementDrafts = drawingElementDrafts.map((item) => (
+    String(item.id) === String(elementId)
+      ? {
+        ...item,
+        ...patch,
+        metadata: {
+          ...(item.metadata ?? {}),
+          ...(patch.metadata ?? {}),
+        },
+      }
+      : item
+  ));
+}
+
+function deleteSelectedDrawingElement() {
+  if (!drawingSelectedElementId) {
+    return;
+  }
+
+  drawingElementDrafts = drawingElementDrafts.filter((item) => String(item.id) !== String(drawingSelectedElementId));
+  drawingSelectedElementId = "";
+  renderDrawingStudioModule();
+}
+
+function applyDrawingInspectorPatch(patch = {}) {
+  if (!drawingSelectedElementId) {
+    return;
+  }
+
+  updateDrawingElementDraft(drawingSelectedElementId, patch);
+  renderDrawingStudioModule();
+}
+
+function handleDrawingStagePointerDown(event) {
+  if (!drawingStageSvg) {
+    return;
+  }
+
+  const resizeHandle = event.target.closest("[data-drawing-resize-handle]");
+  const elementTarget = event.target.closest("[data-element-id]");
+  const point = getDrawingStagePoint(event.clientX, event.clientY);
+
+  if (drawingCurrentTool === "select") {
+    if (resizeHandle && drawingSelectedElementId) {
+      const current = getDrawingSelectedElement();
+      if (!current || ["line", "wall"].includes(String(current.type || ""))) {
+        return;
+      }
+
+      drawingPointerSession = {
+        mode: "resize",
+        elementId: String(current.id),
+        startPoint: point,
+        originalElement: cloneDrawingElementDraft(current),
+      };
+      event.preventDefault();
+      return;
+    }
+
+    if (elementTarget) {
+      const elementId = String(elementTarget.dataset.elementId || "").trim();
+      const current = drawingElementDrafts.find((item) => String(item.id) === elementId);
+      if (!current) {
+        return;
+      }
+
+      drawingSelectedElementId = elementId;
+      drawingActiveLayerId = String(current.layerId || drawingActiveLayerId);
+      drawingPointerSession = {
+        mode: "move",
+        elementId,
+        startPoint: point,
+        originalElement: cloneDrawingElementDraft(current),
+      };
+      renderDrawingStudioModule();
+      event.preventDefault();
+      return;
+    }
+
+    drawingSelectedElementId = "";
+    renderDrawingStudioModule();
+    return;
+  }
+
+  if (["door", "exit", "extinguisher", "hydrant", "text"].includes(drawingCurrentTool)) {
+    appendDrawingElement(getDrawingElementFromTool(drawingCurrentTool, point));
+    event.preventDefault();
+    return;
+  }
+
+  drawingPointerSession = {
+    mode: "draw",
+    tool: drawingCurrentTool,
+    startPoint: point,
+    previewElement: getDrawingElementFromTool(drawingCurrentTool, point, point),
+  };
+  event.preventDefault();
+}
+
+function handleDrawingStagePointerMove(event) {
+  if (!drawingPointerSession) {
+    return;
+  }
+
+  const point = getDrawingStagePoint(event.clientX, event.clientY);
+
+  if (drawingPointerSession.mode === "draw") {
+    drawingPointerSession.previewElement = getDrawingElementFromTool(
+      drawingPointerSession.tool,
+      drawingPointerSession.startPoint,
+      point,
+    );
+    renderDrawingStage();
+    return;
+  }
+
+  if (drawingPointerSession.mode === "move") {
+    const original = drawingPointerSession.originalElement;
+    const deltaX = point.x - drawingPointerSession.startPoint.x;
+    const deltaY = point.y - drawingPointerSession.startPoint.y;
+    if (!original) {
+      return;
+    }
+
+    const type = String(original.type || "").trim().toLowerCase();
+    if (type === "line" || type === "wall") {
+      updateDrawingElementDraft(drawingPointerSession.elementId, {
+        x: Number(original.x || 0) + deltaX,
+        y: Number(original.y || 0) + deltaY,
+        x2: Number(original.x2 || 0) + deltaX,
+        y2: Number(original.y2 || 0) + deltaY,
+      });
+    } else {
+      updateDrawingElementDraft(drawingPointerSession.elementId, {
+        x: Number(original.x || 0) + deltaX,
+        y: Number(original.y || 0) + deltaY,
+        x2: Number(original.x2 || (Number(original.x || 0) + Number(original.width || 0))) + deltaX,
+        y2: Number(original.y2 || (Number(original.y || 0) + Number(original.height || 0))) + deltaY,
+      });
+    }
+    renderDrawingInspector();
+    renderDrawingStage();
+    return;
+  }
+
+  if (drawingPointerSession.mode === "resize") {
+    const original = drawingPointerSession.originalElement;
+    if (!original) {
+      return;
+    }
+    const minX = Math.min(Number(original.x || 0), point.x);
+    const minY = Math.min(Number(original.y || 0), point.y);
+    const width = Math.max(20, Math.abs(point.x - Number(original.x || 0)));
+    const height = Math.max(20, Math.abs(point.y - Number(original.y || 0)));
+    updateDrawingElementDraft(drawingPointerSession.elementId, {
+      x: minX,
+      y: minY,
+      width,
+      height,
+      x2: minX + width,
+      y2: minY + height,
+    });
+    renderDrawingInspector();
+    renderDrawingStage();
+  }
+}
+
+function handleDrawingStagePointerUp(event) {
+  if (!drawingPointerSession) {
+    return;
+  }
+
+  const point = getDrawingStagePoint(event.clientX, event.clientY);
+
+  if (drawingPointerSession.mode === "draw") {
+    const element = getDrawingElementFromTool(
+      drawingPointerSession.tool,
+      drawingPointerSession.startPoint,
+      point,
+    );
+    drawingPointerSession = null;
+    appendDrawingElement(element);
+    return;
+  }
+
+  drawingPointerSession = null;
+}
+
+function buildDrawingPayload() {
+  return {
+    organizationId: drawingProjectDraft?.organizationId || state.activeOrganizationId,
+    companyId: drawingProjectDraft?.companyId || "",
+    locationId: drawingProjectDraft?.locationId || "",
+    title: drawingProjectDraft?.title || "",
+    drawingType: drawingProjectDraft?.drawingType || "custom",
+    status: drawingProjectDraft?.status || "draft",
+    scaleLabel: drawingProjectDraft?.scaleLabel || "",
+    note: drawingProjectDraft?.note || "",
+    referenceDocuments: drawingReferenceDrafts.map((document) => serializeModuleAttachmentDraft(document)),
+    activeReferenceDocumentId: drawingActiveReferenceId || "",
+    layers: drawingLayerDrafts.map((layer) => ({
+      ...layer,
+    })),
+    elements: drawingElementDrafts.map((element) => ({
+      ...element,
+      metadata: { ...(element.metadata ?? {}) },
+    })),
+    viewport: {
+      ...drawingViewportDraft,
+    },
+  };
+}
+
+async function queueDrawingReferenceFiles(files = []) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  if (!uploadFiles.length) {
+    return;
+  }
+
+  const prepared = [];
+  for (const file of uploadFiles) {
+    const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+    if (!DRAWING_REFERENCE_ALLOWED_EXTENSIONS.has(extension)) {
+      throw new Error(`Datoteka ${file.name} nije podržana. Dozvoljeno: .dwg, .dxf, .pdf i slike.`);
+    }
+    if (file.size > DRAWING_REFERENCE_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 25 MB.`);
+    }
+    prepared.push(createModuleAttachmentDraft({
+      id: crypto.randomUUID(),
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  drawingReferenceDrafts = [...drawingReferenceDrafts, ...prepared];
+  if (!drawingActiveReferenceId) {
+    drawingActiveReferenceId = prepared[0]?.id || "";
+  }
+  renderDrawingStudioModule();
+}
+
+function applySelectedDrawingInspectorField(fieldName, rawValue) {
+  const selected = getDrawingSelectedElement();
+  if (!selected) {
+    if (fieldName === "layerId") {
+      drawingActiveLayerId = String(rawValue || "").trim();
+      renderDrawingLayerList();
+      renderDrawingInspector();
+    }
+    return;
+  }
+
+  const numericValue = Number(rawValue);
+  const isNumeric = Number.isFinite(numericValue);
+  const type = String(selected.type || "").trim().toLowerCase();
+  const patch = {};
+
+  if (fieldName === "label") {
+    patch.label = String(rawValue || "").trim();
+  } else if (fieldName === "stroke") {
+    patch.stroke = String(rawValue || "").trim();
+  } else if (fieldName === "fill") {
+    patch.fill = String(rawValue || "").trim();
+  } else if (fieldName === "lineWidth" && isNumeric) {
+    patch.lineWidth = Math.max(0, Math.min(24, Math.round(numericValue)));
+  } else if (fieldName === "layerId") {
+    patch.layerId = String(rawValue || "").trim();
+    drawingActiveLayerId = patch.layerId;
+  } else if (fieldName === "subtitle") {
+    patch.metadata = {
+      ...(selected.metadata ?? {}),
+      subtitle: String(rawValue || "").trim(),
+    };
+  } else if (fieldName === "footer") {
+    patch.metadata = {
+      ...(selected.metadata ?? {}),
+      footer: String(rawValue || "").trim(),
+    };
+  } else if (fieldName === "x" && isNumeric) {
+    if (type === "line" || type === "wall") {
+      const delta = numericValue - Number(selected.x || 0);
+      patch.x = numericValue;
+      patch.x2 = Number(selected.x2 || 0) + delta;
+    } else {
+      patch.x = numericValue;
+      patch.x2 = numericValue + Number(selected.width || 0);
+    }
+  } else if (fieldName === "y" && isNumeric) {
+    if (type === "line" || type === "wall") {
+      const delta = numericValue - Number(selected.y || 0);
+      patch.y = numericValue;
+      patch.y2 = Number(selected.y2 || 0) + delta;
+    } else {
+      patch.y = numericValue;
+      patch.y2 = numericValue + Number(selected.height || 0);
+    }
+  } else if (fieldName === "x2" && isNumeric) {
+    patch.x2 = numericValue;
+    if (type !== "line" && type !== "wall") {
+      patch.width = Math.max(4, numericValue - Number(selected.x || 0));
+    }
+  } else if (fieldName === "y2" && isNumeric) {
+    patch.y2 = numericValue;
+    if (type !== "line" && type !== "wall") {
+      patch.height = Math.max(4, numericValue - Number(selected.y || 0));
+    }
+  } else if (fieldName === "width" && isNumeric) {
+    patch.width = Math.max(4, numericValue);
+    patch.x2 = Number(selected.x || 0) + patch.width;
+  } else if (fieldName === "height" && isNumeric) {
+    patch.height = Math.max(4, numericValue);
+    patch.y2 = Number(selected.y || 0) + patch.height;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return;
+  }
+
+  applyDrawingInspectorPatch(patch);
 }
 
 function isSidebarGroupAccessible(groupName) {
@@ -58306,6 +59788,204 @@ dashboardWidgetSizeInput?.addEventListener("change", () => {
   renderDashboardWidgetPreview();
 });
 
+drawingOpenFormButton?.addEventListener("click", () => {
+  resetDrawingForm();
+});
+
+drawingSearchInput?.addEventListener("input", () => {
+  renderDrawingProjectList();
+});
+
+[drawingFilterStatusInput, drawingFilterCompanyInput].forEach((input) => {
+  input?.addEventListener("change", () => {
+    renderDrawingProjectList();
+  });
+});
+
+drawingCompanyIdInput?.addEventListener("change", () => {
+  if (!drawingProjectDraft) {
+    drawingProjectDraft = createDrawingEmptyDraft();
+  }
+  drawingProjectDraft.companyId = drawingCompanyIdInput.value;
+  drawingProjectDraft.locationId = "";
+  syncDrawingLocationOptions();
+  renderDrawingStudioModule();
+});
+
+drawingLocationIdInput?.addEventListener("change", () => {
+  if (!drawingProjectDraft) {
+    drawingProjectDraft = createDrawingEmptyDraft();
+  }
+  drawingProjectDraft.locationId = drawingLocationIdInput.value;
+});
+
+[
+  [drawingTitleInput, "title"],
+  [drawingTypeInput, "drawingType"],
+  [drawingStatusInput, "status"],
+  [drawingScaleInput, "scaleLabel"],
+  [drawingNoteInput, "note"],
+].forEach(([input, key]) => {
+  input?.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => {
+    if (!drawingProjectDraft) {
+      drawingProjectDraft = createDrawingEmptyDraft();
+    }
+    drawingProjectDraft[key] = input.value;
+    if (key === "title" && drawingEditorTitle) {
+      drawingEditorTitle.textContent = drawingProjectDraft.title.trim() || "Novi crtež";
+    }
+  });
+});
+
+drawingReferenceUploadButton?.addEventListener("click", () => {
+  drawingReferenceFileInput?.click();
+});
+
+drawingReferenceFileInput?.addEventListener("change", () => {
+  const files = Array.from(drawingReferenceFileInput.files ?? []);
+  if (!files.length) {
+    return;
+  }
+
+  void runMutation(async () => {
+    await queueDrawingReferenceFiles(files);
+    return null;
+  }, drawingError).finally(() => {
+    drawingReferenceFileInput.value = "";
+  });
+});
+
+drawingAddLayerButton?.addEventListener("click", () => {
+  const nextLayer = createDrawingLayerDraft(drawingLayerDrafts.length);
+  drawingLayerDrafts = [...drawingLayerDrafts, nextLayer];
+  drawingActiveLayerId = nextLayer.id;
+  renderDrawingStudioModule();
+});
+
+drawingToolButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    drawingCurrentTool = button.dataset.drawingTool || "select";
+    if (drawingStageSvg) {
+      drawingStageSvg.classList.toggle("is-tool-select", drawingCurrentTool === "select");
+    }
+    renderDrawingStudioModule();
+  });
+});
+
+drawingZoomOutButton?.addEventListener("click", () => {
+  drawingViewportDraft.zoom = Math.max(0.5, Math.round((Number(drawingViewportDraft.zoom || 1) - 0.1) * 100) / 100);
+  renderDrawingStudioModule();
+});
+
+drawingZoomInButton?.addEventListener("click", () => {
+  drawingViewportDraft.zoom = Math.min(2.5, Math.round((Number(drawingViewportDraft.zoom || 1) + 0.1) * 100) / 100);
+  renderDrawingStudioModule();
+});
+
+drawingZoomInput?.addEventListener("input", () => {
+  drawingViewportDraft.zoom = Math.max(0.5, Math.min(2.5, Number(drawingZoomInput.value) || 1));
+  renderDrawingStage();
+});
+
+drawingGridSizeInput?.addEventListener("input", () => {
+  drawingViewportDraft.gridSize = Math.max(8, Math.min(80, Math.round(Number(drawingGridSizeInput.value) || 20)));
+  renderDrawingStage();
+});
+
+drawingSnapToggle?.addEventListener("change", () => {
+  drawingViewportDraft.snapToGrid = drawingSnapToggle.checked;
+});
+
+drawingGridToggle?.addEventListener("change", () => {
+  drawingViewportDraft.showGrid = drawingGridToggle.checked;
+  renderDrawingStage();
+});
+
+[
+  [drawingSelectedLayerInput, "layerId"],
+  [drawingSelectedLabelInput, "label"],
+  [drawingSelectedXInput, "x"],
+  [drawingSelectedYInput, "y"],
+  [drawingSelectedX2Input, "x2"],
+  [drawingSelectedY2Input, "y2"],
+  [drawingSelectedWidthInput, "width"],
+  [drawingSelectedHeightInput, "height"],
+  [drawingSelectedStrokeInput, "stroke"],
+  [drawingSelectedFillInput, "fill"],
+  [drawingSelectedLineWidthInput, "lineWidth"],
+  [drawingSelectedSubtitleInput, "subtitle"],
+  [drawingSelectedFooterInput, "footer"],
+].forEach(([input, fieldName]) => {
+  input?.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => {
+    applySelectedDrawingInspectorField(fieldName, input.value);
+  });
+});
+
+drawingDeleteSelectedButton?.addEventListener("click", () => {
+  deleteSelectedDrawingElement();
+});
+
+drawingResetButton?.addEventListener("click", () => {
+  resetDrawingForm();
+});
+
+drawingDeleteButton?.addEventListener("click", () => {
+  const targetId = drawingProjectDraft?.id || drawingIdInput?.value;
+  if (!targetId) {
+    resetDrawingForm();
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/drawings/${targetId}`, {
+    method: "DELETE",
+  }), drawingError).then((success) => {
+    if (success) {
+      state.activeDrawingId = "";
+      loadDrawingDraft(null);
+      renderDrawingStudioModule();
+    }
+  });
+});
+
+drawingForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const currentId = drawingProjectDraft?.id || drawingIdInput?.value || "";
+  const method = currentId ? "PATCH" : "POST";
+  const path = currentId ? `/drawings/${currentId}` : "/drawings";
+  const body = buildDrawingPayload();
+
+  void runMutation(async () => {
+    const payload = await apiRequest(path, {
+      method,
+      body,
+    });
+
+    const items = Array.isArray(payload?.drawings) ? payload.drawings : [];
+    const savedItem = currentId
+      ? items.find((item) => String(item.id) === String(currentId))
+      : items.find((item) => (
+        String(item.title || "") === String(body.title || "")
+        && String(item.companyId || "") === String(body.companyId || "")
+        && String(item.locationId || "") === String(body.locationId || "")
+      )) || items[0];
+
+    state.activeDrawingId = savedItem?.id || currentId || "";
+    return payload;
+  }, drawingError).then((success) => {
+    if (success) {
+      const activeItem = getDrawingProjectById(state.activeDrawingId);
+      if (activeItem) {
+        loadDrawingDraft(activeItem);
+      }
+      renderDrawingStudioModule();
+    }
+  });
+});
+
+drawingStageSvg?.addEventListener("pointerdown", handleDrawingStagePointerDown);
+document.addEventListener("pointermove", handleDrawingStagePointerMove);
+document.addEventListener("pointerup", handleDrawingStagePointerUp);
+
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.workOrderDocumentWizard.open) {
     closeWorkOrderDocumentWizard();
@@ -58389,6 +60069,7 @@ resetReminderForm();
 resetTodoForm();
 resetVehicleForm();
 resetOfferForm();
+resetDrawingForm();
 resetLegalFrameworkForm();
 resetDocumentTemplateForm();
 resetCompanyForm();
