@@ -2663,10 +2663,14 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel.is-modal-open {
-  width: min(1180px, calc(100vw - 28px));
-  top: 12px;
-  height: calc(100vh - 24px);
+  width: min(1280px, calc(100vw - 32px));
+  height: min(940px, calc(100dvh - 36px));
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 129;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
 }
 
 .user-editor-panel.is-modal-open {
@@ -2780,13 +2784,180 @@ body.is-location-editor-open {
 }
 
 .company-editor-body {
-  padding: 8px 18px 16px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  padding: 10px 18px 18px;
+  overflow: hidden;
 }
 
-.company-editor-body > .entity-form {
+.company-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  gap: 14px;
+  min-height: 0;
+  height: 100%;
+}
+
+.company-editor-form-shell {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+.company-editor-form-shell > .entity-form {
   gap: 10px;
+  padding-bottom: 20px;
+}
+
+.company-activity-panel {
+  padding-left: 18px;
+  border-left: 1px solid #edf0f6;
+  background:
+    radial-gradient(circle at top right, rgba(92, 160, 235, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(250, 252, 255, 0.97), rgba(245, 248, 253, 0.95));
+}
+
+.company-activity-head {
+  align-items: center;
+}
+
+.company-activity-copy {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: #74829d;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.company-activity-list {
+  padding-right: 4px;
+}
+
+.company-activity-item-body {
+  width: 100%;
+  text-align: left;
+}
+
+.company-activity-item-button {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.company-activity-item-button:hover {
+  border-color: rgba(125, 142, 210, 0.36);
+  box-shadow: 0 12px 22px rgba(104, 116, 167, 0.08);
+}
+
+.company-activity-item-title {
+  color: #263247;
+}
+
+.masterdata-company-contact-card {
+  gap: 12px;
+}
+
+.company-related-contracts {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.company-related-contracts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.company-related-contracts-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.company-related-contracts-head span,
+.company-related-contracts-head p {
+  margin: 0;
+  color: #74829d;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.work-order-activity-count.is-compact {
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 0.74rem;
+}
+
+.work-order-activity-empty.is-compact {
+  font-size: 0.8rem;
+}
+
+.company-linked-contracts-list {
+  display: grid;
+  gap: 10px;
+}
+
+.company-contract-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(206, 214, 231, 0.94);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.96));
+  box-shadow: 0 12px 26px rgba(61, 78, 118, 0.05);
+}
+
+.company-contract-card[role="button"] {
+  cursor: pointer;
+}
+
+.company-contract-card:hover {
+  border-color: rgba(129, 147, 224, 0.36);
+  box-shadow: 0 18px 30px rgba(76, 90, 146, 0.08);
+}
+
+.company-contract-card:focus-visible,
+.company-activity-item-button:focus-visible {
+  outline: 2px solid rgba(102, 134, 241, 0.4);
+  outline-offset: 2px;
+}
+
+.company-contract-card-copy,
+.company-contract-card-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.company-contract-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.company-contract-card-title {
+  color: #253348;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.company-contract-card-meta {
+  color: #70809a;
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+
+.company-contract-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .masterdata-group-card {
@@ -2901,7 +3072,15 @@ body.is-location-editor-open {
 }
 
 .field-company-representative {
-  grid-column: span 5;
+  grid-column: span 4;
+}
+
+.field-company-representative-role {
+  grid-column: span 3;
+}
+
+.field-company-representative-oib {
+  grid-column: span 2;
 }
 
 .field-company-contact-phone {
@@ -2909,7 +3088,7 @@ body.is-location-editor-open {
 }
 
 .field-company-contact-email {
-  grid-column: span 4;
+  grid-column: span 6;
 }
 
 .company-logo-upload-row {
@@ -3214,6 +3393,17 @@ body.is-location-editor-open {
   .masterdata-company-identity-card > .masterdata-company-grid {
     grid-template-columns: repeat(12, minmax(0, 1fr));
   }
+
+  .company-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .company-activity-panel {
+    max-height: 320px;
+    border-left: 0;
+    border-top: 1px solid #edf0f6;
+    padding-left: 20px;
+  }
 }
 
 @media (max-width: 920px) {
@@ -3240,6 +3430,12 @@ body.is-location-editor-open {
     top: 10px;
   }
 
+  .company-editor-panel.is-modal-open {
+    top: 10px;
+    transform: translateX(-50%);
+    height: calc(100vh - 20px);
+  }
+
   .offer-item-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -3256,6 +3452,8 @@ body.is-location-editor-open {
   .field-company-headquarters,
   .field-company-contract-type,
   .field-company-representative,
+  .field-company-representative-role,
+  .field-company-contact-phone,
   .field-company-contact-email {
     grid-column: span 6;
   }
@@ -3264,7 +3462,7 @@ body.is-location-editor-open {
   .field-company-contract-number,
   .field-company-period,
   .field-company-status,
-  .field-company-contact-phone {
+  .field-company-representative-oib {
     grid-column: span 3;
   }
 }
@@ -3301,6 +3499,8 @@ body.is-location-editor-open {
   .field-company-period,
   .field-company-status,
   .field-company-representative,
+  .field-company-representative-role,
+  .field-company-representative-oib,
   .field-company-contact-phone,
   .field-company-contact-email {
     grid-column: auto;
@@ -3371,6 +3571,12 @@ body.is-location-editor-open {
     border-radius: 22px;
   }
 
+  .company-editor-panel.is-modal-open {
+    top: 8px;
+    transform: translateX(-50%);
+    height: calc(100vh - 16px);
+  }
+
   .masterdata-panel-actions {
     width: 100%;
   }
@@ -3390,6 +3596,8 @@ body.is-location-editor-open {
   }
 
   .field-company-representative,
+  .field-company-representative-role,
+  .field-company-representative-oib,
   .field-company-contact-email,
   .field-company-contract-type {
     grid-column: auto;
@@ -3404,6 +3612,15 @@ body.is-location-editor-open {
 
   .company-selection-preview {
     grid-template-columns: 1fr;
+  }
+
+  .company-contract-card {
+    grid-template-columns: 1fr;
+  }
+
+  .company-contract-card-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 

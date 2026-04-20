@@ -2302,135 +2302,180 @@
             </div>
 
             <div id="company-editor-body" class="masterdata-editor-body company-editor-body" tabindex="-1">
-              <form id="company-form" class="entity-form">
-                <input id="company-id" type="hidden" />
-                <input id="company-logo-data-url" type="hidden" />
-                <input id="company-logo-file" type="file" accept="image/*" hidden />
+              <div id="company-editor-layout" class="company-editor-layout">
+                <div id="company-editor-form-shell" class="company-editor-form-shell">
+                  <form id="company-form" class="entity-form">
+                    <input id="company-id" type="hidden" />
+                    <input id="company-logo-data-url" type="hidden" />
+                    <input id="company-logo-file" type="file" accept="image/*" hidden />
 
-                <section class="masterdata-group-card masterdata-company-identity-card">
-                  <div class="masterdata-group-head">
-                    <div>
-                      <p class="section-kicker">Tvrtka</p>
-                      <h4 class="subsection-title">Osnovni identitet i ugovor</h4>
-                    </div>
-                  </div>
-
-                  <div class="company-logo-upload-row company-logo-upload-row-compact">
-                    <div id="company-logo-preview" class="company-logo-avatar">TV</div>
-                    <div class="company-logo-upload-actions company-logo-upload-actions-icons">
-                      <button
-                        id="company-logo-button"
-                        type="button"
-                        class="ghost-button company-logo-icon-button"
-                        aria-label="Upload logo"
-                        title="Upload logo"
-                      >
-                        &#8682;
-                      </button>
-                      <button
-                        id="company-logo-clear"
-                        type="button"
-                        class="ghost-button company-logo-icon-button"
-                        aria-label="Makni logo"
-                        title="Makni logo"
-                        hidden
-                      >
-                        &#10005;
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="form-grid masterdata-company-grid">
-                    <label class="field field-company-name">
-                      <span>Naziv tvrtke</span>
-                      <input id="company-name" type="text" maxlength="160" required />
-                    </label>
-
-                    <label class="field field-company-headquarters">
-                      <span>Sjedište</span>
-                      <input id="company-headquarters" type="text" maxlength="160" />
-                    </label>
-
-                    <label class="field field-company-oib">
-                      <span>OIB</span>
-                      <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
-                    </label>
-
-                    <label class="field field-company-contract-type">
-                        <span>Vrsta ugovora</span>
-                        <input id="company-contract-type" type="text" maxlength="120" />
-                    </label>
-
-                    <label class="field field-company-contract-number">
-                        <span>Broj ugovora</span>
-                        <input id="company-contract-number" type="text" maxlength="120" />
-                    </label>
-
-                    <label class="field field-company-period">
-                        <span>Periodika</span>
-                        <input id="company-period" type="text" maxlength="80" />
-                    </label>
-
-                    <label class="field field-company-status">
-                        <span>Status ugovora</span>
-                        <select id="company-is-active">
-                          <option value="true">Aktivno</option>
-                          <option value="false">Neaktivno</option>
-                        </select>
-                    </label>
-                  </div>
-                </section>
-
-                <div class="masterdata-company-sections">
-                  <section class="masterdata-group-card">
-                    <div class="masterdata-group-head">
-                      <div>
-                        <p class="section-kicker">Kontakti</p>
-                        <h4 class="subsection-title">Kontakt podaci</h4>
+                    <section class="masterdata-group-card masterdata-company-identity-card">
+                      <div class="masterdata-group-head">
+                        <div>
+                          <p class="section-kicker">Tvrtka</p>
+                          <h4 class="subsection-title">Osnovni identitet i ugovor</h4>
+                        </div>
                       </div>
+
+                      <div class="company-logo-upload-row company-logo-upload-row-compact">
+                        <div id="company-logo-preview" class="company-logo-avatar">TV</div>
+                        <div class="company-logo-upload-actions company-logo-upload-actions-icons">
+                          <button
+                            id="company-logo-button"
+                            type="button"
+                            class="ghost-button company-logo-icon-button"
+                            aria-label="Upload logo"
+                            title="Upload logo"
+                          >
+                            &#8682;
+                          </button>
+                          <button
+                            id="company-logo-clear"
+                            type="button"
+                            class="ghost-button company-logo-icon-button"
+                            aria-label="Makni logo"
+                            title="Makni logo"
+                            hidden
+                          >
+                            &#10005;
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="form-grid masterdata-company-grid">
+                        <label class="field field-company-name">
+                          <span>Naziv tvrtke</span>
+                          <input id="company-name" type="text" maxlength="160" required />
+                        </label>
+
+                        <label class="field field-company-headquarters">
+                          <span>Sjedište</span>
+                          <input id="company-headquarters" type="text" maxlength="160" />
+                        </label>
+
+                        <label class="field field-company-oib">
+                          <span>OIB</span>
+                          <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
+                        </label>
+
+                        <label class="field field-company-contract-type">
+                            <span>Vrsta ugovora</span>
+                            <input id="company-contract-type" type="text" maxlength="120" />
+                        </label>
+
+                        <label class="field field-company-contract-number">
+                            <span>Broj ugovora</span>
+                            <input id="company-contract-number" type="text" maxlength="120" />
+                        </label>
+
+                        <label class="field field-company-period">
+                            <span>Periodika</span>
+                            <input id="company-period" type="text" maxlength="80" />
+                        </label>
+
+                        <label class="field field-company-status">
+                            <span>Status ugovora</span>
+                            <select id="company-is-active">
+                              <option value="true">Aktivno</option>
+                              <option value="false">Neaktivno</option>
+                            </select>
+                        </label>
+                      </div>
+                    </section>
+
+                    <div class="masterdata-company-sections">
+                      <section class="masterdata-group-card masterdata-company-contact-card">
+                        <div class="masterdata-group-head">
+                          <div>
+                            <p class="section-kicker">Kontakti</p>
+                            <h4 class="subsection-title">Kontakt podaci i povezani ugovori</h4>
+                          </div>
+                        </div>
+
+                        <div class="form-grid masterdata-company-contact-grid">
+                          <label class="field field-company-representative">
+                            <span>Odgovorna osoba</span>
+                            <input id="company-representative" type="text" maxlength="160" />
+                          </label>
+
+                          <label class="field field-company-representative-role">
+                            <span>Pozicija</span>
+                            <input id="company-representative-role" type="text" maxlength="120" />
+                          </label>
+
+                          <label class="field field-company-representative-oib">
+                            <span>OIB odgovorne osobe</span>
+                            <input id="company-representative-oib" type="text" inputmode="numeric" maxlength="11" />
+                          </label>
+
+                          <label class="field field-company-contact-phone">
+                            <span>Kontakt broj</span>
+                            <input id="company-contact-phone" type="text" maxlength="80" />
+                          </label>
+
+                          <label class="field field-company-contact-email">
+                            <span>Kontakt email</span>
+                            <input id="company-contact-email" type="email" maxlength="160" />
+                          </label>
+                        </div>
+
+                        <section class="company-related-contracts">
+                          <div class="company-related-contracts-head">
+                            <div>
+                              <strong>Povezani ugovori</strong>
+                              <span>Word i PDF dostupni odmah iz pregleda tvrtke.</span>
+                            </div>
+                            <span id="company-linked-contracts-count" class="work-order-activity-count is-compact">0</span>
+                          </div>
+                          <div id="company-linked-contracts-list" class="company-linked-contracts-list"></div>
+                          <p id="company-linked-contracts-empty" class="work-order-activity-empty is-compact">
+                            Još nema povezanih ugovora za ovu tvrtku.
+                          </p>
+                        </section>
+                      </section>
                     </div>
 
-                    <div class="form-grid masterdata-company-contact-grid">
-                      <label class="field field-company-representative">
-                        <span>Predstavnik korisnika</span>
-                        <input id="company-representative" type="text" maxlength="160" />
-                      </label>
+                    <section class="masterdata-group-card masterdata-company-note-card">
+                      <div class="masterdata-group-head">
+                        <div>
+                          <p class="section-kicker">Napomena</p>
+                          <h4 class="subsection-title">Interna zabiljeska</h4>
+                        </div>
+                      </div>
 
-                      <label class="field field-company-contact-phone">
-                        <span>Kontakt broj</span>
-                        <input id="company-contact-phone" type="text" maxlength="80" />
+                      <label class="field field-span-full">
+                        <span>Napomena</span>
+                        <textarea id="company-note" rows="2"></textarea>
                       </label>
+                    </section>
 
-                      <label class="field field-company-contact-email">
-                        <span>Kontakt email</span>
-                        <input id="company-contact-email" type="email" maxlength="160" />
-                      </label>
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi tvrtku</button>
+                      <button id="company-reset" type="button" class="ghost-button">Očisti formu</button>
+                      <button id="company-delete" type="button" class="card-button card-danger" hidden>Obriši tvrtku</button>
                     </div>
-                  </section>
+                  </form>
+
+                  <p id="company-error" class="form-error" aria-live="polite"></p>
                 </div>
 
-                <section class="masterdata-group-card masterdata-company-note-card">
-                  <div class="masterdata-group-head">
+                <aside class="work-order-activity-panel company-activity-panel">
+                  <div class="work-order-activity-head company-activity-head">
                     <div>
-                      <p class="section-kicker">Napomena</p>
-                      <h4 class="subsection-title">Interna zabiljeska</h4>
+                      <p class="section-kicker">Activity</p>
+                      <h3>Povijest tvrtke</h3>
                     </div>
+                    <span id="company-activity-count" class="work-order-activity-count">0</span>
                   </div>
-
-                  <label class="field field-span-full">
-                    <span>Napomena</span>
-                    <textarea id="company-note" rows="2"></textarea>
-                  </label>
-                </section>
-
-                <div class="form-actions">
-                  <button type="submit" class="primary-button">Spremi tvrtku</button>
-                  <button id="company-reset" type="button" class="ghost-button">Očisti formu</button>
-                  <button id="company-delete" type="button" class="card-button card-danger" hidden>Obriši tvrtku</button>
-                </div>
-              </form>
-
-              <p id="company-error" class="form-error" aria-live="polite"></p>
+                  <p class="helper-copy company-activity-copy">
+                    Ovdje vidiš promjene na tvrtki, lokacijama, ponudama, ugovorima, narudžbenicama i radnim nalozima.
+                  </p>
+                  <div id="company-activity-list" class="work-order-activity-list company-activity-list"></div>
+                  <p id="company-activity-empty" class="work-order-activity-empty">
+                    Nema zabilježenih aktivnosti za ovu tvrtku.
+                  </p>
+                </aside>
+              </div>
             </div>
           </section>
         </section>

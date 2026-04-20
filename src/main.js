@@ -3064,6 +3064,7 @@ const companyEditorTitle = document.querySelector("#company-editor-title");
 const companyEditorStatusPill = document.querySelector("#company-editor-status-pill");
 const companyEditorCloseButton = document.querySelector("#company-editor-close");
 const companyEditorBody = document.querySelector("#company-editor-body");
+const companyEditorFormShell = document.querySelector("#company-editor-form-shell");
 const companyResetButton = document.querySelector("#company-reset");
 const companyDeleteButton = document.querySelector("#company-delete");
 const companyIdInput = document.querySelector("#company-id");
@@ -3080,8 +3081,16 @@ const companyContractNumberInput = document.querySelector("#company-contract-num
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
 const companyRepresentativeInput = document.querySelector("#company-representative");
+const companyRepresentativeRoleInput = document.querySelector("#company-representative-role");
+const companyRepresentativeOibInput = document.querySelector("#company-representative-oib");
 const companyContactPhoneInput = document.querySelector("#company-contact-phone");
 const companyContactEmailInput = document.querySelector("#company-contact-email");
+const companyLinkedContractsList = document.querySelector("#company-linked-contracts-list");
+const companyLinkedContractsEmpty = document.querySelector("#company-linked-contracts-empty");
+const companyLinkedContractsCount = document.querySelector("#company-linked-contracts-count");
+const companyActivityList = document.querySelector("#company-activity-list");
+const companyActivityEmpty = document.querySelector("#company-activity-empty");
+const companyActivityCount = document.querySelector("#company-activity-count");
 const companyNoteInput = document.querySelector("#company-note");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
@@ -16335,7 +16344,7 @@ function dismissUserEditor() {
 }
 
 function scrollCompanyEditorToTop() {
-  companyEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  companyEditorFormShell?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
 function scrollLocationEditorToTop() {
@@ -34750,13 +34759,15 @@ function buildCompanyPayload() {
     period: companyPeriodInput.value,
     isActive: companyIsActiveInput.value,
     representative: companyRepresentativeInput.value,
+    representativeRole: companyRepresentativeRoleInput?.value || "",
+    representativeOib: companyRepresentativeOibInput?.value || "",
     contactPhone: companyContactPhoneInput.value,
     contactEmail: companyContactEmailInput.value,
     note: companyNoteInput.value,
   };
 }
 
-function syncCompanyEditorChrome() {
+function syncCompanyEditorChrome({ includeRelatedData = true } = {}) {
   const companyName = companyNameInput?.value?.trim() || "Tvrtka";
   const isActive = companyIsActiveInput?.value !== "false";
 
@@ -34778,6 +34789,404 @@ function syncCompanyEditorChrome() {
   if (companyDeleteButton) {
     companyDeleteButton.hidden = !companyIdInput?.value;
   }
+
+  if (includeRelatedData) {
+    renderCompanyEditorRelatedData();
+  }
+}
+
+function getCompanyLinkedContracts(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  return sortContracts((state.contracts ?? []).filter((item) => String(item.companyId) === normalizedCompanyId));
+}
+
+function openCompanyContextRecord(target = {}) {
+  if (!target?.kind || !target?.record) {
+    return;
+  }
+
+  closeCompanyEditor({ reset: false });
+
+  if (target.kind === "contract") {
+    activateSidebarItem("contract", { expandSidebar: state.sidebarCollapsed });
+    requestAnimationFrame(() => {
+      hydrateContractForm(target.record);
+    });
+    return;
+  }
+
+  if (target.kind === "location") {
+    requestAnimationFrame(() => {
+      hydrateLocationForm(target.record);
+    });
+    return;
+  }
+
+  if (target.kind === "offer" || target.kind === "purchase-order") {
+    requestAnimationFrame(() => {
+      hydrateOfferForm(target.record);
+    });
+    return;
+  }
+
+  if (target.kind === "work-order") {
+    requestAnimationFrame(() => {
+      hydrateWorkOrderForm(target.record);
+    });
+  }
+}
+
+function renderCompanyLinkedContracts(companyId = companyIdInput?.value || "") {
+  if (!companyLinkedContractsList || !companyLinkedContractsEmpty || !companyLinkedContractsCount) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  const linkedContracts = getCompanyLinkedContracts(normalizedCompanyId);
+  companyLinkedContractsCount.textContent = String(linkedContracts.length);
+
+  if (!normalizedCompanyId) {
+    companyLinkedContractsList.replaceChildren();
+    companyLinkedContractsEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti povezani ugovori.";
+    companyLinkedContractsEmpty.hidden = false;
+    return;
+  }
+
+  if (linkedContracts.length === 0) {
+    companyLinkedContractsList.replaceChildren();
+    companyLinkedContractsEmpty.textContent = "Još nema povezanih ugovora za ovu tvrtku.";
+    companyLinkedContractsEmpty.hidden = false;
+    return;
+  }
+
+  companyLinkedContractsEmpty.hidden = true;
+  companyLinkedContractsList.replaceChildren(...linkedContracts.map((contract) => {
+    const card = document.createElement("article");
+    card.className = "company-contract-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori ugovor ${contract.contractNumber || contract.title || "ugovor"}`);
+
+    const copy = document.createElement("div");
+    copy.className = "company-contract-card-copy";
+
+    const head = document.createElement("div");
+    head.className = "company-contract-card-head";
+    const number = document.createElement("strong");
+    number.textContent = contract.contractNumber || "Bez broja";
+    const status = createMetaPill(
+      getContractStatusLabel(contract.status || "draft"),
+      `is-${slugifyValue(contract.status || "draft")}`,
+    );
+    head.append(number, status);
+
+    const title = document.createElement("span");
+    title.className = "company-contract-card-title";
+    title.textContent = contract.title || "Ugovor";
+
+    const meta = document.createElement("span");
+    meta.className = "company-contract-card-meta";
+    meta.textContent = [
+      contract.templateTitle || "Bez templatea",
+      contract.validTo ? `vrijedi do ${formatDate(contract.validTo)}` : "",
+      contract.annexes?.length ? `${contract.annexes.length} anex` : "",
+    ].filter(Boolean).join(" · ");
+
+    copy.append(head, title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "company-contract-card-actions";
+    actions.append(
+      createIconActionButton("Word", "document", "", (event) => {
+        event.stopPropagation();
+        void runMutation(() => downloadContractWord(contract.id), companyError);
+      }),
+      createIconActionButton("PDF", "download", "", (event) => {
+        event.stopPropagation();
+        void runMutation(() => downloadContractPdf(contract.id), companyError);
+      }),
+    );
+
+    const openContract = () => {
+      openCompanyContextRecord({ kind: "contract", record: contract });
+    };
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      openContract();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openContract();
+    });
+
+    card.append(copy, actions);
+    return card;
+  }));
+}
+
+function buildCompanyActivityEntries(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const company = getCompany(normalizedCompanyId);
+
+  if (!company) {
+    return [];
+  }
+
+  const entries = [];
+  const pushEntry = ({
+    id,
+    occurredAt,
+    kind,
+    kindLabel,
+    kindTone = "is-muted",
+    title,
+    description = "",
+    actorLabel = "",
+    target = null,
+  }) => {
+    const timestamp = String(occurredAt || "").trim();
+    entries.push({
+      id,
+      occurredAt: timestamp,
+      occurredAtMs: timestamp ? Date.parse(timestamp) || 0 : 0,
+      kind,
+      kindLabel,
+      kindTone,
+      title,
+      description,
+      actorLabel,
+      target,
+    });
+  };
+
+  const companyChangedAt = String(company.updatedAt || company.createdAt || "").trim();
+  pushEntry({
+    id: `company-${company.id}`,
+    occurredAt: companyChangedAt,
+    kind: "company",
+    kindLabel: "Tvrtka",
+    title: company.createdAt && company.updatedAt && company.createdAt !== company.updatedAt
+      ? `Ažurirana tvrtka · ${company.name}`
+      : `Nova tvrtka · ${company.name}`,
+    description: [
+      company.headquarters || "",
+      company.oib ? `OIB ${company.oib}` : "",
+      company.note ? "Ima internu napomenu" : "",
+    ].filter(Boolean).join(" · "),
+    actorLabel: company.updatedBy || "",
+  });
+
+  (state.locations ?? [])
+    .filter((item) => String(item.companyId) === normalizedCompanyId)
+    .forEach((location) => {
+      const happenedAt = String(location.updatedAt || location.createdAt || "").trim();
+      pushEntry({
+        id: `location-${location.id}`,
+        occurredAt: happenedAt,
+        kind: "location",
+        kindLabel: "Lokacija",
+        kindTone: "is-info",
+        title: location.createdAt && location.updatedAt && location.createdAt !== location.updatedAt
+          ? `Ažurirana lokacija · ${location.name}`
+          : `Nova lokacija · ${location.name}`,
+        description: [
+          location.region || "",
+          buildLocationContacts(location).length ? `${buildLocationContacts(location).length} kontakta` : "",
+          location.note ? "Ima napomenu" : "",
+        ].filter(Boolean).join(" · "),
+        target: { kind: "location", record: location },
+      });
+    });
+
+  (state.offers ?? [])
+    .filter((item) => String(item.companyId) === normalizedCompanyId)
+    .forEach((offer) => {
+      const happenedAt = String(offer.updatedAt || offer.createdAt || "").trim();
+      pushEntry({
+        id: `offer-${offer.id}`,
+        occurredAt: happenedAt,
+        kind: "offer",
+        kindLabel: "Ponuda",
+        kindTone: "is-attention",
+        title: offer.createdAt && offer.updatedAt && offer.createdAt !== offer.updatedAt
+          ? `Ažurirana ponuda · ${offer.offerNumber || offer.title || "Ponuda"}`
+          : `Nova ponuda · ${offer.offerNumber || offer.title || "Ponuda"}`,
+        description: [
+          offer.title || "",
+          getOptionLabel(OFFER_STATUS_OPTIONS, offer.status || "draft"),
+          formatCurrencyAmount(offer.total || 0, offer.currency || "EUR"),
+        ].filter(Boolean).join(" · "),
+        actorLabel: offer.createdByLabel || "",
+        target: { kind: "offer", record: offer },
+      });
+    });
+
+  (state.purchaseOrders ?? [])
+    .filter((item) => String(item.companyId) === normalizedCompanyId)
+    .forEach((purchaseOrder) => {
+      const happenedAt = String(purchaseOrder.updatedAt || purchaseOrder.createdAt || "").trim();
+      pushEntry({
+        id: `purchase-order-${purchaseOrder.id}`,
+        occurredAt: happenedAt,
+        kind: "purchase-order",
+        kindLabel: "Narudžbenica",
+        kindTone: "is-success",
+        title: purchaseOrder.createdAt && purchaseOrder.updatedAt && purchaseOrder.createdAt !== purchaseOrder.updatedAt
+          ? `Ažurirana narudžbenica · ${purchaseOrder.purchaseOrderNumber || purchaseOrder.title || "Narudžbenica"}`
+          : `Nova narudžbenica · ${purchaseOrder.purchaseOrderNumber || purchaseOrder.title || "Narudžbenica"}`,
+        description: [
+          purchaseOrder.title || "",
+          getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, purchaseOrder.status || "draft"),
+          purchaseOrder.externalDocumentNumber || "",
+        ].filter(Boolean).join(" · "),
+        actorLabel: purchaseOrder.createdByLabel || "",
+        target: { kind: "purchase-order", record: purchaseOrder },
+      });
+    });
+
+  (state.contracts ?? [])
+    .filter((item) => String(item.companyId) === normalizedCompanyId)
+    .forEach((contract) => {
+      const happenedAt = String(contract.updatedAt || contract.createdAt || "").trim();
+      pushEntry({
+        id: `contract-${contract.id}`,
+        occurredAt: happenedAt,
+        kind: "contract",
+        kindLabel: "Ugovor",
+        kindTone: "is-attention",
+        title: contract.createdAt && contract.updatedAt && contract.createdAt !== contract.updatedAt
+          ? `Ažuriran ugovor · ${contract.contractNumber || contract.title || "Ugovor"}`
+          : `Novi ugovor · ${contract.contractNumber || contract.title || "Ugovor"}`,
+        description: [
+          contract.title || "",
+          getContractStatusLabel(contract.status || "draft"),
+          contract.annexes?.length ? `${contract.annexes.length} anex` : "",
+        ].filter(Boolean).join(" · "),
+        actorLabel: contract.createdByLabel || "",
+        target: { kind: "contract", record: contract },
+      });
+    });
+
+  (state.workOrders ?? [])
+    .filter((item) => String(item.companyId) === normalizedCompanyId)
+    .forEach((workOrder) => {
+      const happenedAt = String(workOrder.updatedAt || workOrder.createdAt || "").trim();
+      pushEntry({
+        id: `work-order-${workOrder.id}`,
+        occurredAt: happenedAt,
+        kind: "work-order",
+        kindLabel: "RN",
+        kindTone: "is-info",
+        title: workOrder.createdAt && workOrder.updatedAt && workOrder.createdAt !== workOrder.updatedAt
+          ? `Ažuriran RN · ${workOrder.workOrderNumber || workOrder.title || "Radni nalog"}`
+          : `Novi RN · ${workOrder.workOrderNumber || workOrder.title || "Radni nalog"}`,
+        description: [
+          workOrder.status || "",
+          workOrder.locationName || "",
+          workOrder.dueDate ? `rok ${formatDate(workOrder.dueDate)}` : "",
+        ].filter(Boolean).join(" · "),
+        actorLabel: [workOrder.completedBy, ...getWorkOrderExecutors(workOrder)].filter(Boolean).join(", "),
+        target: { kind: "work-order", record: workOrder },
+      });
+    });
+
+  return entries.sort((left, right) => {
+    if (left.occurredAtMs !== right.occurredAtMs) {
+      return right.occurredAtMs - left.occurredAtMs;
+    }
+    return String(right.occurredAt || "").localeCompare(String(left.occurredAt || ""));
+  });
+}
+
+function renderCompanyActivityPanel(companyId = companyIdInput?.value || "") {
+  if (!companyActivityList || !companyActivityEmpty || !companyActivityCount) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    companyActivityCount.textContent = "0";
+    companyActivityList.replaceChildren();
+    companyActivityEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti povezane aktivnosti.";
+    companyActivityEmpty.hidden = false;
+    return;
+  }
+
+  const entries = buildCompanyActivityEntries(normalizedCompanyId);
+  companyActivityCount.textContent = String(entries.length);
+
+  if (entries.length === 0) {
+    companyActivityList.replaceChildren();
+    companyActivityEmpty.textContent = "Nema zabilježenih aktivnosti za ovu tvrtku.";
+    companyActivityEmpty.hidden = false;
+    return;
+  }
+
+  companyActivityEmpty.hidden = true;
+  companyActivityList.replaceChildren(...entries.map((entry) => {
+    const item = document.createElement("article");
+    item.className = "work-order-activity-item company-activity-item";
+
+    const avatar = document.createElement("span");
+    avatar.className = "work-order-activity-avatar company-activity-avatar";
+    avatar.textContent = (entry.kindLabel || entry.kind || "A").slice(0, 2).toUpperCase();
+
+    const body = document.createElement(entry.target ? "button" : "div");
+    body.className = "work-order-activity-item-body company-activity-item-body";
+    if (body instanceof HTMLButtonElement) {
+      body.type = "button";
+      body.classList.add("company-activity-item-button");
+      body.addEventListener("click", () => {
+        openCompanyContextRecord(entry.target);
+      });
+    }
+
+    const top = document.createElement("div");
+    top.className = "work-order-activity-item-top";
+
+    const title = document.createElement("strong");
+    title.className = "company-activity-item-title";
+    title.textContent = entry.title;
+
+    const time = document.createElement("time");
+    time.className = "work-order-activity-time";
+    time.textContent = entry.occurredAt ? formatDateTime(entry.occurredAt) : "Bez datuma";
+
+    top.append(title, time);
+
+    const description = document.createElement("span");
+    description.className = "work-order-activity-description";
+    description.textContent = entry.description || "Bez dodatnih detalja";
+
+    const meta = document.createElement("div");
+    meta.className = "work-order-activity-meta company-activity-item-meta";
+    meta.append(createMetaPill(entry.kindLabel, entry.kindTone));
+    if (entry.actorLabel) {
+      const actor = document.createElement("span");
+      actor.className = "work-order-activity-actor";
+      actor.textContent = entry.actorLabel;
+      meta.append(actor);
+    }
+
+    body.append(top, description, meta);
+    item.append(avatar, body);
+    return item;
+  }));
+}
+
+function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "") {
+  renderCompanyLinkedContracts(companyId);
+  renderCompanyActivityPanel(companyId);
 }
 
 function createEmptyLocationContactDraft() {
@@ -35203,6 +35612,12 @@ function hydrateCompanyForm(company) {
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
   companyRepresentativeInput.value = company.representative;
+  if (companyRepresentativeRoleInput) {
+    companyRepresentativeRoleInput.value = company.representativeRole || "";
+  }
+  if (companyRepresentativeOibInput) {
+    companyRepresentativeOibInput.value = company.representativeOib || "";
+  }
   companyContactPhoneInput.value = company.contactPhone;
   companyContactEmailInput.value = company.contactEmail;
   companyNoteInput.value = company.note;
@@ -53151,18 +53566,22 @@ function renderCompanies() {
     }
 
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
+    const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ");
 
     row.append(
       createCompanyIdentityCell(company),
       createStackCell({
-        title: company.representative || "Bez predstavnika",
-        subtitle: contact,
-        tertiary: company.contactPhone || company.contactEmail ? "Kontakt podaci" : "Nema kontakta",
+        title: company.representative || "Bez odgovorne osobe",
+        subtitle: contactSubtitle || "Bez kontakta",
+        tertiary: company.representativeOib ? `OIB ${company.representativeOib}` : "Kontakt podaci",
       }),
       createStackCell({
         title: company.contractType || "Bez ugovora",
         subtitle: company.contractNumber || "Bez broja ugovora",
-        tertiary: company.period ? `Periodika: ${company.period}` : "",
+        tertiary: [
+          company.period ? `Periodika: ${company.period}` : "",
+          getCompanyLinkedContracts(company.id).length ? `${getCompanyLinkedContracts(company.id).length} ugovora` : "",
+        ].filter(Boolean).join(" · "),
       }),
       createStackCell({
         title: company.isActive ? "Aktivna tvrtka" : "Neaktivna tvrtka",
@@ -56605,7 +57024,7 @@ companyLogoClearButton?.addEventListener("click", () => {
   if (companyLogoFileInput) {
     companyLogoFileInput.value = "";
   }
-  syncCompanyEditorChrome();
+  syncCompanyEditorChrome({ includeRelatedData: false });
 });
 
 companyLogoFileInput?.addEventListener("change", () => {
@@ -56626,7 +57045,7 @@ companyLogoFileInput?.addEventListener("change", () => {
       companyLogoDataUrlInput.value = logoDataUrl;
     }
     companyError.textContent = "";
-    syncCompanyEditorChrome();
+    syncCompanyEditorChrome({ includeRelatedData: false });
   }).catch((error) => {
     companyError.textContent = error.message;
   }).finally(() => {
@@ -56637,11 +57056,11 @@ companyLogoFileInput?.addEventListener("change", () => {
 });
 
 companyNameInput?.addEventListener("input", () => {
-  syncCompanyEditorChrome();
+  syncCompanyEditorChrome({ includeRelatedData: false });
 });
 
 companyIsActiveInput?.addEventListener("change", () => {
-  syncCompanyEditorChrome();
+  syncCompanyEditorChrome({ includeRelatedData: false });
 });
 
 companyOpenFormButton?.addEventListener("click", () => {

@@ -705,6 +705,11 @@ function normalizeOib(value) {
   return oib;
 }
 
+function normalizeOptionalOib(value) {
+  const oib = normalizeText(value).replace(/\s+/g, "");
+  return oib ? normalizeOib(oib) : "";
+}
+
 function normalizeId(value) {
   return normalizeText(value);
 }
@@ -2999,6 +3004,8 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     period: normalizeText(input.period),
     isActive: normalizeBoolean(input.isActive, true),
     representative: normalizeText(input.representative),
+    representativeRole: normalizeText(input.representativeRole),
+    representativeOib: normalizeOptionalOib(input.representativeOib),
     contactPhone: normalizeText(input.contactPhone),
     contactEmail: normalizeText(input.contactEmail),
     note: normalizeText(input.note),
@@ -3025,6 +3032,12 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     period: hasOwn(patch, "period") ? normalizeText(patch.period) : current.period,
     isActive: hasOwn(patch, "isActive") ? normalizeBoolean(patch.isActive, current.isActive) : current.isActive,
     representative: hasOwn(patch, "representative") ? normalizeText(patch.representative) : current.representative,
+    representativeRole: hasOwn(patch, "representativeRole")
+      ? normalizeText(patch.representativeRole)
+      : current.representativeRole,
+    representativeOib: hasOwn(patch, "representativeOib")
+      ? normalizeOptionalOib(patch.representativeOib)
+      : current.representativeOib,
     contactPhone: hasOwn(patch, "contactPhone") ? normalizeText(patch.contactPhone) : current.contactPhone,
     contactEmail: hasOwn(patch, "contactEmail") ? normalizeText(patch.contactEmail) : current.contactEmail,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,

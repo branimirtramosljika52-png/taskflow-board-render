@@ -180,6 +180,9 @@ test("companies keep uploaded logo data through create and update", () => {
       name: "Logo Test d.o.o.",
       oib: "22345678901",
       logoDataUrl: "data:image/png;base64,AAA",
+      representative: "Ana Kovac",
+      representativeRole: "Direktorica",
+      representativeOib: "12345678903",
     },
     [],
     () => "company-logo",
@@ -187,12 +190,16 @@ test("companies keep uploaded logo data through create and update", () => {
   );
 
   assert.equal(company.logoDataUrl, "data:image/png;base64,AAA");
+  assert.equal(company.representative, "Ana Kovac");
+  assert.equal(company.representativeRole, "Direktorica");
+  assert.equal(company.representativeOib, "12345678903");
 
   const updated = updateCompany(
     company,
     {
       logoDataUrl: "data:image/png;base64,BBB",
       isActive: false,
+      representativeRole: "Clan uprave",
     },
     [company],
     () => "2026-03-30T09:05:00.000Z",
@@ -200,6 +207,8 @@ test("companies keep uploaded logo data through create and update", () => {
 
   assert.equal(updated.logoDataUrl, "data:image/png;base64,BBB");
   assert.equal(updated.isActive, false);
+  assert.equal(updated.representativeRole, "Clan uprave");
+  assert.equal(updated.representativeOib, "12345678903");
 });
 
 test("createLocation requires a real company and keeps names unique per company", () => {

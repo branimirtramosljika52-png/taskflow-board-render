@@ -1869,7 +1869,8 @@ function sanitizeUser(row) {
 async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
     SELECT id, naziv_tvrtke, sjediste, oib, vrsta_ugovora, broj_ugovora, periodika,
-           aktivno, predstavnik_korisnika, kontakt_broj, kontakt_email, napomena,
+           aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib,
+           kontakt_broj, kontakt_email, napomena,
            logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
            datum_izmjene, izmjenu_unio
     FROM firme
@@ -1900,6 +1901,8 @@ async function fetchSnapshotFromConnection(connection) {
       period: row.periodika ?? "",
       isActive: normalizeActiveValue(row.aktivno),
       representative: row.predstavnik_korisnika ?? "",
+      representativeRole: row.odgovorna_pozicija ?? "",
+      representativeOib: row.odgovorna_osoba_oib ?? "",
       contactPhone: row.kontakt_broj ?? "",
       contactEmail: row.kontakt_email ?? "",
       note: row.napomena ?? "",
@@ -5395,6 +5398,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
     await ensureColumnExists(this.pool, "firme", "logo_storage_key", "VARCHAR(512) NULL AFTER logo_storage_bucket");
     await ensureColumnExists(this.pool, "firme", "logo_storage_url", "TEXT NULL AFTER logo_storage_key");
+    await ensureColumnExists(this.pool, "firme", "odgovorna_pozicija", "VARCHAR(120) NOT NULL DEFAULT '' AFTER predstavnik_korisnika");
+    await ensureColumnExists(this.pool, "firme", "odgovorna_osoba_oib", "VARCHAR(11) NOT NULL DEFAULT '' AFTER odgovorna_pozicija");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_provider", "VARCHAR(32) NULL AFTER reference_document_data_url");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_bucket", "VARCHAR(128) NULL AFTER reference_document_storage_provider");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
@@ -5631,10 +5636,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO firme
             (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, vrsta_ugovora,
-             broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
+             odgovorna_pozicija, odgovorna_osoba_oib, broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
              logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
              datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -5643,6 +5648,8 @@ export class MySqlSafetyRepository {
           company.representative,
           company.period,
           company.contractType,
+          company.representativeRole,
+          company.representativeOib,
           company.contractNumber,
           company.note,
           activeLabel(company.isActive),
@@ -5697,7 +5704,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE firme
           SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
-              vrsta_ugovora = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
+              vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
               kontakt_email = ?, logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
               logo_storage_key = ?, logo_storage_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
           WHERE id = ?
@@ -5709,6 +5716,8 @@ export class MySqlSafetyRepository {
           next.representative,
           next.period,
           next.contractType,
+          next.representativeRole,
+          next.representativeOib,
           next.contractNumber,
           next.note,
           activeLabel(next.isActive),
