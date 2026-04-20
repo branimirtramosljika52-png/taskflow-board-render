@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260420d" />
+<link rel="stylesheet" href="/styles.css?v=20260420f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -4621,20 +4621,20 @@
               <section class="panel drawing-studio-shell-panel">
                 <div class="drawing-studio-layout">
                   <section class="drawing-studio-list-panel">
-                  <div class="section-heading offers-section-heading">
+                  <div class="section-heading offers-section-heading drawing-studio-list-heading">
                     <div>
                       <p class="section-kicker">Crteži</p>
-                      <h3>Drawing Studio</h3>
+                      <h3>Crteži</h3>
                     </div>
                     <div class="offers-panel-actions">
-                      <button id="drawing-open-form" type="button" class="primary-button">+ Novi crtež</button>
+                      <button id="drawing-open-form" type="button" class="primary-button">+ Novi</button>
                     </div>
                   </div>
 
                   <div class="offers-filters drawing-studio-filters">
                     <label class="field">
                       <span>Pretraga</span>
-                      <input id="drawing-search" type="search" placeholder="Naziv, tvrtka, lokacija, layer, DWG/PDF..." />
+                      <input id="drawing-search" type="search" placeholder="Naziv, tvrtka, lokacija, podloga..." />
                     </label>
                     <label class="field">
                       <span>Status</span>
@@ -4666,7 +4666,7 @@
                     <input id="drawing-id" type="hidden" />
 
                     <div class="form-grid drawing-studio-meta-grid">
-                      <label class="field field-span-full">
+                      <label class="field drawing-field-title">
                         <span>Naziv crteža</span>
                         <input id="drawing-title" maxlength="180" placeholder="Plan evakuacije · Objekt A · Prizemlje" required />
                       </label>
@@ -4690,12 +4690,11 @@
                         <span>Mjerilo</span>
                         <input id="drawing-scale" maxlength="48" placeholder="M 1:100" />
                       </label>
+                      <label class="field drawing-field-note">
+                        <span>Napomena</span>
+                        <textarea id="drawing-note" rows="2" placeholder="Podloga za tlocrt, faza razrade, posebne upute za plan..."></textarea>
+                      </label>
                     </div>
-
-                    <label class="field field-span-full">
-                      <span>Napomena</span>
-                      <textarea id="drawing-note" rows="2" placeholder="Podloga za tlocrt, faza razrade, posebne upute za plan..."></textarea>
-                    </label>
 
                     <section class="drawing-top-toolbar">
                       <div id="drawing-tool-buttons" class="drawing-tool-buttons drawing-tool-tabs">
@@ -4711,6 +4710,10 @@
                         <button type="button" class="drawing-tool-button" data-drawing-tool="text"><span class="drawing-tool-button-icon" aria-hidden="true">T</span><span class="drawing-tool-button-label">Tekst</span></button>
                       </div>
                       <div class="drawing-top-toolbar-actions">
+                        <div class="drawing-view-mode-switch" role="tablist" aria-label="Prikaz crteža">
+                          <button id="drawing-view-canvas" type="button" class="ghost-button is-active" data-drawing-view="canvas" aria-selected="true">Crtanje</button>
+                          <button id="drawing-view-reference" type="button" class="ghost-button" data-drawing-view="reference" aria-selected="false">Podloga</button>
+                        </div>
                         <button id="drawing-clear-reference" type="button" class="ghost-button">Bez podloge</button>
                         <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
                         <button id="drawing-export-svg" type="button" class="ghost-button">SVG</button>
@@ -4724,6 +4727,7 @@
                         <div id="drawing-stage-scroll" class="drawing-stage-scroll">
                           <div id="drawing-stage" class="drawing-stage">
                             <div id="drawing-stage-reference" class="drawing-stage-reference"></div>
+                            <div id="drawing-stage-cad-status" class="drawing-stage-cad-status" hidden></div>
                             <svg id="drawing-stage-svg" class="drawing-stage-svg" viewBox="0 0 2400 1500" aria-label="Drawing stage"></svg>
                           </div>
                         </div>
@@ -4778,8 +4782,21 @@
                         </p>
                       </section>
 
-                      <aside class="drawing-studio-sidebar is-right">
-                        <section class="drawing-studio-card">
+                      <button id="drawing-sidebar-toggle" type="button" class="drawing-sidebar-tab" aria-expanded="true" aria-controls="drawing-sidebar">
+                        <span id="drawing-sidebar-toggle-label">Panel</span>
+                      </button>
+
+                      <aside id="drawing-sidebar" class="drawing-studio-sidebar is-right">
+                        <div class="drawing-sidebar-head">
+                          <div class="drawing-sidebar-tabs" role="tablist" aria-label="CAD panel">
+                            <button type="button" class="drawing-sidebar-tab-button is-active" data-drawing-sidebar-tab="symbols" aria-selected="true">Blokovi</button>
+                            <button type="button" class="drawing-sidebar-tab-button" data-drawing-sidebar-tab="references" aria-selected="false">Podloge</button>
+                            <button type="button" class="drawing-sidebar-tab-button" data-drawing-sidebar-tab="layers" aria-selected="false">Layeri</button>
+                            <button type="button" class="drawing-sidebar-tab-button" data-drawing-sidebar-tab="inspector" aria-selected="false">Inspector</button>
+                          </div>
+                        </div>
+
+                        <section class="drawing-studio-card drawing-sidebar-panel" data-drawing-sidebar-panel="symbols">
                           <div class="drawing-studio-card-head">
                             <div>
                               <p class="section-kicker">Simboli</p>
@@ -4858,7 +4875,7 @@
                           </div>
                         </section>
 
-                        <section class="drawing-studio-card">
+                        <section class="drawing-studio-card drawing-sidebar-panel" data-drawing-sidebar-panel="references" hidden>
                           <div class="drawing-studio-card-head">
                             <div>
                               <p class="section-kicker">Reference</p>
@@ -4867,10 +4884,10 @@
                           </div>
                           <input id="drawing-reference-file-input" type="file" accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg,.webp,.svg" multiple hidden />
                           <div id="drawing-reference-list" class="drawing-reference-list"></div>
-                          <p id="drawing-reference-empty" class="helper-copy">Dodaj DWG, PDF ili sliku kao podlogu. Zadnji upload se odmah aktivira, a za DWG prikazujemo jasnu CAD karticu s nazivom datoteke.</p>
+                          <p id="drawing-reference-empty" class="helper-copy">Dodaj DWG, DXF, PDF ili sliku kao podlogu. Zadnji upload se odmah aktivira, a za CAD datoteke prikazujemo sažetu referencu s detaljima datoteke.</p>
                         </section>
 
-                        <section class="drawing-studio-card">
+                        <section class="drawing-studio-card drawing-sidebar-panel" data-drawing-sidebar-panel="layers" hidden>
                           <div class="drawing-studio-card-head">
                             <div>
                               <p class="section-kicker">Layeri</p>
@@ -4881,7 +4898,7 @@
                           <div id="drawing-layer-list" class="drawing-layer-list"></div>
                         </section>
 
-                        <section class="drawing-studio-card">
+                        <section class="drawing-studio-card drawing-sidebar-panel" data-drawing-sidebar-panel="inspector" hidden>
                           <div class="drawing-studio-card-head">
                             <div>
                               <p class="section-kicker">Inspector</p>
@@ -6215,6 +6232,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260420b"></script>
+<script type="module" src="/src/main.js?v=20260420d"></script>
   </body>
 </html>

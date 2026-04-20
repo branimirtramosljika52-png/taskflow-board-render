@@ -26578,13 +26578,13 @@ body.is-offer-template-open {
 }
 
 .drawing-studio-shell-panel {
-  padding: 18px 20px;
+  padding: 10px 12px;
 }
 
 .drawing-studio-layout {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 18px;
+  gap: 10px;
   align-items: start;
   min-height: 0;
 }
@@ -26596,11 +26596,11 @@ body.is-offer-template-open {
 
 .drawing-studio-list-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
-  gap: 16px 18px;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  gap: 8px 12px;
   align-items: end;
   min-height: 0;
-  padding: 0 0 18px;
+  padding: 0 0 10px;
   border-right: 0;
   border-bottom: 1px solid rgba(116, 148, 210, 0.22);
 }
@@ -26613,12 +26613,12 @@ body.is-offer-template-open {
 .drawing-project-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   grid-column: 1 / -1;
   min-height: 0;
-  max-height: 220px;
+  max-height: 126px;
   overflow: auto;
-  padding: 4px 4px 0 0;
+  padding: 2px 4px 0 0;
 }
 
 #drawing-empty.helper-copy {
@@ -26626,9 +26626,9 @@ body.is-offer-template-open {
   align-items: center;
   justify-content: center;
   grid-column: 1 / -1;
-  min-height: 88px;
+  min-height: 68px;
   margin: 0;
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-radius: 22px;
   border: 1px dashed rgba(117, 144, 206, 0.22);
   background: rgba(248, 251, 255, 0.84);
@@ -26643,10 +26643,19 @@ body.is-offer-template-open {
   margin: 0;
 }
 
+.drawing-studio-filters {
+  grid-template-columns: minmax(0, 1.75fr) repeat(2, minmax(150px, 0.5fr));
+  gap: 8px;
+}
+
+.drawing-studio-list-heading {
+  align-items: center;
+}
+
 .drawing-project-card {
   border: 1px solid rgba(115, 152, 212, 0.32);
-  border-radius: 26px;
-  padding: 18px 18px 16px;
+  border-radius: 22px;
+  padding: 10px 12px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.92));
   box-shadow: 0 14px 36px rgba(69, 92, 146, 0.08);
@@ -26724,18 +26733,33 @@ body.is-offer-template-open {
 .drawing-studio-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 .drawing-studio-meta-grid {
-  row-gap: 16px;
+  grid-template-columns: minmax(230px, 1.7fr) repeat(5, minmax(108px, 0.78fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.drawing-field-note {
+  grid-column: 1 / -1;
+}
+
+.drawing-field-note textarea {
+  min-height: 64px;
 }
 
 .drawing-studio-shell {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(290px, 332px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(236px, 282px);
+  gap: 10px;
   align-items: start;
+}
+
+.drawing-studio-shell.is-sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr) 34px;
 }
 
 .drawing-studio-sidebar,
@@ -26746,21 +26770,94 @@ body.is-offer-template-open {
 .drawing-studio-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.drawing-studio-shell.is-sidebar-collapsed .drawing-studio-sidebar {
+  opacity: 0;
+  pointer-events: none;
+  max-width: 0;
+  max-height: 0;
+  overflow: hidden;
 }
 
 .drawing-studio-sidebar.is-right {
   position: sticky;
-  top: 20px;
-  max-height: calc(100vh - 140px);
+  top: 8px;
+  max-height: calc(100vh - 136px);
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 2px;
+}
+
+.drawing-sidebar-tab {
+  position: sticky;
+  top: 8px;
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-height: 148px;
+  padding: 10px 0;
+  border-radius: 18px;
+  border: 1px solid rgba(108, 132, 193, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 246, 255, 0.94));
+  box-shadow: 0 16px 34px rgba(64, 86, 140, 0.12);
+  color: #2d3b5d;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  cursor: pointer;
+}
+
+.drawing-studio-shell.is-sidebar-collapsed .drawing-sidebar-tab {
+  background: linear-gradient(180deg, rgba(73, 106, 214, 0.14), rgba(95, 168, 255, 0.12));
+  border-color: rgba(73, 106, 214, 0.34);
+}
+
+.drawing-sidebar-head {
+  display: grid;
+  gap: 10px;
+}
+
+.drawing-sidebar-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drawing-sidebar-tab-button {
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(111, 136, 196, 0.2);
+  background: rgba(248, 251, 255, 0.92);
+  color: #52607e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.drawing-sidebar-tab-button.is-active {
+  border-color: rgba(73, 106, 214, 0.45);
+  background: linear-gradient(135deg, rgba(73, 106, 214, 0.12), rgba(99, 189, 255, 0.12));
+  color: #2444a0;
+  box-shadow: 0 10px 20px rgba(73, 106, 214, 0.12);
+}
+
+.drawing-sidebar-panel[hidden] {
+  display: none !important;
 }
 
 .drawing-studio-card {
   border: 1px solid rgba(115, 152, 212, 0.28);
-  border-radius: 26px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.93));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
@@ -26783,20 +26880,20 @@ body.is-offer-template-open {
 .drawing-tool-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
 }
 
 .drawing-block-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .drawing-top-toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -26804,12 +26901,12 @@ body.is-offer-template-open {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .drawing-tool-tabs {
-  flex: 1 1 720px;
+  flex: 1 1 680px;
 }
 
 .drawing-studio-head-actions {
@@ -26823,10 +26920,10 @@ body.is-offer-template-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 0 16px;
-  min-height: 48px;
-  border-radius: 18px;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 36px;
+  border-radius: 14px;
   border: 1px solid rgba(109, 132, 196, 0.28);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 246, 255, 0.95));
   color: #2b3858;
@@ -26839,13 +26936,14 @@ body.is-offer-template-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  font-size: 1.05rem;
+  min-width: 16px;
+  font-size: 0.88rem;
   color: #4e67b2;
 }
 
 .drawing-tool-button-label {
   white-space: nowrap;
+  font-size: 0.9rem;
 }
 
 .drawing-tool-button:hover,
@@ -26862,11 +26960,36 @@ body.is-offer-template-open {
   box-shadow: 0 16px 36px rgba(73, 106, 214, 0.16);
 }
 
+.drawing-view-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 16px;
+  border: 1px solid rgba(110, 136, 197, 0.2);
+  background: rgba(248, 251, 255, 0.92);
+}
+
+.drawing-view-mode-switch .ghost-button {
+  min-height: 34px;
+  padding-inline: 12px;
+  border-radius: 12px;
+}
+
+.drawing-view-mode-switch .ghost-button.is-active {
+  border-color: rgba(73, 106, 214, 0.45);
+  background: linear-gradient(135deg, rgba(73, 106, 214, 0.12), rgba(99, 189, 255, 0.12));
+  color: #2444a0;
+}
+
 .drawing-reference-list,
 .drawing-layer-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 36vh;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .drawing-reference-card,
@@ -26936,11 +27059,11 @@ body.is-offer-template-open {
 
 .drawing-stage-scroll {
   overflow: auto;
-  min-height: clamp(720px, calc(100vh - 360px), 1120px);
-  max-height: calc(100vh - 310px);
-  border-radius: 28px;
+  min-height: clamp(780px, calc(100vh - 286px), 1180px);
+  max-height: calc(100vh - 232px);
+  border-radius: 24px;
   border: 1px solid rgba(115, 152, 212, 0.3);
-  padding: 14px;
+  padding: 10px;
   background:
     radial-gradient(circle at top, rgba(95, 144, 255, 0.09), transparent 42%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 248, 255, 0.94));
@@ -26950,7 +27073,7 @@ body.is-offer-template-open {
   position: relative;
   width: 2400px;
   height: 1500px;
-  border-radius: 26px;
+  border-radius: 22px;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 252, 255, 0.98));
@@ -27014,6 +27137,36 @@ body.is-offer-template-open {
   line-height: 1.6;
 }
 
+.drawing-stage-cad-status {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 8;
+  max-width: min(540px, calc(100% - 40px));
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(99, 129, 189, 0.24);
+  background: rgba(255, 255, 255, 0.92);
+  color: #30415f;
+  box-shadow: 0 18px 32px rgba(74, 94, 141, 0.12);
+}
+
+.drawing-stage-cad-status[data-tone="error"] {
+  border-color: rgba(203, 74, 74, 0.24);
+  background: rgba(255, 244, 244, 0.94);
+  color: #8e3434;
+}
+
+.drawing-stage-cad-status[data-tone="success"] {
+  border-color: rgba(50, 148, 102, 0.24);
+  background: rgba(242, 255, 248, 0.94);
+  color: #256a4d;
+}
+
+.drawing-stage-cad-status[hidden] {
+  display: none !important;
+}
+
 .drawing-stage-dwg-reference {
   position: relative;
   width: 100%;
@@ -27045,14 +27198,14 @@ body.is-offer-template-open {
 
 .drawing-stage-dwg-preview {
   position: absolute;
-  top: 28px;
-  left: 28px;
-  right: 28px;
+  top: 20px;
+  left: 20px;
+  right: 20px;
   display: grid;
-  gap: 12px;
-  max-width: 960px;
-  padding: 24px 26px;
-  border-radius: 28px;
+  gap: 10px;
+  max-width: 880px;
+  padding: 18px 20px;
+  border-radius: 24px;
   border: 1px solid rgba(55, 93, 172, 0.18);
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(237, 244, 255, 0.78));
   box-shadow: 0 22px 56px rgba(70, 93, 152, 0.12);
@@ -27062,7 +27215,7 @@ body.is-offer-template-open {
 }
 
 .drawing-stage-dwg-preview strong {
-  font-size: 1.18rem;
+  font-size: 1.08rem;
   color: #1f3158;
 }
 
@@ -27076,7 +27229,7 @@ body.is-offer-template-open {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 80px;
+  padding: 54px;
   z-index: 1;
   pointer-events: none;
 }
@@ -27103,7 +27256,7 @@ body.is-offer-template-open {
 
 .drawing-stage-dwg-chip {
   justify-self: start;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(56, 97, 181, 0.22);
   background: rgba(61, 113, 212, 0.1);
@@ -27119,25 +27272,33 @@ body.is-offer-template-open {
   height: 100%;
   touch-action: none;
   cursor: crosshair;
+  z-index: 2;
 }
 
 .drawing-stage-svg.is-tool-select {
   cursor: default;
 }
 
+.drawing-stage.is-reference-mode .drawing-stage-svg {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .drawing-stage-helper {
-  margin-top: 12px;
+  margin-top: 6px;
+  line-height: 1.4;
+  font-size: 0.92rem;
 }
 
 .drawing-status-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-top: 12px;
-  padding: 12px 16px;
-  border-radius: 22px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 18px;
   border: 1px solid rgba(115, 152, 212, 0.24);
   background: rgba(255, 255, 255, 0.9);
 }
@@ -27197,7 +27358,7 @@ button.drawing-status-pill.is-active {
 }
 
 .drawing-inspector-grid {
-  row-gap: 14px;
+  row-gap: 10px;
 }
 
 .drawing-symbol-button {
@@ -27265,13 +27426,7 @@ button.drawing-status-pill.is-active {
 
 @media (max-width: 1580px) {
   .drawing-studio-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .drawing-studio-sidebar.is-right {
-    position: static;
-    max-height: none;
-    overflow: visible;
+    grid-template-columns: minmax(0, 1fr) 34px minmax(216px, 252px);
   }
 }
 
@@ -27283,8 +27438,17 @@ button.drawing-status-pill.is-active {
 
   .drawing-studio-list-panel {
     grid-template-columns: 1fr;
-    padding: 0 0 18px;
+    padding: 0 0 14px;
     border-bottom: 1px solid rgba(116, 148, 210, 0.22);
+  }
+
+  .drawing-studio-filters,
+  .drawing-studio-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .drawing-field-note {
+    grid-column: auto;
   }
 
   .drawing-studio-workspace-panel {
@@ -27293,6 +27457,10 @@ button.drawing-status-pill.is-active {
 
   .drawing-project-list {
     max-height: none;
+  }
+
+  .drawing-sidebar-tab {
+    display: none;
   }
 
   .drawing-stage {

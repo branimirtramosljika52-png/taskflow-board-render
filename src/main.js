@@ -1880,8 +1880,15 @@ const drawingExportPdfButton = document.querySelector("#drawing-export-pdf");
 const drawingStageScroll = document.querySelector("#drawing-stage-scroll");
 const drawingStage = document.querySelector("#drawing-stage");
 const drawingStageReference = document.querySelector("#drawing-stage-reference");
+const drawingStageCadStatus = document.querySelector("#drawing-stage-cad-status");
 const drawingStageSvg = document.querySelector("#drawing-stage-svg");
 const drawingStageHelper = document.querySelector("#drawing-stage-helper");
+const drawingViewModeButtons = Array.from(document.querySelectorAll("[data-drawing-view]"));
+const drawingSidebarToggleButton = document.querySelector("#drawing-sidebar-toggle");
+const drawingSidebarToggleLabel = document.querySelector("#drawing-sidebar-toggle-label");
+const drawingSidebar = document.querySelector("#drawing-sidebar");
+const drawingSidebarTabButtons = Array.from(document.querySelectorAll("[data-drawing-sidebar-tab]"));
+const drawingSidebarPanels = Array.from(document.querySelectorAll("[data-drawing-sidebar-panel]"));
 const drawingSelectedTitle = document.querySelector("#drawing-selected-title");
 const drawingSelectedLayerInput = document.querySelector("#drawing-selected-layer");
 const drawingSelectedLabelInput = document.querySelector("#drawing-selected-label");
@@ -2586,6 +2593,9 @@ let drawingCurrentTool = "select";
 let drawingPointerSession = null;
 let drawingDraftLayerCounter = 0;
 let drawingCursorPositionDraft = { x: 0, y: 0 };
+let drawingViewMode = "canvas";
+let drawingSidebarCollapsed = true;
+let drawingSidebarTab = "symbols";
 const DRAWING_DIMENSION_UNIT = "mm";
 const DRAWING_LINEAR_TYPES = new Set(["line", "curve", "wall", "dimension"]);
 const DRAWING_SYMBOL_TYPES = new Set(["exit", "extinguisher", "hydrant", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
@@ -6075,6 +6085,83 @@ function getDrawingToolLabel(tool = "select") {
   return mapping[String(tool || "").trim().toLowerCase()] || "Alat";
 }
 
+function getDrawingActiveReference() {
+  return drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+}
+
+function isDrawingCadReference(reference = null) {
+  const fileName = String(reference?.fileName || "").trim().toLowerCase();
+  return fileName.endsWith(".dwg") || fileName.endsWith(".dxf");
+}
+
+function isDrawingPdfReference(reference = null) {
+  const fileName = String(reference?.fileName || "").trim().toLowerCase();
+  const fileType = String(reference?.fileType || "").trim().toLowerCase();
+  return fileType.includes("pdf") || fileName.endsWith(".pdf");
+}
+
+function isDrawingImageReference(reference = null) {
+  const fileName = String(reference?.fileName || "").trim().toLowerCase();
+  const fileType = String(reference?.fileType || "").trim().toLowerCase();
+  return fileType.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp", ".svg"].some((extension) => fileName.endsWith(extension));
+}
+
+function showDrawingCadStatus(message = "", tone = "info") {
+  if (!drawingStageCadStatus) {
+    return;
+  }
+
+  const text = String(message || "").trim();
+  drawingStageCadStatus.hidden = !text;
+  drawingStageCadStatus.textContent = text;
+  drawingStageCadStatus.dataset.tone = text ? tone : "";
+}
+
+function setDrawingViewMode(nextMode = "canvas") {
+  const activeReference = getDrawingActiveReference();
+  if (nextMode === "reference" && !activeReference) {
+    drawingViewMode = "canvas";
+    return;
+  }
+
+  drawingViewMode = nextMode === "reference" ? "reference" : "canvas";
+}
+
+function syncDrawingSidebarUi() {
+  const shell = drawingSidebar?.closest(".drawing-studio-shell");
+  shell?.classList.toggle("is-sidebar-collapsed", drawingSidebarCollapsed === true);
+
+  if (drawingSidebarToggleButton) {
+    drawingSidebarToggleButton.setAttribute("aria-expanded", drawingSidebarCollapsed === true ? "false" : "true");
+  }
+  if (drawingSidebarToggleLabel) {
+    drawingSidebarToggleLabel.textContent = drawingSidebarCollapsed === true ? "Alati" : "Sakrij";
+  }
+
+  drawingSidebarTabButtons.forEach((button) => {
+    const isActive = button.dataset.drawingSidebarTab === drawingSidebarTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  drawingSidebarPanels.forEach((panel) => {
+    panel.hidden = drawingSidebarCollapsed === true || panel.dataset.drawingSidebarPanel !== drawingSidebarTab;
+  });
+}
+
+function syncDrawingViewModeUi() {
+  const activeReference = getDrawingActiveReference();
+  const hasReference = Boolean(activeReference);
+  drawingViewModeButtons.forEach((button) => {
+    const isActive = button.dataset.drawingView === drawingViewMode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    if (button.dataset.drawingView === "reference") {
+      button.disabled = !hasReference;
+    }
+  });
+}
+
 function getDrawingCurveControlPoint(element = {}) {
   const startX = Number(element.x || 0);
   const startY = Number(element.y || 0);
@@ -6245,8 +6332,12 @@ function loadDrawingDraft(project = null) {
   drawingSelectedElementId = "";
   drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
   drawingCurrentTool = "select";
+  drawingViewMode = drawingActiveReferenceId ? "reference" : "canvas";
+  drawingSidebarCollapsed = true;
+  drawingSidebarTab = "symbols";
   drawingPointerSession = null;
   drawingCursorPositionDraft = { x: 0, y: 0 };
+  showDrawingCadStatus("");
   if (drawingError) {
     drawingError.textContent = "";
   }
@@ -6450,6 +6541,8 @@ function renderDrawingReferenceList() {
     activateButton.textContent = String(entry.id) === String(drawingActiveReferenceId) ? "Aktivno" : "Prikaži";
     activateButton.addEventListener("click", () => {
       drawingActiveReferenceId = String(entry.id);
+      setDrawingViewMode("reference");
+      drawingSidebarTab = "references";
       renderDrawingStudioModule();
     });
 
@@ -6469,6 +6562,9 @@ function renderDrawingReferenceList() {
       drawingReferenceDrafts = drawingReferenceDrafts.filter((item) => String(item.id) !== String(entry.id));
       if (String(drawingActiveReferenceId) === String(entry.id)) {
         drawingActiveReferenceId = drawingReferenceDrafts[0]?.id || "";
+      }
+      if (!drawingActiveReferenceId) {
+        setDrawingViewMode("canvas");
       }
       renderDrawingStudioModule();
     });
@@ -6664,6 +6760,10 @@ function renderDrawingStudioModule() {
     drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
   }
 
+  if (drawingViewMode === "reference" && !drawingActiveReferenceId) {
+    drawingViewMode = "canvas";
+  }
+
   renderDrawingSelectOptions();
   syncDrawingLocationOptions();
   renderDrawingProjectList();
@@ -6736,15 +6836,18 @@ function renderDrawingStudioModule() {
     drawingCursorPositionLabel.textContent = `X ${Math.round(Number(drawingCursorPositionDraft.x || 0))} · Y ${Math.round(Number(drawingCursorPositionDraft.y || 0))}`;
   }
   if (drawingReferenceStatusLabel) {
-    const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+    const activeReference = getDrawingActiveReference();
     drawingReferenceStatusLabel.textContent = activeReference
       ? `Podloga: ${activeReference.fileName || "Datoteka"}`
       : "Podloga: prazno platno";
   }
   if (drawingStageHelper) {
-    drawingStageHelper.textContent = drawingActiveReferenceId
-      ? "Podloga je učitana kao referenca. Preko nje odmah crtaš zidove, kote, oblike i simbole, a DWG ostaje jasno označen u workspaceu."
-      : "Radiš na praznom platnu. Odaberi alat gore, simbol desno ili naknadno dodaj DWG, DXF, PDF ili sliku kao podlogu.";
+    const activeReference = getDrawingActiveReference();
+    drawingStageHelper.textContent = !activeReference
+      ? "Radiš na praznom platnu. Gore biraš alat, desno po potrebi otvaraš blokove, layere i inspector, a podlogu možeš dodati naknadno."
+      : drawingViewMode === "reference"
+        ? `Trenutno gledaš podlogu ${activeReference.fileName || "datoteka"}. Vrati se na "Crtanje" kad želiš dodavati zidove, kote i blokove.`
+        : `Podloga ${activeReference.fileName || "datoteka"} je aktivna. Crtaj preko nje ili prebaci na "Podloga" za puni pregled reference.`;
   }
 
   drawingToolButtons.forEach((button) => {
@@ -6753,6 +6856,8 @@ function renderDrawingStudioModule() {
   drawingBlockButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.drawingBlock === drawingCurrentTool);
   });
+  syncDrawingViewModeUi();
+  syncDrawingSidebarUi();
 
   renderDrawingInspector();
   renderDrawingStage();
@@ -7105,8 +7210,9 @@ function renderDrawingStageReference() {
         <div class="drawing-stage-dwg-preview">
           <span class="drawing-stage-dwg-chip">${extensionLabel}</span>
           <strong>${displayName}</strong>
-          <p>CAD datoteka je aktivna podloga ovog crteža. U ovom workspaceu sada crtaš iznad reference, a izvornu datoteku možeš preuzeti ili zamijeniti novom verzijom.</p>
+          <p>CAD datoteka je spremljena kao aktivna podloga ovog crteža. U ovom editoru možeš crtati iznad reference, mijenjati layere i slagati simbole bez dodatnog otvaranja zasebnog prozora.</p>
           <p><strong>Datoteka:</strong> ${displayName} · <strong>Veličina:</strong> ${fileSizeLabel}</p>
+          <p><strong>Napomena:</strong> za puni prikaz sirove DWG geometrije treba poseban CAD viewer / konverzija. PDF i slike imaju direktan pregled u browseru.</p>
         </div>
         <div class="drawing-stage-dwg-watermark" aria-hidden="true">
           <div>
@@ -7135,11 +7241,25 @@ function renderDrawingStage() {
   const zoom = Math.max(0.5, Math.min(2.5, Number(drawingViewportDraft.zoom || 1)));
   const canvasWidth = clampDrawingCanvasWidth(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
   const canvasHeight = clampDrawingCanvasHeight(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
+  const activeReference = getDrawingActiveReference();
+  const isReferenceMode = drawingViewMode === "reference" && Boolean(activeReference);
   drawingStage.style.width = `${Math.round(canvasWidth * zoom)}px`;
   drawingStage.style.height = `${Math.round(canvasHeight * zoom)}px`;
+  drawingStage.classList.toggle("is-reference-mode", isReferenceMode);
   drawingStageSvg.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
   drawingStageSvg.classList.toggle("is-tool-select", drawingCurrentTool === "select");
   renderDrawingStageReference();
+  if (drawingStageReference) {
+    drawingStageReference.hidden = false;
+  }
+  if (isReferenceMode && isDrawingCadReference(activeReference)) {
+    showDrawingCadStatus(
+      `${String(activeReference?.fileName || "DWG podloga").trim()} je učitan kao CAD referenca. Za pravi prikaz sirove DWG geometrije treba licencirani CAD viewer ili konverzija u pregledni format.`,
+      "info",
+    );
+  } else {
+    showDrawingCadStatus("");
+  }
 
   const visibleLayerIds = new Set(
     drawingLayerDrafts
@@ -7774,6 +7894,9 @@ async function queueDrawingReferenceFiles(files = []) {
 
   drawingReferenceDrafts = [...drawingReferenceDrafts, ...prepared];
   drawingActiveReferenceId = prepared[prepared.length - 1]?.id || drawingActiveReferenceId || "";
+  drawingSidebarTab = "references";
+  drawingSidebarCollapsed = false;
+  setDrawingViewMode(drawingActiveReferenceId ? "reference" : "canvas");
   renderDrawingStudioModule();
 }
 
@@ -60450,11 +60573,15 @@ drawingLocationIdInput?.addEventListener("change", () => {
 });
 
 drawingReferenceUploadButton?.addEventListener("click", () => {
+  drawingSidebarTab = "references";
+  drawingSidebarCollapsed = false;
+  syncDrawingSidebarUi();
   drawingReferenceFileInput?.click();
 });
 
 drawingClearReferenceButton?.addEventListener("click", () => {
   drawingActiveReferenceId = "";
+  setDrawingViewMode("canvas");
   renderDrawingStage();
   if (drawingStageScroll) {
     drawingStageScroll.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -60475,10 +60602,35 @@ drawingReferenceFileInput?.addEventListener("change", () => {
   });
 });
 
+drawingViewModeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setDrawingViewMode(button.dataset.drawingView || "canvas");
+    renderDrawingStudioModule();
+  });
+});
+
+drawingSidebarToggleButton?.addEventListener("click", () => {
+  drawingSidebarCollapsed = !drawingSidebarCollapsed;
+  if (drawingSidebarCollapsed === false && !drawingSidebarTab) {
+    drawingSidebarTab = "symbols";
+  }
+  renderDrawingStudioModule();
+});
+
+drawingSidebarTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    drawingSidebarTab = button.dataset.drawingSidebarTab || "symbols";
+    drawingSidebarCollapsed = false;
+    renderDrawingStudioModule();
+  });
+});
+
 drawingAddLayerButton?.addEventListener("click", () => {
   const nextLayer = createDrawingLayerDraft(drawingLayerDrafts.length);
   drawingLayerDrafts = [...drawingLayerDrafts, nextLayer];
   drawingActiveLayerId = nextLayer.id;
+  drawingSidebarTab = "layers";
+  drawingSidebarCollapsed = false;
   renderDrawingStudioModule();
 });
 
@@ -60500,6 +60652,8 @@ drawingBlockButtons.forEach((button) => {
       return;
     }
     drawingCurrentTool = blockType;
+    drawingSidebarTab = "symbols";
+    drawingSidebarCollapsed = false;
     syncDrawingActiveLayerForTool(blockType);
     renderDrawingStudioModule();
   });
