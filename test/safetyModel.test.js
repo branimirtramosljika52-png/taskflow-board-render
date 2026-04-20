@@ -19,6 +19,7 @@ import {
   createLocation,
   createMeasurementEquipmentItem,
   createOffer,
+  createPurchaseOrder,
   createReminder,
   createSafetyAuthorization,
   createServiceCatalogItem,
@@ -34,6 +35,7 @@ import {
   filterLegalFrameworks,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterPurchaseOrders,
   filterSafetyAuthorizations,
   filterServiceCatalogItems,
   filterTodoTasks,
@@ -50,6 +52,7 @@ import {
   sortAbsenceEntries,
     groupWorkOrdersByExecutorSet,
     nextOfferNumber,
+    nextPurchaseOrderNumber,
     nextWorkOrderNumber,
     normalizeWorkOrderMeasurementSheet,
     parseCoordinates,
@@ -59,6 +62,7 @@ import {
   sortLegalFrameworks,
   sortMeasurementEquipmentItems,
   sortOffers,
+  sortPurchaseOrders,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
   sortVehicles,
@@ -74,6 +78,7 @@ import {
   updateLocation,
   updateMeasurementEquipmentItem,
   updateOffer,
+  updatePurchaseOrder,
   updateReminder,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
@@ -121,6 +126,7 @@ function buildState() {
     reminders: [],
     todoTasks: [],
     offers: [],
+    purchaseOrders: [],
     vehicles: [],
     legalFrameworks: [],
     serviceCatalog: [],
@@ -1609,6 +1615,194 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(allLocationsOffer.contactName, "");
   assert.equal(allLocationsOffer.showTotalAmount, true);
   assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 180 mm" }).length, 1);
+});
+
+test("purchase orders generate numbering and keep incoming document metadata", () => {
+  const state = buildState();
+
+  const existingPurchaseOrder = createPurchaseOrder(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Zaprimljena narudžbenica",
+      serviceLine: "Fixed Fee",
+      orderDirection: "incoming",
+      externalDocumentNumber: "PO-ACME-001",
+      documents: [
+        {
+          id: "purchase-document-1",
+          fileName: "acme-po-001.pdf",
+          fileType: "application/pdf",
+          dataUrl: "data:application/pdf;base64,AAA",
+        },
+      ],
+      items: [
+        { description: "Servis", unit: "kom", quantity: 1, unitPrice: 120 },
+      ],
+    },
+    state,
+    () => "purchase-order-1",
+    {
+      purchaseOrderNumber: "2026-PO-001",
+      purchaseOrderYear: 2026,
+      purchaseOrderSequence: 1,
+    },
+    () => "2026-03-25T09:00:00.000Z",
+  );
+
+  const nextNumber = nextPurchaseOrderNumber([existingPurchaseOrder], { year: 2026 });
+
+  const createdPurchaseOrder = createPurchaseOrder(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationScope: "single",
+      locationId: "location-1",
+      selectedLocationIds: ["location-1"],
+      title: "Izlazna narudžbenica",
+      serviceLine: "Offer",
+      orderDirection: "outgoing",
+      items: [
+        { description: "Izrada dokumentacije", unit: "sat", quantity: 2, unitPrice: 75 },
+      ],
+    },
+    {
+      ...state,
+      purchaseOrders: [existingPurchaseOrder],
+    },
+    () => "purchase-order-2",
+    nextNumber,
+    () => "2026-03-26T09:00:00.000Z",
+  );
+
+  assert.equal(existingPurchaseOrder.purchaseOrderNumber, "2026-PO-001");
+  assert.equal(existingPurchaseOrder.orderDirection, "incoming");
+  assert.equal(existingPurchaseOrder.externalDocumentNumber, "PO-ACME-001");
+  assert.equal(existingPurchaseOrder.documents.length, 1);
+  assert.equal(existingPurchaseOrder.documents[0].fileName, "acme-po-001.pdf");
+  assert.equal(createdPurchaseOrder.purchaseOrderNumber, "2026-PO-002");
+  assert.equal(createdPurchaseOrder.purchaseOrderSequence, 2);
+  assert.equal(createdPurchaseOrder.companyName, "Acme d.o.o.");
+  assert.equal(createdPurchaseOrder.locationName, "Pogon Jankomir");
+  assert.equal(createdPurchaseOrder.subtotal, 150);
+  assert.equal(createdPurchaseOrder.total, 187.5);
+});
+
+test("purchase orders support filtering, sorting, updates and location scope", () => {
+  const state = buildState();
+
+  const incomingPurchaseOrder = createPurchaseOrder(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationScope: "single",
+      locationId: "location-1",
+      contactSlot: "1",
+      title: "Klijentova narudžbenica",
+      serviceLine: "Base fee + variable fee",
+      status: "received",
+      purchaseOrderDate: "2026-04-02",
+      orderDirection: "incoming",
+      externalDocumentNumber: "KL-7781",
+      note: "Zaprimljena od klijenta",
+      items: [
+        { description: "Pregled centrale", unit: "kom", quantity: 1, unitPrice: 160 },
+      ],
+      documents: [
+        {
+          id: "purchase-document-2",
+          fileName: "narudzbenica-klijenta.pdf",
+          fileType: "application/pdf",
+          dataUrl: "data:application/pdf;base64,BBB",
+        },
+      ],
+    },
+    state,
+    () => "purchase-order-incoming",
+    {
+      purchaseOrderNumber: "2026-PO-003",
+      purchaseOrderYear: 2026,
+      purchaseOrderSequence: 3,
+    },
+    () => "2026-04-02T08:00:00.000Z",
+  );
+
+  const outgoingPurchaseOrder = updatePurchaseOrder(
+    incomingPurchaseOrder,
+    {
+      title: "Interna narudžbenica za servis",
+      status: "issued",
+      orderDirection: "outgoing",
+      purchaseOrderDate: "2026-04-04",
+      selectedLocationIds: ["location-1"],
+      note: "Izdano prema partneru",
+      items: [
+        {
+          description: "Servis po stavkama",
+          unit: "kom",
+          quantity: 1,
+          unitPrice: 0,
+          breakdowns: [
+            { label: "Kontrola", amount: 40 },
+            { label: "Materijal", amount: 60 },
+          ],
+        },
+      ],
+    },
+    {
+      ...state,
+      purchaseOrders: [incomingPurchaseOrder],
+    },
+    () => "2026-04-04T10:00:00.000Z",
+  );
+
+  const confirmedPurchaseOrder = createPurchaseOrder(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationScope: "all",
+      title: "Godišnja narudžbenica",
+      serviceLine: "Fixed Fee",
+      status: "confirmed",
+      purchaseOrderDate: "2026-04-06",
+      orderDirection: "outgoing",
+      items: [
+        { description: "Paket održavanja", unit: "paket", quantity: 1, unitPrice: 300 },
+      ],
+    },
+    {
+      ...state,
+      purchaseOrders: [incomingPurchaseOrder, outgoingPurchaseOrder],
+    },
+    () => "purchase-order-confirmed",
+    {
+      purchaseOrderNumber: "2026-PO-004",
+      purchaseOrderYear: 2026,
+      purchaseOrderSequence: 4,
+    },
+    () => "2026-04-06T12:00:00.000Z",
+  );
+
+  const filtered = filterPurchaseOrders(
+    [incomingPurchaseOrder, outgoingPurchaseOrder, confirmedPurchaseOrder],
+    {
+      query: "partneru",
+      status: "issued",
+    },
+  );
+
+  assert.equal(outgoingPurchaseOrder.locationScope, "single");
+  assert.equal(outgoingPurchaseOrder.contactName, "Marko Horvat");
+  assert.equal(outgoingPurchaseOrder.items[0].breakdownTotal, 100);
+  assert.equal(outgoingPurchaseOrder.total, 125);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].status, "issued");
+  assert.equal(filtered[0].orderDirection, "outgoing");
+  assert.deepEqual(
+    sortPurchaseOrders([confirmedPurchaseOrder, outgoingPurchaseOrder, incomingPurchaseOrder]).map((item) => item.status),
+    ["received", "issued", "confirmed"],
+  );
 });
 
 test("vehicles create reservations, block overlaps and derive availability", () => {

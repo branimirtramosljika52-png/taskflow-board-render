@@ -13,6 +13,7 @@ import {
   createLocation,
   createMeasurementEquipmentItem,
   createOffer,
+  createPurchaseOrder,
   createReminder,
   createSafetyAuthorization,
   createServiceCatalogItem,
@@ -27,6 +28,7 @@ import {
   getWorkOrderExecutors,
   getWorkOrderServiceItems,
   nextOfferNumber,
+  nextPurchaseOrderNumber,
   sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
@@ -39,6 +41,7 @@ import {
   updateLocation,
   updateMeasurementEquipmentItem,
   updateOffer,
+  updatePurchaseOrder,
   updateReminder,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
@@ -1404,6 +1407,28 @@ function mapOfferTemplateSettingsEntry(row = {}) {
   };
 }
 
+function mapPurchaseOrderTemplateSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const referenceDocument = mapStoredAttachmentDocument(parseJsonObject(row.reference_document_json));
+  if (!referenceDocument.fileName || !referenceDocument.dataUrl) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    referenceDocument: {
+      ...referenceDocument,
+      updatedAt: normalizeTimestamp(referenceDocument.updatedAt) ?? normalizeTimestamp(row.updated_at),
+    },
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -2179,6 +2204,121 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [purchaseOrderRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
+           purchase_order_number, purchase_order_year, purchase_order_sequence,
+           title, service_line, status, order_direction, purchase_order_date, valid_until,
+           external_document_number, note, currency_code, tax_rate, discount_rate, subtotal_amount,
+           discount_total_amount, taxable_subtotal_amount, show_total_amount, tax_total_amount,
+           grand_total_amount, items_json, documents_json, contact_slot, contact_name, contact_phone,
+           contact_email, created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_purchase_orders
+    ORDER BY
+      CASE status
+        WHEN 'draft' THEN 0
+        WHEN 'received' THEN 1
+        WHEN 'issued' THEN 2
+        WHEN 'confirmed' THEN 3
+        WHEN 'closed' THEN 4
+        ELSE 9
+      END ASC,
+      purchase_order_date DESC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const purchaseOrders = purchaseOrderRows.map((row) => {
+    const company = companiesById.get(dbString(row.company_id));
+    const location = locationsById.get(dbString(row.location_id));
+    const rawLocationScope = dbString(row.location_scope).toLowerCase();
+    const locationScope = ["all", "single", "selection", "none"].includes(rawLocationScope)
+      ? (rawLocationScope === "single" && !dbString(row.location_id) ? "none" : rawLocationScope)
+      : (dbString(row.location_id) ? "single" : "none");
+    const companyLocations = locations.filter((entry) => String(entry.companyId) === dbString(row.company_id));
+    const selectedLocationIds = locationScope === "all"
+      ? companyLocations.map((entry) => String(entry.id))
+      : parseJsonArray(row.location_ids_json).map((entry) => dbString(entry)).filter(Boolean);
+    const selectedLocationNames = (locationScope === "all"
+      ? companyLocations.map((entry) => entry.name).filter(Boolean)
+      : parseJsonArray(row.location_names_json).map((entry) => dbString(entry)).filter(Boolean))
+      || [];
+    const hydratedSelectedLocationNames = selectedLocationNames.length > 0
+      ? selectedLocationNames
+      : selectedLocationIds
+        .map((selectedId) => companyLocations.find((entry) => String(entry.id) === selectedId)?.name ?? "")
+        .filter(Boolean);
+    const items = parseJsonArray(row.items_json).map((item) => ({
+      serviceCatalogId: dbString(item.serviceCatalogId),
+      serviceCode: dbString(item.serviceCode),
+      description: dbString(item.description),
+      unit: dbString(item.unit),
+      quantity: Number(item.quantity ?? 0) || 0,
+      unitPrice: Number(item.unitPrice ?? 0) || 0,
+      breakdowns: parseJsonArray(item.breakdowns).map((entry) => ({
+        label: dbString(entry.label),
+        amount: Number(entry.amount ?? 0) || 0,
+      })),
+      breakdownTotal: Number(item.breakdownTotal ?? 0) || 0,
+      discountRate: Number(item.discountRate ?? 0) || 0,
+      discountTotal: Number(item.discountTotal ?? 0) || 0,
+      totalPrice: Number(item.totalPrice ?? 0) || 0,
+    }));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId: dbString(row.company_id),
+      companyName: company?.name ?? "",
+      companyOib: company?.oib ?? "",
+      headquarters: company?.headquarters ?? "",
+      locationId: dbString(row.location_id),
+      locationScope,
+      selectedLocationIds,
+      selectedLocationNames: hydratedSelectedLocationNames,
+      locationName: locationScope === "all"
+        ? "Sve lokacije"
+        : locationScope === "selection"
+          ? `${selectedLocationIds.length} od ${companyLocations.length} lokacija`
+          : locationScope === "none"
+            ? "Bez lokacije"
+            : (hydratedSelectedLocationNames[0] || location?.name || ""),
+      region: location?.region ?? "",
+      coordinates: location?.coordinates ?? "",
+      contactSlot: dbString(row.contact_slot),
+      contactName: row.contact_name ?? "",
+      contactPhone: row.contact_phone ?? "",
+      contactEmail: row.contact_email ?? "",
+      purchaseOrderNumber: row.purchase_order_number ?? "",
+      purchaseOrderYear: Number(row.purchase_order_year ?? 0) || null,
+      purchaseOrderSequence: Number(row.purchase_order_sequence ?? 0) || null,
+      title: row.title ?? "",
+      serviceLine: row.service_line ?? "",
+      status: row.status ?? "draft",
+      orderDirection: dbString(row.order_direction) || "incoming",
+      purchaseOrderDate: normalizeDateOnly(row.purchase_order_date),
+      validUntil: normalizeDateOnly(row.valid_until),
+      externalDocumentNumber: row.external_document_number ?? "",
+      note: row.note ?? "",
+      currency: row.currency_code ?? "EUR",
+      taxRate: Number(row.tax_rate ?? 0) || 0,
+      discountRate: Number(row.discount_rate ?? 0) || 0,
+      subtotal: Number(row.subtotal_amount ?? 0) || 0,
+      discountTotal: Number(row.discount_total_amount ?? 0) || 0,
+      taxableSubtotal: Number(row.taxable_subtotal_amount ?? 0) || 0,
+      showTotalAmount: row.show_total_amount == null ? true : Boolean(Number(row.show_total_amount)),
+      taxTotal: Number(row.tax_total_amount ?? 0) || 0,
+      total: Number(row.grand_total_amount ?? 0) || 0,
+      items,
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [vehicleRows] = await connection.query(`
     SELECT id, organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year,
            color, fuel_type, transmission, seat_count, odometer_km, service_due_date,
@@ -2552,6 +2692,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapOfferTemplateSettingsEntry(row))
     .filter(Boolean);
 
+  const [purchaseOrderTemplateSettingsRows] = await connection.query(`
+    SELECT organization_id, reference_document_json, created_at, updated_at
+    FROM web_purchase_order_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const purchaseOrderTemplateSettings = purchaseOrderTemplateSettingsRows
+    .map((row) => mapPurchaseOrderTemplateSettingsEntry(row))
+    .filter(Boolean);
+
   const [vehicleSettingsRows] = await connection.query(`
     SELECT organization_id, notification_rules_json, created_at, updated_at
     FROM web_vehicle_settings
@@ -2686,6 +2836,8 @@ async function fetchSnapshotFromConnection(connection) {
     todoTasks,
     offers,
     offerTemplateSettings,
+    purchaseOrders,
+    purchaseOrderTemplateSettings,
     vehicles,
     legalFrameworks,
     documentTemplates,
@@ -2779,6 +2931,7 @@ export class InMemorySafetyRepository {
       reminders: [],
       todoTasks: [],
       offers: [],
+      purchaseOrders: [],
       vehicles: [],
       legalFrameworks: [],
       documentTemplates: [],
@@ -2788,6 +2941,7 @@ export class InMemorySafetyRepository {
       measurementEquipment: [],
       measurementEquipmentCardTemplates: [],
       offerTemplateSettings: [],
+      purchaseOrderTemplateSettings: [],
       measurementEquipmentNotificationSettings: [],
       safetyAuthorizationNotificationSettings: [],
       absenceNotificationSettings: [],
@@ -2903,6 +3057,16 @@ export class InMemorySafetyRepository {
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
         })),
       })),
+      purchaseOrders: this.snapshot.purchaseOrders.map((item) => ({
+        ...item,
+        selectedLocationIds: [...(item.selectedLocationIds ?? [])],
+        selectedLocationNames: [...(item.selectedLocationNames ?? [])],
+        items: (item.items ?? []).map((entry) => ({
+          ...entry,
+          breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
+        })),
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
       vehicles: this.snapshot.vehicles.map((item) => ({
         ...item,
         reservations: (item.reservations ?? []).map((reservation) => ({
@@ -2947,6 +3111,10 @@ export class InMemorySafetyRepository {
         templateDocument: item.templateDocument ? { ...item.templateDocument } : null,
       })),
       offerTemplateSettings: this.snapshot.offerTemplateSettings.map((item) => ({
+        ...item,
+        referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
+      })),
+      purchaseOrderTemplateSettings: this.snapshot.purchaseOrderTemplateSettings.map((item) => ({
         ...item,
         referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
       })),
@@ -3015,9 +3183,10 @@ export class InMemorySafetyRepository {
     const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
+    const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers) {
-      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama ili radnim nalozima.");
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders) {
+      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama ili radnim nalozima.");
     }
 
     this.snapshot.companies = this.snapshot.companies.filter((item) => item.id !== id);
@@ -3053,9 +3222,10 @@ export class InMemorySafetyRepository {
     const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.locationId === id);
+    const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.locationId === id);
 
-    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers) {
-      throw new Error("Lokacija je vec povezana s ponudama ili radnim nalozima.");
+    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders) {
+      throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama ili radnim nalozima.");
     }
 
     this.snapshot.locations = this.snapshot.locations.filter((item) => item.id !== id);
@@ -3466,6 +3636,105 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.offerTemplateSettings.length;
     this.snapshot.offerTemplateSettings = this.snapshot.offerTemplateSettings.filter((item) => String(item.organizationId) !== safeOrganizationId);
     return this.snapshot.offerTemplateSettings.length !== before;
+  }
+
+  async createPurchaseOrder(input, actor = null) {
+    const timestamp = new Date().toISOString();
+    const numberParts = nextPurchaseOrderNumber(this.snapshot.purchaseOrders, {
+      year: Number(timestamp.slice(0, 4)),
+    });
+    const purchaseOrder = createPurchaseOrder({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), numberParts, () => timestamp);
+    this.snapshot.purchaseOrders = [purchaseOrder, ...this.snapshot.purchaseOrders];
+    return purchaseOrder;
+  }
+
+  async updatePurchaseOrder(id, patch, actor = null) {
+    const current = this.snapshot.purchaseOrders.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updatePurchaseOrder(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.purchaseOrders = this.snapshot.purchaseOrders.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deletePurchaseOrder(id) {
+    const before = this.snapshot.purchaseOrders.length;
+    this.snapshot.purchaseOrders = this.snapshot.purchaseOrders.filter((item) => item.id !== id);
+    return this.snapshot.purchaseOrders.length !== before;
+  }
+
+  async getPurchaseOrderTemplateSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return null;
+    }
+
+    const entry = this.snapshot.purchaseOrderTemplateSettings.find((item) => String(item.organizationId) === safeOrganizationId) ?? null;
+    return entry
+      ? {
+        ...entry,
+        referenceDocument: entry.referenceDocument ? { ...entry.referenceDocument } : null,
+      }
+      : null;
+  }
+
+  async upsertPurchaseOrderTemplateSettings({ organizationId = "", referenceDocument = null } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za template narudzbenice.");
+    }
+
+    const normalizedReference = mapStoredAttachmentDocument(referenceDocument ?? {});
+    if (!normalizedReference.fileName || !normalizedReference.dataUrl) {
+      throw new Error("Template narudzbenice mora biti valjana Word datoteka.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      referenceDocument: {
+        ...normalizedReference,
+        updatedAt: timestamp,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const currentIndex = this.snapshot.purchaseOrderTemplateSettings.findIndex((item) => String(item.organizationId) === safeOrganizationId);
+
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.purchaseOrderTemplateSettings[currentIndex];
+      this.snapshot.purchaseOrderTemplateSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.purchaseOrderTemplateSettings.push(nextEntry);
+    }
+
+    return this.snapshot.purchaseOrderTemplateSettings.find((item) => String(item.organizationId) === safeOrganizationId) ?? nextEntry;
+  }
+
+  async deletePurchaseOrderTemplateSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return false;
+    }
+
+    const before = this.snapshot.purchaseOrderTemplateSettings.length;
+    this.snapshot.purchaseOrderTemplateSettings = this.snapshot.purchaseOrderTemplateSettings.filter((item) => String(item.organizationId) !== safeOrganizationId);
+    return this.snapshot.purchaseOrderTemplateSettings.length !== before;
   }
 
   async createVehicle(input) {
@@ -4439,6 +4708,62 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_purchase_orders (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        location_scope VARCHAR(16) NOT NULL DEFAULT 'single',
+        location_ids_json LONGTEXT NULL,
+        location_names_json LONGTEXT NULL,
+        purchase_order_number VARCHAR(64) NOT NULL,
+        purchase_order_year INT NOT NULL,
+        purchase_order_sequence INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        service_line VARCHAR(180) NOT NULL DEFAULT '',
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        order_direction VARCHAR(16) NOT NULL DEFAULT 'incoming',
+        purchase_order_date DATE NULL,
+        valid_until DATE NULL,
+        external_document_number VARCHAR(160) NOT NULL DEFAULT '',
+        note TEXT NOT NULL,
+        currency_code VARCHAR(12) NOT NULL DEFAULT 'EUR',
+        tax_rate DECIMAL(10, 2) NOT NULL DEFAULT 25.00,
+        discount_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+        subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        discount_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        taxable_subtotal_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        show_total_amount TINYINT(1) NOT NULL DEFAULT 1,
+        tax_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        items_json LONGTEXT NULL,
+        documents_json LONGTEXT NULL,
+        contact_slot VARCHAR(16) NOT NULL DEFAULT '',
+        contact_name VARCHAR(160) NOT NULL DEFAULT '',
+        contact_phone VARCHAR(80) NOT NULL DEFAULT '',
+        contact_email VARCHAR(180) NOT NULL DEFAULT '',
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_purchase_orders_org_number (organization_id, purchase_order_number),
+        INDEX idx_web_purchase_orders_org_status (organization_id, status),
+        INDEX idx_web_purchase_orders_company (company_id),
+        INDEX idx_web_purchase_orders_location (location_id),
+        INDEX idx_web_purchase_orders_valid_until (valid_until)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_purchase_order_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        reference_document_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_purchase_order_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_vehicles (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -4817,8 +5142,33 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
     await ensureColumnExists(this.pool, "web_offer_settings", "reference_document_json", "LONGTEXT NULL");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "purchase_order_date", "DATE NULL AFTER order_direction");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "external_document_number", "VARCHAR(160) NOT NULL DEFAULT '' AFTER valid_until");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "documents_json", "LONGTEXT NULL AFTER items_json");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER documents_json");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
+    await ensureColumnExists(this.pool, "web_purchase_order_settings", "reference_document_json", "LONGTEXT NULL");
     await this.pool.query(`
       UPDATE web_offers
+      SET location_scope = CASE
+        WHEN location_id IS NULL THEN 'none'
+        ELSE 'single'
+      END
+      WHERE location_scope IS NULL
+        OR location_scope = ''
+        OR (location_scope = 'single' AND location_id IS NULL)
+    `);
+    await this.pool.query(`
+      UPDATE web_purchase_orders
       SET location_scope = CASE
         WHEN location_id IS NULL THEN 'none'
         ELSE 'single'
@@ -5187,9 +5537,13 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_offers WHERE company_id = ?",
         [Number(id)],
       );
+      const [[purchaseOrderCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_purchase_orders WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -5374,10 +5728,14 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_offers WHERE location_id = ?",
         [Number(id)],
       );
+      const [[purchaseOrderCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_purchase_orders WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0) {
         await connection.rollback();
-        throw new Error("Lokacija je vec povezana s ponudama ili radnim nalozima.");
+        throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama ili radnim nalozima.");
       }
 
       await connection.query("DELETE FROM web_location_contacts WHERE location_id = ?", [Number(id)]);
@@ -6401,6 +6759,343 @@ export class MySqlSafetyRepository {
 
       const [result] = await connection.query(
         "DELETE FROM web_offer_settings WHERE organization_id = ?",
+        [safeOrganizationId],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createPurchaseOrder(input, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const numberParts = nextPurchaseOrderNumber(snapshot.purchaseOrders ?? [], {
+        year: Number(new Date().toISOString().slice(0, 4)),
+      });
+      const draft = createPurchaseOrder({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", numberParts, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents ?? [], {
+        keyPrefix: `purchase-orders/${draft.organizationId}/documents`,
+        currentDocuments: [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_purchase_orders
+            (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
+             purchase_order_number, purchase_order_year, purchase_order_sequence,
+             title, service_line, status, order_direction, purchase_order_date, valid_until,
+             external_document_number, note, currency_code, tax_rate, discount_rate, subtotal_amount,
+             discount_total_amount, taxable_subtotal_amount, show_total_amount, tax_total_amount, grand_total_amount,
+             items_json, documents_json, contact_slot, contact_name, contact_phone, contact_email,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          draft.locationScope || "single",
+          JSON.stringify(draft.selectedLocationIds ?? []),
+          JSON.stringify(draft.selectedLocationNames ?? []),
+          draft.purchaseOrderNumber,
+          Number(draft.purchaseOrderYear),
+          Number(draft.purchaseOrderSequence),
+          draft.title,
+          draft.serviceLine,
+          draft.status,
+          draft.orderDirection,
+          draft.purchaseOrderDate,
+          draft.validUntil,
+          draft.externalDocumentNumber ?? "",
+          draft.note,
+          draft.currency,
+          parseNullableDecimal(draft.taxRate) ?? 0,
+          parseNullableDecimal(draft.discountRate) ?? 0,
+          parseNullableDecimal(draft.subtotal) ?? 0,
+          parseNullableDecimal(draft.discountTotal) ?? 0,
+          parseNullableDecimal(draft.taxableSubtotal) ?? 0,
+          draft.showTotalAmount === false ? 0 : 1,
+          parseNullableDecimal(draft.taxTotal) ?? 0,
+          parseNullableDecimal(draft.total) ?? 0,
+          JSON.stringify(draft.items ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          draft.contactSlot ?? "",
+          draft.contactName ?? "",
+          draft.contactPhone ?? "",
+          draft.contactEmail ?? "",
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...draft,
+        id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updatePurchaseOrder(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.purchaseOrders.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updatePurchaseOrder(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents ?? [], {
+        keyPrefix: `purchase-orders/${next.organizationId}/documents`,
+        currentDocuments: current.documents ?? [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          UPDATE web_purchase_orders
+          SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
+              title = ?, service_line = ?, status = ?, order_direction = ?, purchase_order_date = ?, valid_until = ?,
+              external_document_number = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
+              subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
+              tax_total_amount = ?, grand_total_amount = ?, items_json = ?, documents_json = ?, contact_slot = ?,
+              contact_name = ?, contact_phone = ?, contact_email = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          parseNullableInteger(next.locationId),
+          next.locationScope || "single",
+          JSON.stringify(next.selectedLocationIds ?? []),
+          JSON.stringify(next.selectedLocationNames ?? []),
+          next.title,
+          next.serviceLine,
+          next.status,
+          next.orderDirection,
+          next.purchaseOrderDate,
+          next.validUntil,
+          next.externalDocumentNumber ?? "",
+          next.note,
+          next.currency,
+          parseNullableDecimal(next.taxRate) ?? 0,
+          parseNullableDecimal(next.discountRate) ?? 0,
+          parseNullableDecimal(next.subtotal) ?? 0,
+          parseNullableDecimal(next.discountTotal) ?? 0,
+          parseNullableDecimal(next.taxableSubtotal) ?? 0,
+          next.showTotalAmount === false ? 0 : 1,
+          parseNullableDecimal(next.taxTotal) ?? 0,
+          parseNullableDecimal(next.total) ?? 0,
+          JSON.stringify(next.items ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          next.contactSlot ?? "",
+          next.contactName ?? "",
+          next.contactPhone ?? "",
+          next.contactEmail ?? "",
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deletePurchaseOrder(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        `
+          SELECT documents_json
+          FROM web_purchase_orders
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [Number(id)],
+      );
+      staleDocuments = parseJsonArray(rows[0]?.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.storageKey);
+
+      const [result] = await connection.query("DELETE FROM web_purchase_orders WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getPurchaseOrderTemplateSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za template narudzbenice.");
+    }
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT organization_id, reference_document_json, created_at, updated_at
+        FROM web_purchase_order_settings
+        WHERE organization_id = ?
+        LIMIT 1
+      `,
+      [safeOrganizationId],
+    );
+
+    return mapPurchaseOrderTemplateSettingsEntry(rows[0]) ?? null;
+  }
+
+  async upsertPurchaseOrderTemplateSettings({ organizationId = "", referenceDocument = null } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za template narudzbenice.");
+    }
+
+    const normalizedReference = mapStoredAttachmentDocument(referenceDocument ?? {});
+    if (!normalizedReference.fileName || !normalizedReference.dataUrl) {
+      throw new Error("Template narudzbenice mora biti valjana Word datoteka.");
+    }
+
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT reference_document_json
+          FROM web_purchase_order_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.reference_document_json));
+      const preparedTemplate = await prepareStoredAttachmentDocuments([normalizedReference], {
+        keyPrefix: `purchase-orders/${safeOrganizationId}/reference-template`,
+        currentDocuments: currentTemplate.fileName && currentTemplate.dataUrl ? [currentTemplate] : [],
+      });
+      const nextTemplate = preparedTemplate.nextDocuments[0];
+
+      if (!nextTemplate?.fileName || !nextTemplate?.dataUrl) {
+        throw new Error("Ne mogu spremiti template narudzbenice.");
+      }
+
+      staleDocuments = preparedTemplate.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          INSERT INTO web_purchase_order_settings
+            (organization_id, reference_document_json)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE
+            reference_document_json = VALUES(reference_document_json),
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          safeOrganizationId,
+          JSON.stringify(nextTemplate),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        organizationId: String(safeOrganizationId),
+        referenceDocument: {
+          ...nextTemplate,
+          updatedAt: nextTemplate.updatedAt || new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deletePurchaseOrderTemplateSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za template narudzbenice.");
+    }
+
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT reference_document_json
+          FROM web_purchase_order_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.reference_document_json));
+      staleDocuments = currentTemplate.storageKey ? [currentTemplate] : [];
+
+      const [result] = await connection.query(
+        "DELETE FROM web_purchase_order_settings WHERE organization_id = ?",
         [safeOrganizationId],
       );
 

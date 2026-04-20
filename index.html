@@ -442,6 +442,15 @@
                   </span>
                   <strong>Offers</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="purchase-orders">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4-4V7a2 2 0 0 1 2-2Z"></path>
+                      <path d="M9 9h6M9 13h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Purchase Orders</strong>
+                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="periodics">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -3851,8 +3860,8 @@
                 <section class="panel offers-list-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
-                      <p class="section-kicker">Ponude</p>
-                      <h3>Popis ponuda</h3>
+                      <p id="offers-list-kicker" class="section-kicker">Ponude</p>
+                      <h3 id="offers-list-title">Popis ponuda</h3>
                     </div>
                     <div class="offers-panel-actions">
                       <button id="offer-open-template" type="button" class="ghost-button">Novi template</button>
@@ -3880,8 +3889,8 @@
                   <div class="offers-editor-fixed-head">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Editor ponude</p>
-                        <h3>Detalji ponude</h3>
+                        <p id="offer-editor-kicker" class="section-kicker">Editor ponude</p>
+                        <h3 id="offer-editor-title">Detalji ponude</h3>
                       </div>
                       <button id="offer-editor-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
@@ -3904,18 +3913,18 @@
                           <select id="offer-status" class="work-item-status-select"></select>
                         </label>
                         <label class="field">
-                          <span>Datum ponude</span>
+                          <span id="offer-date-label">Datum ponude</span>
                           <input id="offer-date" type="date" />
                         </label>
                       </div>
 
                       <div class="offers-editor-meta">
                         <div class="offers-editor-meta-block">
-                          <span class="offers-editor-meta-label">Broj ponude</span>
+                          <span id="offer-number-label" class="offers-editor-meta-label">Broj ponude</span>
                           <strong id="offer-number-preview" class="offers-editor-meta-value">Dodjeljuje se nakon spremanja.</strong>
                         </div>
                         <div id="offer-total-preview-block" class="offers-editor-meta-block">
-                          <span class="offers-editor-meta-label">Ukupno</span>
+                          <span id="offer-total-label" class="offers-editor-meta-label">Ukupno</span>
                           <strong id="offer-total-preview" class="offers-editor-meta-value">0,00 EUR</strong>
                         </div>
                         <div class="offers-editor-meta-actions">
@@ -3927,7 +3936,7 @@
 
                       <div class="form-grid offers-form-grid">
                         <label class="field field-span-full">
-                          <span>Naziv ponude</span>
+                          <span id="offer-title-label">Naziv ponude</span>
                           <input id="offer-title" name="offer-title" maxlength="180" placeholder="Godišnje održavanje, dopuna usluga..." required />
                         </label>
                         <label class="field">
@@ -3952,9 +3961,20 @@
                           <span>Kontakt osoba</span>
                           <select id="offer-contact-slot"></select>
                         </label>
+                        <label id="purchase-order-direction-field" class="field" hidden>
+                          <span>Smjer</span>
+                          <select id="purchase-order-direction">
+                            <option value="incoming">Ulazna</option>
+                            <option value="outgoing">Izlazna</option>
+                          </select>
+                        </label>
                         <label class="field">
-                          <span>Vrsta usluge</span>
+                          <span id="offer-service-line-label">Vrsta usluge</span>
                           <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Fixed Fee, Base fee + variable fee, Offer..." required />
+                        </label>
+                        <label id="purchase-order-external-number-field" class="field" hidden>
+                          <span>Broj klijentove narudžbenice</span>
+                          <input id="purchase-order-external-number" maxlength="160" placeholder="PO-2026-0042, interni broj klijenta..." />
                         </label>
                         <label class="field">
                           <span>PDV %</span>
@@ -3967,10 +3987,22 @@
                         <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
                       </label>
 
+                      <section id="purchase-order-documents-section" class="purchase-order-documents-section" hidden>
+                        <div class="offers-items-head">
+                          <div>
+                            <strong>Dokumenti narudžbenice</strong>
+                            <p class="inline-help">Dodaj PDF, sken ili zaprimljenu narudžbenicu klijenta za kasnije preuzimanje.</p>
+                          </div>
+                          <button id="purchase-order-documents-upload" type="button" class="ghost-button">+ Dodaj dokument</button>
+                        </div>
+                        <input id="purchase-order-documents-input" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.txt,.csv,.zip,.xlsx,.xls" hidden />
+                        <div id="purchase-order-documents-list" class="purchase-order-documents-list"></div>
+                      </section>
+
                       <div class="offers-items-head">
                         <div>
-                          <strong>Stavke ponude</strong>
-                          <p class="inline-help">Dodaj uslugu, količinu, cijenu ili razradu po stavci.</p>
+                          <strong id="offer-items-title">Stavke ponude</strong>
+                          <p id="offer-items-help" class="inline-help">Dodaj uslugu, količinu, cijenu ili razradu po stavci.</p>
                         </div>
                         <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
                       </div>
@@ -4011,7 +4043,7 @@
                       <p id="offer-error" class="form-error" aria-live="polite"></p>
 
                       <div class="form-actions">
-                        <button type="submit" class="primary-button">Spremi ponudu</button>
+                        <button id="offer-submit-button" type="submit" class="primary-button">Spremi ponudu</button>
                         <button id="offer-reset" type="button" class="ghost-button">Nova ponuda</button>
                         <button id="offer-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                       </div>
@@ -4024,8 +4056,8 @@
                   <div class="offers-editor-fixed-head">
                     <div class="section-heading offers-section-heading">
                       <div>
-                        <p class="section-kicker">Offer template</p>
-                        <h3>Word template i placeholderi</h3>
+                        <p id="offer-template-kicker" class="section-kicker">Offer template</p>
+                        <h3 id="offer-template-title">Word template i placeholderi</h3>
                       </div>
                       <button id="offer-template-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
@@ -4037,7 +4069,7 @@
                         <div class="offer-template-card-head">
                           <div>
                             <p class="section-kicker">Word template</p>
-                            <h4>Predložak za ponude</h4>
+                            <h4 id="offer-template-word-title">Predložak za ponude</h4>
                           </div>
                           <button id="offer-template-toggle-reference" type="button" class="ghost-button">Sakrij</button>
                         </div>
@@ -4057,10 +4089,10 @@
                         <div class="offer-template-card-head">
                           <div>
                             <p class="section-kicker">Placeholderi</p>
-                            <h4>Tokeni za Word</h4>
+                            <h4 id="offer-template-placeholder-title">Tokeni za Word</h4>
                           </div>
                         </div>
-                        <p class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word.</p>
+                        <p id="offer-template-copy" class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word.</p>
                         <div id="offer-template-placeholder-list" class="offer-template-placeholder-list"></div>
                       </section>
                     </div>

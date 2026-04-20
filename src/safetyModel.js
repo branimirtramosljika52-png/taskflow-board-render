@@ -36,6 +36,14 @@ export const OFFER_STATUS_OPTIONS = [
   { value: "rejected", label: "Odbijeno" },
 ];
 
+export const PURCHASE_ORDER_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "received", label: "Zaprimljena" },
+  { value: "issued", label: "Poslana" },
+  { value: "confirmed", label: "Potvrdena" },
+  { value: "closed", label: "Zatvorena" },
+];
+
 export const VEHICLE_STATUS_OPTIONS = [
   { value: "available", label: "Dostupno" },
   { value: "service", label: "Servis" },
@@ -350,6 +358,7 @@ const PRIORITY_SET = new Set(PRIORITY_OPTIONS.map((option) => option.value));
 const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => option.value));
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
+const PURCHASE_ORDER_STATUS_SET = new Set(PURCHASE_ORDER_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
@@ -365,6 +374,7 @@ const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYP
 const DOCUMENT_TEMPLATE_FIELD_TYPE_SET = new Set(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS.map((option) => option.value));
 const ACTIVE_VEHICLE_RESERVATION_STATUSES = new Set(["reserved", "checked_out"]);
 const OFFER_LOCATION_SCOPE_SET = new Set(["single", "selection", "all", "none"]);
+const PURCHASE_ORDER_DIRECTION_SET = new Set(["incoming", "outgoing"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_VISUALIZATION_SET = new Set(DASHBOARD_WIDGET_VISUALIZATION_OPTIONS.map((option) => option.value));
 const DASHBOARD_WIDGET_SIZE_SET = new Set(DASHBOARD_WIDGET_SIZE_OPTIONS.map((option) => option.value));
@@ -402,6 +412,13 @@ const OFFER_STATUS_RANK = {
   sent: 1,
   accepted: 2,
   rejected: 3,
+};
+const PURCHASE_ORDER_STATUS_RANK = {
+  draft: 0,
+  received: 1,
+  issued: 2,
+  confirmed: 3,
+  closed: 4,
 };
 const LEGAL_FRAMEWORK_STATUS_RANK = {
   active: 0,
@@ -561,6 +578,11 @@ function normalizeOfferStatus(value) {
   return OFFER_STATUS_SET.has(status) ? status : "draft";
 }
 
+function normalizePurchaseOrderStatus(value, fallback = "draft") {
+  const status = normalizeText(value).toLowerCase();
+  return PURCHASE_ORDER_STATUS_SET.has(status) ? status : fallback;
+}
+
 function normalizeVehicleStatus(value) {
   const status = normalizeText(value).toLowerCase();
   if (status === "service" || status === "inactive") {
@@ -638,6 +660,11 @@ function normalizeAbsenceDayAllowance(value, fallback = 0) {
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
+}
+
+function normalizePurchaseOrderDirection(value, fallback = "incoming") {
+  const direction = normalizeText(value).toLowerCase();
+  return PURCHASE_ORDER_DIRECTION_SET.has(direction) ? direction : fallback;
 }
 
 function normalizeOib(value) {
@@ -2263,6 +2290,27 @@ export function nextOfferNumber(offers = [], { year = Number(todayString().slice
   };
 }
 
+export function nextPurchaseOrderNumber(
+  purchaseOrders = [],
+  { year = Number(todayString().slice(0, 4)), prefix = "PO" } = {},
+) {
+  const normalizedYear = Number(year) || Number(todayString().slice(0, 4));
+  const normalizedPrefix = normalizeText(prefix).toUpperCase() || "PO";
+  const nextSequence = purchaseOrders.reduce((maxValue, purchaseOrder) => {
+    if (Number(purchaseOrder.purchaseOrderYear) !== normalizedYear) {
+      return maxValue;
+    }
+
+    return Math.max(maxValue, Number(purchaseOrder.purchaseOrderSequence) || 0);
+  }, 0) + 1;
+
+  return {
+    purchaseOrderNumber: `${normalizedYear}-${normalizedPrefix}-${String(nextSequence).padStart(3, "0")}`,
+    purchaseOrderYear: normalizedYear,
+    purchaseOrderSequence: nextSequence,
+  };
+}
+
 function findReminderCompany(state, companyId = "") {
   if (!companyId) {
     return null;
@@ -3081,6 +3129,209 @@ export function createServiceCatalogItem(
     linkedLearningTestTitles: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestTitles : [],
     note: normalizeText(input.note),
     createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function hydratePurchaseOrderCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+  purchaseOrderNumber = current?.purchaseOrderNumber ?? "",
+  purchaseOrderYear = current?.purchaseOrderYear ?? Number(timestamp.slice(0, 4)),
+  purchaseOrderSequence = current?.purchaseOrderSequence ?? 0,
+}) {
+  const companyId = hasOwn(input, "companyId")
+    ? requireText(input.companyId, "Tvrtka")
+    : requireText(current?.companyId, "Tvrtka");
+  const company = findOfferCompany(state, companyId);
+
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const requestedLocationIds = hasOwn(input, "selectedLocationIds")
+    ? normalizeIdList(input.selectedLocationIds)
+    : normalizeIdList(current?.selectedLocationIds ?? []);
+  const fallbackLocationScope = requestedLocationIds.length > 1
+    ? "selection"
+    : normalizeId(hasOwn(input, "locationId") ? input.locationId : current?.locationId)
+      ? "single"
+      : "none";
+  const nextLocationScope = hasOwn(input, "locationScope")
+    ? normalizeOfferLocationScope(input.locationScope, fallbackLocationScope)
+    : normalizeOfferLocationScope(current?.locationScope, fallbackLocationScope);
+  const locationWasExplicitlyChanged = hasOwn(input, "locationId")
+    || hasOwn(input, "selectedLocationIds")
+    || hasOwn(input, "locationScope");
+  const companyLocations = (state.locations ?? []).filter((item) => item.companyId === companyId);
+  const companyLocationIds = new Set(companyLocations.map((item) => item.id));
+  let selectedLocationIds = requestedLocationIds.filter((locationId) => companyLocationIds.has(locationId));
+
+  if (hasOwn(input, "locationId")) {
+    const directLocationId = normalizeId(input.locationId);
+    if (directLocationId && !selectedLocationIds.includes(directLocationId)) {
+      selectedLocationIds = [directLocationId, ...selectedLocationIds].filter((locationId, index, list) => (
+        companyLocationIds.has(locationId) && list.indexOf(locationId) === index
+      ));
+    }
+  } else if (!selectedLocationIds.length) {
+    const currentLocationId = normalizeId(current?.locationId);
+    if (currentLocationId) {
+      selectedLocationIds = [currentLocationId].filter((locationId) => companyLocationIds.has(locationId));
+    }
+  }
+
+  if (locationWasExplicitlyChanged && requestedLocationIds.some((locationId) => !companyLocationIds.has(locationId))) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  if (nextLocationScope === "all") {
+    selectedLocationIds = companyLocations.map((location) => location.id);
+  }
+
+  if (nextLocationScope === "single" && selectedLocationIds.length > 1) {
+    selectedLocationIds = selectedLocationIds.slice(0, 1);
+  }
+
+  const locationScope = nextLocationScope === "all"
+    ? (selectedLocationIds.length > 0 ? "all" : "none")
+    : nextLocationScope === "single"
+      ? (selectedLocationIds.length > 0 ? "single" : "none")
+      : nextLocationScope === "selection"
+        ? (selectedLocationIds.length > 1 ? "selection" : selectedLocationIds.length === 1 ? "single" : "none")
+        : "none";
+  const locationId = selectedLocationIds[0] || "";
+  const location = locationId ? findOfferLocation(state, locationId, companyId) : null;
+  const selectedLocations = selectedLocationIds
+    .map((selectedId) => findOfferLocation(state, selectedId, companyId))
+    .filter(Boolean);
+  const selectedLocationNames = selectedLocations.map((entry) => entry.name || "").filter(Boolean);
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const taxRate = hasOwn(input, "taxRate")
+    ? normalizeOfferTaxRate(input.taxRate)
+    : normalizeOfferTaxRate(current?.taxRate ?? 25);
+  const discountRate = hasOwn(input, "discountRate")
+    ? normalizeOfferDiscountRate(input.discountRate)
+    : normalizeOfferDiscountRate(current?.discountRate ?? 0);
+  const showTotalAmount = hasOwn(input, "showTotalAmount")
+    ? normalizeBoolean(input.showTotalAmount, true)
+    : normalizeBoolean(current?.showTotalAmount, true);
+  const items = hasOwn(input, "items")
+    ? normalizeOfferItems(input.items)
+    : (current?.items ?? []);
+  const totals = calculateOfferTotals(items, taxRate, discountRate);
+  const fallbackPurchaseOrderDate = current?.purchaseOrderDate ?? timestamp.slice(0, 10);
+  const purchaseOrderDate = hasOwn(input, "purchaseOrderDate")
+    ? (normalizeOptionalDate(input.purchaseOrderDate) ?? timestamp.slice(0, 10))
+    : (normalizeOptionalDate(fallbackPurchaseOrderDate) ?? timestamp.slice(0, 10));
+  const contactSlot = normalizeText(hasOwn(input, "contactSlot") ? input.contactSlot : current?.contactSlot);
+  const shouldRefreshContactFromLocation = !hasOwn(input, "contactName")
+    && !hasOwn(input, "contactPhone")
+    && !hasOwn(input, "contactEmail")
+    && locationScope === "single"
+    && Boolean(location)
+    && (
+      !current
+      || hasOwn(input, "companyId")
+      || hasOwn(input, "locationId")
+      || hasOwn(input, "selectedLocationIds")
+      || hasOwn(input, "locationScope")
+      || hasOwn(input, "contactSlot")
+    );
+  const selectedContact = shouldRefreshContactFromLocation
+    ? selectLocationContact(location, contactSlot)
+    : null;
+  const contactName = hasOwn(input, "contactName")
+    ? normalizeText(input.contactName)
+    : selectedContact
+      ? selectedContact.name
+      : normalizeText(current?.contactName);
+  const contactPhone = hasOwn(input, "contactPhone")
+    ? normalizeText(input.contactPhone)
+    : selectedContact
+      ? selectedContact.phone
+      : normalizeText(current?.contactPhone);
+  const contactEmail = hasOwn(input, "contactEmail")
+    ? normalizeText(input.contactEmail)
+    : selectedContact
+      ? selectedContact.email
+      : normalizeText(current?.contactEmail);
+  const companyLocationCount = companyLocations.length;
+  const locationName = locationScope === "all"
+    ? "Sve lokacije"
+    : locationScope === "none"
+      ? "Bez lokacije"
+      : locationScope === "selection"
+        ? `${selectedLocationNames.length} od ${companyLocationCount} lokacija`
+        : (location?.name ?? "");
+  const orderDirection = hasOwn(input, "orderDirection")
+    ? normalizePurchaseOrderDirection(input.orderDirection)
+    : normalizePurchaseOrderDirection(current?.orderDirection, "incoming");
+  const statusFallback = orderDirection === "incoming" ? "received" : "issued";
+  const status = hasOwn(input, "status")
+    ? normalizePurchaseOrderStatus(input.status)
+    : normalizePurchaseOrderStatus(current?.status, statusFallback);
+  const documents = hasOwn(input, "documents")
+    ? normalizeAttachmentDocuments(input.documents)
+    : normalizeAttachmentDocuments(current?.documents ?? []);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company.name,
+    companyOib: company.oib ?? "",
+    headquarters: company.headquarters ?? "",
+    locationId,
+    selectedLocationIds,
+    selectedLocationNames,
+    locationScope,
+    locationName,
+    region: location?.region ?? "",
+    coordinates: location?.coordinates ?? "",
+    contactSlot,
+    contactName,
+    contactPhone,
+    contactEmail,
+    purchaseOrderNumber: requireText(purchaseOrderNumber || current?.purchaseOrderNumber, "Broj narudzbenice"),
+    purchaseOrderYear: Number(purchaseOrderYear) || Number(timestamp.slice(0, 4)),
+    purchaseOrderSequence: Number(purchaseOrderSequence) || 0,
+    title: hasOwn(input, "title") ? requireText(input.title, "Naziv narudzbenice") : current?.title ?? "",
+    serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
+    status,
+    orderDirection,
+    purchaseOrderDate,
+    validUntil: hasOwn(input, "validUntil")
+      ? normalizeOptionalDate(input.validUntil)
+      : normalizeOptionalDate(current?.validUntil),
+    externalDocumentNumber: hasOwn(input, "externalDocumentNumber")
+      ? normalizeText(input.externalDocumentNumber)
+      : normalizeText(current?.externalDocumentNumber),
+    note: hasOwn(input, "note") ? normalizeText(input.note) : current?.note ?? "",
+    currency: hasOwn(input, "currency")
+      ? (normalizeText(input.currency).toUpperCase() || "EUR")
+      : (normalizeText(current?.currency).toUpperCase() || "EUR"),
+    showTotalAmount,
+    taxRate,
+    discountRate,
+    subtotal: totals.subtotal,
+    discountTotal: totals.discountTotal,
+    taxableSubtotal: totals.taxableSubtotal,
+    taxTotal: totals.taxTotal,
+    total: totals.total,
+    items: items.map((item) => ({ ...item })),
+    documents: documents.map((document) => ({ ...document })),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
 }
@@ -4688,6 +4939,43 @@ export function updateOffer(current, patch, state, now = isoNow) {
   });
 }
 
+export function createPurchaseOrder(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  numberParts = null,
+  now = isoNow,
+) {
+  const timestamp = now();
+  const resolvedNumberParts = numberParts ?? nextPurchaseOrderNumber(state.purchaseOrders ?? [], {
+    year: Number(timestamp.slice(0, 4)),
+  });
+  const purchaseOrder = hydratePurchaseOrderCore({
+    state,
+    input,
+    timestamp,
+    purchaseOrderNumber: resolvedNumberParts.purchaseOrderNumber,
+    purchaseOrderYear: resolvedNumberParts.purchaseOrderYear,
+    purchaseOrderSequence: resolvedNumberParts.purchaseOrderSequence,
+  });
+
+  return {
+    ...purchaseOrder,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updatePurchaseOrder(current, patch, state, now = isoNow) {
+  return hydratePurchaseOrderCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createTodoTaskComment(
   currentTask,
   input,
@@ -4830,6 +5118,43 @@ export function filterOffers(
   });
 }
 
+export function filterPurchaseOrders(
+  purchaseOrders,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return purchaseOrders.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.purchaseOrderNumber,
+      item.externalDocumentNumber,
+      item.title,
+      item.companyName,
+      item.locationName,
+      ...(item.selectedLocationNames ?? []),
+      item.contactName,
+      item.serviceLine,
+      item.createdByLabel,
+      item.note,
+      item.orderDirection,
+      ...(item.items ?? []).map((entry) => entry.description),
+      ...(item.items ?? []).map((entry) => entry.serviceCode),
+      ...(item.items ?? []).flatMap((entry) => (entry.breakdowns ?? []).map((detail) => detail.label)),
+      ...(item.documents ?? []).map((document) => document.fileName),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function sortOffers(offers) {
   return [...offers].sort((left, right) => {
     const leftRank = OFFER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
@@ -4848,6 +5173,31 @@ export function sortOffers(offers) {
     }
 
     if (!left.offerDate && right.offerDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortPurchaseOrders(purchaseOrders) {
+  return [...purchaseOrders].sort((left, right) => {
+    const leftRank = PURCHASE_ORDER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = PURCHASE_ORDER_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.purchaseOrderDate && right.purchaseOrderDate && left.purchaseOrderDate !== right.purchaseOrderDate) {
+      return right.purchaseOrderDate.localeCompare(left.purchaseOrderDate);
+    }
+
+    if (left.purchaseOrderDate && !right.purchaseOrderDate) {
+      return -1;
+    }
+
+    if (!left.purchaseOrderDate && right.purchaseOrderDate) {
       return 1;
     }
 

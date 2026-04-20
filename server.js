@@ -12,6 +12,7 @@ import {
 } from "./src/accessControl.js";
 import {
   buildOfferPdfBuffer,
+  buildPurchaseOrderPdfBuffer,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   isWordTemplateFile,
@@ -471,6 +472,23 @@ function getOfferStatusLabel(value = "") {
   return "Skica";
 }
 
+function getPurchaseOrderStatusLabel(value = "") {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "received") {
+    return "Zaprimljena";
+  }
+  if (normalized === "issued") {
+    return "Poslana";
+  }
+  if (normalized === "confirmed") {
+    return "Potvrdena";
+  }
+  if (normalized === "closed") {
+    return "Zatvorena";
+  }
+  return "Skica";
+}
+
 function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const normalizedOffer = offer && typeof offer === "object" ? offer : {};
   const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
@@ -516,6 +534,53 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   };
 }
 
+function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
+  const normalizedPurchaseOrder = purchaseOrder && typeof purchaseOrder === "object" ? purchaseOrder : {};
+  const currency = String(normalizedPurchaseOrder.currency || "EUR").trim() || "EUR";
+  const items = Array.isArray(normalizedPurchaseOrder.items) ? normalizedPurchaseOrder.items : [];
+  const itemsSummary = items
+    .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
+    .join("\n");
+  const itemsTable = items
+    .map((item, index) => {
+      const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
+        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
+        : "";
+      return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
+    })
+    .join("\n");
+
+  return {
+    PURCHASE_ORDER_NUMBER: normalizedPurchaseOrder.purchaseOrderNumber || "Dodijeljen nakon spremanja",
+    PURCHASE_ORDER_TITLE: normalizedPurchaseOrder.title || "",
+    PURCHASE_ORDER_STATUS: getPurchaseOrderStatusLabel(normalizedPurchaseOrder.status || "draft"),
+    PURCHASE_ORDER_DATE: normalizedPurchaseOrder.purchaseOrderDate ? formatOfferDocumentDate(normalizedPurchaseOrder.purchaseOrderDate) : "",
+    VALID_UNTIL: normalizedPurchaseOrder.validUntil ? formatOfferDocumentDate(normalizedPurchaseOrder.validUntil) : "",
+    ORDER_DIRECTION: normalizedPurchaseOrder.orderDirection === "outgoing" ? "Izlazna" : "Ulazna",
+    EXTERNAL_DOCUMENT_NUMBER: normalizedPurchaseOrder.externalDocumentNumber || "",
+    COMPANY_NAME: normalizedPurchaseOrder.companyName || "",
+    COMPANY_OIB: normalizedPurchaseOrder.companyOib || "",
+    COMPANY_HEADQUARTERS: normalizedPurchaseOrder.headquarters || "",
+    LOCATION_SUMMARY: normalizedPurchaseOrder.locationName || "Bez lokacije",
+    LOCATION_LIST: Array.isArray(normalizedPurchaseOrder.selectedLocationNames) && normalizedPurchaseOrder.selectedLocationNames.length > 0
+      ? normalizedPurchaseOrder.selectedLocationNames.join("\n")
+      : "Bez lokacije",
+    CONTACT_NAME: normalizedPurchaseOrder.contactName || "",
+    CONTACT_PHONE: normalizedPurchaseOrder.contactPhone || "",
+    CONTACT_EMAIL: normalizedPurchaseOrder.contactEmail || "",
+    SERVICE_LINE: normalizedPurchaseOrder.serviceLine || "",
+    ITEMS_TABLE: itemsTable,
+    ITEMS_SUMMARY: itemsSummary,
+    NOTE: normalizedPurchaseOrder.note || "",
+    SUBTOTAL: formatOfferTemplateMoney(normalizedPurchaseOrder.subtotal || 0, currency),
+    DISCOUNT_RATE: Number(normalizedPurchaseOrder.discountRate || 0) > 0 ? `${normalizedPurchaseOrder.discountRate}%` : "",
+    DISCOUNT_TOTAL: formatOfferTemplateMoney(normalizedPurchaseOrder.discountTotal || 0, currency),
+    TAX_RATE: `${normalizedPurchaseOrder.taxRate || 0}%`,
+    TAX_TOTAL: formatOfferTemplateMoney(normalizedPurchaseOrder.taxTotal || 0, currency),
+    TOTAL: formatOfferTemplateMoney(normalizedPurchaseOrder.total || 0, currency),
+  };
+}
+
 function escapeEmailHtml(value = "") {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -553,6 +618,37 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
   }
 
   const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
+  return { pdfBuffer, fileName };
+}
+
+function buildPurchaseOrderExportBaseName(purchaseOrder = {}) {
+  return purchaseOrder.purchaseOrderNumber || purchaseOrder.title || purchaseOrder.companyName || "narudzbenica";
+}
+
+async function buildPurchaseOrderPdfExportPayload(purchaseOrder = {}, organizationId = "") {
+  const purchaseOrderTemplateSettings = await domainRepository.getPurchaseOrderTemplateSettings(organizationId).catch(() => null);
+  const baseName = buildPurchaseOrderExportBaseName(purchaseOrder);
+  const fileName = sanitizeGeneratedDocumentFileName(baseName, {
+    fallback: "narudzbenica",
+    extension: "pdf",
+  });
+
+  if (purchaseOrderTemplateSettings?.referenceDocument && isWordTemplateFile(purchaseOrderTemplateSettings.referenceDocument)) {
+    const referenceDocument = await readStoredDocumentBuffer(purchaseOrderTemplateSettings.referenceDocument);
+    const pdfBuffer = await buildPdfFromTemplateBuffer(
+      referenceDocument.buffer,
+      buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder),
+      {
+        fileName: sanitizeGeneratedDocumentFileName(baseName, {
+          fallback: "narudzbenica",
+          extension: "docx",
+        }),
+      },
+    );
+    return { pdfBuffer, fileName };
+  }
+
+  const pdfBuffer = await buildPurchaseOrderPdfBuffer(purchaseOrder, { currency: purchaseOrder.currency || "EUR" });
   return { pdfBuffer, fileName };
 }
 
@@ -1308,6 +1404,9 @@ async function handleApiRequest(request, response, url) {
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const offerPdfExportMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/export-pdf$/);
     const offerEmailMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/email$/);
+    const purchaseOrderMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)$/);
+    const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
+    const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
     const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
@@ -1616,6 +1715,50 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/purchase-orders/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entry = await domainRepository.getPurchaseOrderTemplateSettings(scopedSnapshot.activeOrganizationId).catch(() => null);
+      sendJson(response, 200, {
+        item: entry?.referenceDocument ?? null,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/purchase-orders/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entry = await domainRepository.upsertPurchaseOrderTemplateSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        referenceDocument: body?.referenceDocument ?? null,
+      });
+      sendJson(response, 200, {
+        item: entry?.referenceDocument ?? null,
+      });
+      return true;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/purchase-orders/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.deletePurchaseOrderTemplateSettings(scopedSnapshot.activeOrganizationId);
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/offers") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati ponudama.");
@@ -1663,6 +1806,24 @@ async function handleApiRequest(request, response, url) {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/purchase-orders") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createPurchaseOrder({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -2795,6 +2956,31 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (purchaseOrderMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderMatch[1], "Narudzbenica nije pronađena.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updatePurchaseOrder(purchaseOrderMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Narudzbenica nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (offerPdfExportMatch && request.method === "POST") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
@@ -2804,6 +2990,22 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const offer = assertInScope(scopedSnapshot.offers, offerPdfExportMatch[1], "Ponuda nije pronađena.");
       const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (purchaseOrderPdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF narudzbenice.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const purchaseOrder = assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderPdfExportMatch[1], "Narudzbenica nije pronađena.");
+      const { pdfBuffer, fileName } = await buildPurchaseOrderPdfExportPayload(purchaseOrder, scopedSnapshot.activeOrganizationId);
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,
@@ -2860,6 +3062,59 @@ async function handleApiRequest(request, response, url) {
       sendJson(response, 200, {
         ok: true,
         message: `Ponuda je poslana na ${to}.`,
+      });
+      return true;
+    }
+
+    if (purchaseOrderEmailMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo slati narudzbenice emailom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const purchaseOrder = assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderEmailMatch[1], "Narudzbenica nije pronađena.");
+      const to = String(body?.to ?? "").trim();
+
+      if (!to) {
+        sendError(response, 400, "Email primatelja je obavezan.");
+        return true;
+      }
+
+      const { pdfBuffer, fileName } = await buildPurchaseOrderPdfExportPayload(purchaseOrder, scopedSnapshot.activeOrganizationId);
+      const subject = String(body?.subject ?? "").trim() || `${purchaseOrder.purchaseOrderNumber || "Narudzbenica"} · ${purchaseOrder.title || purchaseOrder.companyName || "SafeNexus"}`;
+      const message = String(body?.message ?? "").trim();
+      const htmlMessage = message
+        ? message.split(/\r?\n/).map((line) => `<div>${escapeEmailHtml(line)}</div>`).join("")
+        : "<div>U privitku saljemo trazenu narudzbenicu.</div>";
+      const result = await sendMail({
+        to,
+        subject,
+        text: message || `U privitku saljemo narudzbenicu ${purchaseOrder.purchaseOrderNumber || ""}.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;">
+            ${htmlMessage}
+            <div style="margin-top:16px;color:#64748b;">SafeNexus · ${escapeEmailHtml(purchaseOrder.companyName || "")}</div>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      if (!result.ok) {
+        sendError(response, 400, result.error || "Slanje emaila nije uspjelo.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        message: `Narudzbenica je poslana na ${to}.`,
       });
       return true;
     }
@@ -3232,6 +3487,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Ponuda nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (purchaseOrderMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati narudzbenice.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderMatch[1], "Narudzbenica nije pronađena.");
+      const deleted = await domainRepository.deletePurchaseOrder(purchaseOrderMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Narudzbenica nije pronađena.");
         return true;
       }
 

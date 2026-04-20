@@ -1380,6 +1380,16 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
     })),
+    purchaseOrders: (rawSnapshot.purchaseOrders ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+    )).map((item) => ({
+      ...item,
+      selectedLocationIds: [...(item.selectedLocationIds ?? [])],
+      selectedLocationNames: [...(item.selectedLocationNames ?? [])],
+      items: (item.items ?? []).map((entry) => ({ ...entry })),
+      documents: (item.documents ?? []).map((document) => ({ ...document })),
+    })),
     vehicles: (rawSnapshot.vehicles ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -2025,6 +2035,7 @@ export class MemoryTenantRepository {
     reminders: [],
     todoTasks: [],
     offers: [],
+    purchaseOrders: [],
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
@@ -2692,6 +2703,7 @@ export class MySqlTenantRepository {
     reminders: [],
     todoTasks: [],
     offers: [],
+    purchaseOrders: [],
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
@@ -2722,6 +2734,7 @@ export class MySqlTenantRepository {
         reminders: [],
         todoTasks: [],
         offers: [],
+        purchaseOrders: [],
         vehicles: [],
         legalFrameworks: [],
         documentTemplates: [],

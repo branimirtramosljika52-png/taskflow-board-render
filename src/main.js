@@ -18,6 +18,7 @@
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
   MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
   OFFER_STATUS_OPTIONS,
+  PURCHASE_ORDER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   SERVICE_CATALOG_STATUS_OPTIONS,
@@ -42,6 +43,7 @@
   filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterPurchaseOrders,
   filterAbsenceEntries,
   filterReminders,
   filterSafetyAuthorizations,
@@ -60,12 +62,14 @@
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
   nextOfferNumber,
+  nextPurchaseOrderNumber,
   getDashboardInsights,
   getDashboardWidgetData,
   getDashboardStats,
   getAbsenceBusinessDayCount,
   groupWorkOrdersByExecutorSet,
   sortOffers,
+  sortPurchaseOrders,
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
@@ -210,6 +214,7 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
 ]);
 const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
+const DEFAULT_PURCHASE_ORDER_NOTE = "";
 const OFFER_TEMPLATE_ACCEPT_LABEL = ".doc,.docx,.dot,.dotx";
 const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
@@ -236,11 +241,134 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "TAX_TOTAL", label: "PDV iznos", description: "Ukupni iznos PDV-a." }),
   Object.freeze({ key: "TOTAL", label: "Ukupno", description: "Ukupni iznos ponude." }),
 ]);
+const PURCHASE_ORDER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
+  Object.freeze({ key: "PURCHASE_ORDER_NUMBER", label: "Broj narudžbenice", description: "Interni broj narudžbenice nakon spremanja." }),
+  Object.freeze({ key: "PURCHASE_ORDER_TITLE", label: "Naziv narudžbenice", description: "Naslov ili opis narudžbenice." }),
+  Object.freeze({ key: "PURCHASE_ORDER_STATUS", label: "Status", description: "Aktualni status narudžbenice." }),
+  Object.freeze({ key: "PURCHASE_ORDER_DATE", label: "Datum narudžbenice", description: "Datum izdavanja ili zaprimanja narudžbenice." }),
+  Object.freeze({ key: "VALID_UNTIL", label: "Vrijedi do", description: "Datum isteka ili važenja narudžbenice." }),
+  Object.freeze({ key: "ORDER_DIRECTION", label: "Smjer", description: "Ulazna ili izlazna narudžbenica." }),
+  Object.freeze({ key: "EXTERNAL_DOCUMENT_NUMBER", label: "Broj klijenta", description: "Broj narudžbenice koji je poslao klijent ili partner." }),
+  Object.freeze({ key: "COMPANY_NAME", label: "Tvrtka", description: "Naziv odabrane tvrtke." }),
+  Object.freeze({ key: "COMPANY_OIB", label: "OIB", description: "OIB odabrane tvrtke." }),
+  Object.freeze({ key: "COMPANY_HEADQUARTERS", label: "Sjedište", description: "Sjedište ili adresa tvrtke." }),
+  Object.freeze({ key: "LOCATION_SUMMARY", label: "Sažetak lokacija", description: "Sažeti prikaz odabranih lokacija." }),
+  Object.freeze({ key: "LOCATION_LIST", label: "Popis lokacija", description: "Sve odabrane lokacije, svaka u novom retku." }),
+  Object.freeze({ key: "CONTACT_NAME", label: "Kontakt osoba", description: "Ime odabranog kontakta." }),
+  Object.freeze({ key: "CONTACT_PHONE", label: "Kontakt telefon", description: "Telefon kontakta." }),
+  Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
+  Object.freeze({ key: "SERVICE_LINE", label: "Vrsta usluge", description: "Glavna vrsta usluge ili tip narudžbe." }),
+  Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke narudžbenice s količinama, razradom i iznosima." }),
+  Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
+  Object.freeze({ key: "NOTE", label: "Napomena", description: "Napomena i dodatni uvjeti." }),
+  Object.freeze({ key: "SUBTOTAL", label: "Međuzbroj", description: "Iznos prije rabata i PDV-a." }),
+  Object.freeze({ key: "DISCOUNT_RATE", label: "Rabat %", description: "Ukupni rabat na narudžbenicu u postocima." }),
+  Object.freeze({ key: "DISCOUNT_TOTAL", label: "Iznos rabata", description: "Ukupni iznos rabata." }),
+  Object.freeze({ key: "TAX_RATE", label: "PDV %", description: "Postotak PDV-a." }),
+  Object.freeze({ key: "TAX_TOTAL", label: "PDV iznos", description: "Ukupni iznos PDV-a." }),
+  Object.freeze({ key: "TOTAL", label: "Ukupno", description: "Ukupni iznos narudžbenice." }),
+]);
 const OFFER_SERVICE_LINE_OPTIONS = Object.freeze([
   "Fixed Fee",
   "Base fee + variable fee",
   "Offer",
 ]);
+const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
+  offers: Object.freeze({
+    key: "offers",
+    moduleDefinitionKey: "offers",
+    apiBasePath: "/offers",
+    statusOptions: OFFER_STATUS_OPTIONS,
+    defaultStatus: "draft",
+    defaultNote: DEFAULT_OFFER_NOTE,
+    listKicker: "Ponude",
+    listTitle: "Popis ponuda",
+    listSearchPlaceholder: "Broj ponude, tvrtka, lokacija, usluga...",
+    listEmptyText: "Nema ponuda za odabrane filtere. Otvori novu ponudu ili proširi pretragu.",
+    openFormLabel: "+ Nova ponuda",
+    editorKicker: "Editor ponude",
+    editorTitle: "Detalji ponude",
+    dateLabel: "Datum ponude",
+    numberLabel: "Broj ponude",
+    totalLabel: "Ukupno",
+    titleLabel: "Naziv ponude",
+    titlePlaceholder: "Godišnje održavanje, dopuna usluga...",
+    serviceLineLabel: "Vrsta usluge",
+    serviceLinePlaceholder: "Fixed Fee, Base fee + variable fee, Offer...",
+    notePlaceholder: "Dodatne napomene, rok izvedbe, uvjeti plaćanja...",
+    itemsTitle: "Stavke ponude",
+    itemsHelp: "Dodaj uslugu, količinu, cijenu ili razradu po stavci.",
+    submitLabel: "Spremi ponudu",
+    deleteConfirmLabel: "Obrisati ovu ponudu?",
+    templateKicker: "Template",
+    templateTitle: "Predložak za ponude",
+    templateWordTitle: "Predložak za ponude",
+    templatePlaceholderTitle: "Tokeni za Word",
+    templateCopy: "Klikni placeholder da ga kopiraš u Word.",
+    templatePlaceholderDocTitle: "SafeNexus · Offer placeholderi",
+    templatePlaceholderDocName: "safe-nexus-offer-placeholderi",
+    templateEmptyText: "Još nema učitanog Word predloška za ponude.",
+    templateRemoveConfirm: "Maknuti Word predložak za ponude?",
+    numberFallback: "Bez broja",
+    untitledLabel: "Nova ponuda",
+    noContactLabel: "Bez odabranog kontakta",
+    emailPromptLabel: "Na koji email poslati ponudu?",
+    emailDocumentLabel: "ponudu",
+    emailSubjectLabel: "Naslov emaila",
+    emailMessageLabel: "Poruka emaila",
+    emailSuccessLabel: "Ponuda je poslana na",
+    previewButtonLabel: "Pregled ponude",
+    downloadButtonLabel: "Preuzmi PDF",
+    emailButtonLabel: "Pošalji email",
+  }),
+  "purchase-orders": Object.freeze({
+    key: "purchase-orders",
+    moduleDefinitionKey: "purchase-orders",
+    apiBasePath: "/purchase-orders",
+    statusOptions: PURCHASE_ORDER_STATUS_OPTIONS,
+    defaultStatus: "draft",
+    defaultNote: DEFAULT_PURCHASE_ORDER_NOTE,
+    listKicker: "Purchase Orders",
+    listTitle: "Popis narudžbenica",
+    listSearchPlaceholder: "Broj narudžbenice, klijent, lokacija, klijentov broj...",
+    listEmptyText: "Nema narudžbenica za odabrane filtere. Otvori novu narudžbenicu ili proširi pretragu.",
+    openFormLabel: "+ Nova narudžbenica",
+    editorKicker: "Editor narudžbenice",
+    editorTitle: "Detalji narudžbenice",
+    dateLabel: "Datum narudžbenice",
+    numberLabel: "Broj narudžbenice",
+    totalLabel: "Ukupno",
+    titleLabel: "Naziv narudžbenice",
+    titlePlaceholder: "Ulazna narudžbenica, servis po zahtjevu klijenta...",
+    serviceLineLabel: "Vrsta usluge / narudžbe",
+    serviceLinePlaceholder: "Fixed Fee, Base fee + variable fee, Offer...",
+    notePlaceholder: "Napomene, uvjeti isporuke, rokovi ili interni komentar...",
+    itemsTitle: "Stavke narudžbenice",
+    itemsHelp: "Dodaj stavke, količine, cijene ili razradu po stavci.",
+    submitLabel: "Spremi narudžbenicu",
+    deleteConfirmLabel: "Obrisati ovu narudžbenicu?",
+    templateKicker: "Purchase Order template",
+    templateTitle: "Predložak za narudžbenice",
+    templateWordTitle: "Predložak za narudžbenice",
+    templatePlaceholderTitle: "Tokeni za Word",
+    templateCopy: "Klikni placeholder da ga kopiraš u Word predložak narudžbenice.",
+    templatePlaceholderDocTitle: "SafeNexus · Purchase Order placeholderi",
+    templatePlaceholderDocName: "safe-nexus-purchase-order-placeholderi",
+    templateEmptyText: "Još nema učitanog Word predloška za narudžbenice.",
+    templateRemoveConfirm: "Maknuti Word predložak za narudžbenice?",
+    numberFallback: "Bez broja",
+    untitledLabel: "Nova narudžbenica",
+    noContactLabel: "Bez odabranog kontakta",
+    emailPromptLabel: "Na koji email poslati narudžbenicu?",
+    emailDocumentLabel: "narudžbenicu",
+    emailSubjectLabel: "Naslov emaila",
+    emailMessageLabel: "Poruka emaila",
+    emailSuccessLabel: "Narudžbenica je poslana na",
+    previewButtonLabel: "Pregled narudžbenice",
+    downloadButtonLabel: "Preuzmi PDF",
+    emailButtonLabel: "Pošalji email",
+  }),
+});
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
@@ -598,6 +726,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Modul za ponude mozemo spojiti ovdje, uz klijente, lokacije i stavke usluge iz istog workspacea.",
     chips: ["Drafts", "Sent", "Accepted"],
   },
+  "purchase-orders": {
+    kicker: "Operations",
+    title: "Purchase Orders",
+    description: "Pregled ulaznih i izlaznih narudžbenica, zaprimljenih PDF-ova i internih komercijalnih dokumenata.",
+    chips: ["Incoming", "Outgoing", "Client docs"],
+  },
   periodics: {
     kicker: "Operations",
     title: "Periodics",
@@ -654,6 +788,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "absence-report": { group: "organisations", view: "management", sidebarItem: "people", managementTab: "absence-report" },
   rn: { group: "operations", view: "selfdash", focus: "list" },
   offers: { group: "operations", view: "module", module: "offers" },
+  "purchase-orders": { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
   "list-company": { group: "company", view: "companies", focus: "list" },
   "add-company": { group: "company", view: "companies", focus: "form" },
@@ -702,6 +837,7 @@ const SIDEBAR_ITEM_LABELS = {
   "absence-report": "Mjesečni report",
   rn: "RN",
   offers: "Offers",
+  "purchase-orders": "Purchase Orders",
   periodics: "Periodics",
   "list-company": "List Company",
   "add-company": "Add New",
@@ -753,6 +889,7 @@ const state = {
   reminders: [],
   todoTasks: [],
   offers: [],
+  purchaseOrders: [],
   vehicles: [],
   legalFrameworks: [],
   learningTests: [],
@@ -1722,6 +1859,8 @@ const offersTotalCount = document.querySelector("#offers-total-count");
 const offersDraftCount = document.querySelector("#offers-draft-count");
 const offersSentCount = document.querySelector("#offers-sent-count");
 const offersAcceptedCount = document.querySelector("#offers-accepted-count");
+const offersListKicker = document.querySelector("#offers-list-kicker");
+const offersListTitle = document.querySelector("#offers-list-title");
 const offersSearchInput = document.querySelector("#offers-search");
 const offersFilterStatusInput = document.querySelector("#offers-filter-status");
 const offersHelper = document.querySelector("#offers-helper");
@@ -1733,12 +1872,15 @@ const offerEditorBackdrop = document.querySelector("#offer-editor-backdrop");
 const offerEditorPanel = document.querySelector("#offer-editor-panel");
 const offerEditorCloseButton = document.querySelector("#offer-editor-close");
 const offerEditorBody = offerEditorPanel?.querySelector(".offers-editor-body");
+const offerEditorKicker = document.querySelector("#offer-editor-kicker");
+const offerEditorTitle = document.querySelector("#offer-editor-title");
 const offerForm = document.querySelector("#offer-form");
 const offerIdInput = document.querySelector("#offer-id");
 const offerNumberPreview = document.querySelector("#offer-number-preview");
 const offerTotalPreviewBlock = document.querySelector("#offer-total-preview-block");
 const offerTotalPreview = document.querySelector("#offer-total-preview");
 const offerTitleInput = document.querySelector("#offer-title");
+const offerTitleLabel = document.querySelector("#offer-title-label");
 const offerCompanyIdInput = document.querySelector("#offer-company-id");
 const offerCompanyPreview = document.querySelector("#offer-company-preview");
 const offerCompanyPreviewLogo = document.querySelector("#offer-company-preview-logo");
@@ -1749,12 +1891,24 @@ const offerLocationPreview = document.querySelector("#offer-location-preview");
 const offerLocationPanel = document.querySelector("#offer-location-panel");
 const offerContactSlotInput = document.querySelector("#offer-contact-slot");
 const offerServiceLineInput = document.querySelector("#offer-service-line");
+const offerServiceLineLabel = document.querySelector("#offer-service-line-label");
 const offerItemServiceOptions = document.querySelector("#offer-item-service-options");
 const offerStatusInput = document.querySelector("#offer-status");
+const offerDateLabel = document.querySelector("#offer-date-label");
 const offerDateInput = document.querySelector("#offer-date");
 const offerTaxRateInput = document.querySelector("#offer-tax-rate");
 const offerNoteInput = document.querySelector("#offer-note");
+const purchaseOrderDirectionField = document.querySelector("#purchase-order-direction-field");
+const purchaseOrderDirectionInput = document.querySelector("#purchase-order-direction");
+const purchaseOrderExternalNumberField = document.querySelector("#purchase-order-external-number-field");
+const purchaseOrderExternalNumberInput = document.querySelector("#purchase-order-external-number");
+const purchaseOrderDocumentsSection = document.querySelector("#purchase-order-documents-section");
+const purchaseOrderDocumentsUploadButton = document.querySelector("#purchase-order-documents-upload");
+const purchaseOrderDocumentsInput = document.querySelector("#purchase-order-documents-input");
+const purchaseOrderDocumentsList = document.querySelector("#purchase-order-documents-list");
 const offerAddItemButton = document.querySelector("#offer-add-item");
+const offerItemsTitle = document.querySelector("#offer-items-title");
+const offerItemsHelp = document.querySelector("#offer-items-help");
 const offerItems = document.querySelector("#offer-items");
 const offerSubtotal = document.querySelector("#offer-subtotal");
 const offerDiscountLine = document.querySelector("#offer-discount-line");
@@ -1765,6 +1919,8 @@ const offerTaxTotal = document.querySelector("#offer-tax-total");
 const offerGrandTotalLine = document.querySelector("#offer-grand-total-line");
 const offerGrandTotal = document.querySelector("#offer-grand-total");
 const offerTotalsCard = document.querySelector(".offers-totals-card");
+const offerNumberLabel = document.querySelector("#offer-number-label");
+const offerTotalLabel = document.querySelector("#offer-total-label");
 const offerToggleDiscountButton = document.querySelector("#offer-toggle-discount");
 const offerToggleTotalButton = document.querySelector("#offer-toggle-total");
 const offerDiscountRateWrap = document.querySelector("#offer-discount-rate-wrap");
@@ -1775,6 +1931,7 @@ const offerSendEmailButton = document.querySelector("#offer-send-email");
 const offerError = document.querySelector("#offer-error");
 const offerResetButton = document.querySelector("#offer-reset");
 const offerDeleteButton = document.querySelector("#offer-delete");
+const offerSubmitButton = document.querySelector("#offer-submit-button");
 const offerTemplateBackdrop = document.querySelector("#offer-template-backdrop");
 const offerTemplatePanel = document.querySelector("#offer-template-panel");
 const offerTemplateCloseButton = document.querySelector("#offer-template-close");
@@ -1789,6 +1946,11 @@ const offerTemplatePlaceholderList = document.querySelector("#offer-template-pla
 const offerTemplateError = document.querySelector("#offer-template-error");
 const offerTemplateToggleReferenceButton = document.querySelector("#offer-template-toggle-reference");
 const offerTemplateReferenceBody = document.querySelector("#offer-template-reference-body");
+const offerTemplateKicker = document.querySelector("#offer-template-kicker");
+const offerTemplateTitle = document.querySelector("#offer-template-title");
+const offerTemplateWordTitle = document.querySelector("#offer-template-word-title");
+const offerTemplatePlaceholderTitle = document.querySelector("#offer-template-placeholder-title");
+const offerTemplateCopy = document.querySelector("#offer-template-copy");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
@@ -2173,6 +2335,9 @@ const learningPeopleEmpty = document.querySelector("#learning-people-empty");
 let offerFormItems = [];
 let offerFormSelectedLocationIds = [];
 let offerTemplateReferenceDraft = null;
+let purchaseOrderTemplateReferenceDraft = null;
+let purchaseOrderDocumentDrafts = [];
+let lastCommercialDocumentContextKey = "offers";
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
 let documentTemplateSectionDrafts = [];
@@ -3865,6 +4030,7 @@ function applySnapshot(payload) {
   state.reminders = payload.reminders ?? [];
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
+  state.purchaseOrders = payload.purchaseOrders ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
   state.learningTests = payload.learningTests ?? [];
@@ -3926,7 +4092,7 @@ function applySnapshot(payload) {
       resetVehicleReservationForm();
     }
   }
-  if (offerIdInput?.value && !state.offers.some((item) => String(item.id) === String(offerIdInput.value))) {
+  if (offerIdInput?.value && !getActiveCommercialDocumentCollection().some((item) => String(item.id) === String(offerIdInput.value))) {
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     resetOfferForm();
@@ -5304,7 +5470,10 @@ function persistRailHidden() {
 }
 
 function renderModuleView() {
-  const moduleDefinition = MODULE_VIEW_DEFINITIONS[state.activeModuleItem] ?? MODULE_VIEW_DEFINITIONS.documents;
+  const moduleDefinitionKey = state.activeModuleItem === "offers" && state.activeSidebarItem === "purchase-orders"
+    ? "purchase-orders"
+    : state.activeModuleItem;
+  const moduleDefinition = MODULE_VIEW_DEFINITIONS[moduleDefinitionKey] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isDocumentsModule = state.activeModuleItem === "documents";
   const isCloudModule = state.activeModuleItem === "cloud";
   const isSettingsModule = state.activeModuleItem === "settings";
@@ -16819,18 +16988,24 @@ function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = ""
 }
 
 function buildOfferDraftPreviewData() {
+  const isPurchaseOrder = isPurchaseOrdersContextActive();
   const companyId = String(offerCompanyIdInput?.value || "").trim();
   const company = state.companies.find((item) => String(item.id) === companyId) ?? null;
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
   const totals = getOfferDraftTotals();
+  const currentNumber = String(offerNumberPreview?.textContent || "").trim();
+  const documentDrafts = purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry));
+  const currentDate = String(offerDateInput?.value || "").trim();
 
   return {
     id: String(offerIdInput?.value || "").trim(),
-    offerNumber: String(offerNumberPreview?.textContent || "").trim(),
+    offerNumber: isPurchaseOrder ? "" : currentNumber,
+    purchaseOrderNumber: isPurchaseOrder ? currentNumber : "",
     title: String(offerTitleInput?.value || "").trim(),
-    status: String(offerStatusInput?.value || "draft").trim(),
-    offerDate: String(offerDateInput?.value || "").trim(),
+    status: String(offerStatusInput?.value || getActiveCommercialDocumentConfig().defaultStatus).trim(),
+    offerDate: isPurchaseOrder ? "" : currentDate,
+    purchaseOrderDate: isPurchaseOrder ? currentDate : "",
     validUntil: "",
     companyId,
     companyName: company?.name || "",
@@ -16845,6 +17020,9 @@ function buildOfferDraftPreviewData() {
     contactEmail: contactSnapshot.contactEmail || "",
     serviceLine: String(offerServiceLineInput?.value || "").trim(),
     note: String(offerNoteInput?.value || "").trim(),
+    orderDirection: isPurchaseOrder ? String(purchaseOrderDirectionInput?.value || "incoming").trim() : "",
+    externalDocumentNumber: isPurchaseOrder ? String(purchaseOrderExternalNumberInput?.value || "").trim() : "",
+    documents: isPurchaseOrder ? documentDrafts : [],
     currency: "EUR",
     taxRate: totals.taxRate,
     discountRate: totals.discountRate,
@@ -16873,6 +17051,10 @@ function buildOfferDraftPreviewData() {
 
 function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData()) {
   const normalizedOffer = offer || {};
+  const isPurchaseOrder = isPurchaseOrdersContextActive()
+    || Boolean(normalizedOffer.purchaseOrderNumber)
+    || Boolean(normalizedOffer.orderDirection)
+    || Array.isArray(normalizedOffer.documents);
   const itemsSummary = (normalizedOffer.items ?? [])
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}` : ""}`)
     .join("\n");
@@ -16885,11 +17067,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     })
     .join("\n");
 
-  return {
-    OFFER_NUMBER: normalizedOffer.id ? (normalizedOffer.offerNumber || "Dodijeljen nakon spremanja") : "Dodijeljen nakon spremanja",
-    OFFER_TITLE: normalizedOffer.title || "",
-    OFFER_STATUS: getOptionLabel(OFFER_STATUS_OPTIONS, normalizedOffer.status || "draft"),
-    OFFER_DATE: normalizedOffer.offerDate ? formatDate(normalizedOffer.offerDate) : "",
+  const sharedPayload = {
     VALID_UNTIL: normalizedOffer.validUntil ? formatDate(normalizedOffer.validUntil) : "",
     COMPANY_NAME: normalizedOffer.companyName || "",
     COMPANY_OIB: normalizedOffer.companyOib || "",
@@ -16910,11 +17088,34 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     TAX_TOTAL: formatCurrencyAmount(normalizedOffer.taxTotal || 0, normalizedOffer.currency || "EUR"),
     TOTAL: formatCurrencyAmount(normalizedOffer.total || 0, normalizedOffer.currency || "EUR"),
   };
+
+  if (isPurchaseOrder) {
+    return {
+      PURCHASE_ORDER_NUMBER: normalizedOffer.id
+        ? (normalizedOffer.purchaseOrderNumber || "Dodijeljen nakon spremanja")
+        : "Dodijeljen nakon spremanja",
+      PURCHASE_ORDER_TITLE: normalizedOffer.title || "",
+      PURCHASE_ORDER_STATUS: getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, normalizedOffer.status || "draft"),
+      PURCHASE_ORDER_DATE: normalizedOffer.purchaseOrderDate ? formatDate(normalizedOffer.purchaseOrderDate) : "",
+      ORDER_DIRECTION: getCommercialDocumentDirectionLabel(normalizedOffer.orderDirection),
+      EXTERNAL_DOCUMENT_NUMBER: normalizedOffer.externalDocumentNumber || "",
+      ...sharedPayload,
+    };
+  }
+
+  return {
+    OFFER_NUMBER: normalizedOffer.id ? (normalizedOffer.offerNumber || "Dodijeljen nakon spremanja") : "Dodijeljen nakon spremanja",
+    OFFER_TITLE: normalizedOffer.title || "",
+    OFFER_STATUS: getOptionLabel(OFFER_STATUS_OPTIONS, normalizedOffer.status || "draft"),
+    OFFER_DATE: normalizedOffer.offerDate ? formatDate(normalizedOffer.offerDate) : "",
+    ...sharedPayload,
+  };
 }
 
 function buildOfferTemplatePlaceholderWordMarkup(offer = buildOfferDraftPreviewData()) {
+  const config = getActiveCommercialDocumentConfig();
   const payload = buildOfferTemplatePlaceholderPayload(offer);
-  const rows = OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS.map((entry) => `
+  const rows = getActiveCommercialTemplateDefinitions().map((entry) => `
     <tr>
       <td>{{${escapeHtml(entry.key)}}}</td>
       <td>${escapeHtml(entry.label)}</td>
@@ -16925,8 +17126,8 @@ function buildOfferTemplatePlaceholderWordMarkup(offer = buildOfferDraftPreviewD
 
   return `
     <div class="cover">
-      <h1>SafeNexus · Offer placeholderi</h1>
-      <p>Ove tokene koristiš u Word predlošku za ponude. Vrijednosti desno su primjer iz trenutne forme.</p>
+      <h1>${escapeHtml(config.templatePlaceholderDocTitle)}</h1>
+      <p>${escapeHtml(config.templateCopy)} Vrijednosti desno su primjer iz trenutne forme.</p>
       <table class="placeholder-table">
         <thead>
           <tr>
@@ -23874,6 +24075,74 @@ function triggerModuleAttachmentDownload(fileDocument) {
   document.body.append(link);
   link.click();
   link.remove();
+}
+
+function renderPurchaseOrderDocuments() {
+  if (!purchaseOrderDocumentsList) {
+    return;
+  }
+
+  if (purchaseOrderDocumentDrafts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offer-template-reference-empty";
+    empty.textContent = "Još nema dodanih dokumenata narudžbenice.";
+    purchaseOrderDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  purchaseOrderDocumentsList.replaceChildren(...purchaseOrderDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "Dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      formatFileSize(entry.fileSize),
+      entry.fileType || "",
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const categorySlot = document.createElement("div");
+    categorySlot.className = "module-attachment-middle";
+    const documentType = document.createElement("div");
+    documentType.className = "module-attachment-category-value is-locked";
+    documentType.textContent = entry.documentCategory || "Narudžbenica";
+    categorySlot.append(documentType);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Preuzmi", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni", "trash", "card-danger", () => {
+        purchaseOrderDocumentDrafts = purchaseOrderDocumentDrafts.filter((item) => item.id !== entry.id);
+        renderPurchaseOrderDocuments();
+      }),
+    );
+
+    row.append(copy, categorySlot, actions);
+    return row;
+  }));
+}
+
+async function queuePurchaseOrderDocuments(files) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft({
+    ...file,
+    documentCategory: "Narudžbenica",
+    updatedAt: new Date().toISOString(),
+  }));
+
+  purchaseOrderDocumentDrafts = [...purchaseOrderDocumentDrafts, ...nextDocuments];
+  renderPurchaseOrderDocuments();
 }
 
 function normalizeMeasurementEquipmentDocumentCategoryValue(value = "") {
@@ -39648,8 +39917,231 @@ function renderTodo() {
   renderTodoDetail();
 }
 
+function isPurchaseOrdersContextActive() {
+  return state.activeSidebarItem === "purchase-orders";
+}
+
+function getActiveCommercialDocumentKey() {
+  return isPurchaseOrdersContextActive() ? "purchase-orders" : "offers";
+}
+
+function getActiveCommercialDocumentConfig() {
+  return COMMERCIAL_DOCUMENT_MODULE_CONFIG[getActiveCommercialDocumentKey()] ?? COMMERCIAL_DOCUMENT_MODULE_CONFIG.offers;
+}
+
+function getActiveCommercialDocumentCollection() {
+  return isPurchaseOrdersContextActive() ? (state.purchaseOrders ?? []) : (state.offers ?? []);
+}
+
+function getActiveCommercialStatusOptions() {
+  return getActiveCommercialDocumentConfig().statusOptions ?? OFFER_STATUS_OPTIONS;
+}
+
+function getActiveCommercialApiBasePath() {
+  return getActiveCommercialDocumentConfig().apiBasePath || "/offers";
+}
+
+function getActiveCommercialTemplateDefinitions() {
+  return isPurchaseOrdersContextActive()
+    ? PURCHASE_ORDER_TEMPLATE_PLACEHOLDER_DEFINITIONS
+    : OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS;
+}
+
+function getActiveCommercialTemplateReferenceDraft() {
+  return isPurchaseOrdersContextActive() ? purchaseOrderTemplateReferenceDraft : offerTemplateReferenceDraft;
+}
+
+function setActiveCommercialTemplateReferenceDraft(value) {
+  if (isPurchaseOrdersContextActive()) {
+    purchaseOrderTemplateReferenceDraft = value;
+    return;
+  }
+
+  offerTemplateReferenceDraft = value;
+}
+
+function getCurrentCommercialDocumentById(id = "") {
+  return getActiveCommercialDocumentCollection().find((item) => String(item.id) === String(id)) ?? null;
+}
+
+function getCommercialDocumentStatusLabel(status = "draft") {
+  return getOptionLabel(getActiveCommercialStatusOptions(), status || getActiveCommercialDocumentConfig().defaultStatus) || status;
+}
+
+function getCommercialDocumentNumber(item = {}) {
+  return isPurchaseOrdersContextActive()
+    ? String(item.purchaseOrderNumber || "").trim()
+    : String(item.offerNumber || "").trim();
+}
+
+function getCommercialDocumentDateValue(item = {}) {
+  return isPurchaseOrdersContextActive()
+    ? String(item.purchaseOrderDate || "").trim()
+    : String(item.offerDate || "").trim();
+}
+
+function getCommercialDocumentDisplayName(item = {}) {
+  const config = getActiveCommercialDocumentConfig();
+  return String(item.title || "").trim() || config.untitledLabel;
+}
+
+function getCommercialDocumentIdentifierText(item = {}) {
+  const config = getActiveCommercialDocumentConfig();
+  return getCommercialDocumentNumber(item) || config.numberFallback;
+}
+
+function getCommercialDocumentDirectionLabel(value = "") {
+  return String(value || "").trim().toLowerCase() === "outgoing" ? "Izlazna" : "Ulazna";
+}
+
+function serializeModuleAttachmentDraft(document = {}) {
+  return {
+    id: String(document.id || crypto.randomUUID()),
+    fileName: String(document.fileName || "").trim(),
+    fileType: String(document.fileType || "").trim(),
+    fileSize: Number(document.fileSize || 0) || 0,
+    documentCategory: String(document.documentCategory || "").trim(),
+    description: String(document.description || "").trim(),
+    dataUrl: String(document.dataUrl || document.storageUrl || "").trim(),
+    storageProvider: String(document.storageProvider || "").trim(),
+    storageBucket: String(document.storageBucket || "").trim(),
+    storageKey: String(document.storageKey || "").trim(),
+    storageUrl: String(document.storageUrl || document.dataUrl || "").trim(),
+    createdAt: String(document.createdAt || "").trim(),
+    updatedAt: String(document.updatedAt || document.createdAt || "").trim(),
+  };
+}
+
+function buildCommercialStatusSelectOptions(options = getActiveCommercialStatusOptions()) {
+  return options.map((option) => ({
+    value: option.value,
+    label: option.label,
+  }));
+}
+
+function buildCommercialFilterStatusOptions(options = getActiveCommercialStatusOptions()) {
+  return [
+    { value: "all", label: "Svi statusi" },
+    ...buildCommercialStatusSelectOptions(options),
+  ];
+}
+
+function applyCommercialDocumentUiConfig() {
+  const config = getActiveCommercialDocumentConfig();
+  const statusOptions = getActiveCommercialStatusOptions();
+  const currentFilterValue = String(offersFilterStatusInput?.value || "all");
+  const currentStatusValue = String(offerStatusInput?.value || config.defaultStatus);
+
+  if (offersListKicker) {
+    offersListKicker.textContent = config.listKicker;
+  }
+  if (offersListTitle) {
+    offersListTitle.textContent = config.listTitle;
+  }
+  if (offersSearchInput) {
+    offersSearchInput.placeholder = config.listSearchPlaceholder;
+  }
+  if (offerOpenFormButton) {
+    offerOpenFormButton.textContent = config.openFormLabel;
+  }
+  if (offerEditorKicker) {
+    offerEditorKicker.textContent = config.editorKicker;
+  }
+  if (offerEditorTitle) {
+    offerEditorTitle.textContent = config.editorTitle;
+  }
+  if (offerDateLabel) {
+    offerDateLabel.textContent = config.dateLabel;
+  }
+  if (offerNumberLabel) {
+    offerNumberLabel.textContent = config.numberLabel;
+  }
+  if (offerTotalLabel) {
+    offerTotalLabel.textContent = config.totalLabel;
+  }
+  if (offerTitleLabel) {
+    offerTitleLabel.textContent = config.titleLabel;
+  }
+  if (offerTitleInput) {
+    offerTitleInput.placeholder = config.titlePlaceholder;
+  }
+  if (offerServiceLineLabel) {
+    offerServiceLineLabel.textContent = config.serviceLineLabel;
+  }
+  if (offerServiceLineInput) {
+    offerServiceLineInput.placeholder = config.serviceLinePlaceholder;
+  }
+  if (offerNoteInput) {
+    offerNoteInput.placeholder = config.notePlaceholder;
+  }
+  if (offerItemsTitle) {
+    offerItemsTitle.textContent = config.itemsTitle;
+  }
+  if (offerItemsHelp) {
+    offerItemsHelp.textContent = config.itemsHelp;
+  }
+  if (offerSubmitButton) {
+    offerSubmitButton.textContent = config.submitLabel;
+  }
+  if (offerTemplateKicker) {
+    offerTemplateKicker.textContent = config.templateKicker;
+  }
+  if (offerTemplateTitle) {
+    offerTemplateTitle.textContent = config.templateTitle;
+  }
+  if (offerTemplateWordTitle) {
+    offerTemplateWordTitle.textContent = config.templateWordTitle;
+  }
+  if (offerTemplatePlaceholderTitle) {
+    offerTemplatePlaceholderTitle.textContent = config.templatePlaceholderTitle;
+  }
+  if (offerTemplateCopy) {
+    offerTemplateCopy.textContent = config.templateCopy;
+  }
+  if (offerPreviewButton) {
+    offerPreviewButton.title = config.previewButtonLabel;
+    offerPreviewButton.setAttribute("aria-label", config.previewButtonLabel);
+  }
+  if (offerDownloadPdfButton) {
+    offerDownloadPdfButton.title = config.downloadButtonLabel;
+    offerDownloadPdfButton.setAttribute("aria-label", config.downloadButtonLabel);
+  }
+  if (offerSendEmailButton) {
+    offerSendEmailButton.title = config.emailButtonLabel;
+    offerSendEmailButton.setAttribute("aria-label", config.emailButtonLabel);
+  }
+
+  if (offersFilterStatusInput) {
+    replaceSelectOptions(
+      offersFilterStatusInput,
+      buildCommercialFilterStatusOptions(statusOptions),
+      optionListIncludesValue(buildCommercialFilterStatusOptions(statusOptions), currentFilterValue) ? currentFilterValue : "all",
+    );
+  }
+
+  if (offerStatusInput) {
+    replaceSelectOptions(
+      offerStatusInput,
+      buildCommercialStatusSelectOptions(statusOptions),
+      optionListIncludesValue(buildCommercialStatusSelectOptions(statusOptions), currentStatusValue)
+        ? currentStatusValue
+        : config.defaultStatus,
+    );
+  }
+
+  if (purchaseOrderDirectionField) {
+    purchaseOrderDirectionField.hidden = !isPurchaseOrdersContextActive();
+  }
+  if (purchaseOrderExternalNumberField) {
+    purchaseOrderExternalNumberField.hidden = !isPurchaseOrdersContextActive();
+  }
+  if (purchaseOrderDocumentsSection) {
+    purchaseOrderDocumentsSection.hidden = !isPurchaseOrdersContextActive();
+  }
+}
+
 function getOfferStatusLabel(status = "draft") {
-  return OFFER_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+  return getCommercialDocumentStatusLabel(status);
 }
 
 function createOfferStatusBadge(status = "draft") {
@@ -39660,6 +40152,8 @@ function createOfferStatusBadge(status = "draft") {
 }
 
 function createOfferStatusDropdown(item) {
+  const statusOptions = getActiveCommercialStatusOptions();
+  const apiBasePath = getActiveCommercialApiBasePath();
   const wrapper = document.createElement("div");
   wrapper.className = "work-item-status-dropdown";
   wrapper.dataset.preventRowOpen = "true";
@@ -39721,7 +40215,7 @@ function createOfferStatusDropdown(item) {
       });
     });
 
-    OFFER_STATUS_OPTIONS.forEach((option) => {
+    statusOptions.forEach((option) => {
       const optionButton = document.createElement("button");
       optionButton.type = "button";
       optionButton.className = "work-item-status-option";
@@ -39741,7 +40235,7 @@ function createOfferStatusDropdown(item) {
         setCurrentStatus(option.value);
         setPendingState(true);
 
-        void runMutation(() => apiRequest(`/offers/${item.id}`, {
+        void runMutation(() => apiRequest(`${apiBasePath}/${item.id}`, {
           method: "PATCH",
           body: { status: option.value },
         })).then((success) => {
@@ -39752,7 +40246,7 @@ function createOfferStatusDropdown(item) {
             return;
           }
 
-          const updatedItem = state.offers.find((entry) => String(entry.id) === String(item.id));
+          const updatedItem = getCurrentCommercialDocumentById(item.id);
           setCurrentStatus(updatedItem?.status || option.value);
         });
       });
@@ -39897,10 +40391,10 @@ function syncOfferNumberPreview() {
     return;
   }
 
-  const currentOffer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || ""));
+  const currentItem = getCurrentCommercialDocumentById(offerIdInput?.value || "");
 
-  if (currentOffer?.offerNumber) {
-    offerNumberPreview.textContent = currentOffer.offerNumber;
+  if (currentItem) {
+    offerNumberPreview.textContent = getCommercialDocumentIdentifierText(currentItem);
     return;
   }
 
@@ -40039,8 +40533,8 @@ function previewBlobInNewTab(blob, fallbackFileName = "preview.pdf") {
 
 function syncOfferActionButtons() {
   const isSavedOffer = Boolean(String(offerIdInput?.value || "").trim());
-  const currentOffer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || "")) ?? null;
-  const hasContactEmail = Boolean((currentOffer?.contactEmail || getSelectedOfferContactSnapshot().contactEmail || "").trim());
+  const currentItem = getCurrentCommercialDocumentById(offerIdInput?.value || "");
+  const hasContactEmail = Boolean((currentItem?.contactEmail || getSelectedOfferContactSnapshot().contactEmail || "").trim());
 
   [offerPreviewButton, offerDownloadPdfButton, offerSendEmailButton].forEach((button) => {
     if (!button) {
@@ -40722,11 +41216,12 @@ function getSelectedOfferContactSnapshot() {
 }
 
 function buildOfferPayload() {
+  const isPurchaseOrder = isPurchaseOrdersContextActive();
   const companyId = String(offerCompanyIdInput?.value || "").trim();
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
 
-  return {
+  const payload = {
     title: offerTitleInput.value,
     companyId,
     locationId: locationSelection.ids[0] || "",
@@ -40738,7 +41233,6 @@ function buildOfferPayload() {
     contactEmail: contactSnapshot.contactEmail,
     serviceLine: offerServiceLineInput.value,
     status: offerStatusInput.value,
-    offerDate: offerDateInput.value,
     showTotalAmount: isOfferTotalVisible(),
     taxRate: offerTaxRateInput.value,
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
@@ -40759,6 +41253,21 @@ function buildOfferPayload() {
         : [],
     })),
   };
+
+  if (isPurchaseOrder) {
+    return {
+      ...payload,
+      purchaseOrderDate: offerDateInput.value,
+      orderDirection: purchaseOrderDirectionInput?.value || "incoming",
+      externalDocumentNumber: purchaseOrderExternalNumberInput?.value || "",
+      documents: purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry)),
+    };
+  }
+
+  return {
+    ...payload,
+    offerDate: offerDateInput.value,
+  };
 }
 
 function resetOfferForm() {
@@ -40766,11 +41275,14 @@ function resetOfferForm() {
     return;
   }
 
+  const config = getActiveCommercialDocumentConfig();
+
+  applyCommercialDocumentUiConfig();
   offerForm.reset();
   offerIdInput.value = "";
   offerError.textContent = "";
   if (offerStatusInput) {
-    offerStatusInput.value = "draft";
+    offerStatusInput.value = config.defaultStatus;
   }
   syncOfferStatusTheme();
   if (offerDateInput) {
@@ -40780,10 +41292,21 @@ function resetOfferForm() {
     offerTaxRateInput.value = "25";
   }
   if (offerNoteInput) {
-    offerNoteInput.value = DEFAULT_OFFER_NOTE;
+    offerNoteInput.value = config.defaultNote;
   }
   if (offerDiscountRateInput) {
     offerDiscountRateInput.value = "";
+  }
+  if (purchaseOrderDirectionInput) {
+    purchaseOrderDirectionInput.value = "incoming";
+  }
+  if (purchaseOrderExternalNumberInput) {
+    purchaseOrderExternalNumberInput.value = "";
+  }
+  purchaseOrderDocumentDrafts = [];
+  renderPurchaseOrderDocuments();
+  if (purchaseOrderDocumentsInput) {
+    purchaseOrderDocumentsInput.value = "";
   }
   setOfferDiscountVisibility(false, { clearValue: true });
   setOfferTotalVisibility(true);
@@ -40811,12 +41334,17 @@ function resetOfferForm() {
 }
 
 function hydrateOfferForm(offer) {
+  const isPurchaseOrder = Boolean(offer?.purchaseOrderNumber || offer?.orderDirection || Array.isArray(offer?.documents));
+  const configKey = isPurchaseOrder ? "purchase-orders" : "offers";
+  const config = COMMERCIAL_DOCUMENT_MODULE_CONFIG[configKey];
+
   state.activeView = "module";
   state.activeSidebarGroup = "operations";
-  state.activeSidebarItem = "offers";
+  state.activeSidebarItem = configKey;
   state.activeModuleItem = "offers";
   renderModuleView();
   renderActiveView();
+  applyCommercialDocumentUiConfig();
 
   offerIdInput.value = offer.id;
   offerTitleInput.value = offer.title || "";
@@ -40839,11 +41367,19 @@ function hydrateOfferForm(offer) {
     contactEmail: offer.contactEmail || "",
   });
   offerServiceLineInput.value = offer.serviceLine || "";
-  offerStatusInput.value = offer.status || "draft";
+  offerStatusInput.value = offer.status || config.defaultStatus;
   syncOfferStatusTheme();
-  offerDateInput.value = offer.offerDate || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  offerDateInput.value = getCommercialDocumentDateValue(offer) || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10);
   offerTaxRateInput.value = String(offer.taxRate ?? 25);
-  offerNoteInput.value = offer.note || DEFAULT_OFFER_NOTE;
+  offerNoteInput.value = offer.note || config.defaultNote;
+  if (purchaseOrderDirectionInput) {
+    purchaseOrderDirectionInput.value = offer.orderDirection || "incoming";
+  }
+  if (purchaseOrderExternalNumberInput) {
+    purchaseOrderExternalNumberInput.value = offer.externalDocumentNumber || "";
+  }
+  purchaseOrderDocumentDrafts = (offer.documents ?? []).map((entry) => createModuleAttachmentDraft(entry));
+  renderPurchaseOrderDocuments();
   if (offerDiscountRateInput) {
     offerDiscountRateInput.value = offer.discountRate ? String(offer.discountRate) : "";
   }
@@ -40868,11 +41404,12 @@ function renderOfferTemplateReferenceMeta() {
     return;
   }
 
-  const entry = offerTemplateReferenceDraft;
-  if (!entry?.fileName || !entry?.dataUrl) {
+  const config = getActiveCommercialDocumentConfig();
+  const entry = getActiveCommercialTemplateReferenceDraft();
+  if (!entry?.fileName || !(entry?.dataUrl || entry?.storageUrl)) {
     const empty = document.createElement("div");
     empty.className = "offer-template-reference-empty";
-    empty.textContent = "Još nema učitanog Word predloška za ponude.";
+    empty.textContent = config.templateEmptyText;
     offerTemplateReferenceMeta.replaceChildren(empty);
     if (offerTemplateDownloadButton) {
       offerTemplateDownloadButton.disabled = true;
@@ -40907,7 +41444,7 @@ function renderOfferTemplatePlaceholderList(offer = buildOfferDraftPreviewData()
   }
 
   const payload = buildOfferTemplatePlaceholderPayload(offer);
-  offerTemplatePlaceholderList.replaceChildren(...OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS.map((entry) => {
+  offerTemplatePlaceholderList.replaceChildren(...getActiveCommercialTemplateDefinitions().map((entry) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "offer-template-placeholder-chip";
@@ -40941,23 +41478,27 @@ function renderOfferTemplatePlaceholderList(offer = buildOfferDraftPreviewData()
 }
 
 async function loadOfferTemplateSettings({ force = false } = {}) {
-  if (offerTemplateReferenceDraft && !force) {
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const currentDraft = getActiveCommercialTemplateReferenceDraft();
+
+  if (currentDraft && !force) {
     renderOfferTemplateReferenceMeta();
     renderOfferTemplatePlaceholderList();
     return;
   }
 
-  const payload = await apiRequest("/offers/template-settings", {
+  const payload = await apiRequest(`${apiBasePath}/template-settings`, {
     method: "GET",
   });
-  offerTemplateReferenceDraft = payload?.item ?? null;
+  setActiveCommercialTemplateReferenceDraft(payload?.item ?? null);
   renderOfferTemplateReferenceMeta();
   renderOfferTemplatePlaceholderList();
 }
 
 async function saveOfferTemplateReference(file) {
+  const apiBasePath = getActiveCommercialApiBasePath();
   const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`);
-  const payload = await apiRequest("/offers/template-settings", {
+  const payload = await apiRequest(`${apiBasePath}/template-settings`, {
     method: "POST",
     body: {
       referenceDocument: {
@@ -40967,54 +41508,60 @@ async function saveOfferTemplateReference(file) {
       },
     },
   });
-  offerTemplateReferenceDraft = payload?.item ?? null;
+  setActiveCommercialTemplateReferenceDraft(payload?.item ?? null);
   renderOfferTemplateReferenceMeta();
   renderOfferTemplatePlaceholderList();
 }
 
 async function removeOfferTemplateReference() {
-  await apiRequest("/offers/template-settings", {
+  const apiBasePath = getActiveCommercialApiBasePath();
+  await apiRequest(`${apiBasePath}/template-settings`, {
     method: "DELETE",
   });
-  offerTemplateReferenceDraft = null;
+  setActiveCommercialTemplateReferenceDraft(null);
   renderOfferTemplateReferenceMeta();
   renderOfferTemplatePlaceholderList();
 }
 
 async function downloadOfferPdf(offerId, { preview = false } = {}) {
-  const response = await apiBinaryRequest(`/offers/${offerId}/export-pdf`, {
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const response = await apiBinaryRequest(`${apiBasePath}/${offerId}/export-pdf`, {
     method: "POST",
   });
 
   if (preview) {
-    previewBlobInNewTab(response.blob, response.fileName || "ponuda.pdf");
+    previewBlobInNewTab(response.blob, response.fileName || "dokument.pdf");
     return;
   }
 
-  triggerBlobDownload(response.blob, response.fileName || "ponuda.pdf");
+  triggerBlobDownload(response.blob, response.fileName || "dokument.pdf");
 }
 
 async function sendOfferByEmail(offer) {
+  const config = getActiveCommercialDocumentConfig();
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const documentNumber = getCommercialDocumentIdentifierText(offer);
+  const documentTitle = getCommercialDocumentDisplayName(offer);
   const initialTo = String(offer?.contactEmail || "").trim();
-  const to = window.prompt("Na koji email poslati ponudu?", initialTo);
+  const to = window.prompt(config.emailPromptLabel, initialTo);
   if (!to) {
     return;
   }
 
   const subject = window.prompt(
-    "Naslov emaila",
-    `${offer?.offerNumber || "Ponuda"} · ${offer?.title || offer?.companyName || "SafeNexus"}`,
+    config.emailSubjectLabel,
+    `${documentNumber} · ${documentTitle || offer?.companyName || "SafeNexus"}`,
   );
   if (!subject) {
     return;
   }
 
   const message = window.prompt(
-    "Poruka emaila",
-    `Poštovani,\n\nu privitku šaljemo ponudu ${offer?.offerNumber || ""}.\n\nLijep pozdrav,\nSafeNexus`,
+    config.emailMessageLabel,
+    `Poštovani,\n\nu privitku šaljemo ${config.emailDocumentLabel} ${documentNumber || ""}.\n\nLijep pozdrav,\nSafeNexus`,
   );
 
-  const payload = await apiRequest(`/offers/${offer.id}/email`, {
+  const payload = await apiRequest(`${apiBasePath}/${offer.id}/email`, {
     method: "POST",
     body: {
       to,
@@ -41024,7 +41571,7 @@ async function sendOfferByEmail(offer) {
   });
 
   if (offerError) {
-    offerError.textContent = payload?.message || `Ponuda je poslana na ${to}.`;
+    offerError.textContent = payload?.message || `${config.emailSuccessLabel} ${to}.`;
   }
 }
 
@@ -41033,8 +41580,26 @@ function renderOffersModule() {
     return;
   }
 
-  const allOffers = sortOffers(state.offers ?? []);
-  const visibleOffers = sortOffers(filterOffers(state.offers ?? [], {
+  applyCommercialDocumentUiConfig();
+
+  const config = getActiveCommercialDocumentConfig();
+  const contextKey = getActiveCommercialDocumentKey();
+  const activeItems = getActiveCommercialDocumentCollection();
+  const sortItems = isPurchaseOrdersContextActive() ? sortPurchaseOrders : sortOffers;
+  const filterItems = isPurchaseOrdersContextActive() ? filterPurchaseOrders : filterOffers;
+  const activeStatusOptions = getActiveCommercialStatusOptions();
+
+  if (lastCommercialDocumentContextKey !== contextKey) {
+    lastCommercialDocumentContextKey = contextKey;
+    resetOfferForm();
+  }
+
+  if (offerIdInput?.value && !activeItems.some((item) => String(item.id) === String(offerIdInput.value))) {
+    resetOfferForm();
+  }
+
+  const allOffers = sortItems(activeItems);
+  const visibleOffers = sortItems(filterItems(activeItems, {
     query: offersSearchInput?.value || "",
     status: offersFilterStatusInput?.value || "all",
   }));
@@ -41043,13 +41608,13 @@ function renderOffersModule() {
     offersTotalCount.textContent = String(allOffers.length);
   }
   if (offersDraftCount) {
-    offersDraftCount.textContent = String(allOffers.filter((item) => item.status === "draft").length);
+    offersDraftCount.textContent = String(allOffers.filter((item) => item.status === (activeStatusOptions[0]?.value || config.defaultStatus)).length);
   }
   if (offersSentCount) {
-    offersSentCount.textContent = String(allOffers.filter((item) => item.status === "sent").length);
+    offersSentCount.textContent = String(allOffers.filter((item) => item.status === (activeStatusOptions[1]?.value || "")).length);
   }
   if (offersAcceptedCount) {
-    offersAcceptedCount.textContent = String(allOffers.filter((item) => item.status === "accepted").length);
+    offersAcceptedCount.textContent = String(allOffers.filter((item) => item.status === (activeStatusOptions[2]?.value || "")).length);
   }
   if (offersHelper) {
     offersHelper.textContent = "";
@@ -41061,7 +41626,7 @@ function renderOffersModule() {
     card.classList.add(`is-${offer.status || "draft"}`);
     card.tabIndex = 0;
     card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `Otvori ponudu ${offer.offerNumber || offer.title || ""}`.trim());
+    card.setAttribute("aria-label", `${config.editorTitle} ${getCommercialDocumentIdentifierText(offer) || getCommercialDocumentDisplayName(offer)}`.trim());
     if (String(offer.id) === String(offerIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -41071,10 +41636,10 @@ function renderOffersModule() {
 
     const number = document.createElement("span");
     number.className = "offer-list-card-number";
-    number.textContent = offer.offerNumber || "Bez broja";
+    number.textContent = getCommercialDocumentIdentifierText(offer);
     const title = document.createElement("h4");
     title.className = "offer-list-card-title";
-    title.textContent = offer.title || "Nova ponuda";
+    title.textContent = getCommercialDocumentDisplayName(offer);
 
     const copy = document.createElement("div");
     copy.className = "offer-list-card-copy";
@@ -41084,18 +41649,30 @@ function renderOffersModule() {
     companyLine.className = "offer-list-card-meta";
     companyLine.textContent = [
       offer.companyName || "",
-      offer.locationName || "Bez lokacije",
+      offer.locationName || (offer.selectedLocationNames?.length ? `${offer.selectedLocationNames.length} lokacije` : "Bez lokacije"),
     ].filter(Boolean).join(" · ");
 
     const chips = document.createElement("div");
     chips.className = "offer-list-card-chips";
-    chips.append(
-      createMetaPill(getOptionLabel(OFFER_STATUS_OPTIONS, offer.status || "draft"), `is-${slugifyValue(offer.status || "draft")}`),
+    const chipNodes = [
+      createMetaPill(getCommercialDocumentStatusLabel(offer.status || config.defaultStatus), `is-${slugifyValue(offer.status || config.defaultStatus)}`),
       ...(offer.serviceLine ? [createMetaPill(offer.serviceLine)] : []),
-      ...(offer.offerDate ? [createMetaPill(formatDate(offer.offerDate), "is-muted")] : []),
+      ...(getCommercialDocumentDateValue(offer) ? [createMetaPill(formatDate(getCommercialDocumentDateValue(offer)), "is-muted")] : []),
       ...(offer.items?.length ? [createMetaPill(`${offer.items.length} stavki`, "is-muted")] : []),
       ...(Number(offer.discountRate ?? 0) > 0 ? [createMetaPill(`Rabat ${offer.discountRate}%`, "is-attention")] : []),
-    );
+    ];
+
+    if (isPurchaseOrdersContextActive()) {
+      chipNodes.push(createMetaPill(getCommercialDocumentDirectionLabel(offer.orderDirection), offer.orderDirection === "outgoing" ? "is-attention" : "is-success"));
+      if (offer.externalDocumentNumber) {
+        chipNodes.push(createMetaPill(offer.externalDocumentNumber, "is-muted"));
+      }
+      if (offer.documents?.length) {
+        chipNodes.push(createMetaPill(`${offer.documents.length} dok.`, "is-muted"));
+      }
+    }
+
+    chips.append(...chipNodes);
 
     const body = document.createElement("div");
     body.className = "offer-list-card-body";
@@ -41107,7 +41684,7 @@ function renderOffersModule() {
     contact.className = "offer-list-card-services";
     contact.textContent = offer.contactName
       ? [offer.contactName, offer.contactEmail || offer.contactPhone || ""].filter(Boolean).join(" · ")
-      : "Bez odabranog kontakta";
+      : config.noContactLabel;
 
     const footer = document.createElement("div");
     footer.className = "offer-list-card-footer";
@@ -41165,7 +41742,7 @@ function renderOffersModule() {
   if (visibleOffers.length === 0) {
     const emptyCard = document.createElement("div");
     emptyCard.className = "offers-empty-card";
-    emptyCard.textContent = "Nema ponuda za odabrane filtere. Otvori novu ponudu ili proširi pretragu.";
+    emptyCard.textContent = config.listEmptyText;
     offersList.replaceChildren(emptyCard);
   }
 
@@ -43096,6 +43673,7 @@ function renderSharedOptions() {
   if (state.safetyAuthorizationEditorOpen) {
     renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationTemplateSelectionIds());
   }
+  renderPurchaseOrderDocuments();
   if (userDocumentsInput) {
     userDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
@@ -43104,6 +43682,9 @@ function renderSharedOptions() {
   }
   if (measurementEquipmentDocumentsInput) {
     measurementEquipmentDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
+  }
+  if (purchaseOrderDocumentsInput) {
+    purchaseOrderDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
   if (legalFrameworkDocumentsInput) {
     legalFrameworkDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
@@ -53452,6 +54033,9 @@ offerCompanyIdInput?.addEventListener("change", () => {
   renderOfferLocationPicker();
   setOfferLocationPickerOpen(false);
   rebuildOfferContactOptions("", {});
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 });
 
 offerLocationTrigger?.addEventListener("click", () => {
@@ -53463,6 +54047,9 @@ offerLocationTrigger?.addEventListener("click", () => {
 
 offerStatusInput?.addEventListener("change", () => {
   syncOfferStatusTheme();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 });
 
 offerContactSlotInput?.addEventListener("change", () => {
@@ -53474,6 +54061,24 @@ offerContactSlotInput?.addEventListener("change", () => {
 
 offerTaxRateInput?.addEventListener("input", () => {
   syncOfferTotals();
+});
+
+offerForm?.addEventListener("input", () => {
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+purchaseOrderDirectionInput?.addEventListener("change", () => {
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+purchaseOrderExternalNumberInput?.addEventListener("input", () => {
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
 });
 
 offerDiscountRateInput?.addEventListener("input", () => {
@@ -53507,16 +54112,18 @@ offerResetButton?.addEventListener("click", () => {
 
 offerDeleteButton?.addEventListener("click", () => {
   const offerId = offerIdInput?.value || "";
+  const config = getActiveCommercialDocumentConfig();
+  const apiBasePath = getActiveCommercialApiBasePath();
 
   if (!offerId) {
     return;
   }
 
-  if (!window.confirm("Obrisati ovu ponudu?")) {
+  if (!window.confirm(config.deleteConfirmLabel)) {
     return;
   }
 
-  void runMutation(() => apiRequest(`/offers/${offerId}`, {
+  void runMutation(() => apiRequest(`${apiBasePath}/${offerId}`, {
     method: "DELETE",
   }), offerError).then((success) => {
     if (success) {
@@ -53530,7 +54137,8 @@ offerForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const isEditing = Boolean(offerIdInput.value);
-  const path = isEditing ? `/offers/${offerIdInput.value}` : "/offers";
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const path = isEditing ? `${apiBasePath}/${offerIdInput.value}` : apiBasePath;
   const method = isEditing ? "PATCH" : "POST";
 
   void runMutation(() => apiRequest(path, {
@@ -53577,9 +54185,10 @@ offerTemplateToggleReferenceButton?.addEventListener("click", () => {
 });
 
 offerTemplateDownloadPlaceholdersButton?.addEventListener("click", () => {
+  const config = getActiveCommercialDocumentConfig();
   triggerBlobDownload(
-    createWordHtmlBlob("SafeNexus · Offer placeholderi", buildOfferTemplatePlaceholderWordMarkup()),
-    `safe-nexus-offer-placeholderi-${new Date().toISOString().slice(0, 10)}.doc`,
+    createWordHtmlBlob(config.templatePlaceholderDocTitle, buildOfferTemplatePlaceholderWordMarkup()),
+    `${config.templatePlaceholderDocName}-${new Date().toISOString().slice(0, 10)}.doc`,
   );
 });
 
@@ -53602,13 +54211,15 @@ offerTemplateFileInput?.addEventListener("change", () => {
 });
 
 offerTemplateDownloadButton?.addEventListener("click", () => {
-  if (offerTemplateReferenceDraft) {
-    triggerModuleAttachmentDownload(offerTemplateReferenceDraft);
+  const currentDraft = getActiveCommercialTemplateReferenceDraft();
+  if (currentDraft) {
+    triggerModuleAttachmentDownload(currentDraft);
   }
 });
 
 offerTemplateRemoveButton?.addEventListener("click", () => {
-  if (!offerTemplateReferenceDraft || !window.confirm("Maknuti Word predložak za ponude?")) {
+  const currentDraft = getActiveCommercialTemplateReferenceDraft();
+  if (!currentDraft || !window.confirm(getActiveCommercialDocumentConfig().templateRemoveConfirm)) {
     return;
   }
 
@@ -53632,11 +54243,26 @@ offerDownloadPdfButton?.addEventListener("click", () => {
 });
 
 offerSendEmailButton?.addEventListener("click", () => {
-  const offer = state.offers.find((item) => String(item.id) === String(offerIdInput?.value || "")) ?? null;
+  const offer = getCurrentCommercialDocumentById(offerIdInput?.value || "");
   if (!offer) {
     return;
   }
   void runMutation(() => sendOfferByEmail(offer), offerError);
+});
+
+purchaseOrderDocumentsUploadButton?.addEventListener("click", () => {
+  purchaseOrderDocumentsInput?.click();
+});
+
+purchaseOrderDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(purchaseOrderDocumentsInput.files ?? []);
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queuePurchaseOrderDocuments(files), offerError).then(() => {
+    purchaseOrderDocumentsInput.value = "";
+  });
 });
 
 document.addEventListener("click", (event) => {
@@ -55658,6 +56284,7 @@ logoutButton?.addEventListener("click", () => {
     state.reminders = [];
     state.todoTasks = [];
     state.offers = [];
+    state.purchaseOrders = [];
     state.vehicles = [];
     state.legalFrameworks = [];
     state.serviceCatalog = [];

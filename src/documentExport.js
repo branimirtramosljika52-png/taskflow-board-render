@@ -2140,6 +2140,212 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
   return pdfBufferFromDocument(doc);
 }
 
+export async function buildPurchaseOrderPdfBuffer(purchaseOrder = {}, options = {}) {
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 38,
+      bottom: 38,
+      left: 38,
+      right: 38,
+    },
+    info: {
+      Title: clean(purchaseOrder.title) || clean(purchaseOrder.purchaseOrderNumber) || "Narudzbenica",
+      Author: "SafeNexus",
+      Subject: "Narudzbenica",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  const currency = clean(options.currency || purchaseOrder.currency || "EUR") || "EUR";
+  const title = clean(purchaseOrder.title) || "Narudzbenica";
+  const purchaseOrderNumber = clean(purchaseOrder.purchaseOrderNumber) || "Nacrt narudzbenice";
+  const locationNames = normalizePdfLines(purchaseOrder.selectedLocationNames || purchaseOrder.locationName || "");
+  const items = Array.isArray(purchaseOrder.items) ? purchaseOrder.items : [];
+  const hasDiscount = Number(purchaseOrder.discountRate ?? 0) > 0 || Number(purchaseOrder.discountTotal ?? 0) > 0;
+  const statusLabel = purchaseOrder.status === "received"
+    ? "ZAPRIMLJENA"
+    : purchaseOrder.status === "issued"
+      ? "POSLANA"
+      : purchaseOrder.status === "confirmed"
+        ? "POTVRDENA"
+        : purchaseOrder.status === "closed"
+          ? "ZATVORENA"
+          : "SKICA";
+
+  helpers.ensureSpace(120);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("SAFE NEXUS · PURCHASE ORDER");
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(22).fillColor("#111827").text(title, {
+    width: helpers.availableWidth - 140,
+  });
+  doc.font("dejavu").fontSize(10.5).fillColor("#64748b").text(
+    normalizePdfLines([
+      purchaseOrderNumber,
+      purchaseOrder.companyName || "",
+      formatOfferPdfDate(purchaseOrder.purchaseOrderDate),
+    ]).join(" · "),
+  );
+
+  const badgeWidth = 148;
+  const badgeX = doc.page.width - doc.page.margins.right - badgeWidth;
+  const badgeY = doc.page.margins.top;
+  doc.save();
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 54, 16);
+  doc.fillColor("#eff6ff").fill();
+  doc.restore();
+  doc.font("dejavu-bold").fontSize(9).fillColor("#2563eb").text("STATUS", badgeX + 14, badgeY + 12, {
+    width: badgeWidth - 28,
+  });
+  doc.font("dejavu-bold").fontSize(13).fillColor("#0f172a").text(statusLabel, badgeX + 14, badgeY + 26, {
+    width: badgeWidth - 28,
+  });
+
+  doc.moveDown(1);
+  drawOfferPdfSectionTitle(doc, "Podaci o narudzbenici");
+  writeOfferPdfMetaRow(doc, "Broj", purchaseOrderNumber);
+  writeOfferPdfMetaRow(doc, "Datum", formatOfferPdfDate(purchaseOrder.purchaseOrderDate));
+  writeOfferPdfMetaRow(doc, "Vrijedi do", formatOfferPdfDate(purchaseOrder.validUntil));
+  writeOfferPdfMetaRow(doc, "Smjer", purchaseOrder.orderDirection === "outgoing" ? "Izlazna" : "Ulazna");
+  writeOfferPdfMetaRow(doc, "Broj klijenta", purchaseOrder.externalDocumentNumber || "—");
+  writeOfferPdfMetaRow(doc, "Vrsta usluge", purchaseOrder.serviceLine || "—");
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Narucitelj");
+  writeOfferPdfMetaRow(doc, "Tvrtka", purchaseOrder.companyName || "—");
+  writeOfferPdfMetaRow(doc, "OIB", purchaseOrder.companyOib || "—");
+  writeOfferPdfMetaRow(doc, "Sjediste", purchaseOrder.headquarters || "—");
+  writeOfferPdfMetaRow(doc, "Lokacije", locationNames.join(", ") || purchaseOrder.locationName || "Bez lokacije");
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Kontakt");
+  writeOfferPdfMetaRow(doc, "Kontakt osoba", purchaseOrder.contactName || "—");
+  writeOfferPdfMetaRow(doc, "Telefon", purchaseOrder.contactPhone || "—");
+  writeOfferPdfMetaRow(doc, "Email", purchaseOrder.contactEmail || "—");
+
+  if (clean(purchaseOrder.note)) {
+    doc.moveDown(0.45);
+    drawOfferPdfSectionTitle(doc, "Napomena");
+    doc.font("dejavu").fontSize(10.5).fillColor("#1f2937").text(normalizePdfText(purchaseOrder.note), {
+      width: helpers.availableWidth,
+    });
+  }
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Stavke narudzbenice");
+
+  if (items.length === 0) {
+    doc.font("dejavu-italic").fontSize(10).fillColor("#64748b").text("Narudzbenica jos nema dodanih stavki.", {
+      width: helpers.availableWidth,
+    });
+  } else {
+    items.forEach((item, index) => {
+      helpers.ensureSpace(74 + ((item.breakdowns?.length ?? 0) * 20));
+      const startY = doc.y;
+      const cardWidth = helpers.availableWidth;
+      const breakdowns = Array.isArray(item.breakdowns) ? item.breakdowns : [];
+      const rowHeight = 64 + (breakdowns.length * 20) + (Number(item.discountRate ?? 0) > 0 ? 18 : 0);
+
+      drawRoundedOutline(doc, doc.page.margins.left, startY, cardWidth, rowHeight, 16, "#cfd8ea");
+
+      doc.font("dejavu-bold").fontSize(11).fillColor("#111827").text(
+        `${index + 1}. ${normalizePdfText(item.description || item.serviceCode || "Stavka")}`,
+        doc.page.margins.left + 14,
+        startY + 12,
+        { width: cardWidth - 150 },
+      );
+
+      const metricParts = normalizePdfLines([
+        item.serviceCode ? `Sifra: ${item.serviceCode}` : "",
+        item.unit ? `Jedinica: ${item.unit}` : "",
+        item.quantity != null ? `Kolicina: ${item.quantity}` : "",
+        breakdowns.length === 0 ? `Cijena: ${formatOfferPdfCurrency(item.unitPrice ?? 0, currency)}` : "Razrada aktivna",
+      ]);
+      doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(metricParts.join(" · "), doc.page.margins.left + 14, startY + 30, {
+        width: cardWidth - 160,
+      });
+
+      let contentY = startY + 48;
+      breakdowns.forEach((entry) => {
+        doc.font("dejavu").fontSize(9.5).fillColor("#334155").text(
+          `• ${normalizePdfText(entry.label)}`,
+          doc.page.margins.left + 18,
+          contentY,
+          { width: cardWidth - 170 },
+        );
+        doc.font("dejavu-bold").fontSize(9.5).fillColor("#0f172a").text(
+          formatOfferPdfCurrency(entry.amount ?? 0, currency),
+          doc.page.margins.left + cardWidth - 126,
+          contentY,
+          { width: 108, align: "right" },
+        );
+        contentY += 18;
+      });
+
+      if (Number(item.discountRate ?? 0) > 0) {
+        doc.font("dejavu").fontSize(9).fillColor("#b45309").text(
+          `Rabat stavke: ${Number(item.discountRate ?? 0)}%`,
+          doc.page.margins.left + 18,
+          contentY,
+          { width: cardWidth - 170 },
+        );
+      }
+
+      doc.font("dejavu-bold").fontSize(10.5).fillColor("#1d4ed8").text(
+        formatOfferPdfCurrency(item.totalPrice ?? 0, currency),
+        doc.page.margins.left + cardWidth - 132,
+        startY + 18,
+        { width: 118, align: "right" },
+      );
+
+      doc.y = startY + rowHeight + 8;
+    });
+  }
+
+  helpers.ensureSpace(150);
+  doc.moveDown(0.25);
+  drawOfferPdfSectionTitle(doc, "Ukupni iznosi");
+  writeOfferPdfMetaRow(doc, "Meduzbroj", formatOfferPdfCurrency(purchaseOrder.subtotal ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+  if (hasDiscount) {
+    writeOfferPdfMetaRow(doc, "Rabat", formatOfferPdfCurrency(purchaseOrder.discountTotal ?? 0, currency), {
+      labelWidth: 130,
+      valueWidth: 240,
+    });
+    writeOfferPdfMetaRow(doc, "Osnovica", formatOfferPdfCurrency(purchaseOrder.taxableSubtotal ?? 0, currency), {
+      labelWidth: 130,
+      valueWidth: 240,
+    });
+  }
+  writeOfferPdfMetaRow(doc, "PDV", formatOfferPdfCurrency(purchaseOrder.taxTotal ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+  writeOfferPdfMetaRow(doc, "Ukupno", formatOfferPdfCurrency(purchaseOrder.total ?? 0, currency), {
+    labelWidth: 130,
+    valueWidth: 240,
+  });
+
+  if (purchaseOrder.showTotalAmount === false) {
+    doc.moveDown(0.35);
+    doc.font("dejavu-italic").fontSize(9).fillColor("#64748b").text(
+      "Ukupni iznos je skriven na dokumentu; prikazana je interna kalkulacija radi pregleda.",
+      { width: helpers.availableWidth },
+    );
+  }
+
+  return pdfBufferFromDocument(doc);
+}
+
 export async function mergePdfBuffers(buffers = []) {
   const sourceBuffers = (Array.isArray(buffers) ? buffers : [])
     .filter((entry) => Buffer.isBuffer(entry) && entry.length > 0);
