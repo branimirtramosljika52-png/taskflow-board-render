@@ -179,6 +179,7 @@ const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
 const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
+const DRAWING_VENDOR_VERSION = "20260420i";
 const DRAWING_STAGE_DEFAULT_WIDTH = 2400;
 const DRAWING_STAGE_DEFAULT_HEIGHT = 1500;
 const DRAWING_STAGE_MIN_WIDTH = 1200;
@@ -6193,19 +6194,19 @@ async function ensureDrawingCadViewer() {
 
   if (!drawingCadViewerState.runtimePromise) {
     drawingCadViewerState.runtimePromise = Promise.all([
-      import("/assets/vendor/cadview-core.js"),
-      import("/assets/vendor/cadview-dwg.js"),
+      import(`/assets/vendor/cadview-core.js?v=${DRAWING_VENDOR_VERSION}`),
+      import(`/assets/vendor/cadview-dwg.js?v=${DRAWING_VENDOR_VERSION}`),
     ])
       .then(([coreModule, dwgModule]) => {
         const dwgFormatConverter = dwgModule?.isDwg && dwgModule?.convertDwgToDxf
           ? {
             detect: (buffer) => dwgModule.isDwg(buffer),
             convert: (buffer) => dwgModule.convertDwgToDxf(buffer, {
-              wasmUrl: "/assets/vendor/libredwg.wasm",
+              wasmUrl: `/assets/vendor/libredwg.wasm?v=${DRAWING_VENDOR_VERSION}`,
             }),
           }
           : null;
-        void dwgModule.initWasm?.({ wasmUrl: "/assets/vendor/libredwg.wasm" }).catch(() => {});
+        void dwgModule.initWasm?.({ wasmUrl: `/assets/vendor/libredwg.wasm?v=${DRAWING_VENDOR_VERSION}` }).catch(() => {});
         const viewer = new coreModule.CadViewer(drawingStageCadCanvas, {
           theme: "light",
           initialTool: "pan",
