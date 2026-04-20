@@ -56063,28 +56063,34 @@ function renderCompanies() {
 
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ");
+    const linkedContractsCount = getCompanyLinkedContracts(company.id).length;
+    const companyPeriod = String(company.period || "").trim();
+    const compactPeriod = companyPeriod && !["aktivno", "neaktivno"].includes(companyPeriod.toLowerCase())
+      ? `Periodika: ${companyPeriod}`
+      : "";
+    const companyNote = String(company.note || "").trim();
+    const compactNote = companyNote.length > 88
+      ? `${companyNote.slice(0, 85).trimEnd()}...`
+      : companyNote;
 
     row.append(
       createCompanyIdentityCell(company),
       createStackCell({
         title: company.representative || "Bez odgovorne osobe",
         subtitle: contactSubtitle || "Bez kontakta",
-        tertiary: company.representativeOib ? `OIB ${company.representativeOib}` : "Kontakt podaci",
+        tertiary: company.representativeOib ? `OIB ${company.representativeOib}` : "",
       }),
       createStackCell({
         title: company.contractType || "Bez ugovora",
         subtitle: company.contractNumber || "Bez broja ugovora",
-        tertiary: [
-          company.period ? `Periodika: ${company.period}` : "",
-          getCompanyLinkedContracts(company.id).length ? `${getCompanyLinkedContracts(company.id).length} ugovora` : "",
-        ].filter(Boolean).join(" · "),
+        tertiary: compactPeriod,
+        meta: linkedContractsCount ? [`${linkedContractsCount} ugovora`] : [],
       }),
       createStackCell({
-        title: company.isActive ? "Aktivna tvrtka" : "Neaktivna tvrtka",
-        subtitle: company.note ? "Ima internu napomenu" : "Bez dodatne napomene",
+        subtitle: compactNote || "Bez interne napomene",
         meta: [
           createStatusPill(company.isActive ? "Aktivno" : "Neaktivno", company.isActive),
-          company.note ? "Napomena" : "",
+          companyNote ? "Napomena" : "",
         ],
       }),
     );
