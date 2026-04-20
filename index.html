@@ -4696,44 +4696,164 @@
                       <textarea id="drawing-note" rows="2" placeholder="Podloga za tlocrt, faza razrade, posebne upute za plan..."></textarea>
                     </label>
 
-                    <div class="drawing-studio-shell">
-                      <aside class="drawing-studio-sidebar is-left">
-                        <section class="drawing-studio-card">
-                          <div class="drawing-studio-card-head">
-                            <div>
-                              <p class="section-kicker">Alati</p>
-                              <h4>CAD alati</h4>
-                            </div>
-                          </div>
-                          <div id="drawing-tool-buttons" class="drawing-tool-buttons">
-                            <button type="button" class="drawing-tool-button is-active" data-drawing-tool="select">Odabir</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="line">Linija</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="wall">Zid</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="dimension">Kota</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="rectangle">Pravokutnik</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="frame">Okvir</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="door">Vrata</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="exit">Exit</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="extinguisher">Aparat</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="hydrant">Hidrant</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-tool="text">Tekst</button>
-                          </div>
-                        </section>
+                    <section class="drawing-top-toolbar">
+                      <div id="drawing-tool-buttons" class="drawing-tool-buttons drawing-tool-tabs">
+                        <button type="button" class="drawing-tool-button is-active" data-drawing-tool="select"><span class="drawing-tool-button-icon" aria-hidden="true">↖</span><span class="drawing-tool-button-label">Odabir</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="line"><span class="drawing-tool-button-icon" aria-hidden="true">／</span><span class="drawing-tool-button-label">Linija</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="curve"><span class="drawing-tool-button-icon" aria-hidden="true">∿</span><span class="drawing-tool-button-label">Zakrivljena</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="wall"><span class="drawing-tool-button-icon" aria-hidden="true">║</span><span class="drawing-tool-button-label">Zid</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="dimension"><span class="drawing-tool-button-icon" aria-hidden="true">↔</span><span class="drawing-tool-button-label">Kota</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="rectangle"><span class="drawing-tool-button-icon" aria-hidden="true">▭</span><span class="drawing-tool-button-label">Pravokutnik</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="ellipse"><span class="drawing-tool-button-icon" aria-hidden="true">⬭</span><span class="drawing-tool-button-label">Elipsa</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="frame"><span class="drawing-tool-button-icon" aria-hidden="true">▣</span><span class="drawing-tool-button-label">Okvir</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="door"><span class="drawing-tool-button-icon" aria-hidden="true">⌝</span><span class="drawing-tool-button-label">Vrata</span></button>
+                        <button type="button" class="drawing-tool-button" data-drawing-tool="text"><span class="drawing-tool-button-icon" aria-hidden="true">T</span><span class="drawing-tool-button-label">Tekst</span></button>
+                      </div>
+                      <div class="drawing-top-toolbar-actions">
+                        <button id="drawing-clear-reference" type="button" class="ghost-button">Bez podloge</button>
+                        <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
+                        <button id="drawing-export-svg" type="button" class="ghost-button">SVG</button>
+                        <button id="drawing-export-pdf" type="button" class="ghost-button">PDF / ispis</button>
+                        <button id="drawing-save" type="submit" class="primary-button">Spremi crtež</button>
+                      </div>
+                    </section>
 
+                    <div class="drawing-studio-shell drawing-studio-shell-cad">
+                      <section class="drawing-studio-canvas-column">
+                        <div id="drawing-stage-scroll" class="drawing-stage-scroll">
+                          <div id="drawing-stage" class="drawing-stage">
+                            <div id="drawing-stage-reference" class="drawing-stage-reference"></div>
+                            <svg id="drawing-stage-svg" class="drawing-stage-svg" viewBox="0 0 2400 1500" aria-label="Drawing stage"></svg>
+                          </div>
+                        </div>
+
+                        <div class="drawing-status-bar">
+                          <div class="drawing-status-bar-group">
+                            <button id="drawing-zoom-out" type="button" class="drawing-status-pill">-</button>
+                            <label class="field drawing-zoom-field drawing-status-zoom">
+                              <span>Zoom</span>
+                              <input id="drawing-zoom" type="range" min="0.25" max="3" step="0.05" value="1" />
+                            </label>
+                            <button id="drawing-zoom-in" type="button" class="drawing-status-pill">+</button>
+                            <span id="drawing-zoom-value" class="drawing-status-pill drawing-status-value">100%</span>
+                          </div>
+
+                          <div class="drawing-status-bar-group">
+                            <button id="drawing-ortho-toggle" type="button" class="drawing-status-pill">Ortho</button>
+                            <label class="checkbox-field drawing-status-checkbox">
+                              <input id="drawing-snap-toggle" type="checkbox" checked />
+                              <span>Snap</span>
+                            </label>
+                            <label class="checkbox-field drawing-status-checkbox">
+                              <input id="drawing-grid-toggle" type="checkbox" checked />
+                              <span>Grid</span>
+                            </label>
+                          </div>
+
+                        <div class="drawing-status-bar-group">
+                          <label class="field drawing-grid-field">
+                            <span>Grid</span>
+                              <input id="drawing-grid-size" type="number" min="8" max="120" step="1" value="20" />
+                            </label>
+                            <label class="field drawing-canvas-field">
+                              <span>Širina</span>
+                              <input id="drawing-canvas-width" type="number" min="1200" max="5000" step="20" value="2400" />
+                            </label>
+                            <label class="field drawing-canvas-field">
+                              <span>Visina</span>
+                              <input id="drawing-canvas-height" type="number" min="800" max="3200" step="20" value="1500" />
+                          </label>
+                        </div>
+
+                        <div class="drawing-status-bar-group drawing-status-bar-group-meta">
+                          <span id="drawing-active-tool-label" class="drawing-status-pill drawing-status-value">Alat: Odabir</span>
+                          <span id="drawing-cursor-position" class="drawing-status-pill drawing-status-value">X 0 · Y 0</span>
+                          <span id="drawing-reference-status" class="drawing-status-pill drawing-status-value">Podloga: prazno platno</span>
+                        </div>
+                      </div>
+
+                        <p id="drawing-stage-helper" class="helper-copy drawing-stage-helper">
+                          Možeš crtati i bez podloge. Ako učitaš PDF ili DWG, on služi kao referenca, a iznad njega dodaješ zidove, kote, simbole i okvire.
+                        </p>
+                      </section>
+
+                      <aside class="drawing-studio-sidebar is-right">
                         <section class="drawing-studio-card">
                           <div class="drawing-studio-card-head">
                             <div>
-                              <p class="section-kicker">Blokovi</p>
-                              <h4>Biblioteka simbola</h4>
+                              <p class="section-kicker">Simboli</p>
+                              <h4>Biblioteka blokova</h4>
                             </div>
                           </div>
-                          <div class="drawing-block-buttons">
-                            <button type="button" class="drawing-tool-button" data-drawing-block="stairs">Stube</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-block="assembly_point">Zborno mjesto</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-block="first_aid">Prva pomoć</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-block="detector">Detektor</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-block="panel">Centrala</button>
-                            <button type="button" class="drawing-tool-button" data-drawing-block="arrow">Smjer</button>
+                          <div class="drawing-block-buttons drawing-symbol-library">
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="exit">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="6" y="10" width="52" height="44" rx="12"></rect>
+                                <path d="M18 32H42"></path>
+                                <path d="M34 24L42 32L34 40"></path>
+                              </svg>
+                              <span>Exit</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="extinguisher">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="18" y="16" width="28" height="36" rx="10"></rect>
+                                <path d="M24 18V12H38V18"></path>
+                                <path d="M44 22L52 16"></path>
+                                <text x="32" y="42" text-anchor="middle">A</text>
+                              </svg>
+                              <span>Aparat</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="hydrant">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="14" y="14" width="36" height="36" rx="12"></rect>
+                                <text x="32" y="40" text-anchor="middle">H</text>
+                              </svg>
+                              <span>Hidrant</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="stairs">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <path d="M14 48H50V40H42V32H34V24H26V16H14"></path>
+                              </svg>
+                              <span>Stube</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="assembly_point">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="10" y="12" width="44" height="40" rx="12"></rect>
+                                <circle cx="22" cy="32" r="6"></circle>
+                                <circle cx="42" cy="24" r="5"></circle>
+                                <circle cx="42" cy="40" r="5"></circle>
+                              </svg>
+                              <span>Zborno mjesto</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="first_aid">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="10" y="10" width="44" height="44" rx="12"></rect>
+                                <path d="M32 20V44"></path>
+                                <path d="M20 32H44"></path>
+                              </svg>
+                              <span>Prva pomoć</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="detector">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <circle cx="32" cy="32" r="18"></circle>
+                                <circle cx="32" cy="32" r="7"></circle>
+                              </svg>
+                              <span>Detektor</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="panel">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <rect x="12" y="14" width="40" height="36" rx="10"></rect>
+                                <text x="32" y="38" text-anchor="middle">C</text>
+                              </svg>
+                              <span>Centrala</span>
+                            </button>
+                            <button type="button" class="drawing-tool-button drawing-symbol-button" data-drawing-block="arrow">
+                              <svg class="drawing-symbol-preview" viewBox="0 0 64 64" aria-hidden="true">
+                                <path d="M14 32H46"></path>
+                                <path d="M36 22L50 32L36 42"></path>
+                              </svg>
+                              <span>Smjer</span>
+                            </button>
                           </div>
                         </section>
 
@@ -4743,14 +4863,10 @@
                               <p class="section-kicker">Reference</p>
                               <h4>DWG / PDF podloga</h4>
                             </div>
-                            <div class="drawing-studio-head-actions">
-                              <button id="drawing-clear-reference" type="button" class="ghost-button">Bez podloge</button>
-                              <button id="drawing-reference-upload" type="button" class="ghost-button">Upload</button>
-                            </div>
                           </div>
                           <input id="drawing-reference-file-input" type="file" accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg,.webp,.svg" multiple hidden />
                           <div id="drawing-reference-list" class="drawing-reference-list"></div>
-                          <p id="drawing-reference-empty" class="helper-copy">Možeš crtati direktno na praznom platnu ili dodati DWG, PDF ili sliku kao podlogu.</p>
+                          <p id="drawing-reference-empty" class="helper-copy">Dodaj DWG, PDF ili sliku kao podlogu. Zadnji upload se odmah aktivira, a za DWG prikazujemo jasnu CAD karticu s nazivom datoteke.</p>
                         </section>
 
                         <section class="drawing-studio-card">
@@ -4763,60 +4879,7 @@
                           </div>
                           <div id="drawing-layer-list" class="drawing-layer-list"></div>
                         </section>
-                      </aside>
 
-                      <section class="drawing-studio-canvas-column">
-                        <div class="drawing-stage-toolbar">
-                          <div class="drawing-stage-toolbar-group">
-                            <button id="drawing-zoom-out" type="button" class="ghost-button">-</button>
-                            <label class="field drawing-zoom-field">
-                              <span>Zoom</span>
-                              <input id="drawing-zoom" type="range" min="0.5" max="2.5" step="0.05" value="1" />
-                            </label>
-                            <button id="drawing-zoom-in" type="button" class="ghost-button">+</button>
-                          </div>
-                          <div class="drawing-stage-toolbar-group">
-                            <label class="field drawing-grid-field">
-                              <span>Grid</span>
-                              <input id="drawing-grid-size" type="number" min="8" max="80" step="1" value="20" />
-                            </label>
-                            <label class="field drawing-canvas-field">
-                              <span>Širina</span>
-                              <input id="drawing-canvas-width" type="number" min="960" max="2400" step="20" value="1600" />
-                            </label>
-                            <label class="field drawing-canvas-field">
-                              <span>Visina</span>
-                              <input id="drawing-canvas-height" type="number" min="680" max="1800" step="20" value="1000" />
-                            </label>
-                            <label class="checkbox-field">
-                              <input id="drawing-snap-toggle" type="checkbox" checked />
-                              <span>Snap</span>
-                            </label>
-                            <label class="checkbox-field">
-                              <input id="drawing-grid-toggle" type="checkbox" checked />
-                              <span>Prikaži grid</span>
-                            </label>
-                          </div>
-                          <div class="drawing-stage-toolbar-group">
-                            <button id="drawing-export-svg" type="button" class="ghost-button">SVG</button>
-                            <button id="drawing-export-pdf" type="button" class="ghost-button">PDF / ispis</button>
-                            <button id="drawing-save" type="submit" class="primary-button">Spremi crtež</button>
-                          </div>
-                        </div>
-
-                        <div id="drawing-stage-scroll" class="drawing-stage-scroll">
-                          <div id="drawing-stage" class="drawing-stage">
-                            <div id="drawing-stage-reference" class="drawing-stage-reference"></div>
-                            <svg id="drawing-stage-svg" class="drawing-stage-svg" viewBox="0 0 1600 1000" aria-label="Drawing stage"></svg>
-                          </div>
-                        </div>
-
-                        <p id="drawing-stage-helper" class="helper-copy drawing-stage-helper">
-                          Možeš crtati i bez podloge. Ako učitaš PDF ili DWG, on služi kao referenca, a iznad njega dodaješ zidove, vrata, kote, simbole i okvire.
-                        </p>
-                      </section>
-
-                      <aside class="drawing-studio-sidebar is-right">
                         <section class="drawing-studio-card">
                           <div class="drawing-studio-card-head">
                             <div>

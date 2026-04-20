@@ -178,8 +178,12 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
 const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
-const DRAWING_STAGE_DEFAULT_WIDTH = 1600;
-const DRAWING_STAGE_DEFAULT_HEIGHT = 1000;
+const DRAWING_STAGE_DEFAULT_WIDTH = 2400;
+const DRAWING_STAGE_DEFAULT_HEIGHT = 1500;
+const DRAWING_STAGE_MIN_WIDTH = 1200;
+const DRAWING_STAGE_MAX_WIDTH = 5000;
+const DRAWING_STAGE_MIN_HEIGHT = 800;
+const DRAWING_STAGE_MAX_HEIGHT = 3200;
 const PERIODICS_DUE_DATE_KEY_HINTS = Object.freeze([
   "VRIJEDIDO",
   "VRIJEDI",
@@ -1861,11 +1865,16 @@ const drawingBlockButtons = Array.from(document.querySelectorAll("[data-drawing-
 const drawingZoomOutButton = document.querySelector("#drawing-zoom-out");
 const drawingZoomInButton = document.querySelector("#drawing-zoom-in");
 const drawingZoomInput = document.querySelector("#drawing-zoom");
+const drawingZoomValue = document.querySelector("#drawing-zoom-value");
 const drawingGridSizeInput = document.querySelector("#drawing-grid-size");
 const drawingCanvasWidthInput = document.querySelector("#drawing-canvas-width");
 const drawingCanvasHeightInput = document.querySelector("#drawing-canvas-height");
+const drawingOrthoToggleButton = document.querySelector("#drawing-ortho-toggle");
 const drawingSnapToggle = document.querySelector("#drawing-snap-toggle");
 const drawingGridToggle = document.querySelector("#drawing-grid-toggle");
+const drawingActiveToolLabel = document.querySelector("#drawing-active-tool-label");
+const drawingCursorPositionLabel = document.querySelector("#drawing-cursor-position");
+const drawingReferenceStatusLabel = document.querySelector("#drawing-reference-status");
 const drawingExportSvgButton = document.querySelector("#drawing-export-svg");
 const drawingExportPdfButton = document.querySelector("#drawing-export-pdf");
 const drawingStageScroll = document.querySelector("#drawing-stage-scroll");
@@ -2564,10 +2573,11 @@ let drawingElementDrafts = [];
 let drawingViewportDraft = {
   zoom: 1,
   gridSize: 20,
-  canvasWidth: 1600,
-  canvasHeight: 1000,
+  canvasWidth: DRAWING_STAGE_DEFAULT_WIDTH,
+  canvasHeight: DRAWING_STAGE_DEFAULT_HEIGHT,
   snapToGrid: true,
   showGrid: true,
+  orthoMode: false,
 };
 let drawingActiveReferenceId = "";
 let drawingSelectedElementId = "";
@@ -2575,10 +2585,14 @@ let drawingActiveLayerId = "";
 let drawingCurrentTool = "select";
 let drawingPointerSession = null;
 let drawingDraftLayerCounter = 0;
+let drawingCursorPositionDraft = { x: 0, y: 0 };
 const DRAWING_DIMENSION_UNIT = "mm";
-const DRAWING_DIMENSION_TYPES = new Set(["line", "wall", "dimension"]);
+const DRAWING_LINEAR_TYPES = new Set(["line", "curve", "wall", "dimension"]);
+const DRAWING_SYMBOL_TYPES = new Set(["exit", "extinguisher", "hydrant", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
+const DRAWING_SINGLE_CLICK_TYPES = new Set(["door", "text", ...DRAWING_SYMBOL_TYPES]);
 const DRAWING_ROTATABLE_TYPES = new Set([
   "rectangle",
+  "ellipse",
   "frame",
   "door",
   "exit",
@@ -5955,10 +5969,14 @@ function getDrawingDefaultElementStyle(type = "rectangle", layer = null) {
   switch (String(type || "").trim().toLowerCase()) {
     case "line":
       return { stroke: layerColor || "#4564d1", fill: "transparent", lineWidth: 2, width: 220, height: 0 };
+    case "curve":
+      return { stroke: layerColor || "#4564d1", fill: "transparent", lineWidth: 2, width: 220, height: 120 };
     case "wall":
       return { stroke: layerColor || "#21385f", fill: "transparent", lineWidth: 12, width: 280, height: 0 };
     case "dimension":
       return { stroke: layerColor || "#da8a1f", fill: "transparent", lineWidth: 2, width: 220, height: 0 };
+    case "ellipse":
+      return { stroke: layerColor || "#4564d1", fill: "#e8efff", lineWidth: 2, width: 240, height: 150 };
     case "frame":
       return { stroke: layerColor || "#20416f", fill: "transparent", lineWidth: 2, width: 1380, height: 860 };
     case "door":
@@ -6015,13 +6033,86 @@ function getDrawingPreferredLayerName(tool = "rectangle") {
   if (normalizedTool === "dimension") {
     return "Kote";
   }
-  if (["exit", "extinguisher", "hydrant", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"].includes(normalizedTool)) {
+  if (DRAWING_SYMBOL_TYPES.has(normalizedTool)) {
     return "Sigurnosni simboli";
   }
-  if (["frame", "text"].includes(normalizedTool)) {
+  if (["frame", "text", "curve", "ellipse"].includes(normalizedTool)) {
     return "Napomene";
   }
   return "";
+}
+
+function clampDrawingCanvasWidth(value) {
+  return Math.max(DRAWING_STAGE_MIN_WIDTH, Math.min(DRAWING_STAGE_MAX_WIDTH, Math.round(Number(value) || DRAWING_STAGE_DEFAULT_WIDTH)));
+}
+
+function clampDrawingCanvasHeight(value) {
+  return Math.max(DRAWING_STAGE_MIN_HEIGHT, Math.min(DRAWING_STAGE_MAX_HEIGHT, Math.round(Number(value) || DRAWING_STAGE_DEFAULT_HEIGHT)));
+}
+
+function getDrawingToolLabel(tool = "select") {
+  const mapping = {
+    select: "Odabir",
+    line: "Linija",
+    curve: "Zakrivljena linija",
+    wall: "Zid",
+    dimension: "Kota",
+    rectangle: "Pravokutnik",
+    ellipse: "Elipsa",
+    frame: "Okvir",
+    door: "Vrata",
+    text: "Tekst",
+    exit: "Exit",
+    extinguisher: "Aparat",
+    hydrant: "Hidrant",
+    stairs: "Stube",
+    assembly_point: "Zborno mjesto",
+    first_aid: "Prva pomoc",
+    detector: "Detektor",
+    panel: "Centrala",
+    arrow: "Smjer",
+  };
+  return mapping[String(tool || "").trim().toLowerCase()] || "Alat";
+}
+
+function getDrawingCurveControlPoint(element = {}) {
+  const startX = Number(element.x || 0);
+  const startY = Number(element.y || 0);
+  const endX = Number(element.x2 || startX);
+  const endY = Number(element.y2 || startY);
+  const midX = (startX + endX) / 2;
+  const midY = (startY + endY) / 2;
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  const length = Math.max(1, Math.sqrt((deltaX ** 2) + (deltaY ** 2)));
+  const normalX = -deltaY / length;
+  const normalY = deltaX / length;
+  const direction = Number(element.metadata?.curveDirection || 1) >= 0 ? 1 : -1;
+  const offset = Math.max(40, Math.min(220, Number(element.metadata?.curveOffset || Math.max(Math.abs(deltaY), 72))));
+  return {
+    x: Math.round((midX + normalX * offset * direction) * 10) / 10,
+    y: Math.round((midY + normalY * offset * direction) * 10) / 10,
+  };
+}
+
+function applyDrawingOrthoConstraint(startPoint = { x: 0, y: 0 }, point = { x: 0, y: 0 }, tool = "") {
+  if (drawingViewportDraft.orthoMode !== true || !DRAWING_LINEAR_TYPES.has(String(tool || "").trim().toLowerCase())) {
+    return point;
+  }
+
+  const deltaX = Number(point.x || 0) - Number(startPoint.x || 0);
+  const deltaY = Number(point.y || 0) - Number(startPoint.y || 0);
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    return {
+      x: point.x,
+      y: startPoint.y,
+    };
+  }
+
+  return {
+    x: startPoint.x,
+    y: point.y,
+  };
 }
 
 function syncDrawingActiveLayerForTool(tool = "rectangle") {
@@ -6063,7 +6154,7 @@ function syncDrawingElementDerivedFields(element = {}) {
   };
   const type = String(next.type || "").trim().toLowerCase();
 
-  if (DRAWING_DIMENSION_TYPES.has(type)) {
+  if (DRAWING_LINEAR_TYPES.has(type)) {
     next.width = Math.abs(Number(next.x2 || 0) - Number(next.x || 0));
     next.height = Math.abs(Number(next.y2 || 0) - Number(next.y || 0));
   } else {
@@ -6140,10 +6231,11 @@ function loadDrawingDraft(project = null) {
   drawingViewportDraft = {
     zoom: Math.max(0.5, Math.min(2.5, Number(project?.viewport?.zoom ?? 1) || 1)),
     gridSize: Math.max(8, Math.min(80, Math.round(Number(project?.viewport?.gridSize ?? 20) || 20))),
-    canvasWidth: Math.max(960, Math.min(2400, Math.round(Number(project?.viewport?.canvasWidth ?? DRAWING_STAGE_DEFAULT_WIDTH) || DRAWING_STAGE_DEFAULT_WIDTH))),
-    canvasHeight: Math.max(680, Math.min(1800, Math.round(Number(project?.viewport?.canvasHeight ?? DRAWING_STAGE_DEFAULT_HEIGHT) || DRAWING_STAGE_DEFAULT_HEIGHT))),
+    canvasWidth: clampDrawingCanvasWidth(project?.viewport?.canvasWidth ?? DRAWING_STAGE_DEFAULT_WIDTH),
+    canvasHeight: clampDrawingCanvasHeight(project?.viewport?.canvasHeight ?? DRAWING_STAGE_DEFAULT_HEIGHT),
     snapToGrid: project?.viewport?.snapToGrid !== false,
     showGrid: project?.viewport?.showGrid !== false,
+    orthoMode: project?.viewport?.orthoMode === true,
   };
   drawingActiveReferenceId = String(
     project?.activeReferenceDocumentId
@@ -6154,6 +6246,7 @@ function loadDrawingDraft(project = null) {
   drawingActiveLayerId = drawingLayerDrafts[0]?.id || "";
   drawingCurrentTool = "select";
   drawingPointerSession = null;
+  drawingCursorPositionDraft = { x: 0, y: 0 };
   if (drawingError) {
     drawingError.textContent = "";
   }
@@ -6536,7 +6629,7 @@ function renderDrawingInspector() {
   if (drawingSelectedFillInput) {
     const fillValue = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(selected?.fill || "") ? selected.fill : "#e8efff";
     drawingSelectedFillInput.value = fillValue;
-    drawingSelectedFillInput.disabled = !hasSelected || ["line", "wall", "dimension", "text", "door"].includes(String(selected?.type || ""));
+    drawingSelectedFillInput.disabled = !hasSelected || ["line", "curve", "wall", "dimension", "text", "door"].includes(String(selected?.type || ""));
   }
 
   if (drawingDeleteSelectedButton) {
@@ -6614,6 +6707,9 @@ function renderDrawingStudioModule() {
   if (drawingZoomInput) {
     drawingZoomInput.value = String(drawingViewportDraft.zoom || 1);
   }
+  if (drawingZoomValue) {
+    drawingZoomValue.textContent = `${Math.round(Number(drawingViewportDraft.zoom || 1) * 100)}%`;
+  }
   if (drawingGridSizeInput) {
     drawingGridSizeInput.value = String(drawingViewportDraft.gridSize || 20);
   }
@@ -6629,14 +6725,33 @@ function renderDrawingStudioModule() {
   if (drawingGridToggle) {
     drawingGridToggle.checked = drawingViewportDraft.showGrid !== false;
   }
+  if (drawingOrthoToggleButton) {
+    drawingOrthoToggleButton.classList.toggle("is-active", drawingViewportDraft.orthoMode === true);
+    drawingOrthoToggleButton.setAttribute("aria-pressed", drawingViewportDraft.orthoMode === true ? "true" : "false");
+  }
+  if (drawingActiveToolLabel) {
+    drawingActiveToolLabel.textContent = `Alat: ${getDrawingToolLabel(drawingCurrentTool)}`;
+  }
+  if (drawingCursorPositionLabel) {
+    drawingCursorPositionLabel.textContent = `X ${Math.round(Number(drawingCursorPositionDraft.x || 0))} · Y ${Math.round(Number(drawingCursorPositionDraft.y || 0))}`;
+  }
+  if (drawingReferenceStatusLabel) {
+    const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
+    drawingReferenceStatusLabel.textContent = activeReference
+      ? `Podloga: ${activeReference.fileName || "Datoteka"}`
+      : "Podloga: prazno platno";
+  }
   if (drawingStageHelper) {
     drawingStageHelper.textContent = drawingActiveReferenceId
-      ? "Učitana podloga služi kao referenca, a iznad nje crtaš zidove, kote, simbole i okvire."
-      : "Radiš na praznom platnu. Možeš crtati odmah ili naknadno dodati DWG, DXF, PDF ili sliku kao podlogu.";
+      ? "Podloga je učitana kao referenca. Preko nje odmah crtaš zidove, kote, oblike i simbole, a DWG ostaje jasno označen u workspaceu."
+      : "Radiš na praznom platnu. Odaberi alat gore, simbol desno ili naknadno dodaj DWG, DXF, PDF ili sliku kao podlogu.";
   }
 
   drawingToolButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.drawingTool === drawingCurrentTool);
+  });
+  drawingBlockButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.drawingBlock === drawingCurrentTool);
   });
 
   renderDrawingInspector();
@@ -6675,9 +6790,35 @@ function getDrawingStagePoint(clientX, clientY) {
   };
 }
 
+function handleDrawingStagePointerHover(event) {
+  if (!drawingStageSvg) {
+    return;
+  }
+
+  const point = getDrawingStagePoint(event.clientX, event.clientY);
+  drawingCursorPositionDraft = point;
+  if (drawingCursorPositionLabel) {
+    drawingCursorPositionLabel.textContent = `X ${Math.round(Number(point.x || 0))} · Y ${Math.round(Number(point.y || 0))}`;
+  }
+}
+
 function getDrawingElementBounds(element = {}) {
   const type = String(element.type || "").trim().toLowerCase();
-  if (DRAWING_DIMENSION_TYPES.has(type)) {
+  if (type === "curve") {
+    const controlPoint = getDrawingCurveControlPoint(element);
+    const minX = Math.min(Number(element.x || 0), Number(element.x2 || 0), controlPoint.x);
+    const minY = Math.min(Number(element.y || 0), Number(element.y2 || 0), controlPoint.y);
+    const maxX = Math.max(Number(element.x || 0), Number(element.x2 || 0), controlPoint.x);
+    const maxY = Math.max(Number(element.y || 0), Number(element.y2 || 0), controlPoint.y);
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(4, maxX - minX),
+      height: Math.max(4, maxY - minY),
+    };
+  }
+
+  if (DRAWING_LINEAR_TYPES.has(type)) {
     const minX = Math.min(Number(element.x || 0), Number(element.x2 || 0));
     const minY = Math.min(Number(element.y || 0), Number(element.y2 || 0));
     const maxX = Math.max(Number(element.x || 0), Number(element.x2 || 0));
@@ -6733,6 +6874,18 @@ function renderDrawingElementMarkup(element = {}, { selected = false } = {}) {
       <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
         <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="transparent" stroke-width="${hitStrokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
         <line x1="${element.x}" y1="${element.y}" x2="${element.x2}" y2="${element.y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></line>
+      </g>
+    `;
+  }
+
+  if (type === "curve") {
+    const controlPoint = getDrawingCurveControlPoint(element);
+    const hitStrokeWidth = Math.max(strokeWidth + 18, 18);
+    const path = `M ${element.x} ${element.y} Q ${controlPoint.x} ${controlPoint.y} ${element.x2} ${element.y2}`;
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}">
+        <path d="${path}" fill="none" stroke="transparent" stroke-width="${hitStrokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></path>
+        <path d="${path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" data-element-id="${safeId}"></path>
       </g>
     `;
   }
@@ -6874,6 +7027,19 @@ function renderDrawingElementMarkup(element = {}, { selected = false } = {}) {
     `;
   }
 
+  if (type === "ellipse") {
+    const centerX = Number(element.x || 0) + Number(element.width || 0) / 2;
+    const centerY = Number(element.y || 0) + Number(element.height || 0) / 2;
+    const radiusX = Math.max(6, Number(element.width || 0) / 2);
+    const radiusY = Math.max(6, Number(element.height || 0) / 2);
+    return `
+      <g data-element-id="${safeId}" class="drawing-stage-element${selectionClass}"${transform}>
+        <ellipse cx="${centerX}" cy="${centerY}" rx="${radiusX}" ry="${radiusY}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" data-element-id="${safeId}"></ellipse>
+        ${label ? `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" class="drawing-stage-label">${label}</text>` : ""}
+      </g>
+    `;
+  }
+
   if (type === "frame") {
     const innerX = Number(element.x || 0) + 18;
     const innerY = Number(element.y || 0) + 18;
@@ -6905,6 +7071,7 @@ function renderDrawingStageReference() {
     return;
   }
 
+  drawingStageReference.classList.remove("is-cad-reference");
   const activeReference = drawingReferenceDrafts.find((item) => String(item.id) === String(drawingActiveReferenceId)) ?? null;
   if (!activeReference) {
     drawingStageReference.innerHTML = '<div class="drawing-stage-reference-empty">Nema aktivne podloge. Crtaj odmah na praznom platnu ili naknadno dodaj DWG, DXF, PDF ili sliku.</div>';
@@ -6929,10 +7096,12 @@ function renderDrawingStageReference() {
   }
 
   if (isCad) {
+    drawingStageReference.classList.add("is-cad-reference");
     drawingStageReference.innerHTML = `
-      <div class="drawing-stage-reference-unsupported">
-        <strong>${escapeHtml(activeReference.fileName || "DWG podloga")}</strong><br />
-        DWG/DXF je učitan kao referentna datoteka. U browseru crtamo preko podloge i layera iznad nje, dok datoteku možeš uvijek preuzeti i zamijeniti novom verzijom.
+      <div class="drawing-stage-dwg-preview">
+        <span class="drawing-stage-dwg-chip">${fileName.endsWith(".dxf") ? "DXF" : "DWG"}</span>
+        <strong>${escapeHtml(activeReference.fileName || "DWG podloga")}</strong>
+        <p>Datoteka je uspješno učitana kao CAD referenca za ovaj crtež. U browseru trenutno crtaš iznad nje, po layerima i simbolima, a izvornu datoteku možeš preuzeti ili zamijeniti novom verzijom.</p>
       </div>
     `;
     return;
@@ -6952,8 +7121,8 @@ function renderDrawingStage() {
   }
 
   const zoom = Math.max(0.5, Math.min(2.5, Number(drawingViewportDraft.zoom || 1)));
-  const canvasWidth = Math.max(960, Number(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH));
-  const canvasHeight = Math.max(680, Number(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT));
+  const canvasWidth = clampDrawingCanvasWidth(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
+  const canvasHeight = clampDrawingCanvasHeight(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
   drawingStage.style.width = `${Math.round(canvasWidth * zoom)}px`;
   drawingStage.style.height = `${Math.round(canvasHeight * zoom)}px`;
   drawingStageSvg.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
@@ -7007,7 +7176,7 @@ function renderDrawingStage() {
     const handleY = bounds.y + bounds.height;
     selectionMarkup = `
       <rect class="drawing-stage-selection-box" x="${bounds.x - 8}" y="${bounds.y - 8}" width="${bounds.width + 16}" height="${bounds.height + 16}" rx="12"></rect>
-      ${DRAWING_DIMENSION_TYPES.has(String(selected.type || "").trim().toLowerCase()) ? "" : `<circle class="drawing-resize-handle" data-drawing-resize-handle="1" cx="${handleX}" cy="${handleY}" r="10" fill="#ffffff" stroke="#496ad6" stroke-width="2"></circle>`}
+      ${DRAWING_LINEAR_TYPES.has(String(selected.type || "").trim().toLowerCase()) ? "" : `<circle class="drawing-resize-handle" data-drawing-resize-handle="1" cx="${handleX}" cy="${handleY}" r="10" fill="#ffffff" stroke="#496ad6" stroke-width="2"></circle>`}
     `;
   }
 
@@ -7042,7 +7211,7 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
     metadata: {},
   };
 
-  if (tool === "line" || tool === "wall" || tool === "dimension") {
+  if (DRAWING_LINEAR_TYPES.has(tool)) {
     return {
       ...base,
       x,
@@ -7052,12 +7221,20 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
       width: Math.abs(endX - x),
       height: Math.abs(endY - y),
       label: tool === "dimension" ? getDrawingDimensionLabel({ x, y, x2: endX, y2: endY }) : "",
-      metadata: tool === "dimension"
-        ? {
-          autoLabel: true,
-          unit: DRAWING_DIMENSION_UNIT,
-        }
-        : {},
+      metadata: {
+        ...(tool === "dimension"
+          ? {
+            autoLabel: true,
+            unit: DRAWING_DIMENSION_UNIT,
+          }
+          : {}),
+        ...(tool === "curve"
+          ? {
+            curveDirection: 1,
+            curveOffset: Math.max(48, Math.abs(endY - y) || style.height || 120),
+          }
+          : {}),
+      },
     };
   }
 
@@ -7205,12 +7382,14 @@ function getDrawingElementFromTool(tool = "rectangle", point = { x: 120, y: 120 
   };
 }
 
-function appendDrawingElement(element) {
+function appendDrawingElement(element, { selectToolAfterInsert = false } = {}) {
   const normalizedElement = syncDrawingElementDerivedFields(cloneDrawingElementDraft(element));
   drawingElementDrafts = [...drawingElementDrafts, normalizedElement];
   drawingSelectedElementId = String(normalizedElement.id);
   drawingActiveLayerId = String(normalizedElement.layerId || drawingActiveLayerId);
-  drawingCurrentTool = "select";
+  if (selectToolAfterInsert) {
+    drawingCurrentTool = "select";
+  }
   renderDrawingStudioModule();
 }
 
@@ -7256,11 +7435,12 @@ function handleDrawingStagePointerDown(event) {
   const resizeHandle = event.target.closest("[data-drawing-resize-handle]");
   const elementTarget = event.target.closest("[data-element-id]");
   const point = getDrawingStagePoint(event.clientX, event.clientY);
+  drawingCursorPositionDraft = point;
 
   if (drawingCurrentTool === "select") {
     if (resizeHandle && drawingSelectedElementId) {
       const current = getDrawingSelectedElement();
-      if (!current || DRAWING_DIMENSION_TYPES.has(String(current.type || "").trim().toLowerCase())) {
+      if (!current || DRAWING_LINEAR_TYPES.has(String(current.type || "").trim().toLowerCase())) {
         return;
       }
 
@@ -7299,7 +7479,7 @@ function handleDrawingStagePointerDown(event) {
     return;
   }
 
-  if (["door", "exit", "extinguisher", "hydrant", "text", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"].includes(drawingCurrentTool)) {
+  if (DRAWING_SINGLE_CLICK_TYPES.has(drawingCurrentTool)) {
     appendDrawingElement(getDrawingElementFromTool(drawingCurrentTool, point));
     event.preventDefault();
     return;
@@ -7315,17 +7495,26 @@ function handleDrawingStagePointerDown(event) {
 }
 
 function handleDrawingStagePointerMove(event) {
+  const point = getDrawingStagePoint(event.clientX, event.clientY);
+  drawingCursorPositionDraft = point;
+
   if (!drawingPointerSession) {
+    if (drawingCursorPositionLabel) {
+      drawingCursorPositionLabel.textContent = `X ${Math.round(Number(point.x || 0))} · Y ${Math.round(Number(point.y || 0))}`;
+    }
     return;
   }
 
-  const point = getDrawingStagePoint(event.clientX, event.clientY);
-
   if (drawingPointerSession.mode === "draw") {
+    const constrainedPoint = applyDrawingOrthoConstraint(
+      drawingPointerSession.startPoint,
+      point,
+      drawingPointerSession.tool,
+    );
     drawingPointerSession.previewElement = getDrawingElementFromTool(
       drawingPointerSession.tool,
       drawingPointerSession.startPoint,
-      point,
+      constrainedPoint,
     );
     renderDrawingStage();
     return;
@@ -7340,7 +7529,7 @@ function handleDrawingStagePointerMove(event) {
     }
 
     const type = String(original.type || "").trim().toLowerCase();
-    if (type === "line" || type === "wall") {
+    if (DRAWING_LINEAR_TYPES.has(type)) {
       updateDrawingElementDraft(drawingPointerSession.elementId, {
         x: Number(original.x || 0) + deltaX,
         y: Number(original.y || 0) + deltaY,
@@ -7388,12 +7577,18 @@ function handleDrawingStagePointerUp(event) {
   }
 
   const point = getDrawingStagePoint(event.clientX, event.clientY);
+  drawingCursorPositionDraft = point;
 
   if (drawingPointerSession.mode === "draw") {
+    const constrainedPoint = applyDrawingOrthoConstraint(
+      drawingPointerSession.startPoint,
+      point,
+      drawingPointerSession.tool,
+    );
     const element = getDrawingElementFromTool(
       drawingPointerSession.tool,
       drawingPointerSession.startPoint,
-      point,
+      constrainedPoint,
     );
     drawingPointerSession = null;
     appendDrawingElement(element);
@@ -7432,8 +7627,8 @@ function buildDrawingPayload() {
 }
 
 function buildDrawingExportSvg(includeReference = true) {
-  const canvasWidth = Math.max(960, Number(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH));
-  const canvasHeight = Math.max(680, Number(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT));
+  const canvasWidth = clampDrawingCanvasWidth(drawingViewportDraft.canvasWidth || DRAWING_STAGE_DEFAULT_WIDTH);
+  const canvasHeight = clampDrawingCanvasHeight(drawingViewportDraft.canvasHeight || DRAWING_STAGE_DEFAULT_HEIGHT);
   const visibleLayerIds = new Set(
     drawingLayerDrafts
       .filter((layer) => layer.visible !== false)
@@ -7566,9 +7761,7 @@ async function queueDrawingReferenceFiles(files = []) {
   }
 
   drawingReferenceDrafts = [...drawingReferenceDrafts, ...prepared];
-  if (!drawingActiveReferenceId) {
-    drawingActiveReferenceId = prepared[0]?.id || "";
-  }
+  drawingActiveReferenceId = prepared[prepared.length - 1]?.id || drawingActiveReferenceId || "";
   renderDrawingStudioModule();
 }
 
@@ -7618,7 +7811,7 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
       footer: String(rawValue || "").trim(),
     };
   } else if (fieldName === "x" && isNumeric) {
-    if (DRAWING_DIMENSION_TYPES.has(type)) {
+    if (DRAWING_LINEAR_TYPES.has(type)) {
       const delta = numericValue - Number(selected.x || 0);
       patch.x = numericValue;
       patch.x2 = Number(selected.x2 || 0) + delta;
@@ -7627,7 +7820,7 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
       patch.x2 = numericValue + Number(selected.width || 0);
     }
   } else if (fieldName === "y" && isNumeric) {
-    if (DRAWING_DIMENSION_TYPES.has(type)) {
+    if (DRAWING_LINEAR_TYPES.has(type)) {
       const delta = numericValue - Number(selected.y || 0);
       patch.y = numericValue;
       patch.y2 = Number(selected.y2 || 0) + delta;
@@ -7637,12 +7830,12 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
     }
   } else if (fieldName === "x2" && isNumeric) {
     patch.x2 = numericValue;
-    if (!DRAWING_DIMENSION_TYPES.has(type)) {
+    if (!DRAWING_LINEAR_TYPES.has(type)) {
       patch.width = Math.max(4, numericValue - Number(selected.x || 0));
     }
   } else if (fieldName === "y2" && isNumeric) {
     patch.y2 = numericValue;
-    if (!DRAWING_DIMENSION_TYPES.has(type)) {
+    if (!DRAWING_LINEAR_TYPES.has(type)) {
       patch.height = Math.max(4, numericValue - Number(selected.y || 0));
     }
   } else if (fieldName === "width" && isNumeric) {
@@ -60294,8 +60487,9 @@ drawingBlockButtons.forEach((button) => {
     if (!blockType) {
       return;
     }
+    drawingCurrentTool = blockType;
     syncDrawingActiveLayerForTool(blockType);
-    appendDrawingElement(getDrawingElementFromTool(blockType, getDrawingStageInsertPoint()));
+    renderDrawingStudioModule();
   });
 });
 
@@ -60311,6 +60505,9 @@ drawingZoomInButton?.addEventListener("click", () => {
 
 drawingZoomInput?.addEventListener("input", () => {
   drawingViewportDraft.zoom = Math.max(0.5, Math.min(2.5, Number(drawingZoomInput.value) || 1));
+  if (drawingZoomValue) {
+    drawingZoomValue.textContent = `${Math.round(drawingViewportDraft.zoom * 100)}%`;
+  }
   renderDrawingStage();
 });
 
@@ -60320,22 +60517,28 @@ drawingGridSizeInput?.addEventListener("input", () => {
 });
 
 drawingCanvasWidthInput?.addEventListener("input", () => {
-  drawingViewportDraft.canvasWidth = Math.max(960, Math.min(2400, Math.round(Number(drawingCanvasWidthInput.value) || DRAWING_STAGE_DEFAULT_WIDTH)));
+  drawingViewportDraft.canvasWidth = clampDrawingCanvasWidth(drawingCanvasWidthInput.value);
   renderDrawingStage();
 });
 
 drawingCanvasHeightInput?.addEventListener("input", () => {
-  drawingViewportDraft.canvasHeight = Math.max(680, Math.min(1800, Math.round(Number(drawingCanvasHeightInput.value) || DRAWING_STAGE_DEFAULT_HEIGHT)));
+  drawingViewportDraft.canvasHeight = clampDrawingCanvasHeight(drawingCanvasHeightInput.value);
   renderDrawingStage();
 });
 
 drawingSnapToggle?.addEventListener("change", () => {
   drawingViewportDraft.snapToGrid = drawingSnapToggle.checked;
+  renderDrawingStudioModule();
 });
 
 drawingGridToggle?.addEventListener("change", () => {
   drawingViewportDraft.showGrid = drawingGridToggle.checked;
   renderDrawingStage();
+});
+
+drawingOrthoToggleButton?.addEventListener("click", () => {
+  drawingViewportDraft.orthoMode = drawingViewportDraft.orthoMode !== true;
+  renderDrawingStudioModule();
 });
 
 [
@@ -60429,6 +60632,13 @@ drawingForm?.addEventListener("submit", (event) => {
 });
 
 drawingStageSvg?.addEventListener("pointerdown", handleDrawingStagePointerDown);
+drawingStageSvg?.addEventListener("pointermove", handleDrawingStagePointerHover);
+drawingStageSvg?.addEventListener("pointerleave", () => {
+  drawingCursorPositionDraft = { x: 0, y: 0 };
+  if (drawingCursorPositionLabel) {
+    drawingCursorPositionLabel.textContent = "X 0 · Y 0";
+  }
+});
 document.addEventListener("pointermove", handleDrawingStagePointerMove);
 document.addEventListener("pointerup", handleDrawingStagePointerUp);
 

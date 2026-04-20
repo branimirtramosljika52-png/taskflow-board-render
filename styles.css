@@ -26579,8 +26579,8 @@ body.is-offer-template-open {
 
 .drawing-studio-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -26688,8 +26688,8 @@ body.is-offer-template-open {
 
 .drawing-studio-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(280px, 320px);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 332px);
+  gap: 14px;
   align-items: start;
 }
 
@@ -26702,6 +26702,14 @@ body.is-offer-template-open {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.drawing-studio-sidebar.is-right {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .drawing-studio-card {
@@ -26728,8 +26736,8 @@ body.is-offer-template-open {
 }
 
 .drawing-tool-buttons {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -26737,6 +26745,26 @@ body.is-offer-template-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.drawing-top-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.drawing-top-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.drawing-tool-tabs {
+  flex: 1 1 720px;
 }
 
 .drawing-studio-head-actions {
@@ -26747,6 +26775,11 @@ body.is-offer-template-open {
 }
 
 .drawing-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px;
   min-height: 48px;
   border-radius: 18px;
   border: 1px solid rgba(109, 132, 196, 0.28);
@@ -26755,6 +26788,19 @@ body.is-offer-template-open {
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.drawing-tool-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  font-size: 1.05rem;
+  color: #4e67b2;
+}
+
+.drawing-tool-button-label {
+  white-space: nowrap;
 }
 
 .drawing-tool-button:hover,
@@ -26768,6 +26814,7 @@ body.is-offer-template-open {
   border-color: rgba(73, 106, 214, 0.55);
   background: linear-gradient(135deg, rgba(73, 106, 214, 0.12), rgba(99, 189, 255, 0.16));
   color: #2444a0;
+  box-shadow: 0 16px 36px rgba(73, 106, 214, 0.16);
 }
 
 .drawing-reference-list,
@@ -26836,18 +26883,6 @@ body.is-offer-template-open {
   cursor: pointer;
 }
 
-.drawing-stage-toolbar {
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.drawing-stage-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 .drawing-zoom-field,
 .drawing-grid-field,
 .drawing-canvas-field {
@@ -26856,10 +26891,11 @@ body.is-offer-template-open {
 
 .drawing-stage-scroll {
   overflow: auto;
-  min-height: 720px;
-  border-radius: 30px;
+  min-height: clamp(720px, calc(100vh - 360px), 1120px);
+  max-height: calc(100vh - 310px);
+  border-radius: 28px;
   border: 1px solid rgba(115, 152, 212, 0.3);
-  padding: 20px;
+  padding: 14px;
   background:
     radial-gradient(circle at top, rgba(95, 144, 255, 0.09), transparent 42%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 248, 255, 0.94));
@@ -26867,8 +26903,8 @@ body.is-offer-template-open {
 
 .drawing-stage {
   position: relative;
-  width: 1600px;
-  height: 1000px;
+  width: 2400px;
+  height: 1500px;
   border-radius: 26px;
   overflow: hidden;
   background:
@@ -26892,6 +26928,25 @@ body.is-offer-template-open {
     linear-gradient(180deg, rgba(240, 245, 255, 0.72), rgba(255, 255, 255, 0.35));
 }
 
+.drawing-stage-reference.is-cad-reference {
+  background:
+    linear-gradient(180deg, rgba(227, 237, 255, 0.8), rgba(243, 248, 255, 0.58)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(71, 95, 158, 0.07) 0,
+      rgba(71, 95, 158, 0.07) 1px,
+      transparent 1px,
+      transparent 34px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(71, 95, 158, 0.07) 0,
+      rgba(71, 95, 158, 0.07) 1px,
+      transparent 1px,
+      transparent 34px
+    );
+}
+
 .drawing-stage-reference object,
 .drawing-stage-reference iframe,
 .drawing-stage-reference img {
@@ -26913,6 +26968,43 @@ body.is-offer-template-open {
   line-height: 1.6;
 }
 
+.drawing-stage-dwg-preview {
+  width: min(720px, calc(100% - 72px));
+  display: grid;
+  gap: 12px;
+  padding: 28px 30px;
+  border-radius: 30px;
+  border: 1px solid rgba(55, 93, 172, 0.24);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(235, 243, 255, 0.88));
+  box-shadow: 0 24px 60px rgba(70, 93, 152, 0.14);
+  color: #31415f;
+  text-align: left;
+}
+
+.drawing-stage-dwg-preview strong {
+  font-size: 1.18rem;
+  color: #1f3158;
+}
+
+.drawing-stage-dwg-preview p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.drawing-stage-dwg-chip {
+  justify-self: start;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 97, 181, 0.22);
+  background: rgba(61, 113, 212, 0.1);
+  color: #3155a4;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .drawing-stage-svg {
   width: 100%;
   height: 100%;
@@ -26928,8 +27020,107 @@ body.is-offer-template-open {
   margin-top: 12px;
 }
 
+.drawing-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(115, 152, 212, 0.24);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.drawing-status-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.drawing-status-bar-group-meta {
+  margin-left: auto;
+}
+
+.drawing-status-pill {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(111, 135, 196, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 249, 255, 0.92));
+  color: #2a395c;
+  font-weight: 700;
+}
+
+button.drawing-status-pill {
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+button.drawing-status-pill:hover,
+button.drawing-status-pill:focus-visible,
+button.drawing-status-pill.is-active {
+  border-color: rgba(73, 106, 214, 0.46);
+  box-shadow: 0 14px 28px rgba(73, 106, 214, 0.12);
+}
+
+.drawing-status-value {
+  display: inline-flex;
+  align-items: center;
+}
+
+.drawing-status-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(111, 135, 196, 0.24);
+  background: rgba(249, 251, 255, 0.95);
+}
+
+.drawing-status-checkbox span {
+  font-weight: 700;
+  color: #2d3c61;
+}
+
 .drawing-inspector-grid {
   row-gap: 14px;
+}
+
+.drawing-symbol-button {
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 72px;
+  text-align: left;
+}
+
+.drawing-symbol-preview {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.drawing-symbol-preview rect,
+.drawing-symbol-preview circle,
+.drawing-symbol-preview path,
+.drawing-symbol-preview ellipse {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.drawing-symbol-preview text {
+  fill: currentColor;
+  font-size: 20px;
+  font-weight: 800;
+  font-family: inherit;
 }
 
 .drawing-element-selected {
@@ -26965,11 +27156,13 @@ body.is-offer-template-open {
 
 @media (max-width: 1580px) {
   .drawing-studio-shell {
-    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .drawing-studio-sidebar.is-right {
-    grid-column: 1 / -1;
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -26987,11 +27180,16 @@ body.is-offer-template-open {
     width: 1280px;
     height: 860px;
   }
+
+  .drawing-status-bar-group-meta {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 760px) {
   .drawing-tool-buttons {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .drawing-stage-scroll {
@@ -27002,5 +27200,9 @@ body.is-offer-template-open {
   .drawing-stage {
     width: 1080px;
     height: 760px;
+  }
+
+  .drawing-block-buttons {
+    grid-template-columns: 1fr;
   }
 }

@@ -2111,6 +2111,19 @@ test("drawing projects keep references, layers and CAD elements through create a
             autoLabel: true,
           },
         },
+        {
+          id: "curve-1",
+          type: "curve",
+          layerId: "layer-safety",
+          x: 540,
+          y: 180,
+          x2: 820,
+          y2: 180,
+          metadata: {
+            curveDirection: 1,
+            curveOffset: 96,
+          },
+        },
       ],
       viewport: {
         zoom: 1.15,
@@ -2119,6 +2132,7 @@ test("drawing projects keep references, layers and CAD elements through create a
         canvasHeight: 1200,
         snapToGrid: true,
         showGrid: true,
+        orthoMode: true,
       },
     },
     state,
@@ -2156,6 +2170,16 @@ test("drawing projects keep references, layers and CAD elements through create a
           width: 170,
           height: 72,
           label: "ZBORNO",
+        },
+        {
+          id: "ellipse-1",
+          type: "ellipse",
+          layerId: "layer-safety",
+          x: 1120,
+          y: 220,
+          width: 160,
+          height: 100,
+          label: "Zona",
         },
       ],
     },
@@ -2196,9 +2220,13 @@ test("drawing projects keep references, layers and CAD elements through create a
   assert.equal(created.elements[1].metadata.openDirection, "right");
   assert.equal(created.elements[1].rotation, 90);
   assert.equal(created.elements[2].label, "420 mm");
-  assert.equal(updated.elements.length, 5);
-  assert.equal(updated.elements[3].type, "frame");
-  assert.equal(updated.elements[4].type, "assembly_point");
+  assert.equal(created.elements[3].type, "curve");
+  assert.equal(created.viewport.orthoMode, true);
+  assert.equal(updated.elements.length, 7);
+  assert.equal(updated.elements[3].type, "curve");
+  assert.equal(updated.elements[4].type, "frame");
+  assert.equal(updated.elements[5].type, "assembly_point");
+  assert.equal(updated.elements[6].type, "ellipse");
   assert.equal(filtered.length, 1);
   assert.deepEqual(
     sortDrawingProjects([archived, updated]).map((item) => item.id),

@@ -3545,10 +3545,14 @@ function getDrawingElementDefaults(type = "rectangle") {
   switch (type) {
     case "line":
       return { width: 220, height: 0, stroke: "#4564d1", fill: "transparent", lineWidth: 2 };
+    case "curve":
+      return { width: 220, height: 120, stroke: "#4564d1", fill: "transparent", lineWidth: 2 };
     case "wall":
       return { width: 280, height: 0, stroke: "#21385f", fill: "transparent", lineWidth: 12 };
     case "dimension":
       return { width: 220, height: 0, stroke: "#da8a1f", fill: "transparent", lineWidth: 2 };
+    case "ellipse":
+      return { width: 220, height: 140, stroke: "#4564d1", fill: "rgba(232,238,255,0.72)", lineWidth: 2 };
     case "frame":
       return { width: 1380, height: 860, stroke: "#20416f", fill: "rgba(255,255,255,0.9)", lineWidth: 2 };
     case "door":
@@ -3585,6 +3589,8 @@ function normalizeDrawingElementMetadata(metadata = {}, type = "rectangle") {
     note: normalizeText(metadata?.note).slice(0, 240),
     unit: normalizeText(metadata?.unit).slice(0, 16),
     autoLabel: normalizeBoolean(metadata?.autoLabel, type === "dimension"),
+    curveDirection: normalizeFiniteNumber(metadata?.curveDirection, 1) >= 0 ? 1 : -1,
+    curveOffset: Math.max(24, Math.min(280, normalizeFiniteNumber(metadata?.curveOffset, 72))),
     openDirection: ["left", "right"].includes(normalizeText(metadata?.openDirection).toLowerCase())
       ? normalizeText(metadata?.openDirection).toLowerCase()
       : "left",
@@ -3605,7 +3611,7 @@ function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = 
   const defaultLayerId = allowedLayerIds.has(String(fallbackLayerId))
     ? String(fallbackLayerId)
     : (layers?.[0]?.id ? String(layers[0].id) : "");
-  const allowedTypes = new Set(["line", "wall", "dimension", "rectangle", "frame", "door", "exit", "extinguisher", "hydrant", "text", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
+  const allowedTypes = new Set(["line", "curve", "wall", "dimension", "rectangle", "ellipse", "frame", "door", "exit", "extinguisher", "hydrant", "text", "stairs", "assembly_point", "first_aid", "detector", "panel", "arrow"]);
 
   return (Array.isArray(elements) ? elements : []).map((entry) => {
     const type = allowedTypes.has(normalizeText(entry?.type).toLowerCase())
@@ -3640,7 +3646,7 @@ function normalizeDrawingElements(elements = [], fallbackLayerId = "", layers = 
       metadata,
     };
 
-    if (["line", "wall", "dimension"].includes(type)) {
+    if (["line", "curve", "wall", "dimension"].includes(type)) {
       normalizedEntry.width = Math.abs(normalizedEntry.x2 - normalizedEntry.x);
       normalizedEntry.height = Math.abs(normalizedEntry.y2 - normalizedEntry.y);
     }
@@ -3660,10 +3666,11 @@ function normalizeDrawingViewport(viewport = {}, fallback = {}) {
   return {
     zoom: Math.max(0.5, Math.min(2.5, normalizeFiniteNumber(viewport?.zoom, fallback?.zoom ?? 1))),
     gridSize: Math.max(8, Math.min(80, Math.round(normalizeFiniteNumber(viewport?.gridSize, fallback?.gridSize ?? 20)))),
-    canvasWidth: Math.max(960, Math.min(2400, Math.round(normalizeFiniteNumber(viewport?.canvasWidth, fallback?.canvasWidth ?? 1600)))),
-    canvasHeight: Math.max(680, Math.min(1800, Math.round(normalizeFiniteNumber(viewport?.canvasHeight, fallback?.canvasHeight ?? 1000)))),
+    canvasWidth: Math.max(1200, Math.min(5000, Math.round(normalizeFiniteNumber(viewport?.canvasWidth, fallback?.canvasWidth ?? 2400)))),
+    canvasHeight: Math.max(800, Math.min(3200, Math.round(normalizeFiniteNumber(viewport?.canvasHeight, fallback?.canvasHeight ?? 1500)))),
     snapToGrid: normalizeBoolean(viewport?.snapToGrid, fallback?.snapToGrid ?? true),
     showGrid: normalizeBoolean(viewport?.showGrid, fallback?.showGrid ?? true),
+    orthoMode: normalizeBoolean(viewport?.orthoMode, fallback?.orthoMode ?? false),
   };
 }
 
