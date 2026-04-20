@@ -44,6 +44,20 @@ export const PURCHASE_ORDER_STATUS_OPTIONS = [
   { value: "closed", label: "Zatvorena" },
 ];
 
+export const CONTRACT_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "pending_signature", label: "Na potpisu" },
+  { value: "active", label: "Aktivan" },
+  { value: "expired", label: "Istekao" },
+  { value: "terminated", label: "Raskinut" },
+];
+
+export const CONTRACT_TEMPLATE_STATUS_OPTIONS = [
+  { value: "active", label: "Aktivan" },
+  { value: "draft", label: "Skica" },
+  { value: "archived", label: "Arhiviran" },
+];
+
 export const VEHICLE_STATUS_OPTIONS = [
   { value: "available", label: "Dostupno" },
   { value: "service", label: "Servis" },
@@ -359,6 +373,8 @@ const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => opti
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
 const PURCHASE_ORDER_STATUS_SET = new Set(PURCHASE_ORDER_STATUS_OPTIONS.map((option) => option.value));
+const CONTRACT_STATUS_SET = new Set(CONTRACT_STATUS_OPTIONS.map((option) => option.value));
+const CONTRACT_TEMPLATE_STATUS_SET = new Set(CONTRACT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
@@ -419,6 +435,18 @@ const PURCHASE_ORDER_STATUS_RANK = {
   issued: 2,
   confirmed: 3,
   closed: 4,
+};
+const CONTRACT_STATUS_RANK = {
+  draft: 0,
+  pending_signature: 1,
+  active: 2,
+  expired: 3,
+  terminated: 4,
+};
+const CONTRACT_TEMPLATE_STATUS_RANK = {
+  active: 0,
+  draft: 1,
+  archived: 2,
 };
 const LEGAL_FRAMEWORK_STATUS_RANK = {
   active: 0,
@@ -2311,6 +2339,28 @@ export function nextPurchaseOrderNumber(
   };
 }
 
+export function nextContractNumber(
+  contracts = [],
+  { year = Number(todayString().slice(0, 4)), prefix = "UG" } = {},
+) {
+  const normalizedYear = Number(year) || Number(todayString().slice(0, 4));
+  const normalizedPrefix = normalizeText(prefix).toUpperCase() || "UG";
+  const nextSequence = contracts.reduce((maxValue, contract) => {
+    const currentNumber = normalizeText(contract.contractNumber);
+    const match = currentNumber.match(new RegExp(`^${normalizedPrefix}-${normalizedYear}-(\\d+)$`, "i"));
+    if (!match) {
+      return maxValue;
+    }
+    return Math.max(maxValue, Number(match[1]) || 0);
+  }, 0) + 1;
+
+  return {
+    contractNumber: `${normalizedPrefix}-${normalizedYear}-${String(nextSequence).padStart(3, "0")}`,
+    contractYear: normalizedYear,
+    contractSequence: nextSequence,
+  };
+}
+
 function findReminderCompany(state, companyId = "") {
   if (!companyId) {
     return null;
@@ -3129,6 +3179,222 @@ export function createServiceCatalogItem(
     linkedLearningTestTitles: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestTitles : [],
     note: normalizeText(input.note),
     createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function findContractCompany(state, companyId = "") {
+  if (!companyId) {
+    return null;
+  }
+
+  return (state.companies ?? []).find((item) => item.id === companyId) ?? null;
+}
+
+function findContractTemplate(state, templateId = "") {
+  if (!templateId) {
+    return null;
+  }
+
+  return (state.contractTemplates ?? []).find((item) => item.id === templateId) ?? null;
+}
+
+function normalizeContractStatus(value = "", fallback = "draft") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (CONTRACT_STATUS_SET.has(normalized)) {
+    return normalized;
+  }
+  return CONTRACT_STATUS_SET.has(fallback) ? fallback : "draft";
+}
+
+function normalizeContractTemplateStatus(value = "", fallback = "active") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (CONTRACT_TEMPLATE_STATUS_SET.has(normalized)) {
+    return normalized;
+  }
+  return CONTRACT_TEMPLATE_STATUS_SET.has(fallback) ? fallback : "active";
+}
+
+function normalizeContractAnnexes(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      const annexNumber = normalizeText(item?.annexNumber).slice(0, 80);
+      const title = normalizeText(item?.title).slice(0, 180);
+      const effectiveDate = normalizeOptionalDate(item?.effectiveDate);
+      const note = normalizeText(item?.note).slice(0, 1000);
+
+      if (!annexNumber && !title && !effectiveDate && !note) {
+        return null;
+      }
+
+      return {
+        id: normalizeText(item?.id) || crypto.randomUUID(),
+        annexNumber,
+        title,
+        effectiveDate,
+        note,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+function normalizeContractLinkedOffers(input = {}, state, companyId = "", current = null) {
+  const sourceIds = hasOwn(input, "linkedOfferIds")
+    ? input.linkedOfferIds
+    : current?.linkedOfferIds ?? [];
+  const requestedOfferIds = Array.from(new Set(
+    (Array.isArray(sourceIds) ? sourceIds : [sourceIds])
+      .map((value) => normalizeId(value))
+      .filter(Boolean),
+  ));
+
+  if (requestedOfferIds.length === 0) {
+    return {
+      linkedOfferIds: [],
+      linkedOfferNumbers: [],
+      linkedOffers: [],
+    };
+  }
+
+  const linkedOffers = requestedOfferIds.map((offerId) => {
+    const offer = (state.offers ?? []).find((item) => String(item.id) === String(offerId));
+    if (!offer) {
+      throw new Error("Odabrana ponuda ne postoji.");
+    }
+    if (companyId && String(offer.companyId) !== String(companyId)) {
+      throw new Error("Ponuda mora pripadati odabranoj tvrtki.");
+    }
+    return {
+      id: String(offer.id),
+      offerNumber: normalizeText(offer.offerNumber),
+      title: normalizeText(offer.title),
+      status: normalizeText(offer.status),
+      total: Number(offer.total ?? 0) || 0,
+      currency: normalizeText(offer.currency).toUpperCase() || "EUR",
+      offerDate: normalizeOptionalDate(offer.offerDate),
+    };
+  });
+
+  return {
+    linkedOfferIds: linkedOffers.map((offer) => offer.id),
+    linkedOfferNumbers: linkedOffers.map((offer) => offer.offerNumber).filter(Boolean),
+    linkedOffers,
+  };
+}
+
+function hydrateContractTemplateCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const referenceDocument = hasOwn(input, "referenceDocument")
+    ? (input.referenceDocument && typeof input.referenceDocument === "object"
+      ? {
+        ...input.referenceDocument,
+        fileName: normalizeText(input.referenceDocument.fileName),
+        fileType: normalizeText(input.referenceDocument.fileType),
+        dataUrl: normalizeText(input.referenceDocument.dataUrl || input.referenceDocument.storageUrl),
+        storageProvider: normalizeText(input.referenceDocument.storageProvider),
+        storageBucket: normalizeText(input.referenceDocument.storageBucket),
+        storageKey: normalizeText(input.referenceDocument.storageKey),
+        storageUrl: normalizeText(input.referenceDocument.storageUrl || input.referenceDocument.dataUrl),
+        fileSize: Number(input.referenceDocument.fileSize ?? 0) || 0,
+        updatedAt: input.referenceDocument.updatedAt || timestamp,
+      }
+      : null)
+    : (current?.referenceDocument ? { ...current.referenceDocument } : null);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    title: hasOwn(input, "title") ? requireText(input.title, "Naziv templatea") : current?.title ?? "",
+    description: hasOwn(input, "description") ? normalizeText(input.description) : current?.description ?? "",
+    status: hasOwn(input, "status")
+      ? normalizeContractTemplateStatus(input.status)
+      : normalizeContractTemplateStatus(current?.status, "active"),
+    referenceDocument,
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function hydrateContractCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+  contractNumber = current?.contractNumber ?? "",
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const companyId = hasOwn(input, "companyId")
+    ? requireText(input.companyId, "Tvrtka")
+    : requireText(current?.companyId, "Tvrtka");
+  const company = findContractCompany(state, companyId);
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const templateId = hasOwn(input, "templateId")
+    ? normalizeId(input.templateId)
+    : normalizeId(current?.templateId);
+  const template = templateId ? findContractTemplate(state, templateId) : null;
+  if (templateId && !template) {
+    throw new Error("Odabrani template ugovora ne postoji.");
+  }
+
+  const linkedOffersPayload = normalizeContractLinkedOffers(input, state, companyId, current);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company.name,
+    companyOib: company.oib ?? "",
+    headquarters: company.headquarters ?? "",
+    representative: company.representative ?? "",
+    contactPhone: company.contactPhone ?? "",
+    contactEmail: company.contactEmail ?? "",
+    title: hasOwn(input, "title") ? requireText(input.title, "Naziv ugovora") : current?.title ?? "",
+    contractNumber: hasOwn(input, "contractNumber")
+      ? (normalizeText(input.contractNumber) || requireText(contractNumber, "Broj ugovora"))
+      : requireText(contractNumber || current?.contractNumber, "Broj ugovora"),
+    status: hasOwn(input, "status") ? normalizeContractStatus(input.status) : normalizeContractStatus(current?.status),
+    templateId,
+    templateTitle: template?.title ?? "",
+    signedOn: hasOwn(input, "signedOn") ? normalizeOptionalDate(input.signedOn) : normalizeOptionalDate(current?.signedOn),
+    validFrom: hasOwn(input, "validFrom") ? normalizeOptionalDate(input.validFrom) : normalizeOptionalDate(current?.validFrom),
+    validTo: hasOwn(input, "validTo") ? normalizeOptionalDate(input.validTo) : normalizeOptionalDate(current?.validTo),
+    subject: hasOwn(input, "subject") ? normalizeText(input.subject) : current?.subject ?? "",
+    scopeSummary: hasOwn(input, "scopeSummary") ? normalizeText(input.scopeSummary) : current?.scopeSummary ?? "",
+    note: hasOwn(input, "note") ? normalizeText(input.note) : current?.note ?? "",
+    annexes: hasOwn(input, "annexes")
+      ? normalizeContractAnnexes(input.annexes)
+      : normalizeContractAnnexes(current?.annexes ?? []),
+    ...linkedOffersPayload,
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
 }
@@ -4976,6 +5242,71 @@ export function updatePurchaseOrder(current, patch, state, now = isoNow) {
   });
 }
 
+export function createContractTemplate(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const template = hydrateContractTemplateCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...template,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateContractTemplate(current, patch, state, now = isoNow) {
+  return hydrateContractTemplateCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
+export function createContract(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  numberParts = null,
+  now = isoNow,
+) {
+  const timestamp = now();
+  const resolvedNumberParts = numberParts ?? nextContractNumber(state.contracts ?? [], {
+    year: Number(timestamp.slice(0, 4)),
+  });
+  const contract = hydrateContractCore({
+    state,
+    input,
+    timestamp,
+    contractNumber: normalizeText(input.contractNumber) || resolvedNumberParts.contractNumber,
+  });
+
+  return {
+    ...contract,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateContract(current, patch, state, now = isoNow) {
+  return hydrateContractCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createTodoTaskComment(
   currentTask,
   input,
@@ -5155,6 +5486,74 @@ export function filterPurchaseOrders(
   });
 }
 
+export function filterContractTemplates(
+  templates,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return templates.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.description,
+      item.status,
+      item.createdByLabel,
+      item.referenceDocument?.fileName,
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function filterContracts(
+  contracts,
+  { query = "", status = "all", companyId = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedCompanyId = normalizeText(companyId);
+
+  return contracts.filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (normalizedCompanyId && normalizedCompanyId !== "all" && String(item.companyId) !== normalizedCompanyId) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.contractNumber,
+      item.title,
+      item.companyName,
+      item.companyOib,
+      item.headquarters,
+      item.representative,
+      item.contactEmail,
+      item.subject,
+      item.scopeSummary,
+      item.note,
+      item.templateTitle,
+      ...(item.linkedOfferNumbers ?? []),
+      ...(item.linkedOffers ?? []).flatMap((entry) => [entry.offerNumber, entry.title]),
+      ...(item.annexes ?? []).flatMap((entry) => [entry.annexNumber, entry.title, entry.note]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function sortOffers(offers) {
   return [...offers].sort((left, right) => {
     const leftRank = OFFER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
@@ -5198,6 +5597,47 @@ export function sortPurchaseOrders(purchaseOrders) {
     }
 
     if (!left.purchaseOrderDate && right.purchaseOrderDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortContractTemplates(templates) {
+  return [...templates].sort((left, right) => {
+    const leftRank = CONTRACT_TEMPLATE_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = CONTRACT_TEMPLATE_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortContracts(contracts) {
+  return [...contracts].sort((left, right) => {
+    const leftRank = CONTRACT_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = CONTRACT_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftDate = left.validTo || left.validFrom || left.signedOn || "";
+    const rightDate = right.validTo || right.validFrom || right.signedOn || "";
+
+    if (leftDate && rightDate && leftDate !== rightDate) {
+      return rightDate.localeCompare(leftDate);
+    }
+
+    if (leftDate && !rightDate) {
+      return -1;
+    }
+
+    if (!leftDate && rightDate) {
       return 1;
     }
 

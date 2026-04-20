@@ -581,6 +581,66 @@ function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
   };
 }
 
+function getContractStatusLabel(value = "") {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "pending_signature") {
+    return "Na potpisu";
+  }
+  if (normalized === "active") {
+    return "Aktivan";
+  }
+  if (normalized === "expired") {
+    return "Istekao";
+  }
+  if (normalized === "terminated") {
+    return "Raskinut";
+  }
+  return "Skica";
+}
+
+function buildContractTemplatePlaceholderPayload(contract = {}) {
+  const normalizedContract = contract && typeof contract === "object" ? contract : {};
+  const linkedOffers = Array.isArray(normalizedContract.linkedOffers) ? normalizedContract.linkedOffers : [];
+  const annexes = Array.isArray(normalizedContract.annexes) ? normalizedContract.annexes : [];
+
+  const offerList = linkedOffers.length > 0
+    ? linkedOffers.map((offer, index) => [
+      `${index + 1}. ${offer.offerNumber || "Ponuda"}`,
+      offer.title || "",
+      offer.offerDate ? formatOfferDocumentDate(offer.offerDate) : "",
+    ].filter(Boolean).join(" | ")).join("\n")
+    : "Nema povezanih ponuda";
+  const annexList = annexes.length > 0
+    ? annexes.map((annex, index) => [
+      `${index + 1}. ${annex.annexNumber || `Aneks ${index + 1}`}`,
+      annex.title || "",
+      annex.effectiveDate ? formatOfferDocumentDate(annex.effectiveDate) : "",
+      annex.note || "",
+    ].filter(Boolean).join(" | ")).join("\n")
+    : "Bez anexa";
+
+  return {
+    CONTRACT_NUMBER: normalizedContract.contractNumber || "Dodijeljen nakon spremanja",
+    CONTRACT_TITLE: normalizedContract.title || "",
+    CONTRACT_STATUS: getContractStatusLabel(normalizedContract.status || "draft"),
+    TEMPLATE_NAME: normalizedContract.templateTitle || "",
+    SIGNED_ON: normalizedContract.signedOn ? formatOfferDocumentDate(normalizedContract.signedOn) : "",
+    VALID_FROM: normalizedContract.validFrom ? formatOfferDocumentDate(normalizedContract.validFrom) : "",
+    VALID_TO: normalizedContract.validTo ? formatOfferDocumentDate(normalizedContract.validTo) : "",
+    COMPANY_NAME: normalizedContract.companyName || "",
+    COMPANY_OIB: normalizedContract.companyOib || "",
+    COMPANY_HEADQUARTERS: normalizedContract.headquarters || "",
+    COMPANY_REPRESENTATIVE: normalizedContract.representative || "",
+    COMPANY_PHONE: normalizedContract.contactPhone || "",
+    COMPANY_EMAIL: normalizedContract.contactEmail || "",
+    SUBJECT: normalizedContract.subject || "",
+    SCOPE_SUMMARY: normalizedContract.scopeSummary || "",
+    NOTE: normalizedContract.note || "",
+    OFFER_LIST: offerList,
+    ANNEX_LIST: annexList,
+  };
+}
+
 function escapeEmailHtml(value = "") {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -649,6 +709,67 @@ async function buildPurchaseOrderPdfExportPayload(purchaseOrder = {}, organizati
   }
 
   const pdfBuffer = await buildPurchaseOrderPdfBuffer(purchaseOrder, { currency: purchaseOrder.currency || "EUR" });
+  return { pdfBuffer, fileName };
+}
+
+function buildContractExportBaseName(contract = {}) {
+  return contract.contractNumber || contract.title || contract.companyName || "ugovor";
+}
+
+async function getContractTemplateDocument(contract = {}, organizationId = "") {
+  const templateId = String(contract.templateId || "").trim();
+  if (!templateId) {
+    throw new Error("Odaberi template ugovora prije izvoza.");
+  }
+
+  const snapshot = await domainRepository.getSnapshot();
+  const template = (snapshot.contractTemplates ?? []).find((item) => (
+    String(item.organizationId) === String(organizationId)
+    && String(item.id) === templateId
+  ));
+
+  if (!template?.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
+    throw new Error("Template ugovora nema valjani Word dokument.");
+  }
+
+  return {
+    template,
+    referenceDocument: await readStoredDocumentBuffer(template.referenceDocument),
+  };
+}
+
+async function buildContractWordExportPayload(contract = {}, organizationId = "") {
+  const baseName = buildContractExportBaseName(contract);
+  const { referenceDocument } = await getContractTemplateDocument(contract, organizationId);
+  const fileName = sanitizeGeneratedDocumentFileName(baseName, {
+    fallback: "ugovor",
+    extension: "docx",
+  });
+  const docxBuffer = await buildDocxFromTemplateBuffer(
+    referenceDocument.buffer,
+    buildContractTemplatePlaceholderPayload(contract),
+    { fileName },
+  );
+  return { docxBuffer, fileName };
+}
+
+async function buildContractPdfExportPayload(contract = {}, organizationId = "") {
+  const baseName = buildContractExportBaseName(contract);
+  const { referenceDocument } = await getContractTemplateDocument(contract, organizationId);
+  const fileName = sanitizeGeneratedDocumentFileName(baseName, {
+    fallback: "ugovor",
+    extension: "pdf",
+  });
+  const pdfBuffer = await buildPdfFromTemplateBuffer(
+    referenceDocument.buffer,
+    buildContractTemplatePlaceholderPayload(contract),
+    {
+      fileName: sanitizeGeneratedDocumentFileName(baseName, {
+        fallback: "ugovor",
+        extension: "docx",
+      }),
+    },
+  );
   return { pdfBuffer, fileName };
 }
 
@@ -1001,6 +1122,28 @@ function assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body = {}, fiel
     }
 
     assertInScope(scopedSnapshot.documentTemplates ?? [], id, "Template nije dostupan za odabranu organizaciju.");
+  });
+}
+
+function assertContractTemplatePayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.templateId) {
+    return;
+  }
+
+  assertInScope(scopedSnapshot.contractTemplates ?? [], body.templateId, "Template ugovora nije dostupan za odabranu organizaciju.");
+}
+
+function assertOfferIdsPayloadInScope(scopedSnapshot, body = {}, fieldName = "linkedOfferIds") {
+  if (!Array.isArray(body[fieldName])) {
+    return;
+  }
+
+  body[fieldName].forEach((id) => {
+    if (!String(id ?? "").trim()) {
+      return;
+    }
+
+    assertInScope(scopedSnapshot.offers ?? [], id, "Ponuda nije dostupna za odabranu organizaciju.");
   });
 }
 
@@ -1407,6 +1550,10 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)$/);
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
+    const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
+    const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
+    const contractWordExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-word$/);
+    const contractPdfExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-pdf$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
     const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
@@ -1821,6 +1968,41 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       await domainRepository.createPurchaseOrder({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/contract-templates") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createContractTemplate({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/contracts") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ugovorima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertContractTemplatePayloadInScope(scopedSnapshot, body);
+      assertOfferIdsPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createContract({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
@@ -2981,6 +3163,81 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (contractTemplateMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.contractTemplates ?? [], contractTemplateMatch[1], "Template ugovora nije pronađen.");
+      const updated = await domainRepository.updateContractTemplate(contractTemplateMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Template ugovora nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (contractTemplateMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.contractTemplates ?? [], contractTemplateMatch[1], "Template ugovora nije pronađen.");
+      await domainRepository.deleteContractTemplate(contractTemplateMatch[1]);
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (contractMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ugovorima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.contracts ?? [], contractMatch[1], "Ugovor nije pronađen.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertContractTemplatePayloadInScope(scopedSnapshot, body);
+      assertOfferIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateContract(contractMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Ugovor nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (contractMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati ugovorima.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.contracts ?? [], contractMatch[1], "Ugovor nije pronađen.");
+      await domainRepository.deleteContract(contractMatch[1]);
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (offerPdfExportMatch && request.method === "POST") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
@@ -3006,6 +3263,38 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const purchaseOrder = assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderPdfExportMatch[1], "Narudzbenica nije pronađena.");
       const { pdfBuffer, fileName } = await buildPurchaseOrderPdfExportPayload(purchaseOrder, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (contractWordExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati Word ugovora.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const contract = assertInScope(scopedSnapshot.contracts ?? [], contractWordExportMatch[1], "Ugovor nije pronađen.");
+      const { docxBuffer, fileName } = await buildContractWordExportPayload(contract, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, docxBuffer, {
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileName,
+      });
+      return true;
+    }
+
+    if (contractPdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF ugovora.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const contract = assertInScope(scopedSnapshot.contracts ?? [], contractPdfExportMatch[1], "Ugovor nije pronađen.");
+      const { pdfBuffer, fileName } = await buildContractPdfExportPayload(contract, scopedSnapshot.activeOrganizationId);
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,

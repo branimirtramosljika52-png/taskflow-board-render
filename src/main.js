@@ -14,6 +14,8 @@
   DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
+  CONTRACT_STATUS_OPTIONS,
+  CONTRACT_TEMPLATE_STATUS_OPTIONS,
   LEGAL_FRAMEWORK_STATUS_OPTIONS,
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
   MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
@@ -84,7 +86,11 @@
   sortVehicles,
   sortWorkOrders,
   createLearningTest,
+  filterContracts,
+  filterContractTemplates,
   updateLearningTest,
+  sortContracts,
+  sortContractTemplates,
   updateDashboardWidget,
 } from "./safetyModel.js";
 import {
@@ -369,6 +375,27 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     emailButtonLabel: "Pošalji email",
   }),
 });
+
+const CONTRACT_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
+  { key: "CONTRACT_NUMBER", label: "Broj ugovora", description: "Jedinstveni broj ugovora." },
+  { key: "CONTRACT_TITLE", label: "Naziv ugovora", description: "Naslov ugovora." },
+  { key: "CONTRACT_STATUS", label: "Status", description: "Trenutni status ugovora." },
+  { key: "TEMPLATE_NAME", label: "Template", description: "Naziv odabranog templatea." },
+  { key: "SIGNED_ON", label: "Potpisano", description: "Datum potpisa ugovora." },
+  { key: "VALID_FROM", label: "Vrijedi od", description: "Početak važenja ugovora." },
+  { key: "VALID_TO", label: "Vrijedi do", description: "Kraj važenja ugovora." },
+  { key: "COMPANY_NAME", label: "Tvrtka", description: "Naziv tvrtke." },
+  { key: "COMPANY_OIB", label: "OIB", description: "OIB tvrtke." },
+  { key: "COMPANY_HEADQUARTERS", label: "Sjedište", description: "Sjedište tvrtke." },
+  { key: "COMPANY_REPRESENTATIVE", label: "Predstavnik", description: "Predstavnik klijenta." },
+  { key: "COMPANY_PHONE", label: "Telefon", description: "Kontakt telefon." },
+  { key: "COMPANY_EMAIL", label: "Email", description: "Kontakt email." },
+  { key: "SUBJECT", label: "Predmet", description: "Predmet ugovora." },
+  { key: "SCOPE_SUMMARY", label: "Opis / obuhvat", description: "Sažetak opsega ugovora." },
+  { key: "NOTE", label: "Napomena", description: "Dodatne napomene." },
+  { key: "OFFER_LIST", label: "Povezane ponude", description: "Popis povezanih ponuda." },
+  { key: "ANNEX_LIST", label: "Aneksi", description: "Popis aneksa ugovora." },
+]);
 const VEHICLE_SCHEDULE_START_HOUR = 6;
 const VEHICLE_SCHEDULE_END_HOUR = 22;
 const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
@@ -890,6 +917,8 @@ const state = {
   todoTasks: [],
   offers: [],
   purchaseOrders: [],
+  contracts: [],
+  contractTemplates: [],
   vehicles: [],
   legalFrameworks: [],
   learningTests: [],
@@ -965,6 +994,15 @@ const state = {
   offerTemplateModalOpen: false,
   offerLocationPickerOpen: false,
   offerTemplateReferenceCollapsed: false,
+  contractEditorOpen: false,
+  contractTemplateModalOpen: false,
+  activeContractTemplateId: "",
+  contractTemplateReferenceCollapsed: false,
+  contractFilters: {
+    query: "",
+    status: "all",
+    companyId: "all",
+  },
   legalFrameworkFilters: {
     query: "",
     status: "all",
@@ -1951,6 +1989,67 @@ const offerTemplateTitle = document.querySelector("#offer-template-title");
 const offerTemplateWordTitle = document.querySelector("#offer-template-word-title");
 const offerTemplatePlaceholderTitle = document.querySelector("#offer-template-placeholder-title");
 const offerTemplateCopy = document.querySelector("#offer-template-copy");
+const contractModule = document.querySelector("#contract-module");
+const contractSearchInput = document.querySelector("#contract-search");
+const contractFilterStatusInput = document.querySelector("#contract-filter-status");
+const contractFilterCompanyInput = document.querySelector("#contract-filter-company");
+const contractList = document.querySelector("#contract-list");
+const contractEmpty = document.querySelector("#contract-empty");
+const contractOpenFormButton = document.querySelector("#contract-open-form");
+const contractOpenTemplateButton = document.querySelector("#contract-open-template");
+const contractEditorBackdrop = document.querySelector("#contract-editor-backdrop");
+const contractEditorPanel = document.querySelector("#contract-editor-panel");
+const contractEditorCloseButton = document.querySelector("#contract-editor-close");
+const contractEditorBody = contractEditorPanel?.querySelector(".offers-editor-body");
+const contractForm = document.querySelector("#contract-form");
+const contractIdInput = document.querySelector("#contract-id");
+const contractStatusInput = document.querySelector("#contract-status");
+const contractNumberInput = document.querySelector("#contract-number");
+const contractTitleInput = document.querySelector("#contract-title");
+const contractCompanyIdInput = document.querySelector("#contract-company-id");
+const contractTemplateIdInput = document.querySelector("#contract-template-id");
+const contractSignedOnInput = document.querySelector("#contract-signed-on");
+const contractValidFromInput = document.querySelector("#contract-valid-from");
+const contractValidToInput = document.querySelector("#contract-valid-to");
+const contractSubjectInput = document.querySelector("#contract-subject");
+const contractScopeSummaryInput = document.querySelector("#contract-scope-summary");
+const contractNoteInput = document.querySelector("#contract-note");
+const contractCompanyPreview = document.querySelector("#contract-company-preview");
+const contractCompanyPreviewLogo = document.querySelector("#contract-company-preview-logo");
+const contractCompanyPreviewName = document.querySelector("#contract-company-preview-name");
+const contractCompanyPreviewMeta = document.querySelector("#contract-company-preview-meta");
+const contractOffersPicker = document.querySelector("#contract-offers-picker");
+const contractOffersEmpty = document.querySelector("#contract-offers-empty");
+const contractAnnexList = document.querySelector("#contract-annex-list");
+const contractAddAnnexButton = document.querySelector("#contract-add-annex");
+const contractDownloadPdfButton = document.querySelector("#contract-download-pdf");
+const contractDownloadWordButton = document.querySelector("#contract-download-word");
+const contractError = document.querySelector("#contract-error");
+const contractResetButton = document.querySelector("#contract-reset");
+const contractDeleteButton = document.querySelector("#contract-delete");
+const contractTemplateBackdrop = document.querySelector("#contract-template-backdrop");
+const contractTemplatePanel = document.querySelector("#contract-template-panel");
+const contractTemplateCloseButton = document.querySelector("#contract-template-close");
+const contractTemplateBody = contractTemplatePanel?.querySelector(".offer-template-body");
+const contractTemplateList = document.querySelector("#contract-template-list");
+const contractTemplateEmpty = document.querySelector("#contract-template-empty");
+const contractTemplateForm = document.querySelector("#contract-template-form");
+const contractTemplateIdField = document.querySelector("#contract-template-id-field");
+const contractTemplateTitleInput = document.querySelector("#contract-template-title");
+const contractTemplateStatusInput = document.querySelector("#contract-template-status");
+const contractTemplateDescriptionInput = document.querySelector("#contract-template-description");
+const contractTemplateUploadButton = document.querySelector("#contract-template-upload");
+const contractTemplateDownloadButton = document.querySelector("#contract-template-download");
+const contractTemplateRemoveButton = document.querySelector("#contract-template-remove");
+const contractTemplateDeleteButton = document.querySelector("#contract-template-delete");
+const contractTemplateResetButton = document.querySelector("#contract-template-reset");
+const contractTemplateSubmitButton = document.querySelector("#contract-template-submit");
+const contractTemplateFileInput = document.querySelector("#contract-template-file-input");
+const contractTemplateReferenceMeta = document.querySelector("#contract-template-reference-meta");
+const contractTemplatePlaceholderList = document.querySelector("#contract-template-placeholder-list");
+const contractTemplateError = document.querySelector("#contract-template-error");
+const contractTemplateToggleReferenceButton = document.querySelector("#contract-template-toggle-reference");
+const contractTemplateReferenceBody = document.querySelector("#contract-template-reference-body");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
@@ -2337,6 +2436,8 @@ let offerFormSelectedLocationIds = [];
 let offerTemplateReferenceDraft = null;
 let purchaseOrderTemplateReferenceDraft = null;
 let purchaseOrderDocumentDrafts = [];
+let contractAnnexDrafts = [];
+let contractTemplateReferenceDraft = null;
 let lastCommercialDocumentContextKey = "offers";
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
@@ -4031,6 +4132,8 @@ function applySnapshot(payload) {
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
+  state.contracts = payload.contracts ?? [];
+  state.contractTemplates = payload.contractTemplates ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
   state.learningTests = payload.learningTests ?? [];
@@ -4076,6 +4179,12 @@ function applySnapshot(payload) {
     if (state.dashboardBuilder.draftMode === "edit") {
       closeDashboardBuilder();
     }
+  }
+  if (
+    state.activeContractTemplateId
+    && !state.contractTemplates.some((item) => String(item.id) === String(state.activeContractTemplateId))
+  ) {
+    state.activeContractTemplateId = state.contractTemplates[0]?.id ?? "";
   }
   if (!state.absenceEntries.some((item) => String(item.id) === String(state.activeAbsenceId))) {
     state.activeAbsenceId = "";
@@ -5478,6 +5587,7 @@ function renderModuleView() {
   const isCloudModule = state.activeModuleItem === "cloud";
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
+  const isContractModule = state.activeModuleItem === "contract";
   const isPeriodicsModule = state.activeModuleItem === "periodics";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
@@ -5492,6 +5602,7 @@ function renderModuleView() {
     && !isDocumentsModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
+    && !isContractModule
     && !isSafetyAuthorizationModule
     && !isServiceCatalogModule
     && !isSettingsModule
@@ -5559,6 +5670,10 @@ function renderModuleView() {
     offersModule.hidden = !isOffersModule;
   }
 
+  if (contractModule) {
+    contractModule.hidden = !isContractModule;
+  }
+
   if (periodicsModule) {
     periodicsModule.hidden = !isPeriodicsModule;
   }
@@ -5609,6 +5724,10 @@ function renderModuleView() {
 
   if (isOffersModule) {
     renderOffersModule();
+  }
+
+  if (isContractModule) {
+    renderContractModule();
   }
 
   if (isPeriodicsModule) {
@@ -16146,6 +16265,8 @@ function enhanceOfferChrome() {
   decorateOfferActionIcon(offerPreviewButton, "preview");
   decorateOfferActionIcon(offerDownloadPdfButton, "download");
   decorateOfferActionIcon(offerSendEmailButton, "mail");
+  decorateOfferActionIcon(contractDownloadPdfButton, "download");
+  decorateOfferActionIcon(contractDownloadWordButton, "document");
 }
 
 function scrollUserEditorToTop() {
@@ -41753,6 +41874,793 @@ function renderOffersModule() {
   syncOfferTotals();
 }
 
+function getContractStatusLabel(value = "") {
+  return getOptionLabel(CONTRACT_STATUS_OPTIONS, value || "draft");
+}
+
+function getContractTemplateStatusLabel(value = "") {
+  return getOptionLabel(CONTRACT_TEMPLATE_STATUS_OPTIONS, value || "active");
+}
+
+function getActiveContractById(contractId = "") {
+  return (state.contracts ?? []).find((item) => String(item.id) === String(contractId)) ?? null;
+}
+
+function getActiveContractTemplateById(templateId = "") {
+  return (state.contractTemplates ?? []).find((item) => String(item.id) === String(templateId)) ?? null;
+}
+
+function createEmptyContractAnnexDraft(initial = {}) {
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    annexNumber: String(initial.annexNumber || "").trim(),
+    title: String(initial.title || "").trim(),
+    effectiveDate: String(initial.effectiveDate || "").trim(),
+    note: String(initial.note || "").trim(),
+  };
+}
+
+function setContractAnnexDrafts(items = []) {
+  contractAnnexDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createEmptyContractAnnexDraft(item))
+    .filter((item) => item.annexNumber || item.title || item.effectiveDate || item.note);
+
+  if (contractAnnexDrafts.length === 0) {
+    contractAnnexDrafts = [createEmptyContractAnnexDraft({})];
+  }
+}
+
+function buildContractAnnexPayload() {
+  return contractAnnexDrafts
+    .map((item) => createEmptyContractAnnexDraft(item))
+    .filter((item) => item.annexNumber || item.title || item.effectiveDate || item.note);
+}
+
+function getContractSelectedOfferIds() {
+  if (!contractOffersPicker) {
+    return [];
+  }
+
+  return Array.from(
+    contractOffersPicker.querySelectorAll('input[name="contract-linked-offer-id"]:checked'),
+  )
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
+function buildContractDraftPreviewData() {
+  const companyId = String(contractCompanyIdInput?.value || "").trim();
+  const company = getCompany(companyId) || {};
+  const template = getActiveContractTemplateById(contractTemplateIdInput?.value || "") || {};
+  const linkedOfferIds = getContractSelectedOfferIds();
+  const linkedOffers = linkedOfferIds
+    .map((offerId) => (state.offers ?? []).find((item) => String(item.id) === String(offerId)) ?? null)
+    .filter(Boolean)
+    .map((offer) => ({
+      id: String(offer.id || ""),
+      offerNumber: String(offer.offerNumber || "").trim(),
+      title: String(offer.title || "").trim(),
+      status: String(offer.status || "").trim(),
+      total: Number(offer.total ?? 0) || 0,
+      currency: String(offer.currency || "EUR").trim() || "EUR",
+      offerDate: String(offer.offerDate || "").trim(),
+    }));
+
+  return {
+    id: String(contractIdInput?.value || "").trim(),
+    companyId,
+    companyName: company.name || "",
+    companyOib: company.oib || "",
+    headquarters: company.headquarters || "",
+    representative: company.representative || "",
+    contactPhone: company.contactPhone || "",
+    contactEmail: company.contactEmail || "",
+    title: String(contractTitleInput?.value || "").trim(),
+    contractNumber: String(contractNumberInput?.value || "").trim() || "Dodijeljen nakon spremanja",
+    status: String(contractStatusInput?.value || "draft").trim(),
+    templateId: String(contractTemplateIdInput?.value || "").trim(),
+    templateTitle: template.title || "",
+    signedOn: String(contractSignedOnInput?.value || "").trim(),
+    validFrom: String(contractValidFromInput?.value || "").trim(),
+    validTo: String(contractValidToInput?.value || "").trim(),
+    subject: String(contractSubjectInput?.value || "").trim(),
+    scopeSummary: String(contractScopeSummaryInput?.value || "").trim(),
+    note: String(contractNoteInput?.value || "").trim(),
+    linkedOfferIds,
+    linkedOfferNumbers: linkedOffers.map((offer) => offer.offerNumber).filter(Boolean),
+    linkedOffers,
+    annexes: buildContractAnnexPayload(),
+  };
+}
+
+function renderContractTemplatePlaceholderList(contract = buildContractDraftPreviewData()) {
+  if (!contractTemplatePlaceholderList) {
+    return;
+  }
+
+  const payload = {
+    CONTRACT_NUMBER: contract.contractNumber || "",
+    CONTRACT_TITLE: contract.title || "",
+    CONTRACT_STATUS: getContractStatusLabel(contract.status || "draft"),
+    TEMPLATE_NAME: contract.templateTitle || "",
+    SIGNED_ON: contract.signedOn ? formatDate(contract.signedOn) : "",
+    VALID_FROM: contract.validFrom ? formatDate(contract.validFrom) : "",
+    VALID_TO: contract.validTo ? formatDate(contract.validTo) : "",
+    COMPANY_NAME: contract.companyName || "",
+    COMPANY_OIB: contract.companyOib || "",
+    COMPANY_HEADQUARTERS: contract.headquarters || "",
+    COMPANY_REPRESENTATIVE: contract.representative || "",
+    COMPANY_PHONE: contract.contactPhone || "",
+    COMPANY_EMAIL: contract.contactEmail || "",
+    SUBJECT: contract.subject || "",
+    SCOPE_SUMMARY: contract.scopeSummary || "",
+    NOTE: contract.note || "",
+    OFFER_LIST: (contract.linkedOffers ?? []).map((offer, index) => (
+      `${index + 1}. ${offer.offerNumber || "Ponuda"}${offer.title ? ` | ${offer.title}` : ""}`
+    )).join("\n") || "Nema povezanih ponuda",
+    ANNEX_LIST: (contract.annexes ?? []).map((annex, index) => (
+      `${index + 1}. ${annex.annexNumber || `Aneks ${index + 1}`}${annex.title ? ` | ${annex.title}` : ""}`
+    )).join("\n") || "Bez anexa",
+  };
+
+  contractTemplatePlaceholderList.replaceChildren(...CONTRACT_TEMPLATE_PLACEHOLDER_DEFINITIONS.map((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "offer-template-placeholder-chip";
+    button.innerHTML = `
+      <strong>{{${escapeHtml(entry.key)}}}</strong>
+      <span>${escapeHtml(entry.label)}</span>
+      <small>${escapeHtml(entry.description)}</small>
+    `;
+    button.addEventListener("click", () => {
+      const token = `{{${entry.key}}}`;
+      navigator.clipboard?.writeText(token)
+        .then(() => {
+          if (contractTemplateError) {
+            contractTemplateError.textContent = `Kopirano ${token}`;
+          }
+        })
+        .catch(() => {
+          if (contractTemplateError) {
+            contractTemplateError.textContent = `Ne mogu kopirati ${token}`;
+          }
+        });
+    });
+    const preview = document.createElement("code");
+    preview.className = "offer-template-placeholder-preview";
+    preview.textContent = payload[entry.key] || "—";
+    button.append(preview);
+    return button;
+  }));
+}
+
+function renderContractTemplateReferenceMeta() {
+  if (!contractTemplateReferenceMeta) {
+    return;
+  }
+
+  const currentDraft = contractTemplateReferenceDraft;
+  if (!currentDraft?.fileName) {
+    const empty = document.createElement("div");
+    empty.className = "offer-template-reference-empty";
+    empty.textContent = "Još nema učitanog Word predloška za ugovor.";
+    contractTemplateReferenceMeta.replaceChildren(empty);
+    if (contractTemplateDownloadButton) {
+      contractTemplateDownloadButton.disabled = true;
+    }
+    if (contractTemplateRemoveButton) {
+      contractTemplateRemoveButton.disabled = true;
+    }
+    return;
+  }
+
+  const card = document.createElement("article");
+  card.className = "module-attachment-row";
+
+  const copy = document.createElement("div");
+  copy.className = "module-attachment-copy";
+  const title = document.createElement("strong");
+  title.textContent = currentDraft.fileName;
+  const meta = document.createElement("span");
+  meta.textContent = [
+    currentDraft.fileType || "",
+    formatFileSize(currentDraft.fileSize),
+    currentDraft.updatedAt ? formatCompactDateTime(currentDraft.updatedAt) : "",
+  ].filter(Boolean).join(" | ");
+  copy.append(title, meta);
+  card.append(copy);
+  contractTemplateReferenceMeta.replaceChildren(card);
+
+  if (contractTemplateDownloadButton) {
+    contractTemplateDownloadButton.disabled = false;
+  }
+  if (contractTemplateRemoveButton) {
+    contractTemplateRemoveButton.disabled = false;
+  }
+}
+
+function renderContractTemplateList() {
+  if (!contractTemplateList || !contractTemplateEmpty) {
+    return;
+  }
+
+  const visibleTemplates = sortContractTemplates(filterContractTemplates(state.contractTemplates ?? [], {
+    query: "",
+    status: "all",
+  }));
+
+  contractTemplateList.replaceChildren(...visibleTemplates.map((template) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "contract-template-row";
+    row.classList.toggle("is-active", String(template.id) === String(state.activeContractTemplateId));
+    row.innerHTML = `
+      <strong>${escapeHtml(template.title || "Template ugovora")}</strong>
+      <span>${escapeHtml(getContractTemplateStatusLabel(template.status || "active"))}</span>
+      <small>${escapeHtml(template.referenceDocument?.fileName || "Bez Word predloška")}</small>
+    `;
+    row.addEventListener("click", () => {
+      hydrateContractTemplateForm(template);
+    });
+    return row;
+  }));
+
+  contractTemplateEmpty.hidden = visibleTemplates.length !== 0;
+}
+
+function rebuildContractCompanyOptions(selectedValue = "") {
+  if (!contractCompanyIdInput) {
+    return;
+  }
+
+  replaceSelectOptions(contractCompanyIdInput, [
+    { value: "", label: state.companies.length > 0 ? "Odaberi tvrtku" : "Nema tvrtki" },
+    ...state.companies
+      .slice()
+      .sort((left, right) => (left.name || "").localeCompare(right.name || "", "hr"))
+      .map((company) => ({
+        value: company.id,
+        label: [company.name, company.oib ? `OIB ${company.oib}` : ""].filter(Boolean).join(" · "),
+      })),
+  ], selectedValue);
+}
+
+function rebuildContractTemplateOptions(selectedValue = "") {
+  if (!contractTemplateIdInput) {
+    return;
+  }
+
+  replaceSelectOptions(contractTemplateIdInput, [
+    { value: "", label: state.contractTemplates.length > 0 ? "Odaberi template" : "Nema templatea" },
+    ...sortContractTemplates(state.contractTemplates ?? []).map((template) => ({
+      value: template.id,
+      label: [template.title, getContractTemplateStatusLabel(template.status)].filter(Boolean).join(" · "),
+    })),
+  ], selectedValue);
+}
+
+function rebuildContractFilterOptions() {
+  if (contractFilterStatusInput) {
+    replaceSelectOptions(contractFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...CONTRACT_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+    ], state.contractFilters.status || "all");
+  }
+
+  if (contractFilterCompanyInput) {
+    replaceSelectOptions(contractFilterCompanyInput, [
+      { value: "all", label: "Sve tvrtke" },
+      ...state.companies
+        .slice()
+        .sort((left, right) => (left.name || "").localeCompare(right.name || "", "hr"))
+        .map((company) => ({ value: company.id, label: company.name || "Tvrtka" })),
+    ], state.contractFilters.companyId || "all");
+  }
+}
+
+function renderContractOffersPicker(selectedIds = getContractSelectedOfferIds()) {
+  if (!contractOffersPicker || !contractOffersEmpty) {
+    return;
+  }
+
+  const companyId = String(contractCompanyIdInput?.value || "").trim();
+  const offers = sortOffers((state.offers ?? []).filter((item) => String(item.companyId) === companyId));
+  const selectedSet = new Set((Array.isArray(selectedIds) ? selectedIds : []).map((value) => String(value)));
+
+  contractOffersPicker.replaceChildren(...offers.map((offer) => {
+    const option = document.createElement("label");
+    option.className = "contract-offer-option";
+    option.classList.toggle("is-selected", selectedSet.has(String(offer.id)));
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "contract-linked-offer-id";
+    checkbox.value = String(offer.id);
+    checkbox.checked = selectedSet.has(String(offer.id));
+    checkbox.addEventListener("change", () => {
+      option.classList.toggle("is-selected", checkbox.checked);
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+
+    const copy = document.createElement("span");
+    copy.className = "contract-offer-option-copy";
+    const title = document.createElement("strong");
+    title.textContent = [offer.offerNumber || "Ponuda", offer.title || ""].filter(Boolean).join(" · ");
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getOptionLabel(OFFER_STATUS_OPTIONS, offer.status || "draft"),
+      offer.offerDate ? formatDate(offer.offerDate) : "",
+      formatCurrencyAmount(offer.total || 0, offer.currency || "EUR"),
+    ].filter(Boolean).join(" | ");
+    copy.append(title, meta);
+
+    option.append(checkbox, copy);
+    return option;
+  }));
+
+  contractOffersEmpty.hidden = offers.length !== 0;
+}
+
+function renderContractAnnexList() {
+  if (!contractAnnexList) {
+    return;
+  }
+
+  contractAnnexList.replaceChildren(...contractAnnexDrafts.map((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "contract-annex-row";
+
+    const numberField = document.createElement("label");
+    numberField.className = "field";
+    numberField.innerHTML = "<span>Broj anexa</span>";
+    const numberInput = document.createElement("input");
+    numberInput.value = entry.annexNumber;
+    numberInput.placeholder = `Anex ${index + 1}`;
+    numberInput.addEventListener("input", () => {
+      entry.annexNumber = numberInput.value;
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+    numberField.append(numberInput);
+
+    const titleField = document.createElement("label");
+    titleField.className = "field";
+    titleField.innerHTML = "<span>Naziv</span>";
+    const titleInput = document.createElement("input");
+    titleInput.value = entry.title;
+    titleInput.placeholder = "Opis anexa";
+    titleInput.addEventListener("input", () => {
+      entry.title = titleInput.value;
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+    titleField.append(titleInput);
+
+    const dateField = document.createElement("label");
+    dateField.className = "field";
+    dateField.innerHTML = "<span>Datum</span>";
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.value = entry.effectiveDate;
+    dateInput.addEventListener("change", () => {
+      entry.effectiveDate = dateInput.value;
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+    dateField.append(dateInput);
+
+    const noteField = document.createElement("label");
+    noteField.className = "field field-span-full";
+    noteField.innerHTML = "<span>Napomena</span>";
+    const noteInput = document.createElement("textarea");
+    noteInput.rows = 2;
+    noteInput.value = entry.note;
+    noteInput.placeholder = "Što mijenja ovaj anex...";
+    noteInput.addEventListener("input", () => {
+      entry.note = noteInput.value;
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+    noteField.append(noteInput);
+
+    const actions = document.createElement("div");
+    actions.className = "contract-annex-actions";
+    const removeButton = createIconActionButton("Makni", "trash", "card-danger", () => {
+      contractAnnexDrafts = contractAnnexDrafts.filter((item) => item.id !== entry.id);
+      if (contractAnnexDrafts.length === 0) {
+        contractAnnexDrafts = [createEmptyContractAnnexDraft({})];
+      }
+      renderContractAnnexList();
+      if (state.contractTemplateModalOpen) {
+        renderContractTemplatePlaceholderList();
+      }
+    });
+    actions.append(removeButton);
+
+    row.append(numberField, titleField, dateField, actions, noteField);
+    return row;
+  }));
+}
+
+function syncContractEditorModal() {
+  const isOpen = state.contractEditorOpen;
+  contractEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-offer-editor-open", isOpen);
+  if (contractEditorPanel) {
+    contractEditorPanel.hidden = !isOpen;
+    contractEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (contractEditorBackdrop) {
+    contractEditorBackdrop.hidden = !isOpen;
+  }
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      contractEditorBody?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function syncContractTemplateModal() {
+  const isOpen = state.contractTemplateModalOpen;
+  contractTemplatePanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-offer-template-open", isOpen);
+  if (contractTemplatePanel) {
+    contractTemplatePanel.hidden = !isOpen;
+    contractTemplatePanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (contractTemplateBackdrop) {
+    contractTemplateBackdrop.hidden = !isOpen;
+  }
+  if (contractTemplateReferenceBody) {
+    contractTemplateReferenceBody.hidden = Boolean(state.contractTemplateReferenceCollapsed);
+  }
+  if (contractTemplateToggleReferenceButton) {
+    contractTemplateToggleReferenceButton.textContent = state.contractTemplateReferenceCollapsed ? "Prikaži" : "Sakrij";
+  }
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      contractTemplateBody?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function openContractEditor() {
+  state.contractEditorOpen = true;
+  syncContractEditorModal();
+}
+
+function closeContractEditor({ reset = false } = {}) {
+  state.contractEditorOpen = false;
+  syncContractEditorModal();
+  if (reset) {
+    resetContractForm();
+  }
+}
+
+function dismissContractEditor() {
+  closeContractEditor({ reset: true });
+  renderContractModule();
+}
+
+function openContractTemplateModal() {
+  state.contractTemplateModalOpen = true;
+  syncContractTemplateModal();
+}
+
+function closeContractTemplateModal() {
+  state.contractTemplateModalOpen = false;
+  syncContractTemplateModal();
+}
+
+function buildContractPayload() {
+  return {
+    companyId: String(contractCompanyIdInput?.value || "").trim(),
+    templateId: String(contractTemplateIdInput?.value || "").trim(),
+    title: String(contractTitleInput?.value || "").trim(),
+    contractNumber: String(contractNumberInput?.value || "").trim(),
+    status: String(contractStatusInput?.value || "draft").trim(),
+    signedOn: String(contractSignedOnInput?.value || "").trim(),
+    validFrom: String(contractValidFromInput?.value || "").trim(),
+    validTo: String(contractValidToInput?.value || "").trim(),
+    subject: String(contractSubjectInput?.value || "").trim(),
+    scopeSummary: String(contractScopeSummaryInput?.value || "").trim(),
+    note: String(contractNoteInput?.value || "").trim(),
+    linkedOfferIds: getContractSelectedOfferIds(),
+    annexes: buildContractAnnexPayload(),
+  };
+}
+
+function resetContractForm() {
+  contractForm?.reset();
+  if (contractIdInput) {
+    contractIdInput.value = "";
+  }
+  if (contractStatusInput) {
+    contractStatusInput.value = "draft";
+  }
+  rebuildContractCompanyOptions("");
+  rebuildContractTemplateOptions("");
+  setContractAnnexDrafts([]);
+  renderContractAnnexList();
+  renderContractOffersPicker([]);
+  syncCompanySelectionPreview(
+    "",
+    contractCompanyPreview,
+    contractCompanyPreviewLogo,
+    contractCompanyPreviewName,
+    contractCompanyPreviewMeta,
+  );
+  if (contractDeleteButton) {
+    contractDeleteButton.hidden = true;
+  }
+  if (contractDownloadPdfButton) {
+    contractDownloadPdfButton.disabled = true;
+  }
+  if (contractDownloadWordButton) {
+    contractDownloadWordButton.disabled = true;
+  }
+  if (contractError) {
+    contractError.textContent = "";
+  }
+}
+
+function hydrateContractForm(contract) {
+  if (!contract) {
+    resetContractForm();
+    return;
+  }
+
+  if (contractIdInput) {
+    contractIdInput.value = String(contract.id || "");
+  }
+  rebuildContractCompanyOptions(contract.companyId || "");
+  rebuildContractTemplateOptions(contract.templateId || "");
+  if (contractStatusInput) {
+    contractStatusInput.value = contract.status || "draft";
+  }
+  if (contractNumberInput) {
+    contractNumberInput.value = contract.contractNumber || "";
+  }
+  if (contractTitleInput) {
+    contractTitleInput.value = contract.title || "";
+  }
+  if (contractSignedOnInput) {
+    contractSignedOnInput.value = contract.signedOn || "";
+  }
+  if (contractValidFromInput) {
+    contractValidFromInput.value = contract.validFrom || "";
+  }
+  if (contractValidToInput) {
+    contractValidToInput.value = contract.validTo || "";
+  }
+  if (contractSubjectInput) {
+    contractSubjectInput.value = contract.subject || "";
+  }
+  if (contractScopeSummaryInput) {
+    contractScopeSummaryInput.value = contract.scopeSummary || "";
+  }
+  if (contractNoteInput) {
+    contractNoteInput.value = contract.note || "";
+  }
+  setContractAnnexDrafts(contract.annexes ?? []);
+  renderContractAnnexList();
+  renderContractOffersPicker(contract.linkedOfferIds ?? []);
+  syncCompanySelectionPreview(
+    contract.companyId,
+    contractCompanyPreview,
+    contractCompanyPreviewLogo,
+    contractCompanyPreviewName,
+    contractCompanyPreviewMeta,
+  );
+  if (contractDeleteButton) {
+    contractDeleteButton.hidden = false;
+  }
+  if (contractDownloadPdfButton) {
+    contractDownloadPdfButton.disabled = false;
+  }
+  if (contractDownloadWordButton) {
+    contractDownloadWordButton.disabled = false;
+  }
+  if (contractError) {
+    contractError.textContent = "";
+  }
+  openContractEditor();
+}
+
+function resetContractTemplateForm() {
+  contractTemplateForm?.reset();
+  if (contractTemplateIdField) {
+    contractTemplateIdField.value = "";
+  }
+  if (contractTemplateStatusInput) {
+    contractTemplateStatusInput.value = "active";
+  }
+  contractTemplateReferenceDraft = null;
+  if (contractTemplateDeleteButton) {
+    contractTemplateDeleteButton.hidden = true;
+  }
+  renderContractTemplateReferenceMeta();
+  renderContractTemplatePlaceholderList();
+  renderContractTemplateList();
+}
+
+function hydrateContractTemplateForm(template = null) {
+  state.activeContractTemplateId = template?.id || "";
+  if (contractTemplateIdField) {
+    contractTemplateIdField.value = template?.id || "";
+  }
+  if (contractTemplateTitleInput) {
+    contractTemplateTitleInput.value = template?.title || "";
+  }
+  if (contractTemplateStatusInput) {
+    contractTemplateStatusInput.value = template?.status || "active";
+  }
+  if (contractTemplateDescriptionInput) {
+    contractTemplateDescriptionInput.value = template?.description || "";
+  }
+  contractTemplateReferenceDraft = template?.referenceDocument
+    ? createModuleAttachmentDraft({ ...template.referenceDocument, isPersisted: true })
+    : null;
+  if (contractTemplateDeleteButton) {
+    contractTemplateDeleteButton.hidden = !template;
+  }
+  renderContractTemplateReferenceMeta();
+  renderContractTemplatePlaceholderList();
+  renderContractTemplateList();
+}
+
+async function saveContractTemplateReference(file) {
+  const [documentPayload] = await buildWorkOrderDocumentUploadPayload([file]);
+  contractTemplateReferenceDraft = createModuleAttachmentDraft({
+    ...documentPayload,
+    updatedAt: new Date().toISOString(),
+  });
+  renderContractTemplateReferenceMeta();
+}
+
+async function downloadContractPdf(contractId) {
+  const { blob, fileName } = await apiBinaryRequest(`/contracts/${contractId}/export-pdf`, {
+    method: "POST",
+  });
+  triggerBlobDownload(blob, fileName || "ugovor.pdf");
+}
+
+async function downloadContractWord(contractId) {
+  const { blob, fileName } = await apiBinaryRequest(`/contracts/${contractId}/export-word`, {
+    method: "POST",
+  });
+  triggerBlobDownload(blob, fileName || "ugovor.docx");
+}
+
+function renderContractModule() {
+  if (!contractModule || !contractList || !contractEmpty) {
+    return;
+  }
+
+  if (contractSearchInput && contractSearchInput.value !== (state.contractFilters.query || "")) {
+    contractSearchInput.value = state.contractFilters.query || "";
+  }
+  rebuildContractFilterOptions();
+  rebuildContractCompanyOptions(contractCompanyIdInput?.value || "");
+  rebuildContractTemplateOptions(contractTemplateIdInput?.value || "");
+
+  const visibleContracts = sortContracts(filterContracts(state.contracts ?? [], {
+    query: state.contractFilters.query || "",
+    status: state.contractFilters.status || "all",
+    companyId: state.contractFilters.companyId || "all",
+  }));
+
+  contractList.replaceChildren(...visibleContracts.map((contract) => {
+    const card = document.createElement("article");
+    card.className = "offer-list-card contract-list-card";
+    card.classList.add(`is-${slugifyValue(contract.status || "draft")}`);
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+
+    const head = document.createElement("div");
+    head.className = "offer-list-card-head";
+    const body = document.createElement("div");
+    body.className = "offer-list-card-body";
+
+    const copy = document.createElement("div");
+    copy.className = "offer-list-card-copy";
+    const number = document.createElement("span");
+    number.className = "offer-list-card-number";
+    number.textContent = contract.contractNumber || "Bez broja";
+    const title = document.createElement("h4");
+    title.className = "offer-list-card-title";
+    title.textContent = contract.title || "Novi ugovor";
+    copy.append(number, title);
+
+    const meta = document.createElement("p");
+    meta.className = "offer-list-card-meta";
+    meta.textContent = [
+      contract.companyName || "",
+      contract.templateTitle || "Bez templatea",
+      contract.validTo ? `vrijedi do ${formatDate(contract.validTo)}` : "",
+    ].filter(Boolean).join(" · ");
+
+    const chips = document.createElement("div");
+    chips.className = "offer-list-card-chips";
+    chips.append(
+      createMetaPill(getContractStatusLabel(contract.status || "draft"), `is-${slugifyValue(contract.status || "draft")}`),
+      ...(contract.linkedOfferIds?.length ? [createMetaPill(`${contract.linkedOfferIds.length} ponuda`, "is-muted")] : []),
+      ...(contract.annexes?.length ? [createMetaPill(`${contract.annexes.length} anex`, "is-attention")] : []),
+    );
+
+    body.append(copy, meta, chips);
+    head.append(body);
+
+    const footer = document.createElement("div");
+    footer.className = "offer-list-card-footer";
+    const footerLeft = document.createElement("div");
+    footerLeft.className = "offer-list-card-footer-copy";
+    footerLeft.append(createListLine(contract.subject || "Bez predmeta ugovora", "list-secondary"));
+
+    const actions = document.createElement("div");
+    actions.className = "offer-list-card-actions";
+    actions.append(
+      createIconActionButton("Word", "document", "", () => {
+        void runMutation(() => downloadContractWord(contract.id), contractError);
+      }),
+      createIconActionButton("PDF", "download", "", () => {
+        void runMutation(() => downloadContractPdf(contract.id), contractError);
+      }),
+    );
+
+    footer.append(footerLeft, actions);
+    card.append(head, footer);
+
+    const openContract = () => {
+      hydrateContractForm(contract);
+    };
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      openContract();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openContract();
+    });
+    return card;
+  }));
+
+  contractEmpty.hidden = visibleContracts.length !== 0;
+  if (visibleContracts.length === 0) {
+    const emptyCard = document.createElement("div");
+    emptyCard.className = "offers-empty-card";
+    emptyCard.textContent = "Nema ugovora za odabrane filtere. Otvori novi ugovor ili proširi pretragu.";
+    contractList.replaceChildren(emptyCard);
+  }
+
+  renderContractTemplateList();
+  renderContractTemplateReferenceMeta();
+  renderContractTemplatePlaceholderList();
+  if (contractDeleteButton) {
+    contractDeleteButton.hidden = !String(contractIdInput?.value || "").trim();
+  }
+  if (contractDownloadPdfButton) {
+    contractDownloadPdfButton.disabled = !String(contractIdInput?.value || "").trim();
+  }
+  if (contractDownloadWordButton) {
+    contractDownloadWordButton.disabled = !String(contractIdInput?.value || "").trim();
+  }
+  syncContractEditorModal();
+  syncContractTemplateModal();
+}
+
 function getVehicleStatusLabel(value) {
   if (value === "reserved") {
     return "Rezervirano";
@@ -54262,6 +55170,235 @@ purchaseOrderDocumentsInput?.addEventListener("change", () => {
 
   void runMutation(() => queuePurchaseOrderDocuments(files), offerError).then(() => {
     purchaseOrderDocumentsInput.value = "";
+  });
+});
+
+contractOpenFormButton?.addEventListener("click", () => {
+  resetContractForm();
+  renderContractModule();
+  openContractEditor();
+  requestAnimationFrame(() => {
+    contractTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+contractSearchInput?.addEventListener("input", () => {
+  state.contractFilters.query = contractSearchInput.value.trim();
+  renderContractModule();
+});
+
+contractFilterStatusInput?.addEventListener("change", () => {
+  state.contractFilters.status = contractFilterStatusInput.value || "all";
+  renderContractModule();
+});
+
+contractFilterCompanyInput?.addEventListener("change", () => {
+  state.contractFilters.companyId = contractFilterCompanyInput.value || "all";
+  renderContractModule();
+});
+
+contractCompanyIdInput?.addEventListener("change", () => {
+  syncCompanySelectionPreview(
+    contractCompanyIdInput.value,
+    contractCompanyPreview,
+    contractCompanyPreviewLogo,
+    contractCompanyPreviewName,
+    contractCompanyPreviewMeta,
+  );
+  renderContractOffersPicker([]);
+  if (state.contractTemplateModalOpen) {
+    renderContractTemplatePlaceholderList();
+  }
+});
+
+contractTemplateIdInput?.addEventListener("change", () => {
+  if (state.contractTemplateModalOpen) {
+    renderContractTemplatePlaceholderList();
+  }
+});
+
+contractForm?.addEventListener("input", () => {
+  if (state.contractTemplateModalOpen) {
+    renderContractTemplatePlaceholderList();
+  }
+});
+
+contractAddAnnexButton?.addEventListener("click", () => {
+  contractAnnexDrafts.push(createEmptyContractAnnexDraft({}));
+  renderContractAnnexList();
+});
+
+contractResetButton?.addEventListener("click", () => {
+  resetContractForm();
+  renderContractModule();
+  openContractEditor();
+});
+
+contractForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(contractIdInput?.value);
+  const path = isEditing ? `/contracts/${contractIdInput.value}` : "/contracts";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildContractPayload(),
+  }), contractError).then((success) => {
+    if (success) {
+      closeContractEditor({ reset: true });
+      renderContractModule();
+    }
+  });
+});
+
+contractDeleteButton?.addEventListener("click", () => {
+  const contractId = String(contractIdInput?.value || "").trim();
+  if (!contractId || !window.confirm("Obrisati ovaj ugovor?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/contracts/${contractId}`, {
+    method: "DELETE",
+  }), contractError).then((success) => {
+    if (success) {
+      closeContractEditor({ reset: true });
+      renderContractModule();
+    }
+  });
+});
+
+contractEditorCloseButton?.addEventListener("click", () => {
+  dismissContractEditor();
+});
+
+contractEditorBackdrop?.addEventListener("click", () => {
+  dismissContractEditor();
+});
+
+contractDownloadPdfButton?.addEventListener("click", () => {
+  const contractId = String(contractIdInput?.value || "").trim();
+  if (!contractId) {
+    return;
+  }
+  void runMutation(() => downloadContractPdf(contractId), contractError);
+});
+
+contractDownloadWordButton?.addEventListener("click", () => {
+  const contractId = String(contractIdInput?.value || "").trim();
+  if (!contractId) {
+    return;
+  }
+  void runMutation(() => downloadContractWord(contractId), contractError);
+});
+
+contractOpenTemplateButton?.addEventListener("click", () => {
+  if (contractTemplateError) {
+    contractTemplateError.textContent = "";
+  }
+  if (!state.activeContractTemplateId && state.contractTemplates.length > 0) {
+    hydrateContractTemplateForm(state.contractTemplates[0]);
+  } else if (!state.activeContractTemplateId) {
+    resetContractTemplateForm();
+  }
+  openContractTemplateModal();
+  renderContractModule();
+});
+
+contractTemplateCloseButton?.addEventListener("click", () => {
+  closeContractTemplateModal();
+});
+
+contractTemplateBackdrop?.addEventListener("click", () => {
+  closeContractTemplateModal();
+});
+
+contractTemplateToggleReferenceButton?.addEventListener("click", () => {
+  state.contractTemplateReferenceCollapsed = !state.contractTemplateReferenceCollapsed;
+  syncContractTemplateModal();
+});
+
+contractTemplateResetButton?.addEventListener("click", () => {
+  state.activeContractTemplateId = "";
+  resetContractTemplateForm();
+});
+
+contractTemplateUploadButton?.addEventListener("click", () => {
+  if (contractTemplateFileInput) {
+    contractTemplateFileInput.accept = OFFER_TEMPLATE_ACCEPT_LABEL;
+    contractTemplateFileInput.click();
+  }
+});
+
+contractTemplateFileInput?.addEventListener("change", () => {
+  const [file] = Array.from(contractTemplateFileInput.files ?? []);
+  if (!file) {
+    return;
+  }
+
+  void runMutation(() => saveContractTemplateReference(file), contractTemplateError).then(() => {
+    contractTemplateFileInput.value = "";
+  });
+});
+
+contractTemplateDownloadButton?.addEventListener("click", () => {
+  if (contractTemplateReferenceDraft) {
+    triggerModuleAttachmentDownload(contractTemplateReferenceDraft);
+  }
+});
+
+contractTemplateRemoveButton?.addEventListener("click", () => {
+  contractTemplateReferenceDraft = null;
+  renderContractTemplateReferenceMeta();
+});
+
+contractTemplateDeleteButton?.addEventListener("click", () => {
+  const templateId = String(contractTemplateIdField?.value || "").trim();
+  if (!templateId || !window.confirm("Obrisati ovaj template ugovora?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/contract-templates/${templateId}`, {
+    method: "DELETE",
+  }), contractTemplateError).then((success) => {
+    if (success) {
+      state.activeContractTemplateId = "";
+      resetContractTemplateForm();
+      renderContractModule();
+    }
+  });
+});
+
+contractTemplateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const templateId = String(contractTemplateIdField?.value || "").trim();
+  const isEditing = Boolean(templateId);
+  const path = isEditing ? `/contract-templates/${templateId}` : "/contract-templates";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: {
+      title: String(contractTemplateTitleInput?.value || "").trim(),
+      description: String(contractTemplateDescriptionInput?.value || "").trim(),
+      status: String(contractTemplateStatusInput?.value || "active").trim(),
+      referenceDocument: contractTemplateReferenceDraft
+        ? serializeModuleAttachmentDraft(contractTemplateReferenceDraft)
+        : null,
+    },
+  }), contractTemplateError).then((success) => {
+    if (!success) {
+      return;
+    }
+
+    const matchingTemplate = sortContractTemplates(state.contractTemplates ?? []).find((item) => (
+      String(item.title || "").trim() === String(contractTemplateTitleInput?.value || "").trim()
+    )) || null;
+    if (matchingTemplate) {
+      hydrateContractTemplateForm(matchingTemplate);
+    } else {
+      resetContractTemplateForm();
+    }
+    renderContractModule();
   });
 });
 

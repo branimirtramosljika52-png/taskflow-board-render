@@ -4103,6 +4103,246 @@
               </div>
             </section>
 
+            <section id="contract-module" class="offers-module contract-module" hidden>
+              <div class="offers-layout">
+                <section class="panel offers-list-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Contracts</p>
+                      <h3>Popis ugovora</h3>
+                    </div>
+                    <div class="offers-panel-actions">
+                      <button id="contract-open-template" type="button" class="ghost-button">Templatei ugovora</button>
+                      <button id="contract-open-form" type="button" class="primary-button">+ Novi ugovor</button>
+                    </div>
+                  </div>
+
+                  <div class="offers-filters contract-filters">
+                    <label class="field">
+                      <span>Pretraga</span>
+                      <input id="contract-search" type="search" placeholder="Broj ugovora, tvrtka, template, predmet..." />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="contract-filter-status"></select>
+                    </label>
+                    <label class="field">
+                      <span>Tvrtka</span>
+                      <select id="contract-filter-company"></select>
+                    </label>
+                  </div>
+
+                  <div id="contract-list" class="offers-list"></div>
+                  <p id="contract-empty" class="helper-copy" hidden>Nema ugovora za prikaz.</p>
+                </section>
+
+                <div id="contract-editor-backdrop" class="offer-editor-backdrop" hidden></div>
+                <section id="contract-editor-panel" class="panel offers-editor-panel" hidden>
+                  <div class="offers-editor-fixed-head">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Contract editor</p>
+                        <h3>Detalji ugovora</h3>
+                      </div>
+                      <button id="contract-editor-close" type="button" class="ghost-button">Zatvori</button>
+                    </div>
+                  </div>
+
+                  <div class="offers-editor-body" tabindex="-1">
+                    <form id="contract-form" class="entity-form">
+                      <input id="contract-id" type="hidden" />
+
+                      <div class="offers-editor-topline">
+                        <label class="field offer-status-field">
+                          <span>Status</span>
+                          <select id="contract-status" class="work-item-status-select"></select>
+                        </label>
+                        <label class="field">
+                          <span>Broj ugovora</span>
+                          <input id="contract-number" maxlength="80" placeholder="UG-2026-001" />
+                        </label>
+                      </div>
+
+                      <div class="offers-editor-meta">
+                        <div class="offers-editor-meta-block">
+                          <span class="offers-editor-meta-label">Izvoz</span>
+                          <strong class="offers-editor-meta-value">Word i PDF</strong>
+                        </div>
+                        <div class="offers-editor-meta-actions">
+                          <button id="contract-download-word" type="button" class="ghost-button offer-icon-button" aria-label="Preuzmi Word" title="Preuzmi Word"></button>
+                          <button id="contract-download-pdf" type="button" class="ghost-button offer-icon-button" aria-label="Preuzmi PDF" title="Preuzmi PDF"></button>
+                        </div>
+                      </div>
+
+                      <div class="form-grid offers-form-grid">
+                        <label class="field field-span-full">
+                          <span>Naziv ugovora</span>
+                          <input id="contract-title" maxlength="180" placeholder="Ugovor o održavanju, okvirni ugovor..." required />
+                        </label>
+                        <label class="field">
+                          <span>Tvrtka</span>
+                          <select id="contract-company-id" required></select>
+                        </label>
+                        <label class="field">
+                          <span>Template ugovora</span>
+                          <select id="contract-template-id"></select>
+                        </label>
+                        <div id="contract-company-preview" class="company-selection-preview field-span-full" hidden>
+                          <div id="contract-company-preview-logo" class="company-selection-preview-logo"></div>
+                          <div class="company-selection-preview-copy">
+                            <strong id="contract-company-preview-name">Tvrtka</strong>
+                            <span id="contract-company-preview-meta">Odaberi tvrtku za osnovne podatke ugovora.</span>
+                          </div>
+                        </div>
+                        <label class="field">
+                          <span>Potpisano</span>
+                          <input id="contract-signed-on" type="date" />
+                        </label>
+                        <label class="field">
+                          <span>Vrijedi od</span>
+                          <input id="contract-valid-from" type="date" />
+                        </label>
+                        <label class="field">
+                          <span>Vrijedi do</span>
+                          <input id="contract-valid-to" type="date" />
+                        </label>
+                        <label class="field field-span-full">
+                          <span>Predmet ugovora</span>
+                          <input id="contract-subject" maxlength="220" placeholder="Predmet, usluga ili glavni opseg ugovora..." />
+                        </label>
+                      </div>
+
+                      <label class="field field-span-full">
+                        <span>Opis / obuhvat</span>
+                        <textarea id="contract-scope-summary" rows="4" placeholder="Sažetak opsega ugovora, rokova, aktivnosti i odgovornosti..."></textarea>
+                      </label>
+
+                      <label class="field field-span-full">
+                        <span>Napomena</span>
+                        <textarea id="contract-note" rows="3" placeholder="Dodatne napomene, uvjeti, interni komentar..."></textarea>
+                      </label>
+
+                      <section class="purchase-order-documents-section">
+                        <div class="offers-items-head">
+                          <div>
+                            <strong>Povezane ponude</strong>
+                            <p class="inline-help">Označi ponude iste tvrtke koje želiš povezati i koristiti u ugovoru.</p>
+                          </div>
+                        </div>
+                        <div id="contract-offers-picker" class="contract-offers-picker"></div>
+                        <p id="contract-offers-empty" class="helper-copy" hidden>Odaberi tvrtku da prikažemo dostupne ponude.</p>
+                      </section>
+
+                      <section class="purchase-order-documents-section">
+                        <div class="offers-items-head">
+                          <div>
+                            <strong>Aneksi ugovora</strong>
+                            <p class="inline-help">Dodaj postojeće ili nove anekse na ugovor.</p>
+                          </div>
+                          <button id="contract-add-annex" type="button" class="ghost-button">+ Dodaj anex</button>
+                        </div>
+                        <div id="contract-annex-list" class="contract-annex-list"></div>
+                      </section>
+
+                      <p id="contract-error" class="form-error" aria-live="polite"></p>
+
+                      <div class="form-actions">
+                        <button type="submit" class="primary-button">Spremi ugovor</button>
+                        <button id="contract-reset" type="button" class="ghost-button">Novi ugovor</button>
+                        <button id="contract-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                      </div>
+                    </form>
+                  </div>
+                </section>
+
+                <div id="contract-template-backdrop" class="offer-editor-backdrop" hidden></div>
+                <section id="contract-template-panel" class="panel offers-template-panel" hidden>
+                  <div class="offers-editor-fixed-head">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Contract templates</p>
+                        <h3>Templatei ugovora i placeholderi</h3>
+                      </div>
+                      <button id="contract-template-close" type="button" class="ghost-button">Zatvori</button>
+                    </div>
+                  </div>
+
+                  <div class="offers-editor-body offer-template-body" tabindex="-1">
+                    <div class="contract-template-layout">
+                      <section class="offer-template-card contract-template-list-card">
+                        <div class="offer-template-card-head">
+                          <div>
+                            <p class="section-kicker">Popis</p>
+                            <h4>Templatei ugovora</h4>
+                          </div>
+                        </div>
+                        <div id="contract-template-list" class="contract-template-list"></div>
+                        <p id="contract-template-empty" class="helper-copy" hidden>Nema spremljenih templatea.</p>
+                      </section>
+
+                      <section class="offer-template-card">
+                        <div class="offer-template-card-head">
+                          <div>
+                            <p class="section-kicker">Editor</p>
+                            <h4>Podaci o templateu</h4>
+                          </div>
+                          <button id="contract-template-toggle-reference" type="button" class="ghost-button">Sakrij</button>
+                        </div>
+
+                        <form id="contract-template-form" class="entity-form contract-template-form">
+                          <input id="contract-template-id-field" type="hidden" />
+
+                          <div class="form-grid offers-form-grid">
+                            <label class="field field-span-full">
+                              <span>Naziv templatea</span>
+                              <input id="contract-template-title" maxlength="180" placeholder="Okvirni ugovor, održavanje, servis..." required />
+                            </label>
+                            <label class="field">
+                              <span>Status</span>
+                              <select id="contract-template-status"></select>
+                            </label>
+                          </div>
+
+                          <label class="field field-span-full">
+                            <span>Opis</span>
+                            <textarea id="contract-template-description" rows="3" placeholder="Za koju vrstu ugovora služi ovaj predložak..."></textarea>
+                          </label>
+
+                          <div id="contract-template-reference-body" class="offer-template-reference-body">
+                            <div class="offer-template-actions">
+                              <button id="contract-template-upload" type="button" class="ghost-button">Upload Word</button>
+                              <button id="contract-template-download" type="button" class="ghost-button">Preuzmi Word</button>
+                              <button id="contract-template-remove" type="button" class="ghost-button card-danger">Makni Word</button>
+                            </div>
+                            <input id="contract-template-file-input" type="file" accept=".doc,.docx,.dot,.dotx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
+                            <div id="contract-template-reference-meta" class="offer-template-reference-meta"></div>
+                          </div>
+
+                          <div class="form-actions">
+                            <button id="contract-template-submit" type="submit" class="primary-button">Spremi template</button>
+                            <button id="contract-template-reset" type="button" class="ghost-button">Novi template</button>
+                            <button id="contract-template-delete" type="button" class="card-button card-danger" hidden>Obriši template</button>
+                          </div>
+                        </form>
+                      </section>
+
+                      <section class="offer-template-card">
+                        <div class="offer-template-card-head">
+                          <div>
+                            <p class="section-kicker">Placeholderi</p>
+                            <h4>Tokeni za Word</h4>
+                          </div>
+                        </div>
+                        <p class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word template ugovora.</p>
+                        <div id="contract-template-placeholder-list" class="offer-template-placeholder-list"></div>
+                      </section>
+                    </div>
+                    <p id="contract-template-error" class="form-error" aria-live="polite"></p>
+                  </div>
+                </section>
+              </div>
+            </section>
+
             <section id="periodics-module" class="periodics-module" hidden>
               <div class="periodics-summary-grid">
                 <article class="periodics-stat-card is-total">

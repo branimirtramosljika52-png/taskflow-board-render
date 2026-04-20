@@ -12,6 +12,8 @@ import {
   buildLocationContacts,
   createAbsenceEntry,
   createCompany,
+  createContract,
+  createContractTemplate,
   createDashboardWidget,
   createDocumentTemplate,
   createLegalFramework,
@@ -30,6 +32,8 @@ import {
   createWorkOrder,
   deriveOfferInitials,
   filterAbsenceEntries,
+  filterContracts,
+  filterContractTemplates,
   filterReminders,
   filterDocumentTemplates,
   filterLegalFrameworks,
@@ -49,13 +53,16 @@ import {
   getWorkOrderCompletedServiceCount,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
+  nextContractNumber,
   sortAbsenceEntries,
-    groupWorkOrdersByExecutorSet,
-    nextOfferNumber,
-    nextPurchaseOrderNumber,
-    nextWorkOrderNumber,
-    normalizeWorkOrderMeasurementSheet,
-    parseCoordinates,
+  groupWorkOrdersByExecutorSet,
+  nextOfferNumber,
+  nextPurchaseOrderNumber,
+  nextWorkOrderNumber,
+  normalizeWorkOrderMeasurementSheet,
+  parseCoordinates,
+  sortContracts,
+  sortContractTemplates,
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
@@ -127,6 +134,8 @@ function buildState() {
     todoTasks: [],
     offers: [],
     purchaseOrders: [],
+    contracts: [],
+    contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
     serviceCatalog: [],
@@ -1802,6 +1811,200 @@ test("purchase orders support filtering, sorting, updates and location scope", (
   assert.deepEqual(
     sortPurchaseOrders([confirmedPurchaseOrder, outgoingPurchaseOrder, incomingPurchaseOrder]).map((item) => item.status),
     ["received", "issued", "confirmed"],
+  );
+});
+
+test("contract templates keep Word metadata and support filtering and sorting", () => {
+  const state = buildState();
+
+  const activeTemplate = createContractTemplate(
+    {
+      organizationId: "55",
+      title: "Servisni ugovor",
+      description: "Glavni template za godišnje ugovore.",
+      status: "active",
+      referenceDocument: {
+        id: "contract-template-doc-1",
+        fileName: "servisni-ugovor.docx",
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        dataUrl: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAA",
+        fileSize: 2048,
+      },
+      createdByLabel: "Admin",
+    },
+    state,
+    () => "contract-template-1",
+    () => "2026-04-07T08:00:00.000Z",
+  );
+
+  const archivedTemplate = createContractTemplate(
+    {
+      organizationId: "55",
+      title: "Arhivirani ugovor",
+      status: "archived",
+      description: "Stari format ugovora",
+    },
+    {
+      ...state,
+      contractTemplates: [activeTemplate],
+    },
+    () => "contract-template-2",
+    () => "2026-04-06T08:00:00.000Z",
+  );
+
+  const filtered = filterContractTemplates([activeTemplate, archivedTemplate], {
+    query: "servisni-ugovor",
+    status: "active",
+  });
+
+  assert.equal(activeTemplate.referenceDocument.fileName, "servisni-ugovor.docx");
+  assert.equal(activeTemplate.referenceDocument.fileSize, 2048);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "contract-template-1");
+  assert.deepEqual(
+    sortContractTemplates([archivedTemplate, activeTemplate]).map((item) => item.id),
+    ["contract-template-1", "contract-template-2"],
+  );
+});
+
+test("contracts generate numbering, link company offers and keep annexes", () => {
+  const state = buildState();
+
+  const linkedOffer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Ponuda za ugovor",
+      serviceLine: "Fixed Fee",
+      items: [
+        { description: "Godišnje održavanje", unit: "paket", quantity: 1, unitPrice: 500 },
+      ],
+    },
+    state,
+    () => "offer-contract-1",
+    {
+      offerNumber: "2026-AA-010",
+      offerYear: 2026,
+      offerSequence: 10,
+      offerInitials: "AA",
+    },
+    () => "2026-04-08T09:00:00.000Z",
+  );
+
+  const template = createContractTemplate(
+    {
+      organizationId: "55",
+      title: "Template ugovora",
+      status: "active",
+    },
+    state,
+    () => "contract-template-main",
+    () => "2026-04-08T09:05:00.000Z",
+  );
+
+  const existingContract = createContract(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      templateId: template.id,
+      title: "Postojeći ugovor",
+      subject: "Održavanje sustava",
+    },
+    {
+      ...state,
+      offers: [linkedOffer],
+      contractTemplates: [template],
+    },
+    () => "contract-existing",
+    {
+      contractNumber: "UG-2026-001",
+      contractYear: 2026,
+      contractSequence: 1,
+    },
+    () => "2026-04-08T10:00:00.000Z",
+  );
+
+  const nextNumber = nextContractNumber([existingContract], { year: 2026 });
+
+  const createdContract = createContract(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      templateId: template.id,
+      title: "Ugovor o održavanju",
+      status: "active",
+      signedOn: "2026-04-09",
+      validFrom: "2026-04-10",
+      validTo: "2027-04-09",
+      subject: "Preventivno i korektivno održavanje",
+      scopeSummary: "Mjesečni pregled i intervencije po potrebi",
+      note: "Uključuje prioritetan izlazak",
+      linkedOfferIds: [linkedOffer.id],
+      annexes: [
+        {
+          annexNumber: "A-1",
+          title: "Proširenje opsega",
+          effectiveDate: "2026-06-01",
+          note: "Dodatna lokacija",
+        },
+      ],
+    },
+    {
+      ...state,
+      offers: [linkedOffer],
+      contracts: [existingContract],
+      contractTemplates: [template],
+    },
+    () => "contract-2",
+    nextNumber,
+    () => "2026-04-09T08:00:00.000Z",
+  );
+
+  const updatedContract = createContract(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      templateId: template.id,
+      title: "Neaktivni ugovor",
+      status: "expired",
+      validTo: "2026-03-01",
+    },
+    {
+      ...state,
+      offers: [linkedOffer],
+      contracts: [existingContract, createdContract],
+      contractTemplates: [template],
+    },
+    () => "contract-3",
+    {
+      contractNumber: "UG-2026-003",
+      contractYear: 2026,
+      contractSequence: 3,
+    },
+    () => "2026-04-10T08:00:00.000Z",
+  );
+
+  const filtered = filterContracts(
+    [existingContract, createdContract, updatedContract],
+    {
+      query: "AA-010",
+      status: "active",
+      companyId: "company-1",
+    },
+  );
+
+  assert.equal(createdContract.contractNumber, "UG-2026-002");
+  assert.equal(createdContract.companyName, "Acme d.o.o.");
+  assert.equal(createdContract.templateTitle, "Template ugovora");
+  assert.equal(createdContract.linkedOfferIds.length, 1);
+  assert.equal(createdContract.linkedOffers[0].offerNumber, "2026-AA-010");
+  assert.equal(createdContract.annexes[0].annexNumber, "A-1");
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "contract-2");
+  assert.deepEqual(
+    sortContracts([updatedContract, createdContract, existingContract]).map((item) => item.id),
+    ["contract-existing", "contract-2", "contract-3"],
   );
 });
 

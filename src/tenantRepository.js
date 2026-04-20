@@ -1390,6 +1390,22 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       items: (item.items ?? []).map((entry) => ({ ...entry })),
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
+    contracts: (rawSnapshot.contracts ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+    )).map((item) => ({
+      ...item,
+      linkedOfferIds: [...(item.linkedOfferIds ?? [])],
+      linkedOfferNumbers: [...(item.linkedOfferNumbers ?? [])],
+      linkedOffers: (item.linkedOffers ?? []).map((entry) => ({ ...entry })),
+      annexes: (item.annexes ?? []).map((entry) => ({ ...entry })),
+    })),
+    contractTemplates: (rawSnapshot.contractTemplates ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
+    })),
     vehicles: (rawSnapshot.vehicles ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -2036,6 +2052,8 @@ export class MemoryTenantRepository {
     todoTasks: [],
     offers: [],
     purchaseOrders: [],
+    contracts: [],
+    contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
@@ -2704,6 +2722,8 @@ export class MySqlTenantRepository {
     todoTasks: [],
     offers: [],
     purchaseOrders: [],
+    contracts: [],
+    contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
     documentTemplates: [],
@@ -2735,6 +2755,8 @@ export class MySqlTenantRepository {
         todoTasks: [],
         offers: [],
         purchaseOrders: [],
+        contracts: [],
+        contractTemplates: [],
         vehicles: [],
         legalFrameworks: [],
         documentTemplates: [],

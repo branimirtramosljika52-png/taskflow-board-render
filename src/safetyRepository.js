@@ -6,6 +6,8 @@ import {
   normalizeAbsenceBalanceEntry,
   buildLocationContacts,
   createCompany,
+  createContract,
+  createContractTemplate,
   createDashboardWidget,
   createDocumentTemplate,
   createLearningTest,
@@ -32,6 +34,8 @@ import {
   sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
   updateCompany,
+  updateContract,
+  updateContractTemplate,
   updateDashboardWidget,
   updateAbsenceBalanceEntry,
   updateAbsenceEntry,
@@ -1429,6 +1433,87 @@ function mapPurchaseOrderTemplateSettingsEntry(row = {}) {
   };
 }
 
+function mapContractTemplateEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const id = dbString(row.id);
+  if (!organizationId || !id) {
+    return null;
+  }
+
+  const referenceDocument = mapStoredAttachmentDocument(parseJsonObject(row.reference_document_json));
+
+  return {
+    id,
+    organizationId,
+    title: dbString(row.title),
+    description: dbString(row.description),
+    status: dbString(row.status) || "active",
+    referenceDocument: referenceDocument.fileName && referenceDocument.dataUrl
+      ? {
+        ...referenceDocument,
+        updatedAt: normalizeTimestamp(referenceDocument.updatedAt) ?? normalizeTimestamp(row.updated_at),
+      }
+      : null,
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: dbString(row.created_by_label),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapContractEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const id = dbString(row.id);
+  if (!organizationId || !id) {
+    return null;
+  }
+
+  return {
+    id,
+    organizationId,
+    companyId: dbString(row.company_id),
+    companyName: dbString(row.company_name),
+    companyOib: dbString(row.company_oib),
+    headquarters: dbString(row.headquarters),
+    representative: dbString(row.representative),
+    contactPhone: dbString(row.contact_phone),
+    contactEmail: dbString(row.contact_email),
+    title: dbString(row.title),
+    contractNumber: dbString(row.contract_number),
+    status: dbString(row.status) || "draft",
+    templateId: dbString(row.template_id),
+    templateTitle: dbString(row.template_title),
+    signedOn: normalizeDateOnly(row.signed_on),
+    validFrom: normalizeDateOnly(row.valid_from),
+    validTo: normalizeDateOnly(row.valid_to),
+    subject: dbString(row.subject),
+    scopeSummary: dbString(row.scope_summary),
+    note: dbString(row.note),
+    linkedOfferIds: parseJsonArray(row.linked_offer_ids_json).map((value) => dbString(value)).filter(Boolean),
+    linkedOfferNumbers: parseJsonArray(row.linked_offer_numbers_json).map((value) => dbString(value)).filter(Boolean),
+    linkedOffers: parseJsonArray(row.linked_offers_json).map((item) => ({
+      id: dbString(item.id),
+      offerNumber: dbString(item.offerNumber),
+      title: dbString(item.title),
+      status: dbString(item.status),
+      total: Number(item.total ?? 0) || 0,
+      currency: dbString(item.currency) || "EUR",
+      offerDate: normalizeDateOnly(item.offerDate),
+    })).filter((item) => item.id || item.offerNumber || item.title),
+    annexes: parseJsonArray(row.annexes_json).map((item) => ({
+      id: dbString(item.id) || crypto.randomUUID(),
+      annexNumber: dbString(item.annexNumber),
+      title: dbString(item.title),
+      effectiveDate: normalizeDateOnly(item.effectiveDate),
+      note: dbString(item.note),
+    })).filter((item) => item.annexNumber || item.title || item.effectiveDate || item.note),
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: dbString(row.created_by_label),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapMeasurementEquipmentNotificationSettingsEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -2702,6 +2787,50 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapPurchaseOrderTemplateSettingsEntry(row))
     .filter(Boolean);
 
+  const [contractTemplateRows] = await connection.query(`
+    SELECT id, organization_id, title, description, status, reference_document_json,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_contract_templates
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'draft' THEN 1
+        WHEN 'archived' THEN 2
+        ELSE 9
+      END ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const contractTemplates = contractTemplateRows
+    .map((row) => mapContractTemplateEntry(row))
+    .filter(Boolean);
+
+  const [contractRows] = await connection.query(`
+    SELECT id, organization_id, company_id, company_name, company_oib, headquarters, representative,
+           contact_phone, contact_email, title, contract_number, status, template_id, template_title,
+           signed_on, valid_from, valid_to, subject, scope_summary, note, linked_offer_ids_json,
+           linked_offer_numbers_json, linked_offers_json, annexes_json, created_by_user_id,
+           created_by_label, created_at, updated_at
+    FROM web_contracts
+    ORDER BY
+      CASE status
+        WHEN 'draft' THEN 0
+        WHEN 'pending_signature' THEN 1
+        WHEN 'active' THEN 2
+        WHEN 'expired' THEN 3
+        WHEN 'terminated' THEN 4
+        ELSE 9
+      END ASC,
+      valid_to DESC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const contracts = contractRows
+    .map((row) => mapContractEntry(row))
+    .filter(Boolean);
+
   const [vehicleSettingsRows] = await connection.query(`
     SELECT organization_id, notification_rules_json, created_at, updated_at
     FROM web_vehicle_settings
@@ -2838,6 +2967,8 @@ async function fetchSnapshotFromConnection(connection) {
     offerTemplateSettings,
     purchaseOrders,
     purchaseOrderTemplateSettings,
+    contracts,
+    contractTemplates,
     vehicles,
     legalFrameworks,
     documentTemplates,
@@ -2932,6 +3063,8 @@ export class InMemorySafetyRepository {
       todoTasks: [],
       offers: [],
       purchaseOrders: [],
+      contracts: [],
+      contractTemplates: [],
       vehicles: [],
       legalFrameworks: [],
       documentTemplates: [],
@@ -3067,6 +3200,17 @@ export class InMemorySafetyRepository {
         })),
         documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
+      contracts: this.snapshot.contracts.map((item) => ({
+        ...item,
+        linkedOfferIds: [...(item.linkedOfferIds ?? [])],
+        linkedOfferNumbers: [...(item.linkedOfferNumbers ?? [])],
+        linkedOffers: (item.linkedOffers ?? []).map((entry) => ({ ...entry })),
+        annexes: (item.annexes ?? []).map((entry) => ({ ...entry })),
+      })),
+      contractTemplates: this.snapshot.contractTemplates.map((item) => ({
+        ...item,
+        referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
+      })),
       vehicles: this.snapshot.vehicles.map((item) => ({
         ...item,
         reservations: (item.reservations ?? []).map((reservation) => ({
@@ -3184,9 +3328,10 @@ export class InMemorySafetyRepository {
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
     const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.companyId === id);
+    const hasContracts = this.snapshot.contracts.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders) {
-      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama ili radnim nalozima.");
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasContracts) {
+      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima ili radnim nalozima.");
     }
 
     this.snapshot.companies = this.snapshot.companies.filter((item) => item.id !== id);
@@ -3735,6 +3880,80 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.purchaseOrderTemplateSettings.length;
     this.snapshot.purchaseOrderTemplateSettings = this.snapshot.purchaseOrderTemplateSettings.filter((item) => String(item.organizationId) !== safeOrganizationId);
     return this.snapshot.purchaseOrderTemplateSettings.length !== before;
+  }
+
+  async createContractTemplate(input, actor = null) {
+    const template = createContractTemplate({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.contractTemplates = [template, ...this.snapshot.contractTemplates];
+    return template;
+  }
+
+  async updateContractTemplate(id, patch, actor = null) {
+    const current = this.snapshot.contractTemplates.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateContractTemplate(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.contractTemplates = this.snapshot.contractTemplates.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteContractTemplate(id) {
+    const before = this.snapshot.contractTemplates.length;
+    this.snapshot.contractTemplates = this.snapshot.contractTemplates.filter((item) => item.id !== id);
+    this.snapshot.contracts = this.snapshot.contracts.map((item) => (
+      String(item.templateId) === String(id)
+        ? {
+          ...item,
+          templateId: "",
+          templateTitle: "",
+          updatedAt: new Date().toISOString(),
+        }
+        : item
+    ));
+    return this.snapshot.contractTemplates.length !== before;
+  }
+
+  async createContract(input, actor = null) {
+    const contract = createContract({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), null, () => new Date().toISOString());
+    this.snapshot.contracts = [contract, ...this.snapshot.contracts];
+    return contract;
+  }
+
+  async updateContract(id, patch, actor = null) {
+    const current = this.snapshot.contracts.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateContract(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.contracts = this.snapshot.contracts.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteContract(id) {
+    const before = this.snapshot.contracts.length;
+    this.snapshot.contracts = this.snapshot.contracts.filter((item) => item.id !== id);
+    return this.snapshot.contracts.length !== before;
   }
 
   async createVehicle(input) {
@@ -4764,6 +4983,57 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_contract_templates (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        description TEXT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'active',
+        reference_document_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_contract_templates_org_status (organization_id, status)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_contracts (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        company_name VARCHAR(180) NOT NULL DEFAULT '',
+        company_oib VARCHAR(32) NOT NULL DEFAULT '',
+        headquarters VARCHAR(180) NOT NULL DEFAULT '',
+        representative VARCHAR(180) NOT NULL DEFAULT '',
+        contact_phone VARCHAR(80) NOT NULL DEFAULT '',
+        contact_email VARCHAR(180) NOT NULL DEFAULT '',
+        title VARCHAR(180) NOT NULL,
+        contract_number VARCHAR(80) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        template_id BIGINT NULL,
+        template_title VARCHAR(180) NOT NULL DEFAULT '',
+        signed_on DATE NULL,
+        valid_from DATE NULL,
+        valid_to DATE NULL,
+        subject TEXT NULL,
+        scope_summary TEXT NULL,
+        note TEXT NULL,
+        linked_offer_ids_json LONGTEXT NULL,
+        linked_offer_numbers_json LONGTEXT NULL,
+        linked_offers_json LONGTEXT NULL,
+        annexes_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_contracts_org_number (organization_id, contract_number),
+        INDEX idx_web_contracts_org_status (organization_id, status),
+        INDEX idx_web_contracts_company (company_id),
+        INDEX idx_web_contracts_valid_to (valid_to)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_vehicles (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -5541,9 +5811,13 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_purchase_orders WHERE company_id = ?",
         [Number(id)],
       );
+      const [[contractCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_contracts WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -7105,6 +7379,328 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createContractTemplate(input, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createContractTemplate({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+
+      let nextReferenceDocument = null;
+      if (draft.referenceDocument?.fileName && draft.referenceDocument?.dataUrl) {
+        const preparedTemplate = await prepareStoredAttachmentDocuments([draft.referenceDocument], {
+          keyPrefix: `contracts/${draft.organizationId}/templates`,
+          currentDocuments: [],
+        });
+        staleDocuments = preparedTemplate.staleDocuments ?? [];
+        nextReferenceDocument = preparedTemplate.nextDocuments[0] ?? null;
+      }
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_contract_templates
+            (organization_id, title, description, status, reference_document_json, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.description,
+          draft.status,
+          JSON.stringify(nextReferenceDocument),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...draft,
+        id: String(result.insertId),
+        referenceDocument: nextReferenceDocument,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateContractTemplate(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.contractTemplates.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateContractTemplate(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      let nextReferenceDocument = current.referenceDocument ?? null;
+      if (Object.prototype.hasOwnProperty.call(patch, "referenceDocument")) {
+        if (next.referenceDocument?.fileName && next.referenceDocument?.dataUrl) {
+          const preparedTemplate = await prepareStoredAttachmentDocuments([next.referenceDocument], {
+            keyPrefix: `contracts/${next.organizationId}/templates`,
+            currentDocuments: current.referenceDocument ? [current.referenceDocument] : [],
+          });
+          staleDocuments = preparedTemplate.staleDocuments ?? [];
+          nextReferenceDocument = preparedTemplate.nextDocuments[0] ?? null;
+        } else {
+          staleDocuments = current.referenceDocument?.storageKey ? [current.referenceDocument] : [];
+          nextReferenceDocument = null;
+        }
+      }
+
+      await connection.query(
+        `
+          UPDATE web_contract_templates
+          SET title = ?, description = ?, status = ?, reference_document_json = ?, created_by_user_id = ?, created_by_label = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.description,
+          next.status,
+          JSON.stringify(nextReferenceDocument),
+          parseNullableInteger(next.createdByUserId),
+          next.createdByLabel,
+          Number(id),
+        ],
+      );
+
+      await connection.query(
+        `
+          UPDATE web_contracts
+          SET template_title = ?
+          WHERE template_id = ?
+        `,
+        [
+          next.title,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        referenceDocument: nextReferenceDocument,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteContractTemplate(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT reference_document_json
+          FROM web_contract_templates
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [Number(id)],
+      );
+
+      const currentTemplate = mapStoredAttachmentDocument(parseJsonObject(existingRows[0]?.reference_document_json));
+      staleDocuments = currentTemplate.storageKey ? [currentTemplate] : [];
+
+      await connection.query(
+        `
+          UPDATE web_contracts
+          SET template_id = NULL, template_title = ''
+          WHERE template_id = ?
+        `,
+        [Number(id)],
+      );
+
+      const [result] = await connection.query("DELETE FROM web_contract_templates WHERE id = ?", [Number(id)]);
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createContract(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createContract({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", null, () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_contracts
+            (organization_id, company_id, company_name, company_oib, headquarters, representative,
+             contact_phone, contact_email, title, contract_number, status, template_id, template_title,
+             signed_on, valid_from, valid_to, subject, scope_summary, note, linked_offer_ids_json,
+             linked_offer_numbers_json, linked_offers_json, annexes_json, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          draft.companyName,
+          draft.companyOib,
+          draft.headquarters,
+          draft.representative,
+          draft.contactPhone,
+          draft.contactEmail,
+          draft.title,
+          draft.contractNumber,
+          draft.status,
+          parseNullableInteger(draft.templateId),
+          draft.templateTitle,
+          draft.signedOn,
+          draft.validFrom,
+          draft.validTo,
+          draft.subject,
+          draft.scopeSummary,
+          draft.note,
+          JSON.stringify(draft.linkedOfferIds ?? []),
+          JSON.stringify(draft.linkedOfferNumbers ?? []),
+          JSON.stringify(draft.linkedOffers ?? []),
+          JSON.stringify(draft.annexes ?? []),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateContract(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.contracts.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateContract(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_contracts
+          SET company_id = ?, company_name = ?, company_oib = ?, headquarters = ?, representative = ?,
+              contact_phone = ?, contact_email = ?, title = ?, contract_number = ?, status = ?,
+              template_id = ?, template_title = ?, signed_on = ?, valid_from = ?, valid_to = ?,
+              subject = ?, scope_summary = ?, note = ?, linked_offer_ids_json = ?, linked_offer_numbers_json = ?,
+              linked_offers_json = ?, annexes_json = ?, created_by_user_id = ?, created_by_label = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          next.companyName,
+          next.companyOib,
+          next.headquarters,
+          next.representative,
+          next.contactPhone,
+          next.contactEmail,
+          next.title,
+          next.contractNumber,
+          next.status,
+          parseNullableInteger(next.templateId),
+          next.templateTitle,
+          next.signedOn,
+          next.validFrom,
+          next.validTo,
+          next.subject,
+          next.scopeSummary,
+          next.note,
+          JSON.stringify(next.linkedOfferIds ?? []),
+          JSON.stringify(next.linkedOfferNumbers ?? []),
+          JSON.stringify(next.linkedOffers ?? []),
+          JSON.stringify(next.annexes ?? []),
+          parseNullableInteger(next.createdByUserId),
+          next.createdByLabel,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteContract(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_contracts WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }
