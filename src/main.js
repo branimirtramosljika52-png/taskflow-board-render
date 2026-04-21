@@ -156,6 +156,8 @@ const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
+const COMPANY_EDITOR_RELATED_RENDER_DELAY_MS = 120;
+const COMPANY_EDITOR_ACTIVITY_IDLE_TIMEOUT_MS = 1200;
 const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v1";
 const COMPANIES_COLUMN_LAYOUT = Object.freeze([
   Object.freeze({ key: "company", defaultWidth: 360, minWidth: 260 }),
@@ -1650,6 +1652,7 @@ let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
+let companyEditorRelatedDataIdleId = 0;
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
@@ -3601,8 +3604,6 @@ if (userEditorPanel) {
 
 let userMenuOpen = false;
 let locationFormContacts = [];
-let companyEditorScrollLockY = 0;
-let companyEditorScrollLockActive = false;
 let currentConnectionTone = "connecting";
 let currentConnectionMeta = "ucitavanje podataka...";
 
@@ -19319,26 +19320,6 @@ function syncCompanyEditorModal() {
   companyEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-company-editor-open", isOpen);
 
-  if (isOpen && !companyEditorScrollLockActive) {
-    companyEditorScrollLockY = window.scrollY || window.pageYOffset || 0;
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${companyEditorScrollLockY}px`;
-    document.body.style.left = "0";
-    document.body.style.right = "0";
-    document.body.style.width = "100%";
-    companyEditorScrollLockActive = true;
-  } else if (!isOpen && companyEditorScrollLockActive) {
-    const scrollLockY = companyEditorScrollLockY;
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.left = "";
-    document.body.style.right = "";
-    document.body.style.width = "";
-    companyEditorScrollLockY = 0;
-    companyEditorScrollLockActive = false;
-    window.scrollTo({ top: scrollLockY, left: 0, behavior: "auto" });
-  }
-
   if (companyEditorPanel) {
     companyEditorPanel.hidden = !isOpen;
     companyEditorPanel.setAttribute("aria-hidden", String(!isOpen));
@@ -19367,9 +19348,6 @@ function syncCompanyEditorModal() {
     requestAnimationFrame(() => {
       scrollCompanyEditorToTop();
       companyEditorBody?.focus({ preventScroll: true });
-      window.setTimeout(() => {
-        scrollCompanyEditorToTop();
-      }, 0);
     });
   }
 }
@@ -38012,8 +37990,23 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
   }
 
   companyLinkedLocationsEmpty.hidden = true;
+  const locationIds = new Set(linkedLocations.map((item) => String(item.id || "").trim()).filter(Boolean));
+  const workOrdersByLocation = new Map();
+  for (const workOrder of state.workOrders ?? []) {
+    const locationId = String(workOrder?.locationId || "").trim();
+    if (!locationIds.has(locationId)) {
+      continue;
+    }
+    const bucket = workOrdersByLocation.get(locationId);
+    if (bucket) {
+      bucket.push(workOrder);
+    } else {
+      workOrdersByLocation.set(locationId, [workOrder]);
+    }
+  }
+
   companyLinkedLocationsList.replaceChildren(...linkedLocations.map((location) => {
-    const linkedWorkOrders = getLocationLinkedWorkOrders(location.id);
+    const linkedWorkOrders = sortWorkOrders([...(workOrdersByLocation.get(String(location.id || "").trim()) ?? [])]);
     const contactCount = buildLocationContacts(location).length;
     const card = document.createElement("article");
     card.className = "company-contract-card";
@@ -38421,7 +38414,7 @@ function renderCompanyActivityPanel(companyId = companyIdInput?.value || "") {
   }));
 }
 
-function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "") {
+function renderCompanyLinkedContractsSafe(companyId = companyIdInput?.value || "") {
   try {
     renderCompanyLinkedContracts(companyId);
   } catch (error) {
@@ -38437,7 +38430,9 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
       companyLinkedContractsEmpty.hidden = false;
     }
   }
+}
 
+function renderCompanyLinkedLocationsSafe(companyId = companyIdInput?.value || "") {
   try {
     renderCompanyLinkedLocations(companyId);
   } catch (error) {
@@ -38453,7 +38448,9 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
       companyLinkedLocationsEmpty.hidden = false;
     }
   }
+}
 
+function renderCompanyActivityPanelSafe(companyId = companyIdInput?.value || "") {
   try {
     renderCompanyActivityPanel(companyId);
   } catch (error) {
@@ -38471,6 +38468,12 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
   }
 }
 
+function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "") {
+  renderCompanyLinkedContractsSafe(companyId);
+  renderCompanyLinkedLocationsSafe(companyId);
+  renderCompanyActivityPanelSafe(companyId);
+}
+
 function cancelScheduledCompanyEditorRelatedData() {
   if (companyEditorRelatedDataRafId) {
     cancelAnimationFrame(companyEditorRelatedDataRafId);
@@ -38480,17 +38483,64 @@ function cancelScheduledCompanyEditorRelatedData() {
     window.clearTimeout(companyEditorRelatedDataTimeoutId);
     companyEditorRelatedDataTimeoutId = 0;
   }
+  if (companyEditorRelatedDataIdleId) {
+    if (typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(companyEditorRelatedDataIdleId);
+    } else {
+      window.clearTimeout(companyEditorRelatedDataIdleId);
+    }
+    companyEditorRelatedDataIdleId = 0;
+  }
+}
+
+function isCompanyEditorRenderTargetActive(companyId = "") {
+  return state.companyEditorOpen
+    && state.activeView === "companies"
+    && String(companyIdInput?.value || "").trim() === String(companyId || "").trim();
 }
 
 function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "", { defer = true } = {}) {
   const normalizedCompanyId = String(companyId || "").trim();
   cancelScheduledCompanyEditorRelatedData();
 
-  const runRender = () => {
-    if (normalizedCompanyId && String(companyIdInput?.value || "").trim() !== normalizedCompanyId) {
+  const renderCompanyActivityDeferred = () => {
+    if (!isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
       return;
     }
-    renderCompanyEditorRelatedData(normalizedCompanyId);
+
+    if (typeof window.requestIdleCallback === "function") {
+      companyEditorRelatedDataIdleId = window.requestIdleCallback(() => {
+        companyEditorRelatedDataIdleId = 0;
+        if (!isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
+          return;
+        }
+        renderCompanyActivityPanelSafe(normalizedCompanyId);
+      }, { timeout: COMPANY_EDITOR_ACTIVITY_IDLE_TIMEOUT_MS });
+      return;
+    }
+
+    companyEditorRelatedDataIdleId = window.setTimeout(() => {
+      companyEditorRelatedDataIdleId = 0;
+      if (!isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
+        return;
+      }
+      renderCompanyActivityPanelSafe(normalizedCompanyId);
+    }, COMPANY_EDITOR_RELATED_RENDER_DELAY_MS);
+  };
+
+  const runRender = () => {
+    if (normalizedCompanyId && !isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
+      return;
+    }
+    renderCompanyLinkedContractsSafe(normalizedCompanyId);
+    companyEditorRelatedDataTimeoutId = window.setTimeout(() => {
+      companyEditorRelatedDataTimeoutId = 0;
+      if (normalizedCompanyId && !isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
+        return;
+      }
+      renderCompanyLinkedLocationsSafe(normalizedCompanyId);
+      renderCompanyActivityDeferred();
+    }, 0);
   };
 
   if (!defer) {
@@ -38503,7 +38553,7 @@ function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "
     companyEditorRelatedDataTimeoutId = window.setTimeout(() => {
       companyEditorRelatedDataTimeoutId = 0;
       runRender();
-    }, 0);
+    }, COMPANY_EDITOR_RELATED_RENDER_DELAY_MS);
   });
 }
 
