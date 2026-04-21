@@ -585,6 +585,31 @@ function normalizeBoolean(value, fallback = true) {
   return fallback;
 }
 
+function normalizeCompanyEmployeeSize(value) {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw) {
+    return "";
+  }
+
+  const folded = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/do\s*49|manje\s*od\s*50|<\s*50/.test(folded)) {
+    return "do-49";
+  }
+  if (/preko\s*50|iznad\s*50|vise\s*od\s*50|50\s*\+|>=\s*50|50plus/.test(folded)) {
+    return "preko-50";
+  }
+
+  const compact = folded.replace(/[^a-z0-9]/g, "");
+  if (["do49", "do49zaposlenih", "manjeod50", "49"].includes(compact)) {
+    return "do-49";
+  }
+  if (["preko50", "iznad50", "viseod50", "50plus", "50zaposlenih", "50"].includes(compact)) {
+    return "preko-50";
+  }
+
+  return "";
+}
+
 function normalizePriority(value) {
   const priority = normalizeText(value);
   return PRIORITY_SET.has(priority) ? priority : "Normal";
@@ -3023,6 +3048,9 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     oib: normalizeOib(input.oib),
     contractType: normalizeText(input.contractType),
     contractNumber: normalizeText(input.contractNumber),
+    contractValidFrom: normalizeOptionalDate(input.contractValidFrom),
+    contractValidTo: normalizeOptionalDate(input.contractValidTo),
+    employeeSize: normalizeCompanyEmployeeSize(input.employeeSize),
     period: normalizeText(input.period),
     isActive: normalizeBoolean(input.isActive, true),
     representative: normalizeText(input.representative),
@@ -3051,6 +3079,15 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     oib: hasOwn(patch, "oib") ? normalizeOib(patch.oib) : current.oib,
     contractType: hasOwn(patch, "contractType") ? normalizeText(patch.contractType) : current.contractType,
     contractNumber: hasOwn(patch, "contractNumber") ? normalizeText(patch.contractNumber) : current.contractNumber,
+    contractValidFrom: hasOwn(patch, "contractValidFrom")
+      ? normalizeOptionalDate(patch.contractValidFrom)
+      : normalizeOptionalDate(current.contractValidFrom),
+    contractValidTo: hasOwn(patch, "contractValidTo")
+      ? normalizeOptionalDate(patch.contractValidTo)
+      : normalizeOptionalDate(current.contractValidTo),
+    employeeSize: hasOwn(patch, "employeeSize")
+      ? normalizeCompanyEmployeeSize(patch.employeeSize)
+      : normalizeCompanyEmployeeSize(current.employeeSize),
     period: hasOwn(patch, "period") ? normalizeText(patch.period) : current.period,
     isActive: hasOwn(patch, "isActive") ? normalizeBoolean(patch.isActive, current.isActive) : current.isActive,
     representative: hasOwn(patch, "representative") ? normalizeText(patch.representative) : current.representative,

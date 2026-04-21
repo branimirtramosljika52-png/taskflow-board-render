@@ -185,6 +185,9 @@ test("companies keep uploaded logo data through create and update", () => {
       name: "Logo Test d.o.o.",
       oib: "22345678901",
       logoDataUrl: "data:image/png;base64,AAA",
+      employeeSize: "Do 49 zaposlenih",
+      contractValidFrom: "2026-01-01",
+      contractValidTo: "2026-12-31",
       representative: "Ana Kovac",
       representativeRole: "Direktorica",
       representativeOib: "12345678903",
@@ -195,6 +198,9 @@ test("companies keep uploaded logo data through create and update", () => {
   );
 
   assert.equal(company.logoDataUrl, "data:image/png;base64,AAA");
+  assert.equal(company.employeeSize, "do-49");
+  assert.equal(company.contractValidFrom, "2026-01-01");
+  assert.equal(company.contractValidTo, "2026-12-31");
   assert.equal(company.representative, "Ana Kovac");
   assert.equal(company.representativeRole, "Direktorica");
   assert.equal(company.representativeOib, "12345678903");
@@ -204,6 +210,8 @@ test("companies keep uploaded logo data through create and update", () => {
     {
       logoDataUrl: "data:image/png;base64,BBB",
       isActive: false,
+      employeeSize: "preko 50",
+      contractValidTo: "2027-12-31",
       representativeRole: "Clan uprave",
     },
     [company],
@@ -212,6 +220,9 @@ test("companies keep uploaded logo data through create and update", () => {
 
   assert.equal(updated.logoDataUrl, "data:image/png;base64,BBB");
   assert.equal(updated.isActive, false);
+  assert.equal(updated.employeeSize, "preko-50");
+  assert.equal(updated.contractValidFrom, "2026-01-01");
+  assert.equal(updated.contractValidTo, "2027-12-31");
   assert.equal(updated.representativeRole, "Clan uprave");
   assert.equal(updated.representativeOib, "12345678903");
 });

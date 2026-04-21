@@ -3252,6 +3252,9 @@ const companyHeadquartersInput = document.querySelector("#company-headquarters")
 const companyOibInput = document.querySelector("#company-oib");
 const companyContractTypeInput = document.querySelector("#company-contract-type");
 const companyContractNumberInput = document.querySelector("#company-contract-number");
+const companyContractValidFromInput = document.querySelector("#company-contract-valid-from");
+const companyContractValidToInput = document.querySelector("#company-contract-valid-to");
+const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
 const companyRepresentativeInput = document.querySelector("#company-representative");
@@ -18047,10 +18050,127 @@ function normalizeCompanyPeriodStatus(value = "") {
   return "other";
 }
 
+function normalizeCompanyEmployeeSize(value = "") {
+  const rawValue = String(value || "").trim().toLowerCase();
+  if (!rawValue) {
+    return "";
+  }
+
+  const foldedValue = rawValue.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/do\s*49|manje\s*od\s*50|<\s*50/.test(foldedValue)) {
+    return "do-49";
+  }
+  if (/preko\s*50|iznad\s*50|vise\s*od\s*50|50\s*\+|>=\s*50|50plus/.test(foldedValue)) {
+    return "preko-50";
+  }
+
+  const compactValue = foldedValue.replace(/[^a-z0-9]/g, "");
+  if (["do49", "do49zaposlenih", "manjeod50", "49"].includes(compactValue)) {
+    return "do-49";
+  }
+  if (["preko50", "iznad50", "viseod50", "50plus", "50zaposlenih", "50"].includes(compactValue)) {
+    return "preko-50";
+  }
+
+  return "";
+}
+
+function getCompanyEmployeeSizeLabel(value = "") {
+  const normalizedValue = normalizeCompanyEmployeeSize(value);
+  if (normalizedValue === "do-49") {
+    return "Do 49 zaposlenih";
+  }
+  if (normalizedValue === "preko-50") {
+    return "Preko 50 zaposlenih";
+  }
+  return "Nije definirano";
+}
+
+function normalizeCompanyDateValue(value = "") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    return rawValue;
+  }
+
+  const parsedDate = new Date(rawValue);
+  return Number.isNaN(parsedDate.getTime()) ? "" : parsedDate.toISOString().slice(0, 10);
+}
+
+function formatContractValidityLabel(validFrom = "", validTo = "", { prefix = "Važenje" } = {}) {
+  const normalizedValidFrom = normalizeCompanyDateValue(validFrom);
+  const normalizedValidTo = normalizeCompanyDateValue(validTo);
+
+  if (normalizedValidFrom && normalizedValidTo) {
+    return `${prefix}: ${formatDate(normalizedValidFrom)} - ${formatDate(normalizedValidTo)}`;
+  }
+  if (normalizedValidFrom) {
+    return `${prefix} od ${formatDate(normalizedValidFrom)}`;
+  }
+  if (normalizedValidTo) {
+    return `${prefix} do ${formatDate(normalizedValidTo)}`;
+  }
+  return "";
+}
+
+function resolveCompanyContractValidity(company = {}, linkedContracts = []) {
+  const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
+  const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
+  if (explicitValidFrom || explicitValidTo) {
+    return {
+      validFrom: explicitValidFrom,
+      validTo: explicitValidTo,
+      source: "company",
+    };
+  }
+
+  let linkedValidFrom = "";
+  let linkedValidTo = "";
+  for (const contract of linkedContracts) {
+    const contractValidFrom = normalizeCompanyDateValue(contract.validFrom);
+    const contractValidTo = normalizeCompanyDateValue(contract.validTo);
+
+    if (contractValidFrom && (!linkedValidFrom || contractValidFrom < linkedValidFrom)) {
+      linkedValidFrom = contractValidFrom;
+    }
+    if (contractValidTo && (!linkedValidTo || contractValidTo > linkedValidTo)) {
+      linkedValidTo = contractValidTo;
+    }
+  }
+
+  return {
+    validFrom: linkedValidFrom,
+    validTo: linkedValidTo,
+    source: linkedValidFrom || linkedValidTo ? "linked" : "",
+  };
+}
+
+function getCompanyContractValidityLabel(company = {}, linkedContracts = []) {
+  const validity = resolveCompanyContractValidity(company, linkedContracts);
+  const label = formatContractValidityLabel(validity.validFrom, validity.validTo, { prefix: "Važenje" });
+  if (!label) {
+    return "Važenje nije definirano";
+  }
+  if (validity.source === "linked") {
+    return `${label} (povezani ugovori)`;
+  }
+  return label;
+}
+
 function matchesCompanySearch(company = {}, queryNeedle = "") {
   if (!queryNeedle) {
     return true;
   }
+
+  const employeeSize = normalizeCompanyEmployeeSize(company.employeeSize);
+  const employeeSizeHints = employeeSize === "do-49"
+    ? "do 49 manje od 50"
+    : employeeSize === "preko-50"
+      ? "preko 50 iznad 50 50 plus"
+      : "";
 
   const haystack = normalizeLooseName([
     company.name,
@@ -18058,6 +18178,12 @@ function matchesCompanySearch(company = {}, queryNeedle = "") {
     company.oib,
     company.contractType,
     company.contractNumber,
+    company.contractValidFrom,
+    company.contractValidTo,
+    formatContractValidityLabel(company.contractValidFrom, company.contractValidTo),
+    employeeSize,
+    getCompanyEmployeeSizeLabel(employeeSize),
+    employeeSizeHints,
     company.representative,
     company.representativeRole,
     company.representativeOib,
@@ -37601,6 +37727,9 @@ function buildCompanyPayload() {
     oib: companyOibInput.value,
     contractType: companyContractTypeInput.value,
     contractNumber: companyContractNumberInput.value,
+    contractValidFrom: companyContractValidFromInput?.value || "",
+    contractValidTo: companyContractValidToInput?.value || "",
+    employeeSize: normalizeCompanyEmployeeSize(companyEmployeeSizeInput?.value || ""),
     period: companyPeriodInput.value,
     isActive: companyIsActiveInput.value,
     representative: companyRepresentativeInput.value,
@@ -37808,7 +37937,7 @@ function renderCompanyLinkedContracts(companyId = companyIdInput?.value || "") {
     meta.className = "company-contract-card-meta";
     meta.textContent = [
       contract.templateTitle || "Bez templatea",
-      contract.validTo ? `vrijedi do ${formatDate(contract.validTo)}` : "",
+      formatContractValidityLabel(contract.validFrom, contract.validTo),
       contract.annexes?.length ? `${contract.annexes.length} anex` : "",
     ].filter(Boolean).join(" · ");
 
@@ -38774,6 +38903,15 @@ function hydrateCompanyForm(company) {
   companyOibInput.value = company.oib;
   companyContractTypeInput.value = company.contractType;
   companyContractNumberInput.value = company.contractNumber;
+  if (companyContractValidFromInput) {
+    companyContractValidFromInput.value = normalizeCompanyDateValue(company.contractValidFrom || "");
+  }
+  if (companyContractValidToInput) {
+    companyContractValidToInput.value = normalizeCompanyDateValue(company.contractValidTo || "");
+  }
+  if (companyEmployeeSizeInput) {
+    companyEmployeeSizeInput.value = normalizeCompanyEmployeeSize(company.employeeSize || "");
+  }
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
   companyRepresentativeInput.value = company.representative;
@@ -56780,7 +56918,10 @@ function renderCompanies() {
 
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ");
-    const linkedContractsCount = getCompanyLinkedContracts(company.id).length;
+    const linkedContracts = getCompanyLinkedContracts(company.id);
+    const linkedContractsCount = linkedContracts.length;
+    const contractValidityLabel = getCompanyContractValidityLabel(company, linkedContracts);
+    const employeeSizeLabel = getCompanyEmployeeSizeLabel(company.employeeSize);
 
     row.append(
       createCompanyIdentityCell(company),
@@ -56792,7 +56933,11 @@ function renderCompanies() {
       createStackCell({
         title: company.contractType || "Bez ugovora",
         subtitle: company.contractNumber || "Bez broja ugovora",
-        meta: linkedContractsCount ? [`${linkedContractsCount} ugovora`] : [],
+        tertiary: contractValidityLabel,
+        meta: [
+          `Zaposleni: ${employeeSizeLabel}`,
+          ...(linkedContractsCount ? [`${linkedContractsCount} ugovora`] : []),
+        ],
       }),
       createCompanyActivityCell(company),
     );

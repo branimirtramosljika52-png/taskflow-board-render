@@ -3100,6 +3100,18 @@ body.is-location-editor-open {
   grid-column: span 3;
 }
 
+.field-company-contract-valid-from {
+  grid-column: span 3;
+}
+
+.field-company-contract-valid-to {
+  grid-column: span 3;
+}
+
+.field-company-employee-size {
+  grid-column: span 3;
+}
+
 .field-company-period {
   grid-column: span 3;
 }
@@ -3513,13 +3525,16 @@ body.is-location-editor-open {
     grid-column: span 6;
   }
 
-  .field-company-contract-type,
-  .field-company-contract-number,
-  .field-company-period,
-  .field-company-status,
-  .field-company-representative-role,
-  .field-company-representative-oib,
-  .field-company-contact-phone {
+.field-company-contract-type,
+.field-company-contract-number,
+.field-company-contract-valid-from,
+.field-company-contract-valid-to,
+.field-company-employee-size,
+.field-company-period,
+.field-company-status,
+.field-company-representative-role,
+.field-company-representative-oib,
+.field-company-contact-phone {
     grid-column: span 3;
   }
 }
@@ -3551,13 +3566,16 @@ body.is-location-editor-open {
   .field-company-name,
   .field-company-headquarters,
   .field-company-oib,
-  .field-company-contract-type,
-  .field-company-contract-number,
-  .field-company-period,
-  .field-company-status,
-  .field-company-representative,
-  .field-company-representative-role,
-  .field-company-representative-oib,
+.field-company-contract-type,
+.field-company-contract-number,
+.field-company-contract-valid-from,
+.field-company-contract-valid-to,
+.field-company-employee-size,
+.field-company-period,
+.field-company-status,
+.field-company-representative,
+.field-company-representative-role,
+.field-company-representative-oib,
   .field-company-contact-phone,
   .field-company-contact-email {
     grid-column: auto;
@@ -3652,13 +3670,16 @@ body.is-location-editor-open {
     grid-template-columns: 1fr;
   }
 
-  .field-company-representative,
-  .field-company-representative-role,
-  .field-company-representative-oib,
-  .field-company-contact-email,
-  .field-company-contract-type {
-    grid-column: auto;
-  }
+.field-company-representative,
+.field-company-representative-role,
+.field-company-representative-oib,
+.field-company-contact-email,
+.field-company-contract-type,
+.field-company-contract-valid-from,
+.field-company-contract-valid-to,
+.field-company-employee-size {
+  grid-column: auto;
+}
 
   .company-logo-avatar {
     width: 64px;
