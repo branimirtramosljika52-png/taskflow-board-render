@@ -27792,19 +27792,24 @@ button.drawing-status-pill.is-active {
 
 .auth-story-floating {
   position: absolute;
-  right: clamp(22px, 4.5vw, 82px);
-  bottom: clamp(24px, 5.2vh, 78px);
+  right: clamp(28px, 4.2vw, 86px);
+  bottom: clamp(34px, 5.8vh, 84px);
   z-index: 1;
-  width: min(44vw, 560px);
+  width: min(42vw, 540px);
   display: grid;
-  justify-items: end;
-  gap: 8px;
-  transform: rotate(-5deg);
-  transform-origin: 100% 100%;
+  justify-items: stretch;
+  gap: 6px;
+  transform: none;
   pointer-events: none;
 }
 
+.auth-story-floating .auth-story-line,
+.auth-story-floating .auth-story-byline {
+  min-height: 0;
+}
+
 .auth-story-floating-quote {
+  width: 100%;
   color: rgba(236, 247, 255, 0.96);
   text-align: right;
   font-size: clamp(1rem, 1.72vw, 1.42rem);
@@ -27815,6 +27820,9 @@ button.drawing-status-pill.is-active {
 }
 
 .auth-story-floating-author {
+  width: 100%;
+  text-align: right;
+  padding-right: 2px;
   color: rgba(223, 240, 255, 0.96);
   text-shadow: 0 10px 24px rgba(6, 34, 85, 0.34);
 }
@@ -27851,8 +27859,7 @@ button.drawing-status-pill.is-active {
     left: 16px;
     width: auto;
     bottom: 14px;
-    transform: rotate(0deg);
-    justify-items: center;
+    justify-items: stretch;
   }
 
   .auth-story-floating-quote,
