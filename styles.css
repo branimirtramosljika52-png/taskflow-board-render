@@ -3070,7 +3070,7 @@ body.is-location-editor-open {
 }
 
 .field-company-name {
-  grid-column: span 5;
+  grid-column: span 4;
 }
 
 .field-company-headquarters {
@@ -3078,7 +3078,7 @@ body.is-location-editor-open {
 }
 
 .field-company-oib {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .field-company-contract-type {
@@ -3099,6 +3099,10 @@ body.is-location-editor-open {
 
 .field-company-employee-size {
   grid-column: span 3;
+}
+
+.field-company-manager-users {
+  grid-column: span 9;
 }
 
 .field-company-period {
@@ -3133,6 +3137,15 @@ body.is-location-editor-open {
 .masterdata-company-grid,
 .masterdata-company-contact-grid {
   min-width: 0;
+}
+
+#company-manager-user-ids {
+  min-height: 112px;
+}
+
+.field-company-manager-users .inline-help {
+  margin: 6px 0 0;
+  font-size: 0.76rem;
 }
 
 #company-note {
@@ -3500,6 +3513,7 @@ body.is-location-editor-open {
   .field-company-name,
   .field-company-headquarters,
   .field-company-oib,
+  .field-company-manager-users,
   .field-company-representative,
   .field-company-contact-email {
     grid-column: span 6;
@@ -3546,6 +3560,7 @@ body.is-location-editor-open {
   .field-company-name,
   .field-company-headquarters,
   .field-company-oib,
+.field-company-manager-users,
 .field-company-contract-type,
 .field-company-contract-number,
 .field-company-contract-valid-from,
@@ -3657,7 +3672,8 @@ body.is-location-editor-open {
 .field-company-contract-type,
 .field-company-contract-valid-from,
 .field-company-contract-valid-to,
-.field-company-employee-size {
+.field-company-employee-size,
+.field-company-manager-users {
   grid-column: auto;
 }
 

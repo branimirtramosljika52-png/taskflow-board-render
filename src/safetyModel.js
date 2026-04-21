@@ -610,6 +610,16 @@ function normalizeCompanyEmployeeSize(value) {
   return "";
 }
 
+function normalizeCompanyManagerLabels(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean),
+  )).slice(0, 24);
+}
+
 function normalizePriority(value) {
   const priority = normalizeText(value);
   return PRIORITY_SET.has(priority) ? priority : "Normal";
@@ -3051,6 +3061,8 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     contractValidFrom: normalizeOptionalDate(input.contractValidFrom),
     contractValidTo: normalizeOptionalDate(input.contractValidTo),
     employeeSize: normalizeCompanyEmployeeSize(input.employeeSize),
+    managerUserIds: normalizeIdList(input.managerUserIds).slice(0, 24),
+    managerUserLabels: normalizeCompanyManagerLabels(input.managerUserLabels),
     period: normalizeText(input.period),
     isActive: normalizeBoolean(input.isActive, true),
     representative: normalizeText(input.representative),
@@ -3088,6 +3100,12 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     employeeSize: hasOwn(patch, "employeeSize")
       ? normalizeCompanyEmployeeSize(patch.employeeSize)
       : normalizeCompanyEmployeeSize(current.employeeSize),
+    managerUserIds: hasOwn(patch, "managerUserIds")
+      ? normalizeIdList(patch.managerUserIds).slice(0, 24)
+      : normalizeIdList(current.managerUserIds).slice(0, 24),
+    managerUserLabels: hasOwn(patch, "managerUserLabels")
+      ? normalizeCompanyManagerLabels(patch.managerUserLabels)
+      : normalizeCompanyManagerLabels(current.managerUserLabels),
     period: hasOwn(patch, "period") ? normalizeText(patch.period) : current.period,
     isActive: hasOwn(patch, "isActive") ? normalizeBoolean(patch.isActive, current.isActive) : current.isActive,
     representative: hasOwn(patch, "representative") ? normalizeText(patch.representative) : current.representative,

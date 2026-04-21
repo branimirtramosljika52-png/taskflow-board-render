@@ -3260,6 +3260,7 @@ const companyContractNumberInput = document.querySelector("#company-contract-num
 const companyContractValidFromInput = document.querySelector("#company-contract-valid-from");
 const companyContractValidToInput = document.querySelector("#company-contract-valid-to");
 const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
+const companyManagerUserIdsInput = document.querySelector("#company-manager-user-ids");
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
 const companyRepresentativeInput = document.querySelector("#company-representative");
@@ -18190,6 +18191,7 @@ function matchesCompanySearch(company = {}, queryNeedle = "") {
     company.representative,
     company.representativeRole,
     company.representativeOib,
+    ...(Array.isArray(company.managerUserLabels) ? company.managerUserLabels : []),
     company.contactPhone,
     company.contactEmail,
     company.period,
@@ -37570,6 +37572,77 @@ function rebuildLocationCompanyOptions(selectedCompanyId = locationCompanyIdInpu
   replaceSelectOptions(locationCompanyIdInput, options, selectedCompanyId);
 }
 
+function getCompanyManagerPeopleOptions() {
+  const organizationId = String(state.activeOrganizationId || "").trim();
+  return (state.users ?? [])
+    .filter((user) => {
+      if (!organizationId) {
+        return true;
+      }
+      const directOrganizationId = String(user?.organizationId || "").trim();
+      if (directOrganizationId && directOrganizationId === organizationId) {
+        return true;
+      }
+      const organizationIds = Array.isArray(user?.organizationIds)
+        ? user.organizationIds.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      return organizationIds.includes(organizationId);
+    })
+    .sort((left, right) => String(left.fullName || left.email || "").localeCompare(
+      String(right.fullName || right.email || ""),
+      "hr",
+    ))
+    .map((user) => ({
+      value: String(user?.id || "").trim(),
+      label: user?.fullName || user?.email || user?.username || "User",
+    }))
+    .filter((option) => option.value);
+}
+
+function getCompanyManagerSelectedUserIds(select = companyManagerUserIdsInput) {
+  return getSelectedMultiSelectValues(select);
+}
+
+function getCompanyManagerSelectedUserLabels(selectedUserIds = getCompanyManagerSelectedUserIds()) {
+  const usersById = new Map((state.users ?? []).map((user) => [String(user?.id || "").trim(), user]));
+  return Array.from(new Set(
+    (Array.isArray(selectedUserIds) ? selectedUserIds : [selectedUserIds])
+      .map((userId) => String(userId || "").trim())
+      .filter(Boolean)
+      .map((userId) => {
+        const user = usersById.get(userId);
+        return String(user?.fullName || user?.email || user?.username || "").trim();
+      })
+      .filter(Boolean),
+  ));
+}
+
+function rebuildCompanyManagerUserOptions(selectedUserIds = getCompanyManagerSelectedUserIds()) {
+  if (!(companyManagerUserIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const options = getCompanyManagerPeopleOptions();
+  if (options.length === 0) {
+    const emptyOption = createOption("", "Nema aktivnih osoba u organizaciji");
+    emptyOption.disabled = true;
+    companyManagerUserIdsInput.replaceChildren(emptyOption);
+    companyManagerUserIdsInput.disabled = true;
+    return;
+  }
+
+  companyManagerUserIdsInput.disabled = false;
+  companyManagerUserIdsInput.replaceChildren(
+    ...options.map((option) => createOption(option.value, option.label)),
+  );
+
+  const allowedValues = new Set(options.map((option) => String(option.value)));
+  const nextSelectedValues = (Array.isArray(selectedUserIds) ? selectedUserIds : [selectedUserIds])
+    .map((value) => String(value || "").trim())
+    .filter((value) => allowedValues.has(value));
+  setMultiSelectSelectedValues(companyManagerUserIdsInput, nextSelectedValues);
+}
+
 function rebuildWorkOrderLocationOptions(selectedLocationId = workOrderLocationIdInput.value) {
   const companyId = workOrderCompanyIdInput.value;
   const locations = companyId ? getLocationsForCompany(companyId) : [];
@@ -37707,6 +37780,7 @@ function buildWorkOrderPayload() {
 }
 
 function buildCompanyPayload() {
+  const managerUserIds = getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
   return {
     name: companyNameInput.value,
     logoDataUrl: companyLogoDataUrlInput?.value || "",
@@ -37717,6 +37791,8 @@ function buildCompanyPayload() {
     contractValidFrom: companyContractValidFromInput?.value || "",
     contractValidTo: companyContractValidToInput?.value || "",
     employeeSize: normalizeCompanyEmployeeSize(companyEmployeeSizeInput?.value || ""),
+    managerUserIds,
+    managerUserLabels: getCompanyManagerSelectedUserLabels(managerUserIds),
     period: companyPeriodInput.value,
     isActive: companyIsActiveInput.value,
     representative: companyRepresentativeInput.value,
@@ -38864,6 +38940,7 @@ function resetCompanyForm() {
   }
   companyError.textContent = "";
   companyIsActiveInput.value = "true";
+  rebuildCompanyManagerUserOptions([]);
   if (companyEditorTitle) {
     companyEditorTitle.textContent = "Nova tvrtka";
   }
@@ -39011,6 +39088,7 @@ function hydrateCompanyForm(company) {
   if (companyEmployeeSizeInput) {
     companyEmployeeSizeInput.value = normalizeCompanyEmployeeSize(company.employeeSize || "");
   }
+  rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
   companyRepresentativeInput.value = company.representative;
@@ -48198,6 +48276,7 @@ function renderSharedOptions() {
   const currentLocationId = workOrderLocationIdInput.value;
   const currentContactSlot = workOrderContactSlotInput.value;
   const currentSnapshotName = getSelectedContactName();
+  const currentCompanyManagerUserIds = getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
 
   if (workOrderSearchInput && workOrderSearchInput.value !== state.workOrderFilters.query) {
     workOrderSearchInput.value = state.workOrderFilters.query;
@@ -48351,6 +48430,7 @@ function renderSharedOptions() {
 
   rebuildWorkOrderCompanyOptions(currentWorkOrderCompanyId);
   rebuildLocationCompanyOptions(currentLocationCompanyId);
+  rebuildCompanyManagerUserOptions(currentCompanyManagerUserIds);
   rebuildWorkOrderLocationOptions(currentLocationId);
   rebuildWorkOrderContactOptions(currentContactSlot, currentSnapshotName);
   rebuildReminderWorkOrderOptions(reminderWorkOrderIdInput?.value || "");
@@ -57015,6 +57095,10 @@ function renderCompanies() {
 
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ");
+    const managerSummary = (Array.isArray(company.managerUserLabels) ? company.managerUserLabels : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(", ");
     const linkedContracts = getCompanyLinkedContracts(company.id);
     const linkedContractsCount = linkedContracts.length;
     const contractValidityLabel = getCompanyContractValidityLabel(company, linkedContracts);
@@ -57025,7 +57109,10 @@ function renderCompanies() {
       createStackCell({
         title: company.representative || "Bez odgovorne osobe",
         subtitle: contactSubtitle || "Bez kontakta",
-        tertiary: company.representativeOib ? `OIB ${company.representativeOib}` : "",
+        tertiary: [
+          company.representativeOib ? `OIB ${company.representativeOib}` : "",
+          managerSummary ? `Voditelji: ${managerSummary}` : "",
+        ].filter(Boolean).join(" · "),
       }),
       createStackCell({
         title: company.contractType || "Bez ugovora",

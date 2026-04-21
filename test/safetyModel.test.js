@@ -188,6 +188,8 @@ test("companies keep uploaded logo data through create and update", () => {
       employeeSize: "Do 49 zaposlenih",
       contractValidFrom: "2026-01-01",
       contractValidTo: "2026-12-31",
+      managerUserIds: ["user-1", "user-2", "user-1"],
+      managerUserLabels: ["Ana Kovac", "Marko Juric", "Ana Kovac"],
       representative: "Ana Kovac",
       representativeRole: "Direktorica",
       representativeOib: "12345678903",
@@ -201,6 +203,8 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.equal(company.employeeSize, "do-49");
   assert.equal(company.contractValidFrom, "2026-01-01");
   assert.equal(company.contractValidTo, "2026-12-31");
+  assert.deepEqual(company.managerUserIds, ["user-1", "user-2"]);
+  assert.deepEqual(company.managerUserLabels, ["Ana Kovac", "Marko Juric"]);
   assert.equal(company.representative, "Ana Kovac");
   assert.equal(company.representativeRole, "Direktorica");
   assert.equal(company.representativeOib, "12345678903");
@@ -212,6 +216,8 @@ test("companies keep uploaded logo data through create and update", () => {
       isActive: false,
       employeeSize: "preko 50",
       contractValidTo: "2027-12-31",
+      managerUserIds: ["user-2", "user-3"],
+      managerUserLabels: ["Marko Juric", "Ivana Horvat"],
       representativeRole: "Clan uprave",
     },
     [company],
@@ -223,6 +229,8 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.equal(updated.employeeSize, "preko-50");
   assert.equal(updated.contractValidFrom, "2026-01-01");
   assert.equal(updated.contractValidTo, "2027-12-31");
+  assert.deepEqual(updated.managerUserIds, ["user-2", "user-3"]);
+  assert.deepEqual(updated.managerUserLabels, ["Marko Juric", "Ivana Horvat"]);
   assert.equal(updated.representativeRole, "Clan uprave");
   assert.equal(updated.representativeOib, "12345678903");
 });
