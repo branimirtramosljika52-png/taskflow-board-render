@@ -156,6 +156,13 @@ const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
+const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v1";
+const COMPANIES_COLUMN_LAYOUT = Object.freeze([
+  Object.freeze({ key: "company", defaultWidth: 360, minWidth: 260 }),
+  Object.freeze({ key: "contacts", defaultWidth: 300, minWidth: 230 }),
+  Object.freeze({ key: "contract", defaultWidth: 260, minWidth: 210 }),
+  Object.freeze({ key: "activity", defaultWidth: 270, minWidth: 220 }),
+]);
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
 const DOCUMENTS_EXPLORER_MAX_RECORDS = 500;
@@ -1633,6 +1640,9 @@ let sessionIdleTimerId = null;
 let sessionIdleTrackingBound = false;
 let sessionLastActivityAtMs = 0;
 let logoutInProgress = false;
+let companiesColumnWidths = [];
+let companiesColumnResizeState = null;
+let companiesColumnResizeInitialized = false;
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
@@ -3254,6 +3264,7 @@ const companyActivityList = document.querySelector("#company-activity-list");
 const companyActivityEmpty = document.querySelector("#company-activity-empty");
 const companyActivityCount = document.querySelector("#company-activity-count");
 const companyNoteInput = document.querySelector("#company-note");
+const companiesTable = document.querySelector(".companies-table");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
 const companiesLegacyIntroCopy = document.querySelector("#companies-view .masterdata-launch-panel .helper-copy");
@@ -3261,6 +3272,150 @@ const companiesLegacyIntroCopy = document.querySelector("#companies-view .master
 function clearLegacyCompanyCopy() {
   companiesLegacyIntroCopy?.remove();
   document.querySelector("#companies-helper")?.remove();
+}
+
+function loadCompaniesColumnWidths() {
+  const storedWidths = readJsonFromLocalStorage(COMPANIES_COLUMN_LAYOUT_STORAGE_KEY, []);
+  const values = Array.isArray(storedWidths) ? storedWidths : [];
+  return COMPANIES_COLUMN_LAYOUT.map((column, index) => {
+    const nextWidth = Number(values[index]);
+    if (!Number.isFinite(nextWidth)) {
+      return column.defaultWidth;
+    }
+    return Math.max(column.minWidth, Math.round(nextWidth));
+  });
+}
+
+function persistCompaniesColumnWidths() {
+  if (companiesColumnWidths.length !== COMPANIES_COLUMN_LAYOUT.length) {
+    return;
+  }
+
+  writeJsonToLocalStorage(
+    COMPANIES_COLUMN_LAYOUT_STORAGE_KEY,
+    COMPANIES_COLUMN_LAYOUT.map((column, index) => {
+      const width = Number(companiesColumnWidths[index]);
+      if (!Number.isFinite(width)) {
+        return column.defaultWidth;
+      }
+      return Math.max(column.minWidth, Math.round(width));
+    }),
+  );
+}
+
+function applyCompaniesColumnWidths() {
+  if (!(companiesTable instanceof HTMLTableElement)) {
+    return;
+  }
+
+  const headers = Array.from(companiesTable.querySelectorAll("thead th"));
+  let totalWidth = 0;
+
+  COMPANIES_COLUMN_LAYOUT.forEach((column, index) => {
+    const width = Math.max(column.minWidth, Math.round(
+      Number(companiesColumnWidths[index]) || column.defaultWidth,
+    ));
+    companiesColumnWidths[index] = width;
+    totalWidth += width;
+
+    const header = headers[index];
+    if (!(header instanceof HTMLTableCellElement)) {
+      return;
+    }
+
+    header.style.width = `${width}px`;
+    header.style.minWidth = `${column.minWidth}px`;
+  });
+
+  companiesTable.style.minWidth = `${totalWidth}px`;
+}
+
+function startCompaniesColumnResize(columnIndex, pointerX, pointerId, handle) {
+  const column = COMPANIES_COLUMN_LAYOUT[columnIndex];
+  if (!column) {
+    return;
+  }
+
+  companiesColumnResizeState = {
+    columnIndex,
+    startX: pointerX,
+    startWidth: companiesColumnWidths[columnIndex] || column.defaultWidth,
+  };
+  handle.setPointerCapture?.(pointerId);
+  document.body.classList.add("is-resizing-companies-column");
+}
+
+function updateCompaniesColumnResize(pointerX) {
+  const resizeState = companiesColumnResizeState;
+  if (!resizeState) {
+    return;
+  }
+
+  const column = COMPANIES_COLUMN_LAYOUT[resizeState.columnIndex];
+  if (!column) {
+    return;
+  }
+
+  const nextWidth = Math.max(
+    column.minWidth,
+    Math.round(resizeState.startWidth + (pointerX - resizeState.startX)),
+  );
+
+  if (companiesColumnWidths[resizeState.columnIndex] === nextWidth) {
+    return;
+  }
+
+  companiesColumnWidths[resizeState.columnIndex] = nextWidth;
+  applyCompaniesColumnWidths();
+}
+
+function stopCompaniesColumnResize() {
+  if (!companiesColumnResizeState) {
+    return;
+  }
+
+  companiesColumnResizeState = null;
+  document.body.classList.remove("is-resizing-companies-column");
+  persistCompaniesColumnWidths();
+}
+
+function initializeCompaniesColumnResize() {
+  if (companiesColumnResizeInitialized || !(companiesTable instanceof HTMLTableElement)) {
+    return;
+  }
+
+  companiesColumnResizeInitialized = true;
+  companiesColumnWidths = loadCompaniesColumnWidths();
+
+  const headers = Array.from(companiesTable.querySelectorAll("thead th"));
+  headers.forEach((header, index) => {
+    const column = COMPANIES_COLUMN_LAYOUT[index];
+    if (!column || !(header instanceof HTMLTableCellElement)) {
+      return;
+    }
+
+    header.classList.add("companies-column-header");
+    const resizeHandle = document.createElement("button");
+    resizeHandle.type = "button";
+    resizeHandle.className = "companies-column-resize-handle";
+    resizeHandle.setAttribute(
+      "aria-label",
+      `Promijeni širinu kolone ${String(header.textContent || "").trim() || column.key}`,
+    );
+    resizeHandle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      startCompaniesColumnResize(index, event.clientX, event.pointerId, resizeHandle);
+    });
+
+    header.append(resizeHandle);
+  });
+
+  applyCompaniesColumnWidths();
 }
 
 function hoistModalElementToBody(element) {
@@ -17848,6 +18003,56 @@ function createMetaPill(text, className = "") {
 
 function createStatusPill(text, isActive = true) {
   return createMetaPill(text, isActive ? "is-success" : "is-muted");
+}
+
+function createCompanyStatusLine(label, value, tone = "neutral") {
+  const row = document.createElement("div");
+  row.className = "company-status-line";
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "company-status-label";
+  labelNode.textContent = `${label}:`;
+
+  const valueNode = document.createElement("span");
+  valueNode.className = "company-status-value";
+  valueNode.classList.add(
+    tone === "active"
+      ? "is-active"
+      : tone === "inactive"
+        ? "is-inactive"
+        : "is-neutral",
+  );
+  valueNode.textContent = value;
+
+  row.append(labelNode, valueNode);
+  return row;
+}
+
+function createCompanyActivityCell(company = {}) {
+  const cell = document.createElement("td");
+  const stack = document.createElement("div");
+  stack.className = "list-cell company-activity-cell";
+
+  const normalizedPeriod = String(company.period || "").trim().toLowerCase();
+  const periodTone = normalizedPeriod === "aktivno"
+    ? "active"
+    : normalizedPeriod === "neaktivno"
+      ? "inactive"
+      : "neutral";
+  const periodLabel = periodTone === "neutral"
+    ? (String(company.period || "").trim() || "Nedefinirano")
+    : normalizedPeriod === "aktivno"
+      ? "Aktivno"
+      : "Neaktivno";
+  const activityTone = company.isActive ? "active" : "inactive";
+
+  stack.append(
+    createCompanyStatusLine("Periodika", periodLabel, periodTone),
+    createCompanyStatusLine("Aktivnost", company.isActive ? "Aktivno" : "Neaktivno", activityTone),
+  );
+
+  cell.append(stack);
+  return cell;
 }
 
 function createStackCell({
@@ -56460,6 +56665,8 @@ function renderCompactWorkOrdersList() {
 
 function renderCompanies() {
   clearLegacyCompanyCopy();
+  initializeCompaniesColumnResize();
+  applyCompaniesColumnWidths();
 
   const sortedCompanies = state.companies
     .slice()
@@ -56491,14 +56698,6 @@ function renderCompanies() {
     const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
     const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ");
     const linkedContractsCount = getCompanyLinkedContracts(company.id).length;
-    const companyPeriod = String(company.period || "").trim();
-    const compactPeriod = companyPeriod && !["aktivno", "neaktivno"].includes(companyPeriod.toLowerCase())
-      ? `Periodika: ${companyPeriod}`
-      : "";
-    const companyNote = String(company.note || "").trim();
-    const compactNote = companyNote.length > 88
-      ? `${companyNote.slice(0, 85).trimEnd()}...`
-      : companyNote;
 
     row.append(
       createCompanyIdentityCell(company),
@@ -56510,16 +56709,9 @@ function renderCompanies() {
       createStackCell({
         title: company.contractType || "Bez ugovora",
         subtitle: company.contractNumber || "Bez broja ugovora",
-        tertiary: compactPeriod,
         meta: linkedContractsCount ? [`${linkedContractsCount} ugovora`] : [],
       }),
-      createStackCell({
-        subtitle: compactNote || "Bez interne napomene",
-        meta: [
-          createStatusPill(company.isActive ? "Aktivno" : "Neaktivno", company.isActive),
-          companyNote ? "Napomena" : "",
-        ],
-      }),
+      createCompanyActivityCell(company),
     );
 
     return row;
@@ -60418,6 +60610,10 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("pointermove", (event) => {
   updateDashboardWidgetLayoutInteraction(event);
 
+  if (companiesColumnResizeState) {
+    updateCompaniesColumnResize(event.clientX);
+  }
+
   if (state.measurementSheet.resizing) {
     updateMeasurementColumnWidth(event.clientX);
   }
@@ -60433,6 +60629,7 @@ document.addEventListener("pointermove", (event) => {
 
 document.addEventListener("pointerup", (event) => {
   commitDashboardWidgetLayoutInteraction();
+  stopCompaniesColumnResize();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(true, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();
@@ -60440,6 +60637,7 @@ document.addEventListener("pointerup", (event) => {
 
 document.addEventListener("pointercancel", (event) => {
   clearDashboardWidgetInteraction();
+  stopCompaniesColumnResize();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(false, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();

@@ -14773,6 +14773,7 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .table-wrap {
+  overflow-x: auto;
   border-radius: 20px;
   background: linear-gradient(180deg, #fbfcfa, #f5f8f4);
   box-shadow:
@@ -14848,6 +14849,58 @@ body.is-document-template-editor-open .chat-dock {
   text-align: left;
 }
 
+.companies-table {
+  width: auto;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.companies-column-header {
+  position: sticky;
+}
+
+.companies-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 12px;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 4;
+}
+
+.companies-column-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: rgba(112, 137, 116, 0.24);
+  transition: background 0.18s ease;
+}
+
+.companies-column-header:hover .companies-column-resize-handle::before,
+.companies-column-resize-handle:hover::before {
+  background: rgba(66, 102, 212, 0.5);
+}
+
+body.is-resizing-companies-column {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing-companies-column .companies-column-resize-handle::before {
+  background: rgba(66, 102, 212, 0.68);
+}
+
 .company-list-row[role="button"] {
   cursor: pointer;
 }
@@ -14877,6 +14930,43 @@ body.is-document-template-editor-open .chat-dock {
   display: grid;
   gap: 5px;
   min-width: 0;
+}
+
+.company-activity-cell {
+  gap: 8px;
+}
+
+.company-status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  line-height: 1.3;
+}
+
+.company-status-label {
+  color: #6f7a6d;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.company-status-value {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.company-status-value.is-active {
+  color: #2f9a4e;
+}
+
+.company-status-value.is-inactive {
+  color: #ca4f4f;
+}
+
+.company-status-value.is-neutral {
+  color: #707b6d;
 }
 
 .list-cell {
