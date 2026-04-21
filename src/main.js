@@ -1034,6 +1034,11 @@ const state = {
   contractTemplateModalOpen: false,
   activeContractTemplateId: "",
   contractTemplateReferenceCollapsed: false,
+  companyFilters: {
+    query: "",
+    periodStatus: "all",
+    activityStatus: "all",
+  },
   contractFilters: {
     query: "",
     status: "all",
@@ -3264,6 +3269,9 @@ const companyActivityList = document.querySelector("#company-activity-list");
 const companyActivityEmpty = document.querySelector("#company-activity-empty");
 const companyActivityCount = document.querySelector("#company-activity-count");
 const companyNoteInput = document.querySelector("#company-note");
+const companiesSearchInput = document.querySelector("#companies-search");
+const companiesPeriodFilterInput = document.querySelector("#companies-filter-period");
+const companiesActivityFilterInput = document.querySelector("#companies-filter-activity");
 const companiesTable = document.querySelector(".companies-table");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
@@ -18028,20 +18036,55 @@ function createCompanyStatusLine(label, value, tone = "neutral") {
   return row;
 }
 
+function normalizeCompanyPeriodStatus(value = "") {
+  const normalizedValue = normalizeLooseName(value);
+  if (normalizedValue === "aktivno") {
+    return "active";
+  }
+  if (normalizedValue === "neaktivno") {
+    return "inactive";
+  }
+  return "other";
+}
+
+function matchesCompanySearch(company = {}, queryNeedle = "") {
+  if (!queryNeedle) {
+    return true;
+  }
+
+  const haystack = normalizeLooseName([
+    company.name,
+    company.headquarters,
+    company.oib,
+    company.contractType,
+    company.contractNumber,
+    company.representative,
+    company.representativeRole,
+    company.representativeOib,
+    company.contactPhone,
+    company.contactEmail,
+    company.period,
+    company.note,
+    company.isActive ? "aktivno" : "neaktivno",
+  ].filter(Boolean).join(" "));
+
+  return haystack.includes(queryNeedle);
+}
+
 function createCompanyActivityCell(company = {}) {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
   stack.className = "list-cell company-activity-cell";
 
-  const normalizedPeriod = String(company.period || "").trim().toLowerCase();
-  const periodTone = normalizedPeriod === "aktivno"
+  const normalizedPeriod = normalizeCompanyPeriodStatus(company.period);
+  const periodTone = normalizedPeriod === "active"
     ? "active"
-    : normalizedPeriod === "neaktivno"
+    : normalizedPeriod === "inactive"
       ? "inactive"
       : "neutral";
   const periodLabel = periodTone === "neutral"
     ? (String(company.period || "").trim() || "Nedefinirano")
-    : normalizedPeriod === "aktivno"
+    : normalizedPeriod === "active"
       ? "Aktivno"
       : "Neaktivno";
   const activityTone = company.isActive ? "active" : "inactive";
@@ -56671,13 +56714,53 @@ function renderCompanies() {
   const sortedCompanies = state.companies
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+  const queryNeedle = normalizeLooseName(state.companyFilters.query || "");
+  const periodFilter = ["all", "active", "inactive"].includes(state.companyFilters.periodStatus)
+    ? state.companyFilters.periodStatus
+    : "all";
+  const activityFilter = ["all", "active", "inactive"].includes(state.companyFilters.activityStatus)
+    ? state.companyFilters.activityStatus
+    : "all";
+  const filteredCompanies = sortedCompanies.filter((company) => {
+    if (!matchesCompanySearch(company, queryNeedle)) {
+      return false;
+    }
+
+    if (periodFilter !== "all" && normalizeCompanyPeriodStatus(company.period) !== periodFilter) {
+      return false;
+    }
+
+    if (activityFilter !== "all") {
+      const isActive = Boolean(company.isActive);
+      if (activityFilter === "active" && !isActive) {
+        return false;
+      }
+      if (activityFilter === "inactive" && isActive) {
+        return false;
+      }
+    }
+
+    return true;
+  });
   const canManageMasterData = getCanManageMasterData();
 
   if (companyOpenFormButton) {
     companyOpenFormButton.hidden = !canManageMasterData;
   }
 
-  companiesBody.replaceChildren(...sortedCompanies.map((company) => {
+  if (companiesSearchInput && companiesSearchInput.value !== state.companyFilters.query) {
+    companiesSearchInput.value = state.companyFilters.query;
+  }
+
+  if (companiesPeriodFilterInput && companiesPeriodFilterInput.value !== periodFilter) {
+    companiesPeriodFilterInput.value = periodFilter;
+  }
+
+  if (companiesActivityFilterInput && companiesActivityFilterInput.value !== activityFilter) {
+    companiesActivityFilterInput.value = activityFilter;
+  }
+
+  companiesBody.replaceChildren(...filteredCompanies.map((company) => {
     const row = document.createElement("tr");
     row.className = "list-row company-list-row";
     if (canManageMasterData) {
@@ -56717,7 +56800,15 @@ function renderCompanies() {
     return row;
   }));
 
-  companiesEmpty.hidden = sortedCompanies.length !== 0;
+  const hasFilters = Boolean(queryNeedle) || periodFilter !== "all" || activityFilter !== "all";
+  companiesEmpty.hidden = filteredCompanies.length !== 0;
+  if (companiesEmpty) {
+    companiesEmpty.textContent = sortedCompanies.length === 0
+      ? "Nema unesenih tvrtki."
+      : hasFilters
+        ? "Nema tvrtki za odabrane filtere."
+        : "Nema unesenih tvrtki.";
+  }
 }
 
 function renderLocations() {
@@ -60182,6 +60273,23 @@ companyNameInput?.addEventListener("input", () => {
 
 companyIsActiveInput?.addEventListener("change", () => {
   syncCompanyEditorChrome();
+});
+
+companiesSearchInput?.addEventListener("input", () => {
+  state.companyFilters.query = companiesSearchInput.value || "";
+  renderCompanies();
+});
+
+companiesPeriodFilterInput?.addEventListener("change", () => {
+  const nextValue = String(companiesPeriodFilterInput.value || "all").trim().toLowerCase();
+  state.companyFilters.periodStatus = ["all", "active", "inactive"].includes(nextValue) ? nextValue : "all";
+  renderCompanies();
+});
+
+companiesActivityFilterInput?.addEventListener("change", () => {
+  const nextValue = String(companiesActivityFilterInput.value || "all").trim().toLowerCase();
+  state.companyFilters.activityStatus = ["all", "active", "inactive"].includes(nextValue) ? nextValue : "all";
+  renderCompanies();
 });
 
 companyOpenFormButton?.addEventListener("click", () => {

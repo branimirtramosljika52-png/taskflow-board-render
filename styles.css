@@ -14849,6 +14849,21 @@ body.is-document-template-editor-open .chat-dock {
   text-align: left;
 }
 
+.companies-filters-block {
+  padding: 10px 12px;
+  border: 1px solid rgba(186, 199, 188, 0.58);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(251, 253, 250, 0.98), rgba(245, 249, 244, 0.98));
+}
+
+.companies-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 210px) minmax(170px, 210px);
+  gap: 10px;
+  align-items: end;
+}
+
 .companies-table {
   width: auto;
   min-width: 100%;
@@ -14934,6 +14949,11 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .company-activity-cell {
   gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(173, 191, 179, 0.5);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(252, 254, 252, 0.98), rgba(246, 250, 246, 0.96));
 }
 
 .company-status-line {
@@ -14967,6 +14987,12 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .company-status-value.is-neutral {
   color: #707b6d;
+}
+
+@media (max-width: 980px) {
+  .companies-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .list-cell {
