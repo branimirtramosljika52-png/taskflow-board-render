@@ -17,6 +17,7 @@ import {
 } from "./accessControl.js";
 import {
   REFRESH_TOKEN_MAX_AGE_MS,
+  REFRESH_TOKEN_SESSION_MAX_AGE_MS,
   createPasswordHash,
   hashStoredToken,
   verifyPassword,
@@ -42,6 +43,52 @@ function createHttpError(statusCode, message) {
 
 function dbString(value) {
   return String(value ?? "").trim();
+}
+
+function resolvePositiveDurationMs(value, fallbackMs) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallbackMs;
+  }
+
+  return Math.floor(numeric);
+}
+
+function resolveRefreshSessionIssuedAtMs(value, fallbackMs = Date.now()) {
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : fallbackMs;
+  }
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.floor(numeric);
+  }
+
+  const parsed = Date.parse(String(value ?? "").trim());
+  if (Number.isFinite(parsed)) {
+    return parsed;
+  }
+
+  return fallbackMs;
+}
+
+function resolveRefreshTokenExpiryDate({
+  nowMs = Date.now(),
+  issuedAtMs = nowMs,
+  maxAgeMs = REFRESH_TOKEN_MAX_AGE_MS,
+  sessionMaxAgeMs = REFRESH_TOKEN_SESSION_MAX_AGE_MS,
+} = {}) {
+  const normalizedNowMs = resolveRefreshSessionIssuedAtMs(nowMs);
+  const normalizedIssuedAtMs = resolveRefreshSessionIssuedAtMs(issuedAtMs, normalizedNowMs);
+  const normalizedMaxAgeMs = resolvePositiveDurationMs(maxAgeMs, REFRESH_TOKEN_MAX_AGE_MS);
+  const normalizedSessionMaxAgeMs = resolvePositiveDurationMs(sessionMaxAgeMs, REFRESH_TOKEN_SESSION_MAX_AGE_MS);
+  const expiresAtMs = Math.min(
+    normalizedNowMs + normalizedMaxAgeMs,
+    normalizedIssuedAtMs + normalizedSessionMaxAgeMs,
+  );
+  return new Date(expiresAtMs);
 }
 
 function normalizeOib(value) {
@@ -2014,10 +2061,18 @@ export class MemoryTenantRepository {
   }
 
   async storeRefreshToken(user, token, metadata = {}) {
-    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    const nowMs = Date.now();
+    const issuedAtMs = resolveRefreshSessionIssuedAtMs(metadata.issuedAtMs, nowMs);
+    const expiresAt = resolveRefreshTokenExpiryDate({
+      nowMs,
+      issuedAtMs,
+      maxAgeMs: metadata.maxAgeMs,
+      sessionMaxAgeMs: metadata.sessionMaxAgeMs,
+    }).toISOString();
     this.refreshTokens.set(hashStoredToken(token), {
       userId: String(user.id),
       expiresAt,
+      issuedAt: new Date(issuedAtMs).toISOString(),
     });
 
     return { user, expiresAt };
@@ -2025,8 +2080,10 @@ export class MemoryTenantRepository {
 
   async rotateRefreshToken(currentToken, nextToken, metadata = {}) {
     const record = this.refreshTokens.get(hashStoredToken(currentToken));
+    const nowMs = Date.now();
 
-    if (!record || Date.parse(record.expiresAt) <= Date.now()) {
+    if (!record || Date.parse(record.expiresAt) <= nowMs) {
+      this.refreshTokens.delete(hashStoredToken(currentToken));
       return null;
     }
 
@@ -2040,11 +2097,25 @@ export class MemoryTenantRepository {
       return null;
     }
 
+    const issuedAtMs = resolveRefreshSessionIssuedAtMs(record.issuedAt, nowMs);
+    const sessionMaxAgeMs = resolvePositiveDurationMs(metadata.sessionMaxAgeMs, REFRESH_TOKEN_SESSION_MAX_AGE_MS);
+
+    if (nowMs >= (issuedAtMs + sessionMaxAgeMs)) {
+      this.refreshTokens.delete(hashStoredToken(currentToken));
+      return null;
+    }
+
     this.refreshTokens.delete(hashStoredToken(currentToken));
-    const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS)).toISOString();
+    const expiresAt = resolveRefreshTokenExpiryDate({
+      nowMs,
+      issuedAtMs,
+      maxAgeMs: metadata.maxAgeMs,
+      sessionMaxAgeMs: metadata.sessionMaxAgeMs,
+    }).toISOString();
     this.refreshTokens.set(hashStoredToken(nextToken), {
       userId: String(user.id),
       expiresAt,
+      issuedAt: new Date(issuedAtMs).toISOString(),
     });
 
     return {
@@ -2622,7 +2693,13 @@ export class MySqlTenantRepository {
 
     try {
       const tokenHash = hashStoredToken(token);
-      const expiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
+      const nowMs = Date.now();
+      const expiresAt = resolveRefreshTokenExpiryDate({
+        nowMs,
+        issuedAtMs: nowMs,
+        maxAgeMs: metadata.maxAgeMs,
+        sessionMaxAgeMs: metadata.sessionMaxAgeMs,
+      });
 
       await connection.query("DELETE FROM app_refresh_tokens WHERE expires_at <= UTC_TIMESTAMP()");
       await connection.query(
@@ -2661,7 +2738,8 @@ export class MySqlTenantRepository {
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
                  u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
-                 o.name AS organization_name
+                 o.name AS organization_name,
+                 rt.created_at AS refresh_created_at
           FROM app_refresh_tokens rt
           INNER JOIN app_users u ON u.id = rt.user_id
           LEFT JOIN organizations o ON o.id = u.organization_id
@@ -2684,7 +2762,25 @@ export class MySqlTenantRepository {
         return null;
       }
 
-      const nextExpiresAt = new Date(Date.now() + (metadata.maxAgeMs ?? REFRESH_TOKEN_MAX_AGE_MS));
+      const nowMs = Date.now();
+      const issuedAtMs = resolveRefreshSessionIssuedAtMs(userRow.refresh_created_at, nowMs);
+      const sessionMaxAgeMs = resolvePositiveDurationMs(metadata.sessionMaxAgeMs, REFRESH_TOKEN_SESSION_MAX_AGE_MS);
+
+      if (nowMs >= (issuedAtMs + sessionMaxAgeMs)) {
+        await connection.query(
+          "DELETE FROM app_refresh_tokens WHERE token_hash = ?",
+          [hashStoredToken(currentToken)],
+        );
+        await connection.commit();
+        return null;
+      }
+
+      const nextExpiresAt = resolveRefreshTokenExpiryDate({
+        nowMs,
+        issuedAtMs,
+        maxAgeMs: metadata.maxAgeMs,
+        sessionMaxAgeMs: metadata.sessionMaxAgeMs,
+      });
       await connection.query(
         `
           UPDATE app_refresh_tokens

@@ -11,8 +11,33 @@ const scrypt = promisify(scryptCallback);
 
 export const ACCESS_TOKEN_COOKIE_NAME = "safety360_access";
 export const REFRESH_TOKEN_COOKIE_NAME = "safety360_refresh";
-export const ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 15;
-export const REFRESH_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const DEFAULT_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 15;
+const DEFAULT_REFRESH_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const DEFAULT_REFRESH_TOKEN_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+
+function resolveDurationMs(name, fallbackMs, minimumMs = 1000) {
+  const rawValue = String(process?.env?.[name] ?? "").trim();
+
+  if (!rawValue) {
+    return fallbackMs;
+  }
+
+  const numericValue = Number(rawValue);
+
+  if (!Number.isFinite(numericValue) || numericValue < minimumMs) {
+    return fallbackMs;
+  }
+
+  return Math.floor(numericValue);
+}
+
+export const ACCESS_TOKEN_MAX_AGE_MS = resolveDurationMs("AUTH_ACCESS_TOKEN_MAX_AGE_MS", DEFAULT_ACCESS_TOKEN_MAX_AGE_MS);
+export const REFRESH_TOKEN_MAX_AGE_MS = resolveDurationMs("AUTH_REFRESH_TOKEN_MAX_AGE_MS", DEFAULT_REFRESH_TOKEN_MAX_AGE_MS);
+export const REFRESH_TOKEN_SESSION_MAX_AGE_MS = resolveDurationMs(
+  "AUTH_REFRESH_SESSION_MAX_AGE_MS",
+  DEFAULT_REFRESH_TOKEN_SESSION_MAX_AGE_MS,
+  ACCESS_TOKEN_MAX_AGE_MS,
+);
 
 function toBuffer(value) {
   return Buffer.from(String(value ?? ""), "utf8");

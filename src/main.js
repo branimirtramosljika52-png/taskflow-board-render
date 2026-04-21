@@ -153,6 +153,9 @@ const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
 ]);
 const CHAT_POLL_INTERVAL_MS = 7_000;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
+const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
+const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
+const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
 const DOCUMENTS_EXPLORER_MAX_RECORDS = 500;
@@ -1626,6 +1629,10 @@ let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
 let globalLoadingTimerId = null;
+let sessionIdleTimerId = null;
+let sessionIdleTrackingBound = false;
+let sessionLastActivityAtMs = 0;
+let logoutInProgress = false;
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
@@ -3249,7 +3256,12 @@ const companyActivityCount = document.querySelector("#company-activity-count");
 const companyNoteInput = document.querySelector("#company-note");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
-const companiesHelper = document.querySelector("#companies-helper");
+const companiesLegacyIntroCopy = document.querySelector("#companies-view .masterdata-launch-panel .helper-copy");
+
+function clearLegacyCompanyCopy() {
+  companiesLegacyIntroCopy?.remove();
+  document.querySelector("#companies-helper")?.remove();
+}
 
 function hoistModalElementToBody(element) {
   if (!(element instanceof HTMLElement) || !document.body || element.parentElement === document.body) {
@@ -4225,10 +4237,14 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
   });
 
   if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
-    const refreshed = await requestTokenRefresh();
+    if (hasSessionIdleExpired()) {
+      runLogoutFlow(SESSION_IDLE_LOGOUT_MESSAGE);
+    } else {
+      const refreshed = await requestTokenRefresh();
 
-    if (refreshed) {
-      return apiRequest(path, options, false);
+      if (refreshed) {
+        return apiRequest(path, options, false);
+      }
     }
   }
 
@@ -4278,10 +4294,14 @@ async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
   });
 
   if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
-    const refreshed = await requestTokenRefresh();
+    if (hasSessionIdleExpired()) {
+      runLogoutFlow(SESSION_IDLE_LOGOUT_MESSAGE);
+    } else {
+      const refreshed = await requestTokenRefresh();
 
-    if (refreshed) {
-      return apiBinaryRequest(path, options, false);
+      if (refreshed) {
+        return apiBinaryRequest(path, options, false);
+      }
     }
   }
 
@@ -4474,6 +4494,95 @@ async function refreshSession() {
 
 async function refreshLoginContent() {
   return null;
+}
+
+function clearSessionIdleTimer() {
+  if (sessionIdleTimerId) {
+    window.clearTimeout(sessionIdleTimerId);
+    sessionIdleTimerId = null;
+  }
+}
+
+function scheduleSessionIdleCheck() {
+  if (!state.user || logoutInProgress) {
+    clearSessionIdleTimer();
+    return;
+  }
+
+  if (!sessionLastActivityAtMs) {
+    sessionLastActivityAtMs = Date.now();
+  }
+
+  const elapsedMs = Date.now() - sessionLastActivityAtMs;
+
+  if (elapsedMs >= SESSION_IDLE_TIMEOUT_MS) {
+    runLogoutFlow(SESSION_IDLE_LOGOUT_MESSAGE);
+    return;
+  }
+
+  clearSessionIdleTimer();
+  sessionIdleTimerId = window.setTimeout(() => {
+    sessionIdleTimerId = null;
+    scheduleSessionIdleCheck();
+  }, Math.max(250, SESSION_IDLE_TIMEOUT_MS - elapsedMs));
+}
+
+function handleSessionIdleActivity() {
+  if (!state.user || logoutInProgress) {
+    clearSessionIdleTimer();
+    return;
+  }
+
+  sessionLastActivityAtMs = Date.now();
+  scheduleSessionIdleCheck();
+}
+
+function verifySessionIdleOnVisibilityOrFocus() {
+  if (!state.user || logoutInProgress) {
+    clearSessionIdleTimer();
+    return;
+  }
+
+  if (document.visibilityState && document.visibilityState !== "visible") {
+    return;
+  }
+
+  scheduleSessionIdleCheck();
+}
+
+function bindSessionIdleTracking() {
+  if (sessionIdleTrackingBound) {
+    return;
+  }
+
+  sessionIdleTrackingBound = true;
+  for (const eventName of SESSION_IDLE_ACTIVITY_EVENTS) {
+    window.addEventListener(eventName, handleSessionIdleActivity, { passive: true });
+  }
+  window.addEventListener("focus", verifySessionIdleOnVisibilityOrFocus, { passive: true });
+  document.addEventListener("visibilitychange", verifySessionIdleOnVisibilityOrFocus);
+}
+
+function syncSessionIdleTracking() {
+  if (state.user) {
+    bindSessionIdleTracking();
+    if (!sessionLastActivityAtMs) {
+      sessionLastActivityAtMs = Date.now();
+    }
+    scheduleSessionIdleCheck();
+    return;
+  }
+
+  sessionLastActivityAtMs = 0;
+  clearSessionIdleTimer();
+}
+
+function hasSessionIdleExpired() {
+  if (!state.user || !sessionLastActivityAtMs) {
+    return false;
+  }
+
+  return (Date.now() - sessionLastActivityAtMs) >= SESSION_IDLE_TIMEOUT_MS;
 }
 
 async function runMutation(callback, errorTarget) {
@@ -37044,6 +37153,7 @@ function renderAuthState() {
   setRemindersShortcutMenuOpen(false);
   setTodoShortcutMenuOpen(false);
   setUserMenuOpen(false);
+  syncSessionIdleTracking();
 }
 
 function slugifyValue(value) {
@@ -56349,6 +56459,8 @@ function renderCompactWorkOrdersList() {
 }
 
 function renderCompanies() {
+  clearLegacyCompanyCopy();
+
   const sortedCompanies = state.companies
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
@@ -56356,12 +56468,6 @@ function renderCompanies() {
 
   if (companyOpenFormButton) {
     companyOpenFormButton.hidden = !canManageMasterData;
-  }
-
-  if (companiesHelper) {
-    companiesHelper.textContent = canManageMasterData
-      ? `${sortedCompanies.length} tvrtki. Klikni bilo gdje na red za otvaranje i uredjivanje.`
-      : `${sortedCompanies.length} tvrtki uredeno kao list view.`;
   }
 
   companiesBody.replaceChildren(...sortedCompanies.map((company) => {
@@ -60670,114 +60776,133 @@ loginForm?.addEventListener("submit", () => {
 });
 
 logoutButton?.addEventListener("click", () => {
+  runLogoutFlow();
+});
+
+function resetAuthenticatedWorkspaceState() {
+  resetChatState();
+  state.user = null;
+  state.organizations = [];
+  state.workOrders = [];
+  state.reminders = [];
+  state.todoTasks = [];
+  state.offers = [];
+  state.purchaseOrders = [];
+  state.vehicles = [];
+  state.legalFrameworks = [];
+  state.serviceCatalog = [];
+  state.measurementEquipment = [];
+  state.measurementEquipmentCardTemplate = null;
+  state.measurementEquipmentNotificationSettings = {
+    ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
+  };
+  state.safetyAuthorizationNotificationSettings = {
+    ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
+  };
+  state.absenceNotificationSettings = {
+    ...DEFAULT_ABSENCE_NOTIFICATION_SETTINGS,
+  };
+  state.vehicleNotificationSettings = {
+    ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
+  };
+  state.periodicsVisualSettings = {
+    ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
+  };
+  measurementEquipmentSideComments = [];
+  state.measurementEquipmentActivityFeed = {
+    organizationId: "",
+    loaded: false,
+    loading: false,
+    error: "",
+    records: [],
+  };
+  state.periodicsFeed = {
+    organizationId: "",
+    loaded: false,
+    loading: false,
+    error: "",
+    records: [],
+  };
+  state.periodicsFilters = {
+    query: "",
+    horizon: "all",
+  };
+  state.periodicsSections = {
+    inspectionsCollapsed: false,
+    vehiclesCollapsed: false,
+    peopleCollapsed: false,
+    equipmentCollapsed: false,
+  };
+  state.safetyAuthorizations = [];
+  state.documentTemplates = [];
+  state.dashboardWidgets = [];
+  state.companies = [];
+  state.locations = [];
+  state.documentsExplorer = {
+    organizationId: "",
+    query: "",
+    scope: "all",
+    loading: false,
+    loaded: false,
+    error: "",
+    records: [],
+    expandedCompanyIds: new Set(),
+    expandedLocationIds: new Set(),
+  };
+  state.users = [];
+  state.signupRequests = [];
+  state.loginContentItems = [];
+  state.activeTodoTaskId = "";
+  state.activeDashboardWidgetId = "";
+  state.activeLegalFrameworkId = "";
+  state.activeServiceCatalogId = "";
+  state.activeMeasurementEquipmentId = "";
+  state.activeSafetyAuthorizationId = "";
+  state.activeDocumentTemplateId = "";
+  closeDashboardBuilder();
+  state.measurementSheet.columns = [];
+  state.measurementSheet.rows = [];
+  state.measurementSheet.resizing = null;
+  state.measurementSheet.activeCell = null;
+  state.measurementSheet.editingCell = null;
+  state.measurementSheet.editorSource = null;
+  state.measurementSheet.formulaReferences = [];
+  state.measurementSheet.selectionAnchor = null;
+  state.measurementSheet.selectedRange = null;
+  state.measurementSheet.selectionDrag = null;
+  state.measurementSheet.fillDrag = null;
+  state.measurementSheet.fillMenu = null;
+  state.measurementSheet.contextMenu = null;
+  loginForm.reset();
+  closeMeasurementSheet();
+  resetOfferForm();
+  resetLegalFrameworkForm();
+  resetServiceCatalogForm();
+  resetMeasurementEquipmentForm();
+  resetSafetyAuthorizationForm();
+  resetDocumentTemplateForm();
+  renderAuthState();
+  void refreshLoginContent();
+}
+
+function runLogoutFlow(message = "") {
+  if (logoutInProgress) {
+    return;
+  }
+
+  logoutInProgress = true;
   void apiRequest("/auth/logout", {
     method: "POST",
-  }).finally(() => {
-    resetChatState();
-    state.user = null;
-    state.organizations = [];
-    state.workOrders = [];
-    state.reminders = [];
-    state.todoTasks = [];
-    state.offers = [];
-    state.purchaseOrders = [];
-    state.vehicles = [];
-    state.legalFrameworks = [];
-    state.serviceCatalog = [];
-    state.measurementEquipment = [];
-    state.measurementEquipmentCardTemplate = null;
-    state.measurementEquipmentNotificationSettings = {
-      ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,
-    };
-    state.safetyAuthorizationNotificationSettings = {
-      ...DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS,
-    };
-    state.absenceNotificationSettings = {
-      ...DEFAULT_ABSENCE_NOTIFICATION_SETTINGS,
-    };
-    state.vehicleNotificationSettings = {
-      ...DEFAULT_VEHICLE_NOTIFICATION_SETTINGS,
-    };
-    state.periodicsVisualSettings = {
-      ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
-    };
-    measurementEquipmentSideComments = [];
-    state.measurementEquipmentActivityFeed = {
-      organizationId: "",
-      loaded: false,
-      loading: false,
-      error: "",
-      records: [],
-    };
-    state.periodicsFeed = {
-      organizationId: "",
-      loaded: false,
-      loading: false,
-      error: "",
-      records: [],
-    };
-    state.periodicsFilters = {
-      query: "",
-      horizon: "all",
-    };
-    state.periodicsSections = {
-      inspectionsCollapsed: false,
-      vehiclesCollapsed: false,
-      peopleCollapsed: false,
-      equipmentCollapsed: false,
-    };
-    state.safetyAuthorizations = [];
-    state.documentTemplates = [];
-    state.dashboardWidgets = [];
-    state.companies = [];
-    state.locations = [];
-    state.documentsExplorer = {
-      organizationId: "",
-      query: "",
-      scope: "all",
-      loading: false,
-      loaded: false,
-      error: "",
-      records: [],
-      expandedCompanyIds: new Set(),
-      expandedLocationIds: new Set(),
-    };
-    state.users = [];
-    state.signupRequests = [];
-    state.loginContentItems = [];
-    state.activeTodoTaskId = "";
-    state.activeDashboardWidgetId = "";
-    state.activeLegalFrameworkId = "";
-    state.activeServiceCatalogId = "";
-    state.activeMeasurementEquipmentId = "";
-    state.activeSafetyAuthorizationId = "";
-    state.activeDocumentTemplateId = "";
-    closeDashboardBuilder();
-    state.measurementSheet.columns = [];
-    state.measurementSheet.rows = [];
-    state.measurementSheet.resizing = null;
-    state.measurementSheet.activeCell = null;
-    state.measurementSheet.editingCell = null;
-    state.measurementSheet.editorSource = null;
-    state.measurementSheet.formulaReferences = [];
-    state.measurementSheet.selectionAnchor = null;
-    state.measurementSheet.selectedRange = null;
-    state.measurementSheet.selectionDrag = null;
-    state.measurementSheet.fillDrag = null;
-    state.measurementSheet.fillMenu = null;
-    state.measurementSheet.contextMenu = null;
-    loginForm.reset();
-    closeMeasurementSheet();
-    resetOfferForm();
-    resetLegalFrameworkForm();
-    resetServiceCatalogForm();
-    resetMeasurementEquipmentForm();
-    resetSafetyAuthorizationForm();
-    resetDocumentTemplateForm();
-    renderAuthState();
-    void refreshLoginContent();
-  });
-});
+  })
+    .catch(() => {})
+    .finally(() => {
+      resetAuthenticatedWorkspaceState();
+      if (message && loginError) {
+        loginError.textContent = message;
+      }
+      logoutInProgress = false;
+    });
+}
 
 organizationSwitcher?.addEventListener("change", () => {
   state.activeOrganizationId = organizationSwitcher.value;
