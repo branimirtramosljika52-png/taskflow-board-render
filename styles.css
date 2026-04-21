@@ -14850,6 +14850,8 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .companies-filters-block {
+  display: grid;
+  gap: 10px;
   padding: 10px 12px;
   border: 1px solid rgba(186, 199, 188, 0.58);
   border-radius: 18px;
@@ -14862,6 +14864,11 @@ body.is-document-template-editor-open .chat-dock {
   grid-template-columns: minmax(0, 1fr) minmax(170px, 210px) minmax(170px, 210px);
   gap: 10px;
   align-items: end;
+}
+
+.companies-filters-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .companies-table {
@@ -14992,6 +14999,10 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 @media (max-width: 980px) {
   .companies-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .companies-filters-actions {
+    justify-content: flex-start;
   }
 }
 
