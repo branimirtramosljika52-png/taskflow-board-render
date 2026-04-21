@@ -14866,9 +14866,9 @@ body.is-document-template-editor-open .chat-dock {
   align-items: end;
 }
 
-.companies-filters-actions {
-  display: flex;
-  justify-content: flex-end;
+.companies-filter-create {
+  grid-column: 3;
+  justify-self: end;
 }
 
 .companies-table {
@@ -15024,8 +15024,9 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .companies-filters-actions {
-    justify-content: flex-start;
+  .companies-filter-create {
+    grid-column: 1;
+    justify-self: start;
   }
 }
 
