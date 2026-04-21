@@ -2854,24 +2854,13 @@ body.is-location-editor-open {
   color: #263247;
 }
 
+.masterdata-company-contract-card,
 .masterdata-company-contact-card {
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
-  gap: 14px 16px;
-  align-items: start;
+  gap: 12px;
 }
 
-.masterdata-company-contact-card > .masterdata-group-head {
-  grid-column: 1 / -1;
-}
-
-.masterdata-company-contact-card > .masterdata-company-contact-grid {
-  grid-column: 1;
-}
-
-.masterdata-company-contact-card > .company-related-contracts {
-  grid-column: 2;
-  grid-row: 2 / span 2;
-  align-self: start;
+.masterdata-company-contract-card > .masterdata-company-contract-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
 .company-related-contracts {
@@ -3456,15 +3445,6 @@ body.is-location-editor-open {
 
   .company-editor-layout {
     grid-template-columns: 1fr;
-  }
-
-  .masterdata-company-contact-card {
-    grid-template-columns: 1fr;
-  }
-
-  .masterdata-company-contact-card > .company-related-contracts {
-    grid-column: 1;
-    grid-row: auto;
   }
 
   .company-activity-panel {

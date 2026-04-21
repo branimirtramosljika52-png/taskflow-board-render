@@ -2342,7 +2342,7 @@
                       <div class="masterdata-group-head">
                         <div>
                           <p class="section-kicker">Tvrtka</p>
-                          <h4 class="subsection-title">Osnovni identitet i ugovor</h4>
+                          <h4 class="subsection-title">Osnovni podaci</h4>
                         </div>
                       </div>
 
@@ -2387,60 +2387,85 @@
                           <input id="company-oib" type="text" inputmode="numeric" maxlength="11" required />
                         </label>
 
-                        <label class="field field-company-contract-type">
+                        <label class="field field-company-employee-size">
+                          <span>Broj zaposlenih</span>
+                          <select id="company-employee-size">
+                            <option value="">Nije definirano</option>
+                            <option value="do-49">Do 49 zaposlenih</option>
+                            <option value="preko-50">Preko 50 zaposlenih</option>
+                          </select>
+                        </label>
+                      </div>
+                    </section>
+
+                    <div class="masterdata-company-sections">
+                      <section class="masterdata-group-card masterdata-company-contract-card">
+                        <div class="masterdata-group-head">
+                          <div>
+                            <p class="section-kicker">Ugovor</p>
+                            <h4 class="subsection-title">Ugovor i periodika</h4>
+                          </div>
+                        </div>
+
+                        <div class="form-grid masterdata-company-grid masterdata-company-contract-grid">
+                          <label class="field field-company-contract-type">
                             <span>Vrsta ugovora</span>
                             <input id="company-contract-type" type="text" maxlength="120" />
-                        </label>
+                          </label>
 
-                        <label class="field field-company-contract-number">
+                          <label class="field field-company-contract-number">
                             <span>Broj ugovora</span>
                             <input id="company-contract-number" type="text" maxlength="120" />
-                        </label>
+                          </label>
 
-                        <label class="field field-company-contract-valid-from">
+                          <label class="field field-company-contract-valid-from">
                             <span>Ugovor vrijedi od</span>
                             <input id="company-contract-valid-from" type="date" />
-                        </label>
+                          </label>
 
-                        <label class="field field-company-contract-valid-to">
+                          <label class="field field-company-contract-valid-to">
                             <span>Ugovor vrijedi do</span>
                             <input id="company-contract-valid-to" type="date" />
-                        </label>
+                          </label>
 
-                        <label class="field field-company-employee-size">
-                            <span>Broj zaposlenih</span>
-                            <select id="company-employee-size">
-                              <option value="">Nije definirano</option>
-                              <option value="do-49">Do 49 zaposlenih</option>
-                              <option value="preko-50">Preko 50 zaposlenih</option>
-                            </select>
-                        </label>
-
-                        <label class="field field-company-period">
+                          <label class="field field-company-period">
                             <span>Periodika</span>
                             <select id="company-period">
                               <option value="">Bez periodike</option>
                               <option value="Aktivno">Aktivno</option>
                               <option value="Neaktivno">Neaktivno</option>
                             </select>
-                        </label>
+                          </label>
 
-                        <label class="field field-company-status">
+                          <label class="field field-company-status">
                             <span>Status ugovora</span>
                             <select id="company-is-active">
                               <option value="true">Aktivno</option>
                               <option value="false">Neaktivno</option>
                             </select>
-                        </label>
-                      </div>
-                    </section>
+                          </label>
+                        </div>
 
-                    <div class="masterdata-company-sections">
+                        <section class="company-related-contracts">
+                          <div class="company-related-contracts-head">
+                            <div>
+                              <strong>Povezani ugovori</strong>
+                              <span>Word i PDF dostupni odmah iz pregleda tvrtke.</span>
+                            </div>
+                            <span id="company-linked-contracts-count" class="work-order-activity-count is-compact">0</span>
+                          </div>
+                          <div id="company-linked-contracts-list" class="company-linked-contracts-list"></div>
+                          <p id="company-linked-contracts-empty" class="work-order-activity-empty is-compact">
+                            Još nema povezanih ugovora za ovu tvrtku.
+                          </p>
+                        </section>
+                      </section>
+
                       <section class="masterdata-group-card masterdata-company-contact-card">
                         <div class="masterdata-group-head">
                           <div>
                             <p class="section-kicker">Kontakti</p>
-                            <h4 class="subsection-title">Kontakt podaci i povezani ugovori</h4>
+                            <h4 class="subsection-title">Kontakt podaci i osobe</h4>
                           </div>
                         </div>
 
@@ -2470,20 +2495,6 @@
                             <input id="company-contact-email" type="email" maxlength="160" />
                           </label>
                         </div>
-
-                        <section class="company-related-contracts">
-                          <div class="company-related-contracts-head">
-                            <div>
-                              <strong>Povezani ugovori</strong>
-                              <span>Word i PDF dostupni odmah iz pregleda tvrtke.</span>
-                            </div>
-                            <span id="company-linked-contracts-count" class="work-order-activity-count is-compact">0</span>
-                          </div>
-                          <div id="company-linked-contracts-list" class="company-linked-contracts-list"></div>
-                          <p id="company-linked-contracts-empty" class="work-order-activity-empty is-compact">
-                            Još nema povezanih ugovora za ovu tvrtku.
-                          </p>
-                        </section>
                       </section>
 
                       <section class="masterdata-group-card company-related-locations-card">
