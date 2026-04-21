@@ -14877,6 +14877,29 @@ body.is-document-template-editor-open .chat-dock {
   table-layout: fixed;
 }
 
+.companies-table tbody td {
+  border-bottom: 1px solid rgba(188, 205, 191, 0.68);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.companies-table tbody tr + tr td {
+  border-top: 8px solid rgba(242, 247, 242, 0.95);
+}
+
+.companies-table tbody td:first-child {
+  border-left: 1px solid rgba(188, 205, 191, 0.68);
+  border-radius: 14px 0 0 14px;
+}
+
+.companies-table tbody td:last-child {
+  border-right: 1px solid rgba(188, 205, 191, 0.68);
+  border-radius: 0 14px 14px 0;
+}
+
+.companies-table tbody tr:last-child td {
+  border-bottom: 1px solid rgba(188, 205, 191, 0.68);
+}
+
 .companies-column-header {
   position: sticky;
 }
