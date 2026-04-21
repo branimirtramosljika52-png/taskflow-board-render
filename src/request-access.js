@@ -36,11 +36,11 @@ function setBusy(isBusy) {
 
 function validateOrganizationOib() {
   const value = normalizeOib(organizationOibInput?.value ?? "");
-  const isValid = /^\d{11}$/.test(value);
+  const isValid = !value || /^\d{11}$/.test(value);
 
   if (organizationOibInput) {
     organizationOibInput.value = value;
-    organizationOibInput.setCustomValidity(isValid ? "" : "Organization OIB must contain exactly 11 digits.");
+    organizationOibInput.setCustomValidity(isValid ? "" : "Organization OIB must be empty or contain exactly 11 digits.");
   }
 
   return isValid;
@@ -78,7 +78,7 @@ async function submitRequest(event) {
 
   if (!validateOrganizationOib()) {
     feedback.classList.add("is-error");
-    feedback.textContent = "Organization OIB must contain exactly 11 digits.";
+    feedback.textContent = "Organization OIB must be empty or contain exactly 11 digits.";
     organizationOibInput?.reportValidity();
     organizationOibInput?.focus();
     return;

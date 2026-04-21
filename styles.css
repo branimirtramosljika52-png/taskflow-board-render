@@ -27763,3 +27763,52 @@ button.drawing-status-pill.is-active {
     grid-template-columns: 1fr;
   }
 }
+
+.auth-story-line {
+  min-height: 2.6em;
+  line-height: 1.42;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    filter 220ms ease;
+}
+
+.auth-story-byline {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2f5ea8;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    filter 220ms ease;
+}
+
+.auth-story-line.is-story-leaving,
+.auth-story-byline.is-story-leaving {
+  opacity: 0;
+  transform: translateY(-8px);
+  filter: blur(2px);
+}
+
+.auth-story-line.is-story-entering,
+.auth-story-byline.is-story-entering {
+  animation: auth-story-enter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes auth-story-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}

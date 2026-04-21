@@ -420,3 +420,159 @@ test("memory tenant repository requires valid organization oib for signup reques
     /OIB organizacije/,
   );
 });
+
+test("memory tenant repository accepts signup requests without organization oib", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const response = await repository.submitSignupRequest({
+    organizationName: "Org bez OIB-a",
+    organizationOib: "",
+    firstName: "Ana",
+    lastName: "Requester",
+    email: "ana-no-oib@example.com",
+    password: "tajna123",
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.request.organizationOib, "");
+  assert.equal(response.request.status, "pending");
+});
+
+test("memory tenant repository lets organization admin approve matching OIB signup requests", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, {
+    name: "Org A",
+    oib: "12345678901",
+  });
+
+  await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Org",
+    lastName: "Admin",
+    email: "org-admin@example.com",
+    password: "secret123",
+    role: "admin",
+  });
+  const orgAdmin = await repository.authenticateUser("org-admin@example.com", "secret123");
+
+  const request = await repository.submitSignupRequest({
+    organizationName: "Org A Request",
+    organizationOib: "12345678901",
+    firstName: "Luka",
+    lastName: "Approval",
+    email: "luka-approval@example.com",
+    password: "tajna123",
+  });
+
+  await repository.approveSignupRequest(orgAdmin, request.request.id, {
+    role: "admin",
+  });
+
+  const approvedUser = await repository.authenticateUser("luka-approval@example.com", "tajna123");
+  assert.ok(approvedUser);
+  assert.equal(approvedUser.organizationId, organization.id);
+  assert.equal(approvedUser.role, "user");
+});
+
+test("memory tenant repository blocks organization admin from approving signup without OIB", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, {
+    name: "Org A",
+    oib: "12345678901",
+  });
+
+  await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Org",
+    lastName: "Admin",
+    email: "org-admin-2@example.com",
+    password: "secret123",
+    role: "admin",
+  });
+  const orgAdmin = await repository.authenticateUser("org-admin-2@example.com", "secret123");
+
+  const request = await repository.submitSignupRequest({
+    organizationName: "No OIB Org",
+    organizationOib: "",
+    firstName: "Mia",
+    lastName: "NoOib",
+    email: "mia-no-oib@example.com",
+    password: "tajna123",
+  });
+
+  await assert.rejects(
+    () => repository.approveSignupRequest(orgAdmin, request.request.id),
+    /Nemate pravo odobravati ovaj signup zahtjev/,
+  );
+});
+
+test("memory tenant repository scopes visible signup requests for organization admins by OIB match", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organizationA = await repository.createOrganization(superAdmin, {
+    name: "Org A",
+    oib: "12345678901",
+  });
+  await repository.createOrganization(superAdmin, {
+    name: "Org B",
+    oib: "10987654321",
+  });
+
+  await repository.createUser(superAdmin, {
+    organizationId: organizationA.id,
+    firstName: "Org",
+    lastName: "Admin",
+    email: "org-admin-3@example.com",
+    password: "secret123",
+    role: "admin",
+  });
+  const orgAdmin = await repository.authenticateUser("org-admin-3@example.com", "secret123");
+
+  const requestA = await repository.submitSignupRequest({
+    organizationName: "Org A Request",
+    organizationOib: "12345678901",
+    firstName: "A",
+    lastName: "One",
+    email: "req-a@example.com",
+    password: "tajna123",
+  });
+  await repository.submitSignupRequest({
+    organizationName: "Org B Request",
+    organizationOib: "10987654321",
+    firstName: "B",
+    lastName: "Two",
+    email: "req-b@example.com",
+    password: "tajna123",
+  });
+  await repository.submitSignupRequest({
+    organizationName: "No OIB Request",
+    organizationOib: "",
+    firstName: "C",
+    lastName: "Three",
+    email: "req-c@example.com",
+    password: "tajna123",
+  });
+
+  const adminSnapshot = await repository.getSnapshot(orgAdmin, organizationA.id, {
+    companies: [],
+    locations: [],
+    workOrders: [],
+  });
+  assert.deepEqual(adminSnapshot.signupRequests.map((item) => item.id), [requestA.request.id]);
+
+  const superAdminSnapshot = await repository.getSnapshot(superAdmin, organizationA.id, {
+    companies: [],
+    locations: [],
+    workOrders: [],
+  });
+  assert.equal(superAdminSnapshot.signupRequests.length, 3);
+});

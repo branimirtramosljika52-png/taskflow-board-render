@@ -1044,9 +1044,81 @@ function assertText(value, message) {
 }
 
 function assertOrganizationOib(value) {
-  if (!/^\d{11}$/.test(normalizeOib(value))) {
+  const normalized = normalizeOib(value);
+  if (!normalized) {
+    return;
+  }
+
+  if (!/^\d{11}$/.test(normalized)) {
     throw createHttpError(400, "OIB organizacije mora imati 11 znamenki.");
   }
+}
+
+function resolveSignupRequestOrganizationFromOib(request = {}, organizations = []) {
+  const requestOib = normalizeOib(request.organizationOib);
+  if (!/^\d{11}$/.test(requestOib)) {
+    return null;
+  }
+
+  return (Array.isArray(organizations) ? organizations : [])
+    .find((organization) => normalizeOib(organization?.oib) === requestOib) ?? null;
+}
+
+function canActorReviewSignupRequest(actor, request = {}, organizations = []) {
+  const actorRole = normalizeRole(actor?.role);
+  if (actorRole === ROLE_SUPER_ADMIN) {
+    return true;
+  }
+
+  if (actorRole !== ROLE_ADMIN) {
+    return false;
+  }
+
+  const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, organizations);
+  if (!matchedOrganization) {
+    return false;
+  }
+
+  const actorOrganizationIds = new Set(
+    mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds)
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+  return actorOrganizationIds.has(String(matchedOrganization.id));
+}
+
+function filterSignupRequestsForActor(actor, signupRequests = [], organizations = []) {
+  if (normalizeRole(actor?.role) === ROLE_SUPER_ADMIN) {
+    return (Array.isArray(signupRequests) ? signupRequests : []).map((item) => ({ ...item }));
+  }
+
+  if (normalizeRole(actor?.role) !== ROLE_ADMIN) {
+    return [];
+  }
+
+  const actorOrganizationIds = new Set(
+    mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds)
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+
+  return (Array.isArray(signupRequests) ? signupRequests : [])
+    .filter((request) => {
+      if (canActorReviewSignupRequest(actor, request, organizations)) {
+        return true;
+      }
+      const requestOrganizationId = String(request?.organizationId || "").trim();
+      return Boolean(requestOrganizationId && actorOrganizationIds.has(requestOrganizationId));
+    })
+    .map((item) => ({ ...item }));
+}
+
+function normalizeSignupApprovedRole(actor, requestedRole = ROLE_ADMIN) {
+  if (normalizeRole(actor?.role) === ROLE_ADMIN) {
+    return ROLE_USER;
+  }
+  const normalized = normalizeRole(requestedRole || ROLE_ADMIN);
+  return normalized === ROLE_SUPER_ADMIN ? ROLE_ADMIN : normalized;
 }
 
 function rethrowDatabaseError(error, fallbackMessage) {
@@ -1728,6 +1800,48 @@ async function fetchSuperAdminEmails(connection) {
   return rows.map((row) => dbString(row.email).toLowerCase()).filter(Boolean);
 }
 
+async function fetchOrganizationAdminEmailsByOib(connection, organizationOib = "") {
+  const normalizedOib = normalizeOib(organizationOib);
+  if (!/^\d{11}$/.test(normalizedOib)) {
+    return [];
+  }
+
+  const [organizationRows] = await connection.query(
+    `
+      SELECT id
+      FROM organizations
+      WHERE REPLACE(COALESCE(oib, ''), ' ', '') = ?
+    `,
+    [normalizedOib],
+  );
+  const organizationIds = new Set(organizationRows.map((row) => String(row.id || "").trim()).filter(Boolean));
+  if (organizationIds.size === 0) {
+    return [];
+  }
+
+  const [adminRows] = await connection.query(`
+    SELECT email, organization_id, organization_ids_csv
+    FROM app_users
+    WHERE role = 'admin'
+      AND is_active = 1
+      AND COALESCE(email, '') <> ''
+  `);
+
+  return Array.from(new Set(
+    adminRows
+      .filter((row) => {
+        const primaryOrganizationId = String(row.organization_id || "").trim();
+        if (primaryOrganizationId && organizationIds.has(primaryOrganizationId)) {
+          return true;
+        }
+        const relatedOrganizationIds = normalizeOrganizationIds(row.organization_ids_csv);
+        return relatedOrganizationIds.some((organizationId) => organizationIds.has(String(organizationId || "").trim()));
+      })
+      .map((row) => dbString(row.email).toLowerCase())
+      .filter(Boolean),
+  ));
+}
+
 async function updateSignupEmailStatus(connection, requestId, emailStatus, emailError = "") {
   await connection.query(
     `
@@ -1740,7 +1854,14 @@ async function updateSignupEmailStatus(connection, requestId, emailStatus, email
 }
 
 async function notifySignupSubmitted(connection, request) {
-  const recipients = resolveSignupNotifyRecipients(await fetchSuperAdminEmails(connection));
+  const [superAdminRecipients, organizationAdminRecipients] = await Promise.all([
+    fetchSuperAdminEmails(connection),
+    fetchOrganizationAdminEmailsByOib(connection, request.organizationOib),
+  ]);
+  const recipients = resolveSignupNotifyRecipients([
+    ...superAdminRecipients,
+    ...organizationAdminRecipients,
+  ]);
   const fullName = [request.firstName, request.lastName].filter(Boolean).join(" ").trim() || request.email;
   const outgoing = [];
 
@@ -2187,9 +2308,7 @@ export class MemoryTenantRepository {
         )),
       ).map((item) => ({ ...item })),
       loginContentItems: canManageLoginContent(actor) ? this.loginContentItems.map((item) => ({ ...item })) : [],
-      signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
-        ? this.signupRequests.map((item) => ({ ...item }))
-        : [],
+      signupRequests: filterSignupRequestsForActor(actor, this.signupRequests, this.organizations),
       ...scopedSnapshot,
     };
   }
@@ -2433,9 +2552,6 @@ export class MemoryTenantRepository {
   }
 
   async approveSignupRequest(actor, requestId, input = {}) {
-    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
-      throw createHttpError(403, "Nemate pravo odobravati signup zahtjeve.");
-    }
 
     const request = this.signupRequests.find((item) => item.id === String(requestId));
 
@@ -2447,9 +2563,28 @@ export class MemoryTenantRepository {
       throw createHttpError(400, "Zahtjev više nije pending.");
     }
 
-    const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
+    if (!canActorReviewSignupRequest(actor, request, this.organizations)) {
+      throw createHttpError(403, "Nemate pravo odobravati ovaj signup zahtjev.");
+    }
+
+    const actorRole = normalizeRole(actor?.role);
+    const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
     const useExistingOrganization = dbString(input.organizationId);
-    let organization = this.organizations.find((item) => item.id === useExistingOrganization) ?? null;
+    const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, this.organizations);
+    let organization = null;
+    if (actorRole === ROLE_ADMIN) {
+      if (!matchedOrganization) {
+        throw createHttpError(403, "Admin moze odobriti samo zahtjev s OIB-om svoje organizacije.");
+      }
+      if (useExistingOrganization && useExistingOrganization !== String(matchedOrganization.id)) {
+        throw createHttpError(403, "Admin ne moze odabrati drugu organizaciju za ovaj zahtjev.");
+      }
+      organization = matchedOrganization;
+    } else {
+      organization = this.organizations.find((item) => item.id === useExistingOrganization)
+        ?? matchedOrganization
+        ?? null;
+    }
     const approvedFullName = request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim();
 
     if (!organization) {
@@ -2481,7 +2616,7 @@ export class MemoryTenantRepository {
       email: request.email,
       username: request.email,
       legacyUsername: "",
-      role: approvedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : approvedRole,
+      role: approvedRole,
       isActive: true,
       title: "",
       oib: "",
@@ -2505,10 +2640,6 @@ export class MemoryTenantRepository {
   }
 
   async rejectSignupRequest(actor, requestId, input = {}) {
-    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
-      throw createHttpError(403, "Nemate pravo odbijati signup zahtjeve.");
-    }
-
     const request = this.signupRequests.find((item) => item.id === String(requestId));
 
     if (!request) {
@@ -2517,6 +2648,10 @@ export class MemoryTenantRepository {
 
     if (request.status !== SIGNUP_STATUS_PENDING) {
       throw createHttpError(400, "Zahtjev više nije pending.");
+    }
+
+    if (!canActorReviewSignupRequest(actor, request, this.organizations)) {
+      throw createHttpError(403, "Nemate pravo odbijati ovaj signup zahtjev.");
     }
 
     request.status = SIGNUP_STATUS_REJECTED;
@@ -2890,7 +3025,11 @@ export class MySqlTenantRepository {
         ...context,
         users: await fetchUsers(connection, actor, context.activeOrganizationId, context.organizations),
         loginContentItems: canManageLoginContent(actor) ? await fetchLoginContentItems(connection) : [],
-        signupRequests: normalizeRole(actor?.role) === ROLE_SUPER_ADMIN ? await fetchSignupRequests(connection) : [],
+        signupRequests: filterSignupRequestsForActor(
+          actor,
+          await fetchSignupRequests(connection),
+          context.organizations,
+        ),
         ...scopedSnapshot,
       };
     } finally {
@@ -3494,10 +3633,6 @@ export class MySqlTenantRepository {
   }
 
   async approveSignupRequest(actor, requestId, input = {}) {
-    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
-      throw createHttpError(403, "Nemate pravo odobravati signup zahtjeve.");
-    }
-
     const connection = await this.pool.getConnection();
 
     try {
@@ -3519,6 +3654,11 @@ export class MySqlTenantRepository {
         throw createHttpError(400, "Zahtjev više nije pending.");
       }
 
+      const accessibleOrganizations = await this.getAccessibleOrganizations(connection, actor);
+      if (!canActorReviewSignupRequest(actor, request, accessibleOrganizations)) {
+        throw createHttpError(403, "Nemate pravo odobravati ovaj signup zahtjev.");
+      }
+
       const [[existingUser]] = await connection.query(
         "SELECT id FROM app_users WHERE LOWER(email) = ? LIMIT 1",
         [request.email.toLowerCase()],
@@ -3528,20 +3668,35 @@ export class MySqlTenantRepository {
         throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
       }
 
-      const approvedRole = normalizeRole(input.role || ROLE_ADMIN);
+      const actorRole = normalizeRole(actor?.role);
+      const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
       const selectedOrganizationId = dbString(input.organizationId);
-      let organizationId = selectedOrganizationId;
+      const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, accessibleOrganizations);
+      let organizationId = "";
 
-      if (organizationId) {
+      if (actorRole === ROLE_ADMIN) {
+        if (!matchedOrganization) {
+          throw createHttpError(403, "Admin moze odobriti samo zahtjev s OIB-om svoje organizacije.");
+        }
+        if (selectedOrganizationId && selectedOrganizationId !== String(matchedOrganization.id)) {
+          throw createHttpError(403, "Admin ne moze odabrati drugu organizaciju za ovaj zahtjev.");
+        }
+        organizationId = String(matchedOrganization.id);
+      } else if (selectedOrganizationId) {
         const [existingOrganizations] = await connection.query(
           "SELECT id FROM organizations WHERE id = ? LIMIT 1",
-          [Number(organizationId)],
+          [Number(selectedOrganizationId)],
         );
 
         if (!existingOrganizations[0]) {
           throw createHttpError(400, "Odabrana organizacija ne postoji.");
         }
-      } else {
+        organizationId = String(existingOrganizations[0].id);
+      } else if (matchedOrganization) {
+        organizationId = String(matchedOrganization.id);
+      }
+
+      if (!organizationId) {
         const [organizationResult] = await connection.query(
           `
             INSERT INTO organizations
@@ -3552,6 +3707,8 @@ export class MySqlTenantRepository {
         );
         organizationId = String(organizationResult.insertId);
       }
+
+      const approvedDisplayName = request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim();
 
       const [userResult] = await connection.query(
         `
@@ -3564,12 +3721,12 @@ export class MySqlTenantRepository {
           serializeOrganizationIds(organizationId),
           request.firstName,
           request.lastName,
-          request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ").trim(),
+          approvedDisplayName,
           approvedRole === ROLE_ADMIN ? "admin" : "new_user",
           null,
           request.email,
           current.password_hash,
-          approvedRole === ROLE_SUPER_ADMIN ? ROLE_ADMIN : approvedRole,
+          approvedRole,
         ],
       );
 
@@ -3619,13 +3776,31 @@ export class MySqlTenantRepository {
   }
 
   async rejectSignupRequest(actor, requestId, input = {}) {
-    if (normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
-      throw createHttpError(403, "Nemate pravo odbijati signup zahtjeve.");
-    }
-
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
+
+      const [[current]] = await connection.query(
+        "SELECT * FROM signup_requests WHERE id = ? LIMIT 1 FOR UPDATE",
+        [Number(requestId)],
+      );
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const request = sanitizeSignupRequest(current);
+      if (request.status !== SIGNUP_STATUS_PENDING) {
+        throw createHttpError(400, "Zahtjev više nije pending.");
+      }
+
+      const accessibleOrganizations = await this.getAccessibleOrganizations(connection, actor);
+      if (!canActorReviewSignupRequest(actor, request, accessibleOrganizations)) {
+        throw createHttpError(403, "Nemate pravo odbijati ovaj signup zahtjev.");
+      }
+
       const [result] = await connection.query(
         `
           UPDATE signup_requests
@@ -3665,8 +3840,12 @@ export class MySqlTenantRepository {
       );
 
       const nextRequest = sanitizeSignupRequest(nextRow);
+      await connection.commit();
       await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_REJECTED);
       return nextRequest;
+    } catch (error) {
+      await connection.rollback();
+      rethrowDatabaseError(error, "Signup zahtjev nije moguce odbiti.");
     } finally {
       connection.release();
     }

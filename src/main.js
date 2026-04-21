@@ -22883,7 +22883,7 @@ function renderDashboardControlPanelContent() {
   }
 
   if (signupRequestsPanel) {
-    signupRequestsPanel.hidden = !isSuperAdmin;
+    signupRequestsPanel.hidden = !canManageMasterData;
   }
 }
 
@@ -38888,15 +38888,17 @@ function syncUserEditorChrome(editing = false, user = null) {
 }
 
 function buildLoginContentPayload() {
+  const quoteText = String(loginContentQuoteInput?.value || "").trim();
+  const heading = quoteText.length > 72 ? `${quoteText.slice(0, 69).trimEnd()}...` : quoteText;
   return {
-    accentLabel: loginContentAccentInput.value,
-    heading: loginContentHeadingInput.value,
-    quoteText: loginContentQuoteInput.value,
-    authorName: loginContentAuthorNameInput.value,
-    authorTitle: loginContentAuthorTitleInput.value,
-    featureTitle: loginContentFeatureTitleInput.value,
-    featureBody: loginContentFeatureBodyInput.value,
-    isActive: loginContentIsActiveInput.value,
+    accentLabel: String(loginContentAccentInput?.value || ""),
+    heading,
+    quoteText,
+    authorName: String(loginContentAuthorNameInput?.value || ""),
+    authorTitle: String(loginContentAuthorTitleInput?.value || ""),
+    featureTitle: String(loginContentFeatureTitleInput?.value || ""),
+    featureBody: String(loginContentFeatureBodyInput?.value || ""),
+    isActive: String(loginContentIsActiveInput?.value || "true"),
   };
 }
 
@@ -39058,7 +39060,9 @@ function resetLoginContentForm() {
   loginContentForm.reset();
   loginContentIdInput.value = "";
   loginContentError.textContent = "";
-  loginContentIsActiveInput.value = "true";
+  if (loginContentIsActiveInput) {
+    loginContentIsActiveInput.value = "true";
+  }
 }
 
 function hydrateCompanyForm(company) {
@@ -39314,7 +39318,9 @@ function hydrateLoginContentForm(item) {
   loginContentAuthorTitleInput.value = item.authorTitle || "";
   loginContentFeatureTitleInput.value = item.featureTitle || "";
   loginContentFeatureBodyInput.value = item.featureBody || "";
-  loginContentIsActiveInput.value = String(item.isActive);
+  if (loginContentIsActiveInput) {
+    loginContentIsActiveInput.value = String(item.isActive);
+  }
   loginContentError.textContent = "";
 }
 
@@ -57294,16 +57300,10 @@ function renderLoginContentItems() {
 
     row.append(
       createStackCell({
-        title: item.heading,
-        subtitle: item.quoteText,
-        meta: item.accentLabel ? [item.accentLabel] : [],
+        title: item.quoteText,
       }),
       createStackCell({
         title: item.authorName || "Bez autora",
-        subtitle: item.authorTitle || "",
-      }),
-      createStackCell({
-        title: item.isActive ? "Active" : "Inactive",
       }),
       actionsCell,
     );
@@ -57325,33 +57325,44 @@ function renderSignupRequests() {
     actionsCell.className = "table-actions";
 
     if (request.status === "pending") {
-      const organizationSelect = document.createElement("select");
-      organizationSelect.className = "signup-inline-select";
-      organizationSelect.append(
-        createOption("__new__", `Create new: ${request.organizationName}`, "__new__"),
-        ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
-      );
+      const isSuperAdmin = getIsSuperAdmin();
+      let organizationSelect = null;
+      let roleSelect = null;
 
-      const roleSelect = document.createElement("select");
-      roleSelect.className = "signup-inline-select";
-      roleSelect.append(
-        createOption("admin", "Admin", "admin"),
-        createOption("user", "User", "admin"),
-      );
+      if (isSuperAdmin) {
+        organizationSelect = document.createElement("select");
+        organizationSelect.className = "signup-inline-select";
+        organizationSelect.append(
+          createOption("__new__", `Create new: ${request.organizationName}`, "__new__"),
+          ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
+        );
 
-      const inlineControls = document.createElement("div");
-      inlineControls.className = "signup-approval-controls";
-      inlineControls.append(organizationSelect, roleSelect);
+        roleSelect = document.createElement("select");
+        roleSelect.className = "signup-inline-select";
+        roleSelect.append(
+          createOption("admin", "Admin", "admin"),
+          createOption("user", "User", "admin"),
+        );
+
+        const inlineControls = document.createElement("div");
+        inlineControls.className = "signup-approval-controls";
+        inlineControls.append(organizationSelect, roleSelect);
+        actionsCell.append(inlineControls);
+      }
 
       actionsCell.append(
-        inlineControls,
         createActionButton("Approve", "card-button", () => {
+          const body = isSuperAdmin
+            ? {
+              organizationId: organizationSelect?.value === "__new__" ? "" : String(organizationSelect?.value || ""),
+              role: String(roleSelect?.value || "admin"),
+            }
+            : {
+              role: "user",
+            };
           void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
             method: "POST",
-            body: {
-              organizationId: organizationSelect.value === "__new__" ? "" : organizationSelect.value,
-              role: roleSelect.value,
-            },
+            body,
           }), syncError);
         }),
         createActionButton("Reject", "card-button card-danger", () => {

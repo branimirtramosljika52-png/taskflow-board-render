@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" sizes="352x352" href="/assets/safenexus-mark.png" />
     <link rel="apple-touch-icon" href="/assets/safenexus-mark.png" />
     <link rel="manifest" href="/site.webmanifest" />
-<link rel="stylesheet" href="/styles.css?v=20260420f" />
+<link rel="stylesheet" href="/styles.css?v=20260421n" />
   </head>
   <body class="auth-page">
     <section class="auth-screen auth-request-screen">
@@ -28,7 +28,8 @@
 
           <div class="auth-login-copy auth-request-copy">
             <h1>Request access</h1>
-            <p>Enter your organization details, your contact details and a password. A SafeNexus administrator will receive your request by email.</p>
+            <p class="auth-story-line" data-auth-story-quote>Enter your organization details, your contact details and a password. A SafeNexus administrator will receive your request by email.</p>
+            <p class="auth-story-byline" data-auth-story-author>SafeNexus</p>
           </div>
 
           <form id="request-access-form" class="auth-form auth-form-tenant auth-request-form">
@@ -45,8 +46,7 @@
                 inputmode="numeric"
                 maxlength="11"
                 autocomplete="off"
-                placeholder="11-digit OIB"
-                required
+                placeholder="11-digit OIB (optional)"
               />
             </label>
 
@@ -97,7 +97,7 @@
       </div>
     </section>
 
-    <script type="module" src="/src/auth-transitions.js?v=20260329d"></script>
-    <script type="module" src="/src/request-access.js?v=20260328aj"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260421b"></script>
+    <script type="module" src="/src/request-access.js?v=20260421a"></script>
   </body>
 </html>

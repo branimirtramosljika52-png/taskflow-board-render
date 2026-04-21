@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260420m" />
+<link rel="stylesheet" href="/styles.css?v=20260421n" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -32,7 +32,8 @@
 
             <div class="auth-login-copy">
               <h1>Login</h1>
-              <p>Sign in to your SafeNexus workspace.</p>
+              <p class="auth-story-line" data-auth-story-quote>Sign in to your SafeNexus workspace.</p>
+              <p class="auth-story-byline" data-auth-story-author>SafeNexus</p>
             </div>
 
             <form id="login-form" class="auth-form auth-form-tenant" method="post" action="/auth/login-form">
@@ -3323,42 +3324,21 @@
 
             <form id="login-content-form" class="entity-form">
               <input id="login-content-id" type="hidden" />
+              <input id="login-content-accent-input" type="hidden" />
+              <input id="login-content-heading-input" type="hidden" />
+              <input id="login-content-author-title-input" type="hidden" />
+              <input id="login-content-feature-title-input" type="hidden" />
+              <input id="login-content-feature-body-input" type="hidden" />
+              <input id="login-content-is-active" type="hidden" value="true" />
 
               <div class="form-grid">
-                <label class="field">
-                  <span>Accent label</span>
-                  <input id="login-content-accent-input" type="text" maxlength="80" />
-                </label>
                 <label class="field field-span-full">
-                  <span>Heading</span>
-                  <input id="login-content-heading-input" type="text" maxlength="160" required />
-                </label>
-                <label class="field field-span-full">
-                  <span>Quote</span>
+                  <span>Tekst</span>
                   <textarea id="login-content-quote-input" rows="4" required></textarea>
                 </label>
                 <label class="field">
-                  <span>Author name</span>
+                  <span>Autor</span>
                   <input id="login-content-author-name-input" type="text" maxlength="160" />
-                </label>
-                <label class="field">
-                  <span>Author title</span>
-                  <input id="login-content-author-title-input" type="text" maxlength="160" />
-                </label>
-                <label class="field">
-                  <span>Feature title</span>
-                  <input id="login-content-feature-title-input" type="text" maxlength="160" />
-                </label>
-                <label class="field field-span-full">
-                  <span>Feature body</span>
-                  <textarea id="login-content-feature-body-input" rows="3"></textarea>
-                </label>
-                <label class="field">
-                  <span>Status</span>
-                  <select id="login-content-is-active">
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
                 </label>
               </div>
 
@@ -3376,7 +3356,6 @@
                   <tr>
                     <th>Story</th>
                     <th>Author</th>
-                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -6323,7 +6302,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script type="module" src="/src/auth-transitions.js?v=20260330e"></script>
-    <script type="module" src="/src/main.js?v=20260421a"></script>
+    <script type="module" src="/src/auth-transitions.js?v=20260421b"></script>
+    <script type="module" src="/src/main.js?v=20260421b"></script>
   </body>
 </html>
