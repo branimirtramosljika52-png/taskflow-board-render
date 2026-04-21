@@ -34,29 +34,37 @@
           <form id="request-access-form" class="auth-form auth-form-tenant auth-request-form">
             <label class="field">
               <span>Organization</span>
-              <input id="request-organization-name" type="text" placeholder="Organization name" required />
+              <div class="auth-input-shell is-plain">
+                <input id="request-organization-name" type="text" placeholder="Organization name" required />
+              </div>
             </label>
 
             <label class="field">
               <span>Organization OIB</span>
-              <input
-                id="request-organization-oib"
-                type="text"
-                inputmode="numeric"
-                maxlength="11"
-                autocomplete="off"
-                placeholder="11-digit OIB (optional)"
-              />
+              <div class="auth-input-shell is-plain">
+                <input
+                  id="request-organization-oib"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="11"
+                  autocomplete="off"
+                  placeholder="11-digit OIB (optional)"
+                />
+              </div>
             </label>
 
             <label class="field">
               <span>First name</span>
-              <input id="request-first-name" type="text" autocomplete="given-name" placeholder="First name" required />
+              <div class="auth-input-shell is-plain">
+                <input id="request-first-name" type="text" autocomplete="given-name" placeholder="First name" required />
+              </div>
             </label>
 
             <label class="field">
               <span>Last name</span>
-              <input id="request-last-name" type="text" autocomplete="family-name" placeholder="Last name" required />
+              <div class="auth-input-shell is-plain">
+                <input id="request-last-name" type="text" autocomplete="family-name" placeholder="Last name" required />
+              </div>
             </label>
 
             <label class="field field-span-full">

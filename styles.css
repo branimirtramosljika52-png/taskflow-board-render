@@ -28229,3 +28229,10 @@ button.drawing-status-pill.is-active {
     transform: translateX(-136%) !important;
   }
 }
+
+.auth-form.auth-form-tenant .auth-input-shell.is-plain input,
+.auth-form.auth-form-tenant .auth-input-shell.is-plain input:hover,
+.auth-form.auth-form-tenant .auth-input-shell.is-plain input:focus,
+.auth-form.auth-form-tenant .auth-input-shell.is-plain input:active {
+  padding-left: 14px !important;
+}
