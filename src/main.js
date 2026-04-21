@@ -1648,6 +1648,8 @@ let logoutInProgress = false;
 let companiesColumnWidths = [];
 let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
+let companyEditorRelatedDataRafId = 0;
+let companyEditorRelatedDataTimeoutId = 0;
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
@@ -19412,6 +19414,13 @@ function openCompanyEditor() {
 }
 
 function closeCompanyEditor({ reset = false } = {}) {
+  if (!state.companyEditorOpen) {
+    if (reset) {
+      resetCompanyForm();
+    }
+    return;
+  }
+  cancelScheduledCompanyEditorRelatedData();
   state.companyEditorOpen = false;
   syncCompanyEditorModal();
 
@@ -38462,6 +38471,42 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
   }
 }
 
+function cancelScheduledCompanyEditorRelatedData() {
+  if (companyEditorRelatedDataRafId) {
+    cancelAnimationFrame(companyEditorRelatedDataRafId);
+    companyEditorRelatedDataRafId = 0;
+  }
+  if (companyEditorRelatedDataTimeoutId) {
+    window.clearTimeout(companyEditorRelatedDataTimeoutId);
+    companyEditorRelatedDataTimeoutId = 0;
+  }
+}
+
+function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "", { defer = true } = {}) {
+  const normalizedCompanyId = String(companyId || "").trim();
+  cancelScheduledCompanyEditorRelatedData();
+
+  const runRender = () => {
+    if (normalizedCompanyId && String(companyIdInput?.value || "").trim() !== normalizedCompanyId) {
+      return;
+    }
+    renderCompanyEditorRelatedData(normalizedCompanyId);
+  };
+
+  if (!defer) {
+    runRender();
+    return;
+  }
+
+  companyEditorRelatedDataRafId = requestAnimationFrame(() => {
+    companyEditorRelatedDataRafId = 0;
+    companyEditorRelatedDataTimeoutId = window.setTimeout(() => {
+      companyEditorRelatedDataTimeoutId = 0;
+      runRender();
+    }, 0);
+  });
+}
+
 function renderLocationEditorRelatedData(locationId = locationIdInput?.value || "") {
   try {
     renderLocationLinkedWorkOrders(locationId);
@@ -38758,6 +38803,7 @@ function resetWorkOrderForm() {
 }
 
 function resetCompanyForm() {
+  cancelScheduledCompanyEditorRelatedData();
   companyForm.reset();
   companyIdInput.value = "";
   if (companyLogoDataUrlInput) {
@@ -38772,7 +38818,7 @@ function resetCompanyForm() {
     companyEditorTitle.textContent = "Nova tvrtka";
   }
   syncCompanyEditorChrome();
-  renderCompanyEditorRelatedData("");
+  scheduleCompanyEditorRelatedData("", { defer: false });
 }
 
 function resetLocationForm() {
@@ -38889,8 +38935,11 @@ function resetLoginContentForm() {
 }
 
 function hydrateCompanyForm(company) {
-  state.activeView = "companies";
-  renderActiveView();
+  const shouldSwitchToCompaniesView = state.activeView !== "companies";
+  if (shouldSwitchToCompaniesView) {
+    state.activeView = "companies";
+    renderActiveView();
+  }
   companyIdInput.value = company.id;
   if (companyLogoDataUrlInput) {
     companyLogoDataUrlInput.value = company.logoDataUrl || "";
@@ -38930,9 +38979,7 @@ function hydrateCompanyForm(company) {
   }
   syncCompanyEditorChrome();
   openCompanyEditor();
-  requestAnimationFrame(() => {
-    renderCompanyEditorRelatedData(company.id);
-  });
+  scheduleCompanyEditorRelatedData(company.id, { defer: true });
 }
 
 function hydrateLocationForm(location) {
