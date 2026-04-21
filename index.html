@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260421n" />
+<link rel="stylesheet" href="/styles.css?v=20260421o" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -32,8 +32,7 @@
 
             <div class="auth-login-copy">
               <h1>Login</h1>
-              <p class="auth-story-line" data-auth-story-quote>Sign in to your SafeNexus workspace.</p>
-              <p class="auth-story-byline" data-auth-story-author>SafeNexus</p>
+              <p>Sign in to your SafeNexus workspace.</p>
             </div>
 
             <form id="login-form" class="auth-form auth-form-tenant" method="post" action="/auth/login-form">
@@ -81,6 +80,10 @@
           </section>
         </section>
       </div>
+      <aside class="auth-story-floating" aria-live="polite" aria-label="Istaknuta priča">
+        <p class="auth-story-line auth-story-floating-quote" data-auth-story-quote>Sign in to your SafeNexus workspace.</p>
+        <p class="auth-story-byline auth-story-floating-author" data-auth-story-author>SafeNexus</p>
+      </aside>
     </section>
 
     <div id="global-loading-indicator" class="global-loading-indicator" aria-live="polite" aria-busy="true" hidden>
