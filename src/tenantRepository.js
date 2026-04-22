@@ -1,4 +1,5 @@
 import mysql from "mysql2/promise";
+import { randomBytes } from "node:crypto";
 
 import {
   ROLE_ADMIN,
@@ -36,6 +37,8 @@ const DEFAULT_ORGANIZATION_NAME = "Default Organization";
 const SIGNUP_STATUS_PENDING = "pending";
 const SIGNUP_STATUS_APPROVED = "approved";
 const SIGNUP_STATUS_REJECTED = "rejected";
+const TEMPORARY_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+const TEMPORARY_PASSWORD_LENGTH = 12;
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -43,8 +46,93 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
+function generateTemporaryPassword(length = TEMPORARY_PASSWORD_LENGTH) {
+  const passwordLength = Math.max(10, Number(length) || TEMPORARY_PASSWORD_LENGTH);
+  const bytes = randomBytes(passwordLength);
+  let password = "";
+
+  for (const byte of bytes) {
+    password += TEMPORARY_PASSWORD_ALPHABET[byte % TEMPORARY_PASSWORD_ALPHABET.length];
+  }
+
+  return password;
+}
+
 function dbString(value) {
   return String(value ?? "").trim();
+}
+
+function resolveAppUrl() {
+  return dbString(process.env.PUBLIC_APP_URL) || dbString(process.env.APP_URL) || "https://safe-nexus.org";
+}
+
+function buildTemporaryPasswordMail(user = {}, temporaryPassword = "", options = {}) {
+  const recipientName = dbString(user.firstName) || dbString(user.fullName) || dbString(user.email) || "korisniče";
+  const appUrl = resolveAppUrl();
+  const isNewUser = Boolean(options.isNewUser);
+  const initiatedBy = dbString(options.initiatedBy);
+  const subject = isNewUser
+    ? "SafeNexus pristupni podaci"
+    : "SafeNexus privremena lozinka";
+  const introLine = isNewUser
+    ? "Vaš SafeNexus račun je kreiran i dodijeljena vam je privremena lozinka."
+    : "Za vaš SafeNexus račun je generirana nova privremena lozinka.";
+  const contextLine = initiatedBy
+    ? `Zahtjev je pokrenuo: ${initiatedBy}.`
+    : "Ako vi niste tražili ovu promjenu, javite se administratoru.";
+  const text = [
+    `Pozdrav ${recipientName},`,
+    "",
+    introLine,
+    contextLine,
+    "",
+    `Privremena lozinka: ${temporaryPassword}`,
+    "",
+    `Prijava: ${appUrl}`,
+    "Nakon prijave morat ćete odmah postaviti novu lozinku.",
+    "",
+    "SafeNexus",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Trebuchet MS,Segoe UI,sans-serif;color:#14223c;line-height:1.6;">
+      <h2 style="margin:0 0 16px;">SafeNexus</h2>
+      <p>Pozdrav ${recipientName},</p>
+      <p>${introLine}</p>
+      <p>${contextLine}</p>
+      <div style="margin:20px 0;padding:16px 18px;border-radius:18px;background:#eef4ff;border:1px solid #c9d7ef;">
+        <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#67758f;">Privremena lozinka</div>
+        <div style="margin-top:8px;font-size:22px;font-weight:700;color:#163e8e;">${temporaryPassword}</div>
+      </div>
+      <p>
+        Prijava:
+        <a href="${appUrl}" style="color:#1d74f5;font-weight:700;text-decoration:none;">${appUrl}</a>
+      </p>
+      <p>Nakon prijave morat ćete odmah postaviti novu lozinku.</p>
+      <p style="margin-top:20px;color:#67758f;">SafeNexus</p>
+    </div>
+  `;
+
+  return {
+    to: dbString(user.email).toLowerCase(),
+    subject,
+    text,
+    html,
+  };
+}
+
+async function deliverTemporaryPasswordEmail(mailer, user, temporaryPassword, options = {}) {
+  const mailerFn = typeof mailer === "function" ? mailer : sendMail;
+  const result = await mailerFn(buildTemporaryPasswordMail(user, temporaryPassword, options));
+
+  if (!result?.ok) {
+    throw createHttpError(503, result?.error || "Slanje emaila nije uspjelo.");
+  }
+
+  return result;
+}
+
+function getActorLabel(actor = {}) {
+  return dbString(actor.fullName) || dbString(actor.email) || dbString(actor.username) || "administrator";
 }
 
 function resolvePositiveDurationMs(value, fallbackMs) {
@@ -912,6 +1000,9 @@ function sanitizeUser(row) {
     avatarStorageUrl: storedAvatar.storageUrl,
     documents: userDocuments,
     electricalQualification,
+    mustChangePassword: row.must_change_password === undefined
+      ? Boolean(row.mustChangePassword)
+      : Boolean(Number(row.must_change_password)),
     lastLoginAt: normalizeTimestamp(row.last_login_at),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -1195,6 +1286,7 @@ async function ensureSchema(connection) {
       email VARCHAR(255) NOT NULL,
       legacy_username VARCHAR(100) NULL,
       password_hash VARCHAR(255) NOT NULL,
+      must_change_password TINYINT(1) NOT NULL DEFAULT 0,
       role ENUM('super_admin', 'admin', 'user') NOT NULL DEFAULT 'user',
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       last_login_at DATETIME NULL,
@@ -1356,6 +1448,12 @@ async function ensureSchema(connection) {
     "user_documents_json",
     "LONGTEXT NULL AFTER electrical_qualification_json",
   );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "must_change_password",
+    "TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash",
+  );
 
   await ensureColumn(
     connection,
@@ -1407,7 +1505,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
     SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
-           u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+           u.email, u.legacy_username, u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
            o.name AS organization_name
     FROM app_users u
     LEFT JOIN organizations o ON o.id = u.organization_id
@@ -2123,8 +2221,9 @@ async function seedDefaultData(connection) {
 }
 
 export class MemoryTenantRepository {
-  constructor() {
+  constructor(options = {}) {
     this.kind = "memory";
+    this.mailer = typeof options.sendMail === "function" ? options.sendMail : sendMail;
     this.organizations = [
       sanitizeOrganization({
         id: 1,
@@ -2176,6 +2275,7 @@ export class MemoryTenantRepository {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastLoginAt: null,
+        mustChangePassword: false,
         passwordHash: await createPasswordHash("admin"),
       },
     ];
@@ -2213,6 +2313,7 @@ export class MemoryTenantRepository {
     }
 
     user.lastLoginAt = new Date().toISOString();
+    user.updatedAt = new Date().toISOString();
     return this.getUserById(user.id);
   }
 
@@ -2282,6 +2383,17 @@ export class MemoryTenantRepository {
 
   async deleteRefreshToken(token) {
     return this.refreshTokens.delete(hashStoredToken(token));
+  }
+
+  async deleteRefreshTokensByUserId(userId) {
+    let deleted = false;
+    for (const [tokenHash, record] of this.refreshTokens.entries()) {
+      if (String(record?.userId || "") === String(userId)) {
+        this.refreshTokens.delete(tokenHash);
+        deleted = true;
+      }
+    }
+    return deleted;
   }
 
   async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
@@ -2387,13 +2499,16 @@ export class MemoryTenantRepository {
     const normalized = normalizeUserInput(input);
     const targetOrganizationIds = normalized.organizationIds;
     const targetOrganizationId = normalized.organizationId || actor?.organizationId;
+    const useTemporaryPassword = !normalized.password;
+    const temporaryPassword = useTemporaryPassword ? generateTemporaryPassword() : "";
+    const effectivePassword = normalized.password || temporaryPassword;
 
     if (!canManageOrganizationUsers(actor, targetOrganizationIds, normalized.role)) {
       throw createHttpError(403, "Nemate pravo kreirati ovog korisnika.");
     }
 
     assertText(normalized.email, "Email je obavezan.");
-    assertText(normalized.password, "Lozinka je obavezna.");
+    assertText(effectivePassword, "Lozinka je obavezna.");
 
     const organizations = this.organizations.filter((item) => targetOrganizationIds.includes(String(item.id)));
 
@@ -2402,6 +2517,19 @@ export class MemoryTenantRepository {
     }
 
     const nextId = String(this.users.length + 1);
+    const fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
+
+    if (useTemporaryPassword) {
+      await deliverTemporaryPasswordEmail(this.mailer, {
+        firstName: normalized.firstName,
+        fullName,
+        email: normalized.email,
+      }, temporaryPassword, {
+        isNewUser: true,
+        initiatedBy: getActorLabel(actor),
+      });
+    }
+
     const next = {
       id: nextId,
       organizationId: String(targetOrganizationId),
@@ -2410,7 +2538,7 @@ export class MemoryTenantRepository {
       organizations: organizations.map((organization) => ({ id: organization.id, name: organization.name })),
       firstName: normalized.firstName,
       lastName: normalized.lastName,
-      fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+      fullName,
       displayName: normalized.displayName,
       profileRole: normalized.profileRole,
       title: normalized.title,
@@ -2426,7 +2554,8 @@ export class MemoryTenantRepository {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastLoginAt: null,
-      passwordHash: await createPasswordHash(normalized.password),
+      mustChangePassword: useTemporaryPassword,
+      passwordHash: await createPasswordHash(effectivePassword),
     };
     this.users.push(next);
     return this.getUserById(nextId);
@@ -2479,8 +2608,73 @@ export class MemoryTenantRepository {
 
     if (normalized.password) {
       current.passwordHash = await createPasswordHash(normalized.password);
+      current.mustChangePassword = false;
     }
 
+    return this.getUserById(current.id);
+  }
+
+  async requestPasswordReset(email) {
+    const needle = dbString(email).toLowerCase();
+    assertText(needle, "Email je obavezan.");
+
+    const user = this.users.find((item) => item.isActive && item.email.toLowerCase() === needle);
+    if (!user) {
+      return { ok: true, delivered: false };
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    await deliverTemporaryPasswordEmail(this.mailer, user, temporaryPassword, {
+      initiatedBy: "SafeNexus sustav",
+    });
+    user.passwordHash = await createPasswordHash(temporaryPassword);
+    user.mustChangePassword = true;
+    user.updatedAt = new Date().toISOString();
+    await this.deleteRefreshTokensByUserId(user.id);
+    return {
+      ok: true,
+      delivered: true,
+    };
+  }
+
+  async sendUserPasswordReset(actor, userId) {
+    const current = this.users.find((item) => item.id === String(userId));
+
+    if (!current) {
+      return null;
+    }
+
+    if (!canManageOrganizationUsers(actor, current.organizationIds, current.role)) {
+      throw createHttpError(403, "Nemate pravo mijenjati lozinku ovom korisniku.");
+    }
+
+    if (!current.isActive) {
+      throw createHttpError(400, "Privremenu lozinku je moguće poslati samo aktivnom korisniku.");
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    await deliverTemporaryPasswordEmail(this.mailer, current, temporaryPassword, {
+      initiatedBy: getActorLabel(actor),
+    });
+    current.passwordHash = await createPasswordHash(temporaryPassword);
+    current.mustChangePassword = true;
+    current.updatedAt = new Date().toISOString();
+    await this.deleteRefreshTokensByUserId(current.id);
+    return this.getUserById(current.id);
+  }
+
+  async changeOwnPassword(actor, newPassword) {
+    const current = this.users.find((item) => item.id === String(actor?.id));
+
+    if (!current) {
+      return null;
+    }
+
+    const normalizedPassword = dbString(newPassword);
+    assertText(normalizedPassword, "Nova lozinka je obavezna.");
+    current.passwordHash = await createPasswordHash(normalizedPassword);
+    current.mustChangePassword = false;
+    current.updatedAt = new Date().toISOString();
     return this.getUserById(current.id);
   }
 
@@ -2708,9 +2902,10 @@ export class MemoryTenantRepository {
 }
 
 export class MySqlTenantRepository {
-  constructor(connectionString) {
+  constructor(connectionString, options = {}) {
     this.kind = "mysql";
     this.objectStorage = getObjectStorageConfig();
+    this.mailer = typeof options.sendMail === "function" ? options.sendMail : sendMail;
     this.pool = mysql.createPool(parseMySqlConnectionString(connectionString));
   }
 
@@ -2781,7 +2976,7 @@ export class MySqlTenantRepository {
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
-                 u.email, u.legacy_username, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 u.email, u.legacy_username, u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name
           FROM app_users u
           LEFT JOIN organizations o ON o.id = u.organization_id
@@ -2814,7 +3009,7 @@ export class MySqlTenantRepository {
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
-                 u.password_hash, u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 u.password_hash, u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name, o.status AS organization_status
           FROM app_users u
           LEFT JOIN organizations o ON o.id = u.organization_id
@@ -2914,7 +3109,7 @@ export class MySqlTenantRepository {
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
-                 u.role, u.is_active, u.last_login_at, u.created_at, u.updated_at,
+                 u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
                  o.name AS organization_name,
                  rt.created_at AS refresh_created_at
           FROM app_refresh_tokens rt
@@ -2998,6 +3193,22 @@ export class MySqlTenantRepository {
       return result.affectedRows > 0;
     } finally {
       connection.release();
+    }
+  }
+
+  async deleteRefreshTokensByUserId(userId, connectionOverride = null) {
+    const connection = connectionOverride ?? await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        "DELETE FROM app_refresh_tokens WHERE user_id = ?",
+        [Number(userId)],
+      );
+      return result.affectedRows > 0;
+    } finally {
+      if (!connectionOverride) {
+        connection.release();
+      }
     }
   }
 
@@ -3193,6 +3404,9 @@ export class MySqlTenantRepository {
   async createUser(actor, input) {
     const normalized = normalizeUserInput(input);
     const targetOrganizationId = normalized.organizationId || actor?.organizationId;
+    const useTemporaryPassword = !normalized.password;
+    const temporaryPassword = useTemporaryPassword ? generateTemporaryPassword() : "";
+    const effectivePassword = normalized.password || temporaryPassword;
     let preparedAvatar = null;
     let preparedUserDocuments = {
       nextDocuments: [],
@@ -3208,20 +3422,22 @@ export class MySqlTenantRepository {
     }
 
     assertText(normalized.email, "Email je obavezan.");
-    assertText(normalized.password, "Lozinka je obavezna.");
+    assertText(effectivePassword, "Lozinka je obavezna.");
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
       const organizations = await fetchOrganizations(connection, normalized.organizationIds);
 
       if (organizations.length !== normalized.organizationIds.length || !targetOrganizationId) {
         throw createHttpError(400, "Odabrana organizacija ne postoji.");
       }
 
-      const passwordHash = await createPasswordHash(normalized.password);
+      const passwordHash = await createPasswordHash(effectivePassword);
+      const fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
       preparedAvatar = await prepareStoredUserAvatar({
         userId: normalized.email || normalized.legacyUsername || "new-user",
-        fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+        fullName,
         avatarDataUrl: normalized.avatarDataUrl,
       });
       preparedUserDocuments = await prepareStoredUserDocuments(
@@ -3249,8 +3465,8 @@ export class MySqlTenantRepository {
           INSERT INTO app_users
             (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
-             electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, must_change_password, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
@@ -3271,13 +3487,27 @@ export class MySqlTenantRepository {
           normalized.email,
           normalized.legacyUsername || null,
           passwordHash,
+          useTemporaryPassword ? 1 : 0,
           normalized.role,
           normalized.isActive ? 1 : 0,
         ],
       );
 
+      if (useTemporaryPassword) {
+        await deliverTemporaryPasswordEmail(this.mailer, {
+          firstName: normalized.firstName,
+          fullName,
+          email: normalized.email,
+        }, temporaryPassword, {
+          isNewUser: true,
+          initiatedBy: getActorLabel(actor),
+        });
+      }
+
+      await connection.commit();
       return this.getUserById(result.insertId);
     } catch (error) {
+      await connection.rollback();
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
       await cleanupStoredAssets(preparedUserDocuments?.nextDocuments ?? []);
       await cleanupStoredAssets(
@@ -3415,6 +3645,7 @@ export class MySqlTenantRepository {
       if (normalized.password) {
         updateFields.push("password_hash = ?");
         params.push(await createPasswordHash(normalized.password));
+        updateFields.push("must_change_password = 0");
       }
 
       params.push(Number(userId));
@@ -3438,6 +3669,144 @@ export class MySqlTenantRepository {
           : [],
       );
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async requestPasswordReset(email) {
+    const normalizedEmail = dbString(email).toLowerCase();
+    assertText(normalizedEmail, "Email je obavezan.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        `
+          SELECT id, first_name, last_name, email, is_active
+          FROM app_users
+          WHERE LOWER(email) = ?
+          LIMIT 1
+        `,
+        [normalizedEmail],
+      );
+      const current = rows[0];
+
+      if (!current || !Boolean(Number(current.is_active))) {
+        await connection.rollback();
+        return { ok: true, delivered: false };
+      }
+
+      const temporaryPassword = generateTemporaryPassword();
+      await connection.query(
+        `
+          UPDATE app_users
+          SET password_hash = ?,
+              must_change_password = 1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [await createPasswordHash(temporaryPassword), Number(current.id)],
+      );
+      await this.deleteRefreshTokensByUserId(current.id, connection);
+      await deliverTemporaryPasswordEmail(this.mailer, {
+        firstName: current.first_name,
+        fullName: [current.first_name ?? "", current.last_name ?? ""].filter(Boolean).join(" "),
+        email: current.email,
+      }, temporaryPassword, {
+        initiatedBy: "SafeNexus sustav",
+      });
+      await connection.commit();
+      return {
+        ok: true,
+        delivered: true,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async sendUserPasswordReset(actor, userId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(userId)],
+      );
+      const current = rows[0];
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const targetUser = sanitizeUser(current);
+      if (!canManageOrganizationUsers(actor, targetUser.organizationIds, targetUser.role)) {
+        throw createHttpError(403, "Nemate pravo mijenjati lozinku ovom korisniku.");
+      }
+
+      if (!targetUser.isActive) {
+        throw createHttpError(400, "Privremenu lozinku je moguće poslati samo aktivnom korisniku.");
+      }
+
+      const temporaryPassword = generateTemporaryPassword();
+      await connection.query(
+        `
+          UPDATE app_users
+          SET password_hash = ?,
+              must_change_password = 1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [await createPasswordHash(temporaryPassword), Number(userId)],
+      );
+      await this.deleteRefreshTokensByUserId(userId, connection);
+      await deliverTemporaryPasswordEmail(this.mailer, targetUser, temporaryPassword, {
+        initiatedBy: getActorLabel(actor),
+      });
+      await connection.commit();
+      return this.getUserById(userId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async changeOwnPassword(actor, newPassword) {
+    const normalizedPassword = dbString(newPassword);
+    assertText(normalizedPassword, "Nova lozinka je obavezna.");
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query(
+        `
+          UPDATE app_users
+          SET password_hash = ?,
+              must_change_password = 0,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [await createPasswordHash(normalizedPassword), Number(actor?.id)],
+      );
+
+      if (result.affectedRows === 0) {
+        return null;
+      }
+
+      return this.getUserById(actor.id);
     } finally {
       connection.release();
     }

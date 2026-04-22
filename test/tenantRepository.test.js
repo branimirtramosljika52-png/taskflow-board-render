@@ -3,6 +3,11 @@ import test from "node:test";
 
 import { MemoryTenantRepository } from "../src/tenantRepository.js";
 
+function extractTemporaryPassword(message = {}) {
+  const match = String(message.text ?? "").match(/Privremena lozinka:\s*(.+)/);
+  return match?.[1]?.trim() || "";
+}
+
 test("memory tenant repository authenticates default super admin", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
@@ -708,4 +713,131 @@ test("memory tenant repository scopes visible signup requests for organization a
     workOrders: [],
   });
   assert.equal(superAdminSnapshot.signupRequests.length, 3);
+});
+
+test("memory tenant repository emails a temporary password when creating user without manual password", async () => {
+  const sentMessages = [];
+  const repository = new MemoryTenantRepository({
+    sendMail: async (message) => {
+      sentMessages.push(message);
+      return {
+        ok: true,
+        skipped: false,
+        messageId: `msg-${sentMessages.length}`,
+      };
+    },
+  });
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Temp",
+    lastName: "User",
+    email: "temp-user@example.com",
+    role: "user",
+  });
+
+  assert.equal(createdUser.mustChangePassword, true);
+  assert.equal(sentMessages.length, 1);
+
+  const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
+  assert.ok(temporaryPassword);
+
+  const authenticated = await repository.authenticateUser("temp-user@example.com", temporaryPassword);
+  assert.ok(authenticated);
+  assert.equal(authenticated.mustChangePassword, true);
+});
+
+test("memory tenant repository resets password from forgot-password flow by emailing a temporary password", async () => {
+  const sentMessages = [];
+  const repository = new MemoryTenantRepository({
+    sendMail: async (message) => {
+      sentMessages.push(message);
+      return {
+        ok: true,
+        skipped: false,
+        messageId: `msg-${sentMessages.length}`,
+      };
+    },
+  });
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Forgot",
+    lastName: "Password",
+    email: "forgot-user@example.com",
+    password: "start-pass-123",
+    role: "user",
+  });
+
+  const result = await repository.requestPasswordReset("forgot-user@example.com");
+  assert.equal(result.delivered, true);
+  assert.equal(sentMessages.length, 1);
+
+  const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
+  assert.ok(temporaryPassword);
+
+  const oldPasswordAuth = await repository.authenticateUser("forgot-user@example.com", "start-pass-123");
+  assert.equal(oldPasswordAuth, null);
+
+  const temporaryPasswordAuth = await repository.authenticateUser("forgot-user@example.com", temporaryPassword);
+  assert.ok(temporaryPasswordAuth);
+  assert.equal(temporaryPasswordAuth.mustChangePassword, true);
+});
+
+test("memory tenant repository lets admin send temporary password email and requires user to change it", async () => {
+  const sentMessages = [];
+  const repository = new MemoryTenantRepository({
+    sendMail: async (message) => {
+      sentMessages.push(message);
+      return {
+        ok: true,
+        skipped: false,
+        messageId: `msg-${sentMessages.length}`,
+      };
+    },
+  });
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const targetUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "People",
+    lastName: "Reset",
+    email: "people-reset@example.com",
+    password: "initial-pass-123",
+    role: "user",
+  });
+
+  const resetUser = await repository.sendUserPasswordReset(superAdmin, targetUser.id);
+  assert.ok(resetUser);
+  assert.equal(resetUser.mustChangePassword, true);
+  assert.equal(sentMessages.length, 1);
+
+  const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
+  assert.ok(temporaryPassword);
+
+  const loginWithTemp = await repository.authenticateUser("people-reset@example.com", temporaryPassword);
+  assert.ok(loginWithTemp);
+  assert.equal(loginWithTemp.mustChangePassword, true);
+
+  const changedUser = await repository.changeOwnPassword(loginWithTemp, "new-final-pass-123");
+  assert.ok(changedUser);
+  assert.equal(changedUser.mustChangePassword, false);
+
+  const oldTempLogin = await repository.authenticateUser("people-reset@example.com", temporaryPassword);
+  assert.equal(oldTempLogin, null);
+
+  const finalLogin = await repository.authenticateUser("people-reset@example.com", "new-final-pass-123");
+  assert.ok(finalLogin);
+  assert.equal(finalLogin.mustChangePassword, false);
 });

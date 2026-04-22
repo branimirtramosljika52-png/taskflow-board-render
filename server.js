@@ -912,6 +912,13 @@ async function getRequestUser(request, response) {
   return refreshedUser;
 }
 
+function isPasswordChangeRequiredRequestAllowed(url, request) {
+  return request.method === "POST" && (
+    url.pathname === "/api/auth/change-password"
+    || url.pathname === "/api/auth/logout"
+  );
+}
+
 async function readRequestBodyText(request) {
   const chunks = [];
 
@@ -1468,6 +1475,16 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/auth/forgot-password") {
+      const body = await readJsonBody(request);
+      const result = await tenantRepository.requestPasswordReset(body.email);
+      sendJson(response, 200, {
+        ok: true,
+        delivered: Boolean(result?.delivered),
+      });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/signup") {
       const body = await readJsonBody(request);
       const result = await tenantRepository.submitSignupRequest(body);
@@ -1561,6 +1578,35 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (user.mustChangePassword && !isPasswordChangeRequiredRequestAllowed(url, request)) {
+      sendJson(response, 403, {
+        error: "Potrebno je odmah promijeniti privremenu lozinku.",
+        requiresPasswordChange: true,
+        user,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/change-password") {
+      const body = await readJsonBody(request);
+      const updatedUser = await tenantRepository.changeOwnPassword(
+        user,
+        body.newPassword ?? body.password,
+      );
+
+      if (!updatedUser) {
+        sendError(response, 404, "Korisnik nije pronaÄ‘en.");
+        return true;
+      }
+
+      request[requestUserSymbol] = updatedUser;
+      sendJson(response, 200, {
+        authenticated: true,
+        user: updatedUser,
+      });
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await writeSnapshot(response, user, request);
       return true;
@@ -1582,6 +1628,7 @@ async function handleApiRequest(request, response, url) {
 
     const organizationMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)$/);
     const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
+    const userPasswordResetMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/password-reset$/);
     const loginContentMatch = url.pathname.match(/^\/api\/login-content\/([^/]+)$/);
     const signupRequestActionMatch = url.pathname.match(/^\/api\/signup-requests\/([^/]+)\/(approve|reject)$/);
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
@@ -2223,6 +2270,18 @@ async function handleApiRequest(request, response, url) {
         annualLeaveInitialDays: body?.annualLeaveInitialDays,
         sickLeaveInitialDays: body?.sickLeaveInitialDays,
       });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (userPasswordResetMatch && request.method === "POST") {
+      const updated = await tenantRepository.sendUserPasswordReset(user, userPasswordResetMatch[1]);
+
+      if (!updated) {
+        sendError(response, 404, "Korisnik nije pronaÄ‘en.");
+        return true;
+      }
+
       await writeSnapshot(response, user, request);
       return true;
     }

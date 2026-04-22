@@ -992,6 +992,8 @@ const USER_MANAGEMENT_SCOPE_DEFINITIONS = Object.freeze({
 });
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
+  "/auth/forgot-password",
+  "/auth/change-password",
   "/auth/signup",
   "/auth/logout",
   "/auth/refresh",
@@ -1048,6 +1050,8 @@ const state = {
   dashboardWidgets: [],
   activeView: "selfdash",
   user: null,
+  authView: "login",
+  authResetEmail: "",
   activeOrganizationId: "",
   activeTodoTaskId: "",
   todoExpandedTaskIds: new Set(),
@@ -1461,6 +1465,37 @@ function setPeopleWorkspaceTab(tab = "users") {
   }
 }
 
+function normalizeAuthView(view = "login") {
+  if (view === "forgot-password" || view === "password-reset") {
+    return view;
+  }
+
+  return "login";
+}
+
+function getEffectiveAuthView() {
+  if (state.user?.mustChangePassword) {
+    return "password-reset";
+  }
+
+  return normalizeAuthView(state.authView);
+}
+
+function setInlineMessage(target, message = "", type = "error") {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  target.textContent = String(message ?? "");
+  target.classList.toggle("is-success", type === "success" && Boolean(message));
+}
+
+function setAuthView(view = "login") {
+  state.authView = normalizeAuthView(view);
+  document.body.classList.remove("is-auth-leaving");
+  renderAuthState();
+}
+
 function getWorkOrderFilterFieldDefinition(fieldValue = "") {
   return WORK_ORDER_FILTER_FIELD_DEFINITIONS.find((field) => field.value === fieldValue)
     ?? WORK_ORDER_FILTER_FIELD_DEFINITIONS[0];
@@ -1751,11 +1786,27 @@ const appSidebar = document.querySelector("#app-sidebar");
 const appHomeButton = document.querySelector("#app-home-button");
 const appRailToggle = document.querySelector("#app-rail-toggle");
 const appRailRestore = document.querySelector("#app-rail-restore");
+const authLoginView = document.querySelector("#auth-login-view");
+const authForgotView = document.querySelector("#auth-forgot-view");
+const authPasswordChangeView = document.querySelector("#auth-password-change-view");
 const loginForm = document.querySelector("#login-form");
 const loginEmailInput = document.querySelector("#login-email");
 const loginPasswordInput = document.querySelector("#login-password");
 const loginSubmitButton = document.querySelector("#login-submit-button");
 const loginError = document.querySelector("#login-error");
+const loginForgotPasswordButton = document.querySelector("#login-forgot-password-button");
+const forgotPasswordForm = document.querySelector("#forgot-password-form");
+const forgotPasswordEmailInput = document.querySelector("#forgot-password-email");
+const forgotPasswordSubmitButton = document.querySelector("#forgot-password-submit-button");
+const forgotPasswordBackButton = document.querySelector("#forgot-password-back-button");
+const forgotPasswordError = document.querySelector("#forgot-password-error");
+const changePasswordForm = document.querySelector("#change-password-form");
+const changePasswordCopy = document.querySelector("#change-password-copy");
+const changePasswordNewInput = document.querySelector("#change-password-new");
+const changePasswordConfirmInput = document.querySelector("#change-password-confirm");
+const changePasswordSubmitButton = document.querySelector("#change-password-submit-button");
+const changePasswordLogoutButton = document.querySelector("#change-password-logout-button");
+const changePasswordError = document.querySelector("#change-password-error");
 const globalLoadingIndicator = document.querySelector("#global-loading-indicator");
 const globalLoadingIndicatorCopy = document.querySelector("#global-loading-indicator-copy");
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
@@ -3593,12 +3644,12 @@ const userEditorPanel = document.querySelector("#user-editor-panel");
 const userEditorCloseButton = document.querySelector("#user-editor-close");
 const userEditorBody = document.querySelector("#user-editor-body");
 const userEditorContextNote = document.querySelector("#user-editor-context-note");
+const userPasswordResetButton = document.querySelector("#user-password-reset-button");
 const userIdInput = document.querySelector("#user-id");
 const userAvatarDataUrlInput = document.querySelector("#user-avatar-data-url");
 const userFirstNameInput = document.querySelector("#user-first-name");
 const userLastNameInput = document.querySelector("#user-last-name");
 const userEmailInput = document.querySelector("#user-email");
-const userPasswordInput = document.querySelector("#user-password");
 const userOrganizationField = document.querySelector("#user-organization-field");
 const userRoleField = document.querySelector("#user-role-field");
 const userOrganizationMembershipsField = document.querySelector("#user-organization-memberships-field");
@@ -3980,6 +4031,44 @@ function setLoginBusy(isBusy) {
   }
 }
 
+function setForgotPasswordBusy(isBusy) {
+  forgotPasswordForm?.classList.toggle("is-submitting", isBusy);
+
+  if (forgotPasswordSubmitButton) {
+    forgotPasswordSubmitButton.disabled = isBusy;
+    forgotPasswordSubmitButton.textContent = isBusy ? "Šaljem..." : "Pošalji privremenu lozinku";
+  }
+
+  if (forgotPasswordEmailInput) {
+    forgotPasswordEmailInput.disabled = isBusy;
+  }
+
+  if (forgotPasswordBackButton) {
+    forgotPasswordBackButton.disabled = isBusy;
+  }
+}
+
+function setForcedPasswordChangeBusy(isBusy) {
+  changePasswordForm?.classList.toggle("is-submitting", isBusy);
+
+  if (changePasswordSubmitButton) {
+    changePasswordSubmitButton.disabled = isBusy;
+    changePasswordSubmitButton.textContent = isBusy ? "Spremam..." : "Spremi novu lozinku";
+  }
+
+  if (changePasswordNewInput) {
+    changePasswordNewInput.disabled = isBusy;
+  }
+
+  if (changePasswordConfirmInput) {
+    changePasswordConfirmInput.disabled = isBusy;
+  }
+
+  if (changePasswordLogoutButton) {
+    changePasswordLogoutButton.disabled = isBusy;
+  }
+}
+
 const LOGIN_INPUT_LOCK_STYLES = Object.freeze([
   ["color-scheme", "only light"],
   ["background", "#ffffff"],
@@ -4057,9 +4146,9 @@ function applyLoginRedirectState() {
   }
 
   if (loginErrorCode === "invalid") {
-    loginError.textContent = "Neispravan email ili lozinka.";
+    setInlineMessage(loginError, "Neispravan email ili lozinka.");
   } else if (loginErrorCode === "server") {
-    loginError.textContent = "Prijava trenutno nije uspjela. Pokusaj ponovno.";
+    setInlineMessage(loginError, "Prijava trenutno nije uspjela. Pokusaj ponovno.");
   }
 
   params.delete("loginError");
@@ -4880,6 +4969,15 @@ async function refreshSnapshot() {
 async function refreshSession() {
   const payload = await apiRequest("/auth/session");
   state.user = payload.user ?? null;
+  if (state.user?.mustChangePassword) {
+    state.authView = "password-reset";
+    state.authResetEmail = state.user.email || state.authResetEmail;
+  } else if (!state.user) {
+    state.authResetEmail = "";
+    if (state.authView === "password-reset") {
+      state.authView = "login";
+    }
+  }
   renderAuthState();
   return payload.user;
 }
@@ -4980,7 +5078,7 @@ function hasSessionIdleExpired() {
 async function runMutation(callback, errorTarget) {
   try {
     if (errorTarget) {
-      errorTarget.textContent = "";
+      setInlineMessage(errorTarget, "");
     }
 
     const payload = await callback();
@@ -4997,7 +5095,7 @@ async function runMutation(callback, errorTarget) {
     }
 
     if (errorTarget) {
-      errorTarget.textContent = error.message;
+      setInlineMessage(errorTarget, error.message);
     } else {
       setSyncError(error.message);
     }
@@ -37767,20 +37865,46 @@ function renderLoginContent() {
 }
 
 function renderAuthState() {
-  const authenticated = Boolean(state.user);
-  authScreen.hidden = authenticated;
-  appShell.hidden = !authenticated;
-  if (chatDock) {
-    chatDock.hidden = !authenticated;
-  }
-  document.body.classList.toggle("is-auth-mode", !authenticated);
-  document.body.classList.toggle("is-auth-ready", !authenticated);
+  const authView = getEffectiveAuthView();
+  const passwordChangeRequired = authView === "password-reset";
+  const workspaceReady = Boolean(state.user) && !passwordChangeRequired;
 
-  if (authenticated) {
+  state.authView = authView;
+  if (passwordChangeRequired) {
+    state.authResetEmail = state.user?.email || state.authResetEmail;
+  }
+
+  if (authLoginView) {
+    authLoginView.hidden = authView !== "login";
+  }
+  if (authForgotView) {
+    authForgotView.hidden = authView !== "forgot-password";
+  }
+  if (authPasswordChangeView) {
+    authPasswordChangeView.hidden = authView !== "password-reset";
+  }
+  if (changePasswordCopy) {
+    const resetEmail = state.authResetEmail || state.user?.email || "";
+    changePasswordCopy.textContent = resetEmail
+      ? `Prijavljen si s privremenom lozinkom za ${resetEmail}. Odmah postavi novu za nastavak rada.`
+      : "Prijavljen si s privremenom lozinkom. Odmah postavi novu za nastavak rada.";
+  }
+
+  authScreen.hidden = workspaceReady;
+  appShell.hidden = !workspaceReady;
+  if (chatDock) {
+    chatDock.hidden = !workspaceReady;
+  }
+  document.body.classList.toggle("is-auth-mode", !workspaceReady);
+  document.body.classList.toggle("is-auth-ready", !workspaceReady);
+
+  if (workspaceReady) {
+    document.body.classList.remove("is-auth-leaving");
+  } else {
     document.body.classList.remove("is-auth-leaving");
   }
 
-  if (!authenticated) {
+  if (!workspaceReady) {
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
     state.userEditorOpen = false;
@@ -37817,7 +37941,7 @@ function renderAuthState() {
     resetChatState();
   }
 
-  if (authenticated) {
+  if (workspaceReady) {
     const isSuperAdmin = getIsSuperAdmin();
     const isAdmin = getIsAdmin();
     const canManageMasterData = getCanManageMasterData();
@@ -37945,8 +38069,10 @@ function renderAuthState() {
     if (managementNavLabel) {
       managementNavLabel.textContent = "People";
     }
-    loginError.textContent = "";
+    setInlineMessage(loginError, "");
     setLoginBusy(false);
+    setForgotPasswordBusy(false);
+    setForcedPasswordChangeBusy(false);
     renderChatDock();
   }
 
@@ -39271,7 +39397,6 @@ function buildUserPayload() {
     title: userTitleInput?.value || "",
     oib: userOibInput?.value || "",
     email: userEmailInput.value,
-    password: userPasswordInput.value,
     organizationId: primaryOrganizationId,
     organizationIds,
     role: getIsSuperAdmin() ? userRoleInput.value : "user",
@@ -39402,6 +39527,12 @@ function syncUserEditorChrome(editing = false, user = null) {
     userResetButton.textContent = editing ? scopeConfig.resetEditLabel : scopeConfig.resetCreateLabel;
   }
 
+  if (userPasswordResetButton) {
+    const canResetPassword = editing && canManageRenderedUser(user);
+    userPasswordResetButton.hidden = !canResetPassword;
+    userPasswordResetButton.disabled = !canResetPassword;
+  }
+
   userForm?.classList.toggle("is-editing", editing);
   syncUserEditorScopeVisibility();
 }
@@ -39514,7 +39645,7 @@ function resetUserForm() {
   if (userElectricalSignatureDataUrlInput) {
     userElectricalSignatureDataUrlInput.value = "";
   }
-  userError.textContent = "";
+  setInlineMessage(userError, "");
   userIsActiveInput.value = "true";
   if (userProfileRoleInput) {
     userProfileRoleInput.value = "new_user";
@@ -39763,7 +39894,6 @@ function hydrateUserForm(user) {
     userOibInput.value = user.oib || "";
   }
   userEmailInput.value = user.email;
-  userPasswordInput.value = "";
   userOrganizationIdInput.value = user.organizationId || state.activeOrganizationId;
   userRoleInput.value = user.role;
   if (userProfileRoleInput) {
@@ -39820,7 +39950,7 @@ function hydrateUserForm(user) {
   renderUserDocuments();
   renderUserOrganizationMemberships(user.organizationIds ?? [user.organizationId]);
   renderAvatar(userAvatarPreview, user);
-  userError.textContent = "";
+  setInlineMessage(userError, "");
   syncUserEditorChrome(true, user);
   openUserEditor();
   requestAnimationFrame(() => {
@@ -61931,7 +62061,7 @@ userAvatarFileInput?.addEventListener("change", () => {
   }
 
   if (file.size > 2 * 1024 * 1024) {
-    userError.textContent = "Avatar image must be smaller than 2 MB.";
+    setInlineMessage(userError, "Avatar image must be smaller than 2 MB.");
     userAvatarFileInput.value = "";
     return;
   }
@@ -61944,9 +62074,9 @@ userAvatarFileInput?.addEventListener("change", () => {
       email: userEmailInput.value,
       avatarDataUrl: userAvatarDataUrlInput.value,
     });
-    userError.textContent = "";
+    setInlineMessage(userError, "");
   }).catch(() => {
-    userError.textContent = "Ne mogu učitati sliku.";
+    setInlineMessage(userError, "Ne mogu učitati sliku.");
   });
 });
 
@@ -61996,19 +62126,14 @@ async function handleLoginSubmit(event) {
   const email = String(loginEmailInput?.value ?? "").trim();
   const password = String(loginPasswordInput?.value ?? "");
 
-  if (loginError) {
-    loginError.textContent = "";
-  }
+  setInlineMessage(loginError, "");
 
   if (!email || !password) {
-    if (loginError) {
-      loginError.textContent = "Unesi email i lozinku.";
-    }
+    setInlineMessage(loginError, "Unesi email i lozinku.");
     return;
   }
 
   setLoginBusy(true);
-  document.body.classList.add("is-auth-leaving");
 
   try {
     await withGlobalLoading("Otvaram SafeNexus...", async () => {
@@ -62028,18 +62153,28 @@ async function handleLoginSubmit(event) {
       }
 
       sessionLastActivityAtMs = Date.now();
+      if (user.mustChangePassword) {
+        state.authView = "password-reset";
+        state.authResetEmail = user.email || email;
+        if (loginPasswordInput) {
+          loginPasswordInput.value = "";
+        }
+        renderAuthState();
+        return;
+      }
+
+      document.body.classList.add("is-auth-leaving");
       await refreshSnapshot();
       loginForm?.reset();
+      state.authResetEmail = "";
     }, { immediate: true });
   } catch (error) {
-    if (loginError) {
-      if (error?.code === "SESSION_NOT_PERSISTED") {
-        loginError.textContent = error.message;
-      } else if (error?.statusCode === 401 || error?.statusCode === 403) {
-        loginError.textContent = "Neispravan email ili lozinka.";
-      } else {
-        loginError.textContent = error?.message || "Prijava trenutno nije uspjela. Pokusaj ponovno.";
-      }
+    if (error?.code === "SESSION_NOT_PERSISTED") {
+      setInlineMessage(loginError, error.message);
+    } else if (error?.statusCode === 401) {
+      setInlineMessage(loginError, "Neispravan email ili lozinka.");
+    } else {
+      setInlineMessage(loginError, error?.message || "Prijava trenutno nije uspjela. Pokusaj ponovno.");
     }
     document.body.classList.remove("is-auth-leaving");
     renderAuthState();
@@ -62048,8 +62183,119 @@ async function handleLoginSubmit(event) {
   }
 }
 
+async function handleForgotPasswordSubmit(event) {
+  event.preventDefault();
+
+  const email = String(forgotPasswordEmailInput?.value ?? "").trim();
+  setInlineMessage(forgotPasswordError, "");
+
+  if (!email) {
+    setInlineMessage(forgotPasswordError, "Unesi email korisnika.");
+    return;
+  }
+
+  setForgotPasswordBusy(true);
+
+  try {
+    await withGlobalLoading("Šaljem privremenu lozinku...", () => apiRequest("/auth/forgot-password", {
+      method: "POST",
+      body: {
+        email,
+      },
+    }), { immediate: true });
+
+    if (loginEmailInput) {
+      loginEmailInput.value = email;
+    }
+    if (loginPasswordInput) {
+      loginPasswordInput.value = "";
+    }
+    setAuthView("login");
+    setInlineMessage(loginError, "Ako račun postoji, privremena lozinka je poslana na email.", "success");
+  } catch (error) {
+    setInlineMessage(
+      forgotPasswordError,
+      error?.message || "Slanje privremene lozinke trenutno nije uspjelo. Pokusaj ponovno.",
+    );
+  } finally {
+    setForgotPasswordBusy(false);
+  }
+}
+
+async function handleForcedPasswordChangeSubmit(event) {
+  event.preventDefault();
+
+  const newPassword = String(changePasswordNewInput?.value ?? "");
+  const confirmPassword = String(changePasswordConfirmInput?.value ?? "");
+  setInlineMessage(changePasswordError, "");
+
+  if (!newPassword) {
+    setInlineMessage(changePasswordError, "Unesi novu lozinku.");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setInlineMessage(changePasswordError, "Nova lozinka i potvrda moraju biti iste.");
+    return;
+  }
+
+  setForcedPasswordChangeBusy(true);
+
+  try {
+    await withGlobalLoading("Spremam novu lozinku...", async () => {
+      const payload = await apiRequest("/auth/change-password", {
+        method: "POST",
+        body: {
+          newPassword,
+        },
+      });
+
+      state.user = payload.user ?? state.user;
+      state.authResetEmail = "";
+      document.body.classList.add("is-auth-leaving");
+      await refreshSnapshot();
+      changePasswordForm?.reset();
+    }, { immediate: true });
+  } catch (error) {
+    setInlineMessage(
+      changePasswordError,
+      error?.message || "Spremanje nove lozinke trenutno nije uspjelo. Pokusaj ponovno.",
+    );
+    document.body.classList.remove("is-auth-leaving");
+    renderAuthState();
+  } finally {
+    setForcedPasswordChangeBusy(false);
+  }
+}
+
 loginForm?.addEventListener("submit", (event) => {
   void handleLoginSubmit(event);
+});
+
+loginForgotPasswordButton?.addEventListener("click", () => {
+  if (forgotPasswordEmailInput && !forgotPasswordEmailInput.value) {
+    forgotPasswordEmailInput.value = String(loginEmailInput?.value ?? "").trim();
+  }
+  setInlineMessage(loginError, "");
+  setInlineMessage(forgotPasswordError, "");
+  setAuthView("forgot-password");
+});
+
+forgotPasswordBackButton?.addEventListener("click", () => {
+  setInlineMessage(forgotPasswordError, "");
+  setAuthView("login");
+});
+
+forgotPasswordForm?.addEventListener("submit", (event) => {
+  void handleForgotPasswordSubmit(event);
+});
+
+changePasswordForm?.addEventListener("submit", (event) => {
+  void handleForcedPasswordChangeSubmit(event);
+});
+
+changePasswordLogoutButton?.addEventListener("click", () => {
+  runLogoutFlow();
 });
 
 logoutButton?.addEventListener("click", () => {
@@ -62059,6 +62305,8 @@ logoutButton?.addEventListener("click", () => {
 function resetAuthenticatedWorkspaceState() {
   resetChatState();
   state.user = null;
+  state.authView = "login";
+  state.authResetEmail = "";
   state.userManagementScope = "people";
   state.organizations = [];
   state.workOrders = [];
@@ -62151,7 +62399,12 @@ function resetAuthenticatedWorkspaceState() {
   state.measurementSheet.fillDrag = null;
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.contextMenu = null;
-  loginForm.reset();
+  loginForm?.reset();
+  forgotPasswordForm?.reset();
+  changePasswordForm?.reset();
+  setInlineMessage(loginError, "");
+  setInlineMessage(forgotPasswordError, "");
+  setInlineMessage(changePasswordError, "");
   closeMeasurementSheet();
   resetOfferForm();
   resetLegalFrameworkForm();
@@ -62175,8 +62428,8 @@ function runLogoutFlow(message = "") {
     .catch(() => {})
     .finally(() => {
       resetAuthenticatedWorkspaceState();
-      if (message && loginError) {
-        loginError.textContent = message;
+      if (message) {
+        setInlineMessage(loginError, message);
       }
       logoutInProgress = false;
     });
@@ -62260,6 +62513,22 @@ userForm?.addEventListener("submit", (event) => {
   }), userError).then((success) => {
     if (success) {
       closeUserEditor({ reset: true });
+    }
+  });
+});
+
+userPasswordResetButton?.addEventListener("click", () => {
+  const userId = String(userIdInput?.value ?? "").trim();
+
+  if (!userId) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/users/${userId}/password-reset`, {
+    method: "POST",
+  }), userError).then((success) => {
+    if (success) {
+      setInlineMessage(userError, "Privremena lozinka je poslana na email korisnika.", "success");
     }
   });
 });
@@ -62880,6 +63149,9 @@ applyLoginRedirectState();
 syncPasswordToggleLabel();
 bindLoginInputAppearanceLock(loginEmailInput);
 bindLoginInputAppearanceLock(loginPasswordInput);
+bindLoginInputAppearanceLock(forgotPasswordEmailInput);
+bindLoginInputAppearanceLock(changePasswordNewInput);
+bindLoginInputAppearanceLock(changePasswordConfirmInput);
 
 refreshLoginContent().catch(() => {
   renderLoginContent();
@@ -62887,7 +63159,7 @@ refreshLoginContent().catch(() => {
 
 withGlobalLoading("Pokrećem SafeNexus...", async () => {
   const user = await refreshSession();
-  if (user) {
+  if (user && !user.mustChangePassword) {
     await refreshSnapshot();
   }
 })

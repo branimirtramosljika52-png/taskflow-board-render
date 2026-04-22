@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260421o" />
+<link rel="stylesheet" href="/styles.css?v=20260422b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -72,11 +72,116 @@
             </form>
 
             <div class="auth-switch-row">
+              <span class="auth-switch-copy">Need help?</span>
+              <button id="login-forgot-password-button" type="button" class="auth-switch-link">Forgot password?</button>
+            </div>
+
+            <div class="auth-switch-row">
               <span class="auth-switch-copy">Need access?</span>
               <a class="auth-switch-link" href="/request-access.html">Request access</a>
             </div>
 
             <p id="login-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section id="auth-forgot-view" class="auth-view" aria-label="Forgot password" hidden>
+            <div class="auth-logo auth-logo-compact brand-lockup auth-brand-lockup" aria-label="SafeNexus" role="img">
+              <span class="brand-logo-badge auth-brand-mark" aria-hidden="true">
+                <img src="/assets/safenexus-mark.png" alt="" class="brand-logo-image" />
+              </span>
+              <span class="brand-wordmark auth-brand-wordmark" aria-hidden="true">
+                <span class="brand-wordmark-core">Safe</span><span class="brand-wordmark-accent">Nexus</span>
+              </span>
+            </div>
+
+            <div class="auth-login-copy">
+              <h1>Zaboravljena lozinka</h1>
+              <p>Upiši email i poslat ćemo privremenu lozinku na račun korisnika.</p>
+            </div>
+
+            <form id="forgot-password-form" class="auth-form auth-form-tenant">
+              <label class="field">
+                <span>Email</span>
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon auth-input-icon-email" aria-hidden="true"></span>
+                  <input
+                    id="forgot-password-email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="Email address"
+                    style="color-scheme: only light; background: #ffffff; background-color: #ffffff; color: #1f2430; -webkit-text-fill-color: #1f2430; caret-color: #1f2430;"
+                    required
+                  />
+                </div>
+              </label>
+
+              <button id="forgot-password-submit-button" type="submit" class="primary-button auth-submit-button">Pošalji privremenu lozinku</button>
+            </form>
+
+            <div class="auth-switch-row">
+              <button id="forgot-password-back-button" type="button" class="auth-switch-link">Natrag na login</button>
+            </div>
+
+            <p id="forgot-password-error" class="form-error" aria-live="polite"></p>
+          </section>
+
+          <section id="auth-password-change-view" class="auth-view" aria-label="Change password" hidden>
+            <div class="auth-logo auth-logo-compact brand-lockup auth-brand-lockup" aria-label="SafeNexus" role="img">
+              <span class="brand-logo-badge auth-brand-mark" aria-hidden="true">
+                <img src="/assets/safenexus-mark.png" alt="" class="brand-logo-image" />
+              </span>
+              <span class="brand-wordmark auth-brand-wordmark" aria-hidden="true">
+                <span class="brand-wordmark-core">Safe</span><span class="brand-wordmark-accent">Nexus</span>
+              </span>
+            </div>
+
+            <div class="auth-login-copy">
+              <h1>Postavi novu lozinku</h1>
+              <p id="change-password-copy">Prijavljen si s privremenom lozinkom. Odmah postavi novu za nastavak rada.</p>
+            </div>
+
+            <form id="change-password-form" class="auth-form auth-form-tenant">
+              <label class="field">
+                <span>Nova lozinka</span>
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
+                  <input
+                    id="change-password-new"
+                    name="newPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="Nova lozinka"
+                    style="color-scheme: only light; background: #ffffff; background-color: #ffffff; color: #1f2430; -webkit-text-fill-color: #1f2430; caret-color: #1f2430;"
+                    required
+                  />
+                </div>
+              </label>
+
+              <label class="field">
+                <span>Ponovi novu lozinku</span>
+                <div class="auth-input-shell">
+                  <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
+                  <input
+                    id="change-password-confirm"
+                    name="confirmPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="Ponovi lozinku"
+                    style="color-scheme: only light; background: #ffffff; background-color: #ffffff; color: #1f2430; -webkit-text-fill-color: #1f2430; caret-color: #1f2430;"
+                    required
+                  />
+                </div>
+              </label>
+
+              <button id="change-password-submit-button" type="submit" class="primary-button auth-submit-button">Spremi novu lozinku</button>
+            </form>
+
+            <div class="auth-switch-row">
+              <button id="change-password-logout-button" type="button" class="auth-switch-link">Odjavi se</button>
+            </div>
+
+            <p id="change-password-error" class="form-error" aria-live="polite"></p>
           </section>
         </section>
       </div>
@@ -2900,6 +3005,7 @@
                   <h2 id="user-panel-title">Novi korisnik</h2>
                 </div>
                 <div class="masterdata-editor-head-actions">
+                  <button id="user-password-reset-button" type="button" class="ghost-button" hidden>Pošalji privremenu lozinku</button>
                   <button id="user-submit-shortcut" type="submit" form="user-form" class="primary-button">Spremi korisnika</button>
                   <button id="user-editor-close" type="button" class="ghost-button">Zatvori</button>
                 </div>
@@ -2935,10 +3041,6 @@
                       <span>OIB</span>
                       <input id="user-oib" type="text" maxlength="32" inputmode="numeric" />
                     </label>
-                    <label class="field">
-                      <span>Password</span>
-                      <input id="user-password" type="password" maxlength="160" placeholder="Leave blank to keep current" />
-                    </label>
                     <label id="user-organization-field" class="field">
                       <span>Primary organization</span>
                       <select id="user-organization-id"></select>
@@ -2973,6 +3075,10 @@
 
                   <p id="user-editor-context-note" class="helper-copy" hidden>
                     Ovdje vodiš samo osnovni korisnički račun. Dokumentacija, potpisi i ovlaštenja ostaju u People modulu.
+                  </p>
+
+                  <p class="helper-copy">
+                    Lozinka se više ne unosi ručno. Novi račun i reset lozinke šalju privremenu lozinku direktno na email korisnika.
                   </p>
 
                   <div class="user-editor-modules">
@@ -6310,6 +6416,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260422a"></script>
+    <script type="module" src="/src/main.js?v=20260422b"></script>
   </body>
 </html>

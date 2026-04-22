@@ -15708,6 +15708,8 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   border: 0;
   background: transparent;
   color: #7d56ff;
+  cursor: pointer;
+  font: inherit;
   font-weight: 700;
   box-shadow: none;
   text-decoration: none;
