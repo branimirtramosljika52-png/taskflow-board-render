@@ -4335,6 +4335,29 @@ function getUserSystemRoleLabel(role = "") {
   return "User";
 }
 
+function getEffectiveUserProfileRoleValue(user = {}) {
+  const normalizedSystemRole = String(user?.role || "").trim().toLowerCase();
+  if (normalizedSystemRole === "super_admin" || normalizedSystemRole === "admin") {
+    return "admin";
+  }
+
+  return normalizeUserProfileRoleValue(user?.profileRole);
+}
+
+function resolveUserSystemRoleFromProfileRole(profileRole = "", options = {}) {
+  const fallbackRole = String(options?.fallbackRole || "").trim().toLowerCase();
+  if (fallbackRole === "super_admin") {
+    return "super_admin";
+  }
+
+  const normalizedProfileRole = normalizeUserProfileRoleValue(profileRole);
+  if (getIsSuperAdmin() && normalizedProfileRole === "admin") {
+    return "admin";
+  }
+
+  return "user";
+}
+
 function getUserOrganizationNames(user = {}) {
   const directOrganizationName = String(user?.organizationName || "").trim();
   const scopedNames = Array.isArray(user?.organizations)
@@ -4358,10 +4381,9 @@ function getUserOrganizationSummary(user = {}) {
 }
 
 function getUserRoleSummary(user = {}) {
-  const profileRoleLabel = getUserProfileRoleLabel(user.profileRole);
+  const profileRoleLabel = getUserProfileRoleLabel(getEffectiveUserProfileRoleValue(user));
   const systemRoleLabel = getUserSystemRoleLabel(user.role);
-  const shouldShowSystemRole = user.role === "super_admin"
-    || (user.role === "admin" && profileRoleLabel !== systemRoleLabel);
+  const shouldShowSystemRole = user.role === "super_admin";
 
   return {
     title: profileRoleLabel,
@@ -39391,6 +39413,8 @@ function buildOrganizationPayload() {
 }
 
 function buildUserPayload() {
+  const currentRecord = getCurrentUserEditorRecord();
+  const selectedProfileRole = normalizeUserProfileRoleValue(userProfileRoleInput?.value || currentRecord?.profileRole || "new_user");
   const selectedOrganizationIds = getIsSuperAdmin()
     ? getSelectedUserOrganizationIds()
     : [state.activeOrganizationId].filter(Boolean);
@@ -39403,13 +39427,17 @@ function buildUserPayload() {
     firstName: userFirstNameInput.value,
     lastName: userLastNameInput.value,
     displayName: userDisplayNameInput?.value || "",
-    profileRole: userProfileRoleInput?.value || "new_user",
+    profileRole: selectedProfileRole,
     title: userTitleInput?.value || "",
     oib: userOibInput?.value || "",
     email: userEmailInput.value,
     organizationId: primaryOrganizationId,
     organizationIds,
-    role: getIsSuperAdmin() ? userRoleInput.value : "user",
+    role: isControlPanelUserManagementScope()
+      ? (getIsSuperAdmin() ? userRoleInput.value : "user")
+      : resolveUserSystemRoleFromProfileRole(selectedProfileRole, {
+        fallbackRole: currentRecord?.role || userRoleInput?.value || "user",
+      }),
     legacyUsername: userLegacyUsernameInput.value,
     isActive: userIsActiveInput.value,
     avatarDataUrl: userAvatarDataUrlInput.value,
@@ -39500,7 +39528,7 @@ function getUserManagementNoteText(currentOrganization = null) {
   }
 
   if (getIsSuperAdmin()) {
-    return "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.";
+    return "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja. Role automatski određuju i pristup sustavu.";
   }
 
   if (getIsAdmin()) {
@@ -39660,7 +39688,7 @@ function resetUserForm() {
   if (userProfileRoleInput) {
     userProfileRoleInput.value = "new_user";
   }
-  userRoleInput.value = getIsSuperAdmin() ? "admin" : "user";
+  userRoleInput.value = "user";
   renderAvatar(userAvatarPreview, {});
   userOrganizationIdInput.value = state.activeOrganizationId || state.organizations[0]?.id || "";
   renderUserOrganizationMemberships([userOrganizationIdInput.value].filter(Boolean));
@@ -39907,7 +39935,7 @@ function hydrateUserForm(user) {
   userOrganizationIdInput.value = user.organizationId || state.activeOrganizationId;
   userRoleInput.value = user.role;
   if (userProfileRoleInput) {
-    userProfileRoleInput.value = normalizeUserProfileRoleValue(user.profileRole);
+    userProfileRoleInput.value = getEffectiveUserProfileRoleValue(user);
   }
   userLegacyUsernameInput.value = user.legacyUsername || "";
   userIsActiveInput.value = String(user.isActive);
@@ -49221,7 +49249,7 @@ function renderSharedOptions() {
     );
   }
 
-  replaceSelectOptions(userRoleInput, roleOptions, getIsSuperAdmin() ? (userRoleInput.value || "admin") : "user");
+  replaceSelectOptions(userRoleInput, roleOptions, getIsSuperAdmin() ? (userRoleInput.value || "user") : "user");
   replaceSelectOptions(userProfileRoleInput, USER_PROFILE_ROLE_OPTIONS, selectedProfileRole);
   renderUserOrganizationMemberships(getIsSuperAdmin()
     ? getSelectedUserOrganizationIds()
@@ -49232,7 +49260,7 @@ function renderSharedOptions() {
   }
 
   if (userRoleField) {
-    userRoleField.hidden = !getIsSuperAdmin();
+    userRoleField.hidden = !getIsSuperAdmin() || !isControlPanelUserManagementScope();
   }
 
   if (userOrganizationMembershipsField) {
