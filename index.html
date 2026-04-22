@@ -4607,7 +4607,13 @@
                     <p class="section-kicker">Periodika</p>
                     <h3>Pregled svih istjeka</h3>
                   </div>
-                  <button id="periodics-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
+                  <div class="periodics-toolbar-actions">
+                    <div class="periodics-view-toggle work-order-calendar-display-toggle" role="group" aria-label="Prikaz periodike">
+                      <button id="periodics-view-list" type="button" class="ghost-button work-order-calendar-tool-button">Lista</button>
+                      <button id="periodics-view-calendar" type="button" class="ghost-button work-order-calendar-tool-button">Kalendar</button>
+                    </div>
+                    <button id="periodics-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
+                  </div>
                 </div>
 
                 <div class="periodics-filters">
@@ -4631,6 +4637,50 @@
                 <p id="periodics-helper" class="helper-copy module-copy">Periodika objedinjuje ispitivanja, vozila i korisničke ovlasti.</p>
               </section>
 
+              <section id="periodics-calendar-panel" class="panel periodics-section-card periodics-calendar-panel" hidden>
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Kalendar</p>
+                    <h3>Veliki pregled periodike i odsutnosti</h3>
+                  </div>
+                  <div class="periodics-calendar-legend" aria-label="Legenda kalendara">
+                    <span class="periodics-calendar-legend-item is-inspections">Ispitivanja</span>
+                    <span class="periodics-calendar-legend-item is-vehicles">Vozila</span>
+                    <span class="periodics-calendar-legend-item is-people">Ljudi</span>
+                    <span class="periodics-calendar-legend-item is-equipment">Oprema</span>
+                    <span class="periodics-calendar-legend-item is-annual">Godišnji / dopusti</span>
+                    <span class="periodics-calendar-legend-item is-medical">Bolovanja</span>
+                  </div>
+                </div>
+
+                <div class="periodics-calendar-view">
+                  <div id="periodics-calendar-toolbar" class="work-order-calendar-toolbar">
+                    <div class="work-order-calendar-nav">
+                      <button id="periodics-calendar-prev" type="button" class="ghost-button calendar-nav-button" aria-label="Prethodni period">&#8249;</button>
+                      <button id="periodics-calendar-today" type="button" class="ghost-button work-order-calendar-tool-button">Danas</button>
+                      <button id="periodics-calendar-next" type="button" class="ghost-button calendar-nav-button" aria-label="Sljedeći period">&#8250;</button>
+                      <strong id="periodics-calendar-range" class="work-order-calendar-range">Kalendar</strong>
+                      <span id="periodics-calendar-meta" class="work-order-calendar-meta">Pregled periodike i odsutnosti</span>
+                    </div>
+
+                    <div class="work-order-calendar-toolbar-side">
+                      <div class="work-order-calendar-display-toggle" role="group" aria-label="Raspon kalendara">
+                        <button id="periodics-calendar-display-week" type="button" class="ghost-button work-order-calendar-tool-button">Week</button>
+                        <button id="periodics-calendar-display-month" type="button" class="ghost-button work-order-calendar-tool-button">Month</button>
+                      </div>
+                      <button id="periodics-calendar-weekends" type="button" class="ghost-button work-order-calendar-tool-button">Vikendi</button>
+                    </div>
+                  </div>
+
+                  <div id="periodics-calendar-grid-shell" class="work-order-calendar-grid-shell periodics-calendar-grid-shell">
+                    <div id="periodics-calendar-grid" class="work-order-calendar-grid periodics-calendar-grid"></div>
+                  </div>
+
+                  <p id="periodics-calendar-empty" class="helper-copy" hidden>Nema periodike ni odsutnosti za ovaj raspon i pretragu.</p>
+                </div>
+              </section>
+
+              <div id="periodics-list-view" class="periodics-list-view">
               <section class="panel periodics-section-card is-inspections">
                 <div
                   id="periodics-inspections-heading"
@@ -4798,6 +4848,7 @@
                   <p id="periodics-equipment-empty" class="helper-copy" hidden>Nema rokova za mjernu opremu po trenutnom filtru.</p>
                 </div>
               </section>
+              </div>
             </section>
 
             <section id="drawing-studio-module" class="drawing-studio-module" hidden>

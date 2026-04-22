@@ -174,6 +174,7 @@ const COMPANIES_COLUMN_LAYOUT = Object.freeze([
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
 const DOCUMENTS_EXPLORER_MAX_RECORDS = 500;
+const PERIODICS_CALENDAR_DAY_MIN_WIDTH = 220;
 const DOCUMENTS_EXPLORER_WORK_ORDER_KEY_HINTS = Object.freeze([
   "WORKORDERNUMBER",
   "BROJRADNOGNALOGA",
@@ -482,6 +483,24 @@ const ABSENCE_CALENDAR_BADGE_TONES = Object.freeze({
   childbirth_leave: "is-medical",
   parental_leave: "is-medical",
   other_medical_leave: "is-medical",
+});
+const PERIODICS_CALENDAR_CATEGORY_CONFIG = Object.freeze({
+  inspections: Object.freeze({
+    label: "Ispitivanja",
+    className: "is-inspections",
+  }),
+  vehicles: Object.freeze({
+    label: "Vozila",
+    className: "is-vehicles",
+  }),
+  people: Object.freeze({
+    label: "Ljudi",
+    className: "is-people",
+  }),
+  equipment: Object.freeze({
+    label: "Oprema",
+    className: "is-equipment",
+  }),
 });
 const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
@@ -1186,6 +1205,12 @@ const state = {
   periodicsFilters: {
     query: "",
     horizon: "all",
+  },
+  periodicsViewMode: "list",
+  periodicsCalendar: {
+    anchorDate: new Date().toISOString().slice(0, 10),
+    displayMode: "month",
+    showWeekends: true,
   },
   periodicsSections: {
     inspectionsCollapsed: false,
@@ -1961,8 +1986,24 @@ const periodicsCriticalLabel = document.querySelector("#periodics-critical-label
 const periodicsCriticalCount = document.querySelector("#periodics-critical-count");
 const periodicsSearchInput = document.querySelector("#periodics-search");
 const periodicsHorizonInput = document.querySelector("#periodics-horizon");
+const periodicsHorizonField = periodicsHorizonInput?.closest(".field") ?? null;
 const periodicsRefreshButton = document.querySelector("#periodics-refresh");
+const periodicsViewListButton = document.querySelector("#periodics-view-list");
+const periodicsViewCalendarButton = document.querySelector("#periodics-view-calendar");
 const periodicsHelper = document.querySelector("#periodics-helper");
+const periodicsCalendarPanel = document.querySelector("#periodics-calendar-panel");
+const periodicsCalendarGridShell = document.querySelector("#periodics-calendar-grid-shell");
+const periodicsCalendarGrid = document.querySelector("#periodics-calendar-grid");
+const periodicsCalendarRange = document.querySelector("#periodics-calendar-range");
+const periodicsCalendarMeta = document.querySelector("#periodics-calendar-meta");
+const periodicsCalendarEmpty = document.querySelector("#periodics-calendar-empty");
+const periodicsCalendarPrevButton = document.querySelector("#periodics-calendar-prev");
+const periodicsCalendarTodayButton = document.querySelector("#periodics-calendar-today");
+const periodicsCalendarNextButton = document.querySelector("#periodics-calendar-next");
+const periodicsCalendarDisplayWeekButton = document.querySelector("#periodics-calendar-display-week");
+const periodicsCalendarDisplayMonthButton = document.querySelector("#periodics-calendar-display-month");
+const periodicsCalendarWeekendsButton = document.querySelector("#periodics-calendar-weekends");
+const periodicsListView = document.querySelector("#periodics-list-view");
 const periodicsInspectionsCount = document.querySelector("#periodics-inspections-count");
 const periodicsInspectionsHeading = document.querySelector("#periodics-inspections-heading");
 const periodicsInspectionsToggleButton = document.querySelector("#periodics-inspections-toggle");
@@ -13033,12 +13074,7 @@ function applyPeriodicsFilters(entries = [], filters = state.periodicsFilters) {
       }
     }
 
-    if (!queryNeedle) {
-      return true;
-    }
-
-    const haystack = normalizeLooseName(entry?.searchText || "");
-    return haystack.includes(queryNeedle);
+    return matchesPeriodicsSearchFilter(entry, queryNeedle);
   });
 }
 
@@ -13251,10 +13287,688 @@ function syncPeriodicsSections() {
   );
 }
 
+function normalizePeriodicsViewMode(mode = state.periodicsViewMode) {
+  return String(mode || "").trim().toLowerCase() === "calendar" ? "calendar" : "list";
+}
+
+function normalizePeriodicsCalendarDisplayMode(mode = state.periodicsCalendar?.displayMode) {
+  return String(mode || "").trim().toLowerCase() === "week" ? "week" : "month";
+}
+
+function getPeriodicsCalendarAnchorDate(value = state.periodicsCalendar?.anchorDate) {
+  const parsedDate = parseDateValue(value);
+  if (!parsedDate) {
+    return toDateKey(new Date());
+  }
+
+  parsedDate.setHours(0, 0, 0, 0);
+  return toDateKey(parsedDate);
+}
+
+function getPeriodicsCalendarWeekStart(value = state.periodicsCalendar?.anchorDate) {
+  const parsedDate = parseDateValue(getPeriodicsCalendarAnchorDate(value));
+  if (!parsedDate) {
+    return toDateKey(new Date());
+  }
+
+  const mondayOffset = (parsedDate.getDay() + 6) % 7;
+  parsedDate.setDate(parsedDate.getDate() - mondayOffset);
+  parsedDate.setHours(0, 0, 0, 0);
+  return toDateKey(parsedDate);
+}
+
+function matchesPeriodicsSearchFilter(entry = {}, queryNeedle = "") {
+  if (!queryNeedle) {
+    return true;
+  }
+
+  const haystack = normalizeLooseName(entry?.searchText || "");
+  return haystack.includes(queryNeedle);
+}
+
+function createPeriodicsCalendarBaseDay(key = "", { inMonth = true, isToday = false } = {}) {
+  return {
+    key,
+    inMonth,
+    isToday,
+    dueItems: [],
+    absenceItems: [],
+  };
+}
+
+function buildPeriodicsCalendarWeekStructure(anchorDate = state.periodicsCalendar?.anchorDate) {
+  const weekStart = getPeriodicsCalendarWeekStart(anchorDate);
+  const todayKey = toDateKey(new Date());
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const key = shiftDateKey(weekStart, index);
+    return createPeriodicsCalendarBaseDay(key, {
+      inMonth: true,
+      isToday: key === todayKey,
+    });
+  });
+
+  return {
+    anchorDate: getPeriodicsCalendarAnchorDate(anchorDate),
+    weekStart,
+    weekEnd: shiftDateKey(weekStart, 6),
+    days,
+  };
+}
+
+function buildPeriodicsCalendarMonthStructure(anchorDate = state.periodicsCalendar?.anchorDate) {
+  const safeAnchorDate = getPeriodicsCalendarAnchorDate(anchorDate);
+  const monthStart = `${safeAnchorDate.slice(0, 7)}-01`;
+  const monthStartDate = parseDateValue(monthStart) || new Date();
+  const monthEndDate = new Date(monthStartDate.getFullYear(), monthStartDate.getMonth() + 1, 0);
+  const monthEnd = toDateKey(monthEndDate);
+  const displayStart = getPeriodicsCalendarWeekStart(monthStart);
+  const displayEnd = shiftDateKey(getPeriodicsCalendarWeekStart(monthEnd), 6);
+  const todayKey = toDateKey(new Date());
+  const weeks = [];
+
+  for (let cursor = displayStart; cursor <= displayEnd; cursor = shiftDateKey(cursor, 7)) {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const key = shiftDateKey(cursor, index);
+      return createPeriodicsCalendarBaseDay(key, {
+        inMonth: key >= monthStart && key <= monthEnd,
+        isToday: key === todayKey,
+      });
+    });
+
+    weeks.push({
+      key: cursor,
+      weekStart: cursor,
+      days,
+    });
+  }
+
+  return {
+    anchorDate: safeAnchorDate,
+    monthStart,
+    monthEnd,
+    displayStart,
+    displayEnd,
+    weeks,
+  };
+}
+
+function createPeriodicsCalendarDueItem(entry = {}, category = "inspections") {
+  const categoryConfig = PERIODICS_CALENDAR_CATEGORY_CONFIG[category] || PERIODICS_CALENDAR_CATEGORY_CONFIG.inspections;
+  let title = categoryConfig.label;
+  let subtitle = "";
+  let detail = "";
+
+  if (category === "inspections") {
+    title = entry.companyName || "Ispitivanje";
+    subtitle = [entry.locationName, entry.serviceLabel].filter(Boolean).join(" · ");
+    detail = [entry.templateLabel, entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : ""].filter(Boolean).join(" · ");
+  } else if (category === "vehicles") {
+    title = entry.vehicleName || "Vozilo";
+    subtitle = [entry.periodicLabel, entry.plateNumber || "Bez registracije"].filter(Boolean).join(" · ");
+    detail = [entry.detail, entry.vinNumber ? `Sasija ${entry.vinNumber}` : ""].filter(Boolean).join(" · ");
+  } else if (category === "people") {
+    title = entry.userName || "Korisnik";
+    subtitle = [entry.areaLabel, entry.qualificationLabel].filter(Boolean).join(" · ");
+    detail = entry.userEmail || "";
+  } else if (category === "equipment") {
+    title = entry.equipmentName || "Oprema";
+    subtitle = [entry.kindLabel, entry.periodicLabel].filter(Boolean).join(" · ");
+    detail = [entry.detail, entry.codeSummary].filter(Boolean).join(" · ");
+  }
+
+  return {
+    id: String(entry.id || createClientSideId("periodics-calendar-due")),
+    kind: "due",
+    category,
+    categoryLabel: categoryConfig.label,
+    categoryClassName: categoryConfig.className,
+    startDate: String(entry.dueDate || "").trim(),
+    endDate: String(entry.dueDate || "").trim(),
+    dueDate: String(entry.dueDate || "").trim(),
+    dueState: entry.dueState || {},
+    title: String(title || categoryConfig.label).trim() || categoryConfig.label,
+    subtitle: String(subtitle || "").trim(),
+    detail: String(detail || "").trim(),
+    searchText: String(entry.searchText || "").trim(),
+  };
+}
+
+function buildPeriodicsCalendarAbsenceItems(query = state.periodicsFilters.query || "") {
+  const queryNeedle = normalizeLooseName(query || "");
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const activeUsers = activeOrganizationId ? getActiveOrganizationUsers() : (state.users ?? []);
+  const allowedUserIds = new Set(
+    activeUsers
+      .map((user) => String(user?.id || "").trim())
+      .filter(Boolean),
+  );
+
+  return getApprovedAbsenceEntries()
+    .filter((entry) => {
+      if (!activeOrganizationId) {
+        return true;
+      }
+
+      const userId = String(entry?.userId || "").trim();
+      return !userId || allowedUserIds.has(userId);
+    })
+    .map((entry) => {
+      const linkedUser = activeUsers.find((user) => String(user?.id || "") === String(entry?.userId || ""))
+        || state.users.find((user) => String(user?.id || "") === String(entry?.userId || ""))
+        || null;
+      const userLabel = String(
+        entry?.userLabel
+        || getUserDocumentDisplayName(linkedUser)
+        || linkedUser?.email
+        || "Odsutnost",
+      ).trim() || "Odsutnost";
+      const typeKey = String(entry?.type || "").trim().toLowerCase();
+      const startDate = String(entry?.startDate || "").trim();
+      const endDate = String(entry?.endDate || startDate).trim();
+      const normalizedEntry = {
+        ...entry,
+        userLabel,
+      };
+      return {
+        id: `periodics-calendar-absence-${String(entry?.id || createClientSideId("absence"))}`,
+        kind: "absence",
+        category: "absence",
+        toneClass: ABSENCE_CALENDAR_BADGE_TONES[typeKey] || "is-other",
+        startDate,
+        endDate,
+        title: userLabel,
+        subtitle: getAbsenceTypeLabelClient(typeKey),
+        searchText: [
+          userLabel,
+          linkedUser?.email || "",
+          getAbsenceTypeLabelClient(typeKey),
+          String(entry?.note || "").trim(),
+        ].filter(Boolean).join(" "),
+        rawEntry: normalizedEntry,
+      };
+    })
+    .filter((entry) => entry.startDate && matchesPeriodicsSearchFilter(entry, queryNeedle))
+    .sort((left, right) => (
+      String(left.startDate || "").localeCompare(String(right.startDate || ""))
+      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+    ));
+}
+
+function buildPeriodicsCalendarData({
+  inspectionEntries = [],
+  vehicleEntries = [],
+  peopleEntries = [],
+  equipmentEntries = [],
+  query = state.periodicsFilters.query || "",
+} = {}) {
+  const queryNeedle = normalizeLooseName(query || "");
+  const dueItems = [
+    ...(Array.isArray(inspectionEntries) ? inspectionEntries : []).map((entry) => createPeriodicsCalendarDueItem(entry, "inspections")),
+    ...(Array.isArray(vehicleEntries) ? vehicleEntries : []).map((entry) => createPeriodicsCalendarDueItem(entry, "vehicles")),
+    ...(Array.isArray(peopleEntries) ? peopleEntries : []).map((entry) => createPeriodicsCalendarDueItem(entry, "people")),
+    ...(Array.isArray(equipmentEntries) ? equipmentEntries : []).map((entry) => createPeriodicsCalendarDueItem(entry, "equipment")),
+  ]
+    .filter((entry) => entry.startDate && matchesPeriodicsSearchFilter(entry, queryNeedle))
+    .sort((left, right) => (
+      String(left.startDate || "").localeCompare(String(right.startDate || ""))
+      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      || String(left.categoryLabel || "").localeCompare(String(right.categoryLabel || ""), "hr")
+    ));
+
+  return {
+    dueItems,
+    absenceItems: buildPeriodicsCalendarAbsenceItems(query),
+  };
+}
+
+function appendPeriodicsCalendarItemsToDayMap(dayMap = new Map(), {
+  dueItems = [],
+  absenceItems = [],
+  rangeStart = "",
+  rangeEnd = "",
+} = {}) {
+  const safeRangeStart = String(rangeStart || "").trim();
+  const safeRangeEnd = String(rangeEnd || safeRangeStart).trim();
+  if (!safeRangeStart || !safeRangeEnd) {
+    return;
+  }
+
+  (Array.isArray(dueItems) ? dueItems : []).forEach((item) => {
+    const targetDay = dayMap.get(String(item?.startDate || "").trim());
+    if (!targetDay) {
+      return;
+    }
+    targetDay.dueItems.push(item);
+  });
+
+  (Array.isArray(absenceItems) ? absenceItems : []).forEach((item) => {
+    const startDate = String(item?.startDate || "").trim();
+    const endDate = String(item?.endDate || startDate).trim() || startDate;
+    if (!startDate) {
+      return;
+    }
+
+    let cursor = startDate < safeRangeStart ? safeRangeStart : startDate;
+    const lastDate = endDate > safeRangeEnd ? safeRangeEnd : endDate;
+    while (cursor && cursor <= lastDate) {
+      const targetDay = dayMap.get(cursor);
+      if (targetDay) {
+        targetDay.absenceItems.push(item);
+      }
+      cursor = shiftDateKey(cursor, 1);
+    }
+  });
+
+  dayMap.forEach((day) => {
+    day.dueItems.sort((left, right) => (
+      String(left.categoryLabel || "").localeCompare(String(right.categoryLabel || ""), "hr")
+      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+    ));
+    day.absenceItems.sort((left, right) => (
+      String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      || String(left.subtitle || "").localeCompare(String(right.subtitle || ""), "hr")
+    ));
+  });
+}
+
+function getPeriodicsCalendarMetrics(days = []) {
+  const dueCount = (Array.isArray(days) ? days : []).reduce((sum, day) => sum + (day?.dueItems?.length || 0), 0);
+  const visibleAbsenceIds = new Set();
+
+  (Array.isArray(days) ? days : []).forEach((day) => {
+    (day?.absenceItems ?? []).forEach((item) => {
+      visibleAbsenceIds.add(String(item?.id || ""));
+    });
+  });
+
+  return {
+    dueCount,
+    absenceCount: visibleAbsenceIds.size,
+  };
+}
+
+function createPeriodicsCalendarCategoryTag(label = "", className = "") {
+  const tag = document.createElement("span");
+  tag.className = ["periodics-calendar-card-tag", className].filter(Boolean).join(" ");
+  tag.textContent = label || "Stavka";
+  return tag;
+}
+
+function createPeriodicsCalendarDueBadge(dueState = {}) {
+  const badge = document.createElement("span");
+  badge.className = `periodics-due-pill ${String(dueState?.toneClass || "is-unknown")}`;
+  if (String(dueState?.toneClass || "") === "is-overdue") {
+    badge.classList.add("has-pulse-alert");
+  } else if (String(dueState?.toneClass || "") === "is-warning") {
+    badge.classList.add("has-pulse-warning");
+  }
+  badge.textContent = dueState?.badgeLabel || "Rok";
+  return badge;
+}
+
+function createPeriodicsCalendarDueCard(item = {}) {
+  const card = document.createElement("article");
+  card.className = [
+    "work-order-calendar-card",
+    "periodics-calendar-card",
+    "is-static",
+    item.categoryClassName,
+    item.dueState?.toneClass || "",
+  ].filter(Boolean).join(" ");
+  card.title = [
+    item.categoryLabel,
+    item.title,
+    item.subtitle,
+    item.detail,
+    item.dueDate ? `Rok ${formatCompactDate(item.dueDate)}` : "",
+  ].filter(Boolean).join(" · ");
+
+  const top = document.createElement("div");
+  top.className = "work-order-calendar-card-top";
+  top.append(
+    createPeriodicsCalendarCategoryTag(item.categoryLabel, item.categoryClassName),
+    createPeriodicsCalendarDueBadge(item.dueState),
+  );
+
+  const title = document.createElement("strong");
+  title.className = "work-order-calendar-card-title";
+  title.textContent = item.title || item.categoryLabel || "Stavka";
+
+  const subtitle = document.createElement("span");
+  subtitle.className = "work-order-calendar-card-meta";
+  subtitle.textContent = item.subtitle || item.categoryLabel || "";
+
+  const detail = document.createElement("span");
+  detail.className = "periodics-calendar-card-detail";
+  detail.textContent = item.detail || "";
+  detail.hidden = !detail.textContent;
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-calendar-card-footer";
+
+  const dueDate = document.createElement("span");
+  dueDate.className = "periodics-calendar-card-date";
+  dueDate.textContent = item.dueDate ? `Rok ${formatCompactDate(item.dueDate)}` : "Bez roka";
+
+  footer.append(dueDate);
+  card.append(top, title, subtitle);
+  if (!detail.hidden) {
+    card.append(detail);
+  }
+  card.append(footer);
+  return card;
+}
+
+function createPeriodicsCalendarDueList(items = [], { maxVisible = 4 } = {}) {
+  const visibleItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "periodics-calendar-due-list";
+  visibleItems.slice(0, maxVisible).forEach((item) => {
+    wrap.append(createPeriodicsCalendarDueCard(item));
+  });
+
+  if (visibleItems.length > maxVisible) {
+    wrap.append(createBadge(`+${visibleItems.length - maxVisible}`, "periodics-calendar-more"));
+  }
+
+  return wrap;
+}
+
+function createPeriodicsCalendarDayCell(day = {}) {
+  const cell = document.createElement("article");
+  cell.className = "work-order-calendar-month-day periodics-calendar-day";
+  cell.classList.toggle("is-today", Boolean(day.isToday));
+  cell.classList.toggle("is-outside-month", day.inMonth === false);
+  cell.dataset.date = day.key;
+
+  const top = document.createElement("div");
+  top.className = "work-order-calendar-month-day-top";
+
+  const copy = document.createElement("div");
+  copy.className = "work-order-calendar-month-day-copy";
+
+  const label = document.createElement("span");
+  label.className = "work-order-calendar-day-label";
+  label.textContent = new Intl.DateTimeFormat("hr-HR", { weekday: "short" }).format(parseDateValue(day.key));
+
+  const date = document.createElement("strong");
+  date.className = "work-order-calendar-day-date";
+  date.textContent = formatCompactDate(day.key);
+
+  const meta = document.createElement("span");
+  meta.className = "work-order-calendar-day-meta";
+  meta.textContent = [
+    day.dueItems.length === 0 ? "Bez rokova" : `${day.dueItems.length} rokova`,
+    day.absenceItems.length > 0 ? `${day.absenceItems.length} odsut.` : "",
+  ].filter(Boolean).join(" · ");
+
+  copy.append(label, date, meta);
+  top.append(copy);
+
+  const body = document.createElement("div");
+  body.className = "work-order-calendar-month-day-body periodics-calendar-day-body";
+
+  const absenceStrip = createWorkOrderCalendarAbsenceStrip(
+    day.absenceItems.map((item) => item.rawEntry),
+    {
+      compact: true,
+      maxVisible: 3,
+      className: "periodics-calendar-absence-strip",
+    },
+  );
+  if (absenceStrip) {
+    body.append(absenceStrip);
+  }
+
+  const dueList = createPeriodicsCalendarDueList(day.dueItems, {
+    maxVisible: day.absenceItems.length > 0 ? 3 : 4,
+  });
+  if (dueList) {
+    body.append(dueList);
+  } else if (!absenceStrip) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "work-order-calendar-cell-placeholder periodics-calendar-day-placeholder";
+    placeholder.textContent = "Bez stavki";
+    body.append(placeholder);
+  }
+
+  cell.append(top, body);
+  return cell;
+}
+
+function syncPeriodicsViewState() {
+  const viewMode = normalizePeriodicsViewMode(state.periodicsViewMode);
+  const isCalendarMode = viewMode === "calendar";
+
+  if (periodicsViewListButton) {
+    periodicsViewListButton.classList.toggle("is-active", !isCalendarMode);
+    periodicsViewListButton.setAttribute("aria-pressed", !isCalendarMode ? "true" : "false");
+  }
+  if (periodicsViewCalendarButton) {
+    periodicsViewCalendarButton.classList.toggle("is-active", isCalendarMode);
+    periodicsViewCalendarButton.setAttribute("aria-pressed", isCalendarMode ? "true" : "false");
+  }
+  if (periodicsCalendarPanel) {
+    periodicsCalendarPanel.hidden = !isCalendarMode;
+  }
+  if (periodicsListView) {
+    periodicsListView.hidden = isCalendarMode;
+  }
+  if (periodicsHorizonField) {
+    periodicsHorizonField.hidden = isCalendarMode;
+  }
+}
+
+function syncPeriodicsCalendarToolbar() {
+  const displayMode = normalizePeriodicsCalendarDisplayMode(state.periodicsCalendar?.displayMode);
+  const showWeekends = Boolean(state.periodicsCalendar?.showWeekends);
+
+  if (periodicsCalendarPrevButton) {
+    periodicsCalendarPrevButton.setAttribute(
+      "aria-label",
+      displayMode === "month" ? "Prethodni mjesec" : "Prethodni tjedan",
+    );
+  }
+  if (periodicsCalendarNextButton) {
+    periodicsCalendarNextButton.setAttribute(
+      "aria-label",
+      displayMode === "month" ? "Sljedeci mjesec" : "Sljedeci tjedan",
+    );
+  }
+  if (periodicsCalendarDisplayWeekButton) {
+    const isActive = displayMode === "week";
+    periodicsCalendarDisplayWeekButton.classList.toggle("is-active", isActive);
+    periodicsCalendarDisplayWeekButton.setAttribute("aria-pressed", isActive ? "true" : "false");
+  }
+  if (periodicsCalendarDisplayMonthButton) {
+    const isActive = displayMode === "month";
+    periodicsCalendarDisplayMonthButton.classList.toggle("is-active", isActive);
+    periodicsCalendarDisplayMonthButton.setAttribute("aria-pressed", isActive ? "true" : "false");
+  }
+  if (periodicsCalendarWeekendsButton) {
+    periodicsCalendarWeekendsButton.classList.toggle("is-active", showWeekends);
+    periodicsCalendarWeekendsButton.setAttribute("aria-pressed", showWeekends ? "true" : "false");
+    periodicsCalendarWeekendsButton.setAttribute(
+      "title",
+      showWeekends ? "Sakrij vikende" : "Prikazi vikende",
+    );
+  }
+}
+
+function renderPeriodicsCalendarWeekMode(calendarData = {}) {
+  const week = buildPeriodicsCalendarWeekStructure(state.periodicsCalendar?.anchorDate);
+  const dayMap = new Map(week.days.map((day) => [day.key, day]));
+  appendPeriodicsCalendarItemsToDayMap(dayMap, {
+    dueItems: calendarData.dueItems,
+    absenceItems: calendarData.absenceItems,
+    rangeStart: week.weekStart,
+    rangeEnd: week.weekEnd,
+  });
+
+  const visibleDays = getVisibleCalendarWeekDays(week.days, Boolean(state.periodicsCalendar?.showWeekends));
+  const metrics = getPeriodicsCalendarMetrics(visibleDays);
+  const firstVisibleDay = visibleDays[0]?.key || week.weekStart;
+  const lastVisibleDay = visibleDays[visibleDays.length - 1]?.key || week.weekEnd;
+
+  if (periodicsCalendarRange) {
+    periodicsCalendarRange.textContent = formatCalendarWeekRangeLabel(firstVisibleDay, lastVisibleDay);
+  }
+  if (periodicsCalendarMeta) {
+    periodicsCalendarMeta.textContent = `${metrics.dueCount} rokova · ${metrics.absenceCount} odsutnosti`;
+  }
+
+  const fragment = document.createDocumentFragment();
+  const section = document.createElement("section");
+  section.className = "work-order-calendar-month-week";
+
+  const head = document.createElement("div");
+  head.className = "work-order-calendar-month-week-head";
+
+  const title = document.createElement("strong");
+  title.textContent = `Tjedan ${getCalendarIsoWeekNumber(firstVisibleDay)}`;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${formatCalendarMonthLabel(firstVisibleDay)} · ${metrics.dueCount} rokova`;
+
+  head.append(title, meta);
+
+  const grid = document.createElement("div");
+  grid.className = "work-order-calendar-month-grid";
+  grid.style.gridTemplateColumns = `repeat(${visibleDays.length}, minmax(${PERIODICS_CALENDAR_DAY_MIN_WIDTH}px, 1fr))`;
+  grid.style.minWidth = `${visibleDays.length * PERIODICS_CALENDAR_DAY_MIN_WIDTH}px`;
+  grid.style.width = "max-content";
+
+  visibleDays.forEach((day) => {
+    grid.append(createPeriodicsCalendarDayCell(day));
+  });
+
+  section.append(head, grid);
+  fragment.append(section);
+  periodicsCalendarGrid?.replaceChildren(fragment);
+
+  return metrics;
+}
+
+function renderPeriodicsCalendarMonthMode(calendarData = {}) {
+  const calendar = buildPeriodicsCalendarMonthStructure(state.periodicsCalendar?.anchorDate);
+  const dayMap = new Map(
+    calendar.weeks.flatMap((week) => week.days.map((day) => [day.key, day])),
+  );
+
+  appendPeriodicsCalendarItemsToDayMap(dayMap, {
+    dueItems: calendarData.dueItems,
+    absenceItems: calendarData.absenceItems,
+    rangeStart: calendar.displayStart,
+    rangeEnd: calendar.displayEnd,
+  });
+
+  const allVisibleDays = calendar.weeks.flatMap((week) => getVisibleCalendarWeekDays(week.days, Boolean(state.periodicsCalendar?.showWeekends)));
+  const metrics = getPeriodicsCalendarMetrics(allVisibleDays);
+  const weekNumbers = calendar.weeks
+    .map((week) => getCalendarIsoWeekNumber(week.weekStart))
+    .filter(Boolean);
+
+  if (periodicsCalendarRange) {
+    periodicsCalendarRange.textContent = formatCalendarMonthLabel(calendar.anchorDate);
+  }
+  if (periodicsCalendarMeta) {
+    const weekLabel = weekNumbers.length > 0
+      ? `Tjedni ${weekNumbers[0]}-${weekNumbers[weekNumbers.length - 1]}`
+      : "Kalendar";
+    periodicsCalendarMeta.textContent = `${weekLabel} · ${metrics.dueCount} rokova · ${metrics.absenceCount} odsutnosti`;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  calendar.weeks.forEach((week) => {
+    const visibleDays = getVisibleCalendarWeekDays(week.days, Boolean(state.periodicsCalendar?.showWeekends));
+    const weekMetrics = getPeriodicsCalendarMetrics(visibleDays);
+    const section = document.createElement("section");
+    section.className = "work-order-calendar-month-week";
+
+    const head = document.createElement("div");
+    head.className = "work-order-calendar-month-week-head";
+
+    const title = document.createElement("strong");
+    title.textContent = `Tjedan ${getCalendarIsoWeekNumber(week.weekStart)}`;
+
+    const meta = document.createElement("span");
+    meta.textContent = `${formatCompactDate(visibleDays[0]?.key || week.weekStart)} - ${formatCompactDate(
+      visibleDays[visibleDays.length - 1]?.key || week.weekStart,
+    )} · ${weekMetrics.dueCount} rokova`;
+
+    head.append(title, meta);
+
+    const grid = document.createElement("div");
+    grid.className = "work-order-calendar-month-grid";
+    grid.style.gridTemplateColumns = `repeat(${visibleDays.length}, minmax(${PERIODICS_CALENDAR_DAY_MIN_WIDTH}px, 1fr))`;
+    grid.style.minWidth = `${visibleDays.length * PERIODICS_CALENDAR_DAY_MIN_WIDTH}px`;
+    grid.style.width = "max-content";
+
+    visibleDays.forEach((day) => {
+      grid.append(createPeriodicsCalendarDayCell(day));
+    });
+
+    section.append(head, grid);
+    fragment.append(section);
+  });
+
+  periodicsCalendarGrid?.replaceChildren(fragment);
+  return metrics;
+}
+
+function renderPeriodicsCalendarView(calendarData = {}) {
+  if (!periodicsCalendarGrid) {
+    return { dueCount: 0, absenceCount: 0 };
+  }
+
+  syncPeriodicsCalendarToolbar();
+
+  const dueItems = Array.isArray(calendarData?.dueItems) ? calendarData.dueItems : [];
+  const absenceItems = Array.isArray(calendarData?.absenceItems) ? calendarData.absenceItems : [];
+  const hasEntries = dueItems.length > 0 || absenceItems.length > 0;
+
+  if (periodicsCalendarEmpty) {
+    periodicsCalendarEmpty.hidden = hasEntries;
+  }
+
+  if (!hasEntries) {
+    periodicsCalendarGrid.replaceChildren();
+    if (periodicsCalendarRange) {
+      periodicsCalendarRange.textContent = normalizePeriodicsCalendarDisplayMode(state.periodicsCalendar?.displayMode) === "month"
+        ? formatCalendarMonthLabel(getPeriodicsCalendarAnchorDate(state.periodicsCalendar?.anchorDate))
+        : formatCalendarWeekRangeLabel(
+          getPeriodicsCalendarWeekStart(state.periodicsCalendar?.anchorDate),
+          shiftDateKey(getPeriodicsCalendarWeekStart(state.periodicsCalendar?.anchorDate), 6),
+        );
+    }
+    if (periodicsCalendarMeta) {
+      periodicsCalendarMeta.textContent = "Nema periodike ni odsutnosti za prikaz";
+    }
+    return { dueCount: 0, absenceCount: 0 };
+  }
+
+  if (normalizePeriodicsCalendarDisplayMode(state.periodicsCalendar?.displayMode) === "week") {
+    return renderPeriodicsCalendarWeekMode(calendarData);
+  }
+
+  return renderPeriodicsCalendarMonthMode(calendarData);
+}
+
 function renderPeriodicsModule() {
   if (!periodicsModule) {
     return;
   }
+  state.periodicsViewMode = normalizePeriodicsViewMode(state.periodicsViewMode);
+  state.periodicsCalendar = {
+    anchorDate: getPeriodicsCalendarAnchorDate(state.periodicsCalendar?.anchorDate),
+    displayMode: normalizePeriodicsCalendarDisplayMode(state.periodicsCalendar?.displayMode),
+    showWeekends: state.periodicsCalendar?.showWeekends !== false,
+  };
   const visualSettings = getPeriodicsVisualSettings();
   const warningDays = visualSettings.warningDays;
   const criticalDays = visualSettings.criticalDays;
@@ -13271,6 +13985,8 @@ function renderPeriodicsModule() {
   if (periodicsHorizonInput && periodicsHorizonInput.value !== filters.horizon) {
     periodicsHorizonInput.value = filters.horizon;
   }
+
+  syncPeriodicsViewState();
 
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
   const periodicsOrganizationId = String(state.periodicsFeed.organizationId || "").trim();
@@ -13295,10 +14011,23 @@ function renderPeriodicsModule() {
     void loadPeriodicsFeed();
   }
 
-  const inspectionEntries = applyPeriodicsFilters(buildPeriodicsInspectionEntries(), filters);
-  const vehicleEntries = applyPeriodicsFilters(buildPeriodicsVehicleEntries(), filters);
-  const peopleEntries = applyPeriodicsFilters(buildPeriodicsPeopleEntries(), filters);
-  const equipmentEntries = applyPeriodicsFilters(buildPeriodicsMeasurementEquipmentEntries(), filters);
+  const rawInspectionEntries = buildPeriodicsInspectionEntries();
+  const rawVehicleEntries = buildPeriodicsVehicleEntries();
+  const rawPeopleEntries = buildPeriodicsPeopleEntries();
+  const rawEquipmentEntries = buildPeriodicsMeasurementEquipmentEntries();
+
+  const inspectionEntries = applyPeriodicsFilters(rawInspectionEntries, filters);
+  const vehicleEntries = applyPeriodicsFilters(rawVehicleEntries, filters);
+  const peopleEntries = applyPeriodicsFilters(rawPeopleEntries, filters);
+  const equipmentEntries = applyPeriodicsFilters(rawEquipmentEntries, filters);
+  const calendarData = buildPeriodicsCalendarData({
+    inspectionEntries: rawInspectionEntries,
+    vehicleEntries: rawVehicleEntries,
+    peopleEntries: rawPeopleEntries,
+    equipmentEntries: rawEquipmentEntries,
+    query: filters.query,
+  });
+  const calendarMetrics = renderPeriodicsCalendarView(calendarData);
 
   const inspectionRows = inspectionEntries.map((entry) => createPeriodicsRow([
     createPeriodicsCell(entry.companyName, entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : ""),
@@ -13457,6 +14186,11 @@ function renderPeriodicsModule() {
       periodicsHelper.textContent = "Učitavanje periodike...";
     } else if (state.periodicsFeed.error && allEntries.length === 0) {
       periodicsHelper.textContent = state.periodicsFeed.error;
+    } else if (state.periodicsViewMode === "calendar" && (calendarData.dueItems.length > 0 || calendarData.absenceItems.length > 0)) {
+      const displayModeLabel = state.periodicsCalendar.displayMode === "week" ? "tjednom" : "mjesecnom";
+      periodicsHelper.textContent = `Kalendar prikazuje ${calendarMetrics.dueCount} rokova i ${calendarMetrics.absenceCount} odobrenih odsutnosti u ${displayModeLabel} prikazu. Pretraga vrijedi i za rokove i za odsutnosti.`;
+    } else if (state.periodicsViewMode === "calendar") {
+      periodicsHelper.textContent = "Kalendar nema stavki za odabrani raspon i pretragu. Odsutnosti se prikazuju kroz odobrene zapise.";
     } else if (allEntries.length === 0) {
       periodicsHelper.textContent = "Nema periodičkih obveza za odabrane filtere. Dodaj datum \"vrijedi do\" u zapisniku, vozilu, korisničkoj ovlasti ili mjernoj opremi.";
     } else if (state.periodicsFeed.error) {
@@ -59592,6 +60326,62 @@ periodicsHorizonInput?.addEventListener("change", () => {
 
 periodicsRefreshButton?.addEventListener("click", () => {
   void loadPeriodicsFeed({ force: true });
+});
+
+periodicsViewListButton?.addEventListener("click", () => {
+  if (state.periodicsViewMode === "list") {
+    return;
+  }
+  state.periodicsViewMode = "list";
+  renderPeriodicsModule();
+});
+
+periodicsViewCalendarButton?.addEventListener("click", () => {
+  if (state.periodicsViewMode === "calendar") {
+    return;
+  }
+  state.periodicsViewMode = "calendar";
+  renderPeriodicsModule();
+});
+
+periodicsCalendarPrevButton?.addEventListener("click", () => {
+  state.periodicsCalendar.anchorDate = state.periodicsCalendar.displayMode === "month"
+    ? shiftMonthDateKey(state.periodicsCalendar.anchorDate, -1)
+    : shiftDateKey(state.periodicsCalendar.anchorDate, -7);
+  renderPeriodicsModule();
+});
+
+periodicsCalendarTodayButton?.addEventListener("click", () => {
+  state.periodicsCalendar.anchorDate = new Date().toISOString().slice(0, 10);
+  renderPeriodicsModule();
+});
+
+periodicsCalendarNextButton?.addEventListener("click", () => {
+  state.periodicsCalendar.anchorDate = state.periodicsCalendar.displayMode === "month"
+    ? shiftMonthDateKey(state.periodicsCalendar.anchorDate, 1)
+    : shiftDateKey(state.periodicsCalendar.anchorDate, 7);
+  renderPeriodicsModule();
+});
+
+periodicsCalendarDisplayWeekButton?.addEventListener("click", () => {
+  if (state.periodicsCalendar.displayMode === "week") {
+    return;
+  }
+  state.periodicsCalendar.displayMode = "week";
+  renderPeriodicsModule();
+});
+
+periodicsCalendarDisplayMonthButton?.addEventListener("click", () => {
+  if (state.periodicsCalendar.displayMode === "month") {
+    return;
+  }
+  state.periodicsCalendar.displayMode = "month";
+  renderPeriodicsModule();
+});
+
+periodicsCalendarWeekendsButton?.addEventListener("click", () => {
+  state.periodicsCalendar.showWeekends = !state.periodicsCalendar.showWeekends;
+  renderPeriodicsModule();
 });
 
 bindPeriodicsSectionHeaderToggle(
