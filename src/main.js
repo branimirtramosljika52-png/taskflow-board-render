@@ -23286,21 +23286,9 @@ function renderDashboardCompanyPermissionsPanel() {
 function renderDashboardControlPanelContent() {
   const canManageMasterData = getCanManageMasterData();
   const isSuperAdmin = getIsSuperAdmin();
-  const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
-    ?? null;
-  const activeUsers = getActiveOrganizationUsers();
-  const userCount = activeUsers.length;
 
   if (dashboardPeoplePanel) {
-    dashboardPeoplePanel.hidden = !canManageMasterData;
-  }
-
-  if (dashboardPeopleCount) {
-    dashboardPeopleCount.textContent = `${userCount} ${userCount === 1 ? "korisnik" : "korisnika"}`;
-  }
-
-  if (dashboardPeopleOrganization) {
-    dashboardPeopleOrganization.textContent = currentOrganization?.name || "Sve organizacije";
+    dashboardPeoplePanel.hidden = true;
   }
 
   if (organizationPanel) {
@@ -57964,6 +57952,11 @@ function renderManagement() {
   const isUsersTab = activePeopleTab === "users";
   const isAbsenceTab = activePeopleTab === "annual-leave" || activePeopleTab === "sick-leave";
   const isAbsenceReportTab = activePeopleTab === "absence-report";
+
+  if (isUsersTab) {
+    setUserManagementScope("people");
+  }
+
   const userManagementScopeConfig = getUserManagementScopeConfig();
   const userManagementDescription = isUsersTab
     ? userManagementScopeConfig.description
