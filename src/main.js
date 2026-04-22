@@ -61724,13 +61724,66 @@ userMenuAvatarFileInput?.addEventListener("change", () => {
     });
 });
 
-loginForm?.addEventListener("submit", () => {
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+
+  const email = String(loginEmailInput?.value ?? "").trim();
+  const password = String(loginPasswordInput?.value ?? "");
+
   if (loginError) {
     loginError.textContent = "";
   }
-  loginForm.classList.add("is-submitting");
+
+  if (!email || !password) {
+    if (loginError) {
+      loginError.textContent = "Unesi email i lozinku.";
+    }
+    return;
+  }
+
+  setLoginBusy(true);
   document.body.classList.add("is-auth-leaving");
-  beginGlobalLoading("Otvaram SafeNexus...", { immediate: true });
+
+  try {
+    await withGlobalLoading("Otvaram SafeNexus...", async () => {
+      await apiRequest("/auth/login", {
+        method: "POST",
+        body: {
+          email,
+          password,
+        },
+      });
+
+      const user = await refreshSession();
+      if (!user) {
+        const sessionError = new Error("Prijava je uspjela, ali sesija nije spremljena. Omoguci cookies za safe-nexus.org i pokusaj ponovno.");
+        sessionError.code = "SESSION_NOT_PERSISTED";
+        throw sessionError;
+      }
+
+      sessionLastActivityAtMs = Date.now();
+      await refreshSnapshot();
+      loginForm?.reset();
+    }, { immediate: true });
+  } catch (error) {
+    if (loginError) {
+      if (error?.code === "SESSION_NOT_PERSISTED") {
+        loginError.textContent = error.message;
+      } else if (error?.statusCode === 401 || error?.statusCode === 403) {
+        loginError.textContent = "Neispravan email ili lozinka.";
+      } else {
+        loginError.textContent = error?.message || "Prijava trenutno nije uspjela. Pokusaj ponovno.";
+      }
+    }
+    document.body.classList.remove("is-auth-leaving");
+    renderAuthState();
+  } finally {
+    setLoginBusy(false);
+  }
+}
+
+loginForm?.addEventListener("submit", (event) => {
+  void handleLoginSubmit(event);
 });
 
 logoutButton?.addEventListener("click", () => {
