@@ -4530,7 +4530,7 @@ function applySnapshot(payload) {
   state.absenceEntries = payload.absenceEntries ?? [];
   state.absenceBalances = payload.absenceBalances ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
-  state.dashboardWidgets = payload.dashboardWidgets ?? [];
+  state.dashboardWidgets = normalizeDashboardWidgetPositionsByGrid(payload.dashboardWidgets ?? []);
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
   );
@@ -40536,9 +40536,13 @@ function buildDashboardLayoutWidgets(widgetId, patch, { prioritizeWidget = false
   const effectivePatch = prioritizeWidget
     ? { ...patch, position: 1 }
     : patch;
-  const laidOut = applyDashboardWidgetGridLayout(getDashboardWidgets().map((item) => (
+  const baseWidgets = normalizeDashboardWidgetPositionsByGrid(state.dashboardWidgets ?? []);
+  const laidOut = applyDashboardWidgetGridLayout(baseWidgets.map((item) => (
     String(item.id) === String(widgetId)
-      ? updateDashboardWidget(item, effectivePatch, state, () => new Date().toISOString())
+      ? updateDashboardWidget(item, effectivePatch, {
+        ...state,
+        dashboardWidgets: baseWidgets,
+      }, () => new Date().toISOString())
       : item
   )));
 
