@@ -1,9 +1,48 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, extname, relative, resolve } from "node:path";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
 const vendorVersion = "20260420j";
+const browserSrcDir = resolve(rootDir, "src");
+const browserEntryModules = [
+  resolve(browserSrcDir, "main.js"),
+  resolve(browserSrcDir, "auth-transitions.js"),
+  resolve(browserSrcDir, "request-access.js"),
+  resolve(browserSrcDir, "learning-test.js"),
+];
+const relativeBrowserImportPattern = /(?:import|export)\s+(?:[^"'`]*?\s+from\s+)?["'](\.[^"']+)["']/g;
+
+async function copyBrowserModule(modulePath, copiedModules = new Set()) {
+  const absoluteModulePath = resolve(modulePath);
+  if (copiedModules.has(absoluteModulePath)) {
+    return;
+  }
+
+  copiedModules.add(absoluteModulePath);
+
+  const relativeModulePath = relative(rootDir, absoluteModulePath);
+  const distModulePath = resolve(distDir, relativeModulePath);
+  await mkdir(dirname(distModulePath), { recursive: true });
+  await cp(absoluteModulePath, distModulePath);
+
+  const source = await readFile(absoluteModulePath, "utf8");
+  for (const match of source.matchAll(relativeBrowserImportPattern)) {
+    const relativeImportPath = match[1];
+    if (!relativeImportPath) {
+      continue;
+    }
+
+    const resolvedImportPath = resolve(dirname(absoluteModulePath), relativeImportPath);
+    const normalizedImportPath = extname(resolvedImportPath) ? resolvedImportPath : `${resolvedImportPath}.js`;
+
+    if (!normalizedImportPath.startsWith(browserSrcDir) || extname(normalizedImportPath) !== ".js") {
+      continue;
+    }
+
+    await copyBrowserModule(normalizedImportPath, copiedModules);
+  }
+}
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(resolve(distDir, "src"), { recursive: true });
@@ -33,10 +72,7 @@ await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "index.js")
 await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.js"), resolve(distDir, "assets", "vendor", "libredwg.js"));
 await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.wasm"), resolve(distDir, "assets", "vendor", "libredwg.wasm"));
 await cp(resolve(rootDir, "node_modules", "quickselect", "index.js"), resolve(distDir, "assets", "vendor", "quickselect.js"));
-await cp(resolve(rootDir, "src", "main.js"), resolve(distDir, "src", "main.js"));
-await cp(resolve(rootDir, "src", "auth-transitions.js"), resolve(distDir, "src", "auth-transitions.js"));
-await cp(resolve(rootDir, "src", "measurementFormatting.js"), resolve(distDir, "src", "measurementFormatting.js"));
-await cp(resolve(rootDir, "src", "measurementFormula.js"), resolve(distDir, "src", "measurementFormula.js"));
-await cp(resolve(rootDir, "src", "request-access.js"), resolve(distDir, "src", "request-access.js"));
-await cp(resolve(rootDir, "src", "learning-test.js"), resolve(distDir, "src", "learning-test.js"));
-await cp(resolve(rootDir, "src", "safetyModel.js"), resolve(distDir, "src", "safetyModel.js"));
+const copiedBrowserModules = new Set();
+for (const entryModulePath of browserEntryModules) {
+  await copyBrowserModule(entryModulePath, copiedBrowserModules);
+}
