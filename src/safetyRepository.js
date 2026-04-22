@@ -262,6 +262,24 @@ function parseJsonArray(value, fallback = []) {
   }
 }
 
+function applyDashboardWidgetGridLayoutPerScope(widgets = []) {
+  const groups = new Map();
+
+  widgets.forEach((widget) => {
+    const key = `${dbString(widget.organizationId)}:${dbString(widget.userId)}`;
+    const group = groups.get(key) ?? [];
+    group.push(widget);
+    groups.set(key, group);
+  });
+
+  const laidOut = [];
+  groups.forEach((group) => {
+    laidOut.push(...applyDashboardWidgetGridLayout(group));
+  });
+
+  return laidOut;
+}
+
 const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
@@ -3006,7 +3024,7 @@ async function fetchSnapshotFromConnection(connection) {
     ORDER BY organization_id ASC, user_id ASC, sort_order ASC, id ASC
   `);
 
-  const dashboardWidgets = applyDashboardWidgetGridLayout(dashboardWidgetRows.map((row) => ({
+  const dashboardWidgets = applyDashboardWidgetGridLayoutPerScope(dashboardWidgetRows.map((row) => ({
     id: String(row.id),
     organizationId: dbString(row.organization_id),
     userId: dbString(row.user_id),
