@@ -6,6 +6,9 @@ import JSZip from "jszip";
 import * as XLSX from "xlsx";
 
 import {
+  canCreateCompanies,
+  canDeleteCompanies,
+  canEditCompanies,
   canDeleteWorkOrders,
   canManageMasterData,
   canManageWorkOrders,
@@ -1732,13 +1735,13 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/companies") {
-      if (!canManageMasterData(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canCreateCompanies(user, scopedSnapshot.companyRolePermissions)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
       const company = await domainRepository.createCompany(body);
       await tenantRepository.assignCompanyToOrganization(scopedSnapshot.activeOrganizationId, company.id);
       await writeSnapshot(response, user, request, 201);
@@ -2305,6 +2308,27 @@ async function handleApiRequest(request, response, url) {
           criticalDays: body?.criticalDays,
           warningDays: body?.warningDays,
         },
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/company-role-permissions") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati role permissions.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!scopedSnapshot.activeOrganizationId) {
+        sendError(response, 400, "Aktivna organizacija je obavezna.");
+        return true;
+      }
+
+      await domainRepository.upsertCompanyRolePermissions({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        rolePermissions: body?.rolePermissions,
       });
       await writeSnapshot(response, user, request);
       return true;
@@ -2891,13 +2915,13 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (companyMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canEditCompanies(user, scopedSnapshot.companyRolePermissions)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronađena.");
       const updated = await domainRepository.updateCompany(companyMatch[1], body);
 
@@ -2911,12 +2935,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (companyMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canDeleteCompanies(user, scopedSnapshot.companyRolePermissions)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.companies, companyMatch[1], "Tvrtka nije pronađena.");
       const deleted = await domainRepository.deleteCompany(companyMatch[1]);
 

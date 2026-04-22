@@ -9,7 +9,9 @@ import {
   canManageLoginContent,
   canManageOrganizations,
   canManageOrganizationUsers,
+  normalizeCompanyRolePermissions,
   normalizeRole,
+  resolveCompanyPermissionsForActor,
   pickLoginContent,
   resolveEffectiveOrganizationId,
   splitFullName,
@@ -1474,8 +1476,19 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   const actorRole = normalizeRole(actor?.role);
   const canViewSensitiveAbsenceData = actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN;
   const actorId = String(actor?.id ?? "");
+  const companyRolePermissions = normalizeCompanyRolePermissions((rawSnapshot.companyRolePermissions ?? []).filter((item) => (
+    String(item.organizationId) === String(organizationId)
+  )));
+  const companyPermissions = resolveCompanyPermissionsForActor(actor, companyRolePermissions);
 
   return {
+    companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
+    companyPermissions: {
+      canView: Boolean(companyPermissions.canView),
+      canCreate: Boolean(companyPermissions.canCreate),
+      canEdit: Boolean(companyPermissions.canEdit),
+      canDelete: Boolean(companyPermissions.canDelete),
+    },
     companies: (rawSnapshot.companies ?? []).filter((item) => allowedCompanyIds.has(String(item.id))),
     locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
     workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
@@ -2271,6 +2284,7 @@ export class MemoryTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
     absenceBalances: [],
@@ -2981,6 +2995,7 @@ export class MySqlTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
     absenceBalances: [],
@@ -2994,6 +3009,13 @@ export class MySqlTenantRepository {
       const scopedSnapshot = context.activeOrganizationId
         ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments, actor)
         : {
+          companyRolePermissions: normalizeCompanyRolePermissions([]),
+          companyPermissions: {
+            canView: false,
+            canCreate: false,
+            canEdit: false,
+            canDelete: false,
+          },
           companies: [],
           locations: [],
         workOrders: [],

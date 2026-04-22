@@ -3847,6 +3847,71 @@ body.is-location-editor-open {
   padding-top: 4px;
 }
 
+.dashboard-company-permissions-body {
+  overflow-x: auto;
+}
+
+.dashboard-company-permissions-table {
+  min-width: 620px;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-company-permissions-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.6fr) repeat(4, minmax(90px, 1fr));
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(217, 223, 237, 0.9);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.dashboard-company-permissions-row.is-head {
+  border-style: dashed;
+  background: rgba(246, 250, 255, 0.98);
+}
+
+.dashboard-company-permissions-role strong {
+  display: block;
+  font-size: 0.94rem;
+  color: #24314f;
+}
+
+.dashboard-company-permissions-role span {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.78rem;
+  color: #6f7891;
+}
+
+.dashboard-company-permissions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  color: #65718e;
+  font-size: 0.78rem;
+}
+
+.dashboard-company-permissions-cell label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.dashboard-company-permissions-cell input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.dashboard-company-permissions-actions {
+  align-items: center;
+}
+
 @media (max-width: 760px) {
   .dashboard-control-panel {
     padding: 18px;

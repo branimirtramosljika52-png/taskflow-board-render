@@ -1323,6 +1323,26 @@
                   <button id="dashboard-open-people" type="button" class="primary-button">Otvori People</button>
                 </div>
               </section>
+
+              <section id="dashboard-company-permissions-panel" class="panel dashboard-control-card" hidden>
+                <div class="dashboard-control-card-head">
+                  <div>
+                    <p class="section-kicker">Company</p>
+                    <h3>Role permissions</h3>
+                  </div>
+                  <span id="dashboard-company-permissions-count" class="dashboard-control-badge">0 rola</span>
+                </div>
+                <p class="helper-copy">
+                  Definiraj koje role mogu pregledavati tvrtke, unositi nove i uređivati postojeće.
+                </p>
+                <div id="dashboard-company-permissions-body" class="dashboard-company-permissions-body"></div>
+                <div class="dashboard-control-card-actions dashboard-company-permissions-actions">
+                  <button id="dashboard-company-permissions-save" type="button" class="primary-button">
+                    Spremi Company ovlaštenja
+                  </button>
+                </div>
+                <p id="dashboard-company-permissions-feedback" class="form-error" aria-live="polite"></p>
+              </section>
             </div>
           </section>
 

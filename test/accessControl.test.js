@@ -6,12 +6,19 @@ import {
   ROLE_SUPER_ADMIN,
   ROLE_USER,
   buildLegacyEmail,
+  canCreateCompanies,
+  canDeleteCompanies,
+  canEditCompanies,
   canEditOrganization,
   canManageLoginContent,
   canManageOrganizationUsers,
   canManageOrganizations,
+  canViewCompanies,
+  normalizeCompanyRolePermissions,
   normalizeRole,
+  normalizeUserProfileRole,
   pickLoginContent,
+  resolveCompanyPermissionsForActor,
   resolveEffectiveOrganizationId,
   splitFullName,
 } from "../src/accessControl.js";
@@ -71,4 +78,54 @@ test("pickLoginContent returns an active item or a fallback", () => {
 
   assert.equal(picked.heading, "B");
   assert.equal(pickLoginContent([]).heading.length > 0, true);
+});
+
+test("company permissions resolve by profile role while admin and super admin stay fully privileged", () => {
+  const rolePermissions = normalizeCompanyRolePermissions([
+    {
+      profileRole: "manager",
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: false,
+    },
+  ]);
+
+  const managerUser = { role: ROLE_USER, profileRole: "manager" };
+  const juniorUser = { role: ROLE_USER, profileRole: "junior_user" };
+  const admin = { role: ROLE_ADMIN, profileRole: "new_user" };
+  const superAdmin = { role: ROLE_SUPER_ADMIN, profileRole: "new_user" };
+
+  assert.equal(normalizeUserProfileRole("MANAGER"), "manager");
+  assert.deepEqual(resolveCompanyPermissionsForActor(managerUser, rolePermissions), {
+    canView: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: false,
+  });
+  assert.equal(canViewCompanies(managerUser, rolePermissions), true);
+  assert.equal(canCreateCompanies(managerUser, rolePermissions), true);
+  assert.equal(canEditCompanies(managerUser, rolePermissions), true);
+  assert.equal(canDeleteCompanies(managerUser, rolePermissions), false);
+
+  assert.deepEqual(resolveCompanyPermissionsForActor(juniorUser, rolePermissions), {
+    canView: false,
+    canCreate: false,
+    canEdit: false,
+    canDelete: false,
+  });
+  assert.equal(canViewCompanies(juniorUser, rolePermissions), false);
+
+  assert.deepEqual(resolveCompanyPermissionsForActor(admin, rolePermissions), {
+    canView: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+  });
+  assert.deepEqual(resolveCompanyPermissionsForActor(superAdmin, rolePermissions), {
+    canView: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+  });
 });

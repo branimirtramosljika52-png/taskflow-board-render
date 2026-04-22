@@ -76,6 +76,50 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
   assert.equal(scoped.documentTemplates[0].id, "template-2");
 });
 
+test("memory tenant repository resolves company permissions by profile role", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "Company Perm Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-77");
+
+  const manager = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Pero",
+    lastName: "Manager",
+    email: "pero-manager@example.com",
+    password: "secret123",
+    role: "user",
+    profileRole: "manager",
+  });
+
+  const scoped = await repository.getSnapshot(manager, organization.id, {
+    companies: [
+      { id: "company-77", name: "Alpha" },
+    ],
+    companyRolePermissions: [
+      {
+        organizationId: organization.id,
+        profileRole: "manager",
+        canView: true,
+        canCreate: true,
+        canEdit: false,
+        canDelete: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(scoped.companyPermissions, {
+    canView: true,
+    canCreate: true,
+    canEdit: false,
+    canDelete: false,
+  });
+  assert.equal(scoped.companies.length, 1);
+  assert.equal(scoped.companies[0].id, "company-77");
+});
+
 test("memory tenant repository lets admins create users only inside their organization", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

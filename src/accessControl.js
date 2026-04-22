@@ -1,6 +1,14 @@
 export const ROLE_SUPER_ADMIN = "super_admin";
 export const ROLE_ADMIN = "admin";
 export const ROLE_USER = "user";
+export const USER_PROFILE_ROLE_VALUES = Object.freeze([
+  "new_user",
+  "junior_user",
+  "senior_user",
+  "leand_user",
+  "manager",
+  "admin",
+]);
 
 const ROLE_PRIORITY = {
   [ROLE_USER]: 1,
@@ -17,6 +25,20 @@ const FALLBACK_LOGIN_CONTENT = {
   featureBody: "Super admins manage tenants, organization admins manage their teams, and users stay focused on day-to-day execution.",
   accentLabel: "Trusted workflow",
 };
+
+const COMPANY_PERMISSIONS_NONE = Object.freeze({
+  canView: false,
+  canCreate: false,
+  canEdit: false,
+  canDelete: false,
+});
+
+const COMPANY_PERMISSIONS_FULL = Object.freeze({
+  canView: true,
+  canCreate: true,
+  canEdit: true,
+  canDelete: true,
+});
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -54,6 +76,16 @@ export function normalizeRole(value) {
   }
 
   return ROLE_USER;
+}
+
+export function normalizeUserProfileRole(value, fallback = "new_user") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (USER_PROFILE_ROLE_VALUES.includes(normalized)) {
+    return normalized;
+  }
+
+  const fallbackNormalized = normalizeText(fallback).toLowerCase();
+  return USER_PROFILE_ROLE_VALUES.includes(fallbackNormalized) ? fallbackNormalized : "new_user";
 }
 
 export function roleLabel(role) {
@@ -170,6 +202,93 @@ export function resolveEffectiveOrganizationId(actor, requestedOrganizationId, o
 export function canManageMasterData(actor) {
   const actorRole = normalizeRole(actor?.role);
   return actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN;
+}
+
+function normalizeCompanyPermissionFlags(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const canViewRaw = toBooleanFlag(source.canView ?? source.view, false);
+  const canCreateRaw = toBooleanFlag(source.canCreate ?? source.create, false);
+  const canEditRaw = toBooleanFlag(source.canEdit ?? source.edit, false);
+  const canDeleteRaw = toBooleanFlag(source.canDelete ?? source.delete, false);
+  const canView = canViewRaw || canCreateRaw || canEditRaw || canDeleteRaw;
+  const canCreate = canCreateRaw;
+  const canEdit = canEditRaw || canDeleteRaw;
+  const canDelete = canDeleteRaw;
+
+  return {
+    canView,
+    canCreate,
+    canEdit,
+    canDelete,
+  };
+}
+
+export function normalizeCompanyRolePermissionEntry(entry = {}, fallbackProfileRole = "new_user") {
+  const source = entry && typeof entry === "object"
+    ? entry
+    : {};
+
+  return {
+    profileRole: normalizeUserProfileRole(
+      source.profileRole ?? source.profile_role ?? source.role,
+      fallbackProfileRole,
+    ),
+    ...normalizeCompanyPermissionFlags(source),
+  };
+}
+
+export function normalizeCompanyRolePermissions(entries = []) {
+  const list = Array.isArray(entries) ? entries : [];
+  const byRole = new Map(
+    USER_PROFILE_ROLE_VALUES.map((profileRole) => [profileRole, { profileRole, ...COMPANY_PERMISSIONS_NONE }]),
+  );
+
+  list.forEach((entry) => {
+    const normalized = normalizeCompanyRolePermissionEntry(entry);
+    byRole.set(normalized.profileRole, normalized);
+  });
+
+  return USER_PROFILE_ROLE_VALUES.map((profileRole) => ({
+    ...(byRole.get(profileRole) ?? { profileRole, ...COMPANY_PERMISSIONS_NONE }),
+  }));
+}
+
+export function resolveCompanyPermissionsForActor(actor, rolePermissions = []) {
+  const actorRole = normalizeRole(actor?.role);
+
+  if (actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN) {
+    return { ...COMPANY_PERMISSIONS_FULL };
+  }
+
+  const profileRole = normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "new_user");
+  const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions);
+  const roleEntry = normalizedPermissions.find((entry) => entry.profileRole === profileRole)
+    ?? { profileRole, ...COMPANY_PERMISSIONS_NONE };
+
+  return {
+    canView: Boolean(roleEntry.canView),
+    canCreate: Boolean(roleEntry.canCreate),
+    canEdit: Boolean(roleEntry.canEdit),
+    canDelete: Boolean(roleEntry.canDelete),
+  };
+}
+
+export function canViewCompanies(actor, rolePermissions = []) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions).canView;
+}
+
+export function canCreateCompanies(actor, rolePermissions = []) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions).canCreate;
+}
+
+export function canEditCompanies(actor, rolePermissions = []) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions).canEdit;
+}
+
+export function canDeleteCompanies(actor, rolePermissions = []) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions).canDelete;
 }
 
 export function canManageWorkOrders(actor) {

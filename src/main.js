@@ -114,6 +114,10 @@ import {
   normalizeMeasurementCellFormat,
   normalizeMeasurementBorder,
 } from "./measurementFormatting.js";
+import {
+  normalizeCompanyRolePermissions,
+  resolveCompanyPermissionsForActor,
+} from "./accessControl.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -514,6 +518,18 @@ const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
 const USER_PROFILE_ROLE_LABELS = new Map(
   USER_PROFILE_ROLE_OPTIONS.map((option) => [option.value, option.label]),
 );
+const DEFAULT_COMPANY_PERMISSIONS = Object.freeze({
+  canView: false,
+  canCreate: false,
+  canEdit: false,
+  canDelete: false,
+});
+const COMPANY_PERMISSION_COLUMNS = Object.freeze([
+  { key: "canView", label: "Pregled postojeće" },
+  { key: "canCreate", label: "Unos nove tvrtke" },
+  { key: "canEdit", label: "Uređivanje postojeće" },
+  { key: "canDelete", label: "Brisanje tvrtke" },
+]);
 const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
@@ -977,6 +993,10 @@ const state = {
   },
   periodicsVisualSettings: {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
+  },
+  companyRolePermissions: normalizeCompanyRolePermissions([]),
+  companyPermissions: {
+    ...DEFAULT_COMPANY_PERMISSIONS,
   },
   safetyAuthorizations: [],
   absenceEntries: [],
@@ -1755,6 +1775,8 @@ const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-g
 const sidebarOrganisationsGroupPanel = document.querySelector("#sidebar-organisations-group-panel");
 const sidebarNavItems = Array.from(document.querySelectorAll("[data-sidebar-item]"));
 const controlPanelNavItem = document.querySelector('[data-sidebar-item="control-panel"]');
+const companyListNavItem = document.querySelector('[data-sidebar-item="list-company"]');
+const companyAddNavItem = document.querySelector('[data-sidebar-item="add-company"]');
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -2665,6 +2687,11 @@ const dashboardPeoplePanel = document.querySelector("#dashboard-people-panel");
 const dashboardPeopleCount = document.querySelector("#dashboard-people-count");
 const dashboardPeopleOrganization = document.querySelector("#dashboard-people-organization");
 const dashboardOpenPeopleButton = document.querySelector("#dashboard-open-people");
+const dashboardCompanyPermissionsPanel = document.querySelector("#dashboard-company-permissions-panel");
+const dashboardCompanyPermissionsCount = document.querySelector("#dashboard-company-permissions-count");
+const dashboardCompanyPermissionsBody = document.querySelector("#dashboard-company-permissions-body");
+const dashboardCompanyPermissionsSaveButton = document.querySelector("#dashboard-company-permissions-save");
+const dashboardCompanyPermissionsFeedback = document.querySelector("#dashboard-company-permissions-feedback");
 const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
 const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
@@ -3244,6 +3271,7 @@ const companyEditorStatusPill = document.querySelector("#company-editor-status-p
 const companyEditorCloseButton = document.querySelector("#company-editor-close");
 const companyEditorBody = document.querySelector("#company-editor-body");
 const companyEditorFormShell = document.querySelector("#company-editor-form-shell");
+const companySubmitButton = companyForm?.querySelector('button[type="submit"]') ?? null;
 const companyResetButton = document.querySelector("#company-reset");
 const companyDeleteButton = document.querySelector("#company-delete");
 const companyIdInput = document.querySelector("#company-id");
@@ -3988,12 +4016,81 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
+function normalizeCompanyPermissionFlags(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+
+  return {
+    canView: Boolean(source.canView),
+    canCreate: Boolean(source.canCreate),
+    canEdit: Boolean(source.canEdit),
+    canDelete: Boolean(source.canDelete),
+  };
+}
+
+function getCompanyPermissions() {
+  if (getCanManageMasterData()) {
+    return {
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: true,
+    };
+  }
+
+  return normalizeCompanyPermissionFlags({
+    ...DEFAULT_COMPANY_PERMISSIONS,
+    ...(state.companyPermissions ?? {}),
+  });
+}
+
+function getCanViewCompanies() {
+  return getCompanyPermissions().canView;
+}
+
+function getCanCreateCompany() {
+  return getCompanyPermissions().canCreate;
+}
+
+function getCanEditCompany() {
+  return getCompanyPermissions().canEdit;
+}
+
+function getCanDeleteCompany() {
+  return getCompanyPermissions().canDelete;
+}
+
+function getCompanyRolePermissionsDraft() {
+  return normalizeCompanyRolePermissions(state.companyRolePermissions ?? []);
+}
+
+function setCompanyRolePermissionDraft(profileRole = "", permissionKey = "", nextValue = false) {
+  const normalizedProfileRole = normalizeUserProfileRoleValue(profileRole);
+  if (!normalizedProfileRole || !COMPANY_PERMISSION_COLUMNS.some((item) => item.key === permissionKey)) {
+    return;
+  }
+
+  const draft = getCompanyRolePermissionsDraft().map((entry) => ({ ...entry }));
+  const target = draft.find((entry) => entry.profileRole === normalizedProfileRole);
+  if (!target) {
+    return;
+  }
+
+  target[permissionKey] = Boolean(nextValue);
+  state.companyRolePermissions = normalizeCompanyRolePermissions(draft);
+}
+
 function isDashboardControlPanelItem(itemName = state.activeSidebarItem) {
   return itemName === "control-panel";
 }
 
 function isDashboardOverviewItem(itemName = state.activeSidebarItem) {
   return itemName === "dashboard";
+}
+
+function isCompanySidebarItem(itemName = state.activeSidebarItem) {
+  return itemName === "list-company" || itemName === "add-company";
 }
 
 function isSystemPrivilegedRole(role = "") {
@@ -4525,6 +4622,11 @@ function applySnapshot(payload) {
   );
   state.periodicsVisualSettings = normalizePeriodicsVisualSettings(
     payload.periodicsVisualSettings,
+  );
+  state.companyRolePermissions = normalizeCompanyRolePermissions(payload.companyRolePermissions ?? []);
+  state.companyPermissions = normalizeCompanyPermissionFlags(
+    payload.companyPermissions
+      ?? resolveCompanyPermissionsForActor(payload.user ?? state.user ?? {}, state.companyRolePermissions),
   );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.absenceEntries = payload.absenceEntries ?? [];
@@ -8505,6 +8607,10 @@ function isSidebarGroupAccessible(groupName) {
     return !managementTab?.hidden;
   }
 
+  if (groupName === "company") {
+    return getCanViewCompanies();
+  }
+
   return ALL_SIDEBAR_GROUPS.includes(groupName);
 }
 
@@ -8585,6 +8691,10 @@ function setRailHidden(nextValue) {
 }
 
 function focusCompanyArea(target = "list") {
+  if (!getCanViewCompanies()) {
+    return;
+  }
+
   state.activeView = "companies";
   renderActiveView();
 
@@ -8685,6 +8795,9 @@ function activateSidebarItem(itemName, options = {}) {
   }
 
   if (itemConfig.view === "companies") {
+    if (!getCanViewCompanies()) {
+      return;
+    }
     focusCompanyArea(itemConfig.focus);
     return;
   }
@@ -11862,6 +11975,43 @@ async function savePeriodicsVisualSettings(options = {}) {
 
   if (success && settingsPeriodicsVisualFeedback) {
     settingsPeriodicsVisualFeedback.textContent = successMessage;
+  }
+
+  return success;
+}
+
+async function saveCompanyRolePermissions(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Company ovlaštenja su spremljena.";
+
+  if (!getCanManageMasterData()) {
+    if (dashboardCompanyPermissionsFeedback) {
+      dashboardCompanyPermissionsFeedback.textContent = "Nemate pravo spremati Company ovlaštenja.";
+    }
+    return false;
+  }
+
+  if (dashboardCompanyPermissionsSaveButton) {
+    dashboardCompanyPermissionsSaveButton.disabled = true;
+  }
+
+  const success = await runMutation(() => apiRequest("/company-role-permissions", {
+    method: "POST",
+    body: {
+      rolePermissions: getCompanyRolePermissionsDraft(),
+    },
+  }), dashboardCompanyPermissionsFeedback);
+
+  if (dashboardCompanyPermissionsSaveButton) {
+    dashboardCompanyPermissionsSaveButton.disabled = false;
+  }
+
+  if (success) {
+    if (dashboardCompanyPermissionsFeedback) {
+      dashboardCompanyPermissionsFeedback.textContent = successMessage;
+    }
+    renderDashboardCompanyPermissionsPanel();
   }
 
   return success;
@@ -19389,6 +19539,15 @@ function syncLocationEditorModal() {
 }
 
 function openCompanyEditor() {
+  const isEditing = Boolean(companyIdInput?.value);
+  const canOpen = isEditing ? getCanEditCompany() : getCanCreateCompany();
+  if (!canOpen) {
+    companyError.textContent = isEditing
+      ? "Nemate pravo uređivati tvrtke."
+      : "Nemate pravo dodavati novu tvrtku.";
+    return;
+  }
+
   state.companyEditorOpen = true;
   syncCompanyEditorModal();
 }
@@ -22854,6 +23013,92 @@ function getActiveOrganizationUsers() {
     ));
 }
 
+function renderDashboardCompanyPermissionsPanel() {
+  const canManageMasterData = getCanManageMasterData();
+  if (dashboardCompanyPermissionsPanel) {
+    dashboardCompanyPermissionsPanel.hidden = !canManageMasterData;
+  }
+
+  if (!canManageMasterData) {
+    return;
+  }
+
+  const rolePermissions = getCompanyRolePermissionsDraft();
+  if (dashboardCompanyPermissionsCount) {
+    const enabledRoles = rolePermissions.filter((entry) => (
+      entry.canView || entry.canCreate || entry.canEdit || entry.canDelete
+    )).length;
+    dashboardCompanyPermissionsCount.textContent = `${enabledRoles}/${rolePermissions.length} rola`;
+  }
+
+  if (dashboardCompanyPermissionsSaveButton) {
+    dashboardCompanyPermissionsSaveButton.hidden = false;
+    dashboardCompanyPermissionsSaveButton.disabled = false;
+  }
+
+  if (!dashboardCompanyPermissionsBody) {
+    return;
+  }
+
+  const table = document.createElement("div");
+  table.className = "dashboard-company-permissions-table";
+
+  const head = document.createElement("div");
+  head.className = "dashboard-company-permissions-row is-head";
+  const roleHeader = document.createElement("div");
+  roleHeader.className = "dashboard-company-permissions-cell";
+  roleHeader.style.justifyContent = "flex-start";
+  roleHeader.textContent = "Role";
+  head.append(roleHeader);
+
+  COMPANY_PERMISSION_COLUMNS.forEach((column) => {
+    const header = document.createElement("div");
+    header.className = "dashboard-company-permissions-cell";
+    header.textContent = column.label;
+    head.append(header);
+  });
+  table.append(head);
+
+  rolePermissions.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-company-permissions-row";
+
+    const roleCell = document.createElement("div");
+    roleCell.className = "dashboard-company-permissions-role";
+    const roleTitle = document.createElement("strong");
+    roleTitle.textContent = getUserProfileRoleLabel(entry.profileRole);
+    const roleMeta = document.createElement("span");
+    roleMeta.textContent = entry.profileRole;
+    roleCell.append(roleTitle, roleMeta);
+    row.append(roleCell);
+
+    COMPANY_PERMISSION_COLUMNS.forEach((column) => {
+      const cell = document.createElement("div");
+      cell.className = "dashboard-company-permissions-cell";
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(entry[column.key]);
+      checkbox.addEventListener("change", () => {
+        setCompanyRolePermissionDraft(entry.profileRole, column.key, checkbox.checked);
+        if (dashboardCompanyPermissionsFeedback) {
+          dashboardCompanyPermissionsFeedback.textContent = "";
+        }
+        renderDashboardCompanyPermissionsPanel();
+      });
+      const text = document.createElement("span");
+      text.textContent = checkbox.checked ? "Da" : "Ne";
+      label.append(checkbox, text);
+      cell.append(label);
+      row.append(cell);
+    });
+
+    table.append(row);
+  });
+
+  dashboardCompanyPermissionsBody.replaceChildren(table);
+}
+
 function renderDashboardControlPanelContent() {
   const canManageMasterData = getCanManageMasterData();
   const isSuperAdmin = getIsSuperAdmin();
@@ -22885,6 +23130,8 @@ function renderDashboardControlPanelContent() {
   if (signupRequestsPanel) {
     signupRequestsPanel.hidden = !canManageMasterData;
   }
+
+  renderDashboardCompanyPermissionsPanel();
 }
 
 function createWorkOrderDocumentSafetySpecialistPicker() {
@@ -37402,6 +37649,8 @@ function renderAuthState() {
     const isSuperAdmin = getIsSuperAdmin();
     const isAdmin = getIsAdmin();
     const canManageMasterData = getCanManageMasterData();
+    const canViewCompanies = getCanViewCompanies();
+    const canCreateCompany = getCanCreateCompany();
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -37460,8 +37709,19 @@ function renderAuthState() {
     if (controlPanelNavItem) {
       controlPanelNavItem.hidden = !canManageMasterData;
     }
+    if (companyListNavItem) {
+      companyListNavItem.hidden = !canViewCompanies;
+    }
+    if (companyAddNavItem) {
+      companyAddNavItem.hidden = !canViewCompanies || !canCreateCompany;
+    }
     if (!canManageMasterData && isDashboardControlPanelItem()) {
       state.activeSidebarItem = "dashboard";
+    }
+    if (!canViewCompanies && (state.activeView === "companies" || isCompanySidebarItem())) {
+      state.activeView = "selfdash";
+      state.activeSidebarItem = "dashboard";
+      state.activeSidebarGroup = "home";
     }
 
     if (sidebarActiveOrganization) {
@@ -37500,6 +37760,12 @@ function renderAuthState() {
     managementTab.hidden = true;
     if (controlPanelNavItem) {
       controlPanelNavItem.hidden = true;
+    }
+    if (companyListNavItem) {
+      companyListNavItem.hidden = true;
+    }
+    if (companyAddNavItem) {
+      companyAddNavItem.hidden = true;
     }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
@@ -37807,6 +38073,8 @@ function buildCompanyPayload() {
 function syncCompanyEditorChrome() {
   const companyName = companyNameInput?.value?.trim() || "Tvrtka";
   const isActive = companyIsActiveInput?.value !== "false";
+  const isEditing = Boolean(companyIdInput?.value);
+  const canSubmit = isEditing ? getCanEditCompany() : getCanCreateCompany();
 
   renderCompanyLogo(companyLogoPreview, {
     name: companyName,
@@ -37823,8 +38091,13 @@ function syncCompanyEditorChrome() {
     companyLogoClearButton.hidden = !(companyLogoDataUrlInput?.value || "");
   }
 
+  if (companySubmitButton) {
+    companySubmitButton.hidden = !canSubmit;
+    companySubmitButton.disabled = !canSubmit;
+  }
+
   if (companyDeleteButton) {
-    companyDeleteButton.hidden = !companyIdInput?.value;
+    companyDeleteButton.hidden = !companyIdInput?.value || !getCanDeleteCompany();
   }
 }
 
@@ -39066,6 +39339,10 @@ function resetLoginContentForm() {
 }
 
 function hydrateCompanyForm(company) {
+  if (!getCanEditCompany()) {
+    return;
+  }
+
   const shouldSwitchToCompaniesView = state.activeView !== "companies";
   if (shouldSwitchToCompaniesView) {
     state.activeView = "companies";
@@ -57035,6 +57312,9 @@ function renderCompanies() {
   clearLegacyCompanyCopy();
   initializeCompaniesColumnResize();
   applyCompaniesColumnWidths();
+  const canViewCompanies = getCanViewCompanies();
+  const canCreateCompany = getCanCreateCompany();
+  const canEditCompany = getCanEditCompany();
 
   const sortedCompanies = state.companies
     .slice()
@@ -57067,10 +57347,16 @@ function renderCompanies() {
 
     return true;
   });
-  const canManageMasterData = getCanManageMasterData();
-
   if (companyOpenFormButton) {
-    companyOpenFormButton.hidden = !canManageMasterData;
+    companyOpenFormButton.hidden = !canCreateCompany;
+  }
+
+  if (!canViewCompanies) {
+    companiesBody.replaceChildren();
+    companiesEmpty.hidden = false;
+    companiesEmpty.textContent = "Nemaš ovlaštenje za pregled tvrtki.";
+    closeCompanyEditor({ reset: false });
+    return;
   }
 
   if (companiesSearchInput && companiesSearchInput.value !== state.companyFilters.query) {
@@ -57088,7 +57374,7 @@ function renderCompanies() {
   companiesBody.replaceChildren(...filteredCompanies.map((company) => {
     const row = document.createElement("tr");
     row.className = "list-row company-list-row";
-    if (canManageMasterData) {
+    if (canEditCompany) {
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-label", `Uredi tvrtku ${company.name}`);
@@ -60637,6 +60923,10 @@ companiesActivityFilterInput?.addEventListener("change", () => {
 });
 
 companyOpenFormButton?.addEventListener("click", () => {
+  if (!getCanCreateCompany()) {
+    companyError.textContent = "Nemate pravo dodavati novu tvrtku.";
+    return;
+  }
   resetCompanyForm();
   openCompanyEditor();
   requestAnimationFrame(() => {
@@ -60656,6 +60946,15 @@ companyForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const isEditing = Boolean(companyIdInput.value);
+  if (isEditing && !getCanEditCompany()) {
+    companyError.textContent = "Nemate pravo uređivati tvrtke.";
+    return;
+  }
+  if (!isEditing && !getCanCreateCompany()) {
+    companyError.textContent = "Nemate pravo dodavati novu tvrtku.";
+    return;
+  }
+
   const path = isEditing ? `/companies/${companyIdInput.value}` : "/companies";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -60678,6 +60977,11 @@ companyResetButton.addEventListener("click", () => {
 });
 
 companyDeleteButton?.addEventListener("click", () => {
+  if (!getCanDeleteCompany()) {
+    companyError.textContent = "Nemate pravo brisati tvrtke.";
+    return;
+  }
+
   const companyId = companyIdInput?.value || "";
 
   if (!companyId) {
@@ -60784,6 +61088,10 @@ topbarShortcutDashboardButton?.addEventListener("click", () => {
 
 dashboardOpenPeopleButton?.addEventListener("click", () => {
   activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
+});
+
+dashboardCompanyPermissionsSaveButton?.addEventListener("click", () => {
+  void saveCompanyRolePermissions();
 });
 
 topbarShortcutRemindersButton?.addEventListener("click", (event) => {

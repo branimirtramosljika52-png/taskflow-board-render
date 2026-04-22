@@ -1,4 +1,5 @@
 import mysql from "mysql2/promise";
+import { normalizeCompanyRolePermissions } from "./accessControl.js";
 
 import {
   applyDashboardWidgetGridLayout,
@@ -1649,6 +1650,24 @@ function mapPeriodicsVisualSettingsEntry(row = {}) {
   };
 }
 
+function mapCompanyRolePermissionEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    profileRole: dbString(row.profile_role).toLowerCase(),
+    canView: Boolean(Number(row.can_view ?? 0)),
+    canCreate: Boolean(Number(row.can_create ?? 0)),
+    canEdit: Boolean(Number(row.can_edit ?? 0)),
+    canDelete: Boolean(Number(row.can_delete ?? 0)),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapAbsenceEntryRow(row = {}) {
   const organizationId = dbString(row.organization_id);
   const userId = dbString(row.user_id);
@@ -2958,6 +2977,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapPeriodicsVisualSettingsEntry(row))
     .filter(Boolean);
 
+  const [companyRolePermissionRows] = await connection.query(`
+    SELECT organization_id, profile_role, can_view, can_create, can_edit, can_delete, created_at, updated_at
+    FROM web_company_role_permissions
+    ORDER BY organization_id ASC, profile_role ASC
+  `);
+
+  const companyRolePermissions = companyRolePermissionRows
+    .map((row) => mapCompanyRolePermissionEntry(row))
+    .filter(Boolean);
+
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
            linked_template_ids_json, documents_json, created_at, updated_at
@@ -3069,6 +3098,7 @@ async function fetchSnapshotFromConnection(connection) {
     absenceNotificationSettings,
     vehicleNotificationSettings,
     periodicsVisualSettings,
+    companyRolePermissions,
     safetyAuthorizations,
     absenceEntries,
     absenceBalances,
@@ -3169,6 +3199,7 @@ export class InMemorySafetyRepository {
       absenceNotificationSettings: [],
       vehicleNotificationSettings: [],
       periodicsVisualSettings: [],
+      companyRolePermissions: [],
       safetyAuthorizations: [],
       absenceEntries: [],
       absenceBalances: [],
@@ -3378,6 +3409,9 @@ export class InMemorySafetyRepository {
         ...item,
       })),
       periodicsVisualSettings: this.snapshot.periodicsVisualSettings.map((item) => ({
+        ...item,
+      })),
+      companyRolePermissions: this.snapshot.companyRolePermissions.map((item) => ({
         ...item,
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
@@ -4591,6 +4625,42 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertCompanyRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za Company role permissions.");
+    }
+
+    const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions);
+    const timestamp = new Date().toISOString();
+    const previousByRole = new Map(
+      this.snapshot.companyRolePermissions
+        .filter((entry) => String(entry.organizationId) === safeOrganizationId)
+        .map((entry) => [String(entry.profileRole || "").toLowerCase(), entry]),
+    );
+    const nextEntries = normalizedPermissions.map((entry) => {
+      const profileRole = String(entry.profileRole || "").toLowerCase();
+      const previous = previousByRole.get(profileRole) ?? null;
+      return {
+        organizationId: safeOrganizationId,
+        profileRole,
+        canView: Boolean(entry.canView),
+        canCreate: Boolean(entry.canCreate),
+        canEdit: Boolean(entry.canEdit),
+        canDelete: Boolean(entry.canDelete),
+        createdAt: previous?.createdAt || timestamp,
+        updatedAt: timestamp,
+      };
+    });
+
+    this.snapshot.companyRolePermissions = [
+      ...this.snapshot.companyRolePermissions.filter((entry) => String(entry.organizationId) !== safeOrganizationId),
+      ...nextEntries,
+    ];
+
+    return nextEntries;
+  }
+
   async updateMeasurementEquipmentItem(id, patch) {
     const current = this.snapshot.measurementEquipment.find((item) => item.id === id);
 
@@ -5533,6 +5603,20 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_dashboard_widgets_org_user (organization_id, user_id),
         INDEX idx_web_dashboard_widgets_order (organization_id, user_id, sort_order)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_company_role_permissions (
+        organization_id INT NOT NULL,
+        profile_role VARCHAR(32) NOT NULL,
+        can_view TINYINT(1) NOT NULL DEFAULT 0,
+        can_create TINYINT(1) NOT NULL DEFAULT 0,
+        can_edit TINYINT(1) NOT NULL DEFAULT 0,
+        can_delete TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (organization_id, profile_role),
+        INDEX idx_web_company_role_permissions_org (organization_id)
       )
     `);
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
@@ -8563,6 +8647,58 @@ export class MySqlSafetyRepository {
       organizationId: String(safeOrganizationId),
       ...normalizedSettings,
     };
+  }
+
+  async upsertCompanyRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za Company role permissions.");
+    }
+
+    const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions);
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        "DELETE FROM web_company_role_permissions WHERE organization_id = ?",
+        [safeOrganizationId],
+      );
+
+      for (const entry of normalizedPermissions) {
+        await connection.query(
+          `
+            INSERT INTO web_company_role_permissions
+              (organization_id, profile_role, can_view, can_create, can_edit, can_delete)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `,
+          [
+            safeOrganizationId,
+            String(entry.profileRole || "").trim().toLowerCase(),
+            entry.canView ? 1 : 0,
+            entry.canCreate ? 1 : 0,
+            entry.canEdit ? 1 : 0,
+            entry.canDelete ? 1 : 0,
+          ],
+        );
+      }
+
+      await connection.commit();
+
+      return normalizedPermissions.map((entry) => ({
+        organizationId: String(safeOrganizationId),
+        profileRole: String(entry.profileRole || "").trim().toLowerCase(),
+        canView: Boolean(entry.canView),
+        canCreate: Boolean(entry.canCreate),
+        canEdit: Boolean(entry.canEdit),
+        canDelete: Boolean(entry.canDelete),
+      }));
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async upsertSafetyAuthorizationNotificationSettings({ organizationId = "", notificationSettings = {} } = {}) {
