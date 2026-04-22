@@ -116,7 +116,6 @@ import {
 } from "./measurementFormatting.js";
 import {
   COMPANY_PERMISSION_SCOPE_GENERAL,
-  normalizeCompanyPermissionScopeId,
   normalizeCompanyRolePermissionEntry,
   normalizeCompanyRolePermissions,
   resolveCompanyPermissionsForActor,
@@ -527,12 +526,10 @@ const DEFAULT_COMPANY_PERMISSIONS = Object.freeze({
   canEdit: false,
   canDelete: false,
 });
-const COMPANY_PERMISSION_GENERAL_ROWS = Object.freeze([
+const COMPANY_PERMISSION_ROWS = Object.freeze([
+  { key: "canView", label: "Pregled postojece" },
   { key: "canCreate", label: "Unos nove tvrtke" },
-]);
-const COMPANY_PERMISSION_COMPANY_ROWS = Object.freeze([
-  { key: "canView", label: "Pregled tvrtke" },
-  { key: "canEdit", label: "Uređivanje tvrtke" },
+  { key: "canEdit", label: "Uredivanje postojece" },
   { key: "canDelete", label: "Brisanje tvrtke" },
 ]);
 const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
@@ -4034,77 +4031,49 @@ function normalizeCompanyPermissionFlags(value = {}) {
   };
 }
 
-function createCompanyRolePermissionDraftKey(companyId = "", profileRole = "new_user") {
-  return `${normalizeCompanyPermissionScopeId(companyId)}::${normalizeUserProfileRoleValue(profileRole)}`;
-}
+function materializeCompanyRolePermissionDraft(entries = []) {
+  const normalizedEntries = (Array.isArray(entries) ? entries : [])
+    .map((entry) => normalizeCompanyRolePermissionEntry(entry));
 
-function getCompanyPermissionScopeIds(companies = state.companies ?? []) {
-  return [
-    COMPANY_PERMISSION_SCOPE_GENERAL,
-    ...Array.from(new Set(
-      (companies ?? [])
-        .map((company) => String(company?.id || "").trim())
-        .filter(Boolean),
-    )),
-  ];
-}
-
-function materializeCompanyRolePermissionDraft(entries = [], companies = state.companies ?? []) {
-  const scopeIds = getCompanyPermissionScopeIds(companies);
-  const normalizedEntries = normalizeCompanyRolePermissions(entries, scopeIds);
-  const byKey = new Map(
-    normalizedEntries.map((entry) => [
-      createCompanyRolePermissionDraftKey(entry.companyId, entry.profileRole),
-      { ...entry },
-    ]),
-  );
-  const explicitKeys = new Set(
-    (Array.isArray(entries) ? entries : []).map((entry) => {
-      const normalizedEntry = normalizeCompanyRolePermissionEntry(entry);
-      return createCompanyRolePermissionDraftKey(normalizedEntry.companyId, normalizedEntry.profileRole);
-    }),
-  );
-
-  return scopeIds.flatMap((companyId) => USER_PROFILE_ROLE_OPTIONS.map((option) => {
+  return USER_PROFILE_ROLE_OPTIONS.map((option) => {
     const profileRole = option.value;
-    const currentKey = createCompanyRolePermissionDraftKey(companyId, profileRole);
-    const generalKey = createCompanyRolePermissionDraftKey(COMPANY_PERMISSION_SCOPE_GENERAL, profileRole);
-    const currentEntry = byKey.get(currentKey)
-      ?? {
-        companyId,
-        profileRole,
-        ...DEFAULT_COMPANY_PERMISSIONS,
-      };
-    const generalEntry = byKey.get(generalKey)
-      ?? {
+    const explicitGeneralEntry = normalizedEntries.find((entry) => (
+      entry.companyId === COMPANY_PERMISSION_SCOPE_GENERAL
+      && entry.profileRole === profileRole
+      && entry.isExplicit !== false
+    ));
+    const fallbackEntries = normalizedEntries.filter((entry) => (
+      entry.profileRole === profileRole
+      && entry.isExplicit !== false
+    ));
+
+    if (explicitGeneralEntry) {
+      return {
         companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
         profileRole,
-        ...DEFAULT_COMPANY_PERMISSIONS,
-      };
-
-    if (companyId === COMPANY_PERMISSION_SCOPE_GENERAL) {
-      return {
-        companyId,
-        profileRole,
-        canView: false,
-        canCreate: Boolean(generalEntry.canCreate),
-        canEdit: false,
-        canDelete: false,
+        canView: Boolean(explicitGeneralEntry.canView),
+        canCreate: Boolean(explicitGeneralEntry.canCreate),
+        canEdit: Boolean(explicitGeneralEntry.canEdit),
+        canDelete: Boolean(explicitGeneralEntry.canDelete),
       };
     }
 
-    const hasExplicitScopeEntry = explicitKeys.has(currentKey);
     return {
-      ...currentEntry,
-      canView: hasExplicitScopeEntry ? Boolean(currentEntry.canView) : Boolean(generalEntry.canView),
-      canCreate: false,
-      canEdit: hasExplicitScopeEntry ? Boolean(currentEntry.canEdit) : Boolean(generalEntry.canEdit),
-      canDelete: hasExplicitScopeEntry ? Boolean(currentEntry.canDelete) : Boolean(generalEntry.canDelete),
+      companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
+      profileRole,
+      canView: fallbackEntries.some((entry) => Boolean(entry.canView)),
+      canCreate: fallbackEntries.some((entry) => Boolean(entry.canCreate)),
+      canEdit: fallbackEntries.some((entry) => Boolean(entry.canEdit)),
+      canDelete: fallbackEntries.some((entry) => Boolean(entry.canDelete)),
     };
-  }));
+  });
 }
 
-function getCompanyPermissions(companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
+function createCompanyRolePermissionDraftKey(profileRole = "new_user") {
+  return `${COMPANY_PERMISSION_SCOPE_GENERAL}::${normalizeUserProfileRoleValue(profileRole)}`;
+}
+
+function getCompanyPermissions() {
   if (getCanManageMasterData()) {
     return {
       canView: true,
@@ -4122,74 +4091,45 @@ function getCompanyPermissions(companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
     resolveCompanyPermissionsForActor(
       state.user,
       getCompanyRolePermissionsDraft(),
-      normalizeCompanyPermissionScopeId(companyId),
     ),
   );
 }
 
 function getCanViewCompanies() {
-  if (getCanManageMasterData()) {
-    return true;
-  }
-
-  const canViewAnyCompany = (state.companies ?? []).some((company) => getCompanyPermissions(company.id).canView);
-  return canViewAnyCompany || getCanCreateCompany();
+  return getCompanyPermissions().canView || getCanCreateCompany();
 }
 
 function getCanCreateCompany() {
-  return getCompanyPermissions(COMPANY_PERMISSION_SCOPE_GENERAL).canCreate;
+  return getCompanyPermissions().canCreate;
 }
 
-function getCanEditCompany(companyId = "") {
-  const normalizedCompanyId = String(companyId || "").trim();
-  if (!normalizedCompanyId) {
-    return (state.companies ?? []).some((company) => getCompanyPermissions(company.id).canEdit);
-  }
-
-  return getCompanyPermissions(normalizedCompanyId).canEdit;
+function getCanEditCompany() {
+  return getCompanyPermissions().canEdit;
 }
 
-function getCanDeleteCompany(companyId = "") {
-  const normalizedCompanyId = String(companyId || "").trim();
-  if (!normalizedCompanyId) {
-    return (state.companies ?? []).some((company) => getCompanyPermissions(company.id).canDelete);
-  }
-
-  return getCompanyPermissions(normalizedCompanyId).canDelete;
+function getCanDeleteCompany() {
+  return getCompanyPermissions().canDelete;
 }
 
 function getCompanyRolePermissionsDraft() {
-  return materializeCompanyRolePermissionDraft(state.companyRolePermissions ?? [], state.companies ?? []);
+  return materializeCompanyRolePermissionDraft(state.companyRolePermissions ?? []);
 }
 
-function setCompanyRolePermissionDraft(companyId = "", profileRole = "", permissionKey = "", nextValue = false) {
-  const normalizedCompanyId = normalizeCompanyPermissionScopeId(companyId);
+function setCompanyRolePermissionDraft(profileRole = "", permissionKey = "", nextValue = false) {
   const normalizedProfileRole = normalizeUserProfileRoleValue(profileRole);
-  const allowedPermissionKeys = new Set(
-    [...COMPANY_PERMISSION_GENERAL_ROWS, ...COMPANY_PERMISSION_COMPANY_ROWS].map((item) => item.key),
-  );
-  if (!normalizedProfileRole || !allowedPermissionKeys.has(permissionKey)) {
+  if (!normalizedProfileRole || !COMPANY_PERMISSION_ROWS.some((item) => item.key === permissionKey)) {
     return;
   }
 
   const draft = getCompanyRolePermissionsDraft().map((entry) => ({ ...entry }));
-  const target = draft.find((entry) => (
-    entry.companyId === normalizedCompanyId
-    && entry.profileRole === normalizedProfileRole
-  ));
+  const target = draft.find((entry) => entry.profileRole === normalizedProfileRole);
   if (!target) {
     return;
   }
 
   target[permissionKey] = Boolean(nextValue);
-  if (normalizedCompanyId === COMPANY_PERMISSION_SCOPE_GENERAL) {
-    target.canView = false;
-    target.canEdit = false;
-    target.canDelete = false;
-  } else {
-    target.canCreate = false;
-  }
-  state.companyRolePermissions = materializeCompanyRolePermissionDraft(draft, state.companies ?? []);
+  target.companyId = COMPANY_PERMISSION_SCOPE_GENERAL;
+  state.companyRolePermissions = materializeCompanyRolePermissionDraft(draft);
 }
 
 function isDashboardControlPanelItem(itemName = state.activeSidebarItem) {
@@ -4736,7 +4676,6 @@ function applySnapshot(payload) {
   );
   state.companyRolePermissions = materializeCompanyRolePermissionDraft(
     payload.companyRolePermissions ?? [],
-    payload.companies ?? [],
   );
   state.companyPermissions = normalizeCompanyPermissionFlags(
     payload.companyGeneralPermissions
@@ -23140,10 +23079,7 @@ function renderDashboardCompanyPermissionsPanel() {
 
   const rolePermissions = getCompanyRolePermissionsDraft();
   if (dashboardCompanyPermissionsCount) {
-    const companyCount = state.companies?.length ?? 0;
-    dashboardCompanyPermissionsCount.textContent = companyCount > 0
-      ? `${companyCount} ${companyCount === 1 ? "tvrtka" : "tvrtki"} + opcenito`
-      : "Opcenite postavke";
+    dashboardCompanyPermissionsCount.textContent = `${rolePermissions.length} rola`;
   }
 
   if (dashboardCompanyPermissionsSaveButton) {
@@ -23157,109 +23093,84 @@ function renderDashboardCompanyPermissionsPanel() {
 
   const draftByKey = new Map(
     rolePermissions.map((entry) => [
-      createCompanyRolePermissionDraftKey(entry.companyId, entry.profileRole),
+      createCompanyRolePermissionDraftKey(entry.profileRole),
       entry,
     ]),
   );
-  const sortedCompanies = [...(state.companies ?? [])].sort((left, right) => (
-    String(left?.name || "").localeCompare(String(right?.name || ""), "hr")
-  ));
-  const blocks = [
-    {
-      companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
-      title: "Opcenito",
-      meta: "Vrijedi za dodavanje novih tvrtki.",
-      rows: COMPANY_PERMISSION_GENERAL_ROWS,
-    },
-    ...sortedCompanies.map((company) => ({
-      companyId: String(company.id || "").trim(),
-      title: company.name || "Tvrtka",
-      meta: [company.oib ? `OIB ${company.oib}` : "", company.headquarters || ""].filter(Boolean).join(" · "),
-      rows: COMPANY_PERMISSION_COMPANY_ROWS,
-    })),
-  ];
+  const card = document.createElement("section");
+  card.className = "dashboard-company-permission-card";
 
-  const container = document.createElement("div");
-  container.className = "dashboard-company-permission-matrix";
+  const cardHead = document.createElement("div");
+  cardHead.className = "dashboard-company-permission-card-head";
+  const cardTitle = document.createElement("strong");
+  cardTitle.textContent = "Opca Company ovlastenja";
+  const cardMeta = document.createElement("span");
+  cardMeta.textContent = "Vrijedi za pregled, unos, uredivanje i brisanje tvrtki opcenito.";
+  cardHead.append(cardTitle, cardMeta);
 
-  blocks.forEach((block) => {
-    const card = document.createElement("section");
-    card.className = "dashboard-company-permission-card";
+  const grid = document.createElement("div");
+  grid.className = "dashboard-company-permission-grid";
+  grid.style.setProperty("--company-role-columns", String(USER_PROFILE_ROLE_OPTIONS.length));
 
-    const cardHead = document.createElement("div");
-    cardHead.className = "dashboard-company-permission-card-head";
-    const cardTitle = document.createElement("strong");
-    cardTitle.textContent = block.title;
-    const cardMeta = document.createElement("span");
-    cardMeta.textContent = block.meta || "Bez dodatnih detalja.";
-    cardHead.append(cardTitle, cardMeta);
+  const headRow = document.createElement("div");
+  headRow.className = "dashboard-company-permission-grid-row is-head";
+  const actionHead = document.createElement("div");
+  actionHead.className = "dashboard-company-permission-grid-cell is-action";
+  actionHead.textContent = "Ovlastenje";
+  headRow.append(actionHead);
 
-    const grid = document.createElement("div");
-    grid.className = "dashboard-company-permission-grid";
-    grid.style.setProperty("--company-role-columns", String(USER_PROFILE_ROLE_OPTIONS.length));
+  USER_PROFILE_ROLE_OPTIONS.forEach((role) => {
+    const header = document.createElement("div");
+    header.className = "dashboard-company-permission-grid-cell is-role-head";
+    const headerTitle = document.createElement("strong");
+    headerTitle.textContent = role.label;
+    const headerMeta = document.createElement("span");
+    headerMeta.textContent = role.value;
+    header.append(headerTitle, headerMeta);
+    headRow.append(header);
+  });
+  grid.append(headRow);
 
-    const headRow = document.createElement("div");
-    headRow.className = "dashboard-company-permission-grid-row is-head";
-    const actionHead = document.createElement("div");
-    actionHead.className = "dashboard-company-permission-grid-cell is-action";
-    actionHead.textContent = "Ovlastenje";
-    headRow.append(actionHead);
+  COMPANY_PERMISSION_ROWS.forEach((permissionRow) => {
+    const row = document.createElement("div");
+    row.className = "dashboard-company-permission-grid-row";
+
+    const actionCell = document.createElement("div");
+    actionCell.className = "dashboard-company-permission-grid-cell is-action";
+    const actionTitle = document.createElement("strong");
+    actionTitle.textContent = permissionRow.label;
+    actionCell.append(actionTitle);
+    row.append(actionCell);
 
     USER_PROFILE_ROLE_OPTIONS.forEach((role) => {
-      const header = document.createElement("div");
-      header.className = "dashboard-company-permission-grid-cell is-role-head";
-      const headerTitle = document.createElement("strong");
-      headerTitle.textContent = role.label;
-      const headerMeta = document.createElement("span");
-      headerMeta.textContent = role.value;
-      header.append(headerTitle, headerMeta);
-      headRow.append(header);
-    });
-    grid.append(headRow);
-
-    block.rows.forEach((permissionRow) => {
-      const row = document.createElement("div");
-      row.className = "dashboard-company-permission-grid-row";
-
-      const actionCell = document.createElement("div");
-      actionCell.className = "dashboard-company-permission-grid-cell is-action";
-      const actionTitle = document.createElement("strong");
-      actionTitle.textContent = permissionRow.label;
-      actionCell.append(actionTitle);
-      row.append(actionCell);
-
-      USER_PROFILE_ROLE_OPTIONS.forEach((role) => {
-        const cell = document.createElement("div");
-        cell.className = "dashboard-company-permission-grid-cell";
-        const label = document.createElement("label");
-        label.className = "dashboard-company-permission-checkbox";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = Boolean(
-          draftByKey.get(createCompanyRolePermissionDraftKey(block.companyId, role.value))?.[permissionRow.key],
-        );
-        checkbox.addEventListener("change", () => {
-          setCompanyRolePermissionDraft(block.companyId, role.value, permissionRow.key, checkbox.checked);
-          if (dashboardCompanyPermissionsFeedback) {
-            dashboardCompanyPermissionsFeedback.textContent = "";
-          }
-          renderDashboardCompanyPermissionsPanel();
-        });
-        const text = document.createElement("span");
-        text.textContent = checkbox.checked ? "Da" : "Ne";
-        label.append(checkbox, text);
-        cell.append(label);
-        row.append(cell);
+      const cell = document.createElement("div");
+      cell.className = "dashboard-company-permission-grid-cell";
+      const label = document.createElement("label");
+      label.className = "dashboard-company-permission-checkbox";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(
+        draftByKey.get(createCompanyRolePermissionDraftKey(role.value))?.[permissionRow.key],
+      );
+      checkbox.addEventListener("change", () => {
+        setCompanyRolePermissionDraft(role.value, permissionRow.key, checkbox.checked);
+        if (dashboardCompanyPermissionsFeedback) {
+          dashboardCompanyPermissionsFeedback.textContent = "";
+        }
+        renderDashboardCompanyPermissionsPanel();
       });
-
-      grid.append(row);
+      const text = document.createElement("span");
+      text.textContent = checkbox.checked ? "Da" : "Ne";
+      label.append(checkbox, text);
+      cell.append(label);
+      row.append(cell);
     });
 
-    card.append(cardHead, grid);
-    container.append(card);
+    grid.append(row);
   });
 
-  dashboardCompanyPermissionsBody.replaceChildren(container);
+  card.append(cardHead, grid);
+  dashboardCompanyPermissionsBody.replaceChildren(card);
 }
 
 function renderDashboardControlPanelContent() {
@@ -57477,11 +57388,11 @@ function renderCompanies() {
   applyCompaniesColumnWidths();
   const canViewCompanies = getCanViewCompanies();
   const canCreateCompany = getCanCreateCompany();
+  const canEditCompany = getCanEditCompany();
 
   const sortedCompanies = state.companies
     .slice()
-    .sort((left, right) => left.name.localeCompare(right.name, "hr"))
-    .filter((company) => getCompanyPermissions(company.id).canView);
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
   const queryNeedle = normalizeLooseName(state.companyFilters.query || "");
   const periodFilter = ["all", "active", "inactive"].includes(state.companyFilters.periodStatus)
     ? state.companyFilters.periodStatus
@@ -57537,7 +57448,7 @@ function renderCompanies() {
   companiesBody.replaceChildren(...filteredCompanies.map((company) => {
     const row = document.createElement("tr");
     row.className = "list-row company-list-row";
-    if (getCanEditCompany(company.id)) {
+    if (canEditCompany) {
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-label", `Uredi tvrtku ${company.name}`);

@@ -2957,7 +2957,7 @@ async function handleApiRequest(request, response, url) {
 
     if (companyMatch && request.method === "PATCH") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      if (!canEditCompanies(user, scopedSnapshot.companyRolePermissions, companyMatch[1])) {
+      if (!canEditCompanies(user, scopedSnapshot.companyRolePermissions)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
         return true;
       }
@@ -2977,7 +2977,7 @@ async function handleApiRequest(request, response, url) {
 
     if (companyMatch && request.method === "DELETE") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      if (!canDeleteCompanies(user, scopedSnapshot.companyRolePermissions, companyMatch[1])) {
+      if (!canDeleteCompanies(user, scopedSnapshot.companyRolePermissions)) {
         sendError(response, 403, "Nemate pravo upravljati tvrtkama.");
         return true;
       }

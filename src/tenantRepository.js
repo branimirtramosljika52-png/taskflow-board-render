@@ -1,7 +1,6 @@
 import mysql from "mysql2/promise";
 
 import {
-  COMPANY_PERMISSION_SCOPE_GENERAL,
   ROLE_ADMIN,
   ROLE_SUPER_ADMIN,
   ROLE_USER,
@@ -1481,25 +1480,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     (rawSnapshot.companyRolePermissions ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )),
-    [COMPANY_PERMISSION_SCOPE_GENERAL, ...assignedCompanyIds],
   );
-  const companyGeneralPermissions = resolveCompanyPermissionsForActor(
-    actor,
-    companyRolePermissions,
-    COMPANY_PERMISSION_SCOPE_GENERAL,
-  );
-  const companyPermissionsByCompanyId = Object.fromEntries(
-    assignedCompanyIds.map((companyId) => [
-      companyId,
-      resolveCompanyPermissionsForActor(actor, companyRolePermissions, companyId),
-    ]),
-  );
+  const companyGeneralPermissions = resolveCompanyPermissionsForActor(actor, companyRolePermissions);
   const visibleCompanyIds = new Set(
     actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN
       ? assignedCompanyIds
-      : assignedCompanyIds.filter((companyId) => Boolean(companyPermissionsByCompanyId[companyId]?.canView)),
+      : (companyGeneralPermissions.canView ? assignedCompanyIds : []),
   );
-  const scopedCompanyPermissions = Object.values(companyPermissionsByCompanyId);
 
   return {
     companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
@@ -1510,21 +1497,21 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       canDelete: Boolean(companyGeneralPermissions.canDelete),
     },
     companyPermissionsByCompanyId: Object.fromEntries(
-      Object.entries(companyPermissionsByCompanyId).map(([companyId, permissions]) => [
+      assignedCompanyIds.map((companyId) => [
         companyId,
         {
-          canView: Boolean(permissions.canView),
-          canCreate: Boolean(permissions.canCreate),
-          canEdit: Boolean(permissions.canEdit),
-          canDelete: Boolean(permissions.canDelete),
+          canView: Boolean(companyGeneralPermissions.canView),
+          canCreate: Boolean(companyGeneralPermissions.canCreate),
+          canEdit: Boolean(companyGeneralPermissions.canEdit),
+          canDelete: Boolean(companyGeneralPermissions.canDelete),
         },
       ]),
     ),
     companyPermissions: {
-      canView: visibleCompanyIds.size > 0,
+      canView: Boolean(companyGeneralPermissions.canView),
       canCreate: Boolean(companyGeneralPermissions.canCreate),
-      canEdit: scopedCompanyPermissions.some((permissions) => Boolean(permissions.canEdit)),
-      canDelete: scopedCompanyPermissions.some((permissions) => Boolean(permissions.canDelete)),
+      canEdit: Boolean(companyGeneralPermissions.canEdit),
+      canDelete: Boolean(companyGeneralPermissions.canDelete),
     },
     companies: (rawSnapshot.companies ?? []).filter((item) => visibleCompanyIds.has(String(item.id))),
     locations: (rawSnapshot.locations ?? []).filter((item) => visibleCompanyIds.has(String(item.companyId))),

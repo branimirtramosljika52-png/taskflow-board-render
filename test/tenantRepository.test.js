@@ -152,7 +152,7 @@ test("memory tenant repository resolves company permissions by profile role", as
   assert.equal(scoped.companies[0].id, "company-77");
 });
 
-test("memory tenant repository filters company snapshot by company-specific permissions", async () => {
+test("memory tenant repository collapses legacy scoped company permissions into general access", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
 
@@ -204,10 +204,9 @@ test("memory tenant repository filters company snapshot by company-specific perm
 
   assert.equal(scoped.companyPermissions.canCreate, true);
   assert.equal(scoped.companyPermissions.canView, true);
-  assert.equal(scoped.companies.length, 1);
-  assert.equal(scoped.companies[0].id, "company-2");
-  assert.equal(scoped.locations.length, 1);
-  assert.equal(scoped.locations[0].companyId, "company-2");
+  assert.equal(scoped.companyPermissions.canEdit, true);
+  assert.equal(scoped.companies.length, 2);
+  assert.equal(scoped.locations.length, 2);
 });
 
 test("memory tenant repository lets admins create users only inside their organization", async () => {

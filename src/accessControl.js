@@ -351,7 +351,46 @@ export function resolveCompanyPermissionsForActor(
       && entry.companyId === COMPANY_PERMISSION_SCOPE_GENERAL
       && entry.profileRole === profileRole
     ));
-  const effectiveGeneralEntry = explicitGeneralEntry ?? generalEntry;
+  const aggregatedGeneralEntry = normalizedInputPermissions
+    .filter((entry) => (
+      entry.isExplicit !== false
+      && entry.profileRole === profileRole
+    ))
+    .reduce((aggregate, entry) => ({
+      ...aggregate,
+      canView: Boolean(aggregate.canView || entry.canView),
+      canCreate: Boolean(aggregate.canCreate || entry.canCreate),
+      canEdit: Boolean(aggregate.canEdit || entry.canEdit),
+      canDelete: Boolean(aggregate.canDelete || entry.canDelete),
+    }), {
+      companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
+      profileRole,
+      ...COMPANY_PERMISSIONS_NONE,
+    });
+  const effectiveGeneralEntry = {
+    companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
+    profileRole,
+    canView: Boolean(
+      (explicitGeneralEntry?.canView ?? false)
+      || aggregatedGeneralEntry.canView
+      || generalEntry.canView
+    ),
+    canCreate: Boolean(
+      (explicitGeneralEntry?.canCreate ?? false)
+      || aggregatedGeneralEntry.canCreate
+      || generalEntry.canCreate
+    ),
+    canEdit: Boolean(
+      (explicitGeneralEntry?.canEdit ?? false)
+      || aggregatedGeneralEntry.canEdit
+      || generalEntry.canEdit
+    ),
+    canDelete: Boolean(
+      (explicitGeneralEntry?.canDelete ?? false)
+      || aggregatedGeneralEntry.canDelete
+      || generalEntry.canDelete
+    ),
+  };
   const effectiveScopedEntry = normalizedCompanyId === COMPANY_PERMISSION_SCOPE_GENERAL
     ? effectiveGeneralEntry
     : explicitScopedEntry ?? effectiveGeneralEntry;
