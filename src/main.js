@@ -956,6 +956,40 @@ const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
     description: "Mjesečni pregled redovnog rada, odsutnosti i izvoza za obračun.",
   }),
 });
+const USER_MANAGEMENT_SCOPE_DEFINITIONS = Object.freeze({
+  people: Object.freeze({
+    listKicker: "People",
+    listTitle: "Korisnici",
+    createButtonLabel: "+ Novi korisnik",
+    profileHeader: "Profil",
+    metaHeader: "Ovlaštenja",
+    description: "Popis korisnika, radnih uloga, pristupa i dokumentacije na jednom mjestu.",
+    editorKicker: "People",
+    editorCreateTitle: "Novi korisnik",
+    editorEditTitle: "Uredi korisnika",
+    submitCreateLabel: "Spremi korisnika",
+    submitEditLabel: "Spremi promjene",
+    resetCreateLabel: "Očisti",
+    resetEditLabel: "Odustani",
+    editorNote: "",
+  }),
+  "control-panel": Object.freeze({
+    listKicker: "Control panel",
+    listTitle: "Korisnički računi",
+    createButtonLabel: "+ Novi račun",
+    profileHeader: "Korisnik / email",
+    metaHeader: "Pristup",
+    description: "Osnovni korisnički računi, emailovi, role i pristupi za aktivnu organizaciju. Dokumentacija i ovlaštenja vode se u People modulu.",
+    editorKicker: "Control panel",
+    editorCreateTitle: "Novi korisnički račun",
+    editorEditTitle: "Uredi korisnički račun",
+    submitCreateLabel: "Spremi račun",
+    submitEditLabel: "Spremi promjene",
+    resetCreateLabel: "Očisti",
+    resetEditLabel: "Odustani",
+    editorNote: "Ovdje vodiš samo osnovni korisnički račun. Dokumentacija, potpisi i ovlaštenja ostaju u People modulu.",
+  }),
+});
 const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/login",
   "/auth/signup",
@@ -1029,6 +1063,7 @@ const state = {
   activeDrawingId: "",
   activeDocumentTemplateId: "",
   userEditorOpen: false,
+  userManagementScope: "people",
   companyEditorOpen: false,
   locationEditorOpen: false,
   vehicleEditorOpen: false,
@@ -1388,6 +1423,23 @@ function getPeopleWorkspaceTabConfig(tab = state.peopleWorkspaceTab) {
 
 function getPeopleWorkspaceTabLabel(tab = state.peopleWorkspaceTab) {
   return getPeopleWorkspaceTabConfig(tab).label;
+}
+
+function normalizeUserManagementScope(scope = "people") {
+  return scope === "control-panel" ? "control-panel" : "people";
+}
+
+function getUserManagementScopeConfig(scope = state.userManagementScope) {
+  return USER_MANAGEMENT_SCOPE_DEFINITIONS[normalizeUserManagementScope(scope)]
+    ?? USER_MANAGEMENT_SCOPE_DEFINITIONS.people;
+}
+
+function isControlPanelUserManagementScope(scope = state.userManagementScope) {
+  return normalizeUserManagementScope(scope) === "control-panel";
+}
+
+function setUserManagementScope(scope = "people") {
+  state.userManagementScope = normalizeUserManagementScope(scope);
 }
 
 function setPeopleWorkspaceTab(tab = "users") {
@@ -3540,6 +3592,7 @@ const userEditorBackdrop = document.querySelector("#user-editor-backdrop");
 const userEditorPanel = document.querySelector("#user-editor-panel");
 const userEditorCloseButton = document.querySelector("#user-editor-close");
 const userEditorBody = document.querySelector("#user-editor-body");
+const userEditorContextNote = document.querySelector("#user-editor-context-note");
 const userIdInput = document.querySelector("#user-id");
 const userAvatarDataUrlInput = document.querySelector("#user-avatar-data-url");
 const userFirstNameInput = document.querySelector("#user-first-name");
@@ -3595,9 +3648,14 @@ const managementViewDescription = document.querySelector("#management-view-descr
 const userPanelKicker = document.querySelector("#user-panel-kicker");
 const userPanelTitle = document.querySelector("#user-panel-title");
 const userManagementNote = document.querySelector("#user-management-note");
+const userManagementKicker = document.querySelector("#user-management-kicker");
+const userManagementTitle = document.querySelector("#user-management-title");
+const usersProfileHeader = document.querySelector("#users-profile-header");
+const usersMetaHeader = document.querySelector("#users-meta-header");
 const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
 const peopleUsersPanel = document.querySelector("#people-users-panel");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
+const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -18532,11 +18590,16 @@ function createUserIdentityCell(user) {
   const fullName = String(user.fullName || "").trim();
   const primaryName = fullName || String(user.displayName || "").trim() || user.email || "User";
   const oib = String(user.oib || "").trim();
-  copy.append(
+  const lines = [
     createListLine(primaryName, "list-primary"),
     createListLine(user.email || "Bez emaila", "list-secondary"),
-    createListLine(oib ? `OIB ${oib}` : "OIB nije upisan", "list-tertiary"),
-  );
+  ];
+
+  if (!isControlPanelUserManagementScope()) {
+    lines.push(createListLine(oib ? `OIB ${oib}` : "OIB nije upisan", "list-tertiary"));
+  }
+
+  copy.append(...lines);
 
   stack.append(avatar, copy);
   cell.append(stack);
@@ -18549,6 +18612,15 @@ function createUserElectricalCell(user) {
     title: summary.title,
     subtitle: summary.subtitle,
     meta: summary.meta,
+  });
+}
+
+function createUserAccountAccessCell(user) {
+  const systemRoleLabel = getUserSystemRoleLabel(user.role);
+  const legacyUsername = String(user.legacyUsername || "").trim();
+  return createStackCell({
+    title: systemRoleLabel,
+    subtitle: legacyUsername ? `Legacy: ${legacyUsername}` : "Prijava preko emaila",
   });
 }
 
@@ -39246,30 +39318,104 @@ function buildUserPayload() {
   };
 }
 
+function getCurrentUserEditorRecord() {
+  const userId = String(userIdInput?.value || "").trim();
+  if (!userId) {
+    return null;
+  }
+
+  return state.users.find((item) => String(item?.id || "").trim() === userId) ?? null;
+}
+
+function syncUserManagementListChrome() {
+  const scopeConfig = getUserManagementScopeConfig();
+
+  if (userManagementKicker) {
+    userManagementKicker.textContent = scopeConfig.listKicker;
+  }
+
+  if (userManagementTitle) {
+    userManagementTitle.textContent = scopeConfig.listTitle;
+  }
+
+  if (userOpenFormButton) {
+    userOpenFormButton.textContent = scopeConfig.createButtonLabel;
+  }
+
+  if (usersProfileHeader) {
+    usersProfileHeader.textContent = scopeConfig.profileHeader;
+  }
+
+  if (usersMetaHeader) {
+    usersMetaHeader.textContent = scopeConfig.metaHeader;
+  }
+}
+
+function syncUserEditorScopeVisibility() {
+  const scopeConfig = getUserManagementScopeConfig();
+  const showPeopleDetails = !isControlPanelUserManagementScope();
+
+  userPeopleOnlyElements.forEach((element) => {
+    if (element instanceof HTMLElement) {
+      element.hidden = !showPeopleDetails;
+    }
+  });
+
+  if (userEditorContextNote) {
+    userEditorContextNote.textContent = scopeConfig.editorNote;
+    userEditorContextNote.hidden = showPeopleDetails;
+  }
+}
+
+function getUserManagementNoteText(currentOrganization = null) {
+  if (isControlPanelUserManagementScope()) {
+    const baseNote = "Ovdje vodiš samo korisnički račun, email i pristupe.";
+    if (getIsAdmin() && currentOrganization) {
+      return `${baseNote} Novi računi automatski pripadaju organizaciji ${currentOrganization.name}, a dokumentacija ostaje u People modulu.`;
+    }
+    return `${baseNote} Dokumentacija, potpisi i ovlaštenja uređuju se kroz People modul.`;
+  }
+
+  if (getIsSuperAdmin()) {
+    return "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.";
+  }
+
+  if (getIsAdmin()) {
+    return currentOrganization
+      ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
+      : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
+  }
+
+  return "Klikni bilo gdje na red korisnika za pregled podataka i dokumentacije.";
+}
+
 function syncUserEditorChrome(editing = false, user = null) {
+  const scopeConfig = getUserManagementScopeConfig();
+
   if (userPanelKicker) {
-    userPanelKicker.textContent = "People";
+    userPanelKicker.textContent = scopeConfig.editorKicker;
   }
 
   if (userPanelTitle) {
     userPanelTitle.textContent = editing
-      ? `Uredi korisnika · ${user?.fullName || user?.email || "User"}`
-      : "Novi korisnik";
+      ? `${scopeConfig.editorEditTitle} · ${user?.fullName || user?.email || "User"}`
+      : scopeConfig.editorCreateTitle;
   }
 
   if (userSubmitButton) {
-    userSubmitButton.textContent = editing ? "Spremi promjene" : "Spremi korisnika";
+    userSubmitButton.textContent = editing ? scopeConfig.submitEditLabel : scopeConfig.submitCreateLabel;
   }
 
   if (userSubmitShortcutButton) {
-    userSubmitShortcutButton.textContent = editing ? "Spremi promjene" : "Spremi korisnika";
+    userSubmitShortcutButton.textContent = editing ? scopeConfig.submitEditLabel : scopeConfig.submitCreateLabel;
   }
 
   if (userResetButton) {
-    userResetButton.textContent = editing ? "Odustani" : "Očisti";
+    userResetButton.textContent = editing ? scopeConfig.resetEditLabel : scopeConfig.resetCreateLabel;
   }
 
   userForm?.classList.toggle("is-editing", editing);
+  syncUserEditorScopeVisibility();
 }
 
 function buildLoginContentPayload() {
@@ -57627,6 +57773,7 @@ function renderLocations() {
 }
 
 function renderUsers() {
+  const showAccountAccess = isControlPanelUserManagementScope();
   const sortedUsers = [...state.users].sort((left, right) => String(
     left.displayName || left.fullName || left.email || "",
   ).localeCompare(
@@ -57674,9 +57821,11 @@ function renderUsers() {
       createBadgeCell(
         createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive)
       ),
-      createStackCell({
-        title: `${activeAuthorizationCount} aktivnih`
-      })
+      showAccountAccess
+        ? createUserAccountAccessCell(user)
+        : createStackCell({
+          title: `${activeAuthorizationCount} aktivnih`,
+        })
     );
 
     return row;
@@ -57815,6 +57964,10 @@ function renderManagement() {
   const isUsersTab = activePeopleTab === "users";
   const isAbsenceTab = activePeopleTab === "annual-leave" || activePeopleTab === "sick-leave";
   const isAbsenceReportTab = activePeopleTab === "absence-report";
+  const userManagementScopeConfig = getUserManagementScopeConfig();
+  const userManagementDescription = isUsersTab
+    ? userManagementScopeConfig.description
+    : activePeopleTabConfig.description;
 
   if (managementIntroPanel) {
     managementIntroPanel.hidden = true;
@@ -57833,8 +57986,10 @@ function renderManagement() {
   }
 
   if (peopleWorkspaceCopy) {
-    peopleWorkspaceCopy.textContent = activePeopleTabConfig.description;
+    peopleWorkspaceCopy.textContent = userManagementDescription;
   }
+
+  syncUserManagementListChrome();
 
   peopleWorkspaceTabButtons.forEach((button) => {
     const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
@@ -57858,41 +58013,42 @@ function renderManagement() {
 
   if (getIsSuperAdmin()) {
     if (managementViewKicker) {
-      managementViewKicker.textContent = "People";
+      managementViewKicker.textContent = isUsersTab && isControlPanelUserManagementScope() ? "Control panel" : "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = getPeopleWorkspaceTabLabel(activePeopleTab);
+      managementViewTitle.textContent = isUsersTab && isControlPanelUserManagementScope()
+        ? userManagementScopeConfig.listTitle
+        : getPeopleWorkspaceTabLabel(activePeopleTab);
     }
     if (managementViewDescription) {
-      managementViewDescription.textContent = activePeopleTabConfig.description;
+      managementViewDescription.textContent = userManagementDescription;
     }
     if (userManagementNote) {
       userManagementNote.hidden = !isUsersTab;
-      userManagementNote.textContent = "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.";
+      userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
     }
   } else if (getIsAdmin()) {
     if (managementViewKicker) {
-      managementViewKicker.textContent = "People";
+      managementViewKicker.textContent = isUsersTab && isControlPanelUserManagementScope() ? "Control panel" : "People";
     }
     if (managementViewTitle) {
-      managementViewTitle.textContent = getPeopleWorkspaceTabLabel(activePeopleTab);
+      managementViewTitle.textContent = isUsersTab && isControlPanelUserManagementScope()
+        ? userManagementScopeConfig.listTitle
+        : getPeopleWorkspaceTabLabel(activePeopleTab);
     }
     if (managementViewDescription) {
-      managementViewDescription.textContent = activePeopleTabConfig.description;
+      managementViewDescription.textContent = userManagementDescription;
     }
     if (userManagementNote) {
       userManagementNote.hidden = !isUsersTab;
-      userManagementNote.textContent = currentOrganization
-        ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
-        : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
+      userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
     }
   } else if (userManagementNote) {
     userManagementNote.hidden = !isUsersTab;
+    userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
   }
 
-  if (!userIdInput.value) {
-    syncUserEditorChrome(false);
-  }
+  syncUserEditorChrome(Boolean(userIdInput.value), getCurrentUserEditorRecord());
 
   if (isUsersTab) {
     renderUsers();
@@ -57929,6 +58085,10 @@ sidebarNavItems.forEach((button) => {
 
     if (!itemName) {
       return;
+    }
+
+    if (itemName === "people") {
+      setUserManagementScope("people");
     }
 
     activateSidebarItem(itemName, {
@@ -61199,6 +61359,7 @@ topbarShortcutDashboardButton?.addEventListener("click", () => {
 });
 
 dashboardOpenPeopleButton?.addEventListener("click", () => {
+  setUserManagementScope("control-panel");
   activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
 });
 
@@ -61905,6 +62066,7 @@ logoutButton?.addEventListener("click", () => {
 function resetAuthenticatedWorkspaceState() {
   resetChatState();
   state.user = null;
+  state.userManagementScope = "people";
   state.organizations = [];
   state.workOrders = [];
   state.reminders = [];

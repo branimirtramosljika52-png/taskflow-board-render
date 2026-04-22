@@ -1313,14 +1313,14 @@
                   <span id="dashboard-people-count" class="dashboard-control-badge">0 korisnika</span>
                 </div>
                 <p class="helper-copy">
-                  Upravljanje korisnicima, poslovnim rolama i ovlaštenjima za aktivnu organizaciju.
+                  Osnovni korisnički računi, emailovi i pristupi za aktivnu organizaciju. Dokumentacija i ovlaštenja ostaju u People modulu.
                 </p>
                 <div class="dashboard-control-card-meta">
                   <span id="dashboard-people-organization" class="dashboard-control-chip">Bez organizacije</span>
                   <span class="dashboard-control-chip">Control panel</span>
                 </div>
                 <div class="dashboard-control-card-actions">
-                  <button id="dashboard-open-people" type="button" class="primary-button">Otvori People</button>
+                  <button id="dashboard-open-people" type="button" class="primary-button">Otvori korisnike</button>
                 </div>
               </section>
 
@@ -2887,8 +2887,8 @@
           <section id="people-users-panel" class="panel people-management-panel">
             <div class="section-heading">
               <div>
-                <p class="section-kicker">People</p>
-                <h2>Korisnici</h2>
+                <p id="user-management-kicker" class="section-kicker">People</p>
+                <h2 id="user-management-title">Korisnici</h2>
               </div>
               <div class="masterdata-panel-actions">
                 <button id="user-open-form" type="button" class="primary-button">+ Novi korisnik</button>
@@ -2901,11 +2901,11 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Profil</th>
+                    <th id="users-profile-header">Profil</th>
                     <th>Organizacija</th>
                     <th>Rola</th>
                     <th>Aktivnost</th>
-                    <th>Ovlaštenja</th>
+                    <th id="users-meta-header">Ovlaštenja</th>
                   </tr>
                 </thead>
                 <tbody id="users-body"></tbody>
@@ -2947,11 +2947,11 @@
                       <span>Email</span>
                       <input id="user-email" type="email" maxlength="160" required />
                     </label>
-                    <label class="field">
+                    <label id="user-title-field" class="field" data-user-management-scope="people">
                       <span>Titula</span>
                       <input id="user-title" type="text" maxlength="160" />
                     </label>
-                    <label class="field">
+                    <label id="user-oib-field" class="field" data-user-management-scope="people">
                       <span>OIB</span>
                       <input id="user-oib" type="text" maxlength="32" inputmode="numeric" />
                     </label>
@@ -2991,8 +2991,12 @@
                     </label>
                   </div>
 
+                  <p id="user-editor-context-note" class="helper-copy" hidden>
+                    Ovdje vodiš samo osnovni korisnički račun. Dokumentacija, potpisi i ovlaštenja ostaju u People modulu.
+                  </p>
+
                   <div class="user-editor-modules">
-                    <section class="service-catalog-template-block user-editor-module user-documents-block">
+                    <section class="service-catalog-template-block user-editor-module user-documents-block" data-user-management-scope="people">
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Dokumentacija korisnika</p>
@@ -3006,7 +3010,7 @@
                     <div id="user-documents-list" class="module-attachment-list"></div>
                   </section>
 
-                  <section class="service-catalog-template-block user-editor-module user-signature-module-block">
+                  <section class="service-catalog-template-block user-editor-module user-signature-module-block" data-user-management-scope="people">
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Potpis korisnika</p>
@@ -3022,7 +3026,7 @@
                     <div id="user-electrical-signature-preview" class="user-signature-upload-preview is-empty" aria-live="polite"></div>
                   </section>
 
-                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
+                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block" data-user-management-scope="people">
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Ovlaštenja</p>
@@ -3070,7 +3074,7 @@
                     </div>
                   </section>
 
-                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block">
+                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block" data-user-management-scope="people">
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Ovlaštenja</p>
