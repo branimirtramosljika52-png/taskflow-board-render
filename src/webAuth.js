@@ -280,33 +280,65 @@ export function createAuthCookies({
   secure = false,
   domain = "",
 } = {}) {
-  return [
+  const normalizedDomain = normalizeCookieDomain(domain);
+  const cookies = [
     createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
       secure,
       maxAgeMs: ACCESS_TOKEN_MAX_AGE_MS,
-      domain,
+      domain: normalizedDomain,
     }),
     createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
       secure,
       maxAgeMs: REFRESH_TOKEN_MAX_AGE_MS,
-      domain,
+      domain: normalizedDomain,
     }),
   ];
+
+  if (normalizedDomain) {
+    cookies.push(
+      createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
+        secure,
+        maxAgeMs: ACCESS_TOKEN_MAX_AGE_MS,
+      }),
+      createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+        secure,
+        maxAgeMs: REFRESH_TOKEN_MAX_AGE_MS,
+      }),
+    );
+  }
+
+  return cookies;
 }
 
 export function clearAuthCookies({ secure = false, domain = "" } = {}) {
-  return [
+  const normalizedDomain = normalizeCookieDomain(domain);
+  const cookies = [
     createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, "", {
       secure,
       maxAgeMs: 0,
-      domain,
+      domain: normalizedDomain,
     }),
     createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, "", {
       secure,
       maxAgeMs: 0,
-      domain,
+      domain: normalizedDomain,
     }),
   ];
+
+  if (normalizedDomain) {
+    cookies.push(
+      createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, "", {
+        secure,
+        maxAgeMs: 0,
+      }),
+      createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, "", {
+        secure,
+        maxAgeMs: 0,
+      }),
+    );
+  }
+
+  return cookies;
 }
 
 export function getAccessTokenFromCookies(cookies) {
