@@ -2170,11 +2170,9 @@ export class MemoryTenantRepository {
 
   async authenticateUser(identifier, password) {
     const needle = dbString(identifier).toLowerCase();
-    const user = this.users.find((item) => (
-      item.email.toLowerCase() === needle
-      || item.legacyUsername.toLowerCase() === needle
-      || item.username.toLowerCase() === needle
-    ));
+    const user = this.users.find((item) => item.email.toLowerCase() === needle)
+      ?? this.users.find((item) => item.username.toLowerCase() === needle)
+      ?? this.users.find((item) => item.legacyUsername.toLowerCase() === needle);
 
     if (!user || !user.isActive) {
       return null;
@@ -2797,9 +2795,15 @@ export class MySqlTenantRepository {
           FROM app_users u
           LEFT JOIN organizations o ON o.id = u.organization_id
           WHERE LOWER(u.email) = ? OR LOWER(COALESCE(u.legacy_username, '')) = ?
+          ORDER BY
+            CASE
+              WHEN LOWER(u.email) = ? THEN 0
+              ELSE 1
+            END,
+            u.id ASC
           LIMIT 1
         `,
-        [needle, needle],
+        [needle, needle, needle],
       );
 
       const userRow = rows[0];

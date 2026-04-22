@@ -14,6 +14,38 @@ test("memory tenant repository authenticates default super admin", async () => {
   assert.equal(user.organizationId, "1");
 });
 
+test("memory tenant repository prefers exact email over legacy username collisions", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const emailOwner = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Email",
+    lastName: "Owner",
+    email: "collision@example.com",
+    password: "email-pass-123",
+    role: "user",
+  });
+
+  await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Legacy",
+    lastName: "Owner",
+    email: "legacy-owner@example.com",
+    password: "legacy-pass-123",
+    role: "user",
+    legacyUsername: "collision@example.com",
+  });
+
+  const authenticated = await repository.authenticateUser("collision@example.com", "email-pass-123");
+  assert.ok(authenticated);
+  assert.equal(authenticated.id, emailOwner.id);
+  assert.equal(authenticated.email, "collision@example.com");
+});
+
 test("memory tenant repository scopes snapshot by assigned companies", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
