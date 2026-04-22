@@ -1,5 +1,9 @@
 import mysql from "mysql2/promise";
-import { normalizeCompanyRolePermissions } from "./accessControl.js";
+import {
+  COMPANY_PERMISSION_SCOPE_GENERAL,
+  normalizeCompanyPermissionScopeId,
+  normalizeCompanyRolePermissions,
+} from "./accessControl.js";
 
 import {
   applyDashboardWidgetGridLayout,
@@ -137,6 +141,49 @@ async function ensureColumnExists(pool, tableName, columnName, definition) {
 
   if (rows.length === 0) {
     await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+async function ensureCompanyRolePermissionScopeSchema(pool) {
+  await ensureColumnExists(
+    pool,
+    "web_company_role_permissions",
+    "company_id",
+    `VARCHAR(64) NOT NULL DEFAULT '${COMPANY_PERMISSION_SCOPE_GENERAL}' AFTER organization_id`,
+  );
+
+  const [primaryKeyRows] = await pool.query(`
+    SELECT COLUMN_NAME
+    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'web_company_role_permissions'
+      AND CONSTRAINT_NAME = 'PRIMARY'
+    ORDER BY ORDINAL_POSITION ASC
+  `);
+  const primaryKeyColumns = primaryKeyRows.map((row) => String(row.COLUMN_NAME ?? "").trim().toLowerCase());
+  const hasScopedPrimaryKey = primaryKeyColumns.length === 3
+    && primaryKeyColumns[0] === "organization_id"
+    && primaryKeyColumns[1] === "company_id"
+    && primaryKeyColumns[2] === "profile_role";
+
+  if (!hasScopedPrimaryKey) {
+    await pool.query(`
+      ALTER TABLE web_company_role_permissions
+      DROP PRIMARY KEY,
+      ADD PRIMARY KEY (organization_id, company_id, profile_role)
+    `);
+  }
+
+  const [scopeIndexRows] = await pool.query(`
+    SHOW INDEX FROM web_company_role_permissions
+    WHERE Key_name = 'idx_web_company_role_permissions_org_company'
+  `);
+
+  if (scopeIndexRows.length === 0) {
+    await pool.query(`
+      ALTER TABLE web_company_role_permissions
+      ADD INDEX idx_web_company_role_permissions_org_company (organization_id, company_id)
+    `);
   }
 }
 
@@ -1658,6 +1705,7 @@ function mapCompanyRolePermissionEntry(row = {}) {
 
   return {
     organizationId,
+    companyId: normalizeCompanyPermissionScopeId(row.company_id),
     profileRole: dbString(row.profile_role).toLowerCase(),
     canView: Boolean(Number(row.can_view ?? 0)),
     canCreate: Boolean(Number(row.can_create ?? 0)),
@@ -2978,9 +3026,9 @@ async function fetchSnapshotFromConnection(connection) {
     .filter(Boolean);
 
   const [companyRolePermissionRows] = await connection.query(`
-    SELECT organization_id, profile_role, can_view, can_create, can_edit, can_delete, created_at, updated_at
+    SELECT organization_id, company_id, profile_role, can_view, can_create, can_edit, can_delete, created_at, updated_at
     FROM web_company_role_permissions
-    ORDER BY organization_id ASC, profile_role ASC
+    ORDER BY organization_id ASC, company_id ASC, profile_role ASC
   `);
 
   const companyRolePermissions = companyRolePermissionRows
@@ -4633,16 +4681,21 @@ export class InMemorySafetyRepository {
 
     const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions);
     const timestamp = new Date().toISOString();
-    const previousByRole = new Map(
+    const previousByScopeAndRole = new Map(
       this.snapshot.companyRolePermissions
         .filter((entry) => String(entry.organizationId) === safeOrganizationId)
-        .map((entry) => [String(entry.profileRole || "").toLowerCase(), entry]),
+        .map((entry) => [
+          `${normalizeCompanyPermissionScopeId(entry.companyId)}::${String(entry.profileRole || "").toLowerCase()}`,
+          entry,
+        ]),
     );
     const nextEntries = normalizedPermissions.map((entry) => {
+      const companyId = normalizeCompanyPermissionScopeId(entry.companyId);
       const profileRole = String(entry.profileRole || "").toLowerCase();
-      const previous = previousByRole.get(profileRole) ?? null;
+      const previous = previousByScopeAndRole.get(`${companyId}::${profileRole}`) ?? null;
       return {
         organizationId: safeOrganizationId,
+        companyId,
         profileRole,
         canView: Boolean(entry.canView),
         canCreate: Boolean(entry.canCreate),
@@ -5608,6 +5661,7 @@ export class MySqlSafetyRepository {
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_company_role_permissions (
         organization_id INT NOT NULL,
+        company_id VARCHAR(64) NOT NULL DEFAULT '${COMPANY_PERMISSION_SCOPE_GENERAL}',
         profile_role VARCHAR(32) NOT NULL,
         can_view TINYINT(1) NOT NULL DEFAULT 0,
         can_create TINYINT(1) NOT NULL DEFAULT 0,
@@ -5615,10 +5669,12 @@ export class MySqlSafetyRepository {
         can_delete TINYINT(1) NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (organization_id, profile_role),
-        INDEX idx_web_company_role_permissions_org (organization_id)
+        PRIMARY KEY (organization_id, company_id, profile_role),
+        INDEX idx_web_company_role_permissions_org (organization_id),
+        INDEX idx_web_company_role_permissions_org_company (organization_id, company_id)
       )
     `);
+    await ensureCompanyRolePermissionScopeSchema(this.pool);
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
@@ -8669,11 +8725,12 @@ export class MySqlSafetyRepository {
         await connection.query(
           `
             INSERT INTO web_company_role_permissions
-              (organization_id, profile_role, can_view, can_create, can_edit, can_delete)
-            VALUES (?, ?, ?, ?, ?, ?)
+              (organization_id, company_id, profile_role, can_view, can_create, can_edit, can_delete)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
           `,
           [
             safeOrganizationId,
+            normalizeCompanyPermissionScopeId(entry.companyId),
             String(entry.profileRole || "").trim().toLowerCase(),
             entry.canView ? 1 : 0,
             entry.canCreate ? 1 : 0,
@@ -8687,6 +8744,7 @@ export class MySqlSafetyRepository {
 
       return normalizedPermissions.map((entry) => ({
         organizationId: String(safeOrganizationId),
+        companyId: normalizeCompanyPermissionScopeId(entry.companyId),
         profileRole: String(entry.profileRole || "").trim().toLowerCase(),
         canView: Boolean(entry.canView),
         canCreate: Boolean(entry.canCreate),

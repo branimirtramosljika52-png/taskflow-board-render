@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 
 import {
+  COMPANY_PERMISSION_SCOPE_GENERAL,
   ROLE_ADMIN,
   ROLE_SUPER_ADMIN,
   ROLE_USER,
@@ -1468,44 +1469,80 @@ async function fetchCompanyAssignments(connection) {
 }
 
 function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], actor = null) {
-  const allowedCompanyIds = new Set(
+  const assignedCompanyIds = Array.from(new Set(
     assignments
       .filter((assignment) => String(assignment.organizationId) === String(organizationId))
       .map((assignment) => String(assignment.companyId)),
-  );
+  ));
   const actorRole = normalizeRole(actor?.role);
   const canViewSensitiveAbsenceData = actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN;
   const actorId = String(actor?.id ?? "");
-  const companyRolePermissions = normalizeCompanyRolePermissions((rawSnapshot.companyRolePermissions ?? []).filter((item) => (
-    String(item.organizationId) === String(organizationId)
-  )));
-  const companyPermissions = resolveCompanyPermissionsForActor(actor, companyRolePermissions);
+  const companyRolePermissions = normalizeCompanyRolePermissions(
+    (rawSnapshot.companyRolePermissions ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )),
+    [COMPANY_PERMISSION_SCOPE_GENERAL, ...assignedCompanyIds],
+  );
+  const companyGeneralPermissions = resolveCompanyPermissionsForActor(
+    actor,
+    companyRolePermissions,
+    COMPANY_PERMISSION_SCOPE_GENERAL,
+  );
+  const companyPermissionsByCompanyId = Object.fromEntries(
+    assignedCompanyIds.map((companyId) => [
+      companyId,
+      resolveCompanyPermissionsForActor(actor, companyRolePermissions, companyId),
+    ]),
+  );
+  const visibleCompanyIds = new Set(
+    actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN
+      ? assignedCompanyIds
+      : assignedCompanyIds.filter((companyId) => Boolean(companyPermissionsByCompanyId[companyId]?.canView)),
+  );
+  const scopedCompanyPermissions = Object.values(companyPermissionsByCompanyId);
 
   return {
     companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
-    companyPermissions: {
-      canView: Boolean(companyPermissions.canView),
-      canCreate: Boolean(companyPermissions.canCreate),
-      canEdit: Boolean(companyPermissions.canEdit),
-      canDelete: Boolean(companyPermissions.canDelete),
+    companyGeneralPermissions: {
+      canView: Boolean(companyGeneralPermissions.canView),
+      canCreate: Boolean(companyGeneralPermissions.canCreate),
+      canEdit: Boolean(companyGeneralPermissions.canEdit),
+      canDelete: Boolean(companyGeneralPermissions.canDelete),
     },
-    companies: (rawSnapshot.companies ?? []).filter((item) => allowedCompanyIds.has(String(item.id))),
-    locations: (rawSnapshot.locations ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
-    workOrders: (rawSnapshot.workOrders ?? []).filter((item) => allowedCompanyIds.has(String(item.companyId))),
+    companyPermissionsByCompanyId: Object.fromEntries(
+      Object.entries(companyPermissionsByCompanyId).map(([companyId, permissions]) => [
+        companyId,
+        {
+          canView: Boolean(permissions.canView),
+          canCreate: Boolean(permissions.canCreate),
+          canEdit: Boolean(permissions.canEdit),
+          canDelete: Boolean(permissions.canDelete),
+        },
+      ]),
+    ),
+    companyPermissions: {
+      canView: visibleCompanyIds.size > 0,
+      canCreate: Boolean(companyGeneralPermissions.canCreate),
+      canEdit: scopedCompanyPermissions.some((permissions) => Boolean(permissions.canEdit)),
+      canDelete: scopedCompanyPermissions.some((permissions) => Boolean(permissions.canDelete)),
+    },
+    companies: (rawSnapshot.companies ?? []).filter((item) => visibleCompanyIds.has(String(item.id))),
+    locations: (rawSnapshot.locations ?? []).filter((item) => visibleCompanyIds.has(String(item.companyId))),
+    workOrders: (rawSnapshot.workOrders ?? []).filter((item) => visibleCompanyIds.has(String(item.companyId))),
     reminders: (rawSnapshot.reminders ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )),
     todoTasks: (rawSnapshot.todoTasks ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
     offers: (rawSnapshot.offers ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
@@ -1514,7 +1551,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     })),
     purchaseOrders: (rawSnapshot.purchaseOrders ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
@@ -1524,7 +1561,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     })),
     contracts: (rawSnapshot.contracts ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
       linkedOfferIds: [...(item.linkedOfferIds ?? [])],
@@ -1534,7 +1571,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     })),
     drawings: (rawSnapshot.drawings ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      || (item.companyId && allowedCompanyIds.has(String(item.companyId)))
+      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
     )).map((item) => ({
       ...item,
       referenceDocuments: (item.referenceDocuments ?? []).map((document) => ({ ...document })),
@@ -3014,6 +3051,13 @@ export class MySqlTenantRepository {
         ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments, actor)
         : {
           companyRolePermissions: normalizeCompanyRolePermissions([]),
+          companyGeneralPermissions: {
+            canView: false,
+            canCreate: false,
+            canEdit: false,
+            canDelete: false,
+          },
+          companyPermissionsByCompanyId: {},
           companyPermissions: {
             canView: false,
             canCreate: false,

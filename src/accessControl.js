@@ -39,6 +39,7 @@ const COMPANY_PERMISSIONS_FULL = Object.freeze({
   canEdit: true,
   canDelete: true,
 });
+export const COMPANY_PERMISSION_SCOPE_GENERAL = "__general__";
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -204,15 +205,18 @@ export function canManageMasterData(actor) {
   return actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN;
 }
 
-function normalizeCompanyPermissionFlags(value = {}) {
+function normalizeCompanyPermissionFlags(value = {}, options = {}) {
   const source = value && typeof value === "object"
     ? value
     : {};
+  const separateCreateFromView = options && typeof options === "object"
+    ? options.separateCreateFromView === true
+    : false;
   const canViewRaw = toBooleanFlag(source.canView ?? source.view, false);
   const canCreateRaw = toBooleanFlag(source.canCreate ?? source.create, false);
   const canEditRaw = toBooleanFlag(source.canEdit ?? source.edit, false);
   const canDeleteRaw = toBooleanFlag(source.canDelete ?? source.delete, false);
-  const canView = canViewRaw || canCreateRaw || canEditRaw || canDeleteRaw;
+  const canView = canViewRaw || canEditRaw || canDeleteRaw || (!separateCreateFromView && canCreateRaw);
   const canCreate = canCreateRaw;
   const canEdit = canEditRaw || canDeleteRaw;
   const canDelete = canDeleteRaw;
@@ -225,37 +229,94 @@ function normalizeCompanyPermissionFlags(value = {}) {
   };
 }
 
-export function normalizeCompanyRolePermissionEntry(entry = {}, fallbackProfileRole = "new_user") {
+export function normalizeCompanyPermissionScopeId(value, fallback = COMPANY_PERMISSION_SCOPE_GENERAL) {
+  const normalized = normalizeText(value);
+  if (normalized) {
+    return normalized;
+  }
+
+  const fallbackValue = normalizeText(fallback);
+  return fallbackValue || COMPANY_PERMISSION_SCOPE_GENERAL;
+}
+
+function createCompanyPermissionEntryKey(companyId = "", profileRole = "new_user") {
+  return `${normalizeCompanyPermissionScopeId(companyId)}::${normalizeUserProfileRole(profileRole)}`;
+}
+
+export function normalizeCompanyRolePermissionEntry(
+  entry = {},
+  fallbackProfileRole = "new_user",
+  fallbackCompanyId = COMPANY_PERMISSION_SCOPE_GENERAL,
+) {
   const source = entry && typeof entry === "object"
     ? entry
     : {};
+  const companyId = normalizeCompanyPermissionScopeId(
+    source.companyId ?? source.company_id ?? source.scopeId ?? source.scope_id,
+    fallbackCompanyId,
+  );
 
   return {
+    companyId,
     profileRole: normalizeUserProfileRole(
       source.profileRole ?? source.profile_role ?? source.role,
       fallbackProfileRole,
     ),
-    ...normalizeCompanyPermissionFlags(source),
+    isExplicit: source.isExplicit !== false,
+    ...normalizeCompanyPermissionFlags(source, {
+      separateCreateFromView: companyId === COMPANY_PERMISSION_SCOPE_GENERAL,
+    }),
   };
 }
 
-export function normalizeCompanyRolePermissions(entries = []) {
+export function normalizeCompanyRolePermissions(entries = [], scopeIds = []) {
   const list = Array.isArray(entries) ? entries : [];
-  const byRole = new Map(
-    USER_PROFILE_ROLE_VALUES.map((profileRole) => [profileRole, { profileRole, ...COMPANY_PERMISSIONS_NONE }]),
-  );
+  const requestedScopeIds = Array.isArray(scopeIds) ? scopeIds : [scopeIds];
+  const normalizedScopeIds = Array.from(new Set([
+    COMPANY_PERMISSION_SCOPE_GENERAL,
+    ...requestedScopeIds.map((scopeId) => normalizeCompanyPermissionScopeId(scopeId)).filter(Boolean),
+    ...list.map((entry) => normalizeCompanyPermissionScopeId(entry?.companyId ?? entry?.company_id)).filter(Boolean),
+  ]));
+  const byScopeAndRole = new Map();
+
+  normalizedScopeIds.forEach((companyId) => {
+    USER_PROFILE_ROLE_VALUES.forEach((profileRole) => {
+      byScopeAndRole.set(
+        createCompanyPermissionEntryKey(companyId, profileRole),
+        {
+          companyId,
+          profileRole,
+          isExplicit: false,
+          ...COMPANY_PERMISSIONS_NONE,
+        },
+      );
+    });
+  });
 
   list.forEach((entry) => {
     const normalized = normalizeCompanyRolePermissionEntry(entry);
-    byRole.set(normalized.profileRole, normalized);
+    byScopeAndRole.set(
+      createCompanyPermissionEntryKey(normalized.companyId, normalized.profileRole),
+      normalized,
+    );
   });
 
-  return USER_PROFILE_ROLE_VALUES.map((profileRole) => ({
-    ...(byRole.get(profileRole) ?? { profileRole, ...COMPANY_PERMISSIONS_NONE }),
-  }));
+  return normalizedScopeIds.flatMap((companyId) => USER_PROFILE_ROLE_VALUES.map((profileRole) => ({
+    ...(byScopeAndRole.get(createCompanyPermissionEntryKey(companyId, profileRole))
+      ?? {
+        companyId,
+        profileRole,
+        isExplicit: false,
+        ...COMPANY_PERMISSIONS_NONE,
+      }),
+  })));
 }
 
-export function resolveCompanyPermissionsForActor(actor, rolePermissions = []) {
+export function resolveCompanyPermissionsForActor(
+  actor,
+  rolePermissions = [],
+  companyId = COMPANY_PERMISSION_SCOPE_GENERAL,
+) {
   const actorRole = normalizeRole(actor?.role);
 
   if (actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN) {
@@ -263,32 +324,60 @@ export function resolveCompanyPermissionsForActor(actor, rolePermissions = []) {
   }
 
   const profileRole = normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "new_user");
-  const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions);
-  const roleEntry = normalizedPermissions.find((entry) => entry.profileRole === profileRole)
-    ?? { profileRole, ...COMPANY_PERMISSIONS_NONE };
+  const normalizedCompanyId = normalizeCompanyPermissionScopeId(companyId);
+  const normalizedInputPermissions = (Array.isArray(rolePermissions) ? rolePermissions : [])
+    .map((entry) => normalizeCompanyRolePermissionEntry(entry));
+  const normalizedPermissions = normalizeCompanyRolePermissions(rolePermissions, [
+    COMPANY_PERMISSION_SCOPE_GENERAL,
+    normalizedCompanyId,
+  ]);
+  const generalEntry = normalizedPermissions.find((entry) => (
+    entry.companyId === COMPANY_PERMISSION_SCOPE_GENERAL
+    && entry.profileRole === profileRole
+  )) ?? {
+    companyId: COMPANY_PERMISSION_SCOPE_GENERAL,
+    profileRole,
+    ...COMPANY_PERMISSIONS_NONE,
+  };
+  const explicitScopedEntry = normalizedInputPermissions
+    .find((entry) => (
+      entry.isExplicit !== false
+      && entry.companyId === normalizedCompanyId
+      && entry.profileRole === profileRole
+    ));
+  const explicitGeneralEntry = normalizedInputPermissions
+    .find((entry) => (
+      entry.isExplicit !== false
+      && entry.companyId === COMPANY_PERMISSION_SCOPE_GENERAL
+      && entry.profileRole === profileRole
+    ));
+  const effectiveGeneralEntry = explicitGeneralEntry ?? generalEntry;
+  const effectiveScopedEntry = normalizedCompanyId === COMPANY_PERMISSION_SCOPE_GENERAL
+    ? effectiveGeneralEntry
+    : explicitScopedEntry ?? effectiveGeneralEntry;
 
   return {
-    canView: Boolean(roleEntry.canView),
-    canCreate: Boolean(roleEntry.canCreate),
-    canEdit: Boolean(roleEntry.canEdit),
-    canDelete: Boolean(roleEntry.canDelete),
+    canView: Boolean(effectiveScopedEntry.canView),
+    canCreate: Boolean(effectiveGeneralEntry.canCreate),
+    canEdit: Boolean(effectiveScopedEntry.canEdit),
+    canDelete: Boolean(effectiveScopedEntry.canDelete),
   };
 }
 
-export function canViewCompanies(actor, rolePermissions = []) {
-  return resolveCompanyPermissionsForActor(actor, rolePermissions).canView;
+export function canViewCompanies(actor, rolePermissions = [], companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions, companyId).canView;
 }
 
-export function canCreateCompanies(actor, rolePermissions = []) {
-  return resolveCompanyPermissionsForActor(actor, rolePermissions).canCreate;
+export function canCreateCompanies(actor, rolePermissions = [], companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions, companyId).canCreate;
 }
 
-export function canEditCompanies(actor, rolePermissions = []) {
-  return resolveCompanyPermissionsForActor(actor, rolePermissions).canEdit;
+export function canEditCompanies(actor, rolePermissions = [], companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions, companyId).canEdit;
 }
 
-export function canDeleteCompanies(actor, rolePermissions = []) {
-  return resolveCompanyPermissionsForActor(actor, rolePermissions).canDelete;
+export function canDeleteCompanies(actor, rolePermissions = [], companyId = COMPANY_PERMISSION_SCOPE_GENERAL) {
+  return resolveCompanyPermissionsForActor(actor, rolePermissions, companyId).canDelete;
 }
 
 export function canManageWorkOrders(actor) {

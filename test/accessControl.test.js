@@ -129,3 +129,41 @@ test("company permissions resolve by profile role while admin and super admin st
     canDelete: true,
   });
 });
+
+test("company permissions can be scoped per company while create stays general", () => {
+  const rolePermissions = normalizeCompanyRolePermissions([
+    {
+      companyId: "__general__",
+      profileRole: "manager",
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: false,
+    },
+    {
+      companyId: "company-1",
+      profileRole: "manager",
+      canView: false,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+    },
+  ], ["__general__", "company-1", "company-2"]);
+
+  const managerUser = { role: ROLE_USER, profileRole: "manager" };
+
+  assert.deepEqual(resolveCompanyPermissionsForActor(managerUser, rolePermissions, "company-1"), {
+    canView: false,
+    canCreate: true,
+    canEdit: false,
+    canDelete: false,
+  });
+  assert.deepEqual(resolveCompanyPermissionsForActor(managerUser, rolePermissions, "company-2"), {
+    canView: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: false,
+  });
+  assert.equal(canEditCompanies(managerUser, rolePermissions, "company-1"), false);
+  assert.equal(canEditCompanies(managerUser, rolePermissions, "company-2"), true);
+});

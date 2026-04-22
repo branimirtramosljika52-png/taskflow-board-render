@@ -152,6 +152,64 @@ test("memory tenant repository resolves company permissions by profile role", as
   assert.equal(scoped.companies[0].id, "company-77");
 });
 
+test("memory tenant repository filters company snapshot by company-specific permissions", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "Scoped Company Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-1");
+  await repository.assignCompanyToOrganization(organization.id, "company-2");
+
+  const manager = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Maja",
+    lastName: "Manager",
+    email: "maja-manager@example.com",
+    password: "secret123",
+    role: "user",
+    profileRole: "manager",
+  });
+
+  const scoped = await repository.getSnapshot(manager, organization.id, {
+    companies: [
+      { id: "company-1", name: "Alpha" },
+      { id: "company-2", name: "Beta" },
+    ],
+    locations: [
+      { id: "location-1", companyId: "company-1", name: "A1" },
+      { id: "location-2", companyId: "company-2", name: "B1" },
+    ],
+    companyRolePermissions: [
+      {
+        organizationId: organization.id,
+        companyId: "__general__",
+        profileRole: "manager",
+        canView: false,
+        canCreate: true,
+        canEdit: false,
+        canDelete: false,
+      },
+      {
+        organizationId: organization.id,
+        companyId: "company-2",
+        profileRole: "manager",
+        canView: true,
+        canCreate: false,
+        canEdit: true,
+        canDelete: false,
+      },
+    ],
+  });
+
+  assert.equal(scoped.companyPermissions.canCreate, true);
+  assert.equal(scoped.companyPermissions.canView, true);
+  assert.equal(scoped.companies.length, 1);
+  assert.equal(scoped.companies[0].id, "company-2");
+  assert.equal(scoped.locations.length, 1);
+  assert.equal(scoped.locations[0].companyId, "company-2");
+});
+
 test("memory tenant repository lets admins create users only inside their organization", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
