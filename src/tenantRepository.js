@@ -39,6 +39,7 @@ const SIGNUP_STATUS_APPROVED = "approved";
 const SIGNUP_STATUS_REJECTED = "rejected";
 const TEMPORARY_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const TEMPORARY_PASSWORD_LENGTH = 12;
+const PASSWORD_POLICY_MESSAGE = "Lozinka mora imati najmanje 8 znakova, barem 1 veliko slovo i najmanje 2 broja.";
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -46,16 +47,36 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
+function meetsPasswordPolicy(password = "") {
+  const normalized = String(password ?? "");
+  const digitMatches = normalized.match(/\d/g) ?? [];
+
+  return normalized.length >= 8
+    && /[A-Z]/.test(normalized)
+    && digitMatches.length >= 2;
+}
+
+function assertPasswordPolicy(password, message = PASSWORD_POLICY_MESSAGE) {
+  if (!meetsPasswordPolicy(password)) {
+    throw createHttpError(400, message);
+  }
+}
+
 function generateTemporaryPassword(length = TEMPORARY_PASSWORD_LENGTH) {
   const passwordLength = Math.max(10, Number(length) || TEMPORARY_PASSWORD_LENGTH);
-  const bytes = randomBytes(passwordLength);
-  let password = "";
 
-  for (const byte of bytes) {
-    password += TEMPORARY_PASSWORD_ALPHABET[byte % TEMPORARY_PASSWORD_ALPHABET.length];
+  while (true) {
+    const bytes = randomBytes(passwordLength);
+    let password = "";
+
+    for (const byte of bytes) {
+      password += TEMPORARY_PASSWORD_ALPHABET[byte % TEMPORARY_PASSWORD_ALPHABET.length];
+    }
+
+    if (meetsPasswordPolicy(password)) {
+      return password;
+    }
   }
-
-  return password;
 }
 
 function dbString(value) {
@@ -2509,6 +2530,9 @@ export class MemoryTenantRepository {
 
     assertText(normalized.email, "Email je obavezan.");
     assertText(effectivePassword, "Lozinka je obavezna.");
+    if (!useTemporaryPassword) {
+      assertPasswordPolicy(effectivePassword);
+    }
 
     const organizations = this.organizations.filter((item) => targetOrganizationIds.includes(String(item.id)));
 
@@ -2607,6 +2631,7 @@ export class MemoryTenantRepository {
     current.updatedAt = new Date().toISOString();
 
     if (normalized.password) {
+      assertPasswordPolicy(normalized.password);
       current.passwordHash = await createPasswordHash(normalized.password);
       current.mustChangePassword = false;
     }
@@ -2672,9 +2697,11 @@ export class MemoryTenantRepository {
 
     const normalizedPassword = dbString(newPassword);
     assertText(normalizedPassword, "Nova lozinka je obavezna.");
+    assertPasswordPolicy(normalizedPassword);
     current.passwordHash = await createPasswordHash(normalizedPassword);
     current.mustChangePassword = false;
     current.updatedAt = new Date().toISOString();
+    await this.deleteRefreshTokensByUserId(current.id);
     return this.getUserById(current.id);
   }
 
@@ -2743,6 +2770,7 @@ export class MemoryTenantRepository {
     assertText(normalized.lastName, "Prezime je obavezno.");
     assertText(normalized.email, "Email je obavezan.");
     assertText(normalized.password, "Lozinka je obavezna.");
+    assertPasswordPolicy(normalized.password);
 
     if (this.users.some((item) => item.email.toLowerCase() === normalized.email)) {
       throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
@@ -3423,6 +3451,9 @@ export class MySqlTenantRepository {
 
     assertText(normalized.email, "Email je obavezan.");
     assertText(effectivePassword, "Lozinka je obavezna.");
+    if (!useTemporaryPassword) {
+      assertPasswordPolicy(effectivePassword);
+    }
     const connection = await this.pool.getConnection();
 
     try {
@@ -3643,6 +3674,7 @@ export class MySqlTenantRepository {
       ];
 
       if (normalized.password) {
+        assertPasswordPolicy(normalized.password);
         updateFields.push("password_hash = ?");
         params.push(await createPasswordHash(normalized.password));
         updateFields.push("must_change_password = 0");
@@ -3788,9 +3820,11 @@ export class MySqlTenantRepository {
   async changeOwnPassword(actor, newPassword) {
     const normalizedPassword = dbString(newPassword);
     assertText(normalizedPassword, "Nova lozinka je obavezna.");
+    assertPasswordPolicy(normalizedPassword);
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
       const [result] = await connection.query(
         `
           UPDATE app_users
@@ -3803,10 +3837,16 @@ export class MySqlTenantRepository {
       );
 
       if (result.affectedRows === 0) {
+        await connection.rollback();
         return null;
       }
 
+      await this.deleteRefreshTokensByUserId(actor?.id, connection);
+      await connection.commit();
       return this.getUserById(actor.id);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
@@ -3991,6 +4031,7 @@ export class MySqlTenantRepository {
     assertText(normalized.lastName, "Prezime je obavezno.");
     assertText(normalized.email, "Email je obavezan.");
     assertText(normalized.password, "Lozinka je obavezna.");
+    assertPasswordPolicy(normalized.password);
     const connection = await this.pool.getConnection();
 
     try {

@@ -1496,6 +1496,15 @@ function setAuthView(view = "login") {
   renderAuthState();
 }
 
+function meetsPasswordPolicy(password = "") {
+  const normalized = String(password ?? "");
+  const digitMatches = normalized.match(/\d/g) ?? [];
+
+  return normalized.length >= 8
+    && /[A-Z]/.test(normalized)
+    && digitMatches.length >= 2;
+}
+
 function getWorkOrderFilterFieldDefinition(fieldValue = "") {
   return WORK_ORDER_FILTER_FIELD_DEFINITIONS.find((field) => field.value === fieldValue)
     ?? WORK_ORDER_FILTER_FIELD_DEFINITIONS[0];
@@ -1773,6 +1782,7 @@ let companyEditorRelatedDataIdleId = 0;
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
+const PASSWORD_POLICY_MESSAGE = "Lozinka mora imati najmanje 8 znakova, barem 1 veliko slovo i najmanje 2 broja.";
 const globalLoadingState = {
   count: 0,
   visible: false,
@@ -37886,8 +37896,8 @@ function renderAuthState() {
   if (changePasswordCopy) {
     const resetEmail = state.authResetEmail || state.user?.email || "";
     changePasswordCopy.textContent = resetEmail
-      ? `Prijavljen si s privremenom lozinkom za ${resetEmail}. Odmah postavi novu za nastavak rada.`
-      : "Prijavljen si s privremenom lozinkom. Odmah postavi novu za nastavak rada.";
+      ? `Prijavljen si s privremenom lozinkom za ${resetEmail}. Odmah postavi novu za nastavak rada. ${PASSWORD_POLICY_MESSAGE}`
+      : `Prijavljen si s privremenom lozinkom. Odmah postavi novu za nastavak rada. ${PASSWORD_POLICY_MESSAGE}`;
   }
 
   authScreen.hidden = workspaceReady;
@@ -62227,10 +62237,16 @@ async function handleForcedPasswordChangeSubmit(event) {
 
   const newPassword = String(changePasswordNewInput?.value ?? "");
   const confirmPassword = String(changePasswordConfirmInput?.value ?? "");
+  const targetEmail = state.authResetEmail || state.user?.email || "";
   setInlineMessage(changePasswordError, "");
 
   if (!newPassword) {
     setInlineMessage(changePasswordError, "Unesi novu lozinku.");
+    return;
+  }
+
+  if (!meetsPasswordPolicy(newPassword)) {
+    setInlineMessage(changePasswordError, PASSWORD_POLICY_MESSAGE);
     return;
   }
 
@@ -62250,10 +62266,11 @@ async function handleForcedPasswordChangeSubmit(event) {
         },
       });
 
-      state.user = payload.user ?? state.user;
-      state.authResetEmail = "";
-      document.body.classList.add("is-auth-leaving");
-      await refreshSnapshot();
+      resetAuthenticatedWorkspaceState();
+      if (loginEmailInput) {
+        loginEmailInput.value = payload.email || targetEmail;
+      }
+      setInlineMessage(loginError, "Lozinka je promijenjena. Prijavi se ponovno novom lozinkom.", "success");
       changePasswordForm?.reset();
     }, { immediate: true });
   } catch (error) {

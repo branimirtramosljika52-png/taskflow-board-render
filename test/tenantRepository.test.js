@@ -31,7 +31,7 @@ test("memory tenant repository prefers exact email over legacy username collisio
     firstName: "Email",
     lastName: "Owner",
     email: "collision@example.com",
-    password: "email-pass-123",
+    password: "Email-pass-123",
     role: "user",
   });
 
@@ -40,12 +40,12 @@ test("memory tenant repository prefers exact email over legacy username collisio
     firstName: "Legacy",
     lastName: "Owner",
     email: "legacy-owner@example.com",
-    password: "legacy-pass-123",
+    password: "Legacy-pass-123",
     role: "user",
     legacyUsername: "collision@example.com",
   });
 
-  const authenticated = await repository.authenticateUser("collision@example.com", "email-pass-123");
+  const authenticated = await repository.authenticateUser("collision@example.com", "Email-pass-123");
   assert.ok(authenticated);
   assert.equal(authenticated.id, emailOwner.id);
   assert.equal(authenticated.email, "collision@example.com");
@@ -126,7 +126,7 @@ test("memory tenant repository resolves company permissions by profile role", as
     firstName: "Pero",
     lastName: "Manager",
     email: "pero-manager@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     profileRole: "manager",
   });
@@ -171,7 +171,7 @@ test("memory tenant repository collapses legacy scoped company permissions into 
     firstName: "Maja",
     lastName: "Manager",
     email: "maja-manager@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     profileRole: "manager",
   });
@@ -225,7 +225,7 @@ test("memory tenant repository lets admins create users only inside their organi
     firstName: "Ana",
     lastName: "Admin",
     email: "ana@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "admin",
   });
 
@@ -234,7 +234,7 @@ test("memory tenant repository lets admins create users only inside their organi
     firstName: "Iva",
     lastName: "User",
     email: "iva@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
   });
 
@@ -246,7 +246,7 @@ test("memory tenant repository lets admins create users only inside their organi
       firstName: "No",
       lastName: "Access",
       email: "blocked@example.com",
-      password: "secret123",
+      password: "Secret123",
       role: "user",
     }),
     /Nemate pravo kreirati ovog korisnika/,
@@ -258,7 +258,7 @@ test("memory tenant repository lets admins create users only inside their organi
       firstName: "Another",
       lastName: "Admin",
       email: "another-admin@example.com",
-      password: "secret123",
+      password: "Secret123",
       role: "admin",
     }),
     /Nemate pravo kreirati ovog korisnika/,
@@ -279,7 +279,7 @@ test("memory tenant repository supports users with access to multiple organizati
     firstName: "Mia",
     lastName: "Multi",
     email: "mia@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "admin",
   });
 
@@ -318,7 +318,7 @@ test("memory tenant repository keeps generic user documents separate from panic 
     firstName: "Maja",
     lastName: "Docs",
     email: "maja-docs@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     documents: [
       {
@@ -354,7 +354,7 @@ test("memory tenant repository keeps panic qualification signature on user", asy
     firstName: "Iva",
     lastName: "Potpis",
     email: "iva-potpis@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     electricalQualification: {
       canInspect: true,
@@ -378,7 +378,7 @@ test("memory tenant repository keeps additional switch-off qualifications on use
     firstName: "Nikola",
     lastName: "Tipkalo",
     email: "nikola-tipkalo@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     electricalQualification: {
       canInspect: false,
@@ -415,7 +415,7 @@ test("memory tenant repository stores display name and profile role on user", as
     profileRole: "senior_user",
     title: "dipl. ing. el.",
     email: "ana-profile@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
   });
 
@@ -434,7 +434,7 @@ test("memory tenant repository stores qualification validity windows", async () 
     firstName: "Marko",
     lastName: "Rok",
     email: "marko-rok@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "user",
     electricalQualification: {
       canInspect: true,
@@ -465,7 +465,7 @@ test("memory tenant repository stores and approves signup requests", async () =>
     firstName: "Luka",
     lastName: "Test",
     email: "luka@example.com",
-    password: "tajna123",
+    password: "Tajna123",
     phone: "+385 91 000 0000",
   });
 
@@ -482,7 +482,7 @@ test("memory tenant repository stores and approves signup requests", async () =>
 
   await repository.approveSignupRequest(superAdmin, response.request.id);
 
-  const approvedUser = await repository.authenticateUser("luka@example.com", "tajna123");
+  const approvedUser = await repository.authenticateUser("luka@example.com", "Tajna123");
   assert.ok(approvedUser);
   assert.equal(approvedUser.role, "admin");
   assert.equal(approvedUser.organizationName, "Nova Organizacija");
@@ -502,7 +502,7 @@ test("memory tenant repository approves signup requests into an existing organiz
     firstName: "Iva",
     lastName: "Requester",
     email: "iva-request@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   await repository.approveSignupRequest(superAdmin, response.request.id, {
@@ -510,7 +510,7 @@ test("memory tenant repository approves signup requests into an existing organiz
     role: "user",
   });
 
-  const approvedUser = await repository.authenticateUser("iva-request@example.com", "tajna123");
+  const approvedUser = await repository.authenticateUser("iva-request@example.com", "Tajna123");
   assert.ok(approvedUser);
   assert.equal(approvedUser.role, "user");
   assert.equal(approvedUser.organizationId, existingOrganization.id);
@@ -526,7 +526,7 @@ test("memory tenant repository blocks duplicate pending signup requests by email
     firstName: "Ana",
     lastName: "Admin",
     email: "ana@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   await assert.rejects(
@@ -536,7 +536,7 @@ test("memory tenant repository blocks duplicate pending signup requests by email
       firstName: "Ana",
       lastName: "Admin",
       email: "ana@example.com",
-      password: "tajna123",
+      password: "Tajna123",
     }),
     /vec poslan/,
   );
@@ -553,7 +553,7 @@ test("memory tenant repository requires valid organization oib for signup reques
       firstName: "Ana",
       lastName: "Admin",
       email: "ana-oib@example.com",
-      password: "tajna123",
+      password: "Tajna123",
     }),
     /OIB organizacije/,
   );
@@ -569,7 +569,7 @@ test("memory tenant repository accepts signup requests without organization oib"
     firstName: "Ana",
     lastName: "Requester",
     email: "ana-no-oib@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   assert.equal(response.ok, true);
@@ -592,10 +592,10 @@ test("memory tenant repository lets organization admin approve matching OIB sign
     firstName: "Org",
     lastName: "Admin",
     email: "org-admin@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "admin",
   });
-  const orgAdmin = await repository.authenticateUser("org-admin@example.com", "secret123");
+  const orgAdmin = await repository.authenticateUser("org-admin@example.com", "Secret123");
 
   const request = await repository.submitSignupRequest({
     organizationName: "Org A Request",
@@ -603,14 +603,14 @@ test("memory tenant repository lets organization admin approve matching OIB sign
     firstName: "Luka",
     lastName: "Approval",
     email: "luka-approval@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   await repository.approveSignupRequest(orgAdmin, request.request.id, {
     role: "admin",
   });
 
-  const approvedUser = await repository.authenticateUser("luka-approval@example.com", "tajna123");
+  const approvedUser = await repository.authenticateUser("luka-approval@example.com", "Tajna123");
   assert.ok(approvedUser);
   assert.equal(approvedUser.organizationId, organization.id);
   assert.equal(approvedUser.role, "user");
@@ -631,10 +631,10 @@ test("memory tenant repository blocks organization admin from approving signup w
     firstName: "Org",
     lastName: "Admin",
     email: "org-admin-2@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "admin",
   });
-  const orgAdmin = await repository.authenticateUser("org-admin-2@example.com", "secret123");
+  const orgAdmin = await repository.authenticateUser("org-admin-2@example.com", "Secret123");
 
   const request = await repository.submitSignupRequest({
     organizationName: "No OIB Org",
@@ -642,7 +642,7 @@ test("memory tenant repository blocks organization admin from approving signup w
     firstName: "Mia",
     lastName: "NoOib",
     email: "mia-no-oib@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   await assert.rejects(
@@ -670,10 +670,10 @@ test("memory tenant repository scopes visible signup requests for organization a
     firstName: "Org",
     lastName: "Admin",
     email: "org-admin-3@example.com",
-    password: "secret123",
+    password: "Secret123",
     role: "admin",
   });
-  const orgAdmin = await repository.authenticateUser("org-admin-3@example.com", "secret123");
+  const orgAdmin = await repository.authenticateUser("org-admin-3@example.com", "Secret123");
 
   const requestA = await repository.submitSignupRequest({
     organizationName: "Org A Request",
@@ -681,7 +681,7 @@ test("memory tenant repository scopes visible signup requests for organization a
     firstName: "A",
     lastName: "One",
     email: "req-a@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
   await repository.submitSignupRequest({
     organizationName: "Org B Request",
@@ -689,7 +689,7 @@ test("memory tenant repository scopes visible signup requests for organization a
     firstName: "B",
     lastName: "Two",
     email: "req-b@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
   await repository.submitSignupRequest({
     organizationName: "No OIB Request",
@@ -697,7 +697,7 @@ test("memory tenant repository scopes visible signup requests for organization a
     firstName: "C",
     lastName: "Three",
     email: "req-c@example.com",
-    password: "tajna123",
+    password: "Tajna123",
   });
 
   const adminSnapshot = await repository.getSnapshot(orgAdmin, organizationA.id, {
@@ -745,6 +745,9 @@ test("memory tenant repository emails a temporary password when creating user wi
 
   const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
   assert.ok(temporaryPassword);
+  assert.match(temporaryPassword, /[A-Z]/);
+  assert.ok((temporaryPassword.match(/\d/g) ?? []).length >= 2);
+  assert.ok(temporaryPassword.length >= 8);
 
   const authenticated = await repository.authenticateUser("temp-user@example.com", temporaryPassword);
   assert.ok(authenticated);
@@ -773,7 +776,7 @@ test("memory tenant repository resets password from forgot-password flow by emai
     firstName: "Forgot",
     lastName: "Password",
     email: "forgot-user@example.com",
-    password: "start-pass-123",
+    password: "Start-pass-123",
     role: "user",
   });
 
@@ -784,7 +787,7 @@ test("memory tenant repository resets password from forgot-password flow by emai
   const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
   assert.ok(temporaryPassword);
 
-  const oldPasswordAuth = await repository.authenticateUser("forgot-user@example.com", "start-pass-123");
+  const oldPasswordAuth = await repository.authenticateUser("forgot-user@example.com", "Start-pass-123");
   assert.equal(oldPasswordAuth, null);
 
   const temporaryPasswordAuth = await repository.authenticateUser("forgot-user@example.com", temporaryPassword);
@@ -814,7 +817,7 @@ test("memory tenant repository lets admin send temporary password email and requ
     firstName: "People",
     lastName: "Reset",
     email: "people-reset@example.com",
-    password: "initial-pass-123",
+    password: "Initial-pass-123",
     role: "user",
   });
 
@@ -830,14 +833,50 @@ test("memory tenant repository lets admin send temporary password email and requ
   assert.ok(loginWithTemp);
   assert.equal(loginWithTemp.mustChangePassword, true);
 
-  const changedUser = await repository.changeOwnPassword(loginWithTemp, "new-final-pass-123");
+  const changedUser = await repository.changeOwnPassword(loginWithTemp, "New-final-pass-123");
   assert.ok(changedUser);
   assert.equal(changedUser.mustChangePassword, false);
 
   const oldTempLogin = await repository.authenticateUser("people-reset@example.com", temporaryPassword);
   assert.equal(oldTempLogin, null);
 
-  const finalLogin = await repository.authenticateUser("people-reset@example.com", "new-final-pass-123");
+  const finalLogin = await repository.authenticateUser("people-reset@example.com", "New-final-pass-123");
   assert.ok(finalLogin);
   assert.equal(finalLogin.mustChangePassword, false);
+});
+
+test("memory tenant repository rejects weak passwords when changing own password", async () => {
+  const sentMessages = [];
+  const repository = new MemoryTenantRepository({
+    sendMail: async (message) => {
+      sentMessages.push(message);
+      return {
+        ok: true,
+        skipped: false,
+        messageId: `msg-${sentMessages.length}`,
+      };
+    },
+  });
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Reset",
+    lastName: "Policy",
+    email: "reset-policy@example.com",
+    role: "user",
+  });
+  assert.ok(createdUser);
+
+  const temporaryPassword = extractTemporaryPassword(sentMessages[0]);
+  const temporaryLogin = await repository.authenticateUser("reset-policy@example.com", temporaryPassword);
+  assert.ok(temporaryLogin);
+
+  await assert.rejects(
+    () => repository.changeOwnPassword(temporaryLogin, "short1"),
+    /Lozinka mora imati najmanje 8 znakova, barem 1 veliko slovo i najmanje 2 broja/,
+  );
 });

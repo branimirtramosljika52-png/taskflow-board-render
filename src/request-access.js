@@ -8,6 +8,7 @@ const passwordInput = document.querySelector("#request-password");
 const passwordRepeatInput = document.querySelector("#request-password-repeat");
 const submitButton = document.querySelector("#request-submit-button");
 const feedback = document.querySelector("#request-feedback");
+const PASSWORD_POLICY_MESSAGE = "Password must be at least 8 characters long, include 1 uppercase letter and at least 2 numbers.";
 
 function normalizeOib(value) {
   return String(value ?? "").replace(/\s+/g, "").trim();
@@ -58,6 +59,20 @@ function validatePasswordMatch() {
   return isValid;
 }
 
+function validatePasswordPolicy() {
+  const password = String(passwordInput?.value ?? "");
+  const digitMatches = password.match(/\d/g) ?? [];
+  const isValid = password.length >= 8
+    && /[A-Z]/.test(password)
+    && digitMatches.length >= 2;
+
+  if (passwordInput) {
+    passwordInput.setCustomValidity(isValid ? "" : PASSWORD_POLICY_MESSAGE);
+  }
+
+  return isValid;
+}
+
 function buildPayload() {
   return {
     organizationName: String(organizationNameInput?.value ?? "").trim(),
@@ -92,6 +107,14 @@ async function submitRequest(event) {
     return;
   }
 
+  if (!validatePasswordPolicy()) {
+    feedback.classList.add("is-error");
+    feedback.textContent = PASSWORD_POLICY_MESSAGE;
+    passwordInput?.reportValidity();
+    passwordInput?.focus();
+    return;
+  }
+
   setBusy(true);
 
   try {
@@ -123,5 +146,6 @@ async function submitRequest(event) {
 
 organizationOibInput?.addEventListener("input", validateOrganizationOib);
 passwordInput?.addEventListener("input", validatePasswordMatch);
+passwordInput?.addEventListener("input", validatePasswordPolicy);
 passwordRepeatInput?.addEventListener("input", validatePasswordMatch);
 form?.addEventListener("submit", submitRequest);

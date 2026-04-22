@@ -1599,10 +1599,16 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      request[requestUserSymbol] = updatedUser;
+      appendResponseCookies(response, clearAuthCookies({
+        secure: shouldUseSecureCookies(request),
+        domain: resolveAuthCookieDomain(request),
+      }));
+      request[requestUserSymbol] = null;
       sendJson(response, 200, {
-        authenticated: true,
-        user: updatedUser,
+        ok: true,
+        authenticated: false,
+        requiresRelogin: true,
+        email: updatedUser.email || user.email || "",
       });
       return true;
     }
