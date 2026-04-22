@@ -843,6 +843,7 @@ async function clearRequestAuth(request, response) {
 
   appendResponseCookies(response, clearAuthCookies({
     secure: shouldUseSecureCookies(request),
+    domain: resolveAuthCookieDomain(request),
   }));
   request[requestUserSymbol] = null;
 }
@@ -885,6 +886,7 @@ async function tryRefreshAuth(request, response, cookies) {
     accessToken: nextAccessToken,
     refreshToken: nextRefreshToken,
     secure: shouldUseSecureCookies(request),
+    domain: resolveAuthCookieDomain(request),
   }));
 
   return hydrateRequestUser(rotated.user);
@@ -977,6 +979,43 @@ function getRequestProtocol(request) {
 
 function getRequestHost(request) {
   return String(request.headers.host ?? "").split(",")[0].trim().toLowerCase();
+}
+
+function getHostNameOnly(host = "") {
+  const normalized = String(host ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.startsWith("[")) {
+    const bracketIndex = normalized.indexOf("]");
+    return bracketIndex === -1 ? normalized : normalized.slice(0, bracketIndex + 1);
+  }
+
+  return normalized.split(":")[0];
+}
+
+function resolveAuthCookieDomain(request) {
+  if (!canonicalAppHost) {
+    return "";
+  }
+
+  const canonicalHostName = getHostNameOnly(canonicalAppHost);
+  const requestHostName = getHostNameOnly(getRequestHost(request));
+
+  if (!canonicalHostName || !requestHostName) {
+    return "";
+  }
+
+  if (isLocalDevelopmentHost(canonicalHostName) || isLocalDevelopmentHost(requestHostName)) {
+    return "";
+  }
+
+  if (requestHostName === canonicalHostName || requestHostName.endsWith(`.${canonicalHostName}`)) {
+    return canonicalHostName;
+  }
+
+  return "";
 }
 
 function isLocalDevelopmentHost(host = "") {
@@ -1419,6 +1458,7 @@ async function handleApiRequest(request, response, url) {
         accessToken,
         refreshToken,
         secure: shouldUseSecureCookies(request),
+        domain: resolveAuthCookieDomain(request),
       }));
 
       sendJson(response, 200, {
@@ -1460,6 +1500,7 @@ async function handleApiRequest(request, response, url) {
 
       appendResponseCookies(response, clearAuthCookies({
         secure: shouldUseSecureCookies(request),
+        domain: resolveAuthCookieDomain(request),
       }));
       request[requestUserSymbol] = null;
       sendJson(response, 200, { ok: true });
@@ -4177,6 +4218,7 @@ const server = createServer(async (request, response) => {
         accessToken,
         refreshToken,
         secure: shouldUseSecureCookies(request),
+        domain: resolveAuthCookieDomain(request),
       }));
 
       redirect(response, "/");

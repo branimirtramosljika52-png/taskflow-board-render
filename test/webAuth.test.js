@@ -62,6 +62,7 @@ test("cookie helpers parse, create, clear, and hash auth tokens", () => {
     accessToken: "access123",
     refreshToken: "refresh123",
     secure: true,
+    domain: "safe-nexus.org",
   });
 
   assert.equal(cookies.length, 2);
@@ -69,14 +70,18 @@ test("cookie helpers parse, create, clear, and hash auth tokens", () => {
   assert.match(cookies[1], new RegExp(`^${REFRESH_TOKEN_COOKIE_NAME}=`));
   assert.match(cookies[0], /HttpOnly/);
   assert.match(cookies[0], /Secure/);
+  assert.match(cookies[0], /Domain=safe-nexus.org/);
+  assert.match(cookies[1], /Domain=safe-nexus.org/);
   assert.equal(
     parseCookies(`${ACCESS_TOKEN_COOKIE_NAME}=access123; theme=light`)[ACCESS_TOKEN_COOKIE_NAME],
     "access123",
   );
   assert.equal(hashStoredToken("refresh123").length, 64);
 
-  const clearedCookies = clearAuthCookies({ secure: true });
+  const clearedCookies = clearAuthCookies({ secure: true, domain: "safe-nexus.org" });
   assert.equal(clearedCookies.length, 2);
   assert.match(clearedCookies[0], /Max-Age=0/);
   assert.match(clearedCookies[1], /Max-Age=0/);
+  assert.match(clearedCookies[0], /Domain=safe-nexus.org/);
+  assert.match(clearedCookies[1], /Domain=safe-nexus.org/);
 });

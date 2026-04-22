@@ -68,7 +68,20 @@ function base64UrlDecodeJson(value) {
   return JSON.parse(Buffer.from(normalized, "base64url").toString("utf8"));
 }
 
-function createTokenCookie(name, token, { secure = false, maxAgeMs } = {}) {
+function normalizeCookieDomain(value = "") {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+/, "");
+
+  if (!normalized || normalized.includes("/") || normalized.includes(" ")) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function createTokenCookie(name, token, { secure = false, maxAgeMs, domain = "" } = {}) {
   const maxAge = Math.max(0, Math.floor((maxAgeMs ?? 0) / 1000));
   const parts = [
     `${name}=${encodeURIComponent(String(token ?? ""))}`,
@@ -80,6 +93,11 @@ function createTokenCookie(name, token, { secure = false, maxAgeMs } = {}) {
 
   if (secure) {
     parts.push("Secure");
+  }
+
+  const normalizedDomain = normalizeCookieDomain(domain);
+  if (normalizedDomain) {
+    parts.push(`Domain=${normalizedDomain}`);
   }
 
   return parts.join("; ");
@@ -256,28 +274,37 @@ export function verifyToken(token, secret, { expectedType } = {}) {
   };
 }
 
-export function createAuthCookies({ accessToken, refreshToken, secure = false } = {}) {
+export function createAuthCookies({
+  accessToken,
+  refreshToken,
+  secure = false,
+  domain = "",
+} = {}) {
   return [
     createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
       secure,
       maxAgeMs: ACCESS_TOKEN_MAX_AGE_MS,
+      domain,
     }),
     createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
       secure,
       maxAgeMs: REFRESH_TOKEN_MAX_AGE_MS,
+      domain,
     }),
   ];
 }
 
-export function clearAuthCookies({ secure = false } = {}) {
+export function clearAuthCookies({ secure = false, domain = "" } = {}) {
   return [
     createTokenCookie(ACCESS_TOKEN_COOKIE_NAME, "", {
       secure,
       maxAgeMs: 0,
+      domain,
     }),
     createTokenCookie(REFRESH_TOKEN_COOKIE_NAME, "", {
       secure,
       maxAgeMs: 0,
+      domain,
     }),
   ];
 }
