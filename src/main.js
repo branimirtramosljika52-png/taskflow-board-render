@@ -532,6 +532,14 @@ const COMPANY_PERMISSION_ROWS = Object.freeze([
   { key: "canEdit", label: "Uredivanje postojece" },
   { key: "canDelete", label: "Brisanje tvrtke" },
 ]);
+const COMPANY_PERMISSION_MODULES = Object.freeze([
+  {
+    key: "company",
+    title: "Tvrtka",
+    description: "Pregled, unos, uredivanje i brisanje tvrtki.",
+    rows: COMPANY_PERMISSION_ROWS,
+  },
+]);
 const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
 const USER_PRESENCE_OPTIONS = [
   { value: "online", label: "Online" },
@@ -23067,46 +23075,36 @@ function getActiveOrganizationUsers() {
     ));
 }
 
-function renderDashboardCompanyPermissionsPanel() {
-  const canManageMasterData = getCanManageMasterData();
-  if (dashboardCompanyPermissionsPanel) {
-    dashboardCompanyPermissionsPanel.hidden = !canManageMasterData;
-  }
+function renderCompanyPermissionModuleBlock(module, draftByKey) {
+  const block = document.createElement("details");
+  block.className = "dashboard-company-permission-block";
+  block.open = true;
 
-  if (!canManageMasterData) {
-    return;
-  }
+  const summary = document.createElement("summary");
+  summary.className = "dashboard-company-permission-block-summary";
 
-  const rolePermissions = getCompanyRolePermissionsDraft();
-  if (dashboardCompanyPermissionsCount) {
-    dashboardCompanyPermissionsCount.textContent = `${rolePermissions.length} rola`;
-  }
+  const summaryCopy = document.createElement("div");
+  summaryCopy.className = "dashboard-company-permission-block-copy";
+  const summaryTitle = document.createElement("strong");
+  summaryTitle.textContent = module.title;
+  const summaryDescription = document.createElement("span");
+  summaryDescription.textContent = module.description;
+  summaryCopy.append(summaryTitle, summaryDescription);
 
-  if (dashboardCompanyPermissionsSaveButton) {
-    dashboardCompanyPermissionsSaveButton.hidden = false;
-    dashboardCompanyPermissionsSaveButton.disabled = false;
-  }
+  const summaryMeta = document.createElement("div");
+  summaryMeta.className = "dashboard-company-permission-block-meta";
+  const summaryCount = document.createElement("span");
+  summaryCount.className = "dashboard-company-permission-block-badge";
+  summaryCount.textContent = `${module.rows.length} ovlastenja`;
+  const summaryHint = document.createElement("span");
+  summaryHint.className = "dashboard-company-permission-block-hint";
+  summaryHint.textContent = "Klik za pregled";
+  summaryMeta.append(summaryCount, summaryHint);
 
-  if (!dashboardCompanyPermissionsBody) {
-    return;
-  }
+  summary.append(summaryCopy, summaryMeta);
 
-  const draftByKey = new Map(
-    rolePermissions.map((entry) => [
-      createCompanyRolePermissionDraftKey(entry.profileRole),
-      entry,
-    ]),
-  );
-  const card = document.createElement("section");
-  card.className = "dashboard-company-permission-card";
-
-  const cardHead = document.createElement("div");
-  cardHead.className = "dashboard-company-permission-card-head";
-  const cardTitle = document.createElement("strong");
-  cardTitle.textContent = "Opca Company ovlastenja";
-  const cardMeta = document.createElement("span");
-  cardMeta.textContent = "Vrijedi za pregled, unos, uredivanje i brisanje tvrtki opcenito.";
-  cardHead.append(cardTitle, cardMeta);
+  const blockBody = document.createElement("div");
+  blockBody.className = "dashboard-company-permission-block-body";
 
   const grid = document.createElement("div");
   grid.className = "dashboard-company-permission-grid";
@@ -23131,7 +23129,7 @@ function renderDashboardCompanyPermissionsPanel() {
   });
   grid.append(headRow);
 
-  COMPANY_PERMISSION_ROWS.forEach((permissionRow) => {
+  module.rows.forEach((permissionRow) => {
     const row = document.createElement("div");
     row.className = "dashboard-company-permission-grid-row";
 
@@ -23169,8 +23167,48 @@ function renderDashboardCompanyPermissionsPanel() {
     grid.append(row);
   });
 
-  card.append(cardHead, grid);
-  dashboardCompanyPermissionsBody.replaceChildren(card);
+  blockBody.append(grid);
+  block.append(summary, blockBody);
+  return block;
+}
+
+function renderDashboardCompanyPermissionsPanel() {
+  const canManageMasterData = getCanManageMasterData();
+  if (dashboardCompanyPermissionsPanel) {
+    dashboardCompanyPermissionsPanel.hidden = !canManageMasterData;
+  }
+
+  if (!canManageMasterData) {
+    return;
+  }
+
+  const rolePermissions = getCompanyRolePermissionsDraft();
+  if (dashboardCompanyPermissionsCount) {
+    dashboardCompanyPermissionsCount.textContent = `${COMPANY_PERMISSION_MODULES.length} blok`;
+  }
+
+  if (dashboardCompanyPermissionsSaveButton) {
+    dashboardCompanyPermissionsSaveButton.hidden = false;
+    dashboardCompanyPermissionsSaveButton.disabled = false;
+  }
+
+  if (!dashboardCompanyPermissionsBody) {
+    return;
+  }
+
+  const draftByKey = new Map(
+    rolePermissions.map((entry) => [
+      createCompanyRolePermissionDraftKey(entry.profileRole),
+      entry,
+    ]),
+  );
+  const moduleList = document.createElement("div");
+  moduleList.className = "dashboard-company-permission-block-list";
+  moduleList.replaceChildren(
+    ...COMPANY_PERMISSION_MODULES.map((module) => renderCompanyPermissionModuleBlock(module, draftByKey)),
+  );
+
+  dashboardCompanyPermissionsBody.replaceChildren(moduleList);
 }
 
 function renderDashboardControlPanelContent() {
