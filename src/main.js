@@ -1922,11 +1922,15 @@ let chatAudioContext = null;
 let chatConversationListRenderSignature = "";
 let chatPeopleListRenderSignature = "";
 let chatThreadRenderSignature = "";
+let chatThreadHeaderRenderSignature = "";
 let chatPanelTabsRenderSignature = "";
 let chatDesktopTabsRenderSignature = "";
 let chatComposerRenderSignature = "";
+let chatComposerSelectionRenderSignature = "";
 let chatEmojiPickerRenderSignature = "";
 let chatSyncRequestSequence = 0;
+let chatPanelPositionRafId = 0;
+let chatInputFocusRafId = 0;
 let globalLoadingTimerId = null;
 let sessionIdleTimerId = null;
 let sessionIdleTrackingBound = false;
@@ -6662,9 +6666,11 @@ function resetChatRenderSignatures() {
   chatConversationListRenderSignature = "";
   chatPeopleListRenderSignature = "";
   chatThreadRenderSignature = "";
+  chatThreadHeaderRenderSignature = "";
   chatPanelTabsRenderSignature = "";
   chatDesktopTabsRenderSignature = "";
   chatComposerRenderSignature = "";
+  chatComposerSelectionRenderSignature = "";
   chatEmojiPickerRenderSignature = "";
 }
 
@@ -6820,6 +6826,114 @@ function insertChatEmoji(emoji = "") {
   chatMessageInput.setSelectionRange(nextCaret, nextCaret);
   state.chat.emojiPickerOpen = false;
   renderChatDock();
+}
+
+function queueChatInputFocus({ moveCaretToEnd = true } = {}) {
+  if (!chatMessageInput) {
+    return;
+  }
+
+  if (chatInputFocusRafId) {
+    window.cancelAnimationFrame(chatInputFocusRafId);
+  }
+
+  chatInputFocusRafId = window.requestAnimationFrame(() => {
+    chatInputFocusRafId = window.requestAnimationFrame(() => {
+      chatInputFocusRafId = 0;
+
+      if (!state.chat.open || state.chat.panelMode !== "conversation") {
+        return;
+      }
+
+      if (!state.chat.sending && chatMessageInput.disabled) {
+        chatMessageInput.disabled = false;
+      }
+
+      if (chatMessageInput.disabled) {
+        return;
+      }
+
+      chatMessageInput.focus({ preventScroll: true });
+
+      if (moveCaretToEnd) {
+        const cursor = chatMessageInput.value.length;
+        chatMessageInput.setSelectionRange(cursor, cursor);
+      }
+    });
+  });
+}
+
+function clearChatPanelInlinePosition() {
+  if (!chatPanel) {
+    return;
+  }
+
+  chatPanel.style.left = "";
+  chatPanel.style.top = "";
+  chatPanel.style.right = "";
+  chatPanel.style.bottom = "";
+}
+
+function resolveChatPanelAnchorElement() {
+  if (!state.chat.open) {
+    return null;
+  }
+
+  if (state.chat.panelMode === "conversation" && state.chat.activeConversationId) {
+    const activeConversationId = String(state.chat.activeConversationId);
+    return chatDesktopTabs?.querySelector(".chat-desktop-tab.is-active")
+      || Array.from(chatDesktopTabs?.querySelectorAll("[data-chat-conversation-id]") ?? [])
+        .find((item) => String(item.dataset.chatConversationId) === activeConversationId)
+      || chatLauncher;
+  }
+
+  return chatDesktopTabs?.querySelector(".chat-desktop-new-group") || chatLauncher;
+}
+
+function syncChatPanelPosition() {
+  if (!chatPanel || chatPanel.hidden) {
+    clearChatPanelInlinePosition();
+    return;
+  }
+
+  if (window.innerWidth <= 640) {
+    clearChatPanelInlinePosition();
+    return;
+  }
+
+  const anchor = resolveChatPanelAnchorElement();
+  if (!anchor) {
+    clearChatPanelInlinePosition();
+    return;
+  }
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const panelRect = chatPanel.getBoundingClientRect();
+  const panelWidth = Math.max(panelRect.width, 320);
+  const panelHeight = Math.max(panelRect.height, 320);
+  const viewportPadding = 12;
+  const preferredLeft = anchorRect.left + (anchorRect.width / 2) - (panelWidth / 2);
+  const left = Math.min(
+    window.innerWidth - panelWidth - viewportPadding,
+    Math.max(viewportPadding, preferredLeft),
+  );
+  const top = Math.max(viewportPadding, anchorRect.top - panelHeight - 12);
+
+  chatPanel.style.left = `${Math.round(left)}px`;
+  chatPanel.style.top = `${Math.round(top)}px`;
+  chatPanel.style.right = "auto";
+  chatPanel.style.bottom = "auto";
+}
+
+function queueChatPanelPositionSync() {
+  if (chatPanelPositionRafId) {
+    window.cancelAnimationFrame(chatPanelPositionRafId);
+  }
+
+  chatPanelPositionRafId = window.requestAnimationFrame(() => {
+    chatPanelPositionRafId = 0;
+    syncChatPanelPosition();
+  });
 }
 
 function getChatDockHiddenStorageKey() {
@@ -7256,7 +7370,7 @@ async function markChatConversationRead(conversationId = state.chat.activeConver
   }
 }
 
-function setChatComposerOpen(isOpen) {
+function setChatComposerOpen(isOpen, { render = true } = {}) {
   state.chat.composerOpen = Boolean(isOpen);
   state.chat.emojiPickerOpen = false;
 
@@ -7266,7 +7380,9 @@ function setChatComposerOpen(isOpen) {
     setChatError("");
   }
 
-  renderChatDock();
+  if (render) {
+    renderChatDock();
+  }
 }
 
 function setChatOpen(isOpen) {
@@ -7274,7 +7390,7 @@ function setChatOpen(isOpen) {
   state.chat.emojiPickerOpen = false;
 
   if (!state.chat.open) {
-    setChatComposerOpen(false);
+    setChatComposerOpen(false, { render: false });
     renderChatDock();
     return;
   }
@@ -7302,6 +7418,10 @@ function setChatOpen(isOpen) {
   }
 
   renderChatDock();
+
+  if (state.chat.panelMode === "conversation") {
+    queueChatInputFocus();
+  }
 }
 
 function openChatHub(tab = state.chat.tab || "conversations") {
@@ -7335,6 +7455,7 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
   }
   hideChatNotificationToast();
   renderChatDock();
+  queueChatInputFocus();
 
   if (markAsRead && Number(conversation.unreadCount ?? 0) > 0) {
     void markChatConversationRead(conversation.id);
@@ -7578,12 +7699,13 @@ function renderChatThread() {
   const participantsPresenceSignature = (conversation?.participants ?? [])
     .map((participant) => `${participant.id}:${state.chat.presenceByUserId[participant.id] ?? "offline"}`)
     .join(",");
-  const renderSignature = [
-    state.chat.open,
-    state.chat.sending,
+  const headerSignature = [
     conversation?.id ?? "",
     conversation?.title ?? "",
     participantsPresenceSignature,
+  ].join("~~");
+  const renderSignature = [
+    conversation?.id ?? "",
     messages.length,
     lastMessage.id ?? "",
     lastMessage.createdAt ?? "",
@@ -7597,18 +7719,23 @@ function renderChatThread() {
       chatThreadMessages.replaceChildren();
       chatThreadRenderSignature = renderSignature;
     }
+    chatThreadHeaderRenderSignature = "";
     return;
   }
 
-  if (chatThreadTitle) {
-    chatThreadTitle.textContent = conversation.title;
-  }
+  if (headerSignature !== chatThreadHeaderRenderSignature) {
+    if (chatThreadTitle) {
+      chatThreadTitle.textContent = conversation.title;
+    }
 
-  if (chatThreadMeta) {
-    const onlineCount = (conversation.participants ?? [])
-      .filter((participant) => (state.chat.presenceByUserId[participant.id] ?? "offline") === "online")
-      .length;
-    chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
+    if (chatThreadMeta) {
+      const onlineCount = (conversation.participants ?? [])
+        .filter((participant) => (state.chat.presenceByUserId[participant.id] ?? "offline") === "online")
+        .length;
+      chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
+    }
+
+    chatThreadHeaderRenderSignature = headerSignature;
   }
 
   if (renderSignature === chatThreadRenderSignature) {
@@ -7626,6 +7753,15 @@ function renderChatThread() {
 
     return;
   }
+
+  const [previousConversationId = "", , previousLastMessageId = ""] = chatThreadRenderSignature.split("~~");
+  const currentConversationId = String(conversation.id ?? "");
+  const currentLastMessageId = String(lastMessage.id ?? "");
+  const previousScrollTop = chatThreadMessages.scrollTop;
+  const isNearBottom = (chatThreadMessages.scrollHeight - chatThreadMessages.scrollTop - chatThreadMessages.clientHeight) <= 72;
+  const shouldAutoScroll = previousConversationId !== currentConversationId
+    || (previousLastMessageId !== currentLastMessageId
+      && (isNearBottom || String(lastMessage.authorId ?? "") === String(state.user?.id ?? "")));
 
   chatThreadRenderSignature = renderSignature;
 
@@ -7673,14 +7809,21 @@ function renderChatThread() {
     chatSendButton.disabled = state.chat.sending;
   }
 
-  window.requestAnimationFrame(() => {
-    chatThreadMessages.scrollTop = chatThreadMessages.scrollHeight;
-  });
+  if (shouldAutoScroll) {
+    window.requestAnimationFrame(() => {
+      chatThreadMessages.scrollTop = chatThreadMessages.scrollHeight;
+    });
+  } else {
+    window.requestAnimationFrame(() => {
+      chatThreadMessages.scrollTop = previousScrollTop;
+    });
+  }
 }
 
 function createChatConversationTabNode(conversation, { desktop = false } = {}) {
   const item = document.createElement("div");
   item.className = desktop ? "chat-desktop-tab" : "chat-thread-tab";
+  item.dataset.chatConversationId = String(conversation.id ?? "");
   item.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
   item.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
 
@@ -7704,6 +7847,11 @@ function createChatConversationTabNode(conversation, { desktop = false } = {}) {
   copy.append(title, subtitle);
   openButton.append(icon, copy);
   openButton.addEventListener("click", () => {
+    const isCurrentConversation = String(conversation.id) === String(state.chat.activeConversationId);
+    if (desktop && isCurrentConversation && state.chat.open && state.chat.panelMode === "conversation") {
+      setChatOpen(false);
+      return;
+    }
     activateChatConversation(conversation.id);
   });
 
@@ -7757,6 +7905,7 @@ function renderChatConversationTabs() {
 
       const rail = document.createElement("div");
       rail.className = "chat-thread-tabs-rail";
+      rail.addEventListener("scroll", queueChatPanelPositionSync, { passive: true });
       dockedConversations.forEach((conversation) => {
         rail.append(createChatConversationTabNode(conversation));
       });
@@ -7772,15 +7921,7 @@ function renderChatConversationTabs() {
     return;
   }
 
-  const desktopSignature = `${signatureParts.join("~~")}~~${state.chat.open}`;
-  if (!state.chat.open) {
-    chatDesktopTabs.hidden = true;
-    if (chatDesktopTabsRenderSignature !== desktopSignature) {
-      chatDesktopTabs.replaceChildren();
-      chatDesktopTabsRenderSignature = desktopSignature;
-    }
-    return;
-  }
+  const desktopSignature = signatureParts.join("~~");
 
   if (dockedConversations.length === 0) {
     chatDesktopTabs.hidden = true;
@@ -7798,6 +7939,7 @@ function renderChatConversationTabs() {
 
   const rail = document.createElement("div");
   rail.className = "chat-desktop-tabs-rail";
+  rail.addEventListener("scroll", queueChatPanelPositionSync, { passive: true });
   dockedConversations.forEach((conversation) => {
     rail.append(createChatConversationTabNode(conversation, { desktop: true }));
   });
@@ -7843,23 +7985,22 @@ function renderChatComposer() {
   }
 
   const availableUsers = state.chat.users.filter((user) => String(user.id) !== String(state.user?.id));
-  const renderSignature = [
-    state.chat.composerTitle,
-    state.chat.composerParticipantIds.slice().sort().join(","),
-    availableUsers.map((user) => [
-      user.id,
-      user.fullName,
-      user.email,
-      user.avatarDataUrl,
-      state.chat.presenceByUserId[user.id] ?? "offline",
-    ].join("|")).join("::"),
-  ].join("~~");
+  const renderSignature = availableUsers.map((user) => [
+    user.id,
+    user.fullName,
+    user.email,
+    user.avatarDataUrl,
+    state.chat.presenceByUserId[user.id] ?? "offline",
+  ].join("|")).join("::");
 
   if (renderSignature === chatComposerRenderSignature) {
+    syncChatComposerSelectionState(availableUsers);
     return;
   }
 
   chatComposerRenderSignature = renderSignature;
+  chatComposerSelectionRenderSignature = "";
+  const previousScrollTop = chatComposerUsers.scrollTop;
 
   if (availableUsers.length === 0) {
     const empty = document.createElement("div");
@@ -7881,7 +8022,6 @@ function renderChatComposer() {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.value = user.id;
-    checkbox.checked = state.chat.composerParticipantIds.includes(user.id);
     checkbox.addEventListener("change", () => {
       const nextIds = new Set(state.chat.composerParticipantIds);
       if (checkbox.checked) {
@@ -7890,7 +8030,7 @@ function renderChatComposer() {
         nextIds.delete(user.id);
       }
       state.chat.composerParticipantIds = Array.from(nextIds);
-      renderChatComposer();
+      syncChatComposerSelectionState(availableUsers);
     });
 
     const checkMark = document.createElement("span");
@@ -7911,6 +8051,44 @@ function renderChatComposer() {
   });
 
   chatComposerUsers.replaceChildren(summary, ...userCards);
+  chatComposerUsers.scrollTop = previousScrollTop;
+  syncChatComposerSelectionState(availableUsers);
+}
+
+function syncChatComposerSelectionState(availableUsers = state.chat.users.filter((user) => String(user.id) !== String(state.user?.id))) {
+  if (!chatComposerUsers || !chatComposerCreateButton) {
+    return;
+  }
+
+  const selectedIds = new Set(state.chat.composerParticipantIds.map(String));
+  const selectionSignature = [
+    availableUsers.length,
+    Array.from(selectedIds).sort().join(","),
+  ].join("~~");
+
+  if (selectionSignature === chatComposerSelectionRenderSignature) {
+    chatComposerCreateButton.disabled = state.chat.composerParticipantIds.length === 0;
+    return;
+  }
+
+  chatComposerSelectionRenderSignature = selectionSignature;
+
+  const summary = chatComposerUsers.querySelector(".chat-composer-users-summary");
+  if (summary) {
+    summary.innerHTML = `<strong>${selectedIds.size}</strong> odabrano od ${availableUsers.length} dostupnih korisnika`;
+  }
+
+  chatComposerUsers.querySelectorAll(".chat-composer-user").forEach((label) => {
+    const userId = String(label.querySelector("input")?.value ?? "");
+    const isSelected = selectedIds.has(userId);
+    label.classList.toggle("is-selected", isSelected);
+    const checkbox = label.querySelector("input");
+    if (checkbox) {
+      checkbox.checked = isSelected;
+    }
+  });
+
+  chatComposerCreateButton.disabled = state.chat.composerParticipantIds.length === 0;
 }
 
 function renderChatEmojiPicker() {
@@ -8002,6 +8180,11 @@ function renderChatDock() {
     chatPanel.dataset.mode = state.chat.panelMode || "hub";
   }
 
+  if (chatCloseButton) {
+    chatCloseButton.setAttribute("aria-label", "Minimiziraj chat");
+    chatCloseButton.title = "Minimiziraj";
+  }
+
   chatTabButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.chatTab === state.chat.tab);
   });
@@ -8024,13 +8207,23 @@ function renderChatDock() {
       : "Aktivni razgovori i trenutna prisutnost kolega.";
   }
 
+  const isConversationMode = state.chat.panelMode === "conversation";
   setChatError(state.chat.error);
-  renderChatConversationList();
-  renderChatPeopleList();
-  renderChatThread();
+  if (!isConversationMode) {
+    renderChatConversationList();
+    renderChatPeopleList();
+  }
+  if (isConversationMode) {
+    renderChatThread();
+  }
   renderChatConversationTabs();
   renderChatComposer();
-  renderChatEmojiPicker();
+  if (isConversationMode) {
+    renderChatEmojiPicker();
+  } else if (chatEmojiPicker) {
+    chatEmojiPicker.hidden = true;
+  }
+  queueChatPanelPositionSync();
 }
 
 async function startDirectChatWithUser(userId) {
@@ -8106,9 +8299,13 @@ async function sendChatMessage() {
     applyChatSnapshot(payload);
   } catch (error) {
     setChatError(error.message);
+    if (chatMessageInput) {
+      chatMessageInput.value = messageBody;
+    }
   } finally {
     state.chat.sending = false;
     renderChatDock();
+    queueChatInputFocus();
   }
 }
 
@@ -61153,6 +61350,10 @@ chatMessageForm?.addEventListener("submit", (event) => {
 });
 
 chatMessageInput?.addEventListener("keydown", (event) => {
+  if (event.isComposing) {
+    return;
+  }
+
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     void sendChatMessage();
@@ -61195,6 +61396,10 @@ document.addEventListener("pointerdown", (event) => {
   state.chat.emojiPickerOpen = false;
   renderChatDock();
 });
+
+window.addEventListener("resize", () => {
+  queueChatPanelPositionSync();
+}, { passive: true });
 
 workOrderCompanyIdInput.addEventListener("change", () => {
   const company = getCompany(workOrderCompanyIdInput.value);
