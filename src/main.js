@@ -1452,6 +1452,7 @@ const state = {
     presenceByUserId: {},
     activeConversationId: "",
     hiddenDockConversationIds: new Set(),
+    panelMode: "hub",
     composerOpen: false,
     composerTitle: "",
     composerParticipantIds: [],
@@ -6678,6 +6679,7 @@ function resetChatState() {
   state.chat.presenceByUserId = {};
   state.chat.activeConversationId = "";
   state.chat.hiddenDockConversationIds = new Set();
+  state.chat.panelMode = "hub";
   state.chat.composerOpen = false;
   state.chat.composerTitle = "";
   state.chat.composerParticipantIds = [];
@@ -7181,6 +7183,12 @@ function setChatOpen(isOpen) {
   renderChatDock();
 }
 
+function openChatHub(tab = state.chat.tab || "conversations") {
+  state.chat.tab = tab;
+  state.chat.panelMode = "hub";
+  setChatOpen(true);
+}
+
 function activateChatConversation(conversationId, { openPanel = true, markAsRead = true } = {}) {
   const conversation = getChatConversationById(conversationId);
 
@@ -7191,6 +7199,7 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
   unhideChatConversationFromDock(conversation.id);
   state.chat.activeConversationId = conversation.id;
   state.chat.tab = "conversations";
+  state.chat.panelMode = "conversation";
   state.chat.open = Boolean(openPanel);
   hideChatNotificationToast();
   renderChatDock();
@@ -7617,6 +7626,15 @@ function renderChatConversationTabs() {
   }
 
   const desktopSignature = `${signatureParts.join("~~")}~~${state.chat.open}`;
+  if (!state.chat.open) {
+    chatDesktopTabs.hidden = true;
+    if (chatDesktopTabsRenderSignature !== desktopSignature) {
+      chatDesktopTabs.replaceChildren();
+      chatDesktopTabsRenderSignature = desktopSignature;
+    }
+    return;
+  }
+
   if (dockedConversations.length === 0) {
     chatDesktopTabs.hidden = true;
     if (chatDesktopTabsRenderSignature !== desktopSignature) {
@@ -7643,6 +7661,7 @@ function renderChatConversationTabs() {
   newGroupButton.textContent = "+ Grupa";
   newGroupButton.addEventListener("click", () => {
     state.chat.tab = "people";
+    state.chat.panelMode = "hub";
     state.chat.open = true;
     setChatComposerOpen(true);
   });
@@ -7782,6 +7801,7 @@ function renderChatDock() {
 
   if (chatPanel) {
     chatPanel.hidden = !state.chat.open;
+    chatPanel.dataset.mode = state.chat.panelMode || "hub";
   }
 
   chatTabButtons.forEach((button) => {
@@ -60892,7 +60912,12 @@ appRailRestore?.addEventListener("click", () => {
 });
 
 chatLauncher?.addEventListener("click", () => {
-  setChatOpen(!state.chat.open);
+  if (state.chat.open && state.chat.panelMode === "hub") {
+    setChatOpen(false);
+    return;
+  }
+
+  openChatHub("conversations");
 });
 
 chatCloseButton?.addEventListener("click", () => {
@@ -60900,12 +60925,14 @@ chatCloseButton?.addEventListener("click", () => {
 });
 
 chatNewGroupButton?.addEventListener("click", () => {
+  state.chat.panelMode = "hub";
   state.chat.tab = "people";
   setChatComposerOpen(true);
 });
 
 chatTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    state.chat.panelMode = "hub";
     state.chat.tab = button.dataset.chatTab || "conversations";
     renderChatDock();
   });
