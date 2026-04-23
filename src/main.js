@@ -1975,6 +1975,7 @@ const topbarTodoOpenAllButton = document.querySelector("#topbar-todo-open-all");
 const appCapabilitiesModal = document.querySelector("#app-capabilities-modal");
 const appCapabilitiesBackdrop = document.querySelector("#app-capabilities-backdrop");
 const appCapabilitiesCloseButton = document.querySelector("#app-capabilities-close");
+const appCapabilitiesExportButton = document.querySelector("#app-capabilities-export");
 const appCapabilitiesSaveButton = document.querySelector("#app-capabilities-save");
 const appCapabilitiesAddModuleButton = document.querySelector("#app-capabilities-add-module");
 const appCapabilitiesStatusLegend = document.querySelector("#app-capabilities-status-legend");
@@ -4148,6 +4149,348 @@ function createAppCapabilityStatusPill(status = "planned_later") {
   return pill;
 }
 
+function createAppCapabilityStatusControl(
+  status = "planned_later",
+  {
+    disabled = false,
+    onChange = null,
+  } = {},
+) {
+  const config = getAppCapabilityStatusConfig(status);
+  const control = document.createElement("div");
+  control.className = `app-capabilities-choice-control ${config.className}${disabled ? " is-readonly" : ""}`;
+  control.append(createAppCapabilityStatusIcon(config.value));
+
+  const label = document.createElement("span");
+  label.className = "app-capabilities-choice-label";
+  label.textContent = config.label;
+  control.append(label);
+
+  const chevron = document.createElement("span");
+  chevron.className = "app-capabilities-choice-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = "▾";
+  control.append(chevron);
+
+  if (!disabled) {
+    const select = document.createElement("select");
+    select.className = "app-capabilities-choice-native";
+    APP_CAPABILITY_STATUS_OPTIONS.forEach((option) => {
+      const optionNode = document.createElement("option");
+      optionNode.value = option.value;
+      optionNode.textContent = option.label;
+      select.append(optionNode);
+    });
+    select.value = config.value;
+    select.addEventListener("change", () => {
+      if (typeof onChange === "function") {
+        onChange(normalizeAppCapabilityStatus(select.value));
+      }
+    });
+    control.append(select);
+  }
+
+  return control;
+}
+
+function getAppCapabilityStatusExportSymbol(status = "planned_later") {
+  switch (normalizeAppCapabilityStatus(status)) {
+    case "implemented":
+      return "✓";
+    case "in_progress":
+      return "↻";
+    case "not_planned":
+      return "⊘";
+    default:
+      return "◷";
+  }
+}
+
+function buildAppCapabilitiesPdfMarkup(modules = [], organizationName = "") {
+  const safeModules = sanitizeAppCapabilitiesForSave(modules);
+  const generatedAt = formatDateTime(new Date().toISOString());
+  const legendMarkup = APP_CAPABILITY_STATUS_OPTIONS.map((option) => {
+    const config = getAppCapabilityStatusConfig(option.value);
+    return `
+      <span class="legend-pill ${config.className}">
+        <span class="legend-icon">${getAppCapabilityStatusExportSymbol(config.value)}</span>
+        ${escapeHtml(config.label)}
+      </span>
+    `;
+  }).join("");
+  const cardsMarkup = safeModules.length > 0
+    ? safeModules.map((module) => `
+      <section class="module-card">
+        <div class="module-head">
+          <div>
+            <div class="module-eyebrow">MODUL</div>
+            <h2>${escapeHtml(module.title || "Bez naziva")}</h2>
+          </div>
+          <div class="module-count">${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}</div>
+        </div>
+        <div class="module-table">
+          <div class="module-table-head">
+            <span>Izbor</span>
+            <span>Stavka</span>
+          </div>
+          <div class="module-table-body">
+            ${(module.items ?? []).map((item) => {
+              const config = getAppCapabilityStatusConfig(item.status);
+              return `
+                <div class="module-row">
+                  <div class="row-status ${config.className}">
+                    <span class="row-status-icon">${getAppCapabilityStatusExportSymbol(config.value)}</span>
+                    ${escapeHtml(config.label)}
+                  </div>
+                  <div class="row-copy">${escapeHtml(item.title || "Bez opisa")}</div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      </section>
+    `).join("")
+    : `
+      <section class="empty-card">
+        Trenutno nema pobrojanih modula ni stavki za export.
+      </section>
+    `;
+
+  return `<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(organizationName || "SafeNexus Product Board")}</title>
+    <style>
+      @page { size: A4 portrait; margin: 14mm; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: #22314f;
+        background:
+          radial-gradient(circle at top right, rgba(75, 145, 255, 0.12), transparent 34%),
+          linear-gradient(180deg, #f4f8ff 0%, #eef3ff 100%);
+      }
+      .sheet { display: grid; gap: 18px; }
+      .hero {
+        display: grid;
+        gap: 14px;
+        padding: 20px 22px;
+        border-radius: 26px;
+        border: 1px solid rgba(191, 205, 236, 0.92);
+        background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(240,246,255,0.96));
+        box-shadow: 0 16px 38px rgba(60, 84, 136, 0.12);
+      }
+      .hero-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #4d79d6;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.05;
+      }
+      .hero p {
+        margin: 0;
+        color: #5a6c91;
+      }
+      .generated-at {
+        padding: 10px 14px;
+        border-radius: 16px;
+        background: rgba(244, 248, 255, 0.95);
+        border: 1px solid rgba(194, 206, 233, 0.96);
+        font-size: 13px;
+        color: #44608f;
+        white-space: nowrap;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .legend-pill,
+      .row-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(197, 206, 232, 0.92);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .legend-icon,
+      .row-status-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+      }
+      .is-implemented {
+        color: #1f7a4c;
+        border-color: rgba(72, 168, 110, 0.34);
+        background: linear-gradient(180deg, rgba(232, 250, 239, 0.98), rgba(220, 245, 230, 0.94));
+      }
+      .is-in-progress {
+        color: #245f9d;
+        border-color: rgba(86, 134, 222, 0.34);
+        background: linear-gradient(180deg, rgba(235, 244, 255, 0.98), rgba(222, 236, 255, 0.94));
+      }
+      .is-planned-later {
+        color: #8a6316;
+        border-color: rgba(214, 169, 79, 0.34);
+        background: linear-gradient(180deg, rgba(255, 248, 230, 0.99), rgba(255, 238, 200, 0.95));
+      }
+      .is-not-planned {
+        color: #8a4d55;
+        border-color: rgba(208, 122, 137, 0.34);
+        background: linear-gradient(180deg, rgba(255, 240, 243, 0.99), rgba(255, 226, 231, 0.95));
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+      .module-card,
+      .empty-card {
+        border-radius: 24px;
+        border: 1px solid rgba(191, 205, 236, 0.94);
+        background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(245,249,255,0.98));
+        box-shadow: 0 14px 34px rgba(52, 73, 115, 0.08);
+        overflow: hidden;
+        page-break-inside: avoid;
+      }
+      .module-card::before {
+        content: "";
+        display: block;
+        height: 6px;
+        background: linear-gradient(90deg, #3b74ff 0%, #74b9ff 100%);
+      }
+      .module-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 18px 20px 12px;
+      }
+      .module-head h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .module-eyebrow {
+        margin: 0 0 6px;
+        font-size: 10px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #6a89c7;
+        font-weight: 700;
+      }
+      .module-count {
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(243, 247, 255, 0.95);
+        border: 1px solid rgba(191, 205, 236, 0.94);
+        color: #456391;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .module-table {
+        display: grid;
+        gap: 10px;
+        padding: 0 20px 20px;
+      }
+      .module-table-head {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 12px;
+        padding: 0 8px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: #6c7ea4;
+        font-weight: 700;
+      }
+      .module-table-body {
+        display: grid;
+        gap: 10px;
+      }
+      .module-row {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid rgba(210, 221, 244, 0.98);
+        background: rgba(255, 255, 255, 0.96);
+      }
+      .row-copy {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(224, 230, 245, 0.96);
+        background: linear-gradient(180deg, rgba(251,253,255,0.98), rgba(246,249,255,0.96));
+        color: #2b3f66;
+      }
+      .empty-card {
+        padding: 24px;
+        color: #5a6c91;
+      }
+      @media print {
+        body { background: #ffffff; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="sheet">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">Product Board</p>
+            <h1>${escapeHtml(organizationName || "SafeNexus")}</h1>
+            <p>Pregled modula, funkcionalnosti i statusa razvoja za aktivnu organizaciju.</p>
+          </div>
+          <div class="generated-at">Generirano ${escapeHtml(generatedAt)}</div>
+        </div>
+        <div class="legend">${legendMarkup}</div>
+      </section>
+      <section class="grid">${cardsMarkup}</section>
+    </main>
+  </body>
+</html>`;
+}
+
+function exportAppCapabilitiesPdf() {
+  const modules = state.appCapabilitiesDialog.open
+    ? state.appCapabilitiesDialog.modules
+    : state.appCapabilities;
+  const safeModules = sanitizeAppCapabilitiesForSave(modules);
+  const organizationName = state.organizations.find((item) => (
+    String(item.id) === String(state.activeOrganizationId || "")
+  ))?.name || "SafeNexus";
+  const html = buildAppCapabilitiesPdfMarkup(safeModules, organizationName);
+  const fileName = `${sanitizeDocumentTemplateFileName(`${organizationName}-product-board`, "safe-nexus-product-board")}.pdf`;
+  triggerBlobPrint(new Blob(["\ufeff", html], { type: "text/html;charset=utf-8" }), fileName);
+  setInlineMessage(appCapabilitiesFeedback, "Otvoren je PDF pregled za ispis ili spremanje.", "success");
+}
+
 function openAppCapabilitiesDialog() {
   setNotificationsMenuOpen(false);
   setRemindersShortcutMenuOpen(false);
@@ -4162,6 +4505,9 @@ function openAppCapabilitiesDialog() {
 
   setInlineMessage(appCapabilitiesFeedback, "");
   renderAppCapabilitiesDialog();
+  requestAnimationFrame(() => {
+    appCapabilitiesCloseButton?.focus({ preventScroll: true });
+  });
 }
 
 function closeAppCapabilitiesDialog({ resetDraft = true } = {}) {
@@ -4240,6 +4586,9 @@ function renderAppCapabilitiesDialog() {
     appCapabilitiesAddModuleButton.hidden = !canEdit;
     appCapabilitiesAddModuleButton.disabled = !canEdit;
   }
+  if (appCapabilitiesExportButton) {
+    appCapabilitiesExportButton.disabled = !isOpen;
+  }
   if (appCapabilitiesSaveButton) {
     appCapabilitiesSaveButton.hidden = !canEdit;
     appCapabilitiesSaveButton.disabled = !canEdit;
@@ -4273,13 +4622,15 @@ function renderAppCapabilitiesDialog() {
     const head = document.createElement("div");
     head.className = "app-capabilities-module-head";
 
-    const titleField = document.createElement("label");
-    titleField.className = "field app-capabilities-module-title-field";
+    const titleField = document.createElement("div");
+    titleField.className = "app-capabilities-module-title-wrap";
     const titleLabel = document.createElement("span");
+    titleLabel.className = "app-capabilities-module-label";
     titleLabel.textContent = "Modul";
     const titleInput = document.createElement("input");
     titleInput.type = "text";
     titleInput.placeholder = "npr. People, Company, Periodika...";
+    titleInput.className = "app-capabilities-module-title-input";
     titleInput.value = module.title || "";
     titleInput.disabled = !canEdit;
     titleInput.addEventListener("input", () => {
@@ -4288,24 +4639,41 @@ function renderAppCapabilitiesDialog() {
         targetModule.title = titleInput.value;
       }
     });
-    titleField.append(titleLabel, titleInput);
+    const titleMeta = document.createElement("span");
+    titleMeta.className = "app-capabilities-module-meta";
+    titleMeta.textContent = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
+    titleField.append(titleLabel, titleInput, titleMeta);
 
     const moduleActions = document.createElement("div");
     moduleActions.className = "app-capabilities-module-actions";
 
     if (canEdit) {
-      const removeModuleButton = document.createElement("button");
-      removeModuleButton.type = "button";
-      removeModuleButton.className = "ghost-button";
-      removeModuleButton.textContent = "Makni modul";
-      removeModuleButton.addEventListener("click", () => {
+      const editModuleButton = createIconActionButton("Uredi modul", "edit", "", () => {
+        titleInput.focus({ preventScroll: true });
+        titleInput.select();
+      });
+      const removeModuleButton = createIconActionButton("Makni modul", "trash", "card-danger", () => {
         state.appCapabilitiesDialog.modules.splice(moduleIndex, 1);
         renderAppCapabilitiesDialog();
       });
-      moduleActions.append(removeModuleButton);
+      moduleActions.append(editModuleButton, removeModuleButton);
     }
 
     head.append(titleField, moduleActions);
+
+    const itemsBoard = document.createElement("div");
+    itemsBoard.className = "app-capabilities-items-board";
+
+    const itemsHead = document.createElement("div");
+    itemsHead.className = "app-capabilities-items-head";
+    const choiceLabel = document.createElement("span");
+    choiceLabel.textContent = "Izbor";
+    const itemLabel = document.createElement("span");
+    itemLabel.textContent = "Stavka";
+    const actionsLabel = document.createElement("span");
+    actionsLabel.textContent = "Akcije";
+    itemsHead.append(choiceLabel, itemLabel, actionsLabel);
+    itemsBoard.append(itemsHead);
 
     const itemsWrap = document.createElement("div");
     itemsWrap.className = "app-capabilities-items";
@@ -4315,7 +4683,7 @@ function renderAppCapabilitiesDialog() {
       empty.className = "app-capabilities-empty";
       const text = document.createElement("span");
       text.textContent = canEdit
-        ? "Dodaj stavku unutar modula i odredi status."
+        ? "Dodaj prvu stavku unutar modula."
         : "Za ovaj modul još nema pobrojanih stavki.";
       empty.append(text);
       itemsWrap.append(empty);
@@ -4324,14 +4692,20 @@ function renderAppCapabilitiesDialog() {
         const row = document.createElement("div");
         row.className = "app-capabilities-item-row";
 
-        row.append(createAppCapabilityStatusPill(item.status));
+        const statusControl = createAppCapabilityStatusControl(item.status, {
+          disabled: !canEdit,
+          onChange: (nextStatus) => {
+            const targetItem = state.appCapabilitiesDialog.modules[moduleIndex]?.items?.[itemIndex];
+            if (targetItem) {
+              targetItem.status = normalizeAppCapabilityStatus(nextStatus);
+            }
+            renderAppCapabilitiesDialog();
+          },
+        });
 
-        const itemTitleField = document.createElement("label");
-        itemTitleField.className = "field app-capabilities-item-title-field";
-        const itemTitleLabel = document.createElement("span");
-        itemTitleLabel.textContent = "Stavka";
         const itemTitleInput = document.createElement("input");
         itemTitleInput.type = "text";
+        itemTitleInput.className = "app-capabilities-item-input";
         itemTitleInput.placeholder = "npr. Export u Excel, odobravanje zahtjeva...";
         itemTitleInput.value = item.title || "";
         itemTitleInput.disabled = !canEdit;
@@ -4341,38 +4715,16 @@ function renderAppCapabilitiesDialog() {
             targetItem.title = itemTitleInput.value;
           }
         });
-        itemTitleField.append(itemTitleLabel, itemTitleInput);
 
-        const itemStatusField = document.createElement("label");
-        itemStatusField.className = "field app-capabilities-item-status-field";
-        const itemStatusLabel = document.createElement("span");
-        itemStatusLabel.textContent = "Status";
-        const itemStatusSelect = document.createElement("select");
-        itemStatusSelect.disabled = !canEdit;
-        APP_CAPABILITY_STATUS_OPTIONS.forEach((option) => {
-          const optionNode = document.createElement("option");
-          optionNode.value = option.value;
-          optionNode.textContent = option.label;
-          itemStatusSelect.append(optionNode);
-        });
-        itemStatusSelect.value = normalizeAppCapabilityStatus(item.status);
-        itemStatusSelect.addEventListener("change", () => {
-          const targetItem = state.appCapabilitiesDialog.modules[moduleIndex]?.items?.[itemIndex];
-          if (targetItem) {
-            targetItem.status = normalizeAppCapabilityStatus(itemStatusSelect.value);
-          }
-          renderAppCapabilitiesDialog();
-        });
-        itemStatusField.append(itemStatusLabel, itemStatusSelect);
-
-        row.append(itemTitleField, itemStatusField);
+        const itemActions = document.createElement("div");
+        itemActions.className = "app-capabilities-item-actions";
 
         if (canEdit) {
-          const removeItemButton = document.createElement("button");
-          removeItemButton.type = "button";
-          removeItemButton.className = "ghost-button";
-          removeItemButton.textContent = "Makni";
-          removeItemButton.addEventListener("click", () => {
+          const editItemButton = createIconActionButton("Uredi stavku", "edit", "", () => {
+            itemTitleInput.focus({ preventScroll: true });
+            itemTitleInput.select();
+          });
+          const removeItemButton = createIconActionButton("Makni stavku", "trash", "card-danger", () => {
             const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];
             if (!targetModule) {
               return;
@@ -4380,12 +4732,15 @@ function renderAppCapabilitiesDialog() {
             targetModule.items.splice(itemIndex, 1);
             renderAppCapabilitiesDialog();
           });
-          row.append(removeItemButton);
+          itemActions.append(editItemButton, removeItemButton);
         }
 
+        row.append(statusControl, itemTitleInput, itemActions);
         itemsWrap.append(row);
       });
     }
+
+    itemsBoard.append(itemsWrap);
 
     const footer = document.createElement("div");
     footer.className = "app-capabilities-module-footer";
@@ -4406,17 +4761,11 @@ function renderAppCapabilitiesDialog() {
       footer.append(addItemButton);
     }
 
-    card.append(head, itemsWrap, footer);
+    card.append(head, itemsBoard, footer);
     fragment.append(card);
   });
 
   appCapabilitiesList.replaceChildren(fragment);
-
-  if (isOpen) {
-    requestAnimationFrame(() => {
-      appCapabilitiesCloseButton?.focus({ preventScroll: true });
-    });
-  }
 }
 
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
@@ -63233,6 +63582,10 @@ appCapabilitiesAddModuleButton?.addEventListener("click", () => {
 
   state.appCapabilitiesDialog.modules.push(createEmptyAppCapabilityModule());
   renderAppCapabilitiesDialog();
+});
+
+appCapabilitiesExportButton?.addEventListener("click", () => {
+  exportAppCapabilitiesPdf();
 });
 
 appCapabilitiesSaveButton?.addEventListener("click", () => {
