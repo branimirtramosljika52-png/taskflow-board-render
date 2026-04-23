@@ -159,6 +159,7 @@ const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
 ]);
 const CHAT_POLL_INTERVAL_MS = 7_000;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
+const CHAT_DOCK_HIDDEN_STORAGE_PREFIX = "safenexus.chat.hidden-dock-conversations.v1";
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
@@ -1450,6 +1451,7 @@ const state = {
     users: [],
     presenceByUserId: {},
     activeConversationId: "",
+    hiddenDockConversationIds: new Set(),
     composerOpen: false,
     composerTitle: "",
     composerParticipantIds: [],
@@ -1908,6 +1910,12 @@ let chatKnownMessageIds = new Set();
 let chatNotificationBaselineReady = false;
 let chatNotificationTimerId = null;
 let chatAudioContext = null;
+let chatConversationListRenderSignature = "";
+let chatPeopleListRenderSignature = "";
+let chatThreadRenderSignature = "";
+let chatPanelTabsRenderSignature = "";
+let chatDesktopTabsRenderSignature = "";
+let chatComposerRenderSignature = "";
 let globalLoadingTimerId = null;
 let sessionIdleTimerId = null;
 let sessionIdleTrackingBound = false;
@@ -2012,6 +2020,7 @@ const userMenuError = document.querySelector("#user-menu-error");
 const logoutButton = document.querySelector("#logout-button");
 const chatDock = document.querySelector("#chat-dock");
 const chatToast = document.querySelector("#chat-toast");
+const chatDesktopTabs = document.querySelector("#chat-desktop-tabs");
 const chatLauncher = document.querySelector("#chat-launcher");
 const chatLauncherPresence = document.querySelector("#chat-launcher-presence");
 const chatLauncherCaption = document.querySelector("#chat-launcher-caption");
@@ -6636,12 +6645,22 @@ function clearChatPollTimer() {
   }
 }
 
+function resetChatRenderSignatures() {
+  chatConversationListRenderSignature = "";
+  chatPeopleListRenderSignature = "";
+  chatThreadRenderSignature = "";
+  chatPanelTabsRenderSignature = "";
+  chatDesktopTabsRenderSignature = "";
+  chatComposerRenderSignature = "";
+}
+
 function resetChatState() {
   clearChatPollTimer();
   chatLastPresenceSyncAt = 0;
   chatLastPresenceValue = "";
   chatKnownMessageIds = new Set();
   chatNotificationBaselineReady = false;
+  resetChatRenderSignatures();
   if (chatNotificationTimerId) {
     window.clearTimeout(chatNotificationTimerId);
     chatNotificationTimerId = null;
@@ -6658,6 +6677,7 @@ function resetChatState() {
   state.chat.users = [];
   state.chat.presenceByUserId = {};
   state.chat.activeConversationId = "";
+  state.chat.hiddenDockConversationIds = new Set();
   state.chat.composerOpen = false;
   state.chat.composerTitle = "";
   state.chat.composerParticipantIds = [];
@@ -6725,6 +6745,113 @@ function createChatChip(label) {
   chip.className = "chat-mini-chip";
   chip.textContent = label;
   return chip;
+}
+
+function getChatDockHiddenStorageKey() {
+  return [
+    CHAT_DOCK_HIDDEN_STORAGE_PREFIX,
+    String(state.user?.id ?? "anonymous"),
+    String(state.activeOrganizationId || state.chat.lastOrganizationId || "default"),
+  ].join(":");
+}
+
+function loadChatHiddenDockConversationIds() {
+  try {
+    const rawValue = window.localStorage.getItem(getChatDockHiddenStorageKey());
+    const parsed = rawValue ? JSON.parse(rawValue) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistChatHiddenDockConversationIds() {
+  try {
+    window.localStorage.setItem(
+      getChatDockHiddenStorageKey(),
+      JSON.stringify(Array.from(state.chat.hiddenDockConversationIds ?? [])),
+    );
+  } catch {
+    return;
+  }
+}
+
+function unhideChatConversationFromDock(conversationId) {
+  const normalizedConversationId = String(conversationId ?? "");
+
+  if (!normalizedConversationId || !state.chat.hiddenDockConversationIds?.has(normalizedConversationId)) {
+    return;
+  }
+
+  state.chat.hiddenDockConversationIds.delete(normalizedConversationId);
+  persistChatHiddenDockConversationIds();
+  resetChatRenderSignatures();
+}
+
+function hideChatConversationFromDock(conversationId) {
+  const normalizedConversationId = String(conversationId ?? "");
+
+  if (!normalizedConversationId) {
+    return;
+  }
+
+  state.chat.hiddenDockConversationIds.add(normalizedConversationId);
+  persistChatHiddenDockConversationIds();
+
+  if (String(state.chat.activeConversationId) === normalizedConversationId) {
+    const nextConversation = state.chat.conversations.find((conversation) => (
+      String(conversation.id) !== normalizedConversationId
+      && !state.chat.hiddenDockConversationIds.has(String(conversation.id))
+    ));
+    state.chat.activeConversationId = nextConversation?.id ?? "";
+  }
+
+  resetChatRenderSignatures();
+  renderChatDock();
+}
+
+function getDockedChatConversations() {
+  return state.chat.conversations.filter((conversation) => {
+    const conversationId = String(conversation.id);
+    return !state.chat.hiddenDockConversationIds.has(conversationId)
+      || Number(conversation.unreadCount ?? 0) > 0
+      || String(state.chat.activeConversationId) === conversationId;
+  });
+}
+
+function buildChatConversationSignature(conversation = {}) {
+  const lastMessage = conversation.lastMessage ?? {};
+  return [
+    conversation.id,
+    conversation.kind,
+    conversation.title,
+    conversation.updatedAt,
+    conversation.unreadCount,
+    lastMessage.id,
+    lastMessage.body,
+    lastMessage.createdAt,
+    (conversation.participantIds ?? []).join(","),
+  ].join("|");
+}
+
+function groupChatConversations(conversations = []) {
+  return [
+    {
+      key: "groups",
+      label: "Grupe",
+      items: conversations.filter((conversation) => conversation.kind === "group"),
+    },
+    {
+      key: "direct",
+      label: "Direktni razgovori",
+      items: conversations.filter((conversation) => conversation.kind === "direct"),
+    },
+    {
+      key: "general",
+      label: "Kanali",
+      items: conversations.filter((conversation) => conversation.kind === "general"),
+    },
+  ].filter((section) => section.items.length > 0);
 }
 
 function collectChatMessageIds(conversations = []) {
@@ -6817,11 +6944,7 @@ function showChatNotificationToast(notification) {
   chatToast.replaceChildren(avatar, copy);
   chatToast.hidden = false;
   chatToast.onclick = () => {
-    state.chat.activeConversationId = conversation.id;
-    state.chat.tab = "conversations";
-    setChatOpen(true);
-    hideChatNotificationToast();
-    void markChatConversationRead(conversation.id);
+    activateChatConversation(conversation.id);
   };
 
   if (chatNotificationTimerId) {
@@ -6890,13 +7013,33 @@ function handleChatIncomingNotifications(nextConversations = []) {
 
 function applyChatSnapshot(payload = {}) {
   const nextConversations = payload.conversations ?? [];
+  const nextOrganizationId = payload.organizationId ?? state.activeOrganizationId;
+
+  if (String(state.chat.lastOrganizationId ?? "") !== String(nextOrganizationId ?? "")) {
+    state.chat.hiddenDockConversationIds = loadChatHiddenDockConversationIds();
+    resetChatRenderSignatures();
+  }
+
+  let dockVisibilityChanged = false;
+  nextConversations.forEach((conversation) => {
+    if (Number(conversation.unreadCount ?? 0) > 0 && state.chat.hiddenDockConversationIds.has(String(conversation.id))) {
+      state.chat.hiddenDockConversationIds.delete(String(conversation.id));
+      dockVisibilityChanged = true;
+    }
+  });
+
+  if (dockVisibilityChanged) {
+    persistChatHiddenDockConversationIds();
+    resetChatRenderSignatures();
+  }
+
   handleChatIncomingNotifications(nextConversations);
 
   state.chat.conversations = nextConversations;
   state.chat.users = payload.users ?? [];
   state.chat.presenceByUserId = payload.presenceByUserId ?? {};
   state.chat.loaded = true;
-  state.chat.lastOrganizationId = payload.organizationId ?? state.activeOrganizationId;
+  state.chat.lastOrganizationId = nextOrganizationId;
   state.chat.unreadTotal = state.chat.conversations.reduce((sum, conversation) => sum + Number(conversation.unreadCount ?? 0), 0);
 
   const hasActiveConversation = state.chat.conversations.some((conversation) => String(conversation.id) === String(state.chat.activeConversationId));
@@ -7038,6 +7181,25 @@ function setChatOpen(isOpen) {
   renderChatDock();
 }
 
+function activateChatConversation(conversationId, { openPanel = true, markAsRead = true } = {}) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation) {
+    return;
+  }
+
+  unhideChatConversationFromDock(conversation.id);
+  state.chat.activeConversationId = conversation.id;
+  state.chat.tab = "conversations";
+  state.chat.open = Boolean(openPanel);
+  hideChatNotificationToast();
+  renderChatDock();
+
+  if (markAsRead) {
+    void markChatConversationRead(conversation.id);
+  }
+}
+
 function getFilteredChatConversations() {
   const query = state.chat.search.trim().toLowerCase();
 
@@ -7091,6 +7253,19 @@ function renderChatConversationList() {
   }
 
   const conversations = getFilteredChatConversations();
+  const renderSignature = [
+    state.chat.search,
+    state.chat.activeConversationId,
+    state.chat.tab,
+    Array.from(state.chat.hiddenDockConversationIds ?? []).sort().join(","),
+    conversations.map(buildChatConversationSignature).join("::"),
+  ].join("~~");
+
+  if (renderSignature === chatConversationListRenderSignature) {
+    return;
+  }
+
+  chatConversationListRenderSignature = renderSignature;
 
   if (conversations.length === 0) {
     const empty = document.createElement("div");
@@ -7100,70 +7275,83 @@ function renderChatConversationList() {
     return;
   }
 
-  chatConversationsView.replaceChildren(...conversations.map((conversation) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chat-list-card";
-    button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
-    button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
+  const nodes = [];
 
-    const head = document.createElement("div");
-    head.className = "chat-list-card-head";
+  groupChatConversations(conversations).forEach((section) => {
+    const sectionHeader = document.createElement("div");
+    sectionHeader.className = "chat-list-section-heading";
+    sectionHeader.innerHTML = `<span>${section.label}</span><strong>${section.items.length}</strong>`;
+    nodes.push(sectionHeader);
 
-    const avatarSeed = conversation.participants.find((participant) => String(participant.id) !== String(state.user?.id))
-      ?? conversation.participants[0]
-      ?? { fullName: conversation.title };
-    const avatarPresence = conversation.kind === "direct"
-      ? (state.chat.presenceByUserId[avatarSeed.id] ?? "offline")
-      : "online";
-    const avatar = createChatAvatar(avatarSeed, avatarPresence, "chat-participant-avatar");
+    section.items.forEach((conversation) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-list-card";
+      button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
+      button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
+      button.classList.toggle("is-hidden-from-dock", state.chat.hiddenDockConversationIds.has(String(conversation.id)));
 
-    const copy = document.createElement("div");
-    copy.className = "chat-list-card-copy";
+      const head = document.createElement("div");
+      head.className = "chat-list-card-head";
 
-    const title = document.createElement("strong");
-    title.textContent = conversation.title;
+      const avatarSeed = conversation.participants.find((participant) => String(participant.id) !== String(state.user?.id))
+        ?? conversation.participants[0]
+        ?? { fullName: conversation.title };
+      const avatarPresence = conversation.kind === "direct"
+        ? (state.chat.presenceByUserId[avatarSeed.id] ?? "offline")
+        : "online";
+      const avatar = createChatAvatar(avatarSeed, avatarPresence, "chat-participant-avatar");
 
-    const subtitle = document.createElement("span");
-    subtitle.textContent = conversation.lastMessage
-      ? `${conversation.lastMessage.authorName} · ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
-      : `${conversation.participants.length} sudionika`;
+      const copy = document.createElement("div");
+      copy.className = "chat-list-card-copy";
 
-    copy.append(title, subtitle);
-    head.append(avatar, copy);
+      const title = document.createElement("strong");
+      title.textContent = conversation.title;
 
-    const preview = document.createElement("p");
-    preview.className = "chat-list-card-preview";
-    preview.textContent = conversation.lastMessage?.body || "Bez poruka za sada.";
+      const subtitle = document.createElement("span");
+      subtitle.textContent = conversation.lastMessage
+        ? `${conversation.lastMessage.authorName} · ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
+        : `${conversation.participants.length} sudionika`;
 
-    const meta = document.createElement("div");
-    meta.className = "chat-list-card-meta";
+      copy.append(title, subtitle);
+      head.append(avatar, copy);
 
-    const chips = document.createElement("div");
-    chips.className = "chat-list-chip-row";
-    chips.append(
-      createChatChip(conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "General" : "Grupa"),
-      createChatChip(`${conversation.participants.length} cl.`),
-    );
+      const preview = document.createElement("p");
+      preview.className = "chat-list-card-preview";
+      preview.textContent = conversation.lastMessage?.body || "Bez poruka za sada.";
 
-    meta.append(chips);
+      const meta = document.createElement("div");
+      meta.className = "chat-list-card-meta";
 
-    if (conversation.unreadCount > 0) {
-      const unread = document.createElement("span");
-      unread.className = "chat-unread-badge";
-      unread.textContent = String(conversation.unreadCount);
-      meta.append(unread);
-    }
+      const chips = document.createElement("div");
+      chips.className = "chat-list-chip-row";
+      chips.append(
+        createChatChip(conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "Kanal" : "Grupa"),
+        createChatChip(`${conversation.participants.length} cl.`),
+      );
 
-    button.append(head, preview, meta);
-    button.addEventListener("click", () => {
-      state.chat.activeConversationId = conversation.id;
-      state.chat.open = true;
-      renderChatDock();
-      void markChatConversationRead(conversation.id);
+      if (state.chat.hiddenDockConversationIds.has(String(conversation.id))) {
+        chips.append(createChatChip("skriveno dolje"));
+      }
+
+      meta.append(chips);
+
+      if (conversation.unreadCount > 0) {
+        const unread = document.createElement("span");
+        unread.className = "chat-unread-badge";
+        unread.textContent = String(conversation.unreadCount);
+        meta.append(unread);
+      }
+
+      button.append(head, preview, meta);
+      button.addEventListener("click", () => {
+        activateChatConversation(conversation.id);
+      });
+      nodes.push(button);
     });
-    return button;
-  }));
+  });
+
+  chatConversationsView.replaceChildren(...nodes);
 }
 
 function renderChatPeopleList() {
@@ -7172,6 +7360,23 @@ function renderChatPeopleList() {
   }
 
   const people = getFilteredChatUsers();
+  const renderSignature = [
+    state.chat.search,
+    state.chat.tab,
+    people.map((person) => [
+      person.id,
+      person.fullName,
+      person.email,
+      person.role,
+      state.chat.presenceByUserId[person.id] ?? "offline",
+    ].join("|")).join("::"),
+  ].join("~~");
+
+  if (renderSignature === chatPeopleListRenderSignature) {
+    return;
+  }
+
+  chatPeopleListRenderSignature = renderSignature;
 
   if (people.length === 0) {
     const empty = document.createElement("div");
@@ -7220,12 +7425,30 @@ function renderChatThread() {
   }
 
   const conversation = getChatConversationById();
+  const messages = conversation?.messages ?? [];
+  const lastMessage = messages[messages.length - 1] ?? {};
+  const participantsPresenceSignature = (conversation?.participants ?? [])
+    .map((participant) => `${participant.id}:${state.chat.presenceByUserId[participant.id] ?? "offline"}`)
+    .join(",");
+  const renderSignature = [
+    state.chat.open,
+    state.chat.sending,
+    conversation?.id ?? "",
+    conversation?.title ?? "",
+    participantsPresenceSignature,
+    messages.length,
+    lastMessage.id ?? "",
+    lastMessage.createdAt ?? "",
+  ].join("~~");
 
   chatThreadEmpty.hidden = Boolean(conversation);
   chatThreadView.hidden = !conversation;
 
   if (!conversation) {
-    chatThreadMessages.replaceChildren();
+    if (renderSignature !== chatThreadRenderSignature) {
+      chatThreadMessages.replaceChildren();
+      chatThreadRenderSignature = renderSignature;
+    }
     return;
   }
 
@@ -7240,7 +7463,21 @@ function renderChatThread() {
     chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
   }
 
-  chatThreadMessages.replaceChildren(...(conversation.messages ?? []).map((message) => {
+  if (renderSignature === chatThreadRenderSignature) {
+    if (chatMessageInput) {
+      chatMessageInput.disabled = state.chat.sending;
+    }
+
+    if (chatSendButton) {
+      chatSendButton.disabled = state.chat.sending;
+    }
+
+    return;
+  }
+
+  chatThreadRenderSignature = renderSignature;
+
+  chatThreadMessages.replaceChildren(...messages.map((message) => {
     const row = document.createElement("div");
     row.className = "chat-message-row";
     const isOwn = String(message.authorId) === String(state.user?.id);
@@ -7285,69 +7522,134 @@ function renderChatThread() {
   });
 }
 
-function renderChatConversationTabs() {
-  if (!chatThreadTabs) {
-    return;
-  }
+function createChatConversationTabNode(conversation, { desktop = false } = {}) {
+  const item = document.createElement("div");
+  item.className = desktop ? "chat-desktop-tab" : "chat-thread-tab";
+  item.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
+  item.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
 
-  if (state.chat.conversations.length === 0) {
-    chatThreadTabs.hidden = true;
-    chatThreadTabs.replaceChildren();
-    return;
-  }
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = desktop ? "chat-desktop-tab-main" : "chat-thread-tab-main";
+  openButton.title = conversation.title || "Razgovor";
 
-  chatThreadTabs.hidden = false;
+  const icon = document.createElement("span");
+  icon.className = `${desktop ? "chat-desktop-tab-icon" : "chat-thread-tab-icon"} is-${conversation.kind || "group"}`;
+  icon.textContent = conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "#" : "G";
 
-  const label = document.createElement("span");
-  label.className = "chat-thread-tabs-label";
-  label.textContent = "Razgovori";
-
-  const rail = document.createElement("div");
-  rail.className = "chat-thread-tabs-rail";
-
-  state.chat.conversations.forEach((conversation) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chat-thread-tab";
-    button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
-    button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
-
-    const icon = document.createElement("span");
-    icon.className = `chat-thread-tab-icon is-${conversation.kind || "group"}`;
-    icon.textContent = conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "#" : "G";
-
-    const copy = document.createElement("span");
-    copy.className = "chat-thread-tab-copy";
-    const title = document.createElement("strong");
-    title.textContent = conversation.title || "Razgovor";
-    const subtitle = document.createElement("span");
-    subtitle.textContent = conversation.lastMessage
-      ? normalizeChatPreviewText(conversation.lastMessage.body || formatChatTimestamp(conversation.lastMessage.createdAt))
-      : `${conversation.participants?.length ?? 0} sudionika`;
-    copy.append(title, subtitle);
-
-    button.append(icon, copy);
-
-    if (Number(conversation.unreadCount ?? 0) > 0) {
-      const unread = document.createElement("span");
-      unread.className = "chat-thread-tab-unread";
-      unread.textContent = String(conversation.unreadCount);
-      button.append(unread);
-    }
-
-    button.addEventListener("click", () => {
-      state.chat.activeConversationId = conversation.id;
-      state.chat.tab = "conversations";
-      state.chat.open = true;
-      hideChatNotificationToast();
-      renderChatDock();
-      void markChatConversationRead(conversation.id);
-    });
-
-    rail.append(button);
+  const copy = document.createElement("span");
+  copy.className = desktop ? "chat-desktop-tab-copy" : "chat-thread-tab-copy";
+  const title = document.createElement("strong");
+  title.textContent = conversation.title || "Razgovor";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = conversation.lastMessage
+    ? normalizeChatPreviewText(conversation.lastMessage.body || formatChatTimestamp(conversation.lastMessage.createdAt))
+    : `${conversation.participants?.length ?? 0} sudionika`;
+  copy.append(title, subtitle);
+  openButton.append(icon, copy);
+  openButton.addEventListener("click", () => {
+    activateChatConversation(conversation.id);
   });
 
-  chatThreadTabs.replaceChildren(label, rail);
+  item.append(openButton);
+
+  if (Number(conversation.unreadCount ?? 0) > 0) {
+    const unread = document.createElement("span");
+    unread.className = desktop ? "chat-desktop-tab-unread" : "chat-thread-tab-unread";
+    unread.textContent = String(conversation.unreadCount);
+    item.append(unread);
+  }
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = desktop ? "chat-desktop-tab-close" : "chat-thread-tab-close";
+  closeButton.setAttribute("aria-label", `Makni ${conversation.title || "razgovor"} iz donje trake`);
+  closeButton.title = "Makni iz donje trake";
+  closeButton.textContent = "×";
+  closeButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    hideChatConversationFromDock(conversation.id);
+  });
+  item.append(closeButton);
+
+  return item;
+}
+
+function renderChatConversationTabs() {
+  const dockedConversations = getDockedChatConversations();
+  const signatureParts = [
+    state.chat.activeConversationId,
+    Array.from(state.chat.hiddenDockConversationIds ?? []).sort().join(","),
+    dockedConversations.map(buildChatConversationSignature).join("::"),
+  ];
+
+  if (chatThreadTabs) {
+    const panelSignature = signatureParts.join("~~");
+
+    if (dockedConversations.length === 0) {
+      chatThreadTabs.hidden = true;
+      if (chatPanelTabsRenderSignature !== panelSignature) {
+        chatThreadTabs.replaceChildren();
+        chatPanelTabsRenderSignature = panelSignature;
+      }
+    } else if (panelSignature !== chatPanelTabsRenderSignature) {
+      chatThreadTabs.hidden = false;
+
+      const label = document.createElement("span");
+      label.className = "chat-thread-tabs-label";
+      label.textContent = "Razgovori";
+
+      const rail = document.createElement("div");
+      rail.className = "chat-thread-tabs-rail";
+      dockedConversations.forEach((conversation) => {
+        rail.append(createChatConversationTabNode(conversation));
+      });
+
+      chatThreadTabs.replaceChildren(label, rail);
+      chatPanelTabsRenderSignature = panelSignature;
+    } else {
+      chatThreadTabs.hidden = false;
+    }
+  }
+
+  if (!chatDesktopTabs) {
+    return;
+  }
+
+  const desktopSignature = `${signatureParts.join("~~")}~~${state.chat.open}`;
+  if (dockedConversations.length === 0) {
+    chatDesktopTabs.hidden = true;
+    if (chatDesktopTabsRenderSignature !== desktopSignature) {
+      chatDesktopTabs.replaceChildren();
+      chatDesktopTabsRenderSignature = desktopSignature;
+    }
+    return;
+  }
+
+  if (desktopSignature === chatDesktopTabsRenderSignature) {
+    chatDesktopTabs.hidden = false;
+    return;
+  }
+
+  const rail = document.createElement("div");
+  rail.className = "chat-desktop-tabs-rail";
+  dockedConversations.forEach((conversation) => {
+    rail.append(createChatConversationTabNode(conversation, { desktop: true }));
+  });
+
+  const newGroupButton = document.createElement("button");
+  newGroupButton.type = "button";
+  newGroupButton.className = "chat-desktop-new-group";
+  newGroupButton.textContent = "+ Grupa";
+  newGroupButton.addEventListener("click", () => {
+    state.chat.tab = "people";
+    state.chat.open = true;
+    setChatComposerOpen(true);
+  });
+
+  chatDesktopTabs.hidden = false;
+  chatDesktopTabs.replaceChildren(rail, newGroupButton);
+  chatDesktopTabsRenderSignature = desktopSignature;
 }
 
 function renderChatComposer() {
@@ -7358,6 +7660,7 @@ function renderChatComposer() {
   chatComposer.hidden = !state.chat.composerOpen;
 
   if (!state.chat.composerOpen) {
+    chatComposerRenderSignature = "";
     return;
   }
 
@@ -7374,6 +7677,23 @@ function renderChatComposer() {
   }
 
   const availableUsers = state.chat.users.filter((user) => String(user.id) !== String(state.user?.id));
+  const renderSignature = [
+    state.chat.composerTitle,
+    state.chat.composerParticipantIds.slice().sort().join(","),
+    availableUsers.map((user) => [
+      user.id,
+      user.fullName,
+      user.email,
+      user.avatarDataUrl,
+      state.chat.presenceByUserId[user.id] ?? "offline",
+    ].join("|")).join("::"),
+  ].join("~~");
+
+  if (renderSignature === chatComposerRenderSignature) {
+    return;
+  }
+
+  chatComposerRenderSignature = renderSignature;
 
   if (availableUsers.length === 0) {
     const empty = document.createElement("div");
@@ -7505,12 +7825,8 @@ async function startDirectChatWithUser(userId) {
     });
     applyChatSnapshot(payload);
     const conversation = findChatConversationByParticipants([userId]);
-    state.chat.activeConversationId = conversation?.id ?? state.chat.activeConversationId;
-    state.chat.tab = "conversations";
-    setChatOpen(true);
-    renderChatDock();
-    if (state.chat.activeConversationId) {
-      await markChatConversationRead(state.chat.activeConversationId);
+    if (conversation) {
+      activateChatConversation(conversation.id);
     }
   } catch (error) {
     setChatError(error.message);
@@ -7533,11 +7849,13 @@ async function createChatGroupConversation() {
     const conversation = state.chat.conversations.find((item) => Array.from(new Set((item.participantIds ?? []).map(String))).sort().join("|") === participantSignature)
       ?? state.chat.conversations[0]
       ?? null;
-    state.chat.activeConversationId = conversation?.id ?? "";
-    state.chat.tab = "conversations";
     setChatComposerOpen(false);
-    setChatOpen(true);
-    renderChatDock();
+    if (conversation) {
+      activateChatConversation(conversation.id);
+    } else {
+      setChatOpen(true);
+      renderChatDock();
+    }
   } catch (error) {
     setChatError(error.message);
     renderChatDock();
