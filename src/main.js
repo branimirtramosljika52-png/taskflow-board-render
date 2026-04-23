@@ -1904,6 +1904,10 @@ let todoShortcutMenuOpen = false;
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
+let chatKnownMessageIds = new Set();
+let chatNotificationBaselineReady = false;
+let chatNotificationTimerId = null;
+let chatAudioContext = null;
 let globalLoadingTimerId = null;
 let sessionIdleTimerId = null;
 let sessionIdleTrackingBound = false;
@@ -2007,6 +2011,7 @@ const userMenuAvatarFileInput = document.querySelector("#user-menu-avatar-file")
 const userMenuError = document.querySelector("#user-menu-error");
 const logoutButton = document.querySelector("#logout-button");
 const chatDock = document.querySelector("#chat-dock");
+const chatToast = document.querySelector("#chat-toast");
 const chatLauncher = document.querySelector("#chat-launcher");
 const chatLauncherPresence = document.querySelector("#chat-launcher-presence");
 const chatLauncherCaption = document.querySelector("#chat-launcher-caption");
@@ -2024,6 +2029,7 @@ const chatThreadView = document.querySelector("#chat-thread-view");
 const chatThreadTitle = document.querySelector("#chat-thread-title");
 const chatThreadMeta = document.querySelector("#chat-thread-meta");
 const chatThreadMessages = document.querySelector("#chat-thread-messages");
+const chatThreadTabs = document.querySelector("#chat-thread-tabs");
 const chatMessageForm = document.querySelector("#chat-message-form");
 const chatMessageInput = document.querySelector("#chat-message-input");
 const chatSendButton = document.querySelector("#chat-send-button");
@@ -6634,6 +6640,17 @@ function resetChatState() {
   clearChatPollTimer();
   chatLastPresenceSyncAt = 0;
   chatLastPresenceValue = "";
+  chatKnownMessageIds = new Set();
+  chatNotificationBaselineReady = false;
+  if (chatNotificationTimerId) {
+    window.clearTimeout(chatNotificationTimerId);
+    chatNotificationTimerId = null;
+  }
+  if (chatToast) {
+    chatToast.hidden = true;
+    chatToast.replaceChildren();
+    chatToast.onclick = null;
+  }
   state.chat.open = false;
   state.chat.tab = "conversations";
   state.chat.search = "";
@@ -6710,8 +6727,172 @@ function createChatChip(label) {
   return chip;
 }
 
+function collectChatMessageIds(conversations = []) {
+  const messageIds = new Set();
+
+  conversations.forEach((conversation) => {
+    (conversation.messages ?? []).forEach((message) => {
+      if (message.id) {
+        messageIds.add(String(message.id));
+      }
+    });
+  });
+
+  return messageIds;
+}
+
+function getLatestIncomingChatNotification(conversations = []) {
+  const currentUserId = String(state.user?.id ?? "");
+  let latestNotification = null;
+  let latestTime = 0;
+
+  conversations.forEach((conversation) => {
+    const isVisibleActiveConversation = state.chat.open
+      && String(conversation.id) === String(state.chat.activeConversationId);
+
+    if (isVisibleActiveConversation) {
+      return;
+    }
+
+    (conversation.messages ?? []).forEach((message) => {
+      const messageId = String(message.id ?? "");
+
+      if (!messageId || chatKnownMessageIds.has(messageId) || String(message.authorId) === currentUserId) {
+        return;
+      }
+
+      const messageTime = parseDateValue(message.createdAt)?.getTime() ?? Date.now();
+      if (messageTime >= latestTime) {
+        latestTime = messageTime;
+        latestNotification = { conversation, message };
+      }
+    });
+  });
+
+  return latestNotification;
+}
+
+function normalizeChatPreviewText(value = "") {
+  const compact = String(value).replace(/\s+/g, " ").trim();
+  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+}
+
+function hideChatNotificationToast() {
+  if (chatNotificationTimerId) {
+    window.clearTimeout(chatNotificationTimerId);
+    chatNotificationTimerId = null;
+  }
+
+  if (!chatToast) {
+    return;
+  }
+
+  chatToast.hidden = true;
+  chatToast.replaceChildren();
+  chatToast.onclick = null;
+}
+
+function showChatNotificationToast(notification) {
+  if (!chatToast || !notification) {
+    return;
+  }
+
+  const { conversation, message } = notification;
+  const author = state.chat.users.find((user) => String(user.id) === String(message.authorId))
+    ?? { id: message.authorId, fullName: message.authorName, avatarDataUrl: message.authorAvatarDataUrl };
+  const avatar = createChatAvatar(author, state.chat.presenceByUserId[message.authorId] ?? "online", "chat-toast-avatar");
+
+  const copy = document.createElement("span");
+  copy.className = "chat-toast-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = conversation.kind === "direct"
+    ? (message.authorName || conversation.title || "Nova poruka")
+    : `${message.authorName || "Kolega"} u ${conversation.title || "grupi"}`;
+
+  const body = document.createElement("span");
+  body.textContent = normalizeChatPreviewText(message.body || "Nova poruka");
+
+  copy.append(title, body);
+  chatToast.replaceChildren(avatar, copy);
+  chatToast.hidden = false;
+  chatToast.onclick = () => {
+    state.chat.activeConversationId = conversation.id;
+    state.chat.tab = "conversations";
+    setChatOpen(true);
+    hideChatNotificationToast();
+    void markChatConversationRead(conversation.id);
+  };
+
+  if (chatNotificationTimerId) {
+    window.clearTimeout(chatNotificationTimerId);
+  }
+
+  chatNotificationTimerId = window.setTimeout(() => {
+    hideChatNotificationToast();
+  }, 6500);
+}
+
+function playChatNotificationSound() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  try {
+    chatAudioContext = chatAudioContext || new AudioContextConstructor();
+
+    const playTone = () => {
+      const nowValue = chatAudioContext.currentTime;
+      const oscillator = chatAudioContext.createOscillator();
+      const gain = chatAudioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(660, nowValue);
+      oscillator.frequency.exponentialRampToValueAtTime(920, nowValue + 0.08);
+      oscillator.frequency.setValueAtTime(760, nowValue + 0.16);
+      gain.gain.setValueAtTime(0.0001, nowValue);
+      gain.gain.exponentialRampToValueAtTime(0.18, nowValue + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, nowValue + 0.32);
+      oscillator.connect(gain);
+      gain.connect(chatAudioContext.destination);
+      oscillator.start(nowValue);
+      oscillator.stop(nowValue + 0.34);
+    };
+
+    if (chatAudioContext.state === "suspended") {
+      chatAudioContext.resume().then(playTone).catch(() => {});
+      return;
+    }
+
+    playTone();
+  } catch {
+    return;
+  }
+}
+
+function handleChatIncomingNotifications(nextConversations = []) {
+  const nextMessageIds = collectChatMessageIds(nextConversations);
+  const shouldNotify = chatNotificationBaselineReady && state.chat.loaded;
+  const notification = shouldNotify ? getLatestIncomingChatNotification(nextConversations) : null;
+
+  chatKnownMessageIds = nextMessageIds;
+  chatNotificationBaselineReady = true;
+
+  if (!notification) {
+    return;
+  }
+
+  showChatNotificationToast(notification);
+  playChatNotificationSound();
+}
+
 function applyChatSnapshot(payload = {}) {
-  state.chat.conversations = payload.conversations ?? [];
+  const nextConversations = payload.conversations ?? [];
+  handleChatIncomingNotifications(nextConversations);
+
+  state.chat.conversations = nextConversations;
   state.chat.users = payload.users ?? [];
   state.chat.presenceByUserId = payload.presenceByUserId ?? {};
   state.chat.loaded = true;
@@ -6842,7 +7023,13 @@ function setChatOpen(isOpen) {
 
   if (!state.chat.open) {
     setChatComposerOpen(false);
-  } else if (!state.chat.loaded) {
+    renderChatDock();
+    return;
+  }
+
+  hideChatNotificationToast();
+
+  if (!state.chat.loaded) {
     void syncChatState({ silent: true, forcePresence: true });
   } else if (state.chat.activeConversationId) {
     void markChatConversationRead(state.chat.activeConversationId);
@@ -6918,6 +7105,7 @@ function renderChatConversationList() {
     button.type = "button";
     button.className = "chat-list-card";
     button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
+    button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
 
     const head = document.createElement("div");
     head.className = "chat-list-card-head";
@@ -7097,6 +7285,71 @@ function renderChatThread() {
   });
 }
 
+function renderChatConversationTabs() {
+  if (!chatThreadTabs) {
+    return;
+  }
+
+  if (state.chat.conversations.length === 0) {
+    chatThreadTabs.hidden = true;
+    chatThreadTabs.replaceChildren();
+    return;
+  }
+
+  chatThreadTabs.hidden = false;
+
+  const label = document.createElement("span");
+  label.className = "chat-thread-tabs-label";
+  label.textContent = "Razgovori";
+
+  const rail = document.createElement("div");
+  rail.className = "chat-thread-tabs-rail";
+
+  state.chat.conversations.forEach((conversation) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-thread-tab";
+    button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
+    button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
+
+    const icon = document.createElement("span");
+    icon.className = `chat-thread-tab-icon is-${conversation.kind || "group"}`;
+    icon.textContent = conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "#" : "G";
+
+    const copy = document.createElement("span");
+    copy.className = "chat-thread-tab-copy";
+    const title = document.createElement("strong");
+    title.textContent = conversation.title || "Razgovor";
+    const subtitle = document.createElement("span");
+    subtitle.textContent = conversation.lastMessage
+      ? normalizeChatPreviewText(conversation.lastMessage.body || formatChatTimestamp(conversation.lastMessage.createdAt))
+      : `${conversation.participants?.length ?? 0} sudionika`;
+    copy.append(title, subtitle);
+
+    button.append(icon, copy);
+
+    if (Number(conversation.unreadCount ?? 0) > 0) {
+      const unread = document.createElement("span");
+      unread.className = "chat-thread-tab-unread";
+      unread.textContent = String(conversation.unreadCount);
+      button.append(unread);
+    }
+
+    button.addEventListener("click", () => {
+      state.chat.activeConversationId = conversation.id;
+      state.chat.tab = "conversations";
+      state.chat.open = true;
+      hideChatNotificationToast();
+      renderChatDock();
+      void markChatConversationRead(conversation.id);
+    });
+
+    rail.append(button);
+  });
+
+  chatThreadTabs.replaceChildren(label, rail);
+}
+
 function renderChatComposer() {
   if (!chatComposer) {
     return;
@@ -7110,6 +7363,10 @@ function renderChatComposer() {
 
   if (chatComposerTitleInput && chatComposerTitleInput.value !== state.chat.composerTitle) {
     chatComposerTitleInput.value = state.chat.composerTitle;
+  }
+
+  if (chatComposerCreateButton) {
+    chatComposerCreateButton.disabled = state.chat.composerParticipantIds.length === 0;
   }
 
   if (!chatComposerUsers) {
@@ -7142,6 +7399,7 @@ function renderChatComposer() {
         nextIds.delete(user.id);
       }
       state.chat.composerParticipantIds = Array.from(nextIds);
+      renderChatComposer();
     });
 
     const avatar = createChatAvatar(user, state.chat.presenceByUserId[user.id] ?? "offline", "chat-person-avatar");
@@ -7188,6 +7446,7 @@ function renderChatDock() {
 
   if (chatLauncher) {
     chatLauncher.setAttribute("aria-expanded", state.chat.open ? "true" : "false");
+    chatLauncher.classList.toggle("has-unread", state.chat.unreadTotal > 0);
   }
 
   if (chatPanel) {
@@ -7220,6 +7479,7 @@ function renderChatDock() {
   renderChatConversationList();
   renderChatPeopleList();
   renderChatThread();
+  renderChatConversationTabs();
   renderChatComposer();
 }
 
@@ -60311,6 +60571,7 @@ chatCloseButton?.addEventListener("click", () => {
 });
 
 chatNewGroupButton?.addEventListener("click", () => {
+  state.chat.tab = "people";
   setChatComposerOpen(true);
 });
 

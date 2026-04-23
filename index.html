@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260422b" />
+<link rel="stylesheet" href="/styles.css?v=20260423a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -6417,6 +6417,8 @@
     </main>
 
     <section id="chat-dock" class="chat-dock" hidden>
+      <button id="chat-toast" type="button" class="chat-toast" hidden aria-live="polite"></button>
+
       <button id="chat-launcher" type="button" class="chat-launcher" aria-expanded="false">
         <span id="chat-launcher-presence" class="chat-launcher-presence" data-presence="online" aria-hidden="true"></span>
         <span class="chat-launcher-copy">
@@ -6431,9 +6433,10 @@
           <div class="chat-panel-title">
             <span class="chat-panel-kicker">Live chat</span>
             <strong>Communicator</strong>
+            <span>Grupe, direktni razgovori i brza timska komunikacija.</span>
           </div>
           <div class="chat-panel-actions">
-            <button id="chat-new-group-button" type="button" class="ghost-button chat-header-button">Nova grupa</button>
+            <button id="chat-new-group-button" type="button" class="ghost-button chat-header-button">+ Grupa</button>
             <button id="chat-close-button" type="button" class="ghost-button chat-header-button" aria-label="Zatvori chat">
               <span aria-hidden="true">&times;</span>
             </button>
@@ -6494,13 +6497,16 @@
           </section>
         </div>
 
+        <div id="chat-thread-tabs" class="chat-thread-tabs" aria-label="Otvoreni razgovori"></div>
+
         <section id="chat-composer" class="chat-composer" hidden>
           <div class="chat-composer-backdrop" data-chat-composer-close></div>
           <div class="chat-composer-card">
             <div class="chat-composer-head">
               <div>
                 <span class="chat-panel-kicker">Nova grupa</span>
-                <strong>Pokreni grupni razgovor</strong>
+                <strong>Složi grupu za razgovor</strong>
+                <p>Odaberi kolege, upiši naziv i otvori zajednički kanal.</p>
               </div>
               <button type="button" class="ghost-button chat-header-button" data-chat-composer-close aria-label="Zatvori composer">
                 <span aria-hidden="true">&times;</span>
@@ -6509,7 +6515,7 @@
 
             <label class="field">
               <span>Naziv grupe</span>
-              <input id="chat-composer-title" type="text" maxlength="120" placeholder="Npr. Intervencija Zagreb" />
+              <input id="chat-composer-title" type="text" maxlength="120" placeholder="Npr. Intervencija Zagreb, Tim Split..." />
             </label>
 
             <div class="chat-composer-people">
@@ -6529,6 +6535,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260422c"></script>
+    <script type="module" src="/src/main.js?v=20260423a"></script>
   </body>
 </html>
