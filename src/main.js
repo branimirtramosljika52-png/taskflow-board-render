@@ -4587,13 +4587,45 @@ async function saveAppCapabilities() {
   if (success) {
     state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
     setInlineMessage(appCapabilitiesFeedback, "Mogućnosti aplikacije su spremljene.", "success");
-    renderAppCapabilitiesDialog();
+    renderAppCapabilitiesDialog({ preserveScroll: true });
   }
 
   return success;
 }
 
-function renderAppCapabilitiesDialog() {
+function getAppCapabilitiesScrollSnapshot(shouldPreserve = false) {
+  if (!shouldPreserve) {
+    return null;
+  }
+
+  return {
+    listTop: appCapabilitiesList?.scrollTop ?? 0,
+    pageX: window.scrollX,
+    pageY: window.scrollY,
+  };
+}
+
+function restoreAppCapabilitiesScroll(snapshot = null) {
+  if (!snapshot) {
+    return;
+  }
+
+  const restore = () => {
+    if (appCapabilitiesList) {
+      const maxListTop = Math.max(0, appCapabilitiesList.scrollHeight - appCapabilitiesList.clientHeight);
+      appCapabilitiesList.scrollTop = Math.min(snapshot.listTop, maxListTop);
+    }
+    window.scrollTo(snapshot.pageX, snapshot.pageY);
+  };
+
+  requestAnimationFrame(() => {
+    restore();
+    requestAnimationFrame(restore);
+  });
+}
+
+function renderAppCapabilitiesDialog({ preserveScroll = false } = {}) {
+  const scrollSnapshot = getAppCapabilitiesScrollSnapshot(preserveScroll);
   const workspaceReady = Boolean(state.user);
   const isOpen = Boolean(workspaceReady && state.appCapabilitiesDialog.open);
   const canEdit = isOpen && getCanManageMasterData();
@@ -4656,6 +4688,7 @@ function renderAppCapabilitiesDialog() {
 
     empty.append(title, text);
     appCapabilitiesList.replaceChildren(empty);
+    restoreAppCapabilitiesScroll(scrollSnapshot);
     return;
   }
 
@@ -4700,7 +4733,7 @@ function renderAppCapabilitiesDialog() {
       });
       const removeModuleButton = createIconActionButton("Makni modul", "trash", "card-danger", () => {
         state.appCapabilitiesDialog.modules.splice(moduleIndex, 1);
-        renderAppCapabilitiesDialog();
+        renderAppCapabilitiesDialog({ preserveScroll: true });
       });
       moduleActions.append(editModuleButton, removeModuleButton);
     }
@@ -4775,7 +4808,7 @@ function renderAppCapabilitiesDialog() {
               return;
             }
             targetModule.items.splice(itemIndex, 1);
-            renderAppCapabilitiesDialog();
+            renderAppCapabilitiesDialog({ preserveScroll: true });
           });
           itemActions.append(editItemButton, removeItemButton);
         }
@@ -4801,7 +4834,7 @@ function renderAppCapabilitiesDialog() {
           return;
         }
         targetModule.items.push(createEmptyAppCapabilityItem());
-        renderAppCapabilitiesDialog();
+        renderAppCapabilitiesDialog({ preserveScroll: true });
       });
       footer.append(addItemButton);
     }
@@ -4811,6 +4844,7 @@ function renderAppCapabilitiesDialog() {
   });
 
   appCapabilitiesList.replaceChildren(fragment);
+  restoreAppCapabilitiesScroll(scrollSnapshot);
 }
 
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
@@ -63626,7 +63660,7 @@ appCapabilitiesAddModuleButton?.addEventListener("click", () => {
   }
 
   state.appCapabilitiesDialog.modules.push(createEmptyAppCapabilityModule());
-  renderAppCapabilitiesDialog();
+  renderAppCapabilitiesDialog({ preserveScroll: true });
 });
 
 appCapabilitiesExportButton?.addEventListener("click", () => {
