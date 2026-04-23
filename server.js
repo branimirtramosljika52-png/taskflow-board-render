@@ -2419,6 +2419,22 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/app-capabilities") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati mogućnosti aplikacije.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertAppCapabilities({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        modules: body?.modules,
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/company-role-permissions") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo spremati role permissions.");

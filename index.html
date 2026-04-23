@@ -764,7 +764,7 @@
                   </svg>
                   <span id="topbar-shortcut-todo-count" class="topbar-shortcut-count" hidden>0</span>
                 </button>
-                <div id="topbar-todo-panel" class="topbar-shortcut-panel notifications-panel" hidden>
+                  <div id="topbar-todo-panel" class="topbar-shortcut-panel notifications-panel" hidden>
                   <div class="notifications-panel-head">
                     <div class="notifications-panel-copy">
                       <strong>ToDo</strong>
@@ -778,6 +778,14 @@
                   <p id="topbar-todo-panel-empty" class="notifications-panel-empty" hidden>Nema aktivnih ToDo zadataka.</p>
                 </div>
               </div>
+              <button id="topbar-shortcut-capabilities" type="button" class="topbar-shortcut-button" aria-label="Mogućnosti aplikacije" aria-expanded="false">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3.5a6 6 0 0 0-3.9 10.56c.72.61 1.2 1.19 1.45 1.94"></path>
+                  <path d="M12 3.5a6 6 0 0 1 3.9 10.56c-.72.61-1.2 1.19-1.45 1.94"></path>
+                  <path d="M9.5 19h5"></path>
+                  <path d="M10 21h4"></path>
+                </svg>
+              </button>
               <button id="topbar-shortcut-settings" type="button" class="topbar-shortcut-button" aria-label="Settings">
                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 8.75a3.25 3.25 0 1 1 0 6.5 3.25 3.25 0 0 1 0-6.5Z"></path>
@@ -1258,6 +1266,28 @@
                 <div id="dashboard-widget-empty" class="dashboard-widget-empty" hidden></div>
                 <div id="dashboard-widget-grid" class="dashboard-widget-grid"></div>
               </div>
+            </div>
+
+            <div id="app-capabilities-modal" class="app-capabilities-modal" hidden>
+              <button id="app-capabilities-backdrop" type="button" class="app-capabilities-backdrop" aria-label="Zatvori prozor"></button>
+              <aside class="app-capabilities-dialog" role="dialog" aria-modal="true" aria-labelledby="app-capabilities-title">
+                <div class="app-capabilities-head">
+                  <div class="app-capabilities-copy">
+                    <p class="section-kicker">Product board</p>
+                    <h3 id="app-capabilities-title">Mogućnosti aplikacije</h3>
+                    <p class="helper-copy">Složi module, pobroji stavke i označi njihov status razvoja za aktivnu organizaciju.</p>
+                  </div>
+                  <div class="app-capabilities-head-actions">
+                    <button id="app-capabilities-add-module" type="button" class="ghost-button">+ Modul</button>
+                    <button id="app-capabilities-save" type="button" class="primary-button">Spremi</button>
+                    <button id="app-capabilities-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div id="app-capabilities-status-legend" class="app-capabilities-status-legend"></div>
+                <p id="app-capabilities-feedback" class="form-error" aria-live="polite"></p>
+                <div id="app-capabilities-list" class="app-capabilities-list"></div>
+              </aside>
             </div>
 
             <div id="dashboard-builder-panel" class="dashboard-builder-modal" hidden>

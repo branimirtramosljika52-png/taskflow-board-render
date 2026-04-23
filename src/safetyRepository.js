@@ -350,6 +350,12 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
 });
+const APP_CAPABILITY_STATUS_VALUES = new Set([
+  "implemented",
+  "in_progress",
+  "planned_later",
+  "not_planned",
+]);
 
 function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min = 1, max = 365 } = {}) {
   const numeric = Number(value);
@@ -465,6 +471,53 @@ function normalizePeriodicsVisualSettings(value = {}) {
     criticalDays,
     warningDays: Math.max(criticalDays, warningDaysRaw),
   };
+}
+
+function normalizeAppCapabilityStatus(value = "") {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return APP_CAPABILITY_STATUS_VALUES.has(normalized)
+    ? normalized
+    : "planned_later";
+}
+
+function normalizeAppCapabilitiesModules(value = []) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((module) => {
+      const title = dbString(module?.title ?? module?.name ?? module?.label).trim();
+      if (!title) {
+        return null;
+      }
+
+      const items = Array.isArray(module?.items)
+        ? module.items
+          .map((item) => {
+            const itemTitle = dbString(item?.title ?? item?.name ?? item?.label).trim();
+            if (!itemTitle) {
+              return null;
+            }
+
+            const itemId = dbString(item?.id);
+            return {
+              ...(itemId ? { id: itemId } : {}),
+              title: itemTitle,
+              status: normalizeAppCapabilityStatus(item?.status),
+            };
+          })
+          .filter(Boolean)
+        : [];
+
+      const moduleId = dbString(module?.id);
+      return {
+        ...(moduleId ? { id: moduleId } : {}),
+        title,
+        items,
+      };
+    })
+    .filter(Boolean);
 }
 
 function cloneJsonValue(value) {
@@ -1692,6 +1745,20 @@ function mapPeriodicsVisualSettingsEntry(row = {}) {
   return {
     organizationId,
     ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapAppCapabilitySettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    modules: normalizeAppCapabilitiesModules(parseJsonArray(row.modules_json)),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
@@ -3025,6 +3092,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapPeriodicsVisualSettingsEntry(row))
     .filter(Boolean);
 
+  const [appCapabilitySettingsRows] = await connection.query(`
+    SELECT organization_id, modules_json, created_at, updated_at
+    FROM web_app_capability_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const appCapabilities = appCapabilitySettingsRows
+    .map((row) => mapAppCapabilitySettingsEntry(row))
+    .filter(Boolean);
+
   const [companyRolePermissionRows] = await connection.query(`
     SELECT organization_id, company_id, profile_role, can_view, can_create, can_edit, can_delete, created_at, updated_at
     FROM web_company_role_permissions
@@ -3146,6 +3223,7 @@ async function fetchSnapshotFromConnection(connection) {
     absenceNotificationSettings,
     vehicleNotificationSettings,
     periodicsVisualSettings,
+    appCapabilities,
     companyRolePermissions,
     safetyAuthorizations,
     absenceEntries,
@@ -3247,6 +3325,7 @@ export class InMemorySafetyRepository {
       absenceNotificationSettings: [],
       vehicleNotificationSettings: [],
       periodicsVisualSettings: [],
+      appCapabilities: [],
       companyRolePermissions: [],
       safetyAuthorizations: [],
       absenceEntries: [],
@@ -3458,6 +3537,10 @@ export class InMemorySafetyRepository {
       })),
       periodicsVisualSettings: this.snapshot.periodicsVisualSettings.map((item) => ({
         ...item,
+      })),
+      appCapabilities: this.snapshot.appCapabilities.map((item) => ({
+        ...item,
+        modules: cloneJsonValue(item.modules ?? []),
       })),
       companyRolePermissions: this.snapshot.companyRolePermissions.map((item) => ({
         ...item,
@@ -4673,6 +4756,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertAppCapabilities({ organizationId = "", modules = [] } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za mogućnosti aplikacije.");
+    }
+
+    const normalizedModules = normalizeAppCapabilitiesModules(modules);
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      modules: cloneJsonValue(normalizedModules),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.appCapabilities.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.appCapabilities[currentIndex];
+      this.snapshot.appCapabilities[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.appCapabilities.push(nextEntry);
+    }
+
+    return this.snapshot.appCapabilities.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
   async upsertCompanyRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
     const safeOrganizationId = dbString(organizationId);
     if (!safeOrganizationId) {
@@ -5454,6 +5571,16 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_periodics_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_app_capability_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        modules_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_app_capability_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -8868,6 +8995,34 @@ export class MySqlSafetyRepository {
     return {
       organizationId: String(safeOrganizationId),
       ...normalizedSettings,
+    };
+  }
+
+  async upsertAppCapabilities({ organizationId = "", modules = [] } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za mogućnosti aplikacije.");
+    }
+
+    const normalizedModules = normalizeAppCapabilitiesModules(modules);
+    await this.pool.query(
+      `
+        INSERT INTO web_app_capability_settings
+          (organization_id, modules_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          modules_json = VALUES(modules_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        JSON.stringify(normalizedModules),
+      ],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      modules: cloneJsonValue(normalizedModules),
     };
   }
 

@@ -541,6 +541,29 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
 });
+const APP_CAPABILITY_STATUS_OPTIONS = Object.freeze([
+  Object.freeze({
+    value: "implemented",
+    label: "Implementirano",
+    className: "is-implemented",
+  }),
+  Object.freeze({
+    value: "in_progress",
+    label: "U tijeku",
+    className: "is-in-progress",
+  }),
+  Object.freeze({
+    value: "planned_later",
+    label: "U planu kasnije",
+    className: "is-planned-later",
+  }),
+  Object.freeze({
+    value: "not_planned",
+    label: "Nije u planu",
+    className: "is-not-planned",
+  }),
+]);
+const APP_CAPABILITY_STATUS_VALUES = new Set(APP_CAPABILITY_STATUS_OPTIONS.map((option) => option.value));
 const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
   { value: "new_user", label: "New User" },
   { value: "junior_user", label: "Junior User" },
@@ -1073,6 +1096,7 @@ const state = {
   periodicsVisualSettings: {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
   },
+  appCapabilities: [],
   companyRolePermissions: normalizeCompanyRolePermissions([]),
   companyPermissions: {
     ...DEFAULT_COMPANY_PERMISSIONS,
@@ -1099,6 +1123,10 @@ const state = {
   activeAbsenceId: "",
   activeDrawingId: "",
   activeDocumentTemplateId: "",
+  appCapabilitiesDialog: {
+    open: false,
+    modules: [],
+  },
   userEditorOpen: false,
   userManagementScope: "people",
   companyEditorOpen: false,
@@ -1456,6 +1484,73 @@ function createClientSideId(prefix = "id") {
   } catch {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+function normalizeAppCapabilityStatus(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return APP_CAPABILITY_STATUS_VALUES.has(normalized) ? normalized : "planned_later";
+}
+
+function createEmptyAppCapabilityItem() {
+  return {
+    id: createClientSideId("app-capability-item"),
+    title: "",
+    status: "planned_later",
+  };
+}
+
+function createEmptyAppCapabilityModule({ withItem = true } = {}) {
+  return {
+    id: createClientSideId("app-capability-module"),
+    title: "",
+    items: withItem ? [createEmptyAppCapabilityItem()] : [],
+  };
+}
+
+function cloneAppCapabilityModules(modules = []) {
+  return (Array.isArray(modules) ? modules : []).map((module) => ({
+    id: String(module?.id || createClientSideId("app-capability-module")),
+    title: String(module?.title || "").trim(),
+    items: (Array.isArray(module?.items) ? module.items : []).map((item) => ({
+      id: String(item?.id || createClientSideId("app-capability-item")),
+      title: String(item?.title || "").trim(),
+      status: normalizeAppCapabilityStatus(item?.status),
+    })),
+  }));
+}
+
+function normalizeAppCapabilities(value = []) {
+  return cloneAppCapabilityModules(value)
+    .map((module) => {
+      const title = String(module.title || "").trim();
+      const items = module.items
+        .map((item) => ({
+          id: String(item.id || createClientSideId("app-capability-item")),
+          title: String(item.title || "").trim(),
+          status: normalizeAppCapabilityStatus(item.status),
+        }))
+        .filter((item) => item.title);
+
+      if (!title && items.length === 0) {
+        return null;
+      }
+
+      return {
+        id: String(module.id || createClientSideId("app-capability-module")),
+        title: title || "Modul",
+        items,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getAppCapabilityStatusConfig(status = "planned_later") {
+  return APP_CAPABILITY_STATUS_OPTIONS.find((option) => option.value === normalizeAppCapabilityStatus(status))
+    ?? APP_CAPABILITY_STATUS_OPTIONS[2];
+}
+
+function sanitizeAppCapabilitiesForSave(modules = []) {
+  return normalizeAppCapabilities(modules);
 }
 
 function normalizePeopleWorkspaceTab(tab = "") {
@@ -1863,6 +1958,7 @@ const globalLoadingIndicatorCopy = document.querySelector("#global-loading-indic
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
+const topbarShortcutCapabilitiesButton = document.querySelector("#topbar-shortcut-capabilities");
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
 const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
@@ -1876,6 +1972,14 @@ const topbarTodoPanelMeta = document.querySelector("#topbar-todo-panel-meta");
 const topbarTodoPanelList = document.querySelector("#topbar-todo-panel-list");
 const topbarTodoPanelEmpty = document.querySelector("#topbar-todo-panel-empty");
 const topbarTodoOpenAllButton = document.querySelector("#topbar-todo-open-all");
+const appCapabilitiesModal = document.querySelector("#app-capabilities-modal");
+const appCapabilitiesBackdrop = document.querySelector("#app-capabilities-backdrop");
+const appCapabilitiesCloseButton = document.querySelector("#app-capabilities-close");
+const appCapabilitiesSaveButton = document.querySelector("#app-capabilities-save");
+const appCapabilitiesAddModuleButton = document.querySelector("#app-capabilities-add-module");
+const appCapabilitiesStatusLegend = document.querySelector("#app-capabilities-status-legend");
+const appCapabilitiesFeedback = document.querySelector("#app-capabilities-feedback");
+const appCapabilitiesList = document.querySelector("#app-capabilities-list");
 const notificationsTrigger = document.querySelector("#notifications-trigger");
 const notificationsTriggerCount = document.querySelector("#notifications-trigger-count");
 const notificationsPanel = document.querySelector("#notifications-panel");
@@ -3998,6 +4102,323 @@ function renderTopbarBreadcrumbs() {
   organizationContext.replaceChildren(...nodes);
 }
 
+function createAppCapabilityStatusIcon(status = "planned_later") {
+  const config = getAppCapabilityStatusConfig(status);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "app-capabilities-status-icon");
+
+  const appendPath = (d) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  };
+
+  switch (config.value) {
+    case "implemented":
+      appendPath("M20 6 9 17l-5-5");
+      break;
+    case "in_progress":
+      appendPath("M12 3.75A8.25 8.25 0 1 0 20.25 12");
+      appendPath("M12 7.5v4.5l3 2");
+      break;
+    case "not_planned":
+      appendPath("M12 3.75a8.25 8.25 0 1 1 0 16.5 8.25 8.25 0 0 1 0-16.5Z");
+      appendPath("m7.75 7.75 8.5 8.5");
+      break;
+    default:
+      appendPath("M12 3.75a8.25 8.25 0 1 1 0 16.5 8.25 8.25 0 0 1 0-16.5Z");
+      appendPath("M12 8v4.25");
+      appendPath("M12 15.75h.01");
+      break;
+  }
+
+  return svg;
+}
+
+function createAppCapabilityStatusPill(status = "planned_later") {
+  const config = getAppCapabilityStatusConfig(status);
+  const pill = document.createElement("span");
+  pill.className = `app-capabilities-status-pill ${config.className}`;
+  pill.append(
+    createAppCapabilityStatusIcon(config.value),
+    document.createTextNode(config.label),
+  );
+  return pill;
+}
+
+function openAppCapabilitiesDialog() {
+  setNotificationsMenuOpen(false);
+  setRemindersShortcutMenuOpen(false);
+  setTodoShortcutMenuOpen(false);
+  setUserMenuOpen(false);
+  state.appCapabilitiesDialog.open = true;
+  state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
+
+  if (state.appCapabilitiesDialog.modules.length === 0 && getCanManageMasterData()) {
+    state.appCapabilitiesDialog.modules = [createEmptyAppCapabilityModule()];
+  }
+
+  setInlineMessage(appCapabilitiesFeedback, "");
+  renderAppCapabilitiesDialog();
+}
+
+function closeAppCapabilitiesDialog({ resetDraft = true } = {}) {
+  state.appCapabilitiesDialog.open = false;
+  if (resetDraft) {
+    state.appCapabilitiesDialog.modules = [];
+    setInlineMessage(appCapabilitiesFeedback, "");
+  }
+  renderAppCapabilitiesDialog();
+}
+
+async function saveAppCapabilities() {
+  if (!getCanManageMasterData()) {
+    setInlineMessage(appCapabilitiesFeedback, "Nemate pravo spremati mogućnosti aplikacije.");
+    return false;
+  }
+
+  if (appCapabilitiesSaveButton) {
+    appCapabilitiesSaveButton.disabled = true;
+  }
+
+  const success = await runMutation(() => apiRequest("/app-capabilities", {
+    method: "POST",
+    body: {
+      modules: sanitizeAppCapabilitiesForSave(state.appCapabilitiesDialog.modules),
+    },
+  }), appCapabilitiesFeedback);
+
+  if (appCapabilitiesSaveButton) {
+    appCapabilitiesSaveButton.disabled = false;
+  }
+
+  if (success) {
+    state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
+    setInlineMessage(appCapabilitiesFeedback, "Mogućnosti aplikacije su spremljene.", "success");
+    renderAppCapabilitiesDialog();
+  }
+
+  return success;
+}
+
+function renderAppCapabilitiesDialog() {
+  const workspaceReady = Boolean(state.user);
+  const isOpen = Boolean(workspaceReady && state.appCapabilitiesDialog.open);
+  const canEdit = isOpen && getCanManageMasterData();
+
+  if (topbarShortcutCapabilitiesButton) {
+    topbarShortcutCapabilitiesButton.hidden = !workspaceReady;
+    topbarShortcutCapabilitiesButton.classList.toggle("is-open", isOpen);
+    topbarShortcutCapabilitiesButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+
+  document.body.classList.toggle("is-app-capabilities-open", isOpen);
+
+  if (appCapabilitiesModal) {
+    appCapabilitiesModal.hidden = !isOpen;
+  }
+  if (appCapabilitiesBackdrop) {
+    appCapabilitiesBackdrop.hidden = !isOpen;
+  }
+
+  if (!appCapabilitiesStatusLegend || !appCapabilitiesList) {
+    return;
+  }
+
+  appCapabilitiesStatusLegend.replaceChildren(
+    ...APP_CAPABILITY_STATUS_OPTIONS.map((option) => createAppCapabilityStatusPill(option.value)),
+  );
+
+  if (!isOpen) {
+    appCapabilitiesList.replaceChildren();
+    return;
+  }
+
+  if (appCapabilitiesAddModuleButton) {
+    appCapabilitiesAddModuleButton.hidden = !canEdit;
+    appCapabilitiesAddModuleButton.disabled = !canEdit;
+  }
+  if (appCapabilitiesSaveButton) {
+    appCapabilitiesSaveButton.hidden = !canEdit;
+    appCapabilitiesSaveButton.disabled = !canEdit;
+  }
+
+  const modules = cloneAppCapabilityModules(state.appCapabilitiesDialog.modules);
+
+  if (modules.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "app-capabilities-empty";
+
+    const title = document.createElement("strong");
+    title.textContent = canEdit ? "Još nema modula." : "Još nema upisanih mogućnosti.";
+
+    const text = document.createElement("span");
+    text.textContent = canEdit
+      ? "Dodaj prvi modul i ispod njega pobroji stavke koje želiš pratiti."
+      : "Administrator još nije složio pregled modula i razvojnih statusa.";
+
+    empty.append(title, text);
+    appCapabilitiesList.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  modules.forEach((module, moduleIndex) => {
+    const card = document.createElement("section");
+    card.className = "app-capabilities-module-card";
+
+    const head = document.createElement("div");
+    head.className = "app-capabilities-module-head";
+
+    const titleField = document.createElement("label");
+    titleField.className = "field app-capabilities-module-title-field";
+    const titleLabel = document.createElement("span");
+    titleLabel.textContent = "Modul";
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.placeholder = "npr. People, Company, Periodika...";
+    titleInput.value = module.title || "";
+    titleInput.disabled = !canEdit;
+    titleInput.addEventListener("input", () => {
+      const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];
+      if (targetModule) {
+        targetModule.title = titleInput.value;
+      }
+    });
+    titleField.append(titleLabel, titleInput);
+
+    const moduleActions = document.createElement("div");
+    moduleActions.className = "app-capabilities-module-actions";
+
+    if (canEdit) {
+      const removeModuleButton = document.createElement("button");
+      removeModuleButton.type = "button";
+      removeModuleButton.className = "ghost-button";
+      removeModuleButton.textContent = "Makni modul";
+      removeModuleButton.addEventListener("click", () => {
+        state.appCapabilitiesDialog.modules.splice(moduleIndex, 1);
+        renderAppCapabilitiesDialog();
+      });
+      moduleActions.append(removeModuleButton);
+    }
+
+    head.append(titleField, moduleActions);
+
+    const itemsWrap = document.createElement("div");
+    itemsWrap.className = "app-capabilities-items";
+
+    if (module.items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "app-capabilities-empty";
+      const text = document.createElement("span");
+      text.textContent = canEdit
+        ? "Dodaj stavku unutar modula i odredi status."
+        : "Za ovaj modul još nema pobrojanih stavki.";
+      empty.append(text);
+      itemsWrap.append(empty);
+    } else {
+      module.items.forEach((item, itemIndex) => {
+        const row = document.createElement("div");
+        row.className = "app-capabilities-item-row";
+
+        row.append(createAppCapabilityStatusPill(item.status));
+
+        const itemTitleField = document.createElement("label");
+        itemTitleField.className = "field app-capabilities-item-title-field";
+        const itemTitleLabel = document.createElement("span");
+        itemTitleLabel.textContent = "Stavka";
+        const itemTitleInput = document.createElement("input");
+        itemTitleInput.type = "text";
+        itemTitleInput.placeholder = "npr. Export u Excel, odobravanje zahtjeva...";
+        itemTitleInput.value = item.title || "";
+        itemTitleInput.disabled = !canEdit;
+        itemTitleInput.addEventListener("input", () => {
+          const targetItem = state.appCapabilitiesDialog.modules[moduleIndex]?.items?.[itemIndex];
+          if (targetItem) {
+            targetItem.title = itemTitleInput.value;
+          }
+        });
+        itemTitleField.append(itemTitleLabel, itemTitleInput);
+
+        const itemStatusField = document.createElement("label");
+        itemStatusField.className = "field app-capabilities-item-status-field";
+        const itemStatusLabel = document.createElement("span");
+        itemStatusLabel.textContent = "Status";
+        const itemStatusSelect = document.createElement("select");
+        itemStatusSelect.disabled = !canEdit;
+        APP_CAPABILITY_STATUS_OPTIONS.forEach((option) => {
+          const optionNode = document.createElement("option");
+          optionNode.value = option.value;
+          optionNode.textContent = option.label;
+          itemStatusSelect.append(optionNode);
+        });
+        itemStatusSelect.value = normalizeAppCapabilityStatus(item.status);
+        itemStatusSelect.addEventListener("change", () => {
+          const targetItem = state.appCapabilitiesDialog.modules[moduleIndex]?.items?.[itemIndex];
+          if (targetItem) {
+            targetItem.status = normalizeAppCapabilityStatus(itemStatusSelect.value);
+          }
+          renderAppCapabilitiesDialog();
+        });
+        itemStatusField.append(itemStatusLabel, itemStatusSelect);
+
+        row.append(itemTitleField, itemStatusField);
+
+        if (canEdit) {
+          const removeItemButton = document.createElement("button");
+          removeItemButton.type = "button";
+          removeItemButton.className = "ghost-button";
+          removeItemButton.textContent = "Makni";
+          removeItemButton.addEventListener("click", () => {
+            const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];
+            if (!targetModule) {
+              return;
+            }
+            targetModule.items.splice(itemIndex, 1);
+            renderAppCapabilitiesDialog();
+          });
+          row.append(removeItemButton);
+        }
+
+        itemsWrap.append(row);
+      });
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "app-capabilities-module-footer";
+
+    if (canEdit) {
+      const addItemButton = document.createElement("button");
+      addItemButton.type = "button";
+      addItemButton.className = "ghost-button";
+      addItemButton.textContent = "+ Stavka";
+      addItemButton.addEventListener("click", () => {
+        const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];
+        if (!targetModule) {
+          return;
+        }
+        targetModule.items.push(createEmptyAppCapabilityItem());
+        renderAppCapabilitiesDialog();
+      });
+      footer.append(addItemButton);
+    }
+
+    card.append(head, itemsWrap, footer);
+    fragment.append(card);
+  });
+
+  appCapabilitiesList.replaceChildren(fragment);
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      appCapabilitiesCloseButton?.focus({ preventScroll: true });
+    });
+  }
+}
+
 function renderConnectionStatus({ tone = "connecting", label = "", meta = "" } = {}) {
   if (!connectionStatus) {
     return;
@@ -4930,6 +5351,10 @@ function applySnapshot(payload) {
   state.periodicsVisualSettings = normalizePeriodicsVisualSettings(
     payload.periodicsVisualSettings,
   );
+  state.appCapabilities = normalizeAppCapabilities(payload.appCapabilities ?? []);
+  if (state.appCapabilitiesDialog.open) {
+    state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
+  }
   state.companyRolePermissions = materializeCompanyRolePermissionDraft(
     payload.companyRolePermissions ?? [],
   );
@@ -39069,6 +39494,8 @@ function renderAuthState() {
   }
 
   if (!workspaceReady) {
+    state.appCapabilitiesDialog.open = false;
+    state.appCapabilitiesDialog.modules = [];
     state.workOrderEditorOpen = false;
     syncWorkOrderEditorModal();
     state.userEditorOpen = false;
@@ -39244,6 +39671,7 @@ function renderAuthState() {
   setRemindersShortcutMenuOpen(false);
   setTodoShortcutMenuOpen(false);
   setUserMenuOpen(false);
+  renderAppCapabilitiesDialog();
   syncSessionIdleTracking();
 }
 
@@ -59370,6 +59798,7 @@ function render() {
   renderModuleView();
   renderActiveView();
   renderChatDock();
+  renderAppCapabilitiesDialog();
 }
 
 sidebarNavItems.forEach((button) => {
@@ -62757,6 +63186,15 @@ topbarShortcutDashboardButton?.addEventListener("click", () => {
   activateSidebarItem("dashboard", { expandSidebar: state.sidebarCollapsed });
 });
 
+topbarShortcutCapabilitiesButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (state.appCapabilitiesDialog.open) {
+    closeAppCapabilitiesDialog();
+    return;
+  }
+  openAppCapabilitiesDialog();
+});
+
 dashboardOpenPeopleButton?.addEventListener("click", () => {
   setUserManagementScope("control-panel");
   activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
@@ -62778,6 +63216,27 @@ topbarShortcutTodoButton?.addEventListener("click", (event) => {
 
 topbarShortcutSettingsButton?.addEventListener("click", () => {
   activateSidebarItem("settings", { expandSidebar: state.sidebarCollapsed });
+});
+
+appCapabilitiesCloseButton?.addEventListener("click", () => {
+  closeAppCapabilitiesDialog();
+});
+
+appCapabilitiesBackdrop?.addEventListener("click", () => {
+  closeAppCapabilitiesDialog();
+});
+
+appCapabilitiesAddModuleButton?.addEventListener("click", () => {
+  if (!getCanManageMasterData()) {
+    return;
+  }
+
+  state.appCapabilitiesDialog.modules.push(createEmptyAppCapabilityModule());
+  renderAppCapabilitiesDialog();
+});
+
+appCapabilitiesSaveButton?.addEventListener("click", () => {
+  void saveAppCapabilities();
 });
 
 topbarRemindersOpenAllButton?.addEventListener("click", (event) => {
@@ -62874,6 +63333,14 @@ userMenuPresenceButton?.addEventListener("click", (event) => {
   }
 
   setUserPresenceMenuOpen(!userPresenceMenuOpen);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!state.appCapabilitiesDialog.open || event.key !== "Escape") {
+    return;
+  }
+
+  closeAppCapabilitiesDialog();
 });
 
 document.addEventListener("keydown", (event) => {

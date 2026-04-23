@@ -1125,6 +1125,215 @@ fieldset {
   font-weight: 600;
 }
 
+body.is-app-capabilities-open {
+  overflow: hidden;
+}
+
+.app-capabilities-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 48;
+}
+
+.app-capabilities-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(16, 25, 52, 0.36);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.app-capabilities-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: 16px auto;
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 28px;
+  border: 1px solid rgba(197, 170, 223, 0.42);
+  background:
+    radial-gradient(circle at top right, rgba(174, 128, 255, 0.14), transparent 30%),
+    radial-gradient(circle at top left, rgba(101, 173, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 249, 255, 0.98));
+  box-shadow: 0 34px 72px rgba(22, 35, 68, 0.28);
+  overflow: hidden;
+}
+
+.app-capabilities-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.app-capabilities-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.app-capabilities-copy h3 {
+  margin: 0;
+}
+
+.app-capabilities-copy .helper-copy {
+  margin: 0;
+  max-width: 72ch;
+}
+
+.app-capabilities-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.app-capabilities-status-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.app-capabilities-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding-right: 4px;
+}
+
+.app-capabilities-empty {
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px dashed rgba(165, 178, 217, 0.7);
+  background: rgba(244, 248, 255, 0.78);
+  color: #5f6f8d;
+}
+
+.app-capabilities-empty strong {
+  color: #243454;
+}
+
+.app-capabilities-module-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(197, 206, 232, 0.88);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 249, 255, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 26px rgba(56, 72, 112, 0.08);
+}
+
+.app-capabilities-module-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app-capabilities-module-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-capabilities-module-title-field {
+  min-width: min(420px, 100%);
+  flex: 1 1 340px;
+}
+
+.app-capabilities-items {
+  display: grid;
+  gap: 10px;
+}
+
+.app-capabilities-item-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(220px, 0.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(218, 224, 240, 0.92);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.app-capabilities-item-title-field {
+  min-width: 0;
+}
+
+.app-capabilities-item-status-field {
+  min-width: 0;
+}
+
+.app-capabilities-module-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.app-capabilities-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(197, 206, 232, 0.92);
+  background: rgba(245, 248, 255, 0.94);
+  color: #475672;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.app-capabilities-status-icon {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.app-capabilities-status-pill.is-implemented {
+  color: #1f7a4c;
+  border-color: rgba(72, 168, 110, 0.34);
+  background: linear-gradient(180deg, rgba(232, 250, 239, 0.98), rgba(220, 245, 230, 0.94));
+}
+
+.app-capabilities-status-pill.is-in-progress {
+  color: #245f9d;
+  border-color: rgba(86, 134, 222, 0.34);
+  background: linear-gradient(180deg, rgba(235, 244, 255, 0.98), rgba(222, 236, 255, 0.94));
+}
+
+.app-capabilities-status-pill.is-planned-later {
+  color: #8a6316;
+  border-color: rgba(214, 169, 79, 0.34);
+  background: linear-gradient(180deg, rgba(255, 248, 230, 0.99), rgba(255, 238, 200, 0.95));
+}
+
+.app-capabilities-status-pill.is-not-planned {
+  color: #8a4d55;
+  border-color: rgba(208, 122, 137, 0.34);
+  background: linear-gradient(180deg, rgba(255, 240, 243, 0.99), rgba(255, 226, 231, 0.95));
+}
+
 .notifications-panel-head {
   display: flex;
   align-items: center;
@@ -19276,6 +19485,21 @@ body.is-vehicle-reservation-open {
   .periodics-calendar-grid-shell {
     height: var(--periodics-calendar-shell-height, min(70vh, calc(100dvh - 280px)));
     max-height: var(--periodics-calendar-shell-height, calc(100dvh - 280px));
+  }
+
+  .app-capabilities-dialog {
+    width: min(100vw - 20px, 1120px);
+    max-height: calc(100dvh - 20px);
+    margin: 10px auto;
+    padding: 18px;
+  }
+
+  .app-capabilities-item-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-capabilities-status-pill {
+    width: fit-content;
   }
 }
 

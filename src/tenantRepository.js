@@ -1874,6 +1874,19 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         warningDays: Math.max(criticalDays, warningDaysRaw),
       };
     })(),
+    appCapabilities: (() => {
+      const settingsEntry = (rawSnapshot.appCapabilities ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      return Array.isArray(settingsEntry?.modules)
+        ? settingsEntry.modules.map((module) => ({
+          ...module,
+          items: Array.isArray(module?.items)
+            ? module.items.map((item) => ({ ...item }))
+            : [],
+        }))
+        : [];
+    })(),
     safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -2439,6 +2452,7 @@ export class MemoryTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    appCapabilities: [],
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
@@ -3262,6 +3276,7 @@ export class MySqlTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    appCapabilities: [],
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
@@ -3311,6 +3326,7 @@ export class MySqlTenantRepository {
         absenceNotificationSettings: [],
         vehicleNotificationSettings: [],
         periodicsVisualSettings: [],
+        appCapabilities: [],
         safetyAuthorizations: [],
         absenceEntries: [],
         absenceBalances: [],
