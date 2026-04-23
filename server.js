@@ -14,6 +14,7 @@ import {
   canManageWorkOrders,
 } from "./src/accessControl.js";
 import {
+  buildAppCapabilitiesPdfBuffer,
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildPdfFromTemplateBuffer,
@@ -1649,6 +1650,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
+    const appCapabilitiesPdfExportMatch = url.pathname === "/api/app-capabilities/export-pdf";
     const drawingProjectMatch = url.pathname.match(/^\/api\/drawings\/([^/]+)$/);
     const drawingReferenceContentMatch = url.pathname.match(/^\/api\/drawings\/([^/]+)\/references\/([^/]+)\/content$/);
     const contractWordExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-word$/);
@@ -3000,6 +3002,29 @@ async function handleApiRequest(request, response, url) {
       );
 
       sendBinary(response, 200, mergedPdf, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (appCapabilitiesPdfExportMatch && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const organizationName = (scopedSnapshot.organizations ?? []).find((entry) => (
+        String(entry.id) === String(scopedSnapshot.activeOrganizationId || "")
+      ))?.name || "SafeNexus";
+      const pdfBuffer = await buildAppCapabilitiesPdfBuffer({
+        organizationName,
+        modules: Array.isArray(body?.modules) ? body.modules : scopedSnapshot.appCapabilities ?? [],
+        generatedAt: new Date().toISOString(),
+      });
+      const fileName = sanitizeGeneratedDocumentFileName(
+        `${organizationName}-product-board`,
+        { fallback: "safe-nexus-product-board", extension: "pdf" },
+      );
+
+      sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,
       });

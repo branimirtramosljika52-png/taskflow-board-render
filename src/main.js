@@ -4156,14 +4156,14 @@ function createAppCapabilityStatusControl(
     onChange = null,
   } = {},
 ) {
-  const config = getAppCapabilityStatusConfig(status);
   const control = document.createElement("div");
-  control.className = `app-capabilities-choice-control ${config.className}${disabled ? " is-readonly" : ""}`;
-  control.append(createAppCapabilityStatusIcon(config.value));
+  control.className = `app-capabilities-choice-control${disabled ? " is-readonly" : ""}`;
+
+  const icon = createAppCapabilityStatusIcon(status);
+  control.append(icon);
 
   const label = document.createElement("span");
   label.className = "app-capabilities-choice-label";
-  label.textContent = config.label;
   control.append(label);
 
   const chevron = document.createElement("span");
@@ -4181,16 +4181,44 @@ function createAppCapabilityStatusControl(
       optionNode.textContent = option.label;
       select.append(optionNode);
     });
-    select.value = config.value;
     select.addEventListener("change", () => {
+      const nextStatus = normalizeAppCapabilityStatus(select.value);
+      syncAppCapabilityStatusControl(control, nextStatus);
       if (typeof onChange === "function") {
-        onChange(normalizeAppCapabilityStatus(select.value));
+        onChange(nextStatus);
       }
     });
     control.append(select);
   }
 
+  syncAppCapabilityStatusControl(control, status);
+
   return control;
+}
+
+function syncAppCapabilityStatusControl(control, status = "planned_later") {
+  if (!(control instanceof HTMLElement)) {
+    return;
+  }
+
+  const config = getAppCapabilityStatusConfig(status);
+  const isReadonly = control.classList.contains("is-readonly");
+  control.className = `app-capabilities-choice-control ${config.className}${isReadonly ? " is-readonly" : ""}`;
+
+  const currentIcon = control.querySelector(".app-capabilities-status-icon");
+  if (currentIcon) {
+    currentIcon.replaceWith(createAppCapabilityStatusIcon(config.value));
+  }
+
+  const label = control.querySelector(".app-capabilities-choice-label");
+  if (label) {
+    label.textContent = config.label;
+  }
+
+  const select = control.querySelector(".app-capabilities-choice-native");
+  if (select instanceof HTMLSelectElement) {
+    select.value = config.value;
+  }
 }
 
 function getAppCapabilityStatusExportSymbol(status = "planned_later") {
@@ -4477,18 +4505,32 @@ function buildAppCapabilitiesPdfMarkup(modules = [], organizationName = "") {
 </html>`;
 }
 
-function exportAppCapabilitiesPdf() {
+async function exportAppCapabilitiesPdf() {
   const modules = state.appCapabilitiesDialog.open
     ? state.appCapabilitiesDialog.modules
     : state.appCapabilities;
   const safeModules = sanitizeAppCapabilitiesForSave(modules);
-  const organizationName = state.organizations.find((item) => (
-    String(item.id) === String(state.activeOrganizationId || "")
-  ))?.name || "SafeNexus";
-  const html = buildAppCapabilitiesPdfMarkup(safeModules, organizationName);
-  const fileName = `${sanitizeDocumentTemplateFileName(`${organizationName}-product-board`, "safe-nexus-product-board")}.pdf`;
-  triggerBlobPrint(new Blob(["\ufeff", html], { type: "text/html;charset=utf-8" }), fileName);
-  setInlineMessage(appCapabilitiesFeedback, "Otvoren je PDF pregled za ispis ili spremanje.", "success");
+  if (appCapabilitiesExportButton) {
+    appCapabilitiesExportButton.disabled = true;
+  }
+
+  try {
+    const response = await apiBinaryRequest("/app-capabilities/export-pdf", {
+      method: "POST",
+      body: {
+        modules: safeModules,
+      },
+    });
+    previewBlobInNewTab(response.blob, response.fileName || "product-board.pdf");
+    setInlineMessage(appCapabilitiesFeedback, "PDF pregled je otvoren u novom tabu.", "success");
+  } catch (error) {
+    console.error("Ne mogu generirati PDF product board pregled.", error);
+    setInlineMessage(appCapabilitiesFeedback, error?.message || "Ne mogu otvoriti PDF pregled.");
+  } finally {
+    if (appCapabilitiesExportButton) {
+      appCapabilitiesExportButton.disabled = false;
+    }
+  }
 }
 
 function openAppCapabilitiesDialog() {
@@ -4505,9 +4547,6 @@ function openAppCapabilitiesDialog() {
 
   setInlineMessage(appCapabilitiesFeedback, "");
   renderAppCapabilitiesDialog();
-  requestAnimationFrame(() => {
-    appCapabilitiesCloseButton?.focus({ preventScroll: true });
-  });
 }
 
 function closeAppCapabilitiesDialog({ resetDraft = true } = {}) {
@@ -4594,7 +4633,9 @@ function renderAppCapabilitiesDialog() {
     appCapabilitiesSaveButton.disabled = !canEdit;
   }
 
-  const modules = cloneAppCapabilityModules(state.appCapabilitiesDialog.modules);
+  const modules = Array.isArray(state.appCapabilitiesDialog.modules)
+    ? state.appCapabilitiesDialog.modules
+    : [];
 
   if (modules.length === 0) {
     const empty = document.createElement("div");
@@ -4699,7 +4740,6 @@ function renderAppCapabilitiesDialog() {
             if (targetItem) {
               targetItem.status = normalizeAppCapabilityStatus(nextStatus);
             }
-            renderAppCapabilitiesDialog();
           },
         });
 
@@ -63585,7 +63625,7 @@ appCapabilitiesAddModuleButton?.addEventListener("click", () => {
 });
 
 appCapabilitiesExportButton?.addEventListener("click", () => {
-  exportAppCapabilitiesPdf();
+  void exportAppCapabilitiesPdf();
 });
 
 appCapabilitiesSaveButton?.addEventListener("click", () => {

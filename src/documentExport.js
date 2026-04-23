@@ -1945,6 +1945,223 @@ function drawOfferPdfSectionTitle(doc, text) {
   doc.y = startY + 24;
 }
 
+export async function buildAppCapabilitiesPdfBuffer({
+  organizationName = "",
+  modules = [],
+  generatedAt = "",
+} = {}) {
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 38,
+      bottom: 38,
+      left: 38,
+      right: 38,
+    },
+    info: {
+      Title: clean(organizationName) || "SafeNexus Product Board",
+      Author: "SafeNexus",
+      Subject: "Mogućnosti aplikacije",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  const safeOrganizationName = clean(organizationName) || "SafeNexus";
+  const safeGeneratedAt = clean(generatedAt) || new Date().toISOString();
+  const safeModules = (Array.isArray(modules) ? modules : [])
+    .map((module) => ({
+      title: clean(module?.title) || "Bez naziva",
+      items: (Array.isArray(module?.items) ? module.items : [])
+        .map((item) => ({
+          title: clean(item?.title) || "Bez opisa",
+          status: clean(item?.status).toLowerCase() || "planned_later",
+        })),
+    }));
+
+  const statusMeta = {
+    implemented: {
+      label: "Implementirano",
+      fill: "#e3f7eb",
+      border: "#9fd4b1",
+      text: "#1f7a4c",
+      symbol: "✓",
+    },
+    in_progress: {
+      label: "U tijeku",
+      fill: "#e4f0ff",
+      border: "#9ec0f5",
+      text: "#245f9d",
+      symbol: "↻",
+    },
+    planned_later: {
+      label: "U planu kasnije",
+      fill: "#fff1cf",
+      border: "#e6c27a",
+      text: "#8a6316",
+      symbol: "◷",
+    },
+    not_planned: {
+      label: "Nije u planu",
+      fill: "#fde5ea",
+      border: "#e3a7b2",
+      text: "#8a4d55",
+      symbol: "⊘",
+    },
+  };
+  const getStatusMeta = (status = "") => statusMeta[clean(status).toLowerCase()] || statusMeta.planned_later;
+
+  helpers.ensureSpace(126);
+  const heroX = doc.page.margins.left;
+  const heroY = doc.y;
+  const heroWidth = helpers.availableWidth;
+  const heroHeight = 104;
+
+  doc.save();
+  doc.roundedRect(heroX, heroY, heroWidth, heroHeight, 24);
+  doc.fillColor("#f4f8ff").fill();
+  doc.restore();
+  drawRoundedOutline(doc, heroX, heroY, heroWidth, heroHeight, 24, "#cad8f1");
+
+  doc.save();
+  doc.roundedRect(heroX, heroY, heroWidth, 6, 6);
+  doc.fillColor("#3b74ff").fill();
+  doc.restore();
+
+  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("PRODUCT BOARD", heroX + 20, heroY + 18);
+  doc.font("dejavu-bold").fontSize(24).fillColor("#111827").text("Mogućnosti aplikacije", heroX + 20, heroY + 34, {
+    width: heroWidth - 170,
+  });
+  doc.font("dejavu").fontSize(10.5).fillColor("#64748b").text(
+    `${safeOrganizationName} · ${safeGeneratedAt}`,
+    heroX + 20,
+    heroY + 66,
+    { width: heroWidth - 170 },
+  );
+
+  const summaryText = `${safeModules.length} ${safeModules.length === 1 ? "modul" : "modula"}`;
+  const badgeWidth = Math.max(104, doc.widthOfString(summaryText, { font: "dejavu-bold", size: 10.5 }) + 28);
+  const badgeX = heroX + heroWidth - badgeWidth - 18;
+  const badgeY = heroY + 24;
+  doc.save();
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 34, 16);
+  doc.fillColor("#ffffff").fill();
+  doc.restore();
+  drawRoundedOutline(doc, badgeX, badgeY, badgeWidth, 34, 16, "#cad8f1");
+  doc.font("dejavu-bold").fontSize(10.5).fillColor("#305baf").text(summaryText, badgeX, badgeY + 11, {
+    width: badgeWidth,
+    align: "center",
+  });
+  doc.y = heroY + heroHeight + 16;
+
+  const legendItems = [
+    statusMeta.implemented,
+    statusMeta.in_progress,
+    statusMeta.planned_later,
+    statusMeta.not_planned,
+  ];
+  let legendX = doc.page.margins.left;
+  const legendY = doc.y;
+  legendItems.forEach((entry) => {
+    const pillWidth = Math.max(112, doc.widthOfString(entry.label, { font: "dejavu-bold", size: 9.5 }) + 36);
+    doc.save();
+    doc.roundedRect(legendX, legendY, pillWidth, 28, 14);
+    doc.fillColor(entry.fill).fill();
+    doc.restore();
+    drawRoundedOutline(doc, legendX, legendY, pillWidth, 28, 14, entry.border);
+    doc.font("dejavu-bold").fontSize(9.5).fillColor(entry.text).text(`${entry.symbol} ${entry.label}`, legendX + 12, legendY + 9, {
+      width: pillWidth - 24,
+      align: "center",
+    });
+    legendX += pillWidth + 8;
+  });
+  doc.y = legendY + 40;
+
+  if (safeModules.length === 0) {
+    renderPdfFieldCard(doc, helpers, "Mogućnosti aplikacije", "Trenutno nema pobrojanih modula ni stavki.");
+    return pdfBufferFromDocument(doc);
+  }
+
+  safeModules.forEach((module) => {
+    helpers.ensureSpace(60);
+    const headerX = doc.page.margins.left;
+    const headerY = doc.y;
+    const headerWidth = helpers.availableWidth;
+    const headerHeight = 48;
+
+    doc.save();
+    doc.roundedRect(headerX, headerY, headerWidth, headerHeight, 18);
+    doc.fillColor("#ffffff").fill();
+    doc.restore();
+    drawRoundedOutline(doc, headerX, headerY, headerWidth, headerHeight, 18, "#cad8f1");
+    drawAccentLine(doc, headerX + 12, headerY + 10, 28, "#3b74ff");
+
+    doc.font("dejavu-bold").fontSize(13).fillColor("#111827").text(module.title, headerX + 28, headerY + 11, {
+      width: headerWidth - 160,
+    });
+    const countLabel = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
+    doc.font("dejavu-bold").fontSize(9.5).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 16, {
+      width: 92,
+      align: "right",
+    });
+    doc.y = headerY + headerHeight + 8;
+
+    if (module.items.length === 0) {
+      renderPdfFieldCard(doc, helpers, module.title, "Modul još nema pobrojane stavke.");
+      return;
+    }
+
+    module.items.forEach((item) => {
+      const meta = getStatusMeta(item.status);
+      const rowX = doc.page.margins.left;
+      const rowY = doc.y;
+      const rowWidth = helpers.availableWidth;
+      const statusWidth = 136;
+      const contentWidth = rowWidth - statusWidth - 34;
+      doc.font("dejavu").fontSize(10.5);
+      const textHeight = doc.heightOfString(item.title, {
+        width: contentWidth,
+        lineGap: 2,
+      });
+      const rowHeight = Math.max(44, textHeight + 20);
+      helpers.ensureSpace(rowHeight + 8);
+
+      doc.save();
+      doc.roundedRect(rowX, rowY, rowWidth, rowHeight, 16);
+      doc.fillColor("#ffffff").fill();
+      doc.restore();
+      drawRoundedOutline(doc, rowX, rowY, rowWidth, rowHeight, 16, "#d8e3f5");
+
+      const pillY = rowY + Math.max(8, (rowHeight - 28) / 2);
+      doc.save();
+      doc.roundedRect(rowX + 12, pillY, statusWidth, 28, 14);
+      doc.fillColor(meta.fill).fill();
+      doc.restore();
+      drawRoundedOutline(doc, rowX + 12, pillY, statusWidth, 28, 14, meta.border);
+      doc.font("dejavu-bold").fontSize(9.5).fillColor(meta.text).text(`${meta.symbol} ${meta.label}`, rowX + 20, pillY + 9, {
+        width: statusWidth - 16,
+      });
+
+      doc.font("dejavu").fontSize(10.5).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + 10, {
+        width: contentWidth,
+        lineGap: 2,
+      });
+
+      doc.y = rowY + rowHeight + 8;
+    });
+
+    doc.moveDown(0.25);
+  });
+
+  return pdfBufferFromDocument(doc);
+}
+
 export async function buildOfferPdfBuffer(offer = {}, options = {}) {
   const doc = new PDFDocument({
     autoFirstPage: true,
