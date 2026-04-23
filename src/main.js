@@ -7383,7 +7383,12 @@ function renderChatComposer() {
     return;
   }
 
-  chatComposerUsers.replaceChildren(...availableUsers.map((user) => {
+  const selectedCount = state.chat.composerParticipantIds.length;
+  const summary = document.createElement("div");
+  summary.className = "chat-composer-users-summary";
+  summary.innerHTML = `<strong>${selectedCount}</strong> odabrano od ${availableUsers.length} dostupnih korisnika`;
+
+  const userCards = availableUsers.map((user) => {
     const label = document.createElement("label");
     label.className = "chat-composer-user";
 
@@ -7402,6 +7407,10 @@ function renderChatComposer() {
       renderChatComposer();
     });
 
+    const checkMark = document.createElement("span");
+    checkMark.className = "chat-composer-check";
+    checkMark.textContent = "✓";
+
     const avatar = createChatAvatar(user, state.chat.presenceByUserId[user.id] ?? "offline", "chat-person-avatar");
     const copy = document.createElement("span");
     copy.className = "chat-composer-user-copy";
@@ -7411,9 +7420,11 @@ function renderChatComposer() {
     subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[user.id] ?? "offline")} · ${user.email || "bez emaila"}`;
     copy.append(title, subtitle);
 
-    label.append(checkbox, avatar, copy);
+    label.append(checkbox, checkMark, avatar, copy);
     return label;
-  }));
+  });
+
+  chatComposerUsers.replaceChildren(summary, ...userCards);
 }
 
 function renderChatDock() {
@@ -7436,7 +7447,7 @@ function renderChatDock() {
   if (chatLauncherCaption) {
     chatLauncherCaption.textContent = state.chat.unreadTotal > 0
       ? `${state.chat.unreadTotal} novih poruka`
-      : "Live team chat";
+      : "Chat aktivan";
   }
 
   if (chatLauncherUnread) {
