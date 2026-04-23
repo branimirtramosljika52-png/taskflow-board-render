@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=20260423d" />
+<link rel="stylesheet" href="/styles.css?v=20260423e" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -6483,6 +6483,7 @@
               <div id="chat-thread-messages" class="chat-thread-messages"></div>
 
               <form id="chat-message-form" class="chat-message-form">
+                <div id="chat-emoji-picker" class="chat-emoji-picker" hidden></div>
                 <textarea
                   id="chat-message-input"
                   rows="2"
@@ -6492,7 +6493,10 @@
                 ></textarea>
                 <div class="chat-message-actions">
                   <p id="chat-error" class="form-error chat-error" aria-live="polite"></p>
-                  <button id="chat-send-button" type="submit" class="primary-button">Pošalji</button>
+                  <div class="chat-message-actions-main">
+                    <button id="chat-emoji-button" type="button" class="ghost-button chat-emoji-button" aria-label="Dodaj emoji">☺</button>
+                    <button id="chat-send-button" type="submit" class="primary-button">Pošalji</button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -6537,6 +6541,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260423d"></script>
+    <script type="module" src="/src/main.js?v=20260423e"></script>
   </body>
 </html>

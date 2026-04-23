@@ -115,7 +115,7 @@ async function createRepositoryWithRetry() {
 }
 
 const { domainRepository, tenantRepository } = await createRepositoryWithRetry();
-const liveChatStore = createLiveChatStore();
+const liveChatStore = await createLiveChatStore({ secret: jwtSecret });
 
 const contentTypes = {
   ".ico": "image/x-icon",
@@ -1400,12 +1400,19 @@ async function getScopedChatContext(user, request) {
   };
 }
 
-async function writeChatSnapshot(response, user, request, statusCode = 200) {
+function resolveChatActiveConversationId(url, explicitValue = "") {
+  return normalizeInputValue(
+    explicitValue || url.searchParams.get("activeConversationId") || "",
+  );
+}
+
+async function writeChatSnapshot(response, user, request, url, statusCode = 200, activeConversationId = "") {
   const { organizationId, users } = await getScopedChatContext(user, request);
-  sendJson(response, statusCode, liveChatStore.getSnapshot({
+  sendJson(response, statusCode, await liveChatStore.getSnapshot({
     organizationId,
     currentUser: user,
     users,
+    activeConversationId: resolveChatActiveConversationId(url, activeConversationId),
   }));
 }
 
@@ -1682,7 +1689,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
 
     if (request.method === "GET" && url.pathname === "/api/chat/bootstrap") {
-      await writeChatSnapshot(response, user, request);
+      await writeChatSnapshot(response, user, request, url);
       return true;
     }
 
@@ -1694,45 +1701,53 @@ async function handleApiRequest(request, response, url) {
         userId: user.id,
         status: body.status,
       });
-      await writeChatSnapshot(response, user, request);
+      await writeChatSnapshot(response, user, request, url, 200, body.activeConversationId);
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/chat/conversations") {
       const body = await readJsonBody(request);
       const { organizationId, users } = await getScopedChatContext(user, request);
-      liveChatStore.createConversation({
+      const conversationId = await liveChatStore.createConversation({
         organizationId,
         currentUser: user,
         users,
         title: body.title,
         participantIds: body.participantIds,
       });
-      await writeChatSnapshot(response, user, request, 201);
+      await writeChatSnapshot(response, user, request, url, 201, conversationId);
       return true;
     }
 
     if (chatConversationMessageMatch && request.method === "POST") {
       const body = await readJsonBody(request);
       const { organizationId } = await getScopedChatContext(user, request);
-      liveChatStore.addMessage({
+      await liveChatStore.addMessage({
         organizationId,
         conversationId: chatConversationMessageMatch[1],
         currentUser: user,
         body: body.body,
       });
-      await writeChatSnapshot(response, user, request, 201);
+      await writeChatSnapshot(response, user, request, url, 201, chatConversationMessageMatch[1]);
       return true;
     }
 
     if (chatConversationReadMatch && request.method === "POST") {
       const { organizationId } = await getScopedChatContext(user, request);
-      liveChatStore.markConversationRead({
+      const body = await readJsonBody(request);
+      await liveChatStore.markConversationRead({
         organizationId,
         conversationId: chatConversationReadMatch[1],
         currentUserId: user.id,
       });
-      await writeChatSnapshot(response, user, request);
+      await writeChatSnapshot(
+        response,
+        user,
+        request,
+        url,
+        200,
+        body.activeConversationId || chatConversationReadMatch[1],
+      );
       return true;
     }
 

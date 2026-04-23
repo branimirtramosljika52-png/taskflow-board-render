@@ -115,6 +115,12 @@ import {
   normalizeMeasurementBorder,
 } from "./measurementFormatting.js";
 import {
+  CHAT_EMOJI_SHORTCUTS,
+  normalizeChatMessageBody,
+  normalizeChatPreviewText,
+  replaceEmojiShortcuts,
+} from "./chatMessageFormat.js";
+import {
   COMPANY_PERMISSION_SCOPE_GENERAL,
   normalizeCompanyRolePermissionEntry,
   normalizeCompanyRolePermissions,
@@ -157,7 +163,7 @@ const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "xml",
   "zip",
 ]);
-const CHAT_POLL_INTERVAL_MS = 7_000;
+const CHAT_POLL_INTERVAL_MS = 4_500;
 const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
 const CHAT_DOCK_HIDDEN_STORAGE_PREFIX = "safenexus.chat.hidden-dock-conversations.v1";
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
@@ -1448,12 +1454,14 @@ const state = {
     tab: "conversations",
     search: "",
     conversations: [],
+    activeConversation: null,
     users: [],
     presenceByUserId: {},
     activeConversationId: "",
     hiddenDockConversationIds: new Set(),
     panelMode: "hub",
     composerOpen: false,
+    emojiPickerOpen: false,
     composerTitle: "",
     composerParticipantIds: [],
     unreadTotal: 0,
@@ -1917,6 +1925,8 @@ let chatThreadRenderSignature = "";
 let chatPanelTabsRenderSignature = "";
 let chatDesktopTabsRenderSignature = "";
 let chatComposerRenderSignature = "";
+let chatEmojiPickerRenderSignature = "";
+let chatSyncRequestSequence = 0;
 let globalLoadingTimerId = null;
 let sessionIdleTimerId = null;
 let sessionIdleTrackingBound = false;
@@ -2042,6 +2052,8 @@ const chatThreadMessages = document.querySelector("#chat-thread-messages");
 const chatThreadTabs = document.querySelector("#chat-thread-tabs");
 const chatMessageForm = document.querySelector("#chat-message-form");
 const chatMessageInput = document.querySelector("#chat-message-input");
+const chatEmojiButton = document.querySelector("#chat-emoji-button");
+const chatEmojiPicker = document.querySelector("#chat-emoji-picker");
 const chatSendButton = document.querySelector("#chat-send-button");
 const chatError = document.querySelector("#chat-error");
 const chatComposer = document.querySelector("#chat-composer");
@@ -6653,10 +6665,12 @@ function resetChatRenderSignatures() {
   chatPanelTabsRenderSignature = "";
   chatDesktopTabsRenderSignature = "";
   chatComposerRenderSignature = "";
+  chatEmojiPickerRenderSignature = "";
 }
 
 function resetChatState() {
   clearChatPollTimer();
+  chatSyncRequestSequence += 1;
   chatLastPresenceSyncAt = 0;
   chatLastPresenceValue = "";
   chatKnownMessageIds = new Set();
@@ -6675,12 +6689,14 @@ function resetChatState() {
   state.chat.tab = "conversations";
   state.chat.search = "";
   state.chat.conversations = [];
+  state.chat.activeConversation = null;
   state.chat.users = [];
   state.chat.presenceByUserId = {};
   state.chat.activeConversationId = "";
   state.chat.hiddenDockConversationIds = new Set();
   state.chat.panelMode = "hub";
   state.chat.composerOpen = false;
+  state.chat.emojiPickerOpen = false;
   state.chat.composerTitle = "";
   state.chat.composerParticipantIds = [];
   state.chat.unreadTotal = 0;
@@ -6705,6 +6721,20 @@ function setChatError(message = "") {
 
 function getChatConversationById(conversationId = state.chat.activeConversationId) {
   return state.chat.conversations.find((conversation) => String(conversation.id) === String(conversationId)) ?? null;
+}
+
+function getActiveChatConversation() {
+  if (String(state.chat.activeConversation?.id ?? "") === String(state.chat.activeConversationId ?? "")) {
+    return state.chat.activeConversation;
+  }
+
+  return null;
+}
+
+function updateActiveChatConversation(nextConversation) {
+  state.chat.activeConversation = nextConversation && String(nextConversation.id ?? "")
+    ? nextConversation
+    : null;
 }
 
 function findChatConversationByParticipants(participantIds = []) {
@@ -6747,6 +6777,49 @@ function createChatChip(label) {
   chip.className = "chat-mini-chip";
   chip.textContent = label;
   return chip;
+}
+
+function applyEmojiShortcutsToChatInput() {
+  if (!chatMessageInput) {
+    return;
+  }
+
+  const originalValue = String(chatMessageInput.value ?? "");
+  const selectionStart = chatMessageInput.selectionStart ?? originalValue.length;
+  const selectionEnd = chatMessageInput.selectionEnd ?? originalValue.length;
+  const normalizedValue = replaceEmojiShortcuts(originalValue)
+    .replace(/\n{3,}/g, "\n\n");
+
+  if (normalizedValue === originalValue) {
+    return;
+  }
+
+  const normalizedStart = replaceEmojiShortcuts(originalValue.slice(0, selectionStart))
+    .replace(/\n{3,}/g, "\n\n")
+    .length;
+  const normalizedEnd = replaceEmojiShortcuts(originalValue.slice(0, selectionEnd))
+    .replace(/\n{3,}/g, "\n\n")
+    .length;
+
+  chatMessageInput.value = normalizedValue;
+  chatMessageInput.setSelectionRange(normalizedStart, normalizedEnd);
+}
+
+function insertChatEmoji(emoji = "") {
+  if (!chatMessageInput || !emoji) {
+    return;
+  }
+
+  const start = chatMessageInput.selectionStart ?? chatMessageInput.value.length;
+  const end = chatMessageInput.selectionEnd ?? start;
+  const currentValue = String(chatMessageInput.value ?? "");
+  const nextValue = `${currentValue.slice(0, start)}${emoji}${currentValue.slice(end)}`;
+  chatMessageInput.value = nextValue;
+  const nextCaret = start + emoji.length;
+  chatMessageInput.focus();
+  chatMessageInput.setSelectionRange(nextCaret, nextCaret);
+  state.chat.emojiPickerOpen = false;
+  renderChatDock();
 }
 
 function getChatDockHiddenStorageKey() {
@@ -6806,6 +6879,9 @@ function hideChatConversationFromDock(conversationId) {
       && !state.chat.hiddenDockConversationIds.has(String(conversation.id))
     ));
     state.chat.activeConversationId = nextConversation?.id ?? "";
+    if (String(state.chat.activeConversation?.id ?? "") !== String(state.chat.activeConversationId ?? "")) {
+      updateActiveChatConversation(null);
+    }
   }
 
   resetChatRenderSignatures();
@@ -6848,11 +6924,6 @@ function groupChatConversations(conversations = []) {
       label: "Direktni razgovori",
       items: conversations.filter((conversation) => conversation.kind === "direct"),
     },
-    {
-      key: "general",
-      label: "Kanali",
-      items: conversations.filter((conversation) => conversation.kind === "general"),
-    },
   ].filter((section) => section.items.length > 0);
 }
 
@@ -6860,11 +6931,9 @@ function collectChatMessageIds(conversations = []) {
   const messageIds = new Set();
 
   conversations.forEach((conversation) => {
-    (conversation.messages ?? []).forEach((message) => {
-      if (message.id) {
-        messageIds.add(String(message.id));
-      }
-    });
+    if (conversation.lastMessage?.id) {
+      messageIds.add(String(conversation.lastMessage.id));
+    }
   });
 
   return messageIds;
@@ -6883,27 +6952,21 @@ function getLatestIncomingChatNotification(conversations = []) {
       return;
     }
 
-    (conversation.messages ?? []).forEach((message) => {
-      const messageId = String(message.id ?? "");
+    const message = conversation.lastMessage ?? null;
+    const messageId = String(message?.id ?? "");
 
-      if (!messageId || chatKnownMessageIds.has(messageId) || String(message.authorId) === currentUserId) {
-        return;
-      }
+    if (!messageId || chatKnownMessageIds.has(messageId) || String(message?.authorId ?? "") === currentUserId) {
+      return;
+    }
 
-      const messageTime = parseDateValue(message.createdAt)?.getTime() ?? Date.now();
-      if (messageTime >= latestTime) {
-        latestTime = messageTime;
-        latestNotification = { conversation, message };
-      }
-    });
+    const messageTime = parseDateValue(message?.createdAt)?.getTime() ?? Date.now();
+    if (messageTime >= latestTime) {
+      latestTime = messageTime;
+      latestNotification = { conversation, message };
+    }
   });
 
   return latestNotification;
-}
-
-function normalizeChatPreviewText(value = "") {
-  const compact = String(value).replace(/\s+/g, " ").trim();
-  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
 }
 
 function hideChatNotificationToast() {
@@ -7015,10 +7078,12 @@ function handleChatIncomingNotifications(nextConversations = []) {
 
 function applyChatSnapshot(payload = {}) {
   const nextConversations = payload.conversations ?? [];
+  const nextActiveConversation = payload.activeConversation ?? null;
   const nextOrganizationId = payload.organizationId ?? state.activeOrganizationId;
 
   if (String(state.chat.lastOrganizationId ?? "") !== String(nextOrganizationId ?? "")) {
     state.chat.hiddenDockConversationIds = loadChatHiddenDockConversationIds();
+    updateActiveChatConversation(null);
     resetChatRenderSignatures();
   }
 
@@ -7050,6 +7115,21 @@ function applyChatSnapshot(payload = {}) {
     state.chat.activeConversationId = state.chat.conversations[0]?.id ?? "";
   }
 
+  const activeSummary = getChatConversationById(state.chat.activeConversationId);
+  if (nextActiveConversation && String(nextActiveConversation.id ?? "") === String(state.chat.activeConversationId ?? "")) {
+    updateActiveChatConversation({
+      ...(activeSummary ?? {}),
+      ...nextActiveConversation,
+    });
+  } else if (String(state.chat.activeConversation?.id ?? "") !== String(state.chat.activeConversationId ?? "")) {
+    updateActiveChatConversation(null);
+  } else if (state.chat.activeConversation && activeSummary) {
+    updateActiveChatConversation({
+      ...activeSummary,
+      ...state.chat.activeConversation,
+    });
+  }
+
   renderChatDock();
 
   const activeConversation = getChatConversationById();
@@ -7070,14 +7150,24 @@ function scheduleChatPoll(delay = CHAT_POLL_INTERVAL_MS) {
   }, delay);
 }
 
-async function syncChatState({ silent = false, forcePresence = false } = {}) {
-  if (!state.user || !state.activeOrganizationId || state.chat.loading) {
+async function syncChatState({
+  silent = false,
+  forcePresence = false,
+  force = false,
+  activeConversationId = state.chat.open ? state.chat.activeConversationId : "",
+} = {}) {
+  if (!state.user || !state.activeOrganizationId || (state.chat.loading && !force)) {
     return;
   }
 
+  const requestSequence = ++chatSyncRequestSequence;
   state.chat.loading = true;
 
   const presenceValue = getChatPresenceValue();
+  const normalizedActiveConversationId = String(activeConversationId ?? "").trim();
+  const activeConversationQuery = normalizedActiveConversationId
+    ? `?activeConversationId=${encodeURIComponent(normalizedActiveConversationId)}`
+    : "";
   const shouldSyncPresence = forcePresence
     || !state.chat.loaded
     || state.chat.lastOrganizationId !== state.activeOrganizationId
@@ -7088,9 +7178,16 @@ async function syncChatState({ silent = false, forcePresence = false } = {}) {
     const payload = shouldSyncPresence
       ? await apiRequest("/chat/presence", {
         method: "POST",
-        body: { status: presenceValue },
+        body: {
+          status: presenceValue,
+          activeConversationId: normalizedActiveConversationId,
+        },
       })
-      : await apiRequest("/chat/bootstrap");
+      : await apiRequest(`/chat/bootstrap${activeConversationQuery}`);
+
+    if (requestSequence !== chatSyncRequestSequence) {
+      return;
+    }
 
     if (shouldSyncPresence) {
       chatLastPresenceSyncAt = Date.now();
@@ -7100,6 +7197,10 @@ async function syncChatState({ silent = false, forcePresence = false } = {}) {
     setChatError("");
     applyChatSnapshot(payload);
   } catch (error) {
+    if (requestSequence !== chatSyncRequestSequence) {
+      return;
+    }
+
     if (error.statusCode === 401) {
       resetChatState();
       state.user = null;
@@ -7112,8 +7213,10 @@ async function syncChatState({ silent = false, forcePresence = false } = {}) {
       renderChatDock();
     }
   } finally {
-    state.chat.loading = false;
-    scheduleChatPoll();
+    if (requestSequence === chatSyncRequestSequence) {
+      state.chat.loading = false;
+      scheduleChatPoll();
+    }
   }
 }
 
@@ -7143,7 +7246,9 @@ async function markChatConversationRead(conversationId = state.chat.activeConver
   try {
     const payload = await apiRequest(`/chat/conversations/${conversation.id}/read`, {
       method: "POST",
-      body: {},
+      body: {
+        activeConversationId: String(conversation.id ?? ""),
+      },
     });
     applyChatSnapshot(payload);
   } catch {
@@ -7153,6 +7258,7 @@ async function markChatConversationRead(conversationId = state.chat.activeConver
 
 function setChatComposerOpen(isOpen) {
   state.chat.composerOpen = Boolean(isOpen);
+  state.chat.emojiPickerOpen = false;
 
   if (!state.chat.composerOpen) {
     state.chat.composerTitle = "";
@@ -7165,6 +7271,7 @@ function setChatComposerOpen(isOpen) {
 
 function setChatOpen(isOpen) {
   state.chat.open = Boolean(isOpen);
+  state.chat.emojiPickerOpen = false;
 
   if (!state.chat.open) {
     setChatComposerOpen(false);
@@ -7175,9 +7282,23 @@ function setChatOpen(isOpen) {
   hideChatNotificationToast();
 
   if (!state.chat.loaded) {
-    void syncChatState({ silent: true, forcePresence: true });
+    void syncChatState({
+      silent: true,
+      forcePresence: true,
+      force: true,
+      activeConversationId: state.chat.activeConversationId,
+    });
   } else if (state.chat.activeConversationId) {
-    void markChatConversationRead(state.chat.activeConversationId);
+    const activeConversation = getChatConversationById(state.chat.activeConversationId);
+    if (Number(activeConversation?.unreadCount ?? 0) > 0) {
+      void markChatConversationRead(state.chat.activeConversationId);
+    } else {
+      void syncChatState({
+        silent: true,
+        force: true,
+        activeConversationId: state.chat.activeConversationId,
+      });
+    }
   }
 
   renderChatDock();
@@ -7186,6 +7307,7 @@ function setChatOpen(isOpen) {
 function openChatHub(tab = state.chat.tab || "conversations") {
   state.chat.tab = tab;
   state.chat.panelMode = "hub";
+  state.chat.emojiPickerOpen = false;
   setChatOpen(true);
 }
 
@@ -7201,12 +7323,29 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
   state.chat.tab = "conversations";
   state.chat.panelMode = "conversation";
   state.chat.open = Boolean(openPanel);
+  state.chat.emojiPickerOpen = false;
+  state.chat.composerOpen = false;
+  state.chat.composerTitle = "";
+  state.chat.composerParticipantIds = [];
+  if (String(state.chat.activeConversation?.id ?? "") !== String(conversation.id)) {
+    updateActiveChatConversation({
+      ...conversation,
+      messages: [],
+    });
+  }
   hideChatNotificationToast();
   renderChatDock();
 
-  if (markAsRead) {
+  if (markAsRead && Number(conversation.unreadCount ?? 0) > 0) {
     void markChatConversationRead(conversation.id);
+    return;
   }
+
+  void syncChatState({
+    silent: true,
+    force: true,
+    activeConversationId: conversation.id,
+  });
 }
 
 function getFilteredChatConversations() {
@@ -7335,7 +7474,7 @@ function renderChatConversationList() {
       const chips = document.createElement("div");
       chips.className = "chat-list-chip-row";
       chips.append(
-        createChatChip(conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "Kanal" : "Grupa"),
+        createChatChip(conversation.kind === "direct" ? "1:1" : "Grupa"),
         createChatChip(`${conversation.participants.length} cl.`),
       );
 
@@ -7433,7 +7572,7 @@ function renderChatThread() {
     return;
   }
 
-  const conversation = getChatConversationById();
+  const conversation = getActiveChatConversation();
   const messages = conversation?.messages ?? [];
   const lastMessage = messages[messages.length - 1] ?? {};
   const participantsPresenceSignature = (conversation?.participants ?? [])
@@ -7475,6 +7614,10 @@ function renderChatThread() {
   if (renderSignature === chatThreadRenderSignature) {
     if (chatMessageInput) {
       chatMessageInput.disabled = state.chat.sending;
+    }
+
+    if (chatEmojiButton) {
+      chatEmojiButton.disabled = state.chat.sending;
     }
 
     if (chatSendButton) {
@@ -7522,6 +7665,10 @@ function renderChatThread() {
     chatMessageInput.disabled = state.chat.sending;
   }
 
+  if (chatEmojiButton) {
+    chatEmojiButton.disabled = state.chat.sending;
+  }
+
   if (chatSendButton) {
     chatSendButton.disabled = state.chat.sending;
   }
@@ -7544,7 +7691,7 @@ function createChatConversationTabNode(conversation, { desktop = false } = {}) {
 
   const icon = document.createElement("span");
   icon.className = `${desktop ? "chat-desktop-tab-icon" : "chat-thread-tab-icon"} is-${conversation.kind || "group"}`;
-  icon.textContent = conversation.kind === "direct" ? "1:1" : conversation.kind === "general" ? "#" : "G";
+  icon.textContent = conversation.kind === "direct" ? "1:1" : "G";
 
   const copy = document.createElement("span");
   copy.className = desktop ? "chat-desktop-tab-copy" : "chat-thread-tab-copy";
@@ -7766,6 +7913,57 @@ function renderChatComposer() {
   chatComposerUsers.replaceChildren(summary, ...userCards);
 }
 
+function renderChatEmojiPicker() {
+  if (!chatEmojiPicker) {
+    return;
+  }
+
+  const shouldShow = state.chat.open
+    && state.chat.panelMode === "conversation"
+    && Boolean(getActiveChatConversation())
+    && state.chat.emojiPickerOpen;
+
+  chatEmojiPicker.hidden = !shouldShow;
+
+  if (!shouldShow) {
+    chatEmojiPickerRenderSignature = "";
+    return;
+  }
+
+  const renderSignature = CHAT_EMOJI_SHORTCUTS
+    .map((entry) => `${entry.emoji}:${entry.label}:${entry.shortcuts.join(",")}`)
+    .join("::");
+
+  if (renderSignature === chatEmojiPickerRenderSignature) {
+    return;
+  }
+
+  chatEmojiPicker.replaceChildren(...CHAT_EMOJI_SHORTCUTS.map((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-emoji-option";
+    button.title = entry.shortcuts.length > 0
+      ? `${entry.label} (${entry.shortcuts.join(", ")})`
+      : entry.label;
+
+    const emoji = document.createElement("span");
+    emoji.className = "chat-emoji-option-symbol";
+    emoji.textContent = entry.emoji;
+
+    const label = document.createElement("span");
+    label.className = "chat-emoji-option-label";
+    label.textContent = entry.label;
+
+    button.append(emoji, label);
+    button.addEventListener("click", () => {
+      insertChatEmoji(entry.emoji);
+    });
+    return button;
+  }));
+
+  chatEmojiPickerRenderSignature = renderSignature;
+}
+
 function renderChatDock() {
   const authenticated = Boolean(state.user);
 
@@ -7832,6 +8030,7 @@ function renderChatDock() {
   renderChatThread();
   renderChatConversationTabs();
   renderChatComposer();
+  renderChatEmojiPicker();
 }
 
 async function startDirectChatWithUser(userId) {
@@ -7844,9 +8043,10 @@ async function startDirectChatWithUser(userId) {
       },
     });
     applyChatSnapshot(payload);
-    const conversation = findChatConversationByParticipants([userId]);
+    const conversation = payload.activeConversation
+      ?? findChatConversationByParticipants([userId]);
     if (conversation) {
-      activateChatConversation(conversation.id);
+      activateChatConversation(conversation.id, { markAsRead: false });
     }
   } catch (error) {
     setChatError(error.message);
@@ -7866,12 +8066,13 @@ async function createChatGroupConversation() {
     });
     applyChatSnapshot(payload);
     const participantSignature = Array.from(new Set([state.user?.id, ...state.chat.composerParticipantIds].filter(Boolean).map(String))).sort().join("|");
-    const conversation = state.chat.conversations.find((item) => Array.from(new Set((item.participantIds ?? []).map(String))).sort().join("|") === participantSignature)
+    const conversation = payload.activeConversation
+      ?? state.chat.conversations.find((item) => Array.from(new Set((item.participantIds ?? []).map(String))).sort().join("|") === participantSignature)
       ?? state.chat.conversations[0]
       ?? null;
     setChatComposerOpen(false);
     if (conversation) {
-      activateChatConversation(conversation.id);
+      activateChatConversation(conversation.id, { markAsRead: false });
     } else {
       setChatOpen(true);
       renderChatDock();
@@ -7884,13 +8085,14 @@ async function createChatGroupConversation() {
 
 async function sendChatMessage() {
   const conversation = getChatConversationById();
-  const messageBody = String(chatMessageInput?.value ?? "").trim();
+  const messageBody = normalizeChatMessageBody(chatMessageInput?.value ?? "");
 
   if (!conversation || !messageBody) {
     return;
   }
 
   state.chat.sending = true;
+  state.chat.emojiPickerOpen = false;
   renderChatDock();
 
   try {
@@ -60927,6 +61129,7 @@ chatCloseButton?.addEventListener("click", () => {
 chatNewGroupButton?.addEventListener("click", () => {
   state.chat.panelMode = "hub";
   state.chat.tab = "people";
+  state.chat.emojiPickerOpen = false;
   setChatComposerOpen(true);
 });
 
@@ -60934,6 +61137,7 @@ chatTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.chat.panelMode = "hub";
     state.chat.tab = button.dataset.chatTab || "conversations";
+    state.chat.emojiPickerOpen = false;
     renderChatDock();
   });
 });
@@ -60955,6 +61159,15 @@ chatMessageInput?.addEventListener("keydown", (event) => {
   }
 });
 
+chatMessageInput?.addEventListener("input", () => {
+  applyEmojiShortcutsToChatInput();
+});
+
+chatEmojiButton?.addEventListener("click", () => {
+  state.chat.emojiPickerOpen = !state.chat.emojiPickerOpen;
+  renderChatDock();
+});
+
 chatComposerTitleInput?.addEventListener("input", () => {
   state.chat.composerTitle = chatComposerTitleInput.value.trim();
 });
@@ -60967,6 +61180,20 @@ chatComposerCloseButtons.forEach((button) => {
   button.addEventListener("click", () => {
     setChatComposerOpen(false);
   });
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!state.chat.emojiPickerOpen) {
+    return;
+  }
+
+  const target = event.target;
+  if (chatMessageForm?.contains(target) || chatEmojiPicker?.contains(target)) {
+    return;
+  }
+
+  state.chat.emojiPickerOpen = false;
+  renderChatDock();
 });
 
 workOrderCompanyIdInput.addEventListener("change", () => {
@@ -65922,6 +66149,12 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && state.chat.composerOpen) {
     setChatComposerOpen(false);
+  }
+
+  if (event.key === "Escape" && state.chat.emojiPickerOpen) {
+    state.chat.emojiPickerOpen = false;
+    renderChatDock();
+    return;
   }
 
   if (event.key === "Escape" && state.chat.open && !state.chat.composerOpen && !state.workOrderEditorOpen) {
