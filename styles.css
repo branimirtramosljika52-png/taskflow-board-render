@@ -1205,9 +1205,9 @@ body.is-app-capabilities-open {
 .app-capabilities-list {
   min-height: 0;
   overflow: auto;
-  display: grid;
-  align-content: start;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 14px;
   padding-right: 2px;
   overscroll-behavior: contain;
@@ -1229,9 +1229,9 @@ body.is-app-capabilities-open {
 
 .app-capabilities-module-card {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto auto;
-  align-content: start;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   gap: 10px;
   padding: 14px;
   border-radius: 28px;
@@ -1310,8 +1310,11 @@ body.is-app-capabilities-open {
 }
 
 .app-capabilities-items-board {
-  display: grid;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   align-self: start;
+  width: 100%;
   gap: 4px;
 }
 
