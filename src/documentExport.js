@@ -2034,11 +2034,11 @@ export async function buildAppCapabilitiesPdfBuffer({
   doc.fillColor("#3b74ff").fill();
   doc.restore();
 
-  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("PRODUCT BOARD", heroX + 20, heroY + 18);
-  doc.font("dejavu-bold").fontSize(24).fillColor("#111827").text("Mogućnosti aplikacije", heroX + 20, heroY + 34, {
+  doc.font("dejavu-bold").fontSize(9.5).fillColor("#2563eb").text("PRODUCT BOARD", heroX + 20, heroY + 18);
+  doc.font("dejavu-bold").fontSize(22).fillColor("#111827").text("Mogućnosti aplikacije", heroX + 20, heroY + 34, {
     width: heroWidth - 170,
   });
-  doc.font("dejavu").fontSize(10.5).fillColor("#64748b").text(
+  doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(
     `${safeOrganizationName} · ${safeGeneratedAt}`,
     heroX + 20,
     heroY + 66,
@@ -2046,7 +2046,7 @@ export async function buildAppCapabilitiesPdfBuffer({
   );
 
   const summaryText = `${safeModules.length} ${safeModules.length === 1 ? "modul" : "modula"}`;
-  const badgeWidth = Math.max(104, doc.widthOfString(summaryText, { font: "dejavu-bold", size: 10.5 }) + 28);
+  const badgeWidth = Math.max(100, doc.widthOfString(summaryText, { font: "dejavu-bold", size: 9.5 }) + 26);
   const badgeX = heroX + heroWidth - badgeWidth - 18;
   const badgeY = heroY + 24;
   doc.save();
@@ -2054,7 +2054,7 @@ export async function buildAppCapabilitiesPdfBuffer({
   doc.fillColor("#ffffff").fill();
   doc.restore();
   drawRoundedOutline(doc, badgeX, badgeY, badgeWidth, 34, 16, "#cad8f1");
-  doc.font("dejavu-bold").fontSize(10.5).fillColor("#305baf").text(summaryText, badgeX, badgeY + 11, {
+  doc.font("dejavu-bold").fontSize(9.5).fillColor("#305baf").text(summaryText, badgeX, badgeY + 11, {
     width: badgeWidth,
     align: "center",
   });
@@ -2069,13 +2069,13 @@ export async function buildAppCapabilitiesPdfBuffer({
   let legendX = doc.page.margins.left;
   const legendY = doc.y;
   legendItems.forEach((entry) => {
-    const pillWidth = Math.max(112, doc.widthOfString(entry.label, { font: "dejavu-bold", size: 9.5 }) + 36);
+    const pillWidth = Math.max(104, doc.widthOfString(entry.label, { font: "dejavu-bold", size: 8.8 }) + 32);
     doc.save();
     doc.roundedRect(legendX, legendY, pillWidth, 28, 14);
     doc.fillColor(entry.fill).fill();
     doc.restore();
     drawRoundedOutline(doc, legendX, legendY, pillWidth, 28, 14, entry.border);
-    doc.font("dejavu-bold").fontSize(9.5).fillColor(entry.text).text(`${entry.symbol} ${entry.label}`, legendX + 12, legendY + 9, {
+    doc.font("dejavu-bold").fontSize(8.8).fillColor(entry.text).text(`${entry.symbol} ${entry.label}`, legendX + 12, legendY + 9, {
       width: pillWidth - 24,
       align: "center",
     });
@@ -2102,11 +2102,11 @@ export async function buildAppCapabilitiesPdfBuffer({
     drawRoundedOutline(doc, headerX, headerY, headerWidth, headerHeight, 18, "#cad8f1");
     drawAccentLine(doc, headerX + 12, headerY + 10, 28, "#3b74ff");
 
-    doc.font("dejavu-bold").fontSize(13).fillColor("#111827").text(module.title, headerX + 28, headerY + 11, {
+    doc.font("dejavu-bold").fontSize(12).fillColor("#111827").text(module.title, headerX + 28, headerY + 11, {
       width: headerWidth - 160,
     });
     const countLabel = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
-    doc.font("dejavu-bold").fontSize(9.5).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 16, {
+    doc.font("dejavu-bold").fontSize(8.8).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 16, {
       width: 92,
       align: "right",
     });
@@ -2120,17 +2120,17 @@ export async function buildAppCapabilitiesPdfBuffer({
     module.items.forEach((item) => {
       const meta = getStatusMeta(item.status);
       const rowX = doc.page.margins.left;
-      const rowY = doc.y;
       const rowWidth = helpers.availableWidth;
-      const statusWidth = 136;
+      const statusWidth = 118;
       const contentWidth = rowWidth - statusWidth - 34;
-      doc.font("dejavu").fontSize(10.5);
+      doc.font("dejavu").fontSize(9.2);
       const textHeight = doc.heightOfString(item.title, {
         width: contentWidth,
-        lineGap: 2,
+        lineGap: 1.2,
       });
-      const rowHeight = Math.max(44, textHeight + 20);
+      const rowHeight = Math.max(40, textHeight + 16);
       helpers.ensureSpace(rowHeight + 8);
+      const rowY = doc.y;
 
       doc.save();
       doc.roundedRect(rowX, rowY, rowWidth, rowHeight, 16);
@@ -2144,13 +2144,13 @@ export async function buildAppCapabilitiesPdfBuffer({
       doc.fillColor(meta.fill).fill();
       doc.restore();
       drawRoundedOutline(doc, rowX + 12, pillY, statusWidth, 28, 14, meta.border);
-      doc.font("dejavu-bold").fontSize(9.5).fillColor(meta.text).text(`${meta.symbol} ${meta.label}`, rowX + 20, pillY + 9, {
+      doc.font("dejavu-bold").fontSize(8.5).fillColor(meta.text).text(`${meta.symbol} ${meta.label}`, rowX + 18, pillY + 9, {
         width: statusWidth - 16,
       });
 
-      doc.font("dejavu").fontSize(10.5).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + 10, {
+      doc.font("dejavu").fontSize(9.2).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + 8, {
         width: contentWidth,
-        lineGap: 2,
+        lineGap: 1.2,
       });
 
       doc.y = rowY + rowHeight + 8;

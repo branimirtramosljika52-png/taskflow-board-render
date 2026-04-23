@@ -1309,7 +1309,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-items-head {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 96px;
+  grid-template-columns: 184px minmax(0, 1fr) 96px;
   gap: 12px;
   padding: 0 10px;
   font-size: 0.68rem;
@@ -1330,7 +1330,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-item-row {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 96px;
+  grid-template-columns: 184px minmax(0, 1fr) 96px;
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -1345,6 +1345,7 @@ body.is-app-capabilities-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: 48px;
   padding: 0 34px 0 14px;
   border-radius: 16px;
@@ -1363,6 +1364,7 @@ body.is-app-capabilities-open {
 }
 
 .app-capabilities-choice-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
