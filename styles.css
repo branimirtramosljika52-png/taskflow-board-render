@@ -1148,9 +1148,11 @@ body.is-app-capabilities-open {
   position: relative;
   z-index: 1;
   width: min(1280px, calc(100vw - 20px));
+  height: calc(100dvh - 16px);
   max-height: calc(100dvh - 16px);
   margin: 8px auto;
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 16px;
   padding: 24px;
   border-radius: 28px;
@@ -1309,7 +1311,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-items-head {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr) 96px;
+  grid-template-columns: 72px minmax(0, 1fr) 96px;
   gap: 12px;
   padding: 0 10px;
   font-size: 0.68rem;
@@ -1319,6 +1321,7 @@ body.is-app-capabilities-open {
   color: #7283a7;
 }
 
+.app-capabilities-items-head span:first-child,
 .app-capabilities-items-head span:last-child {
   text-align: center;
 }
@@ -1330,7 +1333,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-item-row {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr) 96px;
+  grid-template-columns: 72px minmax(0, 1fr) 96px;
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -1344,10 +1347,13 @@ body.is-app-capabilities-open {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  justify-content: center;
+  gap: 0;
+  width: 56px;
+  min-width: 56px;
   min-height: 48px;
-  padding: 0 34px 0 14px;
+  margin: 0 auto;
+  padding: 0;
   border-radius: 16px;
   border: 1px solid rgba(197, 206, 232, 0.92);
   background: rgba(245, 248, 255, 0.94);
@@ -1364,15 +1370,11 @@ body.is-app-capabilities-open {
 }
 
 .app-capabilities-choice-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 .app-capabilities-choice-chevron {
-  margin-left: auto;
-  font-size: 0.84rem;
-  opacity: 0.62;
+  display: none;
 }
 
 .app-capabilities-choice-native {
@@ -19635,6 +19637,7 @@ body.is-vehicle-reservation-open {
 
   .app-capabilities-dialog {
     width: min(100vw - 12px, 1280px);
+    height: calc(100dvh - 12px);
     max-height: calc(100dvh - 12px);
     margin: 6px auto;
     padding: 16px;
@@ -19678,9 +19681,12 @@ body.is-vehicle-reservation-open {
     justify-content: flex-end;
   }
 
-  .app-capabilities-status-pill,
-  .app-capabilities-choice-control {
+  .app-capabilities-status-pill {
     width: fit-content;
+  }
+
+  .app-capabilities-choice-control {
+    width: 56px;
   }
 }
 

@@ -2121,7 +2121,7 @@ export async function buildAppCapabilitiesPdfBuffer({
       const meta = getStatusMeta(item.status);
       const rowX = doc.page.margins.left;
       const rowWidth = helpers.availableWidth;
-      const statusWidth = 118;
+      const statusWidth = 48;
       const contentWidth = rowWidth - statusWidth - 34;
       doc.font("dejavu").fontSize(9.2);
       const textHeight = doc.heightOfString(item.title, {
@@ -2144,8 +2144,9 @@ export async function buildAppCapabilitiesPdfBuffer({
       doc.fillColor(meta.fill).fill();
       doc.restore();
       drawRoundedOutline(doc, rowX + 12, pillY, statusWidth, 28, 14, meta.border);
-      doc.font("dejavu-bold").fontSize(8.5).fillColor(meta.text).text(`${meta.symbol} ${meta.label}`, rowX + 18, pillY + 9, {
-        width: statusWidth - 16,
+      doc.font("dejavu-bold").fontSize(11).fillColor(meta.text).text(meta.symbol, rowX + 12, pillY + 7, {
+        width: statusWidth,
+        align: "center",
       });
 
       doc.font("dejavu").fontSize(9.2).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + 8, {

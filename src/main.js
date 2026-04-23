@@ -4215,9 +4215,14 @@ function syncAppCapabilityStatusControl(control, status = "planned_later") {
     label.textContent = config.label;
   }
 
+  control.setAttribute("aria-label", config.label);
+  control.title = config.label;
+
   const select = control.querySelector(".app-capabilities-choice-native");
   if (select instanceof HTMLSelectElement) {
     select.value = config.value;
+    select.setAttribute("aria-label", config.label);
+    select.title = config.label;
   }
 }
 
