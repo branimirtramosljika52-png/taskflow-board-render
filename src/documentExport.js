@@ -2069,13 +2069,15 @@ export async function buildAppCapabilitiesPdfBuffer({
   let legendX = doc.page.margins.left;
   const legendY = doc.y;
   legendItems.forEach((entry) => {
-    const pillWidth = Math.max(104, doc.widthOfString(entry.label, { font: "dejavu-bold", size: 8.8 }) + 32);
+    const legendLabel = `${entry.symbol} ${entry.label}`;
+    doc.font("dejavu-bold").fontSize(8.8);
+    const pillWidth = Math.max(118, doc.widthOfString(legendLabel) + 34);
     doc.save();
     doc.roundedRect(legendX, legendY, pillWidth, 28, 14);
     doc.fillColor(entry.fill).fill();
     doc.restore();
     drawRoundedOutline(doc, legendX, legendY, pillWidth, 28, 14, entry.border);
-    doc.font("dejavu-bold").fontSize(8.8).fillColor(entry.text).text(`${entry.symbol} ${entry.label}`, legendX + 12, legendY + 9, {
+    doc.fillColor(entry.text).text(legendLabel, legendX + 12, legendY + 9, {
       width: pillWidth - 24,
       align: "center",
     });
@@ -2093,20 +2095,20 @@ export async function buildAppCapabilitiesPdfBuffer({
     const headerX = doc.page.margins.left;
     const headerY = doc.y;
     const headerWidth = helpers.availableWidth;
-    const headerHeight = 48;
+    const headerHeight = 42;
 
     doc.save();
-    doc.roundedRect(headerX, headerY, headerWidth, headerHeight, 18);
+    doc.roundedRect(headerX, headerY, headerWidth, headerHeight, 16);
     doc.fillColor("#ffffff").fill();
     doc.restore();
-    drawRoundedOutline(doc, headerX, headerY, headerWidth, headerHeight, 18, "#cad8f1");
-    drawAccentLine(doc, headerX + 12, headerY + 10, 28, "#3b74ff");
+    drawRoundedOutline(doc, headerX, headerY, headerWidth, headerHeight, 16, "#cad8f1");
+    drawAccentLine(doc, headerX + 12, headerY + 9, 24, "#3b74ff");
 
-    doc.font("dejavu-bold").fontSize(12).fillColor("#111827").text(module.title, headerX + 28, headerY + 11, {
+    doc.font("dejavu-bold").fontSize(12).fillColor("#111827").text(module.title, headerX + 28, headerY + 9, {
       width: headerWidth - 160,
     });
     const countLabel = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
-    doc.font("dejavu-bold").fontSize(8.8).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 16, {
+    doc.font("dejavu-bold").fontSize(8.8).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 14, {
       width: 92,
       align: "right",
     });
@@ -2121,35 +2123,35 @@ export async function buildAppCapabilitiesPdfBuffer({
       const meta = getStatusMeta(item.status);
       const rowX = doc.page.margins.left;
       const rowWidth = helpers.availableWidth;
-      const statusWidth = 48;
+      const statusWidth = 44;
       const contentWidth = rowWidth - statusWidth - 34;
       doc.font("dejavu").fontSize(9.2);
       const textHeight = doc.heightOfString(item.title, {
         width: contentWidth,
         lineGap: 1.2,
       });
-      const rowHeight = Math.max(40, textHeight + 16);
+      const rowHeight = Math.max(34, textHeight + 14);
       helpers.ensureSpace(rowHeight + 8);
       const rowY = doc.y;
 
       doc.save();
-      doc.roundedRect(rowX, rowY, rowWidth, rowHeight, 16);
+      doc.roundedRect(rowX, rowY, rowWidth, rowHeight, 14);
       doc.fillColor("#ffffff").fill();
       doc.restore();
-      drawRoundedOutline(doc, rowX, rowY, rowWidth, rowHeight, 16, "#d8e3f5");
+      drawRoundedOutline(doc, rowX, rowY, rowWidth, rowHeight, 14, "#d8e3f5");
 
-      const pillY = rowY + Math.max(8, (rowHeight - 28) / 2);
+      const pillY = rowY + ((rowHeight - 24) / 2);
       doc.save();
-      doc.roundedRect(rowX + 12, pillY, statusWidth, 28, 14);
+      doc.roundedRect(rowX + 12, pillY, statusWidth, 24, 12);
       doc.fillColor(meta.fill).fill();
       doc.restore();
-      drawRoundedOutline(doc, rowX + 12, pillY, statusWidth, 28, 14, meta.border);
-      doc.font("dejavu-bold").fontSize(11).fillColor(meta.text).text(meta.symbol, rowX + 12, pillY + 7, {
+      drawRoundedOutline(doc, rowX + 12, pillY, statusWidth, 24, 12, meta.border);
+      doc.font("dejavu-bold").fontSize(10.5).fillColor(meta.text).text(meta.symbol, rowX + 12, pillY + 5.5, {
         width: statusWidth,
         align: "center",
       });
 
-      doc.font("dejavu").fontSize(9.2).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + 8, {
+      doc.font("dejavu").fontSize(9.2).fillColor("#22314f").text(item.title, rowX + statusWidth + 24, rowY + ((rowHeight - textHeight) / 2), {
         width: contentWidth,
         lineGap: 1.2,
       });

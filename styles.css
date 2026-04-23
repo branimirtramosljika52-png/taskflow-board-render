@@ -1206,6 +1206,8 @@ body.is-app-capabilities-open {
   min-height: 0;
   overflow: auto;
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 14px;
   padding-right: 2px;
   overscroll-behavior: contain;
@@ -1228,8 +1230,10 @@ body.is-app-capabilities-open {
 .app-capabilities-module-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
   gap: 10px;
-  padding: 16px;
+  padding: 14px;
   border-radius: 28px;
   border: 1px solid rgba(184, 200, 235, 0.96);
   background:
@@ -1254,8 +1258,8 @@ body.is-app-capabilities-open {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  padding-top: 6px;
-  padding-bottom: 8px;
+  padding-top: 4px;
+  padding-bottom: 6px;
   border-bottom: 1px solid rgba(214, 223, 242, 0.92);
 }
 
@@ -1271,7 +1275,7 @@ body.is-app-capabilities-open {
   min-width: min(420px, 100%);
   flex: 1 1 360px;
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .app-capabilities-module-label {
@@ -1285,7 +1289,7 @@ body.is-app-capabilities-open {
 .app-capabilities-module-title-input,
 .app-capabilities-item-input {
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: 16px;
   border: 1px solid rgba(226, 194, 241, 0.96);
@@ -1301,12 +1305,14 @@ body.is-app-capabilities-open {
 
 .app-capabilities-module-meta {
   font-size: 0.82rem;
+  line-height: 1.1;
   color: #62759c;
 }
 
 .app-capabilities-items-board {
   display: grid;
-  gap: 6px;
+  align-self: start;
+  gap: 4px;
 }
 
 .app-capabilities-items-head {
@@ -1328,7 +1334,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-items {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .app-capabilities-item-row {
@@ -1351,7 +1357,7 @@ body.is-app-capabilities-open {
   gap: 0;
   width: 56px;
   min-width: 56px;
-  min-height: 48px;
+  min-height: 44px;
   margin: 0 auto;
   padding: 0;
   border-radius: 16px;
@@ -1404,15 +1410,18 @@ body.is-app-capabilities-open {
 
 .app-capabilities-module-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-start;
-  padding-top: 2px;
+  padding-top: 0;
 }
 
 .app-capabilities-add-item-button {
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
   border-radius: 12px;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
+  line-height: 1;
 }
 
 .app-capabilities-status-pill {
