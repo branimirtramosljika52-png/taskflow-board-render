@@ -51918,6 +51918,7 @@ function renderVehiclesModule() {
 
 function renderActiveView() {
   const allowedGroups = getAllowedSidebarGroupsForView(state.activeView);
+  const isSelfdashView = state.activeView === "selfdash";
 
   if (!allowedGroups.includes(state.activeSidebarGroup)) {
     state.activeSidebarGroup = getSidebarGroupForView(state.activeView);
@@ -51946,7 +51947,9 @@ function renderActiveView() {
   }
 
   renderDashboardOverview();
-  renderWorkOrderWorkspace();
+  if (isSelfdashView) {
+    renderWorkOrderWorkspace();
+  }
   renderSidebarState();
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
@@ -61225,13 +61228,27 @@ function render() {
   renderLoginContent();
   renderSummary();
   renderSharedOptions();
-  renderReminders();
-  renderTodo();
-  renderNotifications();
-  renderCompanies();
-  renderLocations();
-  renderManagement();
-  renderModuleView();
+  if (state.activeView === "reminders") {
+    renderReminders();
+  }
+  if (state.activeView === "todo") {
+    renderTodo();
+  }
+  if (state.activeView === "notifications") {
+    renderNotifications();
+  }
+  if (state.activeView === "companies") {
+    renderCompanies();
+  }
+  if (state.activeView === "locations") {
+    renderLocations();
+  }
+  if (state.activeView === "management") {
+    renderManagement();
+  }
+  if (state.activeView === "module") {
+    renderModuleView();
+  }
   renderActiveView();
   renderChatDock();
   renderAppCapabilitiesDialog();

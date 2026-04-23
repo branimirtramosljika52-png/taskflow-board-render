@@ -1,5 +1,7 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
+import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
+import { promisify } from "node:util";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
@@ -12,6 +14,9 @@ const browserEntryModules = [
   resolve(browserSrcDir, "learning-test.js"),
 ];
 const relativeBrowserImportPattern = /(?:import|export)\s+(?:[^"'`]*?\s+from\s+)?["'](\.[^"']+)["']/g;
+const gzipAsync = promisify(gzip);
+const brotliCompressAsync = promisify(brotliCompress);
+const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".webmanifest"]);
 
 async function copyBrowserModule(modulePath, copiedModules = new Set()) {
   const absoluteModulePath = resolve(modulePath);
@@ -42,6 +47,52 @@ async function copyBrowserModule(modulePath, copiedModules = new Set()) {
 
     await copyBrowserModule(normalizedImportPath, copiedModules);
   }
+}
+
+async function listFiles(directoryPath) {
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  const filePaths = [];
+
+  for (const entry of entries) {
+    const entryPath = resolve(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      filePaths.push(...await listFiles(entryPath));
+    } else if (entry.isFile()) {
+      filePaths.push(entryPath);
+    }
+  }
+
+  return filePaths;
+}
+
+async function compressDistAssets() {
+  const filePaths = await listFiles(distDir);
+  const eligibleFiles = filePaths.filter((filePath) => compressibleExtensions.has(extname(filePath)));
+
+  await Promise.all(eligibleFiles.map(async (filePath) => {
+    const sourceBuffer = await readFile(filePath);
+
+    if (sourceBuffer.length < 1024) {
+      return;
+    }
+
+    const [brotliBuffer, gzipBuffer] = await Promise.all([
+      brotliCompressAsync(sourceBuffer, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+        },
+      }),
+      gzipAsync(sourceBuffer, { level: 9 }),
+    ]);
+
+    if (brotliBuffer.length < sourceBuffer.length) {
+      await writeFile(`${filePath}.br`, brotliBuffer);
+    }
+
+    if (gzipBuffer.length < sourceBuffer.length) {
+      await writeFile(`${filePath}.gz`, gzipBuffer);
+    }
+  }));
 }
 
 await rm(distDir, { recursive: true, force: true });
@@ -76,3 +127,5 @@ const copiedBrowserModules = new Set();
 for (const entryModulePath of browserEntryModules) {
   await copyBrowserModule(entryModulePath, copiedBrowserModules);
 }
+
+await compressDistAssets();

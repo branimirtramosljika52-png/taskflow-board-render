@@ -1,7 +1,9 @@
 import { createServer } from "node:http";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
+import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 
@@ -46,6 +48,7 @@ const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
 const requestUserSymbol = Symbol("requestUser");
+const responseRequestSymbol = Symbol("responseRequest");
 const jwtSecret = resolveJwtSecret();
 const publicAppUrl = String(process.env.PUBLIC_APP_URL || process.env.APP_URL || "").trim().replace(/\/+$/, "");
 const canonicalAppOrigin = (() => {
@@ -127,11 +130,125 @@ const contentTypes = {
   ".svg": "image/svg+xml; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
 };
+const NO_STORE_HEADERS = Object.freeze({
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+});
+const STATIC_IMMUTABLE_HEADERS = Object.freeze({
+  "Cache-Control": "public, max-age=31536000, immutable",
+});
+const STATIC_ASSET_HEADERS = Object.freeze({
+  "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
+});
+const SNAPSHOT_CACHE_TTL_MS = 2_500;
+const COMPRESSIBLE_STATIC_EXTENSIONS = new Set([".css", ".html", ".js", ".json", ".svg", ".webmanifest"]);
+const staticFileCache = new Map();
+let cachedRawSnapshotEntry = null;
+const scopedSnapshotCache = new Map();
+
+function appendVaryHeader(response, value) {
+  const normalizedValue = String(value ?? "").trim();
+  if (!normalizedValue) {
+    return;
+  }
+
+  const current = String(response.getHeader("Vary") ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (!current.includes(normalizedValue)) {
+    response.setHeader("Vary", [...current, normalizedValue].join(", "));
+  }
+}
+
+function isCompressibleContentType(contentType = "") {
+  const normalized = String(contentType ?? "").toLowerCase();
+  return normalized.startsWith("text/")
+    || normalized.includes("json")
+    || normalized.includes("javascript")
+    || normalized.includes("xml")
+    || normalized.includes("svg")
+    || normalized.includes("manifest");
+}
+
+function acceptsEncoding(request, encoding = "") {
+  const normalizedEncoding = String(encoding ?? "").trim().toLowerCase();
+  if (!request || !normalizedEncoding) {
+    return false;
+  }
+
+  return String(request.headers["accept-encoding"] ?? "")
+    .toLowerCase()
+    .split(",")
+    .map((entry) => entry.trim())
+    .some((entry) => entry === normalizedEncoding || entry.startsWith(`${normalizedEncoding};`));
+}
+
+function buildWeakEtag(buffer, suffix = "") {
+  const normalizedBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? "");
+  const digest = createHash("sha1").update(normalizedBuffer).digest("base64url").slice(0, 16);
+  return `W/"${normalizedBuffer.length.toString(16)}-${digest}${suffix}"`;
+}
+
+function writeBufferResponse(response, statusCode, body, {
+  contentType = "application/octet-stream",
+  contentEncoding = "",
+  fileName = "",
+  etag = "",
+  headers = {},
+} = {}) {
+  const payload = Buffer.isBuffer(body) ? body : Buffer.from(String(body ?? ""), "utf8");
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", contentType);
+  response.setHeader("Content-Length", String(payload.length));
+
+  if (etag) {
+    response.setHeader("ETag", etag);
+  }
+
+  if (fileName) {
+    response.setHeader("Content-Disposition", `attachment; filename="${fileName.replace(/"/g, "")}"`);
+  }
+
+  if (contentEncoding) {
+    response.setHeader("Content-Encoding", contentEncoding);
+    appendVaryHeader(response, "Accept-Encoding");
+  }
+
+  Object.entries(headers).forEach(([headerName, headerValue]) => {
+    if (headerValue !== undefined && headerValue !== null && headerValue !== "") {
+      response.setHeader(headerName, headerValue);
+    }
+  });
+
+  response.end(payload);
+}
 
 function sendJson(response, statusCode, payload) {
-  response.statusCode = statusCode;
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.end(JSON.stringify(payload));
+  const request = response[responseRequestSymbol];
+  const jsonBuffer = Buffer.from(JSON.stringify(payload), "utf8");
+  let body = jsonBuffer;
+  let contentEncoding = "";
+
+  if (request && jsonBuffer.length >= 1536 && acceptsEncoding(request, "gzip")) {
+    try {
+      const compressed = gzipSync(jsonBuffer, { level: 6 });
+      if (compressed.length + 128 < jsonBuffer.length) {
+        body = compressed;
+        contentEncoding = "gzip";
+      }
+    } catch {
+      body = jsonBuffer;
+      contentEncoding = "";
+    }
+  }
+
+  writeBufferResponse(response, statusCode, body, {
+    contentType: "application/json; charset=utf-8",
+    contentEncoding,
+  });
 }
 
 function sendError(response, statusCode, message) {
@@ -142,12 +259,10 @@ function sendBinary(response, statusCode, body, {
   contentType = "application/octet-stream",
   fileName = "",
 } = {}) {
-  response.statusCode = statusCode;
-  response.setHeader("Content-Type", contentType);
-  if (fileName) {
-    response.setHeader("Content-Disposition", `attachment; filename="${fileName.replace(/"/g, "")}"`);
-  }
-  response.end(body);
+  writeBufferResponse(response, statusCode, body, {
+    contentType,
+    fileName,
+  });
 }
 
 const MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY = "karton_template";
@@ -1086,10 +1201,69 @@ function getRequestedOrganizationId(request) {
   return String(request.headers["x-organization-id"] ?? "").trim();
 }
 
+function isSnapshotCacheableRequest(request) {
+  return request?.method === "GET";
+}
+
+function invalidateSnapshotCaches() {
+  cachedRawSnapshotEntry = null;
+  scopedSnapshotCache.clear();
+}
+
+function getScopedSnapshotCacheKey(user, requestedOrganizationId = "") {
+  return [
+    String(user?.id ?? "anonymous"),
+    String(requestedOrganizationId ?? ""),
+  ].join("::");
+}
+
+async function getRawSnapshot(request) {
+  const cacheable = isSnapshotCacheableRequest(request);
+  const now = Date.now();
+
+  if (cacheable && cachedRawSnapshotEntry?.expiresAt > now) {
+    return cachedRawSnapshotEntry.snapshot;
+  }
+
+  const rawSnapshot = await domainRepository.getSnapshot();
+
+  if (cacheable) {
+    cachedRawSnapshotEntry = {
+      expiresAt: now + SNAPSHOT_CACHE_TTL_MS,
+      snapshot: rawSnapshot,
+    };
+  }
+
+  return rawSnapshot;
+}
+
 async function getScopedState(user, request) {
   const requestedOrganizationId = getRequestedOrganizationId(request);
-  const rawSnapshot = await domainRepository.getSnapshot();
+  const cacheable = isSnapshotCacheableRequest(request);
+  const cacheKey = getScopedSnapshotCacheKey(user, requestedOrganizationId);
+  const now = Date.now();
+
+  if (cacheable) {
+    const cachedEntry = scopedSnapshotCache.get(cacheKey);
+    if (cachedEntry?.expiresAt > now) {
+      return {
+        requestedOrganizationId,
+        rawSnapshot: cachedEntry.rawSnapshot,
+        scopedSnapshot: cachedEntry.scopedSnapshot,
+      };
+    }
+  }
+
+  const rawSnapshot = await getRawSnapshot(request);
   const scopedSnapshot = await tenantRepository.getSnapshot(user, requestedOrganizationId, rawSnapshot);
+
+  if (cacheable) {
+    scopedSnapshotCache.set(cacheKey, {
+      expiresAt: now + SNAPSHOT_CACHE_TTL_MS,
+      rawSnapshot,
+      scopedSnapshot,
+    });
+  }
 
   return {
     requestedOrganizationId,
@@ -1373,6 +1547,10 @@ function resolveVehicleReservationUserPayload(scopedSnapshot, body = {}) {
 }
 
 async function writeSnapshot(response, user, request, statusCode = 200) {
+  if (!isSnapshotCacheableRequest(request)) {
+    invalidateSnapshotCaches();
+  }
+
   const { scopedSnapshot } = await getScopedState(user, request);
   sendJson(response, statusCode, {
     storage: domainRepository.kind,
@@ -4265,15 +4443,127 @@ async function handleApiRequest(request, response, url) {
   return false;
 }
 
-async function handleStaticRequest(response, url) {
+async function readOptionalFile(filePath) {
+  try {
+    return await readFile(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function getStaticCacheHeaders(url, pathname, extension) {
+  if (pathname === "/index.html" || extension === ".html") {
+    return NO_STORE_HEADERS;
+  }
+
+  if (url.searchParams.has("v") || pathname.startsWith("/assets/vendor/")) {
+    return STATIC_IMMUTABLE_HEADERS;
+  }
+
+  if (pathname.startsWith("/assets/")) {
+    return STATIC_ASSET_HEADERS;
+  }
+
+  return NO_STORE_HEADERS;
+}
+
+async function getStaticFileRecord(filePath, extension) {
+  const cacheKey = `${filePath}:${extension}`;
+  if (staticFileCache.has(cacheKey)) {
+    return staticFileCache.get(cacheKey);
+  }
+
+  const shouldLoadCompressedVariants = staticRoot === distDir && COMPRESSIBLE_STATIC_EXTENSIONS.has(extension);
+  const [body, brotliBody, gzipBody] = await Promise.all([
+    readFile(filePath),
+    shouldLoadCompressedVariants ? readOptionalFile(`${filePath}.br`) : Promise.resolve(null),
+    shouldLoadCompressedVariants ? readOptionalFile(`${filePath}.gz`) : Promise.resolve(null),
+  ]);
+
+  const record = {
+    body,
+    contentType: contentTypes[extension] ?? "application/octet-stream",
+    etag: buildWeakEtag(body),
+    brotliBody,
+    brotliEtag: brotliBody ? buildWeakEtag(brotliBody, "-br") : "",
+    gzipBody,
+    gzipEtag: gzipBody ? buildWeakEtag(gzipBody, "-gz") : "",
+  };
+
+  staticFileCache.set(cacheKey, record);
+  return record;
+}
+
+function resolveStaticFileVariant(request, record) {
+  if (record.brotliBody && acceptsEncoding(request, "br")) {
+    return {
+      body: record.brotliBody,
+      contentEncoding: "br",
+      etag: record.brotliEtag,
+    };
+  }
+
+  if (record.gzipBody && acceptsEncoding(request, "gzip")) {
+    return {
+      body: record.gzipBody,
+      contentEncoding: "gzip",
+      etag: record.gzipEtag,
+    };
+  }
+
+  return {
+    body: record.body,
+    contentEncoding: "",
+    etag: record.etag,
+  };
+}
+
+function requestMatchesEtag(request, etag = "") {
+  if (!etag) {
+    return false;
+  }
+
+  const requestedValue = String(request?.headers?.["if-none-match"] ?? "")
+    .split(",")
+    .map((entry) => entry.trim());
+
+  return requestedValue.includes("*") || requestedValue.includes(etag);
+}
+
+function sendStaticFile(request, response, record, headers = {}) {
+  const variant = resolveStaticFileVariant(request, record);
+
+  if (requestMatchesEtag(request, variant.etag)) {
+    response.statusCode = 304;
+    response.setHeader("ETag", variant.etag);
+    Object.entries(headers).forEach(([headerName, headerValue]) => {
+      if (headerValue !== undefined && headerValue !== null && headerValue !== "") {
+        response.setHeader(headerName, headerValue);
+      }
+    });
+    if (variant.contentEncoding) {
+      appendVaryHeader(response, "Accept-Encoding");
+    }
+    response.end();
+    return;
+  }
+
+  writeBufferResponse(response, 200, variant.body, {
+    contentType: record.contentType,
+    contentEncoding: variant.contentEncoding,
+    etag: variant.etag,
+    headers,
+  });
+}
+
+async function handleStaticRequest(request, response, url) {
   const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = resolve(staticRoot, `.${pathname}`);
   const isSafePath = filePath === staticRoot || filePath.startsWith(`${staticRoot}${sep}`);
-  const noStoreHeaders = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
 
   if (!isSafePath) {
     response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
@@ -4282,21 +4572,14 @@ async function handleStaticRequest(response, url) {
   }
 
   try {
-    const file = await readFile(filePath);
     const extension = extname(filePath);
-    response.writeHead(200, {
-      "Content-Type": contentTypes[extension] ?? "application/octet-stream",
-      ...noStoreHeaders,
-    });
-    response.end(file);
+    const record = await getStaticFileRecord(filePath, extension);
+    sendStaticFile(request, response, record, getStaticCacheHeaders(url, pathname, extension));
   } catch (error) {
     if (pathname !== "/index.html" && !extname(pathname)) {
-      const indexFile = await readFile(resolve(staticRoot, "index.html"));
-      response.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        ...noStoreHeaders,
-      });
-      response.end(indexFile);
+      const indexFilePath = resolve(staticRoot, "index.html");
+      const indexRecord = await getStaticFileRecord(indexFilePath, ".html");
+      sendStaticFile(request, response, indexRecord, NO_STORE_HEADERS);
       return;
     }
 
@@ -4309,6 +4592,7 @@ async function handleStaticRequest(response, url) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  response[responseRequestSymbol] = request;
   setSecurityHeaders(response, request);
 
   const canonicalRedirectTarget = getCanonicalRedirectTarget(request, url);
@@ -4361,7 +4645,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  await handleStaticRequest(response, url);
+  await handleStaticRequest(request, response, url);
 });
 
 let shuttingDown = false;
