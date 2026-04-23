@@ -2,7 +2,6 @@ name: taskflow-board-do
 region: fra
 services:
   - name: web
-    dockerfile_path: Dockerfile
     git:
       branch: main
       repo_clone_url: https://github.com/branimirtramosljika52-png/taskflow-board-render.git
