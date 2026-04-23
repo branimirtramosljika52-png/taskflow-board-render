@@ -4793,7 +4793,7 @@ function renderAppCapabilitiesDialog() {
     if (canEdit) {
       const addItemButton = document.createElement("button");
       addItemButton.type = "button";
-      addItemButton.className = "ghost-button";
+      addItemButton.className = "ghost-button app-capabilities-add-item-button";
       addItemButton.textContent = "+ Stavka";
       addItemButton.addEventListener("click", () => {
         const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];

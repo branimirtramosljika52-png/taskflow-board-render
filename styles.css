@@ -1147,10 +1147,10 @@ body.is-app-capabilities-open {
 .app-capabilities-dialog {
   position: relative;
   z-index: 1;
-  width: min(1280px, calc(100vw - 20px));
-  height: calc(100dvh - 16px);
-  max-height: calc(100dvh - 16px);
-  margin: 8px auto;
+  width: min(1240px, calc(100vw - 40px));
+  height: calc(100dvh - 36px);
+  max-height: calc(100dvh - 36px);
+  margin: 18px auto;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 16px;
@@ -1228,8 +1228,8 @@ body.is-app-capabilities-open {
 .app-capabilities-module-card {
   position: relative;
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 10px;
+  padding: 16px;
   border-radius: 28px;
   border: 1px solid rgba(184, 200, 235, 0.96);
   background:
@@ -1252,10 +1252,10 @@ body.is-app-capabilities-open {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
-  padding-top: 8px;
-  padding-bottom: 14px;
+  padding-top: 6px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(214, 223, 242, 0.92);
 }
 
@@ -1263,7 +1263,7 @@ body.is-app-capabilities-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding-top: 24px;
+  padding-top: 10px;
   align-self: flex-start;
 }
 
@@ -1271,7 +1271,7 @@ body.is-app-capabilities-open {
   min-width: min(420px, 100%);
   flex: 1 1 360px;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .app-capabilities-module-label {
@@ -1306,7 +1306,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-items-board {
   display: grid;
-  gap: 12px;
+  gap: 6px;
 }
 
 .app-capabilities-items-head {
@@ -1328,7 +1328,7 @@ body.is-app-capabilities-open {
 
 .app-capabilities-items {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .app-capabilities-item-row {
@@ -1336,7 +1336,7 @@ body.is-app-capabilities-open {
   grid-template-columns: 72px minmax(0, 1fr) 96px;
   gap: 12px;
   align-items: center;
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 20px;
   border: 1px solid rgba(211, 222, 244, 0.98);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.97));
@@ -1405,6 +1405,14 @@ body.is-app-capabilities-open {
 .app-capabilities-module-footer {
   display: flex;
   justify-content: flex-start;
+  padding-top: 2px;
+}
+
+.app-capabilities-add-item-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 0.78rem;
 }
 
 .app-capabilities-status-pill {
