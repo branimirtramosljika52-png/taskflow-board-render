@@ -1007,7 +1007,7 @@ const SIDEBAR_ITEM_LABELS = {
 const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
   users: Object.freeze({
     label: "Korisnici",
-    description: "Popis korisnika, radnih uloga, pristupa i dokumentacije na jednom mjestu.",
+    description: "",
   }),
   "annual-leave": Object.freeze({
     label: "GO i dopusti",
@@ -1029,7 +1029,7 @@ const USER_MANAGEMENT_SCOPE_DEFINITIONS = Object.freeze({
     createButtonLabel: "+ Novi korisnik",
     profileHeader: "Profil",
     metaHeader: "Ovlaštenja",
-    description: "Popis korisnika, radnih uloga, pristupa i dokumentacije na jednom mjestu.",
+    description: "",
     editorKicker: "People",
     editorCreateTitle: "Novi korisnik",
     editorEditTitle: "Uredi korisnika",
@@ -62349,6 +62349,7 @@ function renderManagement() {
   const userManagementDescription = isUsersTab
     ? userManagementScopeConfig.description
     : activePeopleTabConfig.description;
+  const hasUserManagementDescription = Boolean(String(userManagementDescription || "").trim());
 
   if (managementIntroPanel) {
     managementIntroPanel.hidden = true;
@@ -62368,6 +62369,7 @@ function renderManagement() {
 
   if (peopleWorkspaceCopy) {
     peopleWorkspaceCopy.textContent = userManagementDescription;
+    peopleWorkspaceCopy.hidden = !hasUserManagementDescription;
   }
 
   syncUserManagementListChrome();
@@ -62403,6 +62405,7 @@ function renderManagement() {
     }
     if (managementViewDescription) {
       managementViewDescription.textContent = userManagementDescription;
+      managementViewDescription.hidden = !hasUserManagementDescription;
     }
     if (userManagementNote) {
       userManagementNote.hidden = !isUsersTab;
@@ -62419,6 +62422,7 @@ function renderManagement() {
     }
     if (managementViewDescription) {
       managementViewDescription.textContent = userManagementDescription;
+      managementViewDescription.hidden = !hasUserManagementDescription;
     }
     if (userManagementNote) {
       userManagementNote.hidden = !isUsersTab;
