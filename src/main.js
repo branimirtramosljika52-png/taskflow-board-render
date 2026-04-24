@@ -21483,6 +21483,26 @@ function normalizeCompanyEmployeeSize(value = "") {
   return "";
 }
 
+function getCompanyEmployeeSizeOptions() {
+  return [
+    { value: "", label: "Nije definirano" },
+    { value: "do-49", label: "Do 49 zaposlenih" },
+    { value: "preko-50", label: "Preko 50 zaposlenih" },
+  ];
+}
+
+function syncCompanyEmployeeSizeInput(value = "") {
+  if (!companyEmployeeSizeInput) {
+    return;
+  }
+
+  replaceSelectOptions(
+    companyEmployeeSizeInput,
+    getCompanyEmployeeSizeOptions(),
+    normalizeCompanyEmployeeSize(value),
+  );
+}
+
 function getCompanyEmployeeSizeLabel(value = "") {
   const normalizedValue = normalizeCompanyEmployeeSize(value);
   if (normalizedValue === "do-49") {
@@ -43227,6 +43247,7 @@ function resetCompanyForm() {
   }
   companyError.textContent = "";
   companyIsActiveInput.value = "true";
+  syncCompanyEmployeeSizeInput("");
   rebuildCompanyManagerUserOptions([]);
   if (companyEditorTitle) {
     companyEditorTitle.textContent = "Nova tvrtka";
@@ -43378,9 +43399,7 @@ function hydrateCompanyForm(company) {
   if (companyContractValidToInput) {
     companyContractValidToInput.value = normalizeCompanyDateValue(company.contractValidTo || "");
   }
-  if (companyEmployeeSizeInput) {
-    companyEmployeeSizeInput.value = normalizeCompanyEmployeeSize(company.employeeSize || "");
-  }
+  syncCompanyEmployeeSizeInput(company.employeeSize || "");
   rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
