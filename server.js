@@ -1859,6 +1859,7 @@ async function handleApiRequest(request, response, url) {
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
+    const chatConversationMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)$/);
     const chatConversationMessageMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/messages$/);
     const chatConversationReadMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/read$/);
     const chatConversationArchiveMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/archive$/);
@@ -1896,6 +1897,17 @@ async function handleApiRequest(request, response, url) {
         participantIds: body.participantIds,
       });
       await writeChatSnapshot(response, user, request, url, 201, conversationId);
+      return true;
+    }
+
+    if (chatConversationMatch && request.method === "DELETE") {
+      const { organizationId } = await getScopedChatContext(user, request);
+      await liveChatStore.deleteConversation({
+        organizationId,
+        conversationId: chatConversationMatch[1],
+        currentUserId: user.id,
+      });
+      await writeChatSnapshot(response, user, request, url, 200, "");
       return true;
     }
 

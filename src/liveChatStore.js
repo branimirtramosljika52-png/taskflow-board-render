@@ -637,6 +637,22 @@ class MemoryLiveChatStore {
     });
     organizationState.reads.set(`${conversation.id}:${normalizedCurrentUserId}`, timestamp);
   }
+
+  async deleteConversation({ organizationId, conversationId, currentUserId }) {
+    const organizationState = this.getOrganizationState(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversation = this.getConversationOrThrow(
+      organizationState,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+    const timestamp = this.getTimestamp();
+    this.setConversationUserState(organizationState, conversation.id, normalizedCurrentUserId, {
+      archivedAt: timestamp,
+      clearedAt: timestamp,
+    });
+    organizationState.reads.set(`${conversation.id}:${normalizedCurrentUserId}`, timestamp);
+  }
 }
 
 class MySqlLiveChatStore {
@@ -1215,6 +1231,27 @@ class MySqlLiveChatStore {
     });
     await this.upsertReadMarker(normalizeId(conversationId), normalizedCurrentUserId, timestamp);
   }
+
+  async deleteConversation({ organizationId, conversationId, currentUserId }) {
+    const normalizedOrganizationId = normalizeId(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversationRow = await this.getConversationRowForUser(
+      normalizedOrganizationId,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+
+    if (!conversationRow) {
+      throw new Error("Razgovor nije dostupan.");
+    }
+
+    const timestamp = this.getTimestamp();
+    await this.setConversationUserState(normalizeId(conversationId), normalizedCurrentUserId, {
+      archivedAt: timestamp,
+      clearedAt: timestamp,
+    });
+    await this.upsertReadMarker(normalizeId(conversationId), normalizedCurrentUserId, timestamp);
+  }
 }
 
 export async function createLiveChatStore({
@@ -1312,6 +1349,13 @@ export async function createLiveChatStore({
     },
     async clearConversationHistory({ organizationId, conversationId, currentUserId }) {
       return store.clearConversationHistory({
+        organizationId,
+        conversationId,
+        currentUserId,
+      });
+    },
+    async deleteConversation({ organizationId, conversationId, currentUserId }) {
+      return store.deleteConversation({
         organizationId,
         conversationId,
         currentUserId,

@@ -260,3 +260,61 @@ test("archiving hides old conversations and clearing history hides earlier messa
   assert.equal(snapshot.activeConversation?.messages.length, 1);
   assert.equal(snapshot.activeConversation?.messages[0]?.body, "Nova poruka nakon arhive");
 });
+
+test("deleting a conversation hides old history for one user until a new message arrives", async () => {
+  let nowValue = Date.parse("2026-03-28T08:00:00.000Z");
+  const store = await createLiveChatStore({
+    now: () => nowValue,
+    idFactory: () => "delete",
+  });
+  const users = createUsers();
+
+  const conversationId = await store.createConversation({
+    organizationId: "org-1",
+    currentUser: users[0],
+    users,
+    participantIds: ["u-2"],
+  });
+
+  nowValue += 1_000;
+  await store.addMessage({
+    organizationId: "org-1",
+    conversationId,
+    currentUser: users[0],
+    body: "Poruka prije brisanja",
+  });
+
+  nowValue += 1_000;
+  await store.deleteConversation({
+    organizationId: "org-1",
+    conversationId,
+    currentUserId: "u-2",
+  });
+
+  let snapshot = await store.getSnapshot({
+    organizationId: "org-1",
+    currentUser: users[1],
+    users,
+    activeConversationId: conversationId,
+  });
+  assert.equal(snapshot.conversations.length, 0);
+  assert.equal(snapshot.activeConversation, null);
+
+  nowValue += 1_000;
+  await store.addMessage({
+    organizationId: "org-1",
+    conversationId,
+    currentUser: users[0],
+    body: "Nova poruka nakon brisanja",
+  });
+
+  snapshot = await store.getSnapshot({
+    organizationId: "org-1",
+    currentUser: users[1],
+    users,
+    activeConversationId: conversationId,
+  });
+  assert.equal(snapshot.conversations.length, 1);
+  assert.equal(snapshot.activeConversation?.messages.length, 1);
+  assert.equal(snapshot.activeConversation?.messages[0]?.body, "Nova poruka nakon brisanja");
+});

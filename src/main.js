@@ -6809,6 +6809,14 @@ function getChatConversationListSubtitle(conversation = {}, avatarPresence = "of
   return `${conversation.participants?.length ?? 0} sudionika`;
 }
 
+function createChatPresenceStatusLine(presence = "offline", className = "chat-person-status") {
+  const line = document.createElement("div");
+  line.className = className;
+  line.dataset.presence = presence;
+  line.textContent = buildChatPresenceLabel(presence);
+  return line;
+}
+
 function groupChatUsersByPresence(people = []) {
   return USER_PRESENCE_OPTIONS
     .map((option) => ({
@@ -7590,6 +7598,51 @@ async function clearChatConversationHistory(conversationId = state.chat.activeCo
   }
 }
 
+async function deleteChatConversation(conversationId = state.chat.activeConversationId) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation) {
+    return;
+  }
+
+  const shouldDelete = window.confirm(
+    `Obrisati razgovor "${conversation.title || "Razgovor"}"? Stara povijest će se maknuti samo tebi.`,
+  );
+  if (!shouldDelete) {
+    return;
+  }
+
+  const isDeletingActiveConversation = String(conversation.id) === String(state.chat.activeConversationId);
+
+  try {
+    const payload = await apiRequest(`/chat/conversations/${conversation.id}`, {
+      method: "DELETE",
+      body: {},
+    });
+    applyChatSnapshot(payload);
+    if (isDeletingActiveConversation) {
+      state.chat.panelMode = "hub";
+      state.chat.tab = "conversations";
+      renderChatDock();
+    }
+  } catch (error) {
+    setChatError(error.message);
+    renderChatDock();
+  }
+}
+
+function bindChatConversationDeleteShortcut(target, conversation) {
+  if (!(target instanceof HTMLElement) || !conversation?.id) {
+    return;
+  }
+
+  target.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void deleteChatConversation(conversation.id);
+  });
+}
+
 function setChatComposerOpen(isOpen, { render = true } = {}) {
   state.chat.composerOpen = Boolean(isOpen);
   state.chat.emojiPickerOpen = false;
@@ -7788,6 +7841,7 @@ function renderChatConversationList() {
       button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
       button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
       button.classList.toggle("is-docked", state.chat.dockedConversationIds.includes(String(conversation.id)));
+      button.title = `Otvori ${conversation.title || "razgovor"} (desni klik za brisanje)`;
 
       const head = document.createElement("div");
       head.className = "chat-list-card-head";
@@ -7812,37 +7866,22 @@ function renderChatConversationList() {
       copy.append(title, subtitle);
       head.append(avatar, copy);
 
-      const preview = document.createElement("p");
-      preview.className = "chat-list-card-preview";
-      preview.textContent = conversation.lastMessage?.body || "Bez poruka za sada.";
-
-      const meta = document.createElement("div");
-      meta.className = "chat-list-card-meta";
-
-      const chips = document.createElement("div");
-      chips.className = "chat-list-chip-row";
-      chips.append(
-        createChatChip(conversation.kind === "direct" ? "1:1" : "Grupa"),
-        createChatChip(`${conversation.participants.length} cl.`),
-      );
-
-      if (state.chat.dockedConversationIds.includes(String(conversation.id))) {
-        chips.append(createChatChip("u traci"));
-      }
-
-      meta.append(chips);
-
       if (conversation.unreadCount > 0) {
         const unread = document.createElement("span");
         unread.className = "chat-unread-badge";
         unread.textContent = String(conversation.unreadCount);
-        meta.append(unread);
+        head.append(unread);
       }
 
-      button.append(head, preview, meta);
+      const preview = document.createElement("p");
+      preview.className = "chat-list-card-preview";
+      preview.textContent = conversation.lastMessage?.body || "Bez poruka za sada.";
+
+      button.append(head, preview);
       button.addEventListener("click", () => {
         activateChatConversation(conversation.id);
       });
+      bindChatConversationDeleteShortcut(button, conversation);
       nodes.push(button);
     });
   });
@@ -7854,54 +7893,9 @@ function renderChatPeopleSummary() {
   if (!chatPeopleSummary) {
     return;
   }
-
-  const people = getFilteredChatUsers();
-  const counts = USER_PRESENCE_OPTIONS
-    .map((option) => ({
-      value: option.value,
-      label: option.label,
-      count: people.filter((person) => getChatUserPresence(person.id) === option.value).length,
-    }))
-    .filter((entry) => entry.count > 0);
-  const renderSignature = [
-    state.chat.tab,
-    state.chat.search,
-    counts.map((entry) => `${entry.value}:${entry.count}`).join("|"),
-  ].join("~~");
-
-  if (renderSignature === chatPeopleSummaryRenderSignature) {
-    return;
-  }
-
-  chatPeopleSummaryRenderSignature = renderSignature;
-
-  const shouldShow = state.chat.tab === "people" && counts.length > 0;
-  chatPeopleSummary.hidden = !shouldShow;
-
-  if (!shouldShow) {
-    chatPeopleSummary.replaceChildren();
-    return;
-  }
-
-  chatPeopleSummary.replaceChildren(...counts.map((entry) => {
-    const pill = document.createElement("span");
-    pill.className = "chat-status-pill";
-    pill.dataset.presence = entry.value;
-
-    const dot = document.createElement("span");
-    dot.className = "chat-status-pill-dot";
-    dot.setAttribute("aria-hidden", "true");
-
-    const label = document.createElement("span");
-    label.className = "chat-status-pill-label";
-    label.textContent = entry.label;
-
-    const count = document.createElement("strong");
-    count.textContent = String(entry.count);
-
-    pill.append(dot, label, count);
-    return pill;
-  }));
+  chatPeopleSummaryRenderSignature = "hidden";
+  chatPeopleSummary.hidden = true;
+  chatPeopleSummary.replaceChildren();
 }
 
 function renderChatPeopleList() {
@@ -7910,18 +7904,14 @@ function renderChatPeopleList() {
   }
 
   const people = getFilteredChatUsers();
-  const peopleSections = groupChatUsersByPresence(people);
   const renderSignature = [
     state.chat.search,
     state.chat.tab,
-    peopleSections.map((section) => [
-      section.key,
-      section.items.map((person) => [
-        person.id,
-        getChatUserDisplayName(person),
-        getChatUserPresence(person.id),
-      ].join("|")).join("::"),
-    ].join("=>")).join("~~"),
+    people.map((person) => [
+      person.id,
+      getChatUserDisplayName(person),
+      getChatUserPresence(person.id),
+    ].join("|")).join("::"),
   ].join("~~");
 
   if (renderSignature === chatPeopleListRenderSignature) {
@@ -7938,41 +7928,30 @@ function renderChatPeopleList() {
     return;
   }
 
-  const nodes = [];
+  const nodes = people.map((person) => {
+    const presence = getChatUserPresence(person.id);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-person-card";
+    button.dataset.presence = presence;
+    button.title = `Pokreni chat s ${getChatUserDisplayName(person)}`;
 
-  peopleSections.forEach((section) => {
-    const sectionHeader = document.createElement("div");
-    sectionHeader.className = "chat-list-section-heading";
-    sectionHeader.innerHTML = `<span>${section.label}</span><strong>${section.items.length}</strong>`;
-    nodes.push(sectionHeader);
+    const head = document.createElement("div");
+    head.className = "chat-person-card-head";
+    head.append(createChatAvatar(person, presence, "chat-person-avatar"));
 
-    section.items.forEach((person) => {
-      const presence = getChatUserPresence(person.id);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "chat-person-card";
-      button.dataset.presence = presence;
-      button.title = `Pokreni chat s ${getChatUserDisplayName(person)}`;
+    const copy = document.createElement("div");
+    copy.className = "chat-person-card-copy";
+    const title = document.createElement("strong");
+    title.textContent = getChatUserDisplayName(person);
+    copy.append(title, createChatPresenceStatusLine(presence));
+    head.append(copy);
 
-      const head = document.createElement("div");
-      head.className = "chat-person-card-head";
-      head.append(createChatAvatar(person, presence, "chat-person-avatar"));
-
-      const copy = document.createElement("div");
-      copy.className = "chat-person-card-copy";
-      const title = document.createElement("strong");
-      title.textContent = getChatUserDisplayName(person);
-      const subtitle = document.createElement("span");
-      subtitle.textContent = buildChatPresenceLabel(presence);
-      copy.append(title, subtitle);
-      head.append(copy);
-
-      button.append(head);
-      button.addEventListener("click", () => {
-        void startDirectChatWithUser(person.id);
-      });
-      nodes.push(button);
+    button.append(head);
+    button.addEventListener("click", () => {
+      void startDirectChatWithUser(person.id);
     });
+    return button;
   });
 
   chatPeopleView.replaceChildren(...nodes);
@@ -8184,6 +8163,7 @@ function createChatConversationTabNode(conversation, { desktop = false } = {}) {
     removeChatConversationFromDock(conversation.id);
   });
   item.append(closeButton);
+  bindChatConversationDeleteShortcut(item, conversation);
 
   return item;
 }
