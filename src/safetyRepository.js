@@ -2063,7 +2063,7 @@ function sanitizeUser(row) {
 async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
     SELECT id, naziv_tvrtke, sjediste, oib, vrsta_ugovora, broj_ugovora, periodika,
-           aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib,
+           aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih,
            kontakt_broj, kontakt_email, voditelji_korisnik_ids_json, voditelji_oznaka_json, napomena,
            logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
            datum_izmjene, izmjenu_unio
@@ -2092,6 +2092,7 @@ async function fetchSnapshotFromConnection(connection) {
       oib: row.oib ?? "",
       contractType: row.vrsta_ugovora ?? "",
       contractNumber: row.broj_ugovora ?? "",
+      employeeSize: row.broj_zaposlenih ?? "",
       managerUserIds: parseJsonArray(row.voditelji_korisnik_ids_json).map((value) => dbString(value)).filter(Boolean),
       managerUserLabels: parseJsonArray(row.voditelji_oznaka_json).map((value) => dbString(value)).filter(Boolean),
       period: row.periodika ?? "",
@@ -5832,6 +5833,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "firme", "logo_storage_url", "TEXT NULL AFTER logo_storage_key");
     await ensureColumnExists(this.pool, "firme", "odgovorna_pozicija", "VARCHAR(120) NOT NULL DEFAULT '' AFTER predstavnik_korisnika");
     await ensureColumnExists(this.pool, "firme", "odgovorna_osoba_oib", "VARCHAR(11) NOT NULL DEFAULT '' AFTER odgovorna_pozicija");
+    await ensureColumnExists(this.pool, "firme", "broj_zaposlenih", "VARCHAR(24) NOT NULL DEFAULT '' AFTER odgovorna_osoba_oib");
     await ensureColumnExists(this.pool, "firme", "voditelji_korisnik_ids_json", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "firme", "voditelji_oznaka_json", "LONGTEXT NULL AFTER voditelji_korisnik_ids_json");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_provider", "VARCHAR(32) NULL AFTER reference_document_data_url");
@@ -6070,11 +6072,11 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO firme
             (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, vrsta_ugovora,
-             odgovorna_pozicija, odgovorna_osoba_oib, broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
+             odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih, broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
              voditelji_korisnik_ids_json, voditelji_oznaka_json,
              logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
              datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -6085,6 +6087,7 @@ export class MySqlSafetyRepository {
           company.contractType,
           company.representativeRole,
           company.representativeOib,
+          company.employeeSize,
           company.contractNumber,
           company.note,
           activeLabel(company.isActive),
@@ -6141,7 +6144,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE firme
           SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
-              vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
+              vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_zaposlenih = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
               kontakt_email = ?, voditelji_korisnik_ids_json = ?, voditelji_oznaka_json = ?,
               logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
               logo_storage_key = ?, logo_storage_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
@@ -6156,6 +6159,7 @@ export class MySqlSafetyRepository {
           next.contractType,
           next.representativeRole,
           next.representativeOib,
+          next.employeeSize,
           next.contractNumber,
           next.note,
           activeLabel(next.isActive),
