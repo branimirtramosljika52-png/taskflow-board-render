@@ -3621,6 +3621,7 @@ const companyContractNumberInput = document.querySelector("#company-contract-num
 const companyContractValidFromInput = document.querySelector("#company-contract-valid-from");
 const companyContractValidToInput = document.querySelector("#company-contract-valid-to");
 const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
+const companyManagerPickerSlot = document.querySelector("#company-manager-picker");
 const companyManagerUserIdsInput = document.querySelector("#company-manager-user-ids");
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
@@ -41327,6 +41328,448 @@ function getCompanyManagerSelectedUserLabels(selectedUserIds = getCompanyManager
   ));
 }
 
+function getCompanyManagerPickerOptions(selectedUserIds = getCompanyManagerSelectedUserIds()) {
+  const normalizedSelectedUserIds = normalizeQualifiedUserIdList(selectedUserIds);
+  const usersById = new Map((state.users ?? []).map((user) => [String(user?.id || "").trim(), user]));
+  const options = [];
+  const seen = new Set();
+
+  normalizedSelectedUserIds.forEach((userId) => {
+    if (!userId || seen.has(userId)) {
+      return;
+    }
+
+    const user = usersById.get(userId) ?? null;
+    options.push({
+      value: userId,
+      label: String(user?.fullName || user?.email || user?.username || "User").trim() || "User",
+      summary: String(user?.email || user?.legacyUsername || "").trim(),
+      user,
+      isSnapshot: true,
+    });
+    seen.add(userId);
+  });
+
+  getCompanyManagerPeopleOptions().forEach((option) => {
+    const value = String(option?.value || "").trim();
+    if (!value || seen.has(value)) {
+      return;
+    }
+
+    const user = usersById.get(value) ?? null;
+    options.push({
+      value,
+      label: String(option?.label || user?.fullName || user?.email || user?.username || "User").trim() || "User",
+      summary: String(user?.email || user?.legacyUsername || "").trim(),
+      user,
+      isSnapshot: false,
+    });
+    seen.add(value);
+  });
+
+  return options;
+}
+
+function matchesCompanyManagerPickerSearch(option = {}, query = "") {
+  const normalizedQuery = normalizeLooseName(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystack = normalizeLooseName([
+    option.label,
+    option.summary,
+    option.user?.legacyUsername,
+  ].filter(Boolean).join(" "));
+  return haystack.includes(normalizedQuery);
+}
+
+function setCompanyManagerPickerTriggerContent(trigger, selectedUserIds = []) {
+  if (!(trigger instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const normalizedSelectedUserIds = normalizeQualifiedUserIdList(selectedUserIds);
+  const selectedOptions = getCompanyManagerPickerOptions(normalizedSelectedUserIds)
+    .filter((option) => normalizedSelectedUserIds.includes(option.value));
+  const emptyLabel = companyManagerUserIdsInput?.disabled
+    ? "Nema aktivnih osoba u organizaciji"
+    : "Odaberi osobe";
+
+  trigger.replaceChildren();
+  trigger.title = selectedOptions.length > 0
+    ? selectedOptions.map((option) => option.label).join(", ")
+    : emptyLabel;
+  trigger.setAttribute("aria-label", trigger.title);
+
+  const icon = createWorkOrderActionIcon("assignees");
+  icon.classList.add("work-order-bulk-action-icon");
+  trigger.append(icon);
+
+  if (selectedOptions.length > 0) {
+    const stack = document.createElement("span");
+    stack.className = "work-order-bulk-executor-stack";
+    selectedOptions.slice(0, 3).forEach((option) => {
+      const avatar = createWorkOrderMiniExecutor({
+        label: option.label,
+        user: option.user,
+      }, {
+        className: "work-order-mini-executor work-order-bulk-executor-avatar",
+      });
+      avatar.removeAttribute("title");
+      stack.append(avatar);
+    });
+
+    if (selectedOptions.length > 3) {
+      stack.append(createExecutorOverflowBadge(
+        selectedOptions.length - 3,
+        "work-order-mini-executor work-order-bulk-executor-avatar",
+      ));
+    }
+
+    trigger.append(stack);
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-bulk-action-label";
+  if (selectedOptions.length === 1) {
+    label.textContent = selectedOptions[0].label;
+  } else if (selectedOptions.length > 1) {
+    label.textContent = `${selectedOptions.length} odabrane osobe`;
+  } else {
+    label.textContent = emptyLabel;
+  }
+  trigger.append(label);
+}
+
+function renderCompanyManagerPicker() {
+  if (!(companyManagerPickerSlot instanceof HTMLElement) || !(companyManagerUserIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const existingPicker = companyManagerPickerSlot.querySelector(".company-manager-picker");
+  if (existingPicker && typeof existingPicker._closeMenu === "function") {
+    existingPicker._closeMenu();
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-calendar-executor-picker company-manager-picker";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-calendar-executor-trigger work-order-bulk-executor-trigger company-manager-picker-trigger";
+  trigger.dataset.preventRowOpen = "true";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.disabled = companyManagerUserIdsInput.disabled;
+
+  const getCurrentValues = () => getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
+  const setCurrentValues = (values) => {
+    setCompanyManagerPickerTriggerContent(trigger, values);
+    trigger.disabled = companyManagerUserIdsInput.disabled;
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 10;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 10);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(320, Math.round(triggerRect.width + 40))}px`;
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  wrapper._closeMenu = closeMenu;
+
+  const openMenu = () => {
+    if (companyManagerUserIdsInput.disabled) {
+      return;
+    }
+
+    closeOpenWorkOrderStatusMenus(wrapper);
+
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    let draftValues = [...getCurrentValues()];
+    let searchQuery = "";
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal company-manager-picker-menu-portal";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", "Odabir voditelja tvrtke");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "work-order-calendar-executor-search";
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-calendar-executor-search-input";
+    searchInput.placeholder = "Traži osobu po imenu ili emailu";
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchWrap.append(searchInput);
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-calendar-executor-selection company-manager-picker-selection";
+
+    const helper = document.createElement("p");
+    helper.className = "work-order-calendar-executor-helper";
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-calendar-executor-options";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-calendar-executor-clear";
+    clearButton.textContent = "Očisti";
+
+    const actions = document.createElement("div");
+    actions.className = "work-order-calendar-executor-footer";
+
+    const doneButton = document.createElement("button");
+    doneButton.type = "button";
+    doneButton.className = "primary-button work-order-calendar-executor-save";
+    doneButton.textContent = "Gotovo";
+
+    const applyDraftValues = (nextValues, { focusSearch = true } = {}) => {
+      const normalized = normalizeQualifiedUserIdList(nextValues);
+      draftValues = [...normalized];
+      setMultiSelectSelectedValues(companyManagerUserIdsInput, normalized);
+      syncCompanyEditorChrome();
+      setCurrentValues(normalized);
+      syncMenuState();
+
+      if (focusSearch) {
+        searchInput.focus({ preventScroll: true });
+      }
+    };
+
+    const renderSelection = () => {
+      selection.replaceChildren();
+      const selectedOptions = getCompanyManagerPickerOptions(draftValues)
+        .filter((option) => draftValues.includes(option.value));
+
+      if (selectedOptions.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-calendar-executor-selection-empty";
+        empty.textContent = "Odaberi jednu ili više osoba.";
+        selection.append(empty);
+        return;
+      }
+
+      selectedOptions.forEach((option) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "work-order-calendar-executor-chip";
+        chip.title = `Makni ${option.label}`;
+
+        const avatar = createWorkOrderMiniExecutor({
+          label: option.label,
+          user: option.user,
+        });
+        avatar.removeAttribute("title");
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-chip-label";
+        label.textContent = option.label;
+
+        const remove = document.createElement("span");
+        remove.className = "work-order-calendar-executor-chip-remove";
+        remove.setAttribute("aria-hidden", "true");
+        remove.textContent = "x";
+
+        chip.append(avatar, label, remove);
+        chip.addEventListener("click", (event) => {
+          event.stopPropagation();
+          applyDraftValues(draftValues.filter((entry) => entry !== option.value));
+        });
+
+        selection.append(chip);
+      });
+    };
+
+    const renderOptions = () => {
+      optionsList.replaceChildren();
+      const visibleOptions = getCompanyManagerPickerOptions(draftValues)
+        .filter((option) => matchesCompanyManagerPickerSearch(option, searchQuery));
+
+      if (visibleOptions.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-calendar-executor-empty";
+        empty.textContent = "Nema osoba za ovaj pojam.";
+        optionsList.append(empty);
+        return;
+      }
+
+      visibleOptions.forEach((option) => {
+        const isSelected = draftValues.includes(option.value);
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "work-item-status-option work-order-calendar-executor-option company-manager-picker-option";
+        optionButton.classList.toggle("is-selected", isSelected);
+        optionButton.setAttribute("role", "menuitemcheckbox");
+        optionButton.setAttribute("aria-checked", String(isSelected));
+
+        const avatar = createWorkOrderMiniExecutor({
+          label: option.label,
+          user: option.user,
+        }, {
+          className: "work-order-calendar-executor-option-avatar company-manager-picker-option-avatar",
+        });
+
+        const copy = document.createElement("div");
+        copy.className = "company-manager-picker-option-copy";
+
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-option-label";
+        label.textContent = option.label;
+
+        copy.append(label);
+
+        if (option.summary) {
+          const meta = document.createElement("small");
+          meta.className = "company-manager-picker-option-meta";
+          meta.textContent = option.summary;
+          copy.append(meta);
+        }
+
+        const marker = document.createElement("span");
+        marker.className = "work-order-calendar-executor-option-marker";
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = isSelected ? "✓" : "+";
+
+        optionButton.append(avatar, copy, marker);
+        optionButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const nextValues = isSelected
+            ? draftValues.filter((entry) => entry !== option.value)
+            : [...draftValues, option.value];
+          applyDraftValues(nextValues);
+        });
+
+        optionsList.append(optionButton);
+      });
+    };
+
+    const syncMenuState = () => {
+      renderSelection();
+      renderOptions();
+      helper.textContent = draftValues.length > 0
+        ? `${draftValues.length} odabranih osoba.`
+        : "Odaberi jednu ili više osoba za ovu tvrtku.";
+      clearButton.hidden = draftValues.length === 0;
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    };
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value.trim();
+      renderOptions();
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    });
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      const visibleOptions = getCompanyManagerPickerOptions(draftValues)
+        .filter((option) => matchesCompanyManagerPickerSearch(option, searchQuery));
+      if (visibleOptions.length !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      const nextOption = visibleOptions[0];
+      const nextValues = draftValues.includes(nextOption.value)
+        ? draftValues.filter((entry) => entry !== nextOption.value)
+        : [...draftValues, nextOption.value];
+      applyDraftValues(nextValues);
+    });
+
+    clearButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      applyDraftValues([]);
+    });
+
+    doneButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeMenu();
+      trigger.focus({ preventScroll: true });
+    });
+
+    actions.append(clearButton, doneButton);
+    menu.append(searchWrap, selection, helper, optionsList, actions);
+    syncMenuState();
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => {
+      positionMenuPortal(menu);
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    });
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  setCurrentValues(getCurrentValues());
+  wrapper.append(trigger);
+  companyManagerPickerSlot.replaceChildren(wrapper);
+}
+
 function rebuildCompanyManagerUserOptions(selectedUserIds = getCompanyManagerSelectedUserIds()) {
   if (!(companyManagerUserIdsInput instanceof HTMLSelectElement)) {
     return;
@@ -41338,6 +41781,7 @@ function rebuildCompanyManagerUserOptions(selectedUserIds = getCompanyManagerSel
     emptyOption.disabled = true;
     companyManagerUserIdsInput.replaceChildren(emptyOption);
     companyManagerUserIdsInput.disabled = true;
+    renderCompanyManagerPicker();
     return;
   }
 
@@ -41351,6 +41795,7 @@ function rebuildCompanyManagerUserOptions(selectedUserIds = getCompanyManagerSel
     .map((value) => String(value || "").trim())
     .filter((value) => allowedValues.has(value));
   setMultiSelectSelectedValues(companyManagerUserIdsInput, nextSelectedValues);
+  renderCompanyManagerPicker();
 }
 
 function rebuildWorkOrderLocationOptions(selectedLocationId = workOrderLocationIdInput.value) {

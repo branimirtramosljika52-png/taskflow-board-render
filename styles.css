@@ -3475,11 +3475,11 @@ body.is-location-editor-open {
 }
 
 .field-company-employee-size {
-  grid-column: span 3;
+  grid-column: span 6;
 }
 
 .field-company-manager-users {
-  grid-column: span 9;
+  grid-column: span 6;
 }
 
 .field-company-period {
@@ -3491,23 +3491,23 @@ body.is-location-editor-open {
 }
 
 .field-company-representative {
-  grid-column: span 6;
+  grid-column: span 4;
 }
 
 .field-company-representative-role {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .field-company-representative-oib {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .field-company-contact-phone {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .field-company-contact-email {
-  grid-column: span 9;
+  grid-column: span 2;
 }
 
 .company-editor-panel .field,
@@ -3516,13 +3516,80 @@ body.is-location-editor-open {
   min-width: 0;
 }
 
+.company-manager-picker-slot {
+  width: 100%;
+  min-width: 0;
+}
+
 #company-manager-user-ids {
-  min-height: 112px;
+  display: none;
 }
 
 .field-company-manager-users .inline-help {
   margin: 6px 0 0;
   font-size: 0.76rem;
+}
+
+.company-manager-picker {
+  width: 100%;
+}
+
+.company-manager-picker-trigger {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  justify-content: flex-start;
+  gap: 10px;
+  border-radius: 16px;
+  border-color: rgba(220, 156, 212, 0.46);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 8px 16px rgba(117, 81, 173, 0.08);
+  color: #1f2b47;
+}
+
+.company-manager-picker-trigger:hover {
+  border-color: rgba(214, 89, 173, 0.46);
+}
+
+.company-manager-picker-trigger:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.company-manager-picker-trigger .work-order-bulk-action-label {
+  color: #1f2b47;
+  white-space: normal;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.company-manager-picker-trigger .work-order-bulk-executor-avatar {
+  border: 2px solid rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(117, 81, 173, 0.18),
+    0 10px 22px rgba(59, 47, 110, 0.1);
+  background: #ffffff;
+}
+
+.company-manager-picker-menu-portal {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(220, 156, 212, 0.28);
+  box-shadow: 0 22px 56px rgba(59, 47, 110, 0.2);
+}
+
+.company-manager-picker-option-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.company-manager-picker-option-meta {
+  color: #6f7d98;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 #company-note {
@@ -3890,6 +3957,7 @@ body.is-location-editor-open {
   .field-company-name,
   .field-company-headquarters,
   .field-company-oib,
+  .field-company-employee-size,
   .field-company-manager-users,
   .field-company-representative,
   .field-company-contact-email {
@@ -3900,7 +3968,6 @@ body.is-location-editor-open {
 .field-company-contract-number,
 .field-company-contract-valid-from,
 .field-company-contract-valid-to,
-.field-company-employee-size,
 .field-company-period,
 .field-company-status,
 .field-company-representative-role,
