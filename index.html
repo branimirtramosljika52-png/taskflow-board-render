@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260424j" />
+    <link rel="stylesheet" href="/styles.css?v=20260424l" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -6425,7 +6425,13 @@
       <section id="chat-conversation-menu" class="chat-conversation-menu" hidden aria-label="Akcije razgovora"></section>
 
       <button id="chat-launcher" type="button" class="chat-launcher" aria-expanded="false">
-        <span id="chat-launcher-presence" class="chat-launcher-presence" data-presence="online" aria-hidden="true"></span>
+        <span id="chat-launcher-presence" class="chat-launcher-presence" data-presence="online" aria-hidden="true">
+          <svg class="chat-launcher-icon" viewBox="0 0 24 24">
+            <path d="M7 18l-3 2.5V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9.5"></path>
+            <path d="M8 9.5h8"></path>
+            <path d="M8 13h5"></path>
+          </svg>
+        </span>
         <span class="chat-launcher-copy">
           <strong>Communicator</strong>
           <span id="chat-launcher-caption">Chat aktivan</span>
@@ -6556,6 +6562,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260424k"></script>
+    <script type="module" src="/src/main.js?v=20260424l"></script>
   </body>
 </html>

@@ -168,6 +168,7 @@ const CHAT_PRESENCE_HEARTBEAT_MS = 25_000;
 const CHAT_DOCK_HIDDEN_STORAGE_PREFIX = "safenexus.chat.hidden-dock-conversations.v1";
 const CHAT_DOCKED_STORAGE_PREFIX = "safenexus.chat.docked-conversations.v1";
 const CHAT_ARCHIVED_STORAGE_PREFIX = "safenexus.chat.archived-conversations.v1";
+const CHAT_DOCK_COLLAPSED_STORAGE_PREFIX = "safenexus.chat.dock-collapsed.v1";
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
@@ -1464,6 +1465,7 @@ const state = {
     dockedConversationIds: [],
     archivedConversationIds: new Set(),
     hiddenDockConversationIds: new Set(),
+    dockCollapsed: false,
     panelMode: "hub",
     composerOpen: false,
     emojiPickerOpen: false,
@@ -1924,6 +1926,7 @@ let chatLastPresenceValue = "";
 let chatKnownMessageIds = new Set();
 let chatNotificationBaselineReady = false;
 let chatNotificationTimerId = null;
+let chatNotificationFadeTimerId = null;
 let chatAudioContext = null;
 let chatConversationListRenderSignature = "";
 let chatPeopleListRenderSignature = "";
@@ -6703,8 +6706,13 @@ function resetChatState() {
     window.clearTimeout(chatNotificationTimerId);
     chatNotificationTimerId = null;
   }
+  if (chatNotificationFadeTimerId) {
+    window.clearTimeout(chatNotificationFadeTimerId);
+    chatNotificationFadeTimerId = null;
+  }
   if (chatToast) {
     chatToast.hidden = true;
+    chatToast.classList.remove("is-hiding");
     chatToast.replaceChildren();
     chatToast.onclick = null;
   }
@@ -6719,6 +6727,7 @@ function resetChatState() {
   state.chat.dockedConversationIds = [];
   state.chat.archivedConversationIds = new Set();
   state.chat.hiddenDockConversationIds = new Set();
+  state.chat.dockCollapsed = false;
   state.chat.panelMode = "hub";
   state.chat.composerOpen = false;
   state.chat.emojiPickerOpen = false;
@@ -7015,6 +7024,10 @@ function getChatArchivedStorageKey() {
   return [CHAT_ARCHIVED_STORAGE_PREFIX, buildChatStorageScopeKey()].join(":");
 }
 
+function getChatDockCollapsedStorageKey() {
+  return [CHAT_DOCK_COLLAPSED_STORAGE_PREFIX, buildChatStorageScopeKey()].join(":");
+}
+
 function loadChatStorageArray(storageKey) {
   try {
     const rawValue = window.localStorage.getItem(storageKey);
@@ -7039,6 +7052,14 @@ function loadChatArchivedConversationIds() {
   return new Set(loadChatStorageArray(getChatArchivedStorageKey()));
 }
 
+function loadChatDockCollapsedPreference() {
+  try {
+    return window.localStorage.getItem(getChatDockCollapsedStorageKey()) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function persistChatHiddenDockConversationIds() {
   try {
     window.localStorage.setItem(
@@ -7061,6 +7082,17 @@ function persistChatDockedConversationIds() {
   }
 }
 
+function persistChatDockCollapsedPreference() {
+  try {
+    window.localStorage.setItem(
+      getChatDockCollapsedStorageKey(),
+      state.chat.dockCollapsed ? "true" : "false",
+    );
+  } catch {
+    return;
+  }
+}
+
 function persistChatArchivedConversationIds() {
   try {
     window.localStorage.setItem(
@@ -7069,6 +7101,22 @@ function persistChatArchivedConversationIds() {
     );
   } catch {
     return;
+  }
+}
+
+function setChatDockCollapsed(isCollapsed, { render = true } = {}) {
+  const nextValue = Boolean(isCollapsed);
+
+  if (state.chat.dockCollapsed === nextValue) {
+    return;
+  }
+
+  state.chat.dockCollapsed = nextValue;
+  persistChatDockCollapsedPreference();
+  resetChatRenderSignatures();
+
+  if (render) {
+    renderChatDock();
   }
 }
 
@@ -7269,12 +7317,17 @@ function hideChatNotificationToast() {
     window.clearTimeout(chatNotificationTimerId);
     chatNotificationTimerId = null;
   }
+  if (chatNotificationFadeTimerId) {
+    window.clearTimeout(chatNotificationFadeTimerId);
+    chatNotificationFadeTimerId = null;
+  }
 
   if (!chatToast) {
     return;
   }
 
   chatToast.hidden = true;
+  chatToast.classList.remove("is-hiding");
   chatToast.replaceChildren();
   chatToast.onclick = null;
 }
@@ -7292,28 +7345,52 @@ function showChatNotificationToast(notification) {
   const copy = document.createElement("span");
   copy.className = "chat-toast-copy";
 
+  const titleRow = document.createElement("span");
+  titleRow.className = "chat-toast-title-row";
   const title = document.createElement("strong");
   title.textContent = conversation.kind === "direct"
     ? (message.authorName || conversation.title || "Nova poruka")
     : `${message.authorName || "Kolega"} u ${conversation.title || "grupi"}`;
+  titleRow.append(title);
+
+  const unreadCount = Math.max(1, Number(conversation.unreadCount ?? 0));
+  const count = document.createElement("span");
+  count.className = "chat-toast-count";
+  count.textContent = String(unreadCount);
+  count.title = unreadCount === 1 ? "1 nova poruka" : `${unreadCount} novih poruka`;
+  titleRow.append(count);
 
   const body = document.createElement("span");
   body.textContent = normalizeChatPreviewText(message.body || "Nova poruka");
 
-  copy.append(title, body);
+  copy.append(titleRow, body);
   chatToast.replaceChildren(avatar, copy);
+  chatToast.classList.remove("is-hiding");
   chatToast.hidden = false;
   chatToast.onclick = () => {
+    hideChatNotificationToast();
     activateChatConversation(conversation.id);
   };
 
   if (chatNotificationTimerId) {
     window.clearTimeout(chatNotificationTimerId);
   }
+  if (chatNotificationFadeTimerId) {
+    window.clearTimeout(chatNotificationFadeTimerId);
+    chatNotificationFadeTimerId = null;
+  }
 
   chatNotificationTimerId = window.setTimeout(() => {
-    hideChatNotificationToast();
-  }, 6500);
+    if (!chatToast || chatToast.hidden) {
+      hideChatNotificationToast();
+      return;
+    }
+
+    chatToast.classList.add("is-hiding");
+    chatNotificationFadeTimerId = window.setTimeout(() => {
+      hideChatNotificationToast();
+    }, 260);
+  }, 5600);
 }
 
 function playChatNotificationSound() {
@@ -7380,6 +7457,7 @@ function applyChatSnapshot(payload = {}) {
     state.chat.dockedConversationIds = loadChatDockedConversationIds();
     state.chat.archivedConversationIds = loadChatArchivedConversationIds();
     state.chat.hiddenDockConversationIds = loadChatHiddenDockConversationIds();
+    state.chat.dockCollapsed = loadChatDockCollapsedPreference();
     updateActiveChatConversation(null);
     resetChatRenderSignatures();
   }
@@ -8295,6 +8373,7 @@ function renderChatConversationTabs() {
   const dockedConversations = getDockedChatConversations();
   const signatureParts = [
     state.chat.activeConversationId,
+    state.chat.dockCollapsed ? "collapsed" : "expanded",
     state.chat.dockedConversationIds.join(","),
     dockedConversations.map(buildChatConversationSignature).join("::"),
   ];
@@ -8335,10 +8414,12 @@ function renderChatConversationTabs() {
 
   const desktopSignature = signatureParts.join("~~");
 
-  if (dockedConversations.length === 0) {
+  if (dockedConversations.length === 0 || state.chat.dockCollapsed) {
     chatDesktopTabs.hidden = true;
     if (chatDesktopTabsRenderSignature !== desktopSignature) {
-      chatDesktopTabs.replaceChildren();
+      if (dockedConversations.length === 0) {
+        chatDesktopTabs.replaceChildren();
+      }
       chatDesktopTabsRenderSignature = desktopSignature;
     }
     return;
@@ -8364,11 +8445,27 @@ function renderChatConversationTabs() {
     state.chat.tab = "people";
     state.chat.panelMode = "hub";
     state.chat.open = true;
+    setChatDockCollapsed(false, { render: false });
     setChatComposerOpen(true);
   });
 
+  const dockToggleButton = document.createElement("button");
+  dockToggleButton.type = "button";
+  dockToggleButton.className = "chat-dock-toggle";
+  dockToggleButton.title = "Sakrij donju traku razgovora";
+  dockToggleButton.setAttribute("aria-label", "Sakrij donju traku razgovora");
+  dockToggleButton.innerHTML = `
+    <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 10l5 5 5-5"></path>
+    </svg>
+  `;
+  dockToggleButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setChatDockCollapsed(true);
+  });
+
   chatDesktopTabs.hidden = false;
-  chatDesktopTabs.replaceChildren(rail, newGroupButton);
+  chatDesktopTabs.replaceChildren(rail, newGroupButton, dockToggleButton);
   chatDesktopTabsRenderSignature = desktopSignature;
 }
 
@@ -8566,6 +8663,9 @@ function renderChatDock() {
   }
 
   const currentPresence = getChatPresenceValue();
+  const dockedConversations = getDockedChatConversations();
+  const hasDockedConversations = dockedConversations.length > 0;
+  const canExpandCollapsedDock = hasDockedConversations && state.chat.dockCollapsed;
 
   if (chatLauncherPresence) {
     chatLauncherPresence.dataset.presence = currentPresence;
@@ -8585,6 +8685,15 @@ function renderChatDock() {
   if (chatLauncher) {
     chatLauncher.setAttribute("aria-expanded", state.chat.open ? "true" : "false");
     chatLauncher.classList.toggle("has-unread", state.chat.unreadTotal > 0);
+    chatLauncher.classList.toggle("is-dock-collapsed", canExpandCollapsedDock);
+    chatLauncher.title = canExpandCollapsedDock
+      ? "Prosiri donju traku razgovora"
+      : state.chat.open
+        ? "Minimiziraj chat"
+        : hasDockedConversations
+          ? "Otvori communicator"
+          : "Otvori chat";
+    chatLauncher.setAttribute("aria-label", chatLauncher.title);
   }
 
   if (chatPanel) {
@@ -62553,12 +62662,19 @@ appRailRestore?.addEventListener("click", () => {
 });
 
 chatLauncher?.addEventListener("click", () => {
-  if (state.chat.open && state.chat.panelMode === "hub") {
+  const hasDockedConversations = getDockedChatConversations().length > 0;
+
+  if (state.chat.open) {
     setChatOpen(false);
     return;
   }
 
-  openChatHub("people");
+  if (hasDockedConversations && state.chat.dockCollapsed) {
+    setChatDockCollapsed(false);
+    return;
+  }
+
+  openChatHub(hasDockedConversations ? "conversations" : "people");
 });
 
 chatCloseButton?.addEventListener("click", () => {
