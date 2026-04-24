@@ -3040,7 +3040,7 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel.is-modal-open {
-  width: min(1380px, calc(100vw - 24px));
+  width: min(1460px, calc(100vw - 24px));
   height: min(950px, calc(100dvh - 28px));
   top: 50%;
   transform: translate(-50%, -50%);

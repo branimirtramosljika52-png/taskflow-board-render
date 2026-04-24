@@ -10882,9 +10882,15 @@ function focusCompanyArea(target = "list") {
 
   state.activeView = "companies";
   renderActiveView();
+  renderCompanies();
 
   window.requestAnimationFrame(() => {
     if (target === "form") {
+      if (getCanCreateCompany()) {
+        resetCompanyForm();
+        openCompanyEditor();
+      }
+
       companyNameInput?.focus({ preventScroll: true });
     }
 
