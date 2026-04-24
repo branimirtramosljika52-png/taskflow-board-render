@@ -13059,7 +13059,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     });
 
     actions.append(clearButton, doneButton);
-    menu.append(searchWrap, selection, helper, optionsList, actions);
+    menu.append(searchWrap, optionsList, selection, helper, actions);
     syncMenuState();
 
     document.body.append(menu);

@@ -3442,7 +3442,12 @@ body.is-location-editor-open {
 }
 
 .masterdata-company-contact-grid {
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(220px, 1.55fr)
+    minmax(140px, 0.9fr)
+    minmax(150px, 0.95fr)
+    minmax(140px, 0.9fr)
+    minmax(200px, 1.2fr);
   min-width: 0;
 }
 
@@ -3508,6 +3513,14 @@ body.is-location-editor-open {
 
 .field-company-contact-email {
   grid-column: span 2;
+}
+
+.masterdata-company-contact-grid > .field-company-representative,
+.masterdata-company-contact-grid > .field-company-representative-role,
+.masterdata-company-contact-grid > .field-company-representative-oib,
+.masterdata-company-contact-grid > .field-company-contact-phone,
+.masterdata-company-contact-grid > .field-company-contact-email {
+  grid-column: auto;
 }
 
 .company-editor-panel .field,
@@ -3577,6 +3590,14 @@ body.is-location-editor-open {
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(220, 156, 212, 0.28);
   box-shadow: 0 22px 56px rgba(59, 47, 110, 0.2);
+}
+
+.company-manager-picker-menu-portal .work-order-calendar-executor-options {
+  max-height: min(48vh, 360px);
+}
+
+.company-manager-picker-menu-portal .work-order-calendar-executor-selection {
+  min-height: 0;
 }
 
 .company-manager-picker-option-copy {
@@ -3902,6 +3923,15 @@ body.is-location-editor-open {
 
   .company-editor-layout {
     grid-template-columns: 1fr;
+  }
+
+  .masterdata-company-contact-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .masterdata-company-contact-grid > .field-company-representative,
+  .masterdata-company-contact-grid > .field-company-contact-email {
+    grid-column: span 2;
   }
 
   .company-activity-panel {
