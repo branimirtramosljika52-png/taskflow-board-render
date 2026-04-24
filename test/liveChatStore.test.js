@@ -185,3 +185,78 @@ test("markConversationRead clears unread counts for the selected user", async ()
   });
   assert.equal(snapshot.conversations.find((conversation) => conversation.id === conversationId)?.unreadCount, 0);
 });
+
+test("archiving hides old conversations and clearing history hides earlier messages for one user", async () => {
+  let nowValue = Date.parse("2026-03-28T08:00:00.000Z");
+  const store = await createLiveChatStore({
+    now: () => nowValue,
+    idFactory: () => "archive",
+  });
+  const users = createUsers();
+
+  const conversationId = await store.createConversation({
+    organizationId: "org-1",
+    currentUser: users[0],
+    users,
+    participantIds: ["u-2"],
+  });
+
+  nowValue += 1_000;
+  await store.addMessage({
+    organizationId: "org-1",
+    conversationId,
+    currentUser: users[0],
+    body: "Prva poruka",
+  });
+
+  nowValue += 1_000;
+  await store.clearConversationHistory({
+    organizationId: "org-1",
+    conversationId,
+    currentUserId: "u-2",
+  });
+
+  let snapshot = await store.getSnapshot({
+    organizationId: "org-1",
+    currentUser: users[1],
+    users,
+    activeConversationId: conversationId,
+  });
+  assert.equal(snapshot.conversations.find((conversation) => conversation.id === conversationId)?.unreadCount, 0);
+  assert.deepEqual(snapshot.activeConversation?.messages ?? [], []);
+
+  nowValue += 1_000;
+  await store.archiveConversation({
+    organizationId: "org-1",
+    conversationId,
+    currentUserId: "u-2",
+    archived: true,
+  });
+
+  snapshot = await store.getSnapshot({
+    organizationId: "org-1",
+    currentUser: users[1],
+    users,
+    activeConversationId: conversationId,
+  });
+  assert.equal(snapshot.conversations.length, 0);
+  assert.equal(snapshot.activeConversation, null);
+
+  nowValue += 1_000;
+  await store.addMessage({
+    organizationId: "org-1",
+    conversationId,
+    currentUser: users[0],
+    body: "Nova poruka nakon arhive",
+  });
+
+  snapshot = await store.getSnapshot({
+    organizationId: "org-1",
+    currentUser: users[1],
+    users,
+    activeConversationId: conversationId,
+  });
+  assert.equal(snapshot.conversations.length, 1);
+  assert.equal(snapshot.activeConversation?.messages.length, 1);
+  assert.equal(snapshot.activeConversation?.messages[0]?.body, "Nova poruka nakon arhive");
+});

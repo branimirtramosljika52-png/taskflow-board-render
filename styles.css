@@ -17321,8 +17321,8 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
     inset 3px 0 0 rgba(51, 125, 244, 0.72);
 }
 
-.chat-list-card.is-hidden-from-dock {
-  opacity: 0.82;
+.chat-list-card.is-docked {
+  border-color: rgba(67, 123, 225, 0.34);
 }
 
 .chat-list-card-head,
@@ -17521,6 +17521,18 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 .chat-thread-head-copy span {
   font-size: 0.76rem;
   color: #768196;
+}
+
+.chat-thread-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-thread-head-actions .chat-header-button {
+  min-height: 30px;
+  padding-inline: 10px;
+  font-size: 0.74rem;
 }
 
 .chat-thread-messages {

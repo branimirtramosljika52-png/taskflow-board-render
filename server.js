@@ -1861,6 +1861,8 @@ async function handleApiRequest(request, response, url) {
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
     const chatConversationMessageMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/messages$/);
     const chatConversationReadMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/read$/);
+    const chatConversationArchiveMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/archive$/);
+    const chatConversationClearHistoryMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/clear-history$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
@@ -1926,6 +1928,30 @@ async function handleApiRequest(request, response, url) {
         200,
         body.activeConversationId || chatConversationReadMatch[1],
       );
+      return true;
+    }
+
+    if (chatConversationArchiveMatch && request.method === "POST") {
+      const { organizationId } = await getScopedChatContext(user, request);
+      const body = await readJsonBody(request);
+      await liveChatStore.archiveConversation({
+        organizationId,
+        conversationId: chatConversationArchiveMatch[1],
+        currentUserId: user.id,
+        archived: body.archived !== false,
+      });
+      await writeChatSnapshot(response, user, request, url, 200, body.activeConversationId || "");
+      return true;
+    }
+
+    if (chatConversationClearHistoryMatch && request.method === "POST") {
+      const { organizationId } = await getScopedChatContext(user, request);
+      await liveChatStore.clearConversationHistory({
+        organizationId,
+        conversationId: chatConversationClearHistoryMatch[1],
+        currentUserId: user.id,
+      });
+      await writeChatSnapshot(response, user, request, url, 200, chatConversationClearHistoryMatch[1]);
       return true;
     }
 

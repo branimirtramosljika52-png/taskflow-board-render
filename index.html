@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260424g" />
+    <link rel="stylesheet" href="/styles.css?v=20260424h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -6479,6 +6479,17 @@
                   <strong id="chat-thread-title"></strong>
                   <span id="chat-thread-meta"></span>
                 </div>
+                <div class="chat-thread-head-actions">
+                  <button id="chat-thread-clear-button" type="button" class="ghost-button chat-header-button" aria-label="Ocisti staru povijest">
+                    Povijest
+                  </button>
+                  <button id="chat-thread-archive-button" type="button" class="ghost-button chat-header-button" aria-label="Arhiviraj razgovor">
+                    Arhiva
+                  </button>
+                  <button id="chat-thread-minimize-button" type="button" class="ghost-button chat-header-button" aria-label="Minimiziraj razgovor">
+                    <span aria-hidden="true">&minus;</span>
+                  </button>
+                </div>
               </div>
 
               <div id="chat-thread-messages" class="chat-thread-messages"></div>
@@ -6542,6 +6553,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260424g"></script>
+    <script type="module" src="/src/main.js?v=20260424h"></script>
   </body>
 </html>

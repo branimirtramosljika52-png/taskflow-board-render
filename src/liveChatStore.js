@@ -16,6 +16,7 @@ const STALE_PRESENCE_MS = 90_000;
 const CHAT_CONVERSATIONS_TABLE = "safenexus_chat_conversations";
 const CHAT_MESSAGES_TABLE = "safenexus_chat_messages";
 const CHAT_READS_TABLE = "safenexus_chat_reads";
+const CHAT_USER_STATE_TABLE = "safenexus_chat_user_state";
 
 function normalizeId(value) {
   return String(value ?? "").trim();
@@ -135,6 +136,59 @@ function normalizeTimestamp(value) {
 
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function parseTimestampMs(value) {
+  if (!value) {
+    return 0;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function isTimestampAfter(leftValue, rightValue) {
+  const leftMs = parseTimestampMs(leftValue);
+  const rightMs = parseTimestampMs(rightValue);
+
+  if (!leftMs) {
+    return false;
+  }
+
+  if (!rightMs) {
+    return true;
+  }
+
+  return leftMs > rightMs;
+}
+
+function buildConversationUserStateKey(conversationId, userId) {
+  return `${normalizeId(conversationId)}:${normalizeId(userId)}`;
+}
+
+function normalizeConversationUserState(userState = {}) {
+  return {
+    archivedAt: normalizeTimestamp(userState.archivedAt ?? userState.archived_at),
+    clearedAt: normalizeTimestamp(userState.clearedAt ?? userState.cleared_at),
+  };
+}
+
+function shouldIncludeConversationForUser(conversation = {}, userState = {}) {
+  const normalizedState = normalizeConversationUserState(userState);
+
+  if (!normalizedState.archivedAt) {
+    return true;
+  }
+
+  return isTimestampAfter(
+    conversation.lastMessage?.createdAt
+      || conversation.updatedAt
+      || conversation.createdAt
+      || conversation.last_message_at
+      || conversation.updated_at
+      || conversation.created_at,
+    normalizedState.archivedAt,
+  );
 }
 
 function buildConversationParticipants(conversation, usersById) {
@@ -296,6 +350,7 @@ class MemoryLiveChatStore {
         conversations: new Map(),
         messages: new Map(),
         reads: new Map(),
+        userState: new Map(),
         conversationCounter: 0,
         messageCounter: 0,
       });
@@ -308,7 +363,38 @@ class MemoryLiveChatStore {
     const organizationState = this.getOrganizationState(organizationId);
     return Array.from(organizationState.conversations.values())
       .filter((conversation) => conversation.participantIds.includes(currentUserId))
+      .filter((conversation) => shouldIncludeConversationForUser(
+        conversation,
+        this.getConversationUserState(organizationState, conversation.id, currentUserId),
+      ))
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+  }
+
+  getConversationUserState(organizationState, conversationId, userId) {
+    return normalizeConversationUserState(
+      organizationState.userState.get(buildConversationUserStateKey(conversationId, userId)),
+    );
+  }
+
+  setConversationUserState(organizationState, conversationId, userId, patch = {}) {
+    const key = buildConversationUserStateKey(conversationId, userId);
+    const currentState = this.getConversationUserState(organizationState, conversationId, userId);
+    const nextState = {
+      archivedAt: Object.prototype.hasOwnProperty.call(patch, "archivedAt")
+        ? normalizeTimestamp(patch.archivedAt)
+        : currentState.archivedAt,
+      clearedAt: Object.prototype.hasOwnProperty.call(patch, "clearedAt")
+        ? normalizeTimestamp(patch.clearedAt)
+        : currentState.clearedAt,
+    };
+
+    if (!nextState.archivedAt && !nextState.clearedAt) {
+      organizationState.userState.delete(key);
+      return normalizeConversationUserState();
+    }
+
+    organizationState.userState.set(key, nextState);
+    return nextState;
   }
 
   getConversationOrThrow(organizationState, conversationId, currentUserId) {
@@ -324,15 +410,17 @@ class MemoryLiveChatStore {
 
   mapConversationSummary(conversation, organizationState, usersById, currentUserId) {
     const readMarker = organizationState.reads.get(`${conversation.id}:${currentUserId}`) ?? "";
-    const lastMessageId = conversation.messageIds[conversation.messageIds.length - 1] ?? "";
-    const lastMessage = lastMessageId ? organizationState.messages.get(lastMessageId) : null;
+    const userState = this.getConversationUserState(organizationState, conversation.id, currentUserId);
+    const visibleMessages = conversation.messageIds
+      .map((messageId) => organizationState.messages.get(messageId))
+      .filter(Boolean)
+      .filter((message) => !userState.clearedAt || isTimestampAfter(message.createdAt, userState.clearedAt));
+    const lastMessage = visibleMessages[visibleMessages.length - 1] ?? null;
     const title = buildConversationTitle(conversation, currentUserId, usersById);
     let unreadCount = 0;
 
-    for (const messageId of conversation.messageIds) {
-      const message = organizationState.messages.get(messageId);
-
-      if (!message || message.authorId === currentUserId) {
+    for (const message of visibleMessages) {
+      if (message.authorId === currentUserId) {
         continue;
       }
 
@@ -369,11 +457,13 @@ class MemoryLiveChatStore {
 
   mapConversationDetail(conversation, organizationState, usersById, currentUserId) {
     const summary = this.mapConversationSummary(conversation, organizationState, usersById, currentUserId);
+    const userState = this.getConversationUserState(organizationState, conversation.id, currentUserId);
     return {
       ...summary,
       messages: conversation.messageIds
         .map((messageId) => organizationState.messages.get(messageId))
         .filter(Boolean)
+        .filter((message) => !userState.clearedAt || isTimestampAfter(message.createdAt, userState.clearedAt))
         .map((message) => {
           const author = usersById.get(message.authorId);
           return {
@@ -447,6 +537,9 @@ class MemoryLiveChatStore {
         .find((conversation) => conversation.directKey === directKey);
       if (existingDirect) {
         organizationState.reads.set(`${existingDirect.id}:${normalizedCurrentUser.id}`, timestamp);
+        this.setConversationUserState(organizationState, existingDirect.id, normalizedCurrentUser.id, {
+          archivedAt: "",
+        });
         return existingDirect.id;
       }
     }
@@ -500,6 +593,9 @@ class MemoryLiveChatStore {
     conversation.messageIds.push(messageId);
     conversation.updatedAt = timestamp;
     organizationState.reads.set(`${conversation.id}:${normalizedCurrentUser.id}`, timestamp);
+    this.setConversationUserState(organizationState, conversation.id, normalizedCurrentUser.id, {
+      archivedAt: "",
+    });
     return messageId;
   }
 
@@ -511,6 +607,35 @@ class MemoryLiveChatStore {
       normalizeId(currentUserId),
     );
     organizationState.reads.set(`${conversation.id}:${normalizeId(currentUserId)}`, this.getTimestamp());
+  }
+
+  async archiveConversation({ organizationId, conversationId, currentUserId, archived = true }) {
+    const organizationState = this.getOrganizationState(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversation = this.getConversationOrThrow(
+      organizationState,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+    this.setConversationUserState(organizationState, conversation.id, normalizedCurrentUserId, {
+      archivedAt: archived ? this.getTimestamp() : "",
+    });
+  }
+
+  async clearConversationHistory({ organizationId, conversationId, currentUserId }) {
+    const organizationState = this.getOrganizationState(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversation = this.getConversationOrThrow(
+      organizationState,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+    const timestamp = this.getTimestamp();
+    this.setConversationUserState(organizationState, conversation.id, normalizedCurrentUserId, {
+      clearedAt: timestamp,
+      archivedAt: "",
+    });
+    organizationState.reads.set(`${conversation.id}:${normalizedCurrentUserId}`, timestamp);
   }
 }
 
@@ -570,6 +695,18 @@ class MySqlLiveChatStore {
         INDEX idx_${CHAT_READS_TABLE}_read_at (read_at)
       )
     `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS ${CHAT_USER_STATE_TABLE} (
+        conversation_id VARCHAR(96) NOT NULL,
+        user_id VARCHAR(96) NOT NULL,
+        archived_at DATETIME(3) NULL,
+        cleared_at DATETIME(3) NULL,
+        PRIMARY KEY (conversation_id, user_id),
+        INDEX idx_${CHAT_USER_STATE_TABLE}_user (user_id),
+        INDEX idx_${CHAT_USER_STATE_TABLE}_archived (archived_at)
+      )
+    `);
   }
 
   async close() {
@@ -588,25 +725,34 @@ class MySqlLiveChatStore {
     const [rows] = await this.pool.query(
       `
         SELECT
-          id,
-          kind,
-          direct_key,
-          title_ciphertext,
-          participant_ids_json,
-          created_by_user_id,
-          created_at,
-          updated_at,
-          last_message_id,
-          last_message_author_id,
-          last_message_preview_ciphertext,
-          last_message_at,
-          message_count
-        FROM ${CHAT_CONVERSATIONS_TABLE}
-        WHERE organization_id = ?
-          AND JSON_CONTAINS(participant_ids_json, JSON_QUOTE(?))
-        ORDER BY updated_at DESC, id DESC
+          c.id,
+          c.kind,
+          c.direct_key,
+          c.title_ciphertext,
+          c.participant_ids_json,
+          c.created_by_user_id,
+          c.created_at,
+          c.updated_at,
+          c.last_message_id,
+          c.last_message_author_id,
+          c.last_message_preview_ciphertext,
+          c.last_message_at,
+          c.message_count,
+          s.archived_at,
+          s.cleared_at
+        FROM ${CHAT_CONVERSATIONS_TABLE} c
+        LEFT JOIN ${CHAT_USER_STATE_TABLE} s
+          ON s.conversation_id = c.id
+         AND s.user_id = ?
+        WHERE c.organization_id = ?
+          AND JSON_CONTAINS(c.participant_ids_json, JSON_QUOTE(?))
+          AND (
+            s.archived_at IS NULL
+            OR COALESCE(c.last_message_at, c.updated_at, c.created_at) > s.archived_at
+          )
+        ORDER BY c.updated_at DESC, c.id DESC
       `,
-      [organizationId, currentUserId],
+      [currentUserId, organizationId, currentUserId],
     );
 
     return rows;
@@ -616,26 +762,31 @@ class MySqlLiveChatStore {
     const [rows] = await this.pool.query(
       `
         SELECT
-          id,
-          kind,
-          direct_key,
-          title_ciphertext,
-          participant_ids_json,
-          created_by_user_id,
-          created_at,
-          updated_at,
-          last_message_id,
-          last_message_author_id,
-          last_message_preview_ciphertext,
-          last_message_at,
-          message_count
-        FROM ${CHAT_CONVERSATIONS_TABLE}
-        WHERE organization_id = ?
-          AND id = ?
-          AND JSON_CONTAINS(participant_ids_json, JSON_QUOTE(?))
+          c.id,
+          c.kind,
+          c.direct_key,
+          c.title_ciphertext,
+          c.participant_ids_json,
+          c.created_by_user_id,
+          c.created_at,
+          c.updated_at,
+          c.last_message_id,
+          c.last_message_author_id,
+          c.last_message_preview_ciphertext,
+          c.last_message_at,
+          c.message_count,
+          s.archived_at,
+          s.cleared_at
+        FROM ${CHAT_CONVERSATIONS_TABLE} c
+        LEFT JOIN ${CHAT_USER_STATE_TABLE} s
+          ON s.conversation_id = c.id
+         AND s.user_id = ?
+        WHERE c.organization_id = ?
+          AND c.id = ?
+          AND JSON_CONTAINS(c.participant_ids_json, JSON_QUOTE(?))
         LIMIT 1
       `,
-      [organizationId, normalizeId(conversationId), currentUserId],
+      [currentUserId, organizationId, normalizeId(conversationId), currentUserId],
     );
 
     return rows[0] ?? null;
@@ -644,6 +795,9 @@ class MySqlLiveChatStore {
   buildConversationData(row, usersById, currentUserId) {
     const participantIds = parseParticipantIds(row.participant_ids_json);
     const title = decryptText(row.title_ciphertext, this.encryptionKey);
+    const clearedAt = normalizeTimestamp(row.cleared_at);
+    const lastMessageAt = normalizeTimestamp(row.last_message_at);
+    const canShowLastMessage = !clearedAt || isTimestampAfter(lastMessageAt, clearedAt);
     const conversation = {
       id: normalizeId(row.id),
       kind: normalizeId(row.kind || "group"),
@@ -652,6 +806,8 @@ class MySqlLiveChatStore {
       createdByUserId: normalizeId(row.created_by_user_id),
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
+      archivedAt: normalizeTimestamp(row.archived_at),
+      clearedAt,
     };
 
     return {
@@ -660,10 +816,10 @@ class MySqlLiveChatStore {
       resolvedTitle: buildConversationTitle(conversation, currentUserId, usersById),
       lastMessage: mapLastMessageSnapshot({
         conversation,
-        lastMessageId: normalizeId(row.last_message_id),
-        lastMessageBody: decryptText(row.last_message_preview_ciphertext, this.encryptionKey),
-        lastMessageAt: normalizeTimestamp(row.last_message_at),
-        lastMessageAuthorId: normalizeId(row.last_message_author_id),
+        lastMessageId: canShowLastMessage ? normalizeId(row.last_message_id) : "",
+        lastMessageBody: canShowLastMessage ? decryptText(row.last_message_preview_ciphertext, this.encryptionKey) : "",
+        lastMessageAt,
+        lastMessageAuthorId: canShowLastMessage ? normalizeId(row.last_message_author_id) : "",
         usersById,
       }),
     };
@@ -682,12 +838,16 @@ class MySqlLiveChatStore {
         LEFT JOIN ${CHAT_READS_TABLE} r
           ON r.conversation_id = m.conversation_id
          AND r.user_id = ?
+        LEFT JOIN ${CHAT_USER_STATE_TABLE} s
+          ON s.conversation_id = m.conversation_id
+         AND s.user_id = ?
         WHERE m.conversation_id IN (${placeholders})
           AND m.author_id <> ?
           AND (r.read_at IS NULL OR m.created_at > r.read_at)
+          AND (s.cleared_at IS NULL OR m.created_at > s.cleared_at)
         GROUP BY m.conversation_id
       `,
-      [currentUserId, ...conversationIds, currentUserId],
+      [currentUserId, currentUserId, ...conversationIds, currentUserId],
     );
 
     return new Map(rows.map((row) => [String(row.conversationId), Number(row.unreadCount ?? 0)]));
@@ -702,6 +862,61 @@ class MySqlLiveChatStore {
       `,
       [conversationId, userId, new Date(timestamp)],
     );
+  }
+
+  async setConversationUserState(conversationId, userId, patch = {}) {
+    const normalizedConversationId = normalizeId(conversationId);
+    const normalizedUserId = normalizeId(userId);
+    const [rows] = await this.pool.query(
+      `
+        SELECT archived_at, cleared_at
+        FROM ${CHAT_USER_STATE_TABLE}
+        WHERE conversation_id = ?
+          AND user_id = ?
+        LIMIT 1
+      `,
+      [normalizedConversationId, normalizedUserId],
+    );
+
+    const currentState = normalizeConversationUserState(rows[0] ?? {});
+    const nextState = {
+      archivedAt: Object.prototype.hasOwnProperty.call(patch, "archivedAt")
+        ? normalizeTimestamp(patch.archivedAt)
+        : currentState.archivedAt,
+      clearedAt: Object.prototype.hasOwnProperty.call(patch, "clearedAt")
+        ? normalizeTimestamp(patch.clearedAt)
+        : currentState.clearedAt,
+    };
+
+    if (!nextState.archivedAt && !nextState.clearedAt) {
+      await this.pool.query(
+        `
+          DELETE FROM ${CHAT_USER_STATE_TABLE}
+          WHERE conversation_id = ?
+            AND user_id = ?
+        `,
+        [normalizedConversationId, normalizedUserId],
+      );
+      return normalizeConversationUserState();
+    }
+
+    await this.pool.query(
+      `
+        INSERT INTO ${CHAT_USER_STATE_TABLE} (conversation_id, user_id, archived_at, cleared_at)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          archived_at = VALUES(archived_at),
+          cleared_at = VALUES(cleared_at)
+      `,
+      [
+        normalizedConversationId,
+        normalizedUserId,
+        nextState.archivedAt ? new Date(nextState.archivedAt) : null,
+        nextState.clearedAt ? new Date(nextState.clearedAt) : null,
+      ],
+    );
+
+    return nextState;
   }
 
   async getConversationDetail({ organizationId, conversationId, currentUserId, usersById }) {
@@ -723,6 +938,7 @@ class MySqlLiveChatStore {
       `,
       [organizationId, normalizeId(conversationId)],
     );
+    const clearedAt = normalizeTimestamp(row.cleared_at);
 
     return {
       id: summary.id,
@@ -734,19 +950,21 @@ class MySqlLiveChatStore {
       updatedAt: summary.updatedAt,
       unreadCount: unreadCounts.get(summary.id) ?? 0,
       lastMessage: summary.lastMessage,
-      messages: messageRows.map((message) => {
-        const authorId = normalizeId(message.author_id);
-        const author = usersById.get(authorId);
-        return {
-          id: normalizeId(message.id),
-          body: decryptText(message.body_ciphertext, this.encryptionKey),
-          createdAt: normalizeTimestamp(message.created_at),
-          authorId,
-          authorName: author?.fullName || author?.email || "User",
-          authorEmail: author?.email || "",
-          authorAvatarDataUrl: author?.avatarDataUrl || "",
-        };
-      }),
+      messages: messageRows
+        .map((message) => {
+          const authorId = normalizeId(message.author_id);
+          const author = usersById.get(authorId);
+          return {
+            id: normalizeId(message.id),
+            body: decryptText(message.body_ciphertext, this.encryptionKey),
+            createdAt: normalizeTimestamp(message.created_at),
+            authorId,
+            authorName: author?.fullName || author?.email || "User",
+            authorEmail: author?.email || "",
+            authorAvatarDataUrl: author?.avatarDataUrl || "",
+          };
+        })
+        .filter((message) => !clearedAt || isTimestampAfter(message.createdAt, clearedAt)),
     };
   }
 
@@ -829,6 +1047,9 @@ class MySqlLiveChatStore {
 
       if (existingRows[0]?.id) {
         await this.upsertReadMarker(normalizeId(existingRows[0].id), normalizedCurrentUser.id, timestamp);
+        await this.setConversationUserState(normalizeId(existingRows[0].id), normalizedCurrentUser.id, {
+          archivedAt: "",
+        });
         return normalizeId(existingRows[0].id);
       }
     }
@@ -934,6 +1155,9 @@ class MySqlLiveChatStore {
     );
 
     await this.upsertReadMarker(normalizeId(conversationId), normalizedCurrentUser.id, timestamp);
+    await this.setConversationUserState(normalizeId(conversationId), normalizedCurrentUser.id, {
+      archivedAt: "",
+    });
     return messageId;
   }
 
@@ -951,6 +1175,45 @@ class MySqlLiveChatStore {
     }
 
     await this.upsertReadMarker(normalizeId(conversationId), normalizedCurrentUserId, this.getTimestamp());
+  }
+
+  async archiveConversation({ organizationId, conversationId, currentUserId, archived = true }) {
+    const normalizedOrganizationId = normalizeId(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversationRow = await this.getConversationRowForUser(
+      normalizedOrganizationId,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+
+    if (!conversationRow) {
+      throw new Error("Razgovor nije dostupan.");
+    }
+
+    await this.setConversationUserState(normalizeId(conversationId), normalizedCurrentUserId, {
+      archivedAt: archived ? this.getTimestamp() : "",
+    });
+  }
+
+  async clearConversationHistory({ organizationId, conversationId, currentUserId }) {
+    const normalizedOrganizationId = normalizeId(organizationId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+    const conversationRow = await this.getConversationRowForUser(
+      normalizedOrganizationId,
+      conversationId,
+      normalizedCurrentUserId,
+    );
+
+    if (!conversationRow) {
+      throw new Error("Razgovor nije dostupan.");
+    }
+
+    const timestamp = this.getTimestamp();
+    await this.setConversationUserState(normalizeId(conversationId), normalizedCurrentUserId, {
+      archivedAt: "",
+      clearedAt: timestamp,
+    });
+    await this.upsertReadMarker(normalizeId(conversationId), normalizedCurrentUserId, timestamp);
   }
 }
 
@@ -1034,6 +1297,21 @@ export async function createLiveChatStore({
     },
     async markConversationRead({ organizationId, conversationId, currentUserId }) {
       return store.markConversationRead({
+        organizationId,
+        conversationId,
+        currentUserId,
+      });
+    },
+    async archiveConversation({ organizationId, conversationId, currentUserId, archived = true }) {
+      return store.archiveConversation({
+        organizationId,
+        conversationId,
+        currentUserId,
+        archived,
+      });
+    },
+    async clearConversationHistory({ organizationId, conversationId, currentUserId }) {
+      return store.clearConversationHistory({
         organizationId,
         conversationId,
         currentUserId,

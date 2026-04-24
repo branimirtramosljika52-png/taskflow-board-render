@@ -163,9 +163,11 @@ const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "xml",
   "zip",
 ]);
-const CHAT_POLL_INTERVAL_MS = 4_500;
-const CHAT_PRESENCE_HEARTBEAT_MS = 20_000;
+const CHAT_POLL_INTERVAL_MS = 7_500;
+const CHAT_PRESENCE_HEARTBEAT_MS = 25_000;
 const CHAT_DOCK_HIDDEN_STORAGE_PREFIX = "safenexus.chat.hidden-dock-conversations.v1";
+const CHAT_DOCKED_STORAGE_PREFIX = "safenexus.chat.docked-conversations.v1";
+const CHAT_ARCHIVED_STORAGE_PREFIX = "safenexus.chat.archived-conversations.v1";
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
@@ -1459,6 +1461,8 @@ const state = {
     users: [],
     presenceByUserId: {},
     activeConversationId: "",
+    dockedConversationIds: [],
+    archivedConversationIds: new Set(),
     hiddenDockConversationIds: new Set(),
     panelMode: "hub",
     composerOpen: false,
@@ -2056,6 +2060,9 @@ const chatThreadEmpty = document.querySelector("#chat-thread-empty");
 const chatThreadView = document.querySelector("#chat-thread-view");
 const chatThreadTitle = document.querySelector("#chat-thread-title");
 const chatThreadMeta = document.querySelector("#chat-thread-meta");
+const chatThreadMinimizeButton = document.querySelector("#chat-thread-minimize-button");
+const chatThreadArchiveButton = document.querySelector("#chat-thread-archive-button");
+const chatThreadClearButton = document.querySelector("#chat-thread-clear-button");
 const chatThreadMessages = document.querySelector("#chat-thread-messages");
 const chatThreadTabs = document.querySelector("#chat-thread-tabs");
 const chatMessageForm = document.querySelector("#chat-message-form");
@@ -6704,6 +6711,8 @@ function resetChatState() {
   state.chat.users = [];
   state.chat.presenceByUserId = {};
   state.chat.activeConversationId = "";
+  state.chat.dockedConversationIds = [];
+  state.chat.archivedConversationIds = new Set();
   state.chat.hiddenDockConversationIds = new Set();
   state.chat.panelMode = "hub";
   state.chat.composerOpen = false;
@@ -6941,22 +6950,47 @@ function queueChatPanelPositionSync() {
   });
 }
 
-function getChatDockHiddenStorageKey() {
+function buildChatStorageScopeKey() {
   return [
-    CHAT_DOCK_HIDDEN_STORAGE_PREFIX,
     String(state.user?.id ?? "anonymous"),
     String(state.activeOrganizationId || state.chat.lastOrganizationId || "default"),
   ].join(":");
 }
 
-function loadChatHiddenDockConversationIds() {
+function getChatDockHiddenStorageKey() {
+  return [CHAT_DOCK_HIDDEN_STORAGE_PREFIX, buildChatStorageScopeKey()].join(":");
+}
+
+function getChatDockedStorageKey() {
+  return [CHAT_DOCKED_STORAGE_PREFIX, buildChatStorageScopeKey()].join(":");
+}
+
+function getChatArchivedStorageKey() {
+  return [CHAT_ARCHIVED_STORAGE_PREFIX, buildChatStorageScopeKey()].join(":");
+}
+
+function loadChatStorageArray(storageKey) {
   try {
-    const rawValue = window.localStorage.getItem(getChatDockHiddenStorageKey());
+    const rawValue = window.localStorage.getItem(storageKey);
     const parsed = rawValue ? JSON.parse(rawValue) : [];
-    return new Set(Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : []);
+    return Array.isArray(parsed)
+      ? Array.from(new Set(parsed.map((value) => String(value || "").trim()).filter(Boolean)))
+      : [];
   } catch {
-    return new Set();
+    return [];
   }
+}
+
+function loadChatHiddenDockConversationIds() {
+  return new Set(loadChatStorageArray(getChatDockHiddenStorageKey()));
+}
+
+function loadChatDockedConversationIds() {
+  return loadChatStorageArray(getChatDockedStorageKey());
+}
+
+function loadChatArchivedConversationIds() {
+  return new Set(loadChatStorageArray(getChatArchivedStorageKey()));
 }
 
 function persistChatHiddenDockConversationIds() {
@@ -6970,50 +7004,146 @@ function persistChatHiddenDockConversationIds() {
   }
 }
 
-function unhideChatConversationFromDock(conversationId) {
-  const normalizedConversationId = String(conversationId ?? "");
+function persistChatDockedConversationIds() {
+  try {
+    window.localStorage.setItem(
+      getChatDockedStorageKey(),
+      JSON.stringify(state.chat.dockedConversationIds ?? []),
+    );
+  } catch {
+    return;
+  }
+}
 
-  if (!normalizedConversationId || !state.chat.hiddenDockConversationIds?.has(normalizedConversationId)) {
+function persistChatArchivedConversationIds() {
+  try {
+    window.localStorage.setItem(
+      getChatArchivedStorageKey(),
+      JSON.stringify(Array.from(state.chat.archivedConversationIds ?? [])),
+    );
+  } catch {
+    return;
+  }
+}
+
+function normalizeChatConversationIdList(values = []) {
+  return Array.from(new Set(
+    values.map((value) => String(value || "").trim()).filter(Boolean),
+  ));
+}
+
+function pruneChatDockedConversationIds() {
+  const availableConversationIds = new Set(
+    state.chat.conversations
+      .map((conversation) => String(conversation.id || "").trim())
+      .filter(Boolean),
+  );
+  const nextDockedConversationIds = normalizeChatConversationIdList(state.chat.dockedConversationIds)
+    .filter((conversationId) => (
+      availableConversationIds.has(conversationId)
+      && !state.chat.archivedConversationIds.has(conversationId)
+    ));
+
+  if (nextDockedConversationIds.join(",") === normalizeChatConversationIdList(state.chat.dockedConversationIds).join(",")) {
     return;
   }
 
-  state.chat.hiddenDockConversationIds.delete(normalizedConversationId);
-  persistChatHiddenDockConversationIds();
-  resetChatRenderSignatures();
+  state.chat.dockedConversationIds = nextDockedConversationIds;
+  persistChatDockedConversationIds();
 }
 
-function hideChatConversationFromDock(conversationId) {
+function ensureChatConversationDocked(conversationId, { render = false } = {}) {
   const normalizedConversationId = String(conversationId ?? "");
 
   if (!normalizedConversationId) {
     return;
   }
 
-  state.chat.hiddenDockConversationIds.add(normalizedConversationId);
-  persistChatHiddenDockConversationIds();
+  state.chat.archivedConversationIds.delete(normalizedConversationId);
+  state.chat.dockedConversationIds = normalizeChatConversationIdList([
+    ...state.chat.dockedConversationIds,
+    normalizedConversationId,
+  ]);
+  persistChatArchivedConversationIds();
+  persistChatDockedConversationIds();
+  resetChatRenderSignatures();
+
+  if (render) {
+    renderChatDock();
+  }
+}
+
+function removeChatConversationFromDock(conversationId, { render = true } = {}) {
+  const normalizedConversationId = String(conversationId ?? "");
+
+  if (!normalizedConversationId) {
+    return;
+  }
+
+  const nextDockedConversationIds = state.chat.dockedConversationIds
+    .map(String)
+    .filter((conversationId) => conversationId !== normalizedConversationId);
+
+  if (nextDockedConversationIds.length === state.chat.dockedConversationIds.length) {
+    return;
+  }
+
+  state.chat.dockedConversationIds = nextDockedConversationIds;
+  persistChatDockedConversationIds();
 
   if (String(state.chat.activeConversationId) === normalizedConversationId) {
-    const nextConversation = state.chat.conversations.find((conversation) => (
-      String(conversation.id) !== normalizedConversationId
-      && !state.chat.hiddenDockConversationIds.has(String(conversation.id))
-    ));
-    state.chat.activeConversationId = nextConversation?.id ?? "";
-    if (String(state.chat.activeConversation?.id ?? "") !== String(state.chat.activeConversationId ?? "")) {
-      updateActiveChatConversation(null);
-    }
+    state.chat.activeConversationId = "";
+    updateActiveChatConversation(null);
+    state.chat.panelMode = "hub";
+    state.chat.open = false;
   }
 
   resetChatRenderSignatures();
-  renderChatDock();
+
+  if (render) {
+    renderChatDock();
+  }
+}
+
+function archiveChatConversationLocally(conversationId, { archived = true, render = true } = {}) {
+  const normalizedConversationId = String(conversationId ?? "");
+
+  if (!normalizedConversationId) {
+    return;
+  }
+
+  if (archived) {
+    state.chat.archivedConversationIds.add(normalizedConversationId);
+    state.chat.dockedConversationIds = state.chat.dockedConversationIds
+      .map(String)
+      .filter((conversationId) => conversationId !== normalizedConversationId);
+    if (String(state.chat.activeConversationId) === normalizedConversationId) {
+      state.chat.activeConversationId = "";
+      updateActiveChatConversation(null);
+      state.chat.panelMode = "hub";
+      state.chat.open = false;
+    }
+  } else {
+    state.chat.archivedConversationIds.delete(normalizedConversationId);
+  }
+
+  persistChatArchivedConversationIds();
+  persistChatDockedConversationIds();
+  resetChatRenderSignatures();
+
+  if (render) {
+    renderChatDock();
+  }
 }
 
 function getDockedChatConversations() {
-  return state.chat.conversations.filter((conversation) => {
-    const conversationId = String(conversation.id);
-    return !state.chat.hiddenDockConversationIds.has(conversationId)
-      || Number(conversation.unreadCount ?? 0) > 0
-      || String(state.chat.activeConversationId) === conversationId;
-  });
+  const conversationsById = new Map(
+    state.chat.conversations.map((conversation) => [String(conversation.id), conversation]),
+  );
+
+  return normalizeChatConversationIdList(state.chat.dockedConversationIds)
+    .map((conversationId) => conversationsById.get(conversationId))
+    .filter(Boolean);
 }
 
 function buildChatConversationSignature(conversation = {}) {
@@ -7201,37 +7331,44 @@ function applyChatSnapshot(payload = {}) {
   const nextOrganizationId = payload.organizationId ?? state.activeOrganizationId;
 
   if (String(state.chat.lastOrganizationId ?? "") !== String(nextOrganizationId ?? "")) {
+    state.chat.dockedConversationIds = loadChatDockedConversationIds();
+    state.chat.archivedConversationIds = loadChatArchivedConversationIds();
     state.chat.hiddenDockConversationIds = loadChatHiddenDockConversationIds();
     updateActiveChatConversation(null);
     resetChatRenderSignatures();
   }
 
-  let dockVisibilityChanged = false;
+  let archiveVisibilityChanged = false;
   nextConversations.forEach((conversation) => {
-    if (Number(conversation.unreadCount ?? 0) > 0 && state.chat.hiddenDockConversationIds.has(String(conversation.id))) {
-      state.chat.hiddenDockConversationIds.delete(String(conversation.id));
-      dockVisibilityChanged = true;
+    if (Number(conversation.unreadCount ?? 0) > 0 && state.chat.archivedConversationIds.has(String(conversation.id))) {
+      state.chat.archivedConversationIds.delete(String(conversation.id));
+      archiveVisibilityChanged = true;
     }
   });
 
-  if (dockVisibilityChanged) {
-    persistChatHiddenDockConversationIds();
+  if (archiveVisibilityChanged) {
+    persistChatArchivedConversationIds();
     resetChatRenderSignatures();
   }
 
-  handleChatIncomingNotifications(nextConversations);
+  const visibleConversations = nextConversations.filter((conversation) => (
+    !state.chat.archivedConversationIds.has(String(conversation.id))
+  ));
 
-  state.chat.conversations = nextConversations;
+  handleChatIncomingNotifications(visibleConversations);
+
+  state.chat.conversations = visibleConversations;
   state.chat.users = payload.users ?? [];
   state.chat.presenceByUserId = payload.presenceByUserId ?? {};
   state.chat.loaded = true;
   state.chat.lastOrganizationId = nextOrganizationId;
   state.chat.unreadTotal = state.chat.conversations.reduce((sum, conversation) => sum + Number(conversation.unreadCount ?? 0), 0);
+  pruneChatDockedConversationIds();
 
   const hasActiveConversation = state.chat.conversations.some((conversation) => String(conversation.id) === String(state.chat.activeConversationId));
 
   if (!hasActiveConversation) {
-    state.chat.activeConversationId = state.chat.conversations[0]?.id ?? "";
+    state.chat.activeConversationId = "";
   }
 
   const activeSummary = getChatConversationById(state.chat.activeConversationId);
@@ -7375,6 +7512,49 @@ async function markChatConversationRead(conversationId = state.chat.activeConver
   }
 }
 
+async function archiveChatConversation(conversationId = state.chat.activeConversationId) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation) {
+    return;
+  }
+
+  archiveChatConversationLocally(conversation.id, { render: true });
+
+  try {
+    const payload = await apiRequest(`/chat/conversations/${conversation.id}/archive`, {
+      method: "POST",
+      body: {
+        archived: true,
+      },
+    });
+    applyChatSnapshot(payload);
+  } catch (error) {
+    archiveChatConversationLocally(conversation.id, { archived: false, render: false });
+    setChatError(error.message);
+    renderChatDock();
+  }
+}
+
+async function clearChatConversationHistory(conversationId = state.chat.activeConversationId) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation) {
+    return;
+  }
+
+  try {
+    const payload = await apiRequest(`/chat/conversations/${conversation.id}/clear-history`, {
+      method: "POST",
+      body: {},
+    });
+    applyChatSnapshot(payload);
+  } catch (error) {
+    setChatError(error.message);
+    renderChatDock();
+  }
+}
+
 function setChatComposerOpen(isOpen, { render = true } = {}) {
   state.chat.composerOpen = Boolean(isOpen);
   state.chat.emojiPickerOpen = false;
@@ -7443,7 +7623,7 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
     return;
   }
 
-  unhideChatConversationFromDock(conversation.id);
+  ensureChatConversationDocked(conversation.id);
   state.chat.activeConversationId = conversation.id;
   state.chat.tab = "conversations";
   state.chat.panelMode = "conversation";
@@ -7476,12 +7656,15 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
 
 function getFilteredChatConversations() {
   const query = state.chat.search.trim().toLowerCase();
+  const baseConversations = state.chat.conversations.filter((conversation) => (
+    !state.chat.archivedConversationIds.has(String(conversation.id))
+  ));
 
   if (!query) {
-    return state.chat.conversations;
+    return baseConversations;
   }
 
-  return state.chat.conversations.filter((conversation) => {
+  return baseConversations.filter((conversation) => {
     const haystack = [
       conversation.title,
       conversation.lastMessage?.body,
@@ -7531,7 +7714,8 @@ function renderChatConversationList() {
     state.chat.search,
     state.chat.activeConversationId,
     state.chat.tab,
-    Array.from(state.chat.hiddenDockConversationIds ?? []).sort().join(","),
+    state.chat.dockedConversationIds.join(","),
+    Array.from(state.chat.archivedConversationIds ?? []).sort().join(","),
     conversations.map(buildChatConversationSignature).join("::"),
   ].join("~~");
 
@@ -7563,7 +7747,7 @@ function renderChatConversationList() {
       button.className = "chat-list-card";
       button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
       button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
-      button.classList.toggle("is-hidden-from-dock", state.chat.hiddenDockConversationIds.has(String(conversation.id)));
+      button.classList.toggle("is-docked", state.chat.dockedConversationIds.includes(String(conversation.id)));
 
       const head = document.createElement("div");
       head.className = "chat-list-card-head";
@@ -7604,8 +7788,8 @@ function renderChatConversationList() {
         createChatChip(`${conversation.participants.length} cl.`),
       );
 
-      if (state.chat.hiddenDockConversationIds.has(String(conversation.id))) {
-        chips.append(createChatChip("skriveno dolje"));
+      if (state.chat.dockedConversationIds.includes(String(conversation.id))) {
+        chips.append(createChatChip("u traci"));
       }
 
       meta.append(chips);
@@ -7718,6 +7902,15 @@ function renderChatThread() {
 
   chatThreadEmpty.hidden = Boolean(conversation);
   chatThreadView.hidden = !conversation;
+  if (chatThreadArchiveButton) {
+    chatThreadArchiveButton.disabled = !conversation;
+  }
+  if (chatThreadClearButton) {
+    chatThreadClearButton.disabled = !conversation;
+  }
+  if (chatThreadMinimizeButton) {
+    chatThreadMinimizeButton.disabled = !conversation;
+  }
 
   if (!conversation) {
     if (renderSignature !== chatThreadRenderSignature) {
@@ -7738,6 +7931,16 @@ function renderChatThread() {
         .filter((participant) => (state.chat.presenceByUserId[participant.id] ?? "offline") === "online")
         .length;
       chatThreadMeta.textContent = `${conversation.participants.length} sudionika · ${onlineCount} online`;
+    }
+
+    if (chatThreadArchiveButton) {
+      chatThreadArchiveButton.title = `Arhiviraj ${conversation.title || "razgovor"}`;
+      chatThreadArchiveButton.setAttribute("aria-label", `Arhiviraj ${conversation.title || "razgovor"}`);
+    }
+
+    if (chatThreadClearButton) {
+      chatThreadClearButton.title = `Ocisti staru povijest za ${conversation.title || "razgovor"}`;
+      chatThreadClearButton.setAttribute("aria-label", `Ocisti staru povijest za ${conversation.title || "razgovor"}`);
     }
 
     chatThreadHeaderRenderSignature = headerSignature;
@@ -7877,7 +8080,7 @@ function createChatConversationTabNode(conversation, { desktop = false } = {}) {
   closeButton.textContent = "×";
   closeButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    hideChatConversationFromDock(conversation.id);
+    removeChatConversationFromDock(conversation.id);
   });
   item.append(closeButton);
 
@@ -7888,7 +8091,7 @@ function renderChatConversationTabs() {
   const dockedConversations = getDockedChatConversations();
   const signatureParts = [
     state.chat.activeConversationId,
-    Array.from(state.chat.hiddenDockConversationIds ?? []).sort().join(","),
+    state.chat.dockedConversationIds.join(","),
     dockedConversations.map(buildChatConversationSignature).join("::"),
   ];
 
@@ -8213,7 +8416,18 @@ function renderChatDock() {
   }
 
   const isConversationMode = state.chat.panelMode === "conversation";
+  const shouldRenderPanelContents = state.chat.open || state.chat.composerOpen;
   setChatError(state.chat.error);
+  renderChatConversationTabs();
+
+  if (!shouldRenderPanelContents) {
+    if (chatEmojiPicker) {
+      chatEmojiPicker.hidden = true;
+    }
+    queueChatPanelPositionSync();
+    return;
+  }
+
   if (!isConversationMode) {
     renderChatConversationList();
     renderChatPeopleList();
@@ -8221,7 +8435,6 @@ function renderChatDock() {
   if (isConversationMode) {
     renderChatThread();
   }
-  renderChatConversationTabs();
   renderChatComposer();
   if (isConversationMode) {
     renderChatEmojiPicker();
@@ -62129,6 +62342,18 @@ chatLauncher?.addEventListener("click", () => {
 
 chatCloseButton?.addEventListener("click", () => {
   setChatOpen(false);
+});
+
+chatThreadMinimizeButton?.addEventListener("click", () => {
+  setChatOpen(false);
+});
+
+chatThreadArchiveButton?.addEventListener("click", () => {
+  void archiveChatConversation();
+});
+
+chatThreadClearButton?.addEventListener("click", () => {
+  void clearChatConversationHistory();
 });
 
 chatNewGroupButton?.addEventListener("click", () => {
