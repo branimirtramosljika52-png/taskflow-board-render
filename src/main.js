@@ -1454,7 +1454,7 @@ const state = {
   },
   chat: {
     open: false,
-    tab: "conversations",
+    tab: "people",
     search: "",
     conversations: [],
     activeConversation: null,
@@ -1926,6 +1926,7 @@ let chatNotificationTimerId = null;
 let chatAudioContext = null;
 let chatConversationListRenderSignature = "";
 let chatPeopleListRenderSignature = "";
+let chatPeopleSummaryRenderSignature = "";
 let chatThreadRenderSignature = "";
 let chatThreadHeaderRenderSignature = "";
 let chatPanelTabsRenderSignature = "";
@@ -2054,6 +2055,7 @@ const chatNewGroupButton = document.querySelector("#chat-new-group-button");
 const chatTabButtons = Array.from(document.querySelectorAll("[data-chat-tab]"));
 const chatSearchInput = document.querySelector("#chat-search-input");
 const chatListCaption = document.querySelector("#chat-list-caption");
+const chatPeopleSummary = document.querySelector("#chat-people-summary");
 const chatConversationsView = document.querySelector("#chat-conversations-view");
 const chatPeopleView = document.querySelector("#chat-people-view");
 const chatThreadEmpty = document.querySelector("#chat-thread-empty");
@@ -6677,6 +6679,7 @@ function clearChatPollTimer() {
 function resetChatRenderSignatures() {
   chatConversationListRenderSignature = "";
   chatPeopleListRenderSignature = "";
+  chatPeopleSummaryRenderSignature = "";
   chatThreadRenderSignature = "";
   chatThreadHeaderRenderSignature = "";
   chatPanelTabsRenderSignature = "";
@@ -6704,7 +6707,7 @@ function resetChatState() {
     chatToast.onclick = null;
   }
   state.chat.open = false;
-  state.chat.tab = "conversations";
+  state.chat.tab = "people";
   state.chat.search = "";
   state.chat.conversations = [];
   state.chat.activeConversation = null;
@@ -6782,6 +6785,38 @@ function formatChatTimestamp(value) {
 
 function buildChatPresenceLabel(status = "offline") {
   return USER_PRESENCE_OPTIONS.find((option) => option.value === status)?.label ?? "Offline";
+}
+
+function getChatPresenceSortRank(status = "offline") {
+  const normalizedStatus = normalizeUserPresence(status);
+  const optionIndex = USER_PRESENCE_OPTIONS.findIndex((option) => option.value === normalizedStatus);
+  return optionIndex === -1 ? USER_PRESENCE_OPTIONS.length : optionIndex;
+}
+
+function getChatUserDisplayName(userLike = {}) {
+  return String(userLike.fullName || userLike.email || "Kolega").trim() || "Kolega";
+}
+
+function getChatUserPresence(userId = "") {
+  return state.chat.presenceByUserId[userId] ?? "offline";
+}
+
+function getChatConversationListSubtitle(conversation = {}, avatarPresence = "offline") {
+  if (conversation.kind === "direct") {
+    return buildChatPresenceLabel(avatarPresence);
+  }
+
+  return `${conversation.participants?.length ?? 0} sudionika`;
+}
+
+function groupChatUsersByPresence(people = []) {
+  return USER_PRESENCE_OPTIONS
+    .map((option) => ({
+      key: option.value,
+      label: option.label,
+      items: people.filter((person) => getChatUserPresence(person.id) === option.value),
+    }))
+    .filter((section) => section.items.length > 0);
 }
 
 function createChatAvatar(userLike = {}, presence = "offline", className = "chat-person-avatar") {
@@ -7609,7 +7644,7 @@ function setChatOpen(isOpen) {
   }
 }
 
-function openChatHub(tab = state.chat.tab || "conversations") {
+function openChatHub(tab = state.chat.tab || "people") {
   state.chat.tab = tab;
   state.chat.panelMode = "hub";
   state.chat.emojiPickerOpen = false;
@@ -7691,16 +7726,16 @@ function getFilteredChatUsers() {
       return haystack.includes(query);
     })
     .sort((left, right) => {
-      const leftPresence = state.chat.presenceByUserId[left.id] ?? "offline";
-      const rightPresence = state.chat.presenceByUserId[right.id] ?? "offline";
-      const leftOnline = leftPresence === "online" ? 1 : 0;
-      const rightOnline = rightPresence === "online" ? 1 : 0;
+      const leftPresence = getChatUserPresence(left.id);
+      const rightPresence = getChatUserPresence(right.id);
+      const leftRank = getChatPresenceSortRank(leftPresence);
+      const rightRank = getChatPresenceSortRank(rightPresence);
 
-      if (leftOnline !== rightOnline) {
-        return rightOnline - leftOnline;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
       }
 
-      return String(left.fullName || left.email).localeCompare(String(right.fullName || right.email), "hr");
+      return getChatUserDisplayName(left).localeCompare(getChatUserDisplayName(right), "hr");
     });
 }
 
@@ -7716,7 +7751,12 @@ function renderChatConversationList() {
     state.chat.tab,
     state.chat.dockedConversationIds.join(","),
     Array.from(state.chat.archivedConversationIds ?? []).sort().join(","),
-    conversations.map(buildChatConversationSignature).join("::"),
+    conversations.map((conversation) => [
+      buildChatConversationSignature(conversation),
+      (conversation.participants ?? [])
+        .map((participant) => `${participant.id}:${getChatUserPresence(participant.id)}`)
+        .join(","),
+    ].join("|")).join("::"),
   ].join("~~");
 
   if (renderSignature === chatConversationListRenderSignature) {
@@ -7767,9 +7807,7 @@ function renderChatConversationList() {
       title.textContent = conversation.title;
 
       const subtitle = document.createElement("span");
-      subtitle.textContent = conversation.lastMessage
-        ? `${conversation.lastMessage.authorName} · ${formatChatTimestamp(conversation.lastMessage.createdAt)}`
-        : `${conversation.participants.length} sudionika`;
+      subtitle.textContent = getChatConversationListSubtitle(conversation, avatarPresence);
 
       copy.append(title, subtitle);
       head.append(avatar, copy);
@@ -7812,22 +7850,78 @@ function renderChatConversationList() {
   chatConversationsView.replaceChildren(...nodes);
 }
 
+function renderChatPeopleSummary() {
+  if (!chatPeopleSummary) {
+    return;
+  }
+
+  const people = getFilteredChatUsers();
+  const counts = USER_PRESENCE_OPTIONS
+    .map((option) => ({
+      value: option.value,
+      label: option.label,
+      count: people.filter((person) => getChatUserPresence(person.id) === option.value).length,
+    }))
+    .filter((entry) => entry.count > 0);
+  const renderSignature = [
+    state.chat.tab,
+    state.chat.search,
+    counts.map((entry) => `${entry.value}:${entry.count}`).join("|"),
+  ].join("~~");
+
+  if (renderSignature === chatPeopleSummaryRenderSignature) {
+    return;
+  }
+
+  chatPeopleSummaryRenderSignature = renderSignature;
+
+  const shouldShow = state.chat.tab === "people" && counts.length > 0;
+  chatPeopleSummary.hidden = !shouldShow;
+
+  if (!shouldShow) {
+    chatPeopleSummary.replaceChildren();
+    return;
+  }
+
+  chatPeopleSummary.replaceChildren(...counts.map((entry) => {
+    const pill = document.createElement("span");
+    pill.className = "chat-status-pill";
+    pill.dataset.presence = entry.value;
+
+    const dot = document.createElement("span");
+    dot.className = "chat-status-pill-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const label = document.createElement("span");
+    label.className = "chat-status-pill-label";
+    label.textContent = entry.label;
+
+    const count = document.createElement("strong");
+    count.textContent = String(entry.count);
+
+    pill.append(dot, label, count);
+    return pill;
+  }));
+}
+
 function renderChatPeopleList() {
   if (!chatPeopleView) {
     return;
   }
 
   const people = getFilteredChatUsers();
+  const peopleSections = groupChatUsersByPresence(people);
   const renderSignature = [
     state.chat.search,
     state.chat.tab,
-    people.map((person) => [
-      person.id,
-      person.fullName,
-      person.email,
-      person.role,
-      state.chat.presenceByUserId[person.id] ?? "offline",
-    ].join("|")).join("::"),
+    peopleSections.map((section) => [
+      section.key,
+      section.items.map((person) => [
+        person.id,
+        getChatUserDisplayName(person),
+        getChatUserPresence(person.id),
+      ].join("|")).join("::"),
+    ].join("=>")).join("~~"),
   ].join("~~");
 
   if (renderSignature === chatPeopleListRenderSignature) {
@@ -7844,37 +7938,44 @@ function renderChatPeopleList() {
     return;
   }
 
-  chatPeopleView.replaceChildren(...people.map((person) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chat-person-card";
+  const nodes = [];
 
-    const head = document.createElement("div");
-    head.className = "chat-person-card-head";
-    head.append(createChatAvatar(person, state.chat.presenceByUserId[person.id] ?? "offline", "chat-person-avatar"));
+  peopleSections.forEach((section) => {
+    const sectionHeader = document.createElement("div");
+    sectionHeader.className = "chat-list-section-heading";
+    sectionHeader.innerHTML = `<span>${section.label}</span><strong>${section.items.length}</strong>`;
+    nodes.push(sectionHeader);
 
-    const copy = document.createElement("div");
-    copy.className = "chat-person-card-copy";
-    const title = document.createElement("strong");
-    title.textContent = person.fullName || person.email;
-    const subtitle = document.createElement("span");
-    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[person.id] ?? "offline")} · ${person.email || "bez emaila"}`;
-    copy.append(title, subtitle);
-    head.append(copy);
+    section.items.forEach((person) => {
+      const presence = getChatUserPresence(person.id);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-person-card";
+      button.dataset.presence = presence;
+      button.title = `Pokreni chat s ${getChatUserDisplayName(person)}`;
 
-    const chipRow = document.createElement("div");
-    chipRow.className = "chat-list-chip-row";
-    chipRow.append(
-      createChatChip(person.role === "super_admin" ? "Super admin" : person.role === "admin" ? "Admin" : "User"),
-      createChatChip("Direktni chat"),
-    );
+      const head = document.createElement("div");
+      head.className = "chat-person-card-head";
+      head.append(createChatAvatar(person, presence, "chat-person-avatar"));
 
-    button.append(head, chipRow);
-    button.addEventListener("click", () => {
-      void startDirectChatWithUser(person.id);
+      const copy = document.createElement("div");
+      copy.className = "chat-person-card-copy";
+      const title = document.createElement("strong");
+      title.textContent = getChatUserDisplayName(person);
+      const subtitle = document.createElement("span");
+      subtitle.textContent = buildChatPresenceLabel(presence);
+      copy.append(title, subtitle);
+      head.append(copy);
+
+      button.append(head);
+      button.addEventListener("click", () => {
+        void startDirectChatWithUser(person.id);
+      });
+      nodes.push(button);
     });
-    return button;
-  }));
+  });
+
+  chatPeopleView.replaceChildren(...nodes);
 }
 
 function renderChatThread() {
@@ -8249,9 +8350,9 @@ function renderChatComposer() {
     const copy = document.createElement("span");
     copy.className = "chat-composer-user-copy";
     const title = document.createElement("strong");
-    title.textContent = user.fullName || user.email;
+    title.textContent = getChatUserDisplayName(user);
     const subtitle = document.createElement("span");
-    subtitle.textContent = `${buildChatPresenceLabel(state.chat.presenceByUserId[user.id] ?? "offline")} · ${user.email || "bez emaila"}`;
+    subtitle.textContent = buildChatPresenceLabel(getChatUserPresence(user.id));
     copy.append(title, subtitle);
 
     label.append(checkbox, checkMark, avatar, copy);
@@ -8409,10 +8510,18 @@ function renderChatDock() {
     chatSearchInput.value = state.chat.search;
   }
 
+  if (chatSearchInput) {
+    const nextPlaceholder = state.chat.tab === "people"
+      ? "Pretraži korisnike"
+      : "Pretraži razgovore";
+    chatSearchInput.placeholder = nextPlaceholder;
+    chatSearchInput.setAttribute("aria-label", nextPlaceholder);
+  }
+
   if (chatListCaption) {
     chatListCaption.textContent = state.chat.tab === "people"
-      ? "Pokreni direktni chat ili složi novu grupu."
-      : "Aktivni razgovori i trenutna prisutnost kolega.";
+      ? "Tko je online, away, busy ili offline i kome možeš odmah pisati."
+      : "Aktivni razgovori i zadnje poruke tima.";
   }
 
   const isConversationMode = state.chat.panelMode === "conversation";
@@ -8421,6 +8530,9 @@ function renderChatDock() {
   renderChatConversationTabs();
 
   if (!shouldRenderPanelContents) {
+    if (chatPeopleSummary) {
+      chatPeopleSummary.hidden = true;
+    }
     if (chatEmojiPicker) {
       chatEmojiPicker.hidden = true;
     }
@@ -8429,6 +8541,7 @@ function renderChatDock() {
   }
 
   if (!isConversationMode) {
+    renderChatPeopleSummary();
     renderChatConversationList();
     renderChatPeopleList();
   }
@@ -62337,7 +62450,7 @@ chatLauncher?.addEventListener("click", () => {
     return;
   }
 
-  openChatHub("conversations");
+  openChatHub("people");
 });
 
 chatCloseButton?.addEventListener("click", () => {

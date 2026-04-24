@@ -6436,7 +6436,7 @@
           <div class="chat-panel-title">
             <span class="chat-panel-kicker">Live chat</span>
             <strong>Communicator</strong>
-            <span>Grupe, direktni razgovori i brza timska komunikacija.</span>
+            <span>Status kolega, direktni razgovori i timske grupe.</span>
           </div>
           <div class="chat-panel-actions">
             <button id="chat-new-group-button" type="button" class="ghost-button chat-header-button">+ Grupa</button>
@@ -6447,8 +6447,8 @@
         </div>
 
         <div class="chat-panel-tabs">
-          <button id="chat-tab-conversations" type="button" class="chat-tab-button is-active" data-chat-tab="conversations">Razgovori</button>
-          <button id="chat-tab-people" type="button" class="chat-tab-button" data-chat-tab="people">Ljudi</button>
+          <button id="chat-tab-people" type="button" class="chat-tab-button is-active" data-chat-tab="people">Ljudi</button>
+          <button id="chat-tab-conversations" type="button" class="chat-tab-button" data-chat-tab="conversations">Razgovori</button>
         </div>
 
         <div class="chat-panel-layout">
@@ -6460,9 +6460,10 @@
                   <path d="m16 16 4 4"></path>
                 </svg>
               </span>
-              <input id="chat-search-input" type="search" placeholder="Pretraži razgovore ili kolege" />
+              <input id="chat-search-input" type="search" placeholder="Pretraži korisnike" />
             </label>
-            <p id="chat-list-caption" class="chat-list-caption">Aktivni razgovori i prisutnost kolega.</p>
+            <p id="chat-list-caption" class="chat-list-caption">Tko je online, away, busy ili offline i kome možeš odmah pisati.</p>
+            <div id="chat-people-summary" class="chat-people-summary" hidden></div>
             <div id="chat-conversations-view" class="chat-list-view"></div>
             <div id="chat-people-view" class="chat-list-view" hidden></div>
           </aside>
