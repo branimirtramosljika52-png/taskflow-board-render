@@ -21544,6 +21544,67 @@ function formatContractValidityLabel(validFrom = "", validTo = "", { prefix = "V
   return "";
 }
 
+function getTodayDateKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatContractValidityRangeLabel(validFrom = "", validTo = "") {
+  const normalizedValidFrom = normalizeCompanyDateValue(validFrom);
+  const normalizedValidTo = normalizeCompanyDateValue(validTo);
+
+  if (normalizedValidFrom && normalizedValidTo) {
+    return `Vrijedi od ${formatDate(normalizedValidFrom)} do ${formatDate(normalizedValidTo)}`;
+  }
+  if (normalizedValidFrom) {
+    return `Vrijedi od ${formatDate(normalizedValidFrom)}`;
+  }
+  if (normalizedValidTo) {
+    return `Vrijedi do ${formatDate(normalizedValidTo)}`;
+  }
+  return "Važenje nije definirano";
+}
+
+function isContractCurrentlyValid(contract = {}, todayDateKey = getTodayDateKey()) {
+  const normalizedStatus = String(contract?.status || "").trim().toLowerCase();
+  if (normalizedStatus !== "active") {
+    return false;
+  }
+
+  const normalizedValidFrom = normalizeCompanyDateValue(contract?.validFrom);
+  const normalizedValidTo = normalizeCompanyDateValue(contract?.validTo);
+
+  if (normalizedValidFrom && normalizedValidFrom > todayDateKey) {
+    return false;
+  }
+
+  if (normalizedValidTo && normalizedValidTo < todayDateKey) {
+    return false;
+  }
+
+  return true;
+}
+
+function getCompanyContractDisplayTitle(contract = {}) {
+  return String(
+    contract?.title
+    || contract?.subject
+    || contract?.contractNumber
+    || contract?.templateTitle
+    || contract?.scopeSummary
+    || "Ugovor",
+  ).trim() || "Ugovor";
+}
+
+function getActiveContractsCountLabel(count = 0) {
+  if (count === 1) {
+    return "1 važeći ugovor";
+  }
+  if (count >= 2 && count <= 4) {
+    return `${count} važeća ugovora`;
+  }
+  return `${count} važećih ugovora`;
+}
+
 function resolveCompanyContractValidity(company = {}, linkedContracts = []) {
   const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
   const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
@@ -21769,6 +21830,73 @@ function createCompanyIdentityCell(company) {
   return cell;
 }
 
+function createCompanyContractsCell(rowSnapshot = {}) {
+  const cell = document.createElement("td");
+  const stack = document.createElement("div");
+  stack.className = "list-cell company-contracts-cell";
+
+  const activeContracts = Array.isArray(rowSnapshot.activeContracts) ? rowSnapshot.activeContracts : [];
+
+  if (activeContracts.length > 0) {
+    stack.append(createListLine(
+      getActiveContractsCountLabel(activeContracts.length),
+      "list-eyebrow",
+    ));
+
+    const contractsList = document.createElement("div");
+    contractsList.className = "company-contracts-list";
+
+    activeContracts.forEach((contract) => {
+      const item = document.createElement("div");
+      item.className = "company-contracts-item";
+
+      if (contract.contractNumber && contract.contractNumber !== contract.title) {
+        item.append(createListLine(contract.contractNumber, "list-tertiary"));
+      }
+
+      item.append(
+        createListLine(contract.title || "Ugovor", "list-primary"),
+        createListLine(contract.validityLabel || "Važenje nije definirano", "list-secondary"),
+      );
+
+      contractsList.append(item);
+    });
+
+    stack.append(contractsList);
+  } else {
+    stack.append(
+      createListLine(rowSnapshot.contractTitle || "Nema važećih ugovora", "list-primary"),
+      createListLine(rowSnapshot.contractSubtitle || "Dodaj ili aktiviraj ugovor za prikaz važenja.", "list-secondary"),
+    );
+
+    if (rowSnapshot.contractValidityLabel) {
+      stack.append(createListLine(rowSnapshot.contractValidityLabel, "list-tertiary"));
+    }
+  }
+
+  const metaItems = (rowSnapshot.contractMeta ?? []).filter(Boolean);
+
+  if (metaItems.length > 0) {
+    const metaRow = document.createElement("div");
+    metaRow.className = "list-meta-row";
+
+    metaItems.forEach((item) => {
+      if (typeof Node !== "undefined" && item instanceof Node) {
+        metaRow.append(item);
+      } else if (typeof item === "string") {
+        metaRow.append(createMetaPill(item));
+      } else {
+        metaRow.append(createMetaPill(item.label, item.className));
+      }
+    });
+
+    stack.append(metaRow);
+  }
+
+  cell.append(stack);
+  return cell;
+}
+
 function getCompanyContractValidityLabelFromSummary(company = {}, contractSummary = null) {
   const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
   const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
@@ -21795,7 +21923,11 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const companyId = String(company.id || "").trim();
   const managerSummary = getCompanyManagerSummaryText(company);
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
-  const contractValidityLabel = getCompanyContractValidityLabelFromSummary(company, contractSummary);
+  const activeContracts = Array.isArray(contractSummary?.activeContracts) ? contractSummary.activeContracts : [];
+  const hasLinkedContracts = contractCount > 0;
+  const contractValidityLabel = activeContracts.length === 0 && !hasLinkedContracts
+    ? getCompanyContractValidityLabelFromSummary(company, contractSummary)
+    : "";
   const employeeSizeLabel = getCompanyEmployeeSizeLabel(company.employeeSize);
   const contactMeta = [
     company.representativeOib ? `OIB ${company.representativeOib}` : "",
@@ -21811,11 +21943,17 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     contactSubtitle: company.contactPhone || "Bez kontaktnog broja",
     contactTertiary: company.contactEmail || "Bez kontaktnog emaila",
     contactMeta,
-    contractTitle: company.contractType || "Bez ugovora",
-    contractSubtitle: company.contractNumber || "Bez broja ugovora",
+    activeContracts,
+    contractTitle: hasLinkedContracts ? "Nema važećih ugovora" : (company.contractType || "Bez ugovora"),
+    contractSubtitle: hasLinkedContracts
+      ? "Provjeri datume ili status povezanih ugovora."
+      : (company.contractNumber || "Bez broja ugovora"),
     contractValidityLabel,
     contractMeta: [
       `Zaposleni: ${employeeSizeLabel}`,
+      ...(activeContracts.length ? [
+        getActiveContractsCountLabel(activeContracts.length),
+      ] : []),
       ...(contractCount ? [`${contractCount} ugovora`] : []),
     ],
     signature: [
@@ -21837,6 +21975,14 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       company.period,
       company.isActive ? "1" : "0",
       managerSummary,
+      ...activeContracts.map((contract) => [
+        contract.id,
+        contract.title,
+        contract.contractNumber,
+        contract.validFrom,
+        contract.validTo,
+        contract.validityLabel,
+      ].join("~~")),
       contractCount,
       contractSummary?.validFrom || "",
       contractSummary?.validTo || "",
@@ -42027,6 +42173,7 @@ function getCompanyLinkedContracts(companyId = "") {
 
 function buildCompanyListContractSummaryMap(contracts = state.contracts ?? []) {
   const summaryMap = new Map();
+  const todayDateKey = getTodayDateKey();
 
   (Array.isArray(contracts) ? contracts : []).forEach((contract) => {
     const companyId = String(contract?.companyId || "").trim();
@@ -42040,6 +42187,7 @@ function buildCompanyListContractSummaryMap(contracts = state.contracts ?? []) {
       count: 0,
       validFrom: "",
       validTo: "",
+      activeContracts: [],
     };
     summary.count += 1;
 
@@ -42051,7 +42199,36 @@ function buildCompanyListContractSummaryMap(contracts = state.contracts ?? []) {
       summary.validTo = validTo;
     }
 
+    if (isContractCurrentlyValid(contract, todayDateKey)) {
+      summary.activeContracts.push({
+        id: String(contract?.id || "").trim(),
+        title: getCompanyContractDisplayTitle(contract),
+        contractNumber: String(contract?.contractNumber || "").trim(),
+        validFrom,
+        validTo,
+        validityLabel: formatContractValidityRangeLabel(validFrom, validTo),
+      });
+    }
+
     summaryMap.set(companyId, summary);
+  });
+
+  summaryMap.forEach((summary) => {
+    summary.activeContracts = [...summary.activeContracts].sort((left, right) => {
+      const leftStart = left.validFrom || "9999-12-31";
+      const rightStart = right.validFrom || "9999-12-31";
+      if (leftStart !== rightStart) {
+        return leftStart.localeCompare(rightStart);
+      }
+
+      const leftEnd = left.validTo || "9999-12-31";
+      const rightEnd = right.validTo || "9999-12-31";
+      if (leftEnd !== rightEnd) {
+        return leftEnd.localeCompare(rightEnd);
+      }
+
+      return String(left.title || "").localeCompare(String(right.title || ""), "hr");
+    });
   });
 
   return summaryMap;
@@ -61441,12 +61618,7 @@ function renderCompanies() {
           tertiary: rowSnapshot.contactTertiary,
           meta: rowSnapshot.contactMeta,
         }),
-        createStackCell({
-          title: rowSnapshot.contractTitle,
-          subtitle: rowSnapshot.contractSubtitle,
-          tertiary: rowSnapshot.contractValidityLabel,
-          meta: rowSnapshot.contractMeta,
-        }),
+        createCompanyContractsCell(rowSnapshot),
         createCompanyActivityCell(rowSnapshot.company),
       );
 

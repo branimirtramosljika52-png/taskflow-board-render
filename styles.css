@@ -15669,6 +15669,26 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   min-width: 0;
 }
 
+.company-contracts-cell {
+  gap: 8px;
+}
+
+.company-contracts-list {
+  display: grid;
+  gap: 8px;
+}
+
+.company-contracts-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.company-contracts-item + .company-contracts-item {
+  padding-top: 8px;
+  border-top: 1px solid rgba(210, 218, 234, 0.82);
+}
+
 .company-activity-cell {
   gap: 8px;
   padding: 10px 12px;
