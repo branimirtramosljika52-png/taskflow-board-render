@@ -1935,6 +1935,8 @@ let chatThreadRenderSignature = "";
 let chatThreadHeaderRenderSignature = "";
 let chatPanelTabsRenderSignature = "";
 let chatDesktopTabsRenderSignature = "";
+let chatDesktopTabsScrollLeft = 0;
+let chatDesktopTabsPinnedToEnd = true;
 let chatComposerRenderSignature = "";
 let chatComposerSelectionRenderSignature = "";
 let chatEmojiPickerRenderSignature = "";
@@ -6994,6 +6996,129 @@ function syncChatPanelPosition() {
   chatPanel.style.bottom = "auto";
 }
 
+function getChatDesktopTabsMaxScrollLeft(rail) {
+  if (!rail) {
+    return 0;
+  }
+
+  return Math.max(0, rail.scrollWidth - rail.clientWidth);
+}
+
+function getChatDesktopTabsStepSize(rail) {
+  if (!rail) {
+    return 0;
+  }
+
+  const firstTab = rail.querySelector(".chat-desktop-tab");
+  const railStyles = window.getComputedStyle(rail);
+  const gapValue = Number.parseFloat(railStyles.columnGap || railStyles.gap || "0") || 0;
+  const tabWidth = firstTab?.getBoundingClientRect().width ?? 0;
+
+  return Math.max(tabWidth + gapValue, rail.clientWidth * 0.72, 180);
+}
+
+function syncChatDesktopTabsNavState(rail) {
+  if (!rail) {
+    return;
+  }
+
+  const scroller = rail.closest(".chat-desktop-tabs-scroller");
+  const previousButton = scroller?.querySelector('[data-chat-dock-nav="prev"]') ?? null;
+  const nextButton = scroller?.querySelector('[data-chat-dock-nav="next"]') ?? null;
+  const maxScrollLeft = getChatDesktopTabsMaxScrollLeft(rail);
+  const canScroll = maxScrollLeft > 6;
+  const currentScrollLeft = Math.min(maxScrollLeft, Math.max(0, rail.scrollLeft));
+
+  scroller?.classList.toggle("is-scrollable", canScroll);
+
+  if (previousButton) {
+    previousButton.hidden = !canScroll;
+    previousButton.disabled = !canScroll || currentScrollLeft <= 4;
+  }
+
+  if (nextButton) {
+    nextButton.hidden = !canScroll;
+    nextButton.disabled = !canScroll || currentScrollLeft >= maxScrollLeft - 4;
+  }
+}
+
+function syncChatDesktopTabsScrollState(rail) {
+  if (!rail) {
+    return;
+  }
+
+  const maxScrollLeft = getChatDesktopTabsMaxScrollLeft(rail);
+  chatDesktopTabsScrollLeft = Math.min(maxScrollLeft, Math.max(0, rail.scrollLeft));
+  chatDesktopTabsPinnedToEnd = maxScrollLeft <= 6 || chatDesktopTabsScrollLeft >= maxScrollLeft - 4;
+  syncChatDesktopTabsNavState(rail);
+}
+
+function restoreChatDesktopTabsRailPosition(rail, { ensureActive = false } = {}) {
+  if (!rail) {
+    return;
+  }
+
+  const maxScrollLeft = getChatDesktopTabsMaxScrollLeft(rail);
+  rail.scrollLeft = chatDesktopTabsPinnedToEnd
+    ? maxScrollLeft
+    : Math.min(maxScrollLeft, Math.max(0, chatDesktopTabsScrollLeft));
+
+  if (ensureActive) {
+    const activeTab = rail.querySelector(".chat-desktop-tab.is-active");
+    activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  syncChatDesktopTabsScrollState(rail);
+}
+
+function refreshChatDesktopTabsLayout(options = {}) {
+  const rail = chatDesktopTabs?.querySelector(".chat-desktop-tabs-rail");
+  if (!rail) {
+    return;
+  }
+
+  restoreChatDesktopTabsRailPosition(rail, options);
+}
+
+function scrollChatDesktopTabs(rail, direction = 1) {
+  if (!rail) {
+    return;
+  }
+
+  const maxScrollLeft = getChatDesktopTabsMaxScrollLeft(rail);
+  const nextScrollLeft = Math.min(
+    maxScrollLeft,
+    Math.max(0, rail.scrollLeft + (getChatDesktopTabsStepSize(rail) * direction)),
+  );
+
+  rail.scrollTo({
+    left: nextScrollLeft,
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+  });
+}
+
+function createChatDockNavButton(direction, rail) {
+  const button = document.createElement("button");
+  const isPrevious = direction < 0;
+
+  button.type = "button";
+  button.className = "chat-dock-nav";
+  button.dataset.chatDockNav = isPrevious ? "prev" : "next";
+  button.title = isPrevious ? "Prikaži starije razgovore" : "Prikaži novije razgovore";
+  button.setAttribute("aria-label", button.title);
+  button.innerHTML = `
+    <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="${isPrevious ? "14.5 7l-5 5 5 5" : "9.5 7l5 5-5 5"}"></path>
+    </svg>
+  `;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    scrollChatDesktopTabs(rail, isPrevious ? -1 : 1);
+  });
+
+  return button;
+}
+
 function queueChatPanelPositionSync() {
   if (chatPanelPositionRafId) {
     window.cancelAnimationFrame(chatPanelPositionRafId);
@@ -8419,6 +8544,8 @@ function renderChatConversationTabs() {
     if (chatDesktopTabsRenderSignature !== desktopSignature) {
       if (dockedConversations.length === 0) {
         chatDesktopTabs.replaceChildren();
+        chatDesktopTabsScrollLeft = 0;
+        chatDesktopTabsPinnedToEnd = true;
       }
       chatDesktopTabsRenderSignature = desktopSignature;
     }
@@ -8427,15 +8554,27 @@ function renderChatConversationTabs() {
 
   if (desktopSignature === chatDesktopTabsRenderSignature) {
     chatDesktopTabs.hidden = false;
+    window.requestAnimationFrame(() => {
+      refreshChatDesktopTabsLayout({ ensureActive: true });
+    });
     return;
   }
 
   const rail = document.createElement("div");
   rail.className = "chat-desktop-tabs-rail";
-  rail.addEventListener("scroll", queueChatPanelPositionSync, { passive: true });
+  rail.addEventListener("scroll", () => {
+    syncChatDesktopTabsScrollState(rail);
+    queueChatPanelPositionSync();
+  }, { passive: true });
   dockedConversations.forEach((conversation) => {
     rail.append(createChatConversationTabNode(conversation, { desktop: true }));
   });
+
+  const previousButton = createChatDockNavButton(-1, rail);
+  const nextButton = createChatDockNavButton(1, rail);
+  const scroller = document.createElement("div");
+  scroller.className = "chat-desktop-tabs-scroller";
+  scroller.append(previousButton, rail, nextButton);
 
   const newGroupButton = document.createElement("button");
   newGroupButton.type = "button";
@@ -8464,9 +8603,17 @@ function renderChatConversationTabs() {
     setChatDockCollapsed(true);
   });
 
+  const actions = document.createElement("div");
+  actions.className = "chat-desktop-tabs-actions";
+  actions.append(newGroupButton, dockToggleButton);
+
   chatDesktopTabs.hidden = false;
-  chatDesktopTabs.replaceChildren(rail, newGroupButton, dockToggleButton);
+  chatDesktopTabs.replaceChildren(scroller, actions);
   chatDesktopTabsRenderSignature = desktopSignature;
+  window.requestAnimationFrame(() => {
+    restoreChatDesktopTabsRailPosition(rail, { ensureActive: true });
+    queueChatPanelPositionSync();
+  });
 }
 
 function renderChatComposer() {
@@ -62773,6 +62920,7 @@ window.addEventListener("resize", () => {
     return;
   }
 
+  refreshChatDesktopTabsLayout();
   queueChatPanelPositionSync();
 }, { passive: true });
 
