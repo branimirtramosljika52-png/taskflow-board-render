@@ -1467,6 +1467,7 @@ const state = {
     panelMode: "hub",
     composerOpen: false,
     emojiPickerOpen: false,
+    contextMenu: null,
     composerTitle: "",
     composerParticipantIds: [],
     unreadTotal: 0,
@@ -2045,6 +2046,7 @@ const logoutButton = document.querySelector("#logout-button");
 const chatDock = document.querySelector("#chat-dock");
 const chatToast = document.querySelector("#chat-toast");
 const chatDesktopTabs = document.querySelector("#chat-desktop-tabs");
+const chatConversationMenu = document.querySelector("#chat-conversation-menu");
 const chatLauncher = document.querySelector("#chat-launcher");
 const chatLauncherPresence = document.querySelector("#chat-launcher-presence");
 const chatLauncherCaption = document.querySelector("#chat-launcher-caption");
@@ -6720,6 +6722,7 @@ function resetChatState() {
   state.chat.panelMode = "hub";
   state.chat.composerOpen = false;
   state.chat.emojiPickerOpen = false;
+  state.chat.contextMenu = null;
   state.chat.composerTitle = "";
   state.chat.composerParticipantIds = [];
   state.chat.unreadTotal = 0;
@@ -7605,13 +7608,6 @@ async function deleteChatConversation(conversationId = state.chat.activeConversa
     return;
   }
 
-  const shouldDelete = window.confirm(
-    `Obrisati razgovor "${conversation.title || "Razgovor"}"? Stara povijest će se maknuti samo tebi.`,
-  );
-  if (!shouldDelete) {
-    return;
-  }
-
   const isDeletingActiveConversation = String(conversation.id) === String(state.chat.activeConversationId);
 
   try {
@@ -7639,13 +7635,137 @@ function bindChatConversationDeleteShortcut(target, conversation) {
   target.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    openChatConversationMenu({
+      conversationId: conversation.id,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+    });
+  });
+}
+
+function hideChatConversationMenu() {
+  if (!chatConversationMenu) {
+    return;
+  }
+
+  chatConversationMenu.hidden = true;
+  chatConversationMenu.style.left = "";
+  chatConversationMenu.style.top = "";
+  chatConversationMenu.replaceChildren();
+}
+
+function closeChatConversationMenu({ render = true } = {}) {
+  if (!state.chat.contextMenu) {
+    hideChatConversationMenu();
+    return;
+  }
+
+  state.chat.contextMenu = null;
+
+  if (render) {
+    renderChatDock();
+    return;
+  }
+
+  hideChatConversationMenu();
+}
+
+function openChatConversationMenu({ conversationId = "", pointerX = 0, pointerY = 0 } = {}) {
+  const conversation = getChatConversationById(conversationId);
+
+  if (!conversation) {
+    closeChatConversationMenu();
+    return;
+  }
+
+  state.chat.contextMenu = {
+    conversationId: String(conversation.id),
+    x: Number(pointerX) || 0,
+    y: Number(pointerY) || 0,
+  };
+  renderChatDock();
+}
+
+function renderChatConversationMenu() {
+  if (!chatConversationMenu) {
+    return;
+  }
+
+  const menuState = state.chat.contextMenu;
+  if (!menuState) {
+    hideChatConversationMenu();
+    return;
+  }
+
+  const conversation = getChatConversationById(menuState.conversationId);
+  if (!conversation) {
+    state.chat.contextMenu = null;
+    hideChatConversationMenu();
+    return;
+  }
+
+  const body = document.createElement("div");
+  body.className = "chat-conversation-menu-body";
+
+  const kicker = document.createElement("span");
+  kicker.className = "chat-conversation-menu-kicker";
+  kicker.textContent = "Razgovor";
+
+  const title = document.createElement("strong");
+  title.className = "chat-conversation-menu-title";
+  title.textContent = conversation.title || "Razgovor";
+
+  const copy = document.createElement("p");
+  copy.className = "chat-conversation-menu-copy";
+  copy.textContent = "Stara povijest ovog razgovora maknut ce se samo tebi.";
+
+  body.append(kicker, title, copy);
+
+  const actions = document.createElement("div");
+  actions.className = "chat-conversation-menu-actions";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button ghost-button-tiny";
+  cancelButton.textContent = "Odustani";
+  cancelButton.addEventListener("click", () => {
+    closeChatConversationMenu();
+  });
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "card-button card-danger ghost-button-tiny chat-conversation-menu-delete";
+  deleteButton.textContent = "Izbrisi razgovor";
+  deleteButton.addEventListener("click", () => {
+    closeChatConversationMenu({ render: false });
     void deleteChatConversation(conversation.id);
   });
+
+  actions.append(cancelButton, deleteButton);
+  chatConversationMenu.replaceChildren(body, actions);
+  chatConversationMenu.hidden = false;
+
+  const viewportPadding = 12;
+  const preferredLeft = (Number(menuState.x) || 0) + 10;
+  const preferredTop = (Number(menuState.y) || 0) + 10;
+  const menuRect = chatConversationMenu.getBoundingClientRect();
+  const left = Math.max(
+    viewportPadding,
+    Math.min(preferredLeft, window.innerWidth - menuRect.width - viewportPadding),
+  );
+  const top = Math.max(
+    viewportPadding,
+    Math.min(preferredTop, window.innerHeight - menuRect.height - viewportPadding),
+  );
+
+  chatConversationMenu.style.left = `${Math.round(left)}px`;
+  chatConversationMenu.style.top = `${Math.round(top)}px`;
 }
 
 function setChatComposerOpen(isOpen, { render = true } = {}) {
   state.chat.composerOpen = Boolean(isOpen);
   state.chat.emojiPickerOpen = false;
+  state.chat.contextMenu = null;
 
   if (!state.chat.composerOpen) {
     state.chat.composerTitle = "";
@@ -7661,6 +7781,7 @@ function setChatComposerOpen(isOpen, { render = true } = {}) {
 function setChatOpen(isOpen) {
   state.chat.open = Boolean(isOpen);
   state.chat.emojiPickerOpen = false;
+  state.chat.contextMenu = null;
 
   if (!state.chat.open) {
     setChatComposerOpen(false, { render: false });
@@ -7701,6 +7822,7 @@ function openChatHub(tab = state.chat.tab || "people") {
   state.chat.tab = tab;
   state.chat.panelMode = "hub";
   state.chat.emojiPickerOpen = false;
+  state.chat.contextMenu = null;
   setChatOpen(true);
 }
 
@@ -7717,6 +7839,7 @@ function activateChatConversation(conversationId, { openPanel = true, markAsRead
   state.chat.panelMode = "conversation";
   state.chat.open = Boolean(openPanel);
   state.chat.emojiPickerOpen = false;
+  state.chat.contextMenu = null;
   state.chat.composerOpen = false;
   state.chat.composerTitle = "";
   state.chat.composerParticipantIds = [];
@@ -7841,7 +7964,7 @@ function renderChatConversationList() {
       button.classList.toggle("is-active", String(conversation.id) === String(state.chat.activeConversationId));
       button.classList.toggle("is-unread", Number(conversation.unreadCount ?? 0) > 0);
       button.classList.toggle("is-docked", state.chat.dockedConversationIds.includes(String(conversation.id)));
-      button.title = `Otvori ${conversation.title || "razgovor"} (desni klik za brisanje)`;
+      button.title = `Otvori ${conversation.title || "razgovor"} (desni klik za opcije)`;
 
       const head = document.createElement("div");
       head.className = "chat-list-card-head";
@@ -8508,6 +8631,7 @@ function renderChatDock() {
   const shouldRenderPanelContents = state.chat.open || state.chat.composerOpen;
   setChatError(state.chat.error);
   renderChatConversationTabs();
+  renderChatConversationMenu();
 
   if (!shouldRenderPanelContents) {
     if (chatPeopleSummary) {
@@ -62524,6 +62648,11 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 window.addEventListener("resize", () => {
+  if (state.chat.contextMenu) {
+    closeChatConversationMenu();
+    return;
+  }
+
   queueChatPanelPositionSync();
 }, { passive: true });
 
@@ -66008,6 +66137,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (state.chat.contextMenu && event.key === "Escape") {
+    closeChatConversationMenu();
+    return;
+  }
+
   if (!state.measurementSheet.isOpen) {
     return;
   }
@@ -66336,6 +66470,14 @@ document.addEventListener("click", (event) => {
 
     if (!clickedContextMenu) {
       closeMeasurementContextMenu();
+    }
+  }
+
+  if (state.chat.contextMenu && event.target instanceof Node) {
+    const clickedChatConversationMenu = chatConversationMenu?.contains(event.target);
+
+    if (!clickedChatConversationMenu) {
+      closeChatConversationMenu();
     }
   }
 

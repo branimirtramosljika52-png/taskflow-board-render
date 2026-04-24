@@ -16924,6 +16924,69 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   display: none;
 }
 
+.chat-conversation-menu {
+  position: fixed;
+  z-index: 122;
+  width: min(280px, calc(100vw - 24px));
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(206, 180, 225, 0.94);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 242, 253, 0.98));
+  box-shadow:
+    0 24px 46px rgba(26, 32, 52, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  pointer-events: auto;
+}
+
+.chat-conversation-menu[hidden] {
+  display: none;
+}
+
+.chat-conversation-menu-body {
+  display: grid;
+  gap: 5px;
+}
+
+.chat-conversation-menu-kicker {
+  color: #77839a;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chat-conversation-menu-title {
+  color: #283146;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.chat-conversation-menu-copy {
+  margin: 0;
+  color: #667287;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.chat-conversation-menu-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-conversation-menu-actions .ghost-button,
+.chat-conversation-menu-actions .card-button {
+  min-height: 30px;
+}
+
+.chat-conversation-menu-delete {
+  white-space: nowrap;
+}
+
 .chat-desktop-tabs-rail {
   min-width: 0;
   display: flex;
