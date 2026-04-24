@@ -21793,24 +21793,24 @@ function getCompanyContractValidityLabelFromSummary(company = {}, contractSummar
 
 function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const companyId = String(company.id || "").trim();
-  const contact = [company.contactPhone, company.contactEmail].filter(Boolean).join(" / ") || "Bez kontakta";
-  const contactSubtitle = [company.representativeRole, contact].filter(Boolean).join(" · ") || "Bez kontakta";
   const managerSummary = getCompanyManagerSummaryText(company);
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
   const contractValidityLabel = getCompanyContractValidityLabelFromSummary(company, contractSummary);
   const employeeSizeLabel = getCompanyEmployeeSizeLabel(company.employeeSize);
-  const contactTertiary = [
+  const contactMeta = [
     company.representativeOib ? `OIB ${company.representativeOib}` : "",
     managerSummary ? `Voditelji: ${managerSummary}` : "",
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean);
 
   return {
     company,
     companyId,
     ariaLabel: `Uredi tvrtku ${company.name || "tvrtku"}`,
-    contactTitle: company.representative || "Bez odgovorne osobe",
-    contactSubtitle,
-    contactTertiary,
+    contactEyebrow: company.representativeRole || "",
+    contactTitle: company.representative || "Bez kontakt osobe",
+    contactSubtitle: company.contactPhone || "Bez kontaktnog broja",
+    contactTertiary: company.contactEmail || "Bez kontaktnog emaila",
+    contactMeta,
     contractTitle: company.contractType || "Bez ugovora",
     contractSubtitle: company.contractNumber || "Bez broja ugovora",
     contractValidityLabel,
@@ -61435,9 +61435,11 @@ function renderCompanies() {
       row.append(
         createCompanyIdentityCell(rowSnapshot.company),
         createStackCell({
+          eyebrow: rowSnapshot.contactEyebrow,
           title: rowSnapshot.contactTitle,
           subtitle: rowSnapshot.contactSubtitle,
           tertiary: rowSnapshot.contactTertiary,
+          meta: rowSnapshot.contactMeta,
         }),
         createStackCell({
           title: rowSnapshot.contractTitle,
