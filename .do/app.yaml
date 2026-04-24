@@ -1,5 +1,10 @@
 name: taskflow-board-do
 region: fra
+domains:
+  - domain: safe-nexus.org
+    type: PRIMARY
+  - domain: www.safe-nexus.org
+    type: ALIAS
 services:
   - name: web
     git:
