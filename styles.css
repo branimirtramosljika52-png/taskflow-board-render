@@ -3407,8 +3407,8 @@ body.is-location-editor-open {
 
 .company-client-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.38fr);
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   align-items: start;
 }
 
