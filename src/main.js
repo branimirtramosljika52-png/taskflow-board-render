@@ -1472,6 +1472,8 @@ const state = {
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
+    collapsedBlocksInitializedKey: "",
+    skippedWorkOrderIds: [],
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -12102,6 +12104,40 @@ function toDateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
+function formatDateInputDisplayValue(value) {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, "$1.$2.$3");
+  const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
+    || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
+  if (!looksLikeCompleteDate) {
+    return rawValue;
+  }
+
+  const parsedDate = parseDateValue(normalizedRawValue);
+  return parsedDate ? formatCompactDate(parsedDate) : rawValue;
+}
+
+function normalizeDateInputValue(value) {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, "$1.$2.$3");
+  const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
+    || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
+  if (!looksLikeCompleteDate) {
+    return rawValue;
+  }
+
+  const parsedDate = parseDateValue(normalizedRawValue);
+  return parsedDate ? toDateKey(parsedDate) : rawValue;
+}
+
 function getStartOfWeekDateKey(value) {
   const parsedDate = parseDateValue(value) ?? new Date();
   const start = new Date(parsedDate);
@@ -13280,7 +13316,7 @@ function getWorkOrderDocumentActionCopy(mode = "") {
     bulk: "Izrada zapisnika",
     helper: "odabrano za zapisnike.",
     title: "Izrada zapisnika",
-    wizardHelper: "Gore postavi zajedničke podatke za sve, a dolje po RN-u prepravi samo ono što odskače.",
+    wizardHelper: "",
   };
 }
 
@@ -32296,13 +32332,17 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
 function buildDocumentTemplateRuntimeBatchSequenceEntries() {
   const sequenceEntries = getDocumentTemplateRuntimeSequenceEntries();
   if (sequenceEntries.length > 0) {
-    return sequenceEntries;
+    return getDocumentTemplateRuntimeExportableSequenceEntries(sequenceEntries);
   }
 
   const activeTemplate = buildDocumentTemplateDraft();
   const activeTemplateId = getDocumentTemplateRuntimeTemplateId(activeTemplate);
   const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
-  if (!activeTemplateId || !activeWorkOrder) {
+  if (
+    !activeTemplateId
+    || !activeWorkOrder
+    || isDocumentTemplateRuntimeWorkOrderSkipped(activeWorkOrder.id)
+  ) {
     return [];
   }
 
@@ -39342,6 +39382,119 @@ function setDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0, co
   }
 }
 
+function getDocumentTemplateRuntimeSkippedWorkOrderIdSet() {
+  return new Set(
+    (Array.isArray(state.documentTemplateRuntime.skippedWorkOrderIds)
+      ? state.documentTemplateRuntime.skippedWorkOrderIds
+      : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+}
+
+function isDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  return Boolean(normalizedId && getDocumentTemplateRuntimeSkippedWorkOrderIdSet().has(normalizedId));
+}
+
+function setDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "", skipped = false, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const skippedIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
+  if (skipped) {
+    skippedIds.add(normalizedId);
+  } else {
+    skippedIds.delete(normalizedId);
+  }
+
+  state.documentTemplateRuntime.skippedWorkOrderIds = [...skippedIds];
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
+function getDocumentTemplateRuntimeExportableSequenceEntries(entries = getDocumentTemplateRuntimeSequenceEntries()) {
+  const skippedIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => !skippedIds.has(String(entry?.workOrderId || "").trim()));
+}
+
+function ensureDocumentTemplateRuntimeBlocksInitiallyCollapsed(template = buildDocumentTemplateDraft(), blocks = []) {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    return;
+  }
+
+  const activeWorkOrderId = String(state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const blockIds = (Array.isArray(blocks) ? blocks : [])
+    .map((block, index) => getDocumentTemplateRuntimeBlockId(block, index))
+    .filter(Boolean);
+  const collapseKey = [
+    getDocumentTemplateRuntimeTemplateId(template),
+    activeWorkOrderId,
+    blockIds.join("|"),
+  ].join("::");
+
+  if (!collapseKey || state.documentTemplateRuntime.collapsedBlocksInitializedKey === collapseKey) {
+    return;
+  }
+
+  state.documentTemplateRuntime.collapsedBlocks = Object.fromEntries(blockIds.map((blockId) => [blockId, true]));
+  state.documentTemplateRuntime.collapsedBlocksInitializedKey = collapseKey;
+}
+
+function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDocumentTemplateRuntimeActiveWorkOrder()) {
+  const items = (Array.isArray(block?.items) ? block.items : [])
+    .map((entry) => entry?.field)
+    .filter((field) => field && isDocumentTemplateRuntimeVisibleField(field));
+  const total = items.length;
+
+  if (!workOrder || total === 0) {
+    return {
+      ok: true,
+      complete: 0,
+      total,
+      label: total === 0 ? "Automatski blok" : "Bez aktivnog RN-a",
+      details: [],
+    };
+  }
+
+  const details = [];
+  const complete = items.reduce((count, field) => {
+    const value = getDocumentTemplateRuntimeInitialValue(field, workOrder.id);
+    const fieldType = String(field?.type || "").trim().toLowerCase();
+    const isComplete = fieldType === "checkbox" || fieldType === "toggle"
+      ? true
+      : hasMeaningfulDocumentRecordValue(value);
+
+    if (details.length < 3) {
+      const label = String(field?.label || field?.wordLabel || getDocumentTemplateFieldTypeLabel(fieldType) || "Polje").trim();
+      const displayValue = hasMeaningfulDocumentRecordValue(value)
+        ? formatDocumentTemplateLookupResolvedValue(value)
+        : "prazno";
+      const normalizedDisplay = String(displayValue || "").trim();
+      details.push(`${label}: ${normalizedDisplay.length > 34 ? `${normalizedDisplay.slice(0, 34)}...` : normalizedDisplay}`);
+    }
+
+    return count + (isComplete ? 1 : 0);
+  }, 0);
+  const ok = total === 0 || complete >= total;
+
+  return {
+    ok,
+    complete,
+    total,
+    label: total > 0 ? `${complete}/${total} popunjeno` : "Automatski blok",
+    details,
+  };
+}
+
 const LEARNING_QUESTION_OPTION_KEYS = ["A", "B", "C", "D"];
 const LEARNING_QUESTION_TYPE_OPTIONS = [
   { value: "single_choice", label: "Jedan točan odgovor" },
@@ -40591,6 +40744,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
   if (sequenceState?.isSummary) {
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
+    const exportableEntries = getDocumentTemplateRuntimeExportableSequenceEntries(sequenceState.entries);
+    const exportableGroups = groupDocumentTemplateRuntimeDockEntries(exportableEntries);
+    const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
 
     const summaryBlock = document.createElement("section");
@@ -40616,7 +40772,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     batchCardTitle.textContent = "Pregled batcha";
     const batchCardMeta = document.createElement("p");
     batchCardMeta.className = "helper-copy module-copy";
-    batchCardMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-a"} · ${sequenceState.itemTotal} ${sequenceState.itemTotal === 1 ? "zapisnik" : "zapisnika"} spremno za završetak.`;
+    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN" : "RN-a"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} ide u završetak. Preskočeni RN-ovi ostaju u pregledu, ali ne idu u export.`;
     batchCard.append(batchCardTitle, batchCardMeta);
 
     const signatureCard = document.createElement("article");
@@ -40666,6 +40822,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     wordButton.type = "button";
     wordButton.className = "ghost-button";
     wordButton.textContent = "Preuzmi Word";
+    wordButton.disabled = exportableEntries.length === 0;
     wordButton.addEventListener("click", () => {
       void exportDocumentTemplateWord({ placeholderMode: false });
     });
@@ -40673,14 +40830,20 @@ function renderDocumentTemplateRuntimeFieldRows() {
     pdfButton.type = "button";
     pdfButton.className = "ghost-button";
     pdfButton.textContent = "Preuzmi PDF";
+    pdfButton.disabled = exportableEntries.length === 0;
     pdfButton.addEventListener("click", () => {
+      if (sequenceState.itemTotal > 1) {
+        void exportDocumentTemplateBatchPdf({ print: false });
+        return;
+      }
       void exportDocumentTemplatePdf();
     });
     const printAllButton = document.createElement("button");
     printAllButton.type = "button";
     printAllButton.className = "ghost-button";
     printAllButton.textContent = "Ispiši sve";
-    printAllButton.hidden = sequenceState.itemTotal <= 1;
+    printAllButton.hidden = exportableEntries.length <= 1;
+    printAllButton.disabled = exportableEntries.length === 0;
     printAllButton.addEventListener("click", () => {
       void exportDocumentTemplateBatchPdf({ print: true });
     });
@@ -40689,6 +40852,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     sendSignatureButton.className = "ghost-button";
     sendSignatureButton.textContent = "Pošalji na digitalni potpis";
     sendSignatureButton.hidden = signatureMode !== "digital";
+    sendSignatureButton.disabled = exportableEntries.length === 0;
     sendSignatureButton.addEventListener("click", () => {
       void queueDocumentTemplateForDigitalSignature();
     });
@@ -40698,8 +40862,22 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
     groupedEntries.forEach((group) => {
+      const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
+      const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
+      const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
+      const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
+      const servicesOk = serviceItems.length === 0 || completedServices >= serviceItems.length;
+      const groupOk = !skipped && servicesOk && group.items.length > 0;
       const entryCard = document.createElement("article");
       entryCard.className = "document-template-runtime-summary-entry";
+      entryCard.classList.toggle("is-skipped", skipped);
+      entryCard.classList.toggle("is-ok", groupOk);
+      entryCard.classList.toggle("is-warning", !groupOk && !skipped);
+
+      const entryHead = document.createElement("div");
+      entryHead.className = "document-template-runtime-summary-entry-head";
+      const entryTitleWrap = document.createElement("div");
+      entryTitleWrap.className = "document-template-runtime-summary-entry-title";
       const entryTitle = document.createElement("strong");
       entryTitle.textContent = `RN ${group.workOrderNumber}`;
       const firstItem = group.items[0] || {};
@@ -40709,12 +40887,55 @@ function renderDocumentTemplateRuntimeFieldRows() {
         firstItem.locationName || "",
         `${group.items.length} ${group.items.length === 1 ? "zapisnik" : "zapisnika"}`,
       ].filter(Boolean).join(" · ") || "Povezani zapisnici";
+      entryTitleWrap.append(entryTitle, entryMeta);
+      const statusPill = document.createElement("span");
+      statusPill.className = "document-template-runtime-summary-status";
+      statusPill.textContent = skipped
+        ? "Preskočeno"
+        : (groupOk ? "OK" : "Provjeri");
+      const skipButton = document.createElement("button");
+      skipButton.type = "button";
+      skipButton.className = "ghost-button document-template-runtime-summary-skip";
+      skipButton.textContent = skipped ? "Vrati RN" : "Preskoči";
+      skipButton.addEventListener("click", () => {
+        setDocumentTemplateRuntimeWorkOrderSkipped(group.workOrderId, !skipped, { render: true });
+      });
+      entryHead.append(entryTitleWrap, statusPill, skipButton);
+
       const entryChips = document.createElement("div");
       entryChips.className = "document-template-runtime-summary-entry-chips";
       group.items.forEach((entry) => {
         entryChips.append(createBadge(entry.timelineLabel, "document-template-meta-badge"));
       });
-      entryCard.append(entryTitle, entryMeta, entryChips);
+
+      const serviceList = document.createElement("div");
+      serviceList.className = "document-template-runtime-summary-services";
+      if (serviceItems.length === 0) {
+        const emptyService = document.createElement("span");
+        emptyService.className = "document-template-runtime-summary-service-empty";
+        emptyService.textContent = "Nema odabranih usluga na ovom RN-u.";
+        serviceList.append(emptyService);
+      } else {
+        serviceItems.forEach((service) => {
+          const serviceRow = document.createElement("div");
+          serviceRow.className = "document-template-runtime-summary-service";
+          serviceRow.classList.toggle("is-complete", Boolean(service?.isCompleted));
+          const serviceName = document.createElement("span");
+          serviceName.textContent = service.name || service.serviceName || service.serviceCode || "Usluga";
+          const serviceStatus = document.createElement("strong");
+          serviceStatus.textContent = service?.isCompleted ? "Odrađeno" : "Nije označeno";
+          serviceRow.append(serviceName, serviceStatus);
+          serviceList.append(serviceRow);
+        });
+      }
+
+      const serviceMeta = document.createElement("p");
+      serviceMeta.className = "helper-copy module-copy document-template-runtime-summary-service-meta";
+      serviceMeta.textContent = serviceItems.length > 0
+        ? `${completedServices}/${serviceItems.length} usluga označeno kao odrađeno.`
+        : "Dodaj usluge na RN ako ovaj zapisnik treba pratiti uslugu.";
+
+      entryCard.append(entryHead, entryChips, serviceList, serviceMeta);
       groupedList.append(entryCard);
     });
 
@@ -40756,6 +40977,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
     documentTemplateCustomFields.replaceChildren(shell);
     return;
   }
+
+  ensureDocumentTemplateRuntimeBlocksInitiallyCollapsed(template, visibleBlocks);
 
   const createFieldTitle = (field, fallbackIndex) => field.label || field.wordLabel || `Polje ${fallbackIndex + 1}`;
 
@@ -40864,10 +41087,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
       });
     } else if (field.type === "date") {
       control = document.createElement("input");
-      control.type = "date";
-      control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
+      control.type = "text";
+      control.inputMode = "numeric";
+      control.placeholder = "dd.mm.yyyy";
+      control.value = formatDateInputDisplayValue(getDocumentTemplateRuntimeInitialValue(field, workOrderId));
       control.addEventListener("input", (event) => {
         setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
+      control.addEventListener("change", (event) => {
+        const normalizedValue = normalizeDateInputValue(event.currentTarget.value);
+        event.currentTarget.value = formatDateInputDisplayValue(normalizedValue);
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, normalizedValue, { render: false });
         renderDocumentTemplatePreviewContent();
       });
     } else if (field.type === "checkbox" || field.type === "toggle") {
@@ -41757,7 +41988,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block";
     const collapsed = isDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
+    const completion = getDocumentTemplateRuntimeBlockCompletion(block, activeWorkOrder);
     blockNode.classList.toggle("is-collapsed", collapsed);
+    blockNode.classList.toggle("is-ok", completion.ok);
+    blockNode.classList.toggle("is-warning", !completion.ok);
 
     const head = document.createElement("div");
     head.className = "document-template-runtime-block-head";
@@ -41766,7 +42000,14 @@ function renderDocumentTemplateRuntimeFieldRows() {
     toggleButton.className = "document-template-runtime-block-toggle";
     toggleButton.textContent = collapsed ? "+" : "−";
     toggleButton.setAttribute("aria-label", collapsed ? "Prikaži blok" : "Sakrij blok");
-    toggleButton.addEventListener("click", () => {
+    toggleButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
+    });
+    head.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
+        return;
+      }
       toggleDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
     });
     const copy = document.createElement("div");
@@ -41774,14 +42015,23 @@ function renderDocumentTemplateRuntimeFieldRows() {
     title.textContent = block.chapter?.label || `Blok ${blockIndex + 1}`;
     const meta = document.createElement("p");
     meta.className = "document-template-runtime-block-meta";
-    meta.textContent = block.chapter?.helpText
-      || (block.items.length > 0
-        ? `${block.items.length} polja za unos u ovom bloku.`
-        : "Ovaj blok se puni automatski iz RN-a i povezanih podataka.");
+    meta.textContent = [
+      completion.label,
+      ...(collapsed ? completion.details : []),
+      !collapsed && block.chapter?.helpText ? block.chapter.helpText : "",
+    ].filter(Boolean).join(" · ") || (block.items.length > 0
+      ? `${block.items.length} polja za unos u ovom bloku.`
+      : "Ovaj blok se puni automatski iz RN-a i povezanih podataka.");
     copy.append(title, meta);
     const headMeta = document.createElement("div");
     headMeta.className = "document-template-runtime-block-actions";
+    const statusDot = document.createElement("span");
+    statusDot.className = "document-template-runtime-block-status-dot";
+    statusDot.title = completion.ok ? "Sve je popunjeno" : "Treba provjeriti blok";
+    statusDot.setAttribute("aria-label", statusDot.title);
     headMeta.append(
+      statusDot,
+      createBadge(completion.ok ? "OK" : "Provjeri", `document-template-meta-badge ${completion.ok ? "is-success" : "is-warning"}`),
       createBadge(`${block.items.length} polja`, "document-template-meta-badge"),
       toggleButton,
     );
@@ -60022,9 +60272,9 @@ function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = 
   if (mixed) {
     label.textContent = "Izvršitelji";
   } else if (normalizedValues.length === 1) {
-    label.textContent = "1 izvršitelj";
+    label.textContent = normalizedValues[0];
   } else if (normalizedValues.length > 1) {
-    label.textContent = `${normalizedValues.length} izvršitelja`;
+    label.textContent = normalizedValues.join(", ");
   } else {
     label.textContent = "Izvršitelji";
   }
@@ -60849,10 +61099,14 @@ function syncWorkOrderDocumentWizardCommonInputs() {
     return;
   }
   if (workOrderDocumentCommonInspectionDateInput) {
-    workOrderDocumentCommonInspectionDateInput.value = state.workOrderDocumentWizard.common.inspectionDate || "";
+    workOrderDocumentCommonInspectionDateInput.value = formatDateInputDisplayValue(
+      state.workOrderDocumentWizard.common.inspectionDate,
+    );
   }
   if (workOrderDocumentCommonIssuedDateInput) {
-    workOrderDocumentCommonIssuedDateInput.value = state.workOrderDocumentWizard.common.issuedDate || "";
+    workOrderDocumentCommonIssuedDateInput.value = formatDateInputDisplayValue(
+      state.workOrderDocumentWizard.common.issuedDate,
+    );
   }
   if (workOrderDocumentCommonOutsideTemperatureInput) {
     workOrderDocumentCommonOutsideTemperatureInput.value = state.workOrderDocumentWizard.common.outsideTemperature || "";
@@ -61940,6 +62194,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
+    collapsedBlocksInitializedKey: "",
+    skippedWorkOrderIds: [],
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -62011,6 +62267,11 @@ function pruneDocumentTemplateRuntimeContext() {
   state.documentTemplateRuntime.sequenceEntries = normalizeDocumentTemplateRuntimeSequenceEntries(
     state.documentTemplateRuntime.sequenceEntries ?? [],
   );
+  state.documentTemplateRuntime.skippedWorkOrderIds = (Array.isArray(state.documentTemplateRuntime.skippedWorkOrderIds)
+    ? state.documentTemplateRuntime.skippedWorkOrderIds
+    : [])
+    .map((value) => String(value ?? "").trim())
+    .filter((value) => validIds.includes(value));
   if (state.documentTemplateRuntime.sequenceEntries.length === 0) {
     state.documentTemplateRuntime.sequenceIndex = -1;
   } else {
@@ -62087,6 +62348,8 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
+    collapsedBlocksInitializedKey: "",
+    skippedWorkOrderIds: [],
     common: {
       inspectionDate: String(state.workOrderDocumentWizard.common?.inspectionDate ?? "").trim(),
       issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
@@ -62964,9 +63227,21 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       });
     };
 
-    toggleButton.addEventListener("click", () => {
+    const toggleSection = () => {
       toggleWorkOrderDocumentWizardSectionCollapsed(workOrder.id, sectionKey);
       syncSectionState();
+    };
+
+    toggleButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleSection();
+    });
+
+    headNode.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
+        return;
+      }
+      toggleSection();
     });
 
     headNode.append(copyNode, toggleButton);
@@ -62990,9 +63265,16 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     labelNode.textContent = label;
 
     const input = document.createElement("input");
-    input.type = type;
-    input.value = getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName);
-    input.placeholder = placeholder;
+    const isDateField = type === "date";
+    input.type = isDateField ? "text" : type;
+    if (isDateField) {
+      input.inputMode = "numeric";
+      input.dataset.batchValueType = "date";
+    }
+    input.value = isDateField
+      ? formatDateInputDisplayValue(getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName))
+      : getWorkOrderDocumentWizardSourceValue(workOrder.id, fieldName);
+    input.placeholder = isDateField ? formatDateInputDisplayValue(placeholder) || "dd.mm.yyyy" : placeholder;
     input.dataset.batchField = fieldName;
     input.dataset.batchWorkOrderId = String(workOrder.id);
 
@@ -63906,8 +64188,8 @@ function renderWorkOrderDocumentWizard() {
     workOrderDocumentWizardTitle.textContent = copy.title;
   }
   if (workOrderDocumentWizardHelper) {
-    workOrderDocumentWizardHelper.textContent = copy.wizardHelper;
-    workOrderDocumentWizardHelper.hidden = false;
+    workOrderDocumentWizardHelper.textContent = copy.wizardHelper || "";
+    workOrderDocumentWizardHelper.hidden = !copy.wizardHelper;
   }
   syncWorkOrderDocumentWizardCommonInputs();
   renderWorkOrderDocumentWizardCommonSection();
@@ -65673,17 +65955,53 @@ workOrderDocumentWizardStepDetailsButton?.addEventListener("click", () => {
 workOrderDocumentWizardStepTemplatesButton?.addEventListener("click", () => {
   setWorkOrderDocumentWizardStep("templates");
 });
-workOrderDocumentWizardCommonToggleButton?.addEventListener("click", () => {
+const toggleWorkOrderDocumentWizardCommon = () => {
   state.workOrderDocumentWizard.commonCollapsed = !state.workOrderDocumentWizard.commonCollapsed;
   renderWorkOrderDocumentWizardCommonSection();
-});
-workOrderDocumentWizardCommonPeopleToggleButton?.addEventListener("click", () => {
+};
+const toggleWorkOrderDocumentWizardCommonPeople = () => {
   state.workOrderDocumentWizard.commonPeopleCollapsed = !state.workOrderDocumentWizard.commonPeopleCollapsed;
   renderWorkOrderDocumentWizardCommonPeopleSection();
-});
-workOrderDocumentWizardCommonEnvToggleButton?.addEventListener("click", () => {
+};
+const toggleWorkOrderDocumentWizardCommonEnv = () => {
   state.workOrderDocumentWizard.commonEnvCollapsed = !state.workOrderDocumentWizard.commonEnvCollapsed;
   renderWorkOrderDocumentWizardCommonEnvSection();
+};
+workOrderDocumentWizardCommonToggleButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleWorkOrderDocumentWizardCommon();
+});
+workOrderDocumentWizardCommonPeopleToggleButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleWorkOrderDocumentWizardCommonPeople();
+});
+workOrderDocumentWizardCommonEnvToggleButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleWorkOrderDocumentWizardCommonEnv();
+});
+workOrderDocumentWizardCommonSection
+  ?.querySelector(".work-order-document-wizard-block-head")
+  ?.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
+      return;
+    }
+    toggleWorkOrderDocumentWizardCommon();
+  });
+workOrderDocumentWizardCommonPeopleSection
+  ?.querySelector(".work-order-document-wizard-subblock-head")
+  ?.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
+      return;
+    }
+    toggleWorkOrderDocumentWizardCommonPeople();
+  });
+workOrderDocumentWizardCommonEnvSection
+  ?.querySelector(".work-order-document-wizard-subblock-head")
+  ?.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
+      return;
+    }
+    toggleWorkOrderDocumentWizardCommonEnv();
 });
 workOrderDocumentWizardSheetBasicButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonSheet = "basic";
@@ -65762,8 +66080,8 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   });
 });
 [
-  [workOrderDocumentCommonInspectionDateInput, "inspectionDate"],
-  [workOrderDocumentCommonIssuedDateInput, "issuedDate"],
+  [workOrderDocumentCommonInspectionDateInput, "inspectionDate", true],
+  [workOrderDocumentCommonIssuedDateInput, "issuedDate", true],
   [workOrderDocumentCommonOutsideTemperatureInput, "outsideTemperature"],
   [workOrderDocumentCommonRelativeHumidityInput, "relativeHumidity"],
   [workOrderDocumentCommonAirflowSpeedInput, "airflowSpeed"],
@@ -65772,7 +66090,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   [workOrderDocumentCommonGroundResistanceInput, "groundResistance"],
   [workOrderDocumentCommonElectricalValidityMonthsInput, "electricalValidityMonths"],
   [workOrderDocumentCommonTipkaloValidityMonthsInput, "tipkaloValidityMonths"],
-].forEach(([input, fieldName]) => {
+].forEach(([input, fieldName, isDateField = false]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
     renderWorkOrderDocumentWizardCommonSection();
@@ -65782,7 +66100,11 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     }
   });
   input?.addEventListener("change", () => {
-    state.workOrderDocumentWizard.common[fieldName] = input.value || "";
+    const nextValue = isDateField ? normalizeDateInputValue(input.value) : (input.value || "");
+    state.workOrderDocumentWizard.common[fieldName] = nextValue;
+    if (isDateField) {
+      input.value = formatDateInputDisplayValue(nextValue);
+    }
     renderWorkOrderDocumentWizardCommonSection();
     renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
     if (state.workOrderDocumentWizard.step === "templates") {
@@ -65827,7 +66149,12 @@ workOrderDocumentWizardWorkOrders?.addEventListener("change", (event) => {
   }
   const patchValue = target instanceof HTMLSelectElement && target.multiple
     ? Array.from(target.selectedOptions).map((option) => String(option.value || "").trim()).filter(Boolean)
-    : (target.value || "");
+    : (target.dataset.batchValueType === "date"
+      ? normalizeDateInputValue(target.value)
+      : (target.value || ""));
+  if (target.dataset.batchValueType === "date" && !(target instanceof HTMLSelectElement)) {
+    target.value = formatDateInputDisplayValue(patchValue);
+  }
   setWorkOrderDocumentWizardOverride(workOrderId, {
     [fieldName]: patchValue,
   });
