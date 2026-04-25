@@ -3330,7 +3330,23 @@ body.is-location-editor-open {
 }
 
 .company-client-portal-card {
-  gap: 12px;
+  gap: 16px;
+  border-color: rgba(68, 112, 221, 0.34);
+  background:
+    radial-gradient(circle at top left, rgba(219, 234, 254, 0.78), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+  box-shadow: 0 18px 42px rgba(43, 76, 151, 0.09);
+}
+
+.company-client-portal-card-top {
+  margin-top: 14px;
+}
+
+.company-client-portal-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
 }
 
 .company-client-portal-card.is-attention {
@@ -3340,6 +3356,49 @@ body.is-location-editor-open {
 
 .company-client-copy {
   margin: 0;
+}
+
+.company-client-portal-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.company-client-portal-summary article,
+.company-client-form-card,
+.company-client-existing-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.company-client-portal-summary strong,
+.company-client-section-title strong {
+  color: #1d2b4f;
+}
+
+.company-client-portal-summary span,
+.company-client-section-title span {
+  color: #66728c;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.company-client-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.company-client-section-title {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
 }
 
 .company-client-user-grid {
@@ -4119,6 +4178,11 @@ body.is-location-editor-open {
     justify-content: flex-start;
   }
 
+  .company-client-layout,
+  .company-client-portal-summary {
+    grid-template-columns: 1fr;
+  }
+
   .field-company-name,
   .field-company-headquarters,
   .field-company-oib,
@@ -4154,7 +4218,13 @@ body.is-location-editor-open {
   .masterdata-company-grid,
   .masterdata-company-grid.is-compact,
   .masterdata-company-contact-grid,
+  .company-client-layout,
+  .company-client-portal-summary,
   .company-client-user-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-client-portal-head {
     grid-template-columns: 1fr;
   }
 
@@ -15802,39 +15872,6 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(252, 254, 252, 0.98), rgba(246, 250, 246, 0.96));
-}
-
-.company-portal-list-button {
-  width: 100%;
-  display: grid;
-  gap: 2px;
-  margin-top: 4px;
-  padding: 9px 10px;
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.98));
-  color: #143c93;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.company-portal-list-button:hover,
-.company-portal-list-button:focus-visible {
-  border-color: rgba(37, 99, 235, 0.46);
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.14);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.company-portal-list-button strong {
-  font-size: 0.84rem;
-}
-
-.company-portal-list-button span {
-  color: #64748b;
-  font-size: 0.76rem;
 }
 
 .company-status-line {

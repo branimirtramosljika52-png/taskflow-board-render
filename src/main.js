@@ -24261,32 +24261,7 @@ function matchesLocationSearch(location = {}, queryNeedle = "") {
   return getLocationSearchHaystack(location).includes(queryNeedle);
 }
 
-function createCompanyPortalListButton(company = {}, clientPortalUserCount = 0) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "company-portal-list-button";
-  button.dataset.companyPortalOpen = "true";
-  button.title = "Otvori klijentski pristup za ovu tvrtku";
-
-  const label = document.createElement("strong");
-  label.textContent = "Klijentski portal";
-
-  const meta = document.createElement("span");
-  meta.textContent = clientPortalUserCount === 1
-    ? "1 korisnik"
-    : `${clientPortalUserCount} korisnika`;
-
-  button.append(label, meta);
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openCompanyClientPortalFromList(company.id);
-  });
-
-  return button;
-}
-
-function createCompanyActivityCell(company = {}, rowSnapshot = {}) {
+function createCompanyActivityCell(company = {}) {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
   stack.className = "list-cell company-activity-cell";
@@ -24308,13 +24283,6 @@ function createCompanyActivityCell(company = {}, rowSnapshot = {}) {
     createCompanyStatusLine("Periodika", periodLabel, periodTone),
     createCompanyStatusLine("Aktivnost", company.isActive ? "Aktivno" : "Neaktivno", activityTone),
   );
-
-  if (getCanEditCompany(company.id)) {
-    stack.append(createCompanyPortalListButton(
-      company,
-      Number(rowSnapshot.clientPortalUserCount ?? getCompanyClientUsers(company.id).length) || 0,
-    ));
-  }
 
   cell.append(stack);
   return cell;
@@ -24496,7 +24464,6 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     ? getCompanyContractValidityLabelFromSummary(company, contractSummary)
     : "";
   const employeeSizeLabel = getCompanyEmployeeSizeLabel(company.employeeSize);
-  const clientPortalUserCount = getCompanyClientUsers(companyId).length;
   const contactMeta = [
     company.representativeOib ? `OIB ${company.representativeOib}` : "",
     managerSummary ? `Voditelji: ${managerSummary}` : "",
@@ -24512,7 +24479,6 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     contactTertiary: company.contactEmail || "Bez kontaktnog emaila",
     contactMeta,
     activeContracts,
-    clientPortalUserCount,
     contractTitle: hasLinkedContracts ? "Nema važećih ugovora" : (company.contractType || "Bez ugovora"),
     contractSubtitle: hasLinkedContracts
       ? "Provjeri datume ili status povezanih ugovora."
@@ -24555,7 +24521,6 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       contractCount,
       contractSummary?.validFrom || "",
       contractSummary?.validTo || "",
-      clientPortalUserCount,
     ].join("~~"),
   };
 }
@@ -45120,23 +45085,6 @@ async function createCompanyClientUser() {
   return success;
 }
 
-function openCompanyClientPortalFromList(companyId = "") {
-  const company = getCompany(companyId);
-  if (!company || !getCanEditCompany(company.id)) {
-    return;
-  }
-
-  hydrateCompanyForm(company);
-  requestAnimationFrame(() => {
-    companyClientPortalCard?.scrollIntoView({ behavior: "smooth", block: "center" });
-    companyClientPortalCard?.classList.add("is-attention");
-    window.setTimeout(() => {
-      companyClientPortalCard?.classList.remove("is-attention");
-    }, 1600);
-    companyClientFirstNameInput?.focus({ preventScroll: true });
-  });
-}
-
 function buildCompanyPayload() {
   const managerUserIds = getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
   return {
@@ -64829,7 +64777,7 @@ function renderCompanies() {
           meta: rowSnapshot.contactMeta,
         }),
         createCompanyContractsCell(rowSnapshot),
-        createCompanyActivityCell(rowSnapshot.company, rowSnapshot),
+        createCompanyActivityCell(rowSnapshot.company),
       );
 
       fragment.append(row);
