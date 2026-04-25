@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260425g" />
+  <link rel="stylesheet" href="/styles.css?v=20260425h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2559,39 +2559,55 @@
 
                       <div class="company-client-layout">
                         <section class="company-client-form-card">
-                          <div class="form-grid company-client-user-grid">
-                            <label class="field">
-                              <span>Ime</span>
-                              <input id="company-client-first-name" type="text" maxlength="120" autocomplete="given-name" />
-                            </label>
-                            <label class="field">
-                              <span>Prezime</span>
-                              <input id="company-client-last-name" type="text" maxlength="160" autocomplete="family-name" />
-                            </label>
-                            <label class="field">
-                              <span>Email</span>
-                              <input id="company-client-email" type="email" maxlength="180" autocomplete="email" />
-                            </label>
-                            <label class="field">
-                              <span>OIB</span>
-                              <input id="company-client-oib" type="text" inputmode="numeric" maxlength="11" />
-                            </label>
-                            <label class="field company-client-location-field">
-                              <span>Lokacije</span>
-                              <input id="company-client-location-search" type="search" placeholder="Pretraži lokacije..." autocomplete="off" />
-                              <div id="company-client-location-list" class="company-client-location-list" role="listbox" aria-label="Odabir lokacija" aria-multiselectable="true"></div>
-                              <select id="company-client-location-ids" multiple size="4" hidden></select>
-                            </label>
-                            <label class="toggle-row company-client-all-locations-toggle">
-                              <input id="company-client-all-locations" type="checkbox" checked />
-                              <span>Sve lokacije</span>
-                            </label>
-                            <div class="entity-actions company-client-user-actions">
-                              <button id="company-client-create-user" type="button" class="primary-button">Dodaj i pošalji pristup</button>
-                              <button id="company-client-clear-user" type="button" class="ghost-button">Očisti</button>
+                          <div class="company-client-access-shell">
+                            <div class="company-client-person-panel">
+                              <div class="company-client-mini-title">
+                                <span>Podaci korisnika</span>
+                              </div>
+                              <div class="form-grid company-client-person-grid">
+                                <label class="field">
+                                  <span>Ime</span>
+                                  <input id="company-client-first-name" type="text" maxlength="120" autocomplete="given-name" />
+                                </label>
+                                <label class="field">
+                                  <span>Prezime</span>
+                                  <input id="company-client-last-name" type="text" maxlength="160" autocomplete="family-name" />
+                                </label>
+                                <label class="field">
+                                  <span>Email</span>
+                                  <input id="company-client-email" type="email" maxlength="180" autocomplete="email" />
+                                </label>
+                                <label class="field">
+                                  <span>OIB</span>
+                                  <input id="company-client-oib" type="text" inputmode="numeric" maxlength="11" />
+                                </label>
+                              </div>
+                            </div>
+
+                            <div class="company-client-location-panel">
+                              <div class="company-client-location-toolbar">
+                                <span>Lokacije</span>
+                                <label class="toggle-row company-client-all-locations-toggle">
+                                  <input id="company-client-all-locations" type="checkbox" checked />
+                                  <span>Sve lokacije</span>
+                                </label>
+                              </div>
+                              <label class="field company-client-location-field">
+                                <span>Pretraga lokacija</span>
+                                <input id="company-client-location-search" type="search" placeholder="Pretraži lokacije..." autocomplete="off" />
+                                <div id="company-client-location-list" class="company-client-location-list" role="listbox" aria-label="Odabir lokacija" aria-multiselectable="true"></div>
+                                <select id="company-client-location-ids" multiple size="4" hidden></select>
+                              </label>
+                            </div>
+
+                            <div class="company-client-action-panel">
+                              <p id="company-client-feedback" class="form-error" aria-live="polite"></p>
+                              <div class="entity-actions company-client-user-actions">
+                                <button id="company-client-create-user" type="button" class="primary-button">Dodaj i pošalji pristup</button>
+                                <button id="company-client-clear-user" type="button" class="ghost-button">Očisti</button>
+                              </div>
                             </div>
                           </div>
-                          <p id="company-client-feedback" class="form-error" aria-live="polite"></p>
                         </section>
 
                         <section class="company-client-existing-card">
@@ -6615,6 +6631,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-  <script type="module" src="/src/main.js?v=20260425g"></script>
+  <script type="module" src="/src/main.js?v=20260425h"></script>
   </body>
 </html>

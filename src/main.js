@@ -44935,7 +44935,21 @@ function renderCompanyClientLocationList() {
     ].filter(Boolean).join(" ")).includes(queryNeedle)
   ));
 
+  if (companyClientLocationSearchInput) {
+    companyClientLocationSearchInput.disabled = allLocationsMode;
+  }
   companyClientLocationList.classList.toggle("is-disabled", allLocationsMode);
+  if (allLocationsMode) {
+    const summary = document.createElement("p");
+    summary.className = "company-client-location-summary";
+    const locationCount = getCompanyLocations().length;
+    summary.textContent = locationCount > 0
+      ? `Pristup vrijedi za sve lokacije ove tvrtke (${locationCount}).`
+      : "Pristup vrijedi za sve sadašnje i buduće lokacije ove tvrtke.";
+    companyClientLocationList.replaceChildren(summary);
+    return;
+  }
+
   if (locations.length === 0) {
     const empty = document.createElement("p");
     empty.className = "company-client-location-empty";
