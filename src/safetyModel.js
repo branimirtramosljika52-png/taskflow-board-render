@@ -2651,6 +2651,9 @@ function hydrateOfferCore({
     ? normalizeOfferItems(input.items)
     : (current?.items ?? []);
   const totals = calculateOfferTotals(items, taxRate, discountRate);
+  const offerDirection = hasOwn(input, "offerDirection")
+    ? normalizePurchaseOrderDirection(input.offerDirection, "outgoing")
+    : normalizePurchaseOrderDirection(current?.offerDirection, "outgoing");
   const fallbackOfferDate = current?.offerDate ?? timestamp.slice(0, 10);
   const offerDate = hasOwn(input, "offerDate")
     ? (normalizeOptionalDate(input.offerDate) ?? timestamp.slice(0, 10))
@@ -2695,6 +2698,9 @@ function hydrateOfferCore({
       : locationScope === "selection"
         ? `${selectedLocationNames.length} od ${companyLocationCount} lokacija`
         : (location?.name ?? "");
+  const documents = hasOwn(input, "documents")
+    ? normalizeAttachmentDocuments(input.documents)
+    : normalizeAttachmentDocuments(current?.documents ?? []);
 
   return {
     id: current?.id ?? "",
@@ -2718,6 +2724,7 @@ function hydrateOfferCore({
     offerYear: Number(offerYear) || Number(timestamp.slice(0, 4)),
     offerSequence: Number(offerSequence) || 0,
     offerInitials: deriveOfferInitials(offerInitials),
+    offerDirection,
     title: hasOwn(input, "title") ? requireText(input.title, "Naziv ponude") : current?.title ?? "",
     serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
     status: hasOwn(input, "status") ? normalizeOfferStatus(input.status) : normalizeOfferStatus(current?.status),
@@ -2738,6 +2745,7 @@ function hydrateOfferCore({
     taxTotal: totals.taxTotal,
     total: totals.total,
     items: items.map((item) => ({ ...item })),
+    documents: documents.map((document) => ({ ...document })),
     createdByUserId: hasOwn(input, "createdByUserId")
       ? normalizeText(input.createdByUserId)
       : (current?.createdByUserId ?? ""),
@@ -6069,6 +6077,9 @@ export function filterOffers(
       item.serviceLine,
       item.createdByLabel,
       item.note,
+      item.offerDirection,
+      ...(item.documents ?? []).map((entry) => entry.fileName),
+      ...(item.documents ?? []).map((entry) => entry.documentCategory),
       ...(item.items ?? []).map((entry) => entry.description),
       ...(item.items ?? []).map((entry) => entry.serviceCode),
       ...(item.items ?? []).flatMap((entry) => (entry.breakdowns ?? []).map((detail) => detail.label)),

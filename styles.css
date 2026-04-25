@@ -2502,6 +2502,10 @@ body.is-offer-editor-open {
   min-width: 0;
 }
 
+.offers-editor-body > .entity-form.is-commercial-quick-upload {
+  gap: 16px;
+}
+
 .offers-section-heading {
   align-items: flex-start;
 }
@@ -2565,6 +2569,42 @@ body.is-offer-editor-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;
   gap: 10px;
+}
+
+.commercial-direction-tabs {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(198, 205, 188, 0.72);
+  border-radius: 999px;
+  background: rgba(247, 250, 246, 0.78);
+}
+
+.commercial-direction-tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.commercial-direction-tab:hover,
+.commercial-direction-tab:focus-visible {
+  color: var(--text);
+  background: rgba(225, 235, 224, 0.86);
+}
+
+.commercial-direction-tab.is-active {
+  color: #f7fbf9;
+  background: linear-gradient(135deg, #236646, #2f7f59);
+  box-shadow: 0 10px 22px rgba(35, 102, 70, 0.18);
 }
 
 .offers-list {
@@ -21548,9 +21588,20 @@ body.is-vehicle-reservation-open {
 }
 
 .documents-toggle-folders-button {
-  min-width: 104px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
   justify-content: center;
-  white-space: nowrap;
+}
+
+.documents-toggle-folders-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.documents-library-panel .documents-filters {
+  margin-bottom: 10px;
 }
 
 .documents-category-list {
@@ -21720,6 +21771,14 @@ body.is-vehicle-reservation-open {
 
 .documents-folder-icon.is-authorization {
   color: #2b7d61;
+}
+
+.documents-folder-icon.is-work-orders {
+  color: #2f68a8;
+}
+
+.documents-folder-icon.is-companies {
+  color: #315b77;
 }
 
 .documents-folder-icon.is-offers,

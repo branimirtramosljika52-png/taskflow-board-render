@@ -2483,10 +2483,10 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [offerRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
-           offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
+           offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
            tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
            show_total_amount, location_ids_json, location_names_json,
-           tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name, contact_phone,
+           tax_total_amount, grand_total_amount, items_json, documents_json, contact_slot, contact_name, contact_phone,
            contact_email, created_by_user_id, created_by_label, created_at, updated_at
     FROM web_offers
     ORDER BY
@@ -2567,6 +2567,7 @@ async function fetchSnapshotFromConnection(connection) {
       offerYear: Number(row.offer_year ?? 0) || null,
       offerSequence: Number(row.offer_sequence ?? 0) || null,
       offerInitials: row.offer_initials ?? "",
+      offerDirection: dbString(row.offer_direction) || "outgoing",
       title: row.title ?? "",
       serviceLine: row.service_line ?? "",
       status: row.status ?? "draft",
@@ -2583,6 +2584,9 @@ async function fetchSnapshotFromConnection(connection) {
       taxTotal: Number(row.tax_total_amount ?? 0) || 0,
       total: Number(row.grand_total_amount ?? 0) || 0,
       items,
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && document.dataUrl),
       createdByUserId: dbString(row.created_by_user_id),
       createdByLabel: row.created_by_label ?? "",
       createdAt: normalizeTimestamp(row.created_at),
@@ -5472,6 +5476,7 @@ export class MySqlSafetyRepository {
         title VARCHAR(180) NOT NULL,
         service_line VARCHAR(180) NOT NULL DEFAULT '',
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        offer_direction VARCHAR(16) NOT NULL DEFAULT 'outgoing',
         offer_date DATE NULL,
         valid_until DATE NULL,
         note TEXT NOT NULL,
@@ -5485,6 +5490,7 @@ export class MySqlSafetyRepository {
         tax_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
+        documents_json LONGTEXT NULL,
         contact_slot VARCHAR(16) NOT NULL DEFAULT '',
         contact_name VARCHAR(160) NOT NULL DEFAULT '',
         contact_phone VARCHAR(80) NOT NULL DEFAULT '',
@@ -6055,12 +6061,14 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
     await ensureColumnExists(this.pool, "web_offers", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
-    await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER status");
+    await ensureColumnExists(this.pool, "web_offers", "offer_direction", "VARCHAR(16) NOT NULL DEFAULT 'outgoing' AFTER status");
+    await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER offer_direction");
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
     await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
     await ensureColumnExists(this.pool, "web_offers", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
-    await ensureColumnExists(this.pool, "web_offers", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER items_json");
+    await ensureColumnExists(this.pool, "web_offers", "documents_json", "LONGTEXT NULL AFTER items_json");
+    await ensureColumnExists(this.pool, "web_offers", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER documents_json");
     await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
@@ -7429,6 +7437,7 @@ export class MySqlSafetyRepository {
 
   async createOffer(input, actor = null) {
     const connection = await this.pool.getConnection();
+    let staleDocuments = [];
 
     try {
       await connection.beginTransaction();
@@ -7443,17 +7452,22 @@ export class MySqlSafetyRepository {
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
         createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
       }, snapshot, () => "pending", numberParts, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents ?? [], {
+        keyPrefix: `offers/${draft.organizationId}/documents`,
+        currentDocuments: [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
 
       const [result] = await connection.query(
         `
           INSERT INTO web_offers
             (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
              offer_number, offer_year, offer_sequence,
-             offer_initials, title, service_line, status, offer_date, valid_until, note, currency_code,
+             offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
              tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
              show_total_amount, tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name,
-             contact_phone, contact_email, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             documents_json, contact_phone, contact_email, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -7469,6 +7483,7 @@ export class MySqlSafetyRepository {
           draft.title,
           draft.serviceLine,
           draft.status,
+          draft.offerDirection || "outgoing",
           draft.offerDate,
           draft.validUntil,
           draft.note,
@@ -7484,6 +7499,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.items ?? []),
           draft.contactSlot ?? "",
           draft.contactName ?? "",
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
           draft.contactPhone ?? "",
           draft.contactEmail ?? "",
           parseNullableInteger(draft.createdByUserId),
@@ -7492,9 +7508,11 @@ export class MySqlSafetyRepository {
       );
 
       await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
       return {
         ...draft,
         id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
       };
     } catch (error) {
       await connection.rollback();
@@ -7506,6 +7524,7 @@ export class MySqlSafetyRepository {
 
   async updateOffer(id, patch, actor = null) {
     const connection = await this.pool.getConnection();
+    let staleDocuments = [];
 
     try {
       await connection.beginTransaction();
@@ -7523,15 +7542,20 @@ export class MySqlSafetyRepository {
         createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
         createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
       }, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents ?? [], {
+        keyPrefix: `offers/${next.organizationId}/documents`,
+        currentDocuments: current.documents ?? [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
 
       await connection.query(
         `
           UPDATE web_offers
           SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
-              title = ?, service_line = ?, status = ?,
+              title = ?, service_line = ?, status = ?, offer_direction = ?,
               offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
               subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
-              tax_total_amount = ?, grand_total_amount = ?, items_json = ?, contact_slot = ?, contact_name = ?,
+              tax_total_amount = ?, grand_total_amount = ?, items_json = ?, documents_json = ?, contact_slot = ?, contact_name = ?,
               contact_phone = ?, contact_email = ?
           WHERE id = ?
         `,
@@ -7544,6 +7568,7 @@ export class MySqlSafetyRepository {
           next.title,
           next.serviceLine,
           next.status,
+          next.offerDirection || "outgoing",
           next.offerDate,
           next.validUntil,
           next.note,
@@ -7557,6 +7582,7 @@ export class MySqlSafetyRepository {
           parseNullableDecimal(next.taxTotal) ?? 0,
           parseNullableDecimal(next.total) ?? 0,
           JSON.stringify(next.items ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
           next.contactSlot ?? "",
           next.contactName ?? "",
           next.contactPhone ?? "",
@@ -7566,7 +7592,11 @@ export class MySqlSafetyRepository {
       );
 
       await connection.commit();
-      return next;
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -7577,10 +7607,31 @@ export class MySqlSafetyRepository {
 
   async deleteOffer(id) {
     const connection = await this.pool.getConnection();
+    let staleDocuments = [];
 
     try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        `
+          SELECT documents_json
+          FROM web_offers
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [Number(id)],
+      );
+      staleDocuments = parseJsonArray(rows[0]?.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.storageKey);
+
       const [result] = await connection.query("DELETE FROM web_offers WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }

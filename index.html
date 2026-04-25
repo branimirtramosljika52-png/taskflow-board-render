@@ -3536,23 +3536,6 @@
                   <button id="documents-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
                 </div>
 
-                <div class="documents-filters">
-                  <label class="field">
-                    <span>Pretraga</span>
-                    <input id="documents-search" type="search" placeholder="Dokument, folder, tvrtka, oprema, ponuda..." />
-                  </label>
-                  <label class="field">
-                    <span>Vrsta</span>
-                    <select id="documents-filter-kind">
-                      <option value="all">Sve</option>
-                      <option value="pdf">PDF</option>
-                      <option value="word">Word</option>
-                      <option value="image">Slike</option>
-                      <option value="record">Zapisnici</option>
-                      <option value="other">Ostalo</option>
-                    </select>
-                  </label>
-                </div>
               </section>
 
               <div class="documents-explorer-shell">
@@ -3572,7 +3555,24 @@
                       <p class="section-kicker">Sadržaj</p>
                       <h3>Folderi</h3>
                     </div>
-                    <button id="documents-toggle-folders" type="button" class="ghost-button documents-toggle-folders-button">Otvori sve</button>
+                    <button id="documents-toggle-folders" type="button" class="ghost-button documents-toggle-folders-button" aria-label="Otvori sve" title="Otvori sve"></button>
+                  </div>
+                  <div class="documents-filters">
+                    <label class="field">
+                      <span>Pretraga</span>
+                      <input id="documents-search" type="search" placeholder="Dokument, folder, tvrtka, oprema, ponuda..." />
+                    </label>
+                    <label class="field">
+                      <span>Vrsta</span>
+                      <select id="documents-filter-kind">
+                        <option value="all">Sve</option>
+                        <option value="pdf">PDF</option>
+                        <option value="word">Word</option>
+                        <option value="image">Slike</option>
+                        <option value="record">Zapisnici</option>
+                        <option value="other">Ostalo</option>
+                      </select>
+                    </label>
                   </div>
                   <div class="documents-explorer-header" aria-hidden="true">
                     <span>Naziv</span>
@@ -4117,6 +4117,11 @@
                     </div>
                   </div>
 
+                  <div id="offer-direction-tabs" class="commercial-direction-tabs" role="tablist" aria-label="Smjer dokumenta">
+                    <button id="offer-direction-outgoing" type="button" class="commercial-direction-tab is-active" role="tab" aria-selected="true">Prema klijentu</button>
+                    <button id="offer-direction-incoming" type="button" class="commercial-direction-tab" role="tab" aria-selected="false">Primljene ponude</button>
+                  </div>
+
                   <div class="offers-filters">
                     <label class="field">
                       <span>Pretraga</span>
@@ -4205,7 +4210,7 @@
                           </button>
                           <div id="offer-location-panel" class="offer-location-panel" hidden></div>
                         </div>
-                        <label class="field">
+                        <label class="field offer-contact-field">
                           <span>Kontakt osoba</span>
                           <select id="offer-contact-slot"></select>
                         </label>
@@ -4224,13 +4229,13 @@
                           <span>Broj klijentove narudžbenice</span>
                           <input id="purchase-order-external-number" maxlength="160" placeholder="PO-2026-0042, interni broj klijenta..." />
                         </label>
-                        <label class="field">
+                        <label class="field offer-tax-field">
                           <span>PDV %</span>
                           <input id="offer-tax-rate" inputmode="decimal" placeholder="25" />
                         </label>
                       </div>
 
-                      <label class="field field-span-full">
+                      <label class="field field-span-full offer-note-field">
                         <span>Napomena</span>
                         <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
                       </label>
@@ -4238,8 +4243,8 @@
                       <section id="purchase-order-documents-section" class="purchase-order-documents-section" hidden>
                         <div class="offers-items-head">
                           <div>
-                            <strong>Dokumenti narudžbenice</strong>
-                            <p class="inline-help">Dodaj PDF, sken ili zaprimljenu narudžbenicu klijenta za kasnije preuzimanje.</p>
+                            <strong id="purchase-order-documents-title">Dokumenti narudžbenice</strong>
+                            <p id="purchase-order-documents-help" class="inline-help">Dodaj PDF, sken ili zaprimljenu narudžbenicu klijenta za kasnije preuzimanje.</p>
                           </div>
                           <button id="purchase-order-documents-upload" type="button" class="ghost-button">+ Dodaj dokument</button>
                         </div>

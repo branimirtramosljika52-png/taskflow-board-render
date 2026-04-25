@@ -220,6 +220,20 @@ const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
     toneClass: "is-records",
   }),
   Object.freeze({
+    id: "work-orders",
+    label: "Radni nalozi",
+    description: "Radni nalozi s pripadajućim zapisnicima.",
+    iconName: "todo",
+    toneClass: "is-work-orders",
+  }),
+  Object.freeze({
+    id: "companies",
+    label: "Tvrtke",
+    description: "Dokumenti složeni po tvrtki i podmapama.",
+    iconName: "company",
+    toneClass: "is-companies",
+  }),
+  Object.freeze({
     id: "measurement-equipment",
     label: "Mjerna i ispitna oprema",
     description: "Umjernice, certifikati i servisni prilozi.",
@@ -1347,6 +1361,10 @@ const state = {
     expandedLocationIds: new Set(),
     expandedFolderIds: new Set(),
     suppressDefaultExpansion: false,
+  },
+  commercialDocumentDirections: {
+    offers: "outgoing",
+    "purchase-orders": "outgoing",
   },
   periodicsFeed: {
     organizationId: "",
@@ -2493,6 +2511,9 @@ const offersSentCount = document.querySelector("#offers-sent-count");
 const offersAcceptedCount = document.querySelector("#offers-accepted-count");
 const offersListKicker = document.querySelector("#offers-list-kicker");
 const offersListTitle = document.querySelector("#offers-list-title");
+const offerDirectionTabs = document.querySelector("#offer-direction-tabs");
+const offerDirectionOutgoingButton = document.querySelector("#offer-direction-outgoing");
+const offerDirectionIncomingButton = document.querySelector("#offer-direction-incoming");
 const offersSearchInput = document.querySelector("#offers-search");
 const offersFilterStatusInput = document.querySelector("#offers-filter-status");
 const offersHelper = document.querySelector("#offers-helper");
@@ -2535,6 +2556,8 @@ const purchaseOrderDirectionInput = document.querySelector("#purchase-order-dire
 const purchaseOrderExternalNumberField = document.querySelector("#purchase-order-external-number-field");
 const purchaseOrderExternalNumberInput = document.querySelector("#purchase-order-external-number");
 const purchaseOrderDocumentsSection = document.querySelector("#purchase-order-documents-section");
+const purchaseOrderDocumentsTitle = document.querySelector("#purchase-order-documents-title");
+const purchaseOrderDocumentsHelp = document.querySelector("#purchase-order-documents-help");
 const purchaseOrderDocumentsUploadButton = document.querySelector("#purchase-order-documents-upload");
 const purchaseOrderDocumentsInput = document.querySelector("#purchase-order-documents-input");
 const purchaseOrderDocumentsList = document.querySelector("#purchase-order-documents-list");
@@ -12124,6 +12147,8 @@ function getWorkOrderIconMarkup(iconName) {
     reminder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5a1.5 1.5 0 0 0 1.45-1.1M4.5 11.25h7l-.8-1.6V6.75a2.7 2.7 0 1 0-5.4 0v2.9l-.8 1.6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     measurement: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25h10.5v9.5H2.75zM2.75 6.25h10.5M6 3.25v9.5M9.5 3.25v9.5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.1"/></svg>',
     reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 7.75a4.5 4.5 0 1 0 1.32-3.18L3 6.25M3 2.75v3.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    expand: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.25 2.75H2.75v2.5M10.75 2.75h2.5v2.5M5.25 13.25H2.75v-2.5M10.75 13.25h2.5v-2.5M3 3l3.25 3.25M13 3l-3.25 3.25M3 13l3.25-3.25M13 13l-3.25-3.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.15"/></svg>',
+    collapse: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.25 2.75v3.5h-3.5M9.75 2.75v3.5h3.5M6.25 13.25v-3.5h-3.5M9.75 13.25v-3.5h3.5M6 6 3 3M10 6l3-3M6 10l-3 3M10 10l3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.15"/></svg>',
     folder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.25h4l1.15-1.5h5.85v8.75a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-6.25a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/><path d="M1.75 7h12.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     preview: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10 10 2.75 2.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
@@ -14904,77 +14929,370 @@ function buildDocumentLibraryAttachmentFolders(items = [], {
     .filter(Boolean);
 }
 
+function buildDocumentLibraryEntriesForItem(item, itemIndex = 0, {
+  categoryId = "all",
+  getDocuments = (entry) => entry?.documents ?? [],
+  getSourceTarget = () => null,
+  mapDocument = () => ({}),
+  buildExtraEntries = () => [],
+} = {}) {
+  const sourceTarget = getSourceTarget(item);
+  const documents = dedupeDocumentLibraryAttachments(getDocuments(item))
+    .map((document, documentIndex) => {
+      const fileName = getDocumentLibraryAttachmentFileName(document);
+      const href = getDocumentLibraryAttachmentHref(document);
+      if (!fileName || !href) {
+        return null;
+      }
+
+      const mapped = mapDocument(document, item, sourceTarget) ?? {};
+      return createDocumentLibraryEntry({
+        id: mapped.id || `${categoryId}:${String(item?.id || itemIndex)}:${String(document?.id || documentIndex)}:${fileName}`,
+        label: mapped.label || fileName,
+        description: mapped.description || "",
+        fileName,
+        fileType: mapped.fileType || document?.fileType || document?.mimeType || "",
+        fileSize: mapped.fileSize ?? document?.fileSize ?? 0,
+        href,
+        fileKind: mapped.fileKind || resolveDocumentLibraryAttachmentFileKind(document),
+        updatedAt: mapped.updatedAt || document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: mapped.metaParts || [],
+        sourceTarget: mapped.sourceTarget || sourceTarget,
+        previewType: mapped.previewType || "href",
+        searchTerms: mapped.searchTerms || [],
+      });
+    })
+    .filter(Boolean);
+  const extraEntries = (Array.isArray(buildExtraEntries(item, sourceTarget)) ? buildExtraEntries(item, sourceTarget) : [])
+    .filter(Boolean);
+  return [...documents, ...extraEntries];
+}
+
+function getDocumentRecordLibraryContext(record = {}, recordIndex = 0) {
+  const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
+  const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
+  const company = getCompany(linkedWorkOrder?.companyId || record?.companyId || "");
+  const location = getLocation(linkedWorkOrder?.locationId || record?.locationId || "");
+  const serviceLabel = String(
+    getWorkOrderServiceSummary(linkedWorkOrder)
+    || linkedWorkOrder?.serviceLine
+    || extractDocumentsExplorerFieldValueByHints(record, DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS)
+    || "",
+  ).trim();
+  const workOrderNumber = String(
+    linkedWorkOrder?.workOrderNumber
+    || extractedWorkOrderNumber
+    || `Zapisnik ${recordIndex + 1}`,
+  ).trim();
+
+  return {
+    recordIndex,
+    extractedWorkOrderNumber,
+    linkedWorkOrder,
+    company,
+    location,
+    serviceLabel,
+    workOrderNumber,
+    sourceTarget: linkedWorkOrder
+      ? { kind: "work-order", record: linkedWorkOrder }
+      : null,
+  };
+}
+
+function createDocumentRecordLibraryEntryFromContext(record = {}, context = {}, idPrefix = "document-record") {
+  return createDocumentLibraryRecordEntry({
+    id: `${idPrefix}:${String(record?.id || context.recordIndex || 0)}`,
+    label: String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik",
+    description: [
+      record?.inspectionDate ? `Ispitivanje ${formatCompactDate(record.inspectionDate)}` : "",
+      record?.issuedDate ? `Izdano ${formatCompactDate(record.issuedDate)}` : "",
+      record?.createdByLabel || "",
+    ].filter(Boolean).join(" · "),
+    updatedAt: record?.updatedAt || record?.issuedDate || record?.inspectionDate || record?.createdAt || "",
+    sourceTarget: context.sourceTarget ?? null,
+    searchTerms: [
+      record?.templateTitle || "",
+      record?.documentType || "",
+      context.workOrderNumber || "",
+      context.serviceLabel || "",
+      context.company?.name || "",
+    ],
+  });
+}
+
 function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.records) {
   const buckets = new Map();
 
   (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
-    const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
-    const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
-    const company = getCompany(linkedWorkOrder?.companyId || record?.companyId || "");
-    const location = getLocation(linkedWorkOrder?.locationId || record?.locationId || "");
-    const serviceLabel = String(
-      getWorkOrderServiceSummary(linkedWorkOrder)
-      || linkedWorkOrder?.serviceLine
-      || extractDocumentsExplorerFieldValueByHints(record, DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS)
-      || "",
-    ).trim();
-    const workOrderNumber = String(
-      linkedWorkOrder?.workOrderNumber
-      || extractedWorkOrderNumber
-      || `Zapisnik ${recordIndex + 1}`,
-    ).trim();
-    const folderKey = linkedWorkOrder?.id
-      ? `document-records:work-order:${linkedWorkOrder.id}`
+    const context = getDocumentRecordLibraryContext(record, recordIndex);
+    const folderKey = context.linkedWorkOrder?.id
+      ? `document-records:work-order:${context.linkedWorkOrder.id}`
       : `document-records:record:${String(record?.id || recordIndex)}`;
 
     if (!buckets.has(folderKey)) {
       buckets.set(folderKey, {
         id: folderKey,
         categoryId: "document-records",
-        label: workOrderNumber || "Zapisnik",
+        label: context.workOrderNumber || "Zapisnik",
         subtitle: [
-          company?.name || linkedWorkOrder?.companyName || "",
-          createCompactLocationLabel(location?.name || linkedWorkOrder?.locationName || ""),
-          serviceLabel,
+          context.company?.name || context.linkedWorkOrder?.companyName || "",
+          createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || ""),
+          context.serviceLabel,
         ].filter(Boolean).join(" · "),
         metaParts: [
-          company?.name || "",
-          serviceLabel || "",
+          context.company?.name || "",
+          context.serviceLabel || "",
         ].filter(Boolean),
         searchTerms: [
-          company?.name || "",
-          location?.name || linkedWorkOrder?.locationName || "",
-          serviceLabel,
+          context.company?.name || "",
+          context.location?.name || context.linkedWorkOrder?.locationName || "",
+          context.serviceLabel,
         ],
-        sourceTarget: linkedWorkOrder
-          ? { kind: "work-order", record: linkedWorkOrder }
-          : null,
+        sourceTarget: context.sourceTarget,
         documents: [],
       });
     }
 
     const bucket = buckets.get(folderKey);
-    bucket.documents.push(createDocumentLibraryRecordEntry({
-      id: `document-record:${String(record?.id || recordIndex)}`,
-      label: String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik",
-      description: [
-        record?.inspectionDate ? `Ispitivanje ${formatCompactDate(record.inspectionDate)}` : "",
-        record?.issuedDate ? `Izdano ${formatCompactDate(record.issuedDate)}` : "",
-        record?.createdByLabel || "",
-      ].filter(Boolean).join(" · "),
-      updatedAt: record?.updatedAt || record?.issuedDate || record?.inspectionDate || record?.createdAt || "",
-      sourceTarget: bucket.sourceTarget,
-      searchTerms: [
-        record?.templateTitle || "",
-        record?.documentType || "",
-        workOrderNumber,
-        serviceLabel,
-        company?.name || "",
-      ],
-    }));
+    bucket.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, "document-record"));
   });
 
   return [...buckets.values()]
+    .map((folder) => finalizeDocumentLibraryFolder(folder))
+    .filter(Boolean);
+}
+
+function buildWorkOrderDocumentLibraryFolders(records = state.documentsExplorer.records) {
+  const buckets = new Map();
+
+  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
+    const context = getDocumentRecordLibraryContext(record, recordIndex);
+    const folderKey = context.linkedWorkOrder?.id
+      ? `work-orders:work-order:${context.linkedWorkOrder.id}`
+      : `work-orders:record:${String(record?.id || recordIndex)}`;
+
+    if (!buckets.has(folderKey)) {
+      buckets.set(folderKey, {
+        id: folderKey,
+        categoryId: "work-orders",
+        label: context.workOrderNumber || "Radni nalog",
+        subtitle: [
+          context.company?.name || context.linkedWorkOrder?.companyName || "",
+          createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || ""),
+          context.serviceLabel,
+        ].filter(Boolean).join(" · "),
+        metaParts: [
+          context.company?.name || "",
+          context.serviceLabel || "",
+        ].filter(Boolean),
+        searchTerms: [
+          context.workOrderNumber || "",
+          context.company?.name || "",
+          context.location?.name || context.linkedWorkOrder?.locationName || "",
+          context.serviceLabel,
+        ],
+        sourceTarget: context.sourceTarget,
+        documents: [],
+      });
+    }
+
+    buckets.get(folderKey).documents.push(
+      createDocumentRecordLibraryEntryFromContext(record, context, "work-order-record"),
+    );
+  });
+
+  return [...buckets.values()]
+    .map((folder) => finalizeDocumentLibraryFolder(folder))
+    .filter(Boolean);
+}
+
+function getCompanyDocumentFolder(map, {
+  company = null,
+  companyId = "",
+  companyName = "",
+  folderKey = "documents",
+  folderLabel = "Dokumenti",
+  subtitle = "",
+  metaParts = [],
+  searchTerms = [],
+} = {}) {
+  const resolvedCompanyId = String(company?.id || companyId || "").trim();
+  const resolvedCompanyName = String(company?.name || companyName || "Bez tvrtke").trim() || "Bez tvrtke";
+  const key = `companies:${resolvedCompanyId || slugifyValue(resolvedCompanyName) || "bez-tvrtke"}:${folderKey}`;
+
+  if (!map.has(key)) {
+    map.set(key, {
+      id: key,
+      categoryId: "companies",
+      label: `${resolvedCompanyName} / ${folderLabel}`,
+      subtitle: subtitle || "Tvrtke",
+      metaParts: [
+        resolvedCompanyName,
+        ...metaParts,
+      ].filter(Boolean),
+      searchTerms: [
+        resolvedCompanyName,
+        company?.oib || "",
+        company?.headquarters || "",
+        ...searchTerms,
+      ],
+      sourceTarget: company ? { kind: "company", record: company } : null,
+      documents: [],
+    });
+  }
+
+  return map.get(key);
+}
+
+function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.records) {
+  const folders = new Map();
+  const sortedCompanies = [...(state.companies ?? [])].sort((left, right) => String(left?.name || "")
+    .localeCompare(String(right?.name || ""), "hr", { sensitivity: "base", numeric: true }));
+  const companyById = new Map(sortedCompanies.map((company) => [String(company?.id || ""), company]));
+
+  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
+    const context = getDocumentRecordLibraryContext(record, recordIndex);
+    const company = context.company || companyById.get(String(context.linkedWorkOrder?.companyId || record?.companyId || "")) || null;
+    const folder = getCompanyDocumentFolder(folders, {
+      company,
+      companyId: context.linkedWorkOrder?.companyId || record?.companyId || "",
+      companyName: context.linkedWorkOrder?.companyName || "",
+      folderKey: "records",
+      folderLabel: "Zapisnici i RN",
+      subtitle: "Tvrtke · Radni nalozi i zapisnici",
+      metaParts: ["Radni nalozi", "Zapisnici"],
+      searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
+    });
+    folder.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, `company-record:${folder.id}`));
+  });
+
+  sortOffers(state.offers ?? []).forEach((item, itemIndex) => {
+    const company = companyById.get(String(item?.companyId || "")) || null;
+    const folder = getCompanyDocumentFolder(folders, {
+      company,
+      companyId: item?.companyId || "",
+      companyName: item?.companyName || "",
+      folderKey: "offers",
+      folderLabel: "Ponude",
+      subtitle: "Tvrtke · Ponude",
+      metaParts: ["Ponude"],
+      searchTerms: [item?.offerNumber || "", item?.title || "", item?.serviceLine || ""],
+    });
+    folder.documents.push(...buildDocumentLibraryEntriesForItem(item, itemIndex, {
+      categoryId: "companies",
+      getDocuments: (entry) => entry?.documents ?? [],
+      getSourceTarget: (entry) => ({ kind: "offer", record: entry }),
+      mapDocument: (document, entry) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || entry?.updatedAt || entry?.createdAt || "",
+        metaParts: [
+          getOptionLabel(OFFER_STATUS_OPTIONS, entry?.status || "draft") || "",
+          getCommercialDocumentDirectionLabel(entry?.offerDirection || "outgoing"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+      buildExtraEntries: (entry, sourceTarget) => entry?.id ? [createDocumentLibraryGeneratedPdfEntry({
+        id: `companies:offers:pdf:${entry.id}`,
+        label: `${entry.offerNumber || entry.title || "Ponuda"} PDF`,
+        description: "Generirani PDF ponude.",
+        exportPath: `/offers/${encodeURIComponent(String(entry.id))}/export-pdf`,
+        fileName: `${slugifyValue(entry.offerNumber || entry.title || "ponuda") || "ponuda"}.pdf`,
+        updatedAt: entry?.updatedAt || entry?.createdAt || "",
+        sourceTarget,
+        searchTerms: [entry?.companyName || "", entry?.title || ""],
+      })] : [],
+    }));
+  });
+
+  sortPurchaseOrders(state.purchaseOrders ?? []).forEach((item, itemIndex) => {
+    const company = companyById.get(String(item?.companyId || "")) || null;
+    const folder = getCompanyDocumentFolder(folders, {
+      company,
+      companyId: item?.companyId || "",
+      companyName: item?.companyName || "",
+      folderKey: "purchase-orders",
+      folderLabel: "Narudžbenice",
+      subtitle: "Tvrtke · Narudžbenice",
+      metaParts: ["Narudžbenice", getCommercialDocumentDirectionLabel(item?.orderDirection || "incoming")],
+      searchTerms: [item?.purchaseOrderNumber || "", item?.externalDocumentNumber || "", item?.title || "", item?.serviceLine || ""],
+    });
+    folder.documents.push(...buildDocumentLibraryEntriesForItem(item, itemIndex, {
+      categoryId: "companies",
+      getDocuments: (entry) => entry?.documents ?? [],
+      getSourceTarget: (entry) => ({ kind: "purchase-order", record: entry }),
+      mapDocument: (document, entry) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || entry?.updatedAt || entry?.createdAt || "",
+        metaParts: [
+          getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, entry?.status || "draft") || "",
+          getCommercialDocumentDirectionLabel(entry?.orderDirection || "incoming"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+      buildExtraEntries: (entry, sourceTarget) => entry?.id ? [createDocumentLibraryGeneratedPdfEntry({
+        id: `companies:purchase-orders:pdf:${entry.id}`,
+        label: `${entry.purchaseOrderNumber || entry.title || "Narudžbenica"} PDF`,
+        description: "Generirani PDF narudžbenice.",
+        exportPath: `/purchase-orders/${encodeURIComponent(String(entry.id))}/export-pdf`,
+        fileName: `${slugifyValue(entry.purchaseOrderNumber || entry.title || "narudzbenica") || "narudzbenica"}.pdf`,
+        updatedAt: entry?.updatedAt || entry?.createdAt || "",
+        sourceTarget,
+        searchTerms: [entry?.companyName || "", entry?.title || ""],
+      })] : [],
+    }));
+  });
+
+  const contractTemplates = sortContractTemplates(state.contractTemplates ?? []);
+  sortContracts(state.contracts ?? []).forEach((item) => {
+    if (!item?.id) {
+      return;
+    }
+    const company = companyById.get(String(item?.companyId || "")) || null;
+    const sourceTarget = { kind: "contract", record: item };
+    const linkedTemplate = contractTemplates.find((template) => String(template?.id || "") === String(item?.templateId || "")) ?? null;
+    const linkedTemplateDocument = linkedTemplate?.referenceDocument ?? null;
+    const linkedTemplateHref = getDocumentLibraryAttachmentHref(linkedTemplateDocument);
+    const folder = getCompanyDocumentFolder(folders, {
+      company,
+      companyId: item?.companyId || "",
+      companyName: item?.companyName || "",
+      folderKey: "contracts",
+      folderLabel: "Ugovori",
+      subtitle: "Tvrtke · Ugovori",
+      metaParts: ["Ugovori", getContractStatusLabel(item?.status || "draft")],
+      searchTerms: [item?.contractNumber || "", item?.title || "", item?.templateTitle || ""],
+    });
+    folder.documents.push(
+      createDocumentLibraryGeneratedPdfEntry({
+        id: `companies:contracts:pdf:${item.id}`,
+        label: `${item?.contractNumber || item?.title || "Ugovor"} PDF`,
+        description: "Generirani PDF ugovora.",
+        exportPath: `/contracts/${encodeURIComponent(String(item.id))}/export-pdf`,
+        fileName: `${slugifyValue(item?.contractNumber || item?.title || "ugovor") || "ugovor"}.pdf`,
+        updatedAt: item?.updatedAt || item?.createdAt || "",
+        sourceTarget,
+        searchTerms: [item?.companyName || "", item?.templateTitle || ""],
+      }),
+      linkedTemplateDocument?.fileName && linkedTemplateHref
+        ? createDocumentLibraryEntry({
+          id: `companies:contracts:template:${String(item.id)}`,
+          label: linkedTemplateDocument.fileName,
+          description: "Povezani Word predložak za ovaj ugovor.",
+          fileName: linkedTemplateDocument.fileName,
+          fileType: linkedTemplateDocument.fileType || "",
+          fileSize: linkedTemplateDocument.fileSize || 0,
+          href: linkedTemplateHref,
+          fileKind: resolveDocumentLibraryAttachmentFileKind(linkedTemplateDocument),
+          updatedAt: linkedTemplateDocument.updatedAt || linkedTemplate?.updatedAt || item?.updatedAt || "",
+          metaParts: ["Predložak ugovora"],
+          sourceTarget: { kind: "contract-template", record: linkedTemplate },
+          searchTerms: [linkedTemplate?.title || ""],
+        })
+        : null,
+    );
+  });
+
+  return [...folders.values()]
     .map((folder) => finalizeDocumentLibraryFolder(folder))
     .filter(Boolean);
 }
@@ -14991,6 +15309,8 @@ function buildDocumentsLibraryFolders() {
 
   const folders = [
     ...buildDocumentRecordLibraryFolders(state.documentsExplorer.records),
+    ...buildWorkOrderDocumentLibraryFolders(state.documentsExplorer.records),
+    ...buildCompanyDocumentLibraryFolders(state.documentsExplorer.records),
     ...buildDocumentLibraryAttachmentFolders(sortMeasurementEquipmentItems(state.measurementEquipment ?? []), {
       categoryId: "measurement-equipment",
       getFolderLabel: (item) => item?.name || item?.deviceCode || item?.inventoryNumber || "Mjerna oprema",
@@ -15477,8 +15797,11 @@ function updateDocumentsToggleFoldersButton(model = buildDocumentsLibraryViewMod
   }
 
   const expansionState = getDocumentsLibraryExpansionState(model.visibleFolders);
+  const label = expansionState.allExpanded ? "Zatvori sve" : "Otvori sve";
   documentsToggleFoldersButton.disabled = !expansionState.hasFolders;
-  documentsToggleFoldersButton.textContent = expansionState.allExpanded ? "Zatvori sve" : "Otvori sve";
+  documentsToggleFoldersButton.innerHTML = getWorkOrderIconMarkup(expansionState.allExpanded ? "collapse" : "expand");
+  documentsToggleFoldersButton.title = label;
+  documentsToggleFoldersButton.setAttribute("aria-label", label);
   documentsToggleFoldersButton.setAttribute(
     "aria-pressed",
     expansionState.allExpanded ? "true" : "false",
@@ -15548,6 +15871,14 @@ function openDocumentsLibrarySource(target = null) {
 
   const options = { expandSidebar: state.sidebarCollapsed };
   switch (target.kind) {
+    case "company":
+      activateSidebarItem("list-company", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateCompanyForm(target.record);
+        });
+      }
+      break;
     case "measurement-equipment":
       activateSidebarItem("measurement-equipment", options);
       if (target.record) {
@@ -25868,6 +26199,8 @@ function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = ""
 
 function buildOfferDraftPreviewData() {
   const isPurchaseOrder = isPurchaseOrdersContextActive();
+  const activeDirection = getActiveCommercialDocumentDirection();
+  const includeUploadedDocuments = shouldShowCommercialDocumentUploadSection();
   const companyId = String(offerCompanyIdInput?.value || "").trim();
   const company = state.companies.find((item) => String(item.id) === companyId) ?? null;
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
@@ -25881,6 +26214,7 @@ function buildOfferDraftPreviewData() {
     id: String(offerIdInput?.value || "").trim(),
     offerNumber: isPurchaseOrder ? "" : currentNumber,
     purchaseOrderNumber: isPurchaseOrder ? currentNumber : "",
+    offerDirection: isPurchaseOrder ? "" : activeDirection,
     title: String(offerTitleInput?.value || "").trim(),
     status: String(offerStatusInput?.value || getActiveCommercialDocumentConfig().defaultStatus).trim(),
     offerDate: isPurchaseOrder ? "" : currentDate,
@@ -25897,11 +26231,11 @@ function buildOfferDraftPreviewData() {
     contactName: contactSnapshot.contactName || "",
     contactPhone: contactSnapshot.contactPhone || "",
     contactEmail: contactSnapshot.contactEmail || "",
-    serviceLine: String(offerServiceLineInput?.value || "").trim(),
+    serviceLine: String((isCommercialQuickUploadMode() ? offerTitleInput?.value : offerServiceLineInput?.value) || "").trim(),
     note: String(offerNoteInput?.value || "").trim(),
-    orderDirection: isPurchaseOrder ? String(purchaseOrderDirectionInput?.value || "incoming").trim() : "",
+    orderDirection: isPurchaseOrder ? activeDirection : "",
     externalDocumentNumber: isPurchaseOrder ? String(purchaseOrderExternalNumberInput?.value || "").trim() : "",
-    documents: isPurchaseOrder ? documentDrafts : [],
+    documents: includeUploadedDocuments ? documentDrafts : [],
     currency: "EUR",
     taxRate: totals.taxRate,
     discountRate: totals.discountRate,
@@ -33281,7 +33615,7 @@ function renderPurchaseOrderDocuments() {
   if (purchaseOrderDocumentDrafts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "offer-template-reference-empty";
-    empty.textContent = "Još nema dodanih dokumenata narudžbenice.";
+    empty.textContent = `Još nema dodanih dokumenata: ${getCommercialDocumentUploadCategoryLabel()}.`;
     purchaseOrderDocumentsList.replaceChildren(empty);
     return;
   }
@@ -33309,7 +33643,7 @@ function renderPurchaseOrderDocuments() {
     categorySlot.className = "module-attachment-middle";
     const documentType = document.createElement("div");
     documentType.className = "module-attachment-category-value is-locked";
-    documentType.textContent = entry.documentCategory || "Narudžbenica";
+    documentType.textContent = entry.documentCategory || getCommercialDocumentUploadCategoryLabel();
     categorySlot.append(documentType);
 
     const actions = document.createElement("div");
@@ -33333,7 +33667,7 @@ async function queuePurchaseOrderDocuments(files) {
   const uploads = await buildWorkOrderDocumentUploadPayload(files);
   const nextDocuments = uploads.map((file) => createModuleAttachmentDraft({
     ...file,
-    documentCategory: "Narudžbenica",
+    documentCategory: getCommercialDocumentUploadCategoryLabel(),
     updatedAt: new Date().toISOString(),
   }));
 
@@ -50761,6 +51095,38 @@ function getActiveCommercialDocumentKey() {
   return isPurchaseOrdersContextActive() ? "purchase-orders" : "offers";
 }
 
+function normalizeCommercialDocumentDirection(value = "", fallback = "outgoing") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["incoming", "outgoing"].includes(normalized) ? normalized : fallback;
+}
+
+function ensureCommercialDocumentDirectionState() {
+  if (!state.commercialDocumentDirections || typeof state.commercialDocumentDirections !== "object") {
+    state.commercialDocumentDirections = {};
+  }
+  state.commercialDocumentDirections.offers = normalizeCommercialDocumentDirection(
+    state.commercialDocumentDirections.offers,
+    "outgoing",
+  );
+  state.commercialDocumentDirections["purchase-orders"] = normalizeCommercialDocumentDirection(
+    state.commercialDocumentDirections["purchase-orders"],
+    "outgoing",
+  );
+}
+
+function getActiveCommercialDocumentDirection() {
+  ensureCommercialDocumentDirectionState();
+  return normalizeCommercialDocumentDirection(
+    state.commercialDocumentDirections[getActiveCommercialDocumentKey()],
+    "outgoing",
+  );
+}
+
+function setActiveCommercialDocumentDirection(value = "outgoing") {
+  ensureCommercialDocumentDirectionState();
+  state.commercialDocumentDirections[getActiveCommercialDocumentKey()] = normalizeCommercialDocumentDirection(value, "outgoing");
+}
+
 function getActiveCommercialDocumentConfig() {
   return COMMERCIAL_DOCUMENT_MODULE_CONFIG[getActiveCommercialDocumentKey()] ?? COMMERCIAL_DOCUMENT_MODULE_CONFIG.offers;
 }
@@ -50830,6 +51196,30 @@ function getCommercialDocumentDirectionLabel(value = "") {
   return String(value || "").trim().toLowerCase() === "outgoing" ? "Izlazna" : "Ulazna";
 }
 
+function getCommercialDocumentDirectionForItem(item = {}, contextKey = getActiveCommercialDocumentKey()) {
+  return contextKey === "purchase-orders"
+    ? normalizeCommercialDocumentDirection(item?.orderDirection, "incoming")
+    : normalizeCommercialDocumentDirection(item?.offerDirection, "outgoing");
+}
+
+function isCommercialQuickUploadMode() {
+  return getActiveCommercialDocumentDirection() === "incoming";
+}
+
+function shouldShowCommercialDocumentUploadSection() {
+  return isPurchaseOrdersContextActive() || getActiveCommercialDocumentDirection() === "incoming";
+}
+
+function getCommercialDocumentUploadCategoryLabel() {
+  if (isPurchaseOrdersContextActive()) {
+    return getActiveCommercialDocumentDirection() === "outgoing"
+      ? "Narudžbenica koju šaljemo"
+      : "Zaprimljena narudžbenica";
+  }
+
+  return "Zaprimljena ponuda";
+}
+
 function serializeModuleAttachmentDraft(document = {}) {
   return {
     id: String(document.id || crypto.randomUUID()),
@@ -50865,11 +51255,60 @@ function buildCommercialFilterStatusOptions(options = getActiveCommercialStatusO
   ];
 }
 
+function syncCommercialQuickUploadMode() {
+  const quickMode = isCommercialQuickUploadMode();
+  const shouldShowUploads = shouldShowCommercialDocumentUploadSection();
+  const quickTitleLabel = isPurchaseOrdersContextActive() ? "Što je naručeno" : "Što je ponuđeno";
+  offerForm?.classList.toggle("is-commercial-quick-upload", quickMode);
+  if (quickMode) {
+    if (offerTitleLabel) {
+      offerTitleLabel.textContent = quickTitleLabel;
+    }
+    if (offerTitleInput) {
+      offerTitleInput.placeholder = isPurchaseOrdersContextActive()
+        ? "Npr. narudžbenica za servis, opremu ili ispitivanje..."
+        : "Npr. ponuda dobavljača za umjernicu, opremu ili uslugu...";
+    }
+  }
+  offerServiceLineInput?.closest(".field")?.toggleAttribute("hidden", quickMode);
+  if (offerServiceLineInput) {
+    offerServiceLineInput.required = !quickMode;
+    offerServiceLineInput.disabled = quickMode;
+  }
+  offerLocationTrigger?.closest(".offer-location-field")?.toggleAttribute("hidden", quickMode);
+  offerContactSlotInput?.closest(".offer-contact-field")?.toggleAttribute("hidden", quickMode);
+  offerTaxRateInput?.closest(".offer-tax-field")?.toggleAttribute("hidden", quickMode);
+  offerAddItemButton?.closest(".offers-items-head")?.toggleAttribute("hidden", quickMode);
+  offerItems?.toggleAttribute("hidden", quickMode);
+  offerTotalsCard?.toggleAttribute("hidden", quickMode);
+  offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", quickMode);
+  if (offerTotalPreviewBlock) {
+    offerTotalPreviewBlock.hidden = quickMode || !isOfferTotalVisible();
+  }
+
+  if (purchaseOrderDocumentsSection) {
+    purchaseOrderDocumentsSection.hidden = !shouldShowUploads;
+  }
+  if (purchaseOrderDocumentsTitle) {
+    purchaseOrderDocumentsTitle.textContent = isPurchaseOrdersContextActive()
+      ? "Dokumenti narudžbenice"
+      : "Dokumenti zaprimljene ponude";
+  }
+  if (purchaseOrderDocumentsHelp) {
+    purchaseOrderDocumentsHelp.textContent = isPurchaseOrdersContextActive()
+      ? "Odaberi tvrtku, upiši što je naručeno i učitaj PDF, sken ili zaprimljenu narudžbenicu."
+      : "Odaberi tvrtku, upiši što je ponuđeno i učitaj PDF ili sken ponude koja je došla prema nama.";
+  }
+}
+
 function applyCommercialDocumentUiConfig() {
   const config = getActiveCommercialDocumentConfig();
   const statusOptions = getActiveCommercialStatusOptions();
   const currentFilterValue = String(offersFilterStatusInput?.value || "all");
   const currentStatusValue = String(offerStatusInput?.value || config.defaultStatus);
+  const activeDirection = getActiveCommercialDocumentDirection();
+  const outgoingLabel = isPurchaseOrdersContextActive() ? "Šaljemo" : "Prema klijentu";
+  const incomingLabel = isPurchaseOrdersContextActive() ? "Primljene" : "Primljene ponude";
 
   if (offersListKicker) {
     offersListKicker.textContent = config.listKicker;
@@ -50881,7 +51320,22 @@ function applyCommercialDocumentUiConfig() {
     offersSearchInput.placeholder = config.listSearchPlaceholder;
   }
   if (offerOpenFormButton) {
-    offerOpenFormButton.textContent = config.openFormLabel;
+    offerOpenFormButton.textContent = activeDirection === "incoming"
+      ? (isPurchaseOrdersContextActive() ? "+ Dodaj primljenu narudžbenicu" : "+ Dodaj primljenu ponudu")
+      : config.openFormLabel;
+  }
+  if (offerDirectionTabs) {
+    offerDirectionTabs.hidden = false;
+  }
+  if (offerDirectionOutgoingButton) {
+    offerDirectionOutgoingButton.textContent = outgoingLabel;
+    offerDirectionOutgoingButton.classList.toggle("is-active", activeDirection === "outgoing");
+    offerDirectionOutgoingButton.setAttribute("aria-selected", activeDirection === "outgoing" ? "true" : "false");
+  }
+  if (offerDirectionIncomingButton) {
+    offerDirectionIncomingButton.textContent = incomingLabel;
+    offerDirectionIncomingButton.classList.toggle("is-active", activeDirection === "incoming");
+    offerDirectionIncomingButton.setAttribute("aria-selected", activeDirection === "incoming" ? "true" : "false");
   }
   if (offerEditorKicker) {
     offerEditorKicker.textContent = config.editorKicker;
@@ -50968,15 +51422,16 @@ function applyCommercialDocumentUiConfig() {
     );
   }
 
+  if (purchaseOrderDirectionInput) {
+    purchaseOrderDirectionInput.value = activeDirection;
+  }
   if (purchaseOrderDirectionField) {
-    purchaseOrderDirectionField.hidden = !isPurchaseOrdersContextActive();
+    purchaseOrderDirectionField.hidden = true;
   }
   if (purchaseOrderExternalNumberField) {
-    purchaseOrderExternalNumberField.hidden = !isPurchaseOrdersContextActive();
+    purchaseOrderExternalNumberField.hidden = !isPurchaseOrdersContextActive() || activeDirection !== "incoming";
   }
-  if (purchaseOrderDocumentsSection) {
-    purchaseOrderDocumentsSection.hidden = !isPurchaseOrdersContextActive();
-  }
+  syncCommercialQuickUploadMode();
 }
 
 function getOfferStatusLabel(status = "draft") {
@@ -52056,6 +52511,9 @@ function getSelectedOfferContactSnapshot() {
 
 function buildOfferPayload() {
   const isPurchaseOrder = isPurchaseOrdersContextActive();
+  const activeDirection = getActiveCommercialDocumentDirection();
+  const quickMode = isCommercialQuickUploadMode();
+  const includeUploadedDocuments = shouldShowCommercialDocumentUploadSection();
   const companyId = String(offerCompanyIdInput?.value || "").trim();
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
@@ -52070,13 +52528,13 @@ function buildOfferPayload() {
     contactName: contactSnapshot.contactName,
     contactPhone: contactSnapshot.contactPhone,
     contactEmail: contactSnapshot.contactEmail,
-    serviceLine: offerServiceLineInput.value,
+    serviceLine: quickMode ? offerTitleInput.value : offerServiceLineInput.value,
     status: offerStatusInput.value,
-    showTotalAmount: isOfferTotalVisible(),
+    showTotalAmount: quickMode ? false : isOfferTotalVisible(),
     taxRate: offerTaxRateInput.value,
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
     note: offerNoteInput.value,
-    items: offerFormItems.map((item) => ({
+    items: quickMode ? [] : offerFormItems.map((item) => ({
       serviceCatalogId: item.serviceCatalogId || "",
       serviceCode: item.serviceCode || "",
       description: item.description,
@@ -52097,15 +52555,21 @@ function buildOfferPayload() {
     return {
       ...payload,
       purchaseOrderDate: offerDateInput.value,
-      orderDirection: purchaseOrderDirectionInput?.value || "incoming",
+      orderDirection: activeDirection,
       externalDocumentNumber: purchaseOrderExternalNumberInput?.value || "",
-      documents: purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry)),
+      documents: includeUploadedDocuments
+        ? purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry))
+        : [],
     };
   }
 
   return {
     ...payload,
     offerDate: offerDateInput.value,
+    offerDirection: activeDirection,
+    documents: includeUploadedDocuments
+      ? purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry))
+      : [],
   };
 }
 
@@ -52115,6 +52579,7 @@ function resetOfferForm() {
   }
 
   const config = getActiveCommercialDocumentConfig();
+  const activeDirection = getActiveCommercialDocumentDirection();
 
   applyCommercialDocumentUiConfig();
   offerForm.reset();
@@ -52137,7 +52602,7 @@ function resetOfferForm() {
     offerDiscountRateInput.value = "";
   }
   if (purchaseOrderDirectionInput) {
-    purchaseOrderDirectionInput.value = "incoming";
+    purchaseOrderDirectionInput.value = activeDirection;
   }
   if (purchaseOrderExternalNumberInput) {
     purchaseOrderExternalNumberInput.value = "";
@@ -52164,16 +52629,17 @@ function resetOfferForm() {
     offerCompanyPreviewName,
     offerCompanyPreviewMeta,
   );
-  setOfferFormItems([], { ensureOne: true });
+  setOfferFormItems([], { ensureOne: !isCommercialQuickUploadMode() });
   if (offerDeleteButton) {
     offerDeleteButton.hidden = true;
   }
+  syncCommercialQuickUploadMode();
   syncOfferNumberPreview();
   syncOfferTotals();
 }
 
 function hydrateOfferForm(offer) {
-  const isPurchaseOrder = Boolean(offer?.purchaseOrderNumber || offer?.orderDirection || Array.isArray(offer?.documents));
+  const isPurchaseOrder = Boolean(offer?.purchaseOrderNumber || offer?.orderDirection);
   const configKey = isPurchaseOrder ? "purchase-orders" : "offers";
   const config = COMMERCIAL_DOCUMENT_MODULE_CONFIG[configKey];
 
@@ -52181,6 +52647,11 @@ function hydrateOfferForm(offer) {
   state.activeSidebarGroup = "operations";
   state.activeSidebarItem = configKey;
   state.activeModuleItem = "offers";
+  ensureCommercialDocumentDirectionState();
+  state.commercialDocumentDirections[configKey] = normalizeCommercialDocumentDirection(
+    isPurchaseOrder ? offer?.orderDirection : offer?.offerDirection,
+    isPurchaseOrder ? "incoming" : "outgoing",
+  );
   renderModuleView();
   renderActiveView();
   applyCommercialDocumentUiConfig();
@@ -52212,7 +52683,7 @@ function hydrateOfferForm(offer) {
   offerTaxRateInput.value = String(offer.taxRate ?? 25);
   offerNoteInput.value = offer.note || config.defaultNote;
   if (purchaseOrderDirectionInput) {
-    purchaseOrderDirectionInput.value = offer.orderDirection || "incoming";
+    purchaseOrderDirectionInput.value = getActiveCommercialDocumentDirection();
   }
   if (purchaseOrderExternalNumberInput) {
     purchaseOrderExternalNumberInput.value = offer.externalDocumentNumber || "";
@@ -52224,11 +52695,12 @@ function hydrateOfferForm(offer) {
   }
   setOfferDiscountVisibility(Number(offer.discountRate ?? 0) > 0);
   setOfferTotalVisibility(offer.showTotalAmount !== false);
-  setOfferFormItems(offer.items ?? [], { ensureOne: true });
+  setOfferFormItems(offer.items ?? [], { ensureOne: !isCommercialQuickUploadMode() });
   offerError.textContent = "";
   if (offerDeleteButton) {
     offerDeleteButton.hidden = false;
   }
+  syncCommercialQuickUploadMode();
   syncOfferNumberPreview();
   syncOfferTotals();
   renderOffersModule();
@@ -52427,6 +52899,7 @@ function renderOffersModule() {
   const sortItems = isPurchaseOrdersContextActive() ? sortPurchaseOrders : sortOffers;
   const filterItems = isPurchaseOrdersContextActive() ? filterPurchaseOrders : filterOffers;
   const activeStatusOptions = getActiveCommercialStatusOptions();
+  const activeDirection = getActiveCommercialDocumentDirection();
 
   if (lastCommercialDocumentContextKey !== contextKey) {
     lastCommercialDocumentContextKey = contextKey;
@@ -52437,8 +52910,9 @@ function renderOffersModule() {
     resetOfferForm();
   }
 
-  const allOffers = sortItems(activeItems);
-  const visibleOffers = sortItems(filterItems(activeItems, {
+  const directionItems = activeItems.filter((item) => getCommercialDocumentDirectionForItem(item, contextKey) === activeDirection);
+  const allOffers = sortItems(directionItems);
+  const visibleOffers = sortItems(filterItems(directionItems, {
     query: offersSearchInput?.value || "",
     status: offersFilterStatusInput?.value || "all",
   }));
@@ -52506,6 +52980,14 @@ function renderOffersModule() {
       if (offer.externalDocumentNumber) {
         chipNodes.push(createMetaPill(offer.externalDocumentNumber, "is-muted"));
       }
+      if (offer.documents?.length) {
+        chipNodes.push(createMetaPill(`${offer.documents.length} dok.`, "is-muted"));
+      }
+    } else {
+      chipNodes.push(createMetaPill(
+        getCommercialDocumentDirectionLabel(offer.offerDirection || "outgoing"),
+        (offer.offerDirection || "outgoing") === "incoming" ? "is-success" : "is-attention",
+      ));
       if (offer.documents?.length) {
         chipNodes.push(createMetaPill(`${offer.documents.length} dok.`, "is-muted"));
       }
@@ -65779,6 +66261,24 @@ offerOpenFormButton?.addEventListener("click", () => {
   });
 });
 
+offerDirectionOutgoingButton?.addEventListener("click", () => {
+  if (getActiveCommercialDocumentDirection() === "outgoing") {
+    return;
+  }
+  setActiveCommercialDocumentDirection("outgoing");
+  resetOfferForm();
+  renderOffersModule();
+});
+
+offerDirectionIncomingButton?.addEventListener("click", () => {
+  if (getActiveCommercialDocumentDirection() === "incoming") {
+    return;
+  }
+  setActiveCommercialDocumentDirection("incoming");
+  resetOfferForm();
+  renderOffersModule();
+});
+
 documentsSearchInput?.addEventListener("input", () => {
   state.documentsExplorer.query = documentsSearchInput.value.trim();
   state.documentsExplorer.suppressDefaultExpansion = false;
@@ -65998,6 +66498,8 @@ offerForm?.addEventListener("input", () => {
 });
 
 purchaseOrderDirectionInput?.addEventListener("change", () => {
+  setActiveCommercialDocumentDirection(purchaseOrderDirectionInput.value || "outgoing");
+  syncCommercialQuickUploadMode();
   if (state.offerTemplateModalOpen) {
     renderOfferTemplatePlaceholderList();
   }
