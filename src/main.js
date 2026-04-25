@@ -3780,7 +3780,8 @@ const companyClientFirstNameInput = document.querySelector("#company-client-firs
 const companyClientLastNameInput = document.querySelector("#company-client-last-name");
 const companyClientEmailInput = document.querySelector("#company-client-email");
 const companyClientOibInput = document.querySelector("#company-client-oib");
-const companyClientTitleInput = document.querySelector("#company-client-title");
+const companyClientLocationSearchInput = document.querySelector("#company-client-location-search");
+const companyClientLocationList = document.querySelector("#company-client-location-list");
 const companyClientLocationIdsInput = document.querySelector("#company-client-location-ids");
 const companyClientAllLocationsInput = document.querySelector("#company-client-all-locations");
 const companyClientCreateUserButton = document.querySelector("#company-client-create-user");
@@ -3990,6 +3991,9 @@ const locationNoteInput = document.querySelector("#location-note");
 const locationLinkedWorkOrdersList = document.querySelector("#location-linked-work-orders-list");
 const locationLinkedWorkOrdersEmpty = document.querySelector("#location-linked-work-orders-empty");
 const locationLinkedWorkOrdersCount = document.querySelector("#location-linked-work-orders-count");
+const locationClientUsersList = document.querySelector("#location-client-users-list");
+const locationClientUsersEmpty = document.querySelector("#location-client-users-empty");
+const locationClientUsersCount = document.querySelector("#location-client-users-count");
 const locationsBody = document.querySelector("#locations-body");
 const locationsEmpty = document.querySelector("#locations-empty");
 const locationsHelper = document.querySelector("#locations-helper");
@@ -44913,6 +44917,61 @@ function getCompanyClientUsers(companyId = companyIdInput?.value || "") {
     .sort((left, right) => String(left.fullName || left.email || "").localeCompare(String(right.fullName || right.email || ""), "hr"));
 }
 
+function renderCompanyClientLocationList() {
+  if (!companyClientLocationList || !(companyClientLocationIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const allLocationsMode = Boolean(companyClientAllLocationsInput?.checked);
+  const queryNeedle = normalizeLooseName(companyClientLocationSearchInput?.value || "");
+  const selectedIds = new Set(getSelectedMultiSelectValues(companyClientLocationIdsInput));
+  const locations = getCompanyLocations().filter((location) => (
+    !queryNeedle
+    || normalizeLooseName([
+      location.name,
+      location.region,
+      location.coordinates,
+      getCompany(location.companyId)?.name,
+    ].filter(Boolean).join(" ")).includes(queryNeedle)
+  ));
+
+  companyClientLocationList.classList.toggle("is-disabled", allLocationsMode);
+  if (locations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "company-client-location-empty";
+    empty.textContent = queryNeedle ? "Nema lokacija za pretragu." : "Nema lokacija za ovu tvrtku.";
+    companyClientLocationList.replaceChildren(empty);
+    return;
+  }
+
+  companyClientLocationList.replaceChildren(...locations.map((location) => {
+    const locationId = String(location.id);
+    const isSelected = selectedIds.has(locationId);
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "company-client-location-option";
+    option.dataset.locationId = locationId;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(isSelected));
+    option.disabled = allLocationsMode;
+
+    const checkbox = document.createElement("span");
+    checkbox.className = "company-client-location-check";
+    checkbox.textContent = isSelected ? "✓" : "";
+
+    const copy = document.createElement("span");
+    copy.className = "company-client-location-copy";
+    const title = document.createElement("strong");
+    title.textContent = location.name || "Lokacija";
+    const meta = document.createElement("small");
+    meta.textContent = [location.region, location.coordinates].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    option.append(checkbox, copy);
+    return option;
+  }));
+}
+
 function rebuildCompanyClientLocationOptions(selectedIds = []) {
   if (!(companyClientLocationIdsInput instanceof HTMLSelectElement)) {
     return;
@@ -44923,6 +44982,7 @@ function rebuildCompanyClientLocationOptions(selectedIds = []) {
   if (locations.length === 0) {
     companyClientLocationIdsInput.replaceChildren(createOption("", "Nema lokacija za ovu tvrtku"));
     companyClientLocationIdsInput.disabled = true;
+    renderCompanyClientLocationList();
     return;
   }
 
@@ -44933,6 +44993,22 @@ function rebuildCompanyClientLocationOptions(selectedIds = []) {
   Array.from(companyClientLocationIdsInput.options).forEach((option) => {
     option.selected = selectedSet.has(String(option.value));
   });
+  renderCompanyClientLocationList();
+}
+
+function toggleCompanyClientLocationSelection(locationId = "") {
+  if (!(companyClientLocationIdsInput instanceof HTMLSelectElement) || companyClientAllLocationsInput?.checked) {
+    return;
+  }
+
+  const option = Array.from(companyClientLocationIdsInput.options)
+    .find((entry) => String(entry.value) === String(locationId));
+  if (!option) {
+    return;
+  }
+
+  option.selected = !option.selected;
+  renderCompanyClientLocationList();
 }
 
 function resetCompanyClientUserForm() {
@@ -44948,8 +45024,8 @@ function resetCompanyClientUserForm() {
   if (companyClientOibInput) {
     companyClientOibInput.value = "";
   }
-  if (companyClientTitleInput) {
-    companyClientTitleInput.value = "";
+  if (companyClientLocationSearchInput) {
+    companyClientLocationSearchInput.value = "";
   }
   if (companyClientAllLocationsInput) {
     companyClientAllLocationsInput.checked = true;
@@ -45000,7 +45076,6 @@ function renderCompanyClientPortalPanel() {
     const meta = document.createElement("span");
     meta.textContent = [
       user.email || "",
-      user.title || "",
       getClientPortalLocationLabel(user),
     ].filter(Boolean).join(" · ");
     copy.append(title, meta);
@@ -45033,7 +45108,7 @@ function buildCompanyClientUserPayload() {
     lastName: String(companyClientLastNameInput?.value || "").trim(),
     displayName: "",
     profileRole: "client_user",
-    title: String(companyClientTitleInput?.value || "").trim(),
+    title: "",
     oib: String(companyClientOibInput?.value || "").trim(),
     email: String(companyClientEmailInput?.value || "").trim(),
     organizationId: state.activeOrganizationId,
@@ -45080,6 +45155,7 @@ async function createCompanyClientUser() {
   if (success) {
     resetCompanyClientUserForm();
     renderCompanyClientPortalPanel();
+    renderLocationEditorRelatedData(locationIdInput?.value || "");
     setInlineMessage(companyClientFeedback, "Klijentski pristup je kreiran i podaci su poslani emailom.", "success");
   }
   return success;
@@ -45229,6 +45305,20 @@ function getLocationLinkedWorkOrders(locationId = "") {
   }
 
   return sortWorkOrders((state.workOrders ?? []).filter((item) => String(item.locationId) === normalizedLocationId));
+}
+
+function getLocationClientUsers(locationId = "") {
+  const normalizedLocationId = String(locationId || "").trim();
+  const location = getLocation(normalizedLocationId);
+  if (!location) {
+    return [];
+  }
+
+  const companyId = String(location.companyId || "").trim();
+  return getCompanyClientUsers(companyId).filter((user) => (
+    user.clientAccessAllLocations !== false
+    || normalizeClientScopeIdsClient(user.clientLocationIds).includes(normalizedLocationId)
+  ));
 }
 
 function openCompanyContextRecord(target = {}) {
@@ -45613,6 +45703,50 @@ function renderLocationLinkedWorkOrders(locationId = locationIdInput?.value || "
 
     card.append(copy, actions);
     return card;
+  }));
+}
+
+function renderLocationClientUsers(locationId = locationIdInput?.value || "") {
+  if (!locationClientUsersList || !locationClientUsersEmpty || !locationClientUsersCount) {
+    return;
+  }
+
+  const normalizedLocationId = String(locationId || "").trim();
+  const clientUsers = getLocationClientUsers(normalizedLocationId);
+  locationClientUsersCount.textContent = String(clientUsers.length);
+
+  if (!normalizedLocationId) {
+    locationClientUsersList.replaceChildren();
+    locationClientUsersEmpty.textContent = "Spremi lokaciju pa će se ovdje pojaviti klijentski pristupi.";
+    locationClientUsersEmpty.hidden = false;
+    return;
+  }
+
+  if (clientUsers.length === 0) {
+    locationClientUsersList.replaceChildren();
+    locationClientUsersEmpty.textContent = "Nema klijentskih pristupa za ovu lokaciju.";
+    locationClientUsersEmpty.hidden = false;
+    return;
+  }
+
+  locationClientUsersEmpty.hidden = true;
+  locationClientUsersList.replaceChildren(...clientUsers.map((user) => {
+    const row = document.createElement("div");
+    row.className = "company-linked-record-item location-client-user-item";
+
+    const copy = document.createElement("div");
+    copy.className = "company-linked-record-copy";
+    const title = document.createElement("strong");
+    title.textContent = user.fullName || user.email || "Klijent";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      user.email || "",
+      user.clientAccessAllLocations !== false ? "Sve lokacije tvrtke" : "Samo odabrane lokacije",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    row.append(copy, createMetaPill(user.clientAccessAllLocations !== false ? "Sve lokacije" : "Ova lokacija", "is-info"));
+    return row;
   }));
 }
 
@@ -46011,9 +46145,20 @@ function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "
 
 function renderLocationEditorRelatedData(locationId = locationIdInput?.value || "") {
   try {
+    renderLocationClientUsers(locationId);
     renderLocationLinkedWorkOrders(locationId);
   } catch (error) {
-    console.error("Location linked work orders render failed", error);
+    console.error("Location related data render failed", error);
+    if (locationClientUsersList) {
+      locationClientUsersList.replaceChildren();
+    }
+    if (locationClientUsersCount) {
+      locationClientUsersCount.textContent = "0";
+    }
+    if (locationClientUsersEmpty) {
+      locationClientUsersEmpty.textContent = "Klijentske pristupe trenutno nije moguće prikazati.";
+      locationClientUsersEmpty.hidden = false;
+    }
     if (locationLinkedWorkOrdersList) {
       locationLinkedWorkOrdersList.replaceChildren();
     }
@@ -68524,6 +68669,21 @@ companyLogoFileInput?.addEventListener("change", () => {
 
 companyClientAllLocationsInput?.addEventListener("change", () => {
   rebuildCompanyClientLocationOptions(getSelectedMultiSelectValues(companyClientLocationIdsInput));
+});
+
+companyClientLocationSearchInput?.addEventListener("input", () => {
+  renderCompanyClientLocationList();
+});
+
+companyClientLocationList?.addEventListener("click", (event) => {
+  const option = event.target instanceof Element
+    ? event.target.closest("[data-location-id]")
+    : null;
+  if (!(option instanceof HTMLElement) || !companyClientLocationList.contains(option)) {
+    return;
+  }
+
+  toggleCompanyClientLocationSelection(option.dataset.locationId || "");
 });
 
 companyClientCreateUserButton?.addEventListener("click", () => {
