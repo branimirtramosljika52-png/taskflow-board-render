@@ -1005,12 +1005,6 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Centralni dokumentni sloj za priloge, obrasce i datoteke vezane uz organizaciju, klijenta ili lokaciju.",
     chips: ["Files", "Templates", "Evidence"],
   },
-  cloud: {
-    kicker: "Documents",
-    title: "Cloud",
-    description: "Cloud modul za pregled i upravljanje sinkronizacijom dokumenata i storage resursa.",
-    chips: ["Storage", "Sync", "Spaces"],
-  },
   tests: {
     kicker: "Learning",
     title: "Tests",
@@ -1052,7 +1046,6 @@ const SIDEBAR_ITEM_CONFIG = {
   "list-location": { group: "locations", view: "locations", focus: "list" },
   "add-location": { group: "locations", view: "locations", focus: "form" },
   documents: { group: "documents", view: "module", module: "documents" },
-  cloud: { group: "documents", view: "module", module: "cloud" },
   tests: { group: "learning", view: "module", module: "tests" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
@@ -1102,7 +1095,6 @@ const SIDEBAR_ITEM_LABELS = {
   "list-location": "List Location",
   "add-location": "Add New",
   documents: "Documents",
-  cloud: "Cloud",
   tests: "Test",
   "learning-people": "People",
 };
@@ -2227,7 +2219,6 @@ const moduleViewTitle = document.querySelector("#module-view-title");
 const moduleViewDescription = document.querySelector("#module-view-description");
 const moduleViewChips = document.querySelector("#module-view-chips");
 const documentsModule = document.querySelector("#documents-module");
-const cloudModule = document.querySelector("#cloud-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -2247,14 +2238,9 @@ const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector(
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const settingsPeriodicsVisualFeedback = document.querySelector("#settings-periodics-visual-feedback");
-const documentsCategoryCount = document.querySelector("#documents-category-count");
-const documentsFolderCount = document.querySelector("#documents-folder-count");
-const documentsPdfCount = document.querySelector("#documents-pdf-count");
-const documentsFileCount = document.querySelector("#documents-file-count");
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
-const documentsHelper = document.querySelector("#documents-helper");
 const documentsCategoryList = document.querySelector("#documents-category-list");
 const documentsFolderList = document.querySelector("#documents-folder-list");
 const documentsLibraryEmpty = document.querySelector("#documents-library-empty");
@@ -9139,7 +9125,6 @@ function renderModuleView() {
     : state.activeModuleItem;
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[moduleDefinitionKey] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isDocumentsModule = state.activeModuleItem === "documents";
-  const isCloudModule = state.activeModuleItem === "cloud";
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
   const isContractModule = state.activeModuleItem === "contract";
@@ -9203,10 +9188,6 @@ function renderModuleView() {
     documentsModule.hidden = !isDocumentsModule;
   }
 
-  if (cloudModule) {
-    cloudModule.hidden = !isCloudModule;
-  }
-
   if (settingsModule) {
     settingsModule.hidden = !isSettingsModule;
   }
@@ -9261,10 +9242,6 @@ function renderModuleView() {
 
   if (isDocumentsModule) {
     renderDocumentsModule();
-  }
-
-  if (isCloudModule) {
-    // Cloud modul trenutno koristi statični prikaz.
   }
 
   if (isSettingsModule) {
@@ -12145,6 +12122,7 @@ function getWorkOrderIconMarkup(iconName) {
     reminder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5a1.5 1.5 0 0 0 1.45-1.1M4.5 11.25h7l-.8-1.6V6.75a2.7 2.7 0 1 0-5.4 0v2.9l-.8 1.6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     measurement: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25h10.5v9.5H2.75zM2.75 6.25h10.5M6 3.25v9.5M9.5 3.25v9.5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.1"/></svg>',
     reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 7.75a4.5 4.5 0 1 0 1.32-3.18L3 6.25M3 2.75v3.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    folder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.25h4l1.15-1.5h5.85v8.75a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-6.25a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/><path d="M1.75 7h12.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     preview: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10 10 2.75 2.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     download: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
@@ -15508,6 +15486,17 @@ function createDocumentsLibraryCategoryIcon(categoryId = "all", className = "") 
   return icon;
 }
 
+function createDocumentsLibraryFolderIcon(categoryId = "all") {
+  const icon = document.createElement("span");
+  icon.className = [
+    "documents-folder-icon",
+    getDocumentLibraryCategoryDefinition(categoryId).toneClass,
+  ].filter(Boolean).join(" ");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup("folder");
+  return icon;
+}
+
 function openDocumentsLibrarySource(target = null) {
   if (!target?.kind) {
     return;
@@ -15672,30 +15661,18 @@ function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel
     allDefinition.toneClass,
     model.selectedCategory === "all" ? "is-active" : "",
   ].filter(Boolean).join(" ");
-  allButton.append(
-    createDocumentsLibraryCategoryIcon("all"),
-  );
-
-  const allCopy = document.createElement("div");
-  allCopy.className = "documents-category-copy";
   const allTitle = document.createElement("strong");
   allTitle.textContent = allDefinition.label;
-  const allDescription = document.createElement("span");
-  allDescription.textContent = allDefinition.description;
-  const allMeta = document.createElement("div");
-  allMeta.className = "documents-category-meta";
-  allMeta.append(
-    createMetaPill(`${model.filteredFolders.length} foldera`, "is-muted"),
-    createMetaPill(`${model.filteredFolders.reduce((sum, folder) => sum + folder.visibleDocumentCount, 0)} dokumenata`, "is-info"),
-  );
-  allCopy.append(allTitle, allDescription, allMeta);
-  allButton.append(allCopy);
+  allButton.append(createDocumentsLibraryCategoryIcon("all"), allTitle);
+  allButton.setAttribute("aria-current", model.selectedCategory === "all" ? "page" : "false");
   allButton.addEventListener("click", () => {
     selectDocumentsLibraryCategory("all");
   });
   cards.push(allButton);
 
-  model.categories.forEach((category) => {
+  model.categories
+    .filter((category) => category.documentCount > 0 || model.selectedCategory === category.id)
+    .forEach((category) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
@@ -15703,22 +15680,10 @@ function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel
       category.toneClass,
       model.selectedCategory === category.id ? "is-active" : "",
     ].filter(Boolean).join(" ");
-    button.append(createDocumentsLibraryCategoryIcon(category.id));
-
-    const copy = document.createElement("div");
-    copy.className = "documents-category-copy";
     const title = document.createElement("strong");
     title.textContent = category.label;
-    const description = document.createElement("span");
-    description.textContent = category.description;
-    const meta = document.createElement("div");
-    meta.className = "documents-category-meta";
-    meta.append(
-      createMetaPill(`${category.folderCount} foldera`, category.folderCount > 0 ? "is-info" : "is-muted"),
-      createMetaPill(`${category.documentCount} dokumenata`, category.documentCount > 0 ? "is-success" : "is-muted"),
-    );
-    copy.append(title, description, meta);
-    button.append(copy);
+    button.append(createDocumentsLibraryCategoryIcon(category.id), title);
+    button.setAttribute("aria-current", model.selectedCategory === category.id ? "page" : "false");
     button.addEventListener("click", () => {
       selectDocumentsLibraryCategory(category.id);
     });
@@ -15751,46 +15716,36 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
       toggleDocumentsLibraryFolder(folder.id);
     });
 
+    const toggleMarker = document.createElement("span");
+    toggleMarker.className = "documents-folder-toggle-mark";
+    toggleMarker.textContent = expandedFolderIds.has(folder.id) ? "▾" : "▸";
+
     const copy = document.createElement("div");
     copy.className = "documents-folder-copy";
 
     const titleRow = document.createElement("div");
     titleRow.className = "documents-folder-title-row";
-    titleRow.append(
-      createDocumentsLibraryCategoryIcon(folder.categoryId, "is-folder"),
-    );
     const title = document.createElement("strong");
     title.className = "documents-folder-title";
     title.textContent = folder.label;
     titleRow.append(title);
 
-    if (model.selectedCategory === "all") {
-      titleRow.append(createMetaPill(folder.categoryDefinition.label, folder.categoryDefinition.toneClass));
-    }
-
     const subtitle = document.createElement("span");
     subtitle.className = "documents-folder-subtitle";
-    subtitle.textContent = folder.subtitle || "Bez dodatnog opisa.";
+    subtitle.textContent = folder.subtitle || folder.categoryDefinition.label;
 
     copy.append(titleRow, subtitle);
-    toggle.append(copy);
+    toggle.append(toggleMarker, createDocumentsLibraryFolderIcon(folder.categoryId), copy);
 
-    const meta = document.createElement("div");
-    meta.className = "documents-folder-meta";
-    meta.append(
-      createMetaPill(`${folder.visibleDocumentCount} dokumenata`, "is-info"),
-    );
-    if (folder.visiblePdfCount > 0) {
-      meta.append(createMetaPill(`${folder.visiblePdfCount} PDF`, "is-success"));
-    }
-    if (folder.visibleLatestLabel) {
-      meta.append(createMetaPill(folder.visibleLatestLabel, "is-muted"));
-    }
-    const toggleMarker = document.createElement("span");
-    toggleMarker.className = "documents-folder-toggle-mark";
-    toggleMarker.textContent = expandedFolderIds.has(folder.id) ? "−" : "+";
-    meta.append(toggleMarker);
-    toggle.append(meta);
+    const folderType = document.createElement("span");
+    folderType.className = "documents-folder-kind";
+    folderType.textContent = model.selectedCategory === "all"
+      ? folder.categoryDefinition.label
+      : "Folder";
+
+    const folderDate = document.createElement("span");
+    folderDate.className = "documents-folder-date";
+    folderDate.textContent = folder.visibleLatestLabel || "";
 
     const actions = document.createElement("div");
     actions.className = "documents-folder-head-actions";
@@ -15800,7 +15755,7 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
       }));
     }
 
-    head.append(toggle, actions);
+    head.append(toggle, folderType, folderDate, actions);
 
     const body = document.createElement("div");
     body.className = "documents-folder-body";
@@ -15828,14 +15783,20 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
         fileCopy.append(description);
       }
 
-      const fileMeta = document.createElement("div");
-      fileMeta.className = "documents-file-meta";
-      [entry.fileKindLabel, ...entry.metaParts, entry.updatedLabel || ""]
-        .filter(Boolean)
-        .forEach((metaValue, index) => {
-          fileMeta.append(createMetaPill(metaValue, index === 0 ? "is-muted" : ""));
-        });
-      fileCopy.append(fileMeta);
+      if (entry.metaParts.length > 0) {
+        const fileMeta = document.createElement("span");
+        fileMeta.className = "documents-file-meta";
+        fileMeta.textContent = entry.metaParts.join(" · ");
+        fileCopy.append(fileMeta);
+      }
+
+      const fileKind = document.createElement("span");
+      fileKind.className = "documents-file-kind";
+      fileKind.textContent = entry.fileKindLabel;
+
+      const fileDate = document.createElement("span");
+      fileDate.className = "documents-file-date";
+      fileDate.textContent = entry.updatedLabel || "";
 
       const fileActions = document.createElement("div");
       fileActions.className = "documents-file-actions";
@@ -15846,14 +15807,14 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
           "preview",
           "",
           () => {
-            void runMutation(() => previewDocumentsLibraryEntry(entry), documentsHelper);
+            void runMutation(() => previewDocumentsLibraryEntry(entry), null);
           },
         ));
       }
 
       if (entry.canDownload) {
         fileActions.append(createIconActionButton("Preuzmi", "download", "", () => {
-          void runMutation(() => downloadDocumentsLibraryEntry(entry), documentsHelper);
+          void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
         }));
       }
 
@@ -15863,7 +15824,7 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
         }));
       }
 
-      row.append(fileCopy, fileActions);
+      row.append(fileCopy, fileKind, fileDate, fileActions);
       return row;
     }));
 
@@ -16336,35 +16297,13 @@ function renderDocumentsModule() {
   renderDocumentsLibraryCategories(model);
   renderDocumentsLibraryFolders(model);
 
-  if (documentsCategoryCount) {
-    documentsCategoryCount.textContent = String(model.totals.categories);
-  }
-  if (documentsFolderCount) {
-    documentsFolderCount.textContent = String(model.totals.folders);
-  }
-  if (documentsPdfCount) {
-    documentsPdfCount.textContent = String(model.totals.pdfs);
-  }
-  if (documentsFileCount) {
-    documentsFileCount.textContent = String(model.totals.files);
-  }
-
-  if (documentsHelper) {
-    if (state.documentsExplorer.loading) {
-      documentsHelper.textContent = "Učitavanje zapisnika i dokumenata...";
-    } else if (state.documentsExplorer.error) {
-      documentsHelper.textContent = state.documentsExplorer.error;
-    } else {
-      const selectedCategoryDefinition = getDocumentLibraryCategoryDefinition(model.selectedCategory);
-      const categoryLabel = model.selectedCategory === "all"
-        ? "svim kategorijama"
-        : selectedCategoryDefinition.label;
-      documentsHelper.textContent = `Prikazano ${model.totals.files} dokumenata u ${model.totals.folders} foldera kroz ${categoryLabel}.`;
-    }
-  }
-
   if (documentsLibraryEmpty) {
-    documentsLibraryEmpty.hidden = state.documentsExplorer.loading || Boolean(state.documentsExplorer.error) || model.totals.files > 0;
+    documentsLibraryEmpty.textContent = state.documentsExplorer.loading
+      ? "Učitavanje..."
+      : state.documentsExplorer.error || "Nema dokumenata za trenutni prikaz.";
+    documentsLibraryEmpty.hidden = !state.documentsExplorer.loading
+      && !state.documentsExplorer.error
+      && model.totals.files > 0;
   }
 }
 
