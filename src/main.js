@@ -1346,6 +1346,7 @@ const state = {
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
     expandedFolderIds: new Set(),
+    suppressDefaultExpansion: false,
   },
   periodicsFeed: {
     organizationId: "",
@@ -2241,6 +2242,7 @@ const settingsPeriodicsVisualFeedback = document.querySelector("#settings-period
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
+const documentsToggleFoldersButton = document.querySelector("#documents-toggle-folders");
 const documentsCategoryList = document.querySelector("#documents-category-list");
 const documentsFolderList = document.querySelector("#documents-folder-list");
 const documentsLibraryEmpty = document.querySelector("#documents-library-empty");
@@ -15439,7 +15441,7 @@ function syncDocumentsLibraryDefaultExpansion(visibleFolders = []) {
     ? new Set(state.documentsExplorer.expandedFolderIds)
     : new Set();
 
-  if (state.documentsExplorer.query) {
+  if (state.documentsExplorer.query && !state.documentsExplorer.suppressDefaultExpansion) {
     visibleFolders.forEach((folder) => {
       nextExpanded.add(folder.id);
     });
@@ -15447,13 +15449,53 @@ function syncDocumentsLibraryDefaultExpansion(visibleFolders = []) {
     return;
   }
 
-  if (nextExpanded.size === 0) {
+  if (nextExpanded.size === 0 && !state.documentsExplorer.suppressDefaultExpansion) {
     visibleFolders.slice(0, Math.min(3, visibleFolders.length)).forEach((folder) => {
       nextExpanded.add(folder.id);
     });
   }
 
   state.documentsExplorer.expandedFolderIds = nextExpanded;
+}
+
+function getDocumentsLibraryExpansionState(visibleFolders = []) {
+  const expandedFolderIds = state.documentsExplorer.expandedFolderIds instanceof Set
+    ? state.documentsExplorer.expandedFolderIds
+    : new Set();
+  const visibleFolderIds = visibleFolders.map((folder) => folder.id).filter(Boolean);
+  const expandedVisibleCount = visibleFolderIds.filter((folderId) => expandedFolderIds.has(folderId)).length;
+  return {
+    visibleFolderIds,
+    hasFolders: visibleFolderIds.length > 0,
+    allExpanded: visibleFolderIds.length > 0 && expandedVisibleCount === visibleFolderIds.length,
+  };
+}
+
+function updateDocumentsToggleFoldersButton(model = buildDocumentsLibraryViewModel()) {
+  if (!documentsToggleFoldersButton) {
+    return;
+  }
+
+  const expansionState = getDocumentsLibraryExpansionState(model.visibleFolders);
+  documentsToggleFoldersButton.disabled = !expansionState.hasFolders;
+  documentsToggleFoldersButton.textContent = expansionState.allExpanded ? "Zatvori sve" : "Otvori sve";
+  documentsToggleFoldersButton.setAttribute(
+    "aria-pressed",
+    expansionState.allExpanded ? "true" : "false",
+  );
+}
+
+function toggleDocumentsLibraryAllFolders(model = buildDocumentsLibraryViewModel()) {
+  const expansionState = getDocumentsLibraryExpansionState(model.visibleFolders);
+  if (!expansionState.hasFolders) {
+    return;
+  }
+
+  state.documentsExplorer.expandedFolderIds = expansionState.allExpanded
+    ? new Set()
+    : new Set(expansionState.visibleFolderIds);
+  state.documentsExplorer.suppressDefaultExpansion = expansionState.allExpanded;
+  renderDocumentsModule();
 }
 
 function toggleDocumentsLibraryFolder(folderId = "") {
@@ -15469,12 +15511,14 @@ function toggleDocumentsLibraryFolder(folderId = "") {
     nextExpanded.add(normalizedId);
   }
   state.documentsExplorer.expandedFolderIds = nextExpanded;
+  state.documentsExplorer.suppressDefaultExpansion = true;
   renderDocumentsModule();
 }
 
 function selectDocumentsLibraryCategory(categoryId = "all") {
   state.documentsExplorer.category = normalizeDocumentLibraryCategory(categoryId);
   state.documentsExplorer.expandedFolderIds = new Set();
+  state.documentsExplorer.suppressDefaultExpansion = false;
   renderDocumentsModule();
 }
 
@@ -16280,6 +16324,7 @@ function renderDocumentsModule() {
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
     state.documentsExplorer.expandedFolderIds = new Set();
+    state.documentsExplorer.suppressDefaultExpansion = false;
   }
 
   if (
@@ -16296,6 +16341,7 @@ function renderDocumentsModule() {
   const model = buildDocumentsLibraryViewModel();
   renderDocumentsLibraryCategories(model);
   renderDocumentsLibraryFolders(model);
+  updateDocumentsToggleFoldersButton(model);
 
   if (documentsLibraryEmpty) {
     documentsLibraryEmpty.textContent = state.documentsExplorer.loading
@@ -16332,6 +16378,7 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
     state.documentsExplorer.expandedFolderIds = new Set();
+    state.documentsExplorer.suppressDefaultExpansion = false;
   } catch (error) {
     state.documentsExplorer.error = error.message;
   } finally {
@@ -65734,17 +65781,23 @@ offerOpenFormButton?.addEventListener("click", () => {
 
 documentsSearchInput?.addEventListener("input", () => {
   state.documentsExplorer.query = documentsSearchInput.value.trim();
+  state.documentsExplorer.suppressDefaultExpansion = false;
   renderDocumentsModule();
 });
 
 documentsFilterKindInput?.addEventListener("change", () => {
   state.documentsExplorer.fileKind = documentsFilterKindInput.value || "all";
   state.documentsExplorer.expandedFolderIds = new Set();
+  state.documentsExplorer.suppressDefaultExpansion = false;
   renderDocumentsModule();
 });
 
 documentsRefreshButton?.addEventListener("click", () => {
   void loadDocumentsExplorerRecords({ force: true });
+});
+
+documentsToggleFoldersButton?.addEventListener("click", () => {
+  toggleDocumentsLibraryAllFolders();
 });
 
 periodicsSearchInput?.addEventListener("input", () => {
@@ -68822,6 +68875,7 @@ function resetAuthenticatedWorkspaceState() {
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
     expandedFolderIds: new Set(),
+    suppressDefaultExpansion: false,
   };
   state.users = [];
   state.signupRequests = [];

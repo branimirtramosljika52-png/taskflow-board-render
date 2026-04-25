@@ -21547,6 +21547,12 @@ body.is-vehicle-reservation-open {
   margin-bottom: 10px;
 }
 
+.documents-toggle-folders-button {
+  min-width: 104px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .documents-category-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
