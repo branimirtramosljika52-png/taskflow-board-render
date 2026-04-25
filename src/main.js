@@ -1182,6 +1182,9 @@ const state = {
     periodStatus: "all",
     activityStatus: "all",
   },
+  locationFilters: {
+    query: "",
+  },
   contractFilters: {
     query: "",
     status: "all",
@@ -3827,6 +3830,7 @@ hoistModalElementToBody(companyEditorPanel);
 const locationForm = document.querySelector("#location-form");
 const locationError = document.querySelector("#location-error");
 const locationOpenFormButton = document.querySelector("#location-open-form");
+const locationsSearchInput = document.querySelector("#locations-search");
 const locationEditorBackdrop = document.querySelector("#location-editor-backdrop");
 const locationEditorPanel = document.querySelector("#location-editor-panel");
 const locationEditorTitle = document.querySelector("#location-editor-title");
@@ -11590,10 +11594,17 @@ function focusCompanyArea(target = "list") {
 function focusLocationArea(target = "list") {
   state.activeView = "locations";
   renderActiveView();
+  renderLocations();
 
   window.requestAnimationFrame(() => {
     if (target === "form") {
-      locationNameInput?.focus({ preventScroll: true });
+      if (getCanManageMasterData() && state.companies.length > 0) {
+        resetLocationForm();
+        openLocationEditor();
+        locationNameInput?.focus({ preventScroll: true });
+      }
+    } else {
+      locationsSearchInput?.focus({ preventScroll: true });
     }
 
     workspaceViews.locations?.scrollIntoView({
@@ -22410,6 +22421,33 @@ function matchesCompanySearch(company = {}, queryNeedle = "") {
   }
 
   return getCompanySearchHaystack(company).includes(queryNeedle);
+}
+
+function getLocationSearchHaystack(location = {}) {
+  const companyName = getCompany(location.companyId)?.name ?? "";
+  const contactValues = buildLocationContacts(location)
+    .flatMap((contact) => [contact.name, contact.phone, contact.email])
+    .filter(Boolean);
+
+  return normalizeLooseName([
+    location.name,
+    companyName,
+    location.region,
+    location.coordinates,
+    location.period,
+    location.representative,
+    location.note,
+    ...contactValues,
+    location.isActive ? "aktivna aktivno" : "neaktivna neaktivno",
+  ].filter(Boolean).join(" "));
+}
+
+function matchesLocationSearch(location = {}, queryNeedle = "") {
+  if (!queryNeedle) {
+    return true;
+  }
+
+  return getLocationSearchHaystack(location).includes(queryNeedle);
 }
 
 function createCompanyActivityCell(company = {}) {
@@ -53464,6 +53502,9 @@ function renderSharedOptions() {
   if (workOrderSearchInput && workOrderSearchInput.value !== state.workOrderFilters.query) {
     workOrderSearchInput.value = state.workOrderFilters.query;
   }
+  if (locationsSearchInput && locationsSearchInput.value !== state.locationFilters.query) {
+    locationsSearchInput.value = state.locationFilters.query;
+  }
   if (legalFrameworkSearchInput && legalFrameworkSearchInput.value !== state.legalFrameworkFilters.query) {
     legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
   }
@@ -62340,6 +62381,8 @@ function renderLocations() {
 
       return left.name.localeCompare(right.name, "hr");
     });
+  const queryNeedle = normalizeLooseName(state.locationFilters.query || "");
+  const filteredLocations = sortedLocations.filter((location) => matchesLocationSearch(location, queryNeedle));
   const canManageMasterData = getCanManageMasterData();
 
   if (locationOpenFormButton) {
@@ -62347,15 +62390,22 @@ function renderLocations() {
     locationOpenFormButton.disabled = state.companies.length === 0;
   }
 
-  if (locationsHelper) {
-    locationsHelper.textContent = `${sortedLocations.length} lokacija u urednom list prikazu.`;
+  if (locationsSearchInput && locationsSearchInput.value !== state.locationFilters.query) {
+    locationsSearchInput.value = state.locationFilters.query;
   }
 
-  locationsBody.replaceChildren(...sortedLocations.map((location) => {
+  if (locationsHelper) {
+    locationsHelper.textContent = filteredLocations.length === sortedLocations.length
+      ? `${filteredLocations.length} lokacija u listi.`
+      : `Prikazano ${filteredLocations.length} od ${sortedLocations.length} lokacija.`;
+  }
+
+  locationsBody.replaceChildren(...filteredLocations.map((location) => {
     const row = document.createElement("tr");
     row.className = "list-row";
     const companyName = getCompany(location.companyId)?.name ?? "Nepoznata tvrtka";
-    const contactSummary = buildLocationContacts(location)
+    const contacts = buildLocationContacts(location);
+    const contactSummary = contacts
       .map((item) => item.name || item.phone || item.email)
       .filter(Boolean)
       .join(", ") || "Bez kontakata";
@@ -62388,7 +62438,7 @@ function renderLocations() {
       }),
       createStackCell({
         title: contactSummary,
-        subtitle: buildLocationContacts(location).length > 0 ? `${buildLocationContacts(location).length} kontakta` : "Nema kontakata",
+        subtitle: contacts.length > 0 ? `${contacts.length} kontakta` : "Nema kontakata",
       }),
       createStackCell({
         title: location.isActive ? "Aktivna lokacija" : "Neaktivna lokacija",
@@ -62401,7 +62451,12 @@ function renderLocations() {
     return row;
   }));
 
-  locationsEmpty.hidden = sortedLocations.length !== 0;
+  locationsEmpty.hidden = filteredLocations.length !== 0;
+  locationsEmpty.textContent = sortedLocations.length === 0
+    ? "Nema unesenih lokacija."
+    : queryNeedle
+      ? "Nema lokacija za zadanu pretragu."
+      : "Nema unesenih lokacija.";
 }
 
 function renderUsers() {
@@ -66016,6 +66071,13 @@ companiesSearchInput?.addEventListener("input", () => {
       renderCompanies();
     }
   }, COMPANIES_SEARCH_DEBOUNCE_MS);
+});
+
+locationsSearchInput?.addEventListener("input", () => {
+  state.locationFilters.query = locationsSearchInput.value.trim();
+  if (state.activeView === "locations") {
+    renderLocations();
+  }
 });
 
 companiesPeriodFilterInput?.addEventListener("change", () => {

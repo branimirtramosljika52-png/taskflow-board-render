@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260424m" />
+    <link rel="stylesheet" href="/styles.css?v=20260425a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2705,7 +2705,7 @@
         </section>
 
         <section id="locations-view" class="workspace-view" hidden>
-          <section class="panel masterdata-launch-panel">
+          <section class="panel">
             <div class="section-heading offers-section-heading">
               <div>
                 <p class="section-kicker">Master data</p>
@@ -2715,17 +2715,15 @@
                 <button id="location-open-form" type="button" class="primary-button">+ Nova lokacija</button>
               </div>
             </div>
-            <p class="helper-copy">Lokacije se sada dodaju i ureduju kroz popup, a glavni ekran ostaje rezerviran za pregled liste.</p>
-          </section>
 
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="section-kicker">Master podaci</p>
-                <h2>Popis lokacija</h2>
-              </div>
-              <p id="locations-helper" class="helper-copy">Lokacije grupirane kao uredan list view.</p>
+            <div class="companies-filters-block">
+              <label class="field">
+                <span>Pretraga</span>
+                <input id="locations-search" type="search" placeholder="Naziv lokacije, tvrtka, regija, kontakt..." />
+              </label>
             </div>
+
+            <p id="locations-helper" class="helper-copy">Lokacije grupirane kao uredan list view.</p>
 
             <div class="table-wrap">
               <table class="data-table">
@@ -6562,6 +6560,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260424m"></script>
+    <script type="module" src="/src/main.js?v=20260425a"></script>
   </body>
 </html>
