@@ -3527,18 +3527,15 @@
             <div id="module-view-chips" class="module-chip-grid"></div>
 
             <section id="documents-module" class="documents-module" hidden>
-              <section class="panel documents-toolbar-panel">
-                <div class="section-heading offers-section-heading">
+              <div class="documents-explorer-shell">
+                <section class="panel documents-explorer-topbar">
                   <div>
                     <p class="section-kicker">Documents</p>
                     <h3>Centralni pregled dokumenata</h3>
+                    <p id="documents-last-refresh" class="documents-refresh-meta">Zadnje osvježeno: -</p>
                   </div>
-                  <button id="documents-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
-                </div>
-
-              </section>
-
-              <div class="documents-explorer-shell">
+                  <button id="documents-refresh" type="button" class="ghost-button documents-refresh-button" title="Osvježi prikaz" aria-label="Osvježi prikaz">&#10227;</button>
+                </section>
                 <section class="panel documents-categories-panel">
                   <div class="section-heading offers-section-heading">
                     <div>

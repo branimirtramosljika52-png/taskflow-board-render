@@ -1356,6 +1356,7 @@ const state = {
     loading: false,
     loaded: false,
     error: "",
+    lastRefreshAt: "",
     records: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
@@ -2260,6 +2261,7 @@ const settingsPeriodicsVisualFeedback = document.querySelector("#settings-period
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
+const documentsLastRefresh = document.querySelector("#documents-last-refresh");
 const documentsToggleFoldersButton = document.querySelector("#documents-toggle-folders");
 const documentsCategoryList = document.querySelector("#documents-category-list");
 const documentsFolderList = document.querySelector("#documents-folder-list");
@@ -16630,6 +16632,18 @@ async function saveAllSettingsBlocks() {
   return measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved && periodicsSaved;
 }
 
+function formatDocumentsRefreshTimestamp(value = "") {
+  const date = new Date(String(value || "").trim());
+  if (Number.isNaN(date.getTime())) {
+    return "Zadnje osvježeno: -";
+  }
+
+  return `Zadnje osvježeno: ${date.toLocaleString("hr-HR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+  })}`;
+}
+
 function renderDocumentsModule() {
   if (!documentsModule) {
     return;
@@ -16640,6 +16654,15 @@ function renderDocumentsModule() {
   }
   if (documentsFilterKindInput && documentsFilterKindInput.value !== state.documentsExplorer.fileKind) {
     documentsFilterKindInput.value = state.documentsExplorer.fileKind;
+  }
+  if (documentsRefreshButton) {
+    documentsRefreshButton.disabled = state.documentsExplorer.loading;
+  }
+  if (documentsLastRefresh) {
+    const lastRefreshLabel = formatDocumentsRefreshTimestamp(state.documentsExplorer.lastRefreshAt);
+    documentsLastRefresh.textContent = state.documentsExplorer.loading
+      ? (state.documentsExplorer.lastRefreshAt ? `${lastRefreshLabel} - osvježavanje...` : "Osvježavanje dokumenata...")
+      : lastRefreshLabel;
   }
 
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
@@ -16652,6 +16675,7 @@ function renderDocumentsModule() {
     state.documentsExplorer.loaded = false;
     state.documentsExplorer.records = [];
     state.documentsExplorer.error = "";
+    state.documentsExplorer.lastRefreshAt = "";
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
     state.documentsExplorer.expandedFolderIds = new Set();
@@ -16706,6 +16730,7 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     state.documentsExplorer.records = Array.isArray(response?.items) ? response.items : [];
     state.documentsExplorer.loaded = true;
     state.documentsExplorer.organizationId = activeOrganizationId;
+    state.documentsExplorer.lastRefreshAt = new Date().toISOString();
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
     state.documentsExplorer.expandedFolderIds = new Set();
@@ -69373,6 +69398,7 @@ function resetAuthenticatedWorkspaceState() {
     loading: false,
     loaded: false,
     error: "",
+    lastRefreshAt: "",
     records: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),

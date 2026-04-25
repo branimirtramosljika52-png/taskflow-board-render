@@ -21579,6 +21579,33 @@ body.is-vehicle-reservation-open {
   align-items: start;
 }
 
+.documents-explorer-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.documents-explorer-topbar h3 {
+  margin: 0;
+}
+
+.documents-refresh-meta {
+  margin: 6px 0 0;
+  color: #6f7a91;
+  font-size: 0.78rem;
+}
+
+.documents-refresh-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
 .documents-explorer-shell .panel {
   border-radius: 8px;
 }
@@ -21927,6 +21954,11 @@ body.is-vehicle-reservation-open {
 }
 
 @media (max-width: 760px) {
+  .documents-explorer-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .documents-explorer-header {
     display: none;
   }
