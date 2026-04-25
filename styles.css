@@ -3329,6 +3329,66 @@ body.is-location-editor-open {
   gap: 8px;
 }
 
+.company-client-portal-card {
+  gap: 12px;
+}
+
+.company-client-copy {
+  margin: 0;
+}
+
+.company-client-user-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.company-client-user-grid > .field:last-child {
+  grid-column: 1 / -1;
+}
+
+.company-client-all-locations-toggle {
+  justify-content: flex-start;
+  margin: 0;
+}
+
+.company-client-user-actions {
+  justify-content: flex-start;
+}
+
+.company-linked-record-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(202, 214, 236, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.company-linked-record-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.company-linked-record-copy strong,
+.company-linked-record-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-linked-record-copy span {
+  color: #66728c;
+  font-size: 0.8rem;
+}
+
+.company-linked-record-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .entity-link-actions {
   display: flex;
   flex-wrap: wrap;
@@ -4088,7 +4148,8 @@ body.is-location-editor-open {
 
   .masterdata-company-grid,
   .masterdata-company-grid.is-compact,
-  .masterdata-company-contact-grid {
+  .masterdata-company-contact-grid,
+  .company-client-user-grid {
     grid-template-columns: 1fr;
   }
 

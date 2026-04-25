@@ -214,6 +214,62 @@ test("memory tenant repository collapses legacy scoped company permissions into 
   assert.equal(scoped.locations.length, 2);
 });
 
+test("memory tenant repository scopes client portal users to assigned company locations", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "Portal Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-1");
+  await repository.assignCompanyToOrganization(organization.id, "company-2");
+
+  const client = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Klara",
+    lastName: "Klijent",
+    email: "klara-client@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "client_user",
+    clientCompanyIds: ["company-1"],
+    clientLocationIds: ["location-1"],
+    clientAccessAllLocations: false,
+  });
+
+  const scoped = await repository.getSnapshot(client, organization.id, {
+    companies: [
+      { id: "company-1", name: "Alpha" },
+      { id: "company-2", name: "Beta" },
+    ],
+    locations: [
+      { id: "location-1", companyId: "company-1", name: "Zagreb" },
+      { id: "location-2", companyId: "company-1", name: "Split" },
+      { id: "location-3", companyId: "company-2", name: "Rijeka" },
+    ],
+    workOrders: [
+      { id: "wo-1", companyId: "company-1", locationId: "location-1", description: "Vidljivo" },
+      { id: "wo-2", companyId: "company-1", locationId: "location-2", description: "Skriveno" },
+      { id: "wo-3", companyId: "company-2", locationId: "location-3", description: "Druga firma" },
+    ],
+    offers: [
+      { id: "offer-1", organizationId: organization.id, companyId: "company-1", selectedLocationIds: ["location-1"], items: [] },
+      { id: "offer-2", organizationId: organization.id, companyId: "company-1", selectedLocationIds: ["location-2"], items: [] },
+      { id: "offer-3", organizationId: organization.id, companyId: "company-2", selectedLocationIds: ["location-3"], items: [] },
+    ],
+  });
+
+  assert.deepEqual(scoped.companyPermissions, {
+    canView: true,
+    canCreate: false,
+    canEdit: false,
+    canDelete: false,
+  });
+  assert.deepEqual(scoped.companies.map((item) => item.id), ["company-1"]);
+  assert.deepEqual(scoped.locations.map((item) => item.id), ["location-1"]);
+  assert.deepEqual(scoped.workOrders.map((item) => item.id), ["wo-1"]);
+  assert.deepEqual(scoped.offers.map((item) => item.id), ["offer-1"]);
+});
+
 test("memory tenant repository lets admins create users only inside their organization", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

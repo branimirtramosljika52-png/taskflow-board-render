@@ -2,6 +2,7 @@ export const ROLE_SUPER_ADMIN = "super_admin";
 export const ROLE_ADMIN = "admin";
 export const ROLE_USER = "user";
 export const USER_PROFILE_ROLE_VALUES = Object.freeze([
+  "client_user",
   "new_user",
   "junior_user",
   "senior_user",
@@ -101,6 +102,10 @@ export function roleLabel(role) {
   }
 
   return "User";
+}
+
+export function isClientPortalUser(actor) {
+  return normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "") === "client_user";
 }
 
 export function buildLegacyEmail(username, id = "") {
@@ -323,6 +328,15 @@ export function resolveCompanyPermissionsForActor(
     return { ...COMPANY_PERMISSIONS_FULL };
   }
 
+  if (isClientPortalUser(actor)) {
+    return {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+    };
+  }
+
   const profileRole = normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "new_user");
   const normalizedCompanyId = normalizeCompanyPermissionScopeId(companyId);
   const normalizedInputPermissions = (Array.isArray(rolePermissions) ? rolePermissions : [])
@@ -420,7 +434,7 @@ export function canDeleteCompanies(actor, rolePermissions = [], companyId = COMP
 }
 
 export function canManageWorkOrders(actor) {
-  return [ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_USER].includes(normalizeRole(actor?.role));
+  return !isClientPortalUser(actor) && [ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_USER].includes(normalizeRole(actor?.role));
 }
 
 export function canDeleteWorkOrders(actor) {

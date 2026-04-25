@@ -212,6 +212,7 @@ function normalizeDateOnly(value) {
 }
 
 const USER_PROFILE_ROLE_VALUES = new Set([
+  "client_user",
   "new_user",
   "junior_user",
   "senior_user",
@@ -240,6 +241,22 @@ function normalizeOrganizationIds(values = []) {
       .map((value) => dbString(value))
       .filter(Boolean),
   ));
+}
+
+function normalizeClientScopeIds(values = []) {
+  const entries = Array.isArray(values)
+    ? values
+    : parseJsonArray(values);
+
+  return Array.from(new Set(
+    entries
+      .map((value) => dbString(value))
+      .filter(Boolean),
+  ));
+}
+
+function isClientPortalProfileRole(value = "") {
+  return normalizeUserProfileRole(value, "") === "client_user";
 }
 
 function mergePrimaryOrganization(primaryOrganizationId, organizationIds = []) {
@@ -1006,6 +1023,11 @@ function sanitizeUser(row) {
     ),
     title: row.title ?? "",
     oib: row.oib ?? "",
+    clientCompanyIds: normalizeClientScopeIds(row.client_company_ids_json ?? row.clientCompanyIds),
+    clientLocationIds: normalizeClientScopeIds(row.client_location_ids_json ?? row.clientLocationIds),
+    clientAccessAllLocations: row.client_access_all_locations === undefined
+      ? toBooleanFlag(row.clientAccessAllLocations, true)
+      : Boolean(Number(row.client_access_all_locations)),
     fullName: [firstName, lastName].filter(Boolean).join(" ") || row.ime_prezime || row.korisnicko_ime || row.email || "User",
     organizationId: primaryOrganizationId || organizationIds[0] || "",
     organizationName: row.organization_name ?? "",
@@ -1112,6 +1134,9 @@ function normalizeUserInput(input = {}) {
     ),
     title: dbString(input.title),
     oib: normalizeOib(input.oib),
+    clientCompanyIds: normalizeClientScopeIds(input.clientCompanyIds ?? input.client_company_ids_json),
+    clientLocationIds: normalizeClientScopeIds(input.clientLocationIds ?? input.client_location_ids_json),
+    clientAccessAllLocations: toBooleanFlag(input.clientAccessAllLocations ?? input.client_access_all_locations, true),
     email: dbString(input.email).toLowerCase(),
     password: dbString(input.password),
     role: normalizeRole(input.role),
@@ -1297,6 +1322,9 @@ async function ensureSchema(connection) {
       title VARCHAR(160) NOT NULL DEFAULT '',
       profile_role VARCHAR(64) NOT NULL DEFAULT 'new_user',
       oib VARCHAR(32) NOT NULL DEFAULT '',
+      client_company_ids_json TEXT NULL,
+      client_location_ids_json TEXT NULL,
+      client_access_all_locations TINYINT(1) NOT NULL DEFAULT 1,
       avatar_data_url LONGTEXT NULL,
       avatar_storage_provider VARCHAR(32) NULL,
       avatar_storage_bucket VARCHAR(128) NULL,
@@ -1430,8 +1458,26 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
+    "client_company_ids_json",
+    "TEXT NULL AFTER oib",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "client_location_ids_json",
+    "TEXT NULL AFTER client_company_ids_json",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "client_access_all_locations",
+    "TINYINT(1) NOT NULL DEFAULT 1 AFTER client_location_ids_json",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
     "avatar_data_url",
-    "LONGTEXT NULL AFTER oib",
+    "LONGTEXT NULL AFTER client_access_all_locations",
   );
   await ensureColumn(
     connection,
@@ -1523,7 +1569,8 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const activeOrganizationId = dbString(effectiveOrganizationId);
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
-    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
+    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+           u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
            u.email, u.legacy_username, u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
@@ -1535,8 +1582,20 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
 
   let users = rows.map(sanitizeUser);
 
-  if (actorRole === ROLE_USER) {
+  if (actorRole === ROLE_USER && !isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role)) {
     users = users.filter((user) => user.id === String(actor?.id));
+  } else if (actorRole === ROLE_USER) {
+    const actorClientCompanyIds = new Set(
+      normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json),
+    );
+    users = users.filter((user) => (
+      user.organizationIds.includes(activeOrganizationId)
+      && (
+        user.id === String(actor?.id)
+        || !isClientPortalProfileRole(user.profileRole)
+        || normalizeClientScopeIds(user.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+      )
+    ));
   } else if (actorRole === ROLE_ADMIN) {
     users = users.filter((user) => (
       user.role !== ROLE_SUPER_ADMIN
@@ -1586,6 +1645,68 @@ async function fetchCompanyAssignments(connection) {
   }));
 }
 
+function buildClientPortalScope(actor = {}, assignedCompanyIds = [], rawSnapshot = {}) {
+  const isClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+  if (!isClientPortal) {
+    return {
+      isClientPortal: false,
+      companyIds: new Set(),
+      locationIds: new Set(),
+      allLocations: false,
+    };
+  }
+
+  const assignedCompanySet = new Set(assignedCompanyIds.map((companyId) => String(companyId)));
+  const companyIds = new Set(
+    normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json)
+      .filter((companyId) => assignedCompanySet.has(companyId)),
+  );
+  const companyLocationIds = (rawSnapshot.locations ?? [])
+    .filter((location) => companyIds.has(String(location.companyId)))
+    .map((location) => String(location.id))
+    .filter(Boolean);
+  const companyLocationSet = new Set(companyLocationIds);
+  const requestedLocationIds = normalizeClientScopeIds(actor?.clientLocationIds ?? actor?.client_location_ids_json)
+    .filter((locationId) => companyLocationSet.has(locationId));
+  const allLocations = toBooleanFlag(actor?.clientAccessAllLocations ?? actor?.client_access_all_locations, true);
+  const locationIds = new Set(allLocations ? companyLocationIds : requestedLocationIds);
+
+  return {
+    isClientPortal: true,
+    companyIds,
+    locationIds,
+    allLocations,
+  };
+}
+
+function clientPortalItemHasLocationAccess(clientScope, item = {}) {
+  if (!clientScope.isClientPortal || clientScope.allLocations) {
+    return true;
+  }
+
+  const locationIds = [
+    item.locationId,
+    ...(Array.isArray(item.selectedLocationIds) ? item.selectedLocationIds : []),
+  ]
+    .map((value) => dbString(value))
+    .filter(Boolean);
+
+  return locationIds.length === 0 || locationIds.some((locationId) => clientScope.locationIds.has(locationId));
+}
+
+function clientPortalItemIsVisible(clientScope, item = {}) {
+  if (!clientScope.isClientPortal) {
+    return false;
+  }
+
+  const companyId = dbString(item.companyId);
+  if (!companyId || !clientScope.companyIds.has(companyId)) {
+    return false;
+  }
+
+  return clientPortalItemHasLocationAccess(clientScope, item);
+}
+
 function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], actor = null) {
   const assignedCompanyIds = Array.from(new Set(
     assignments
@@ -1601,10 +1722,28 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     )),
   );
   const companyGeneralPermissions = resolveCompanyPermissionsForActor(actor, companyRolePermissions);
+  const clientPortalScope = buildClientPortalScope(actor, assignedCompanyIds, rawSnapshot);
   const visibleCompanyIds = new Set(
-    actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN
-      ? assignedCompanyIds
-      : (companyGeneralPermissions.canView ? assignedCompanyIds : []),
+    clientPortalScope.isClientPortal
+      ? Array.from(clientPortalScope.companyIds)
+      : (
+        actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN
+          ? assignedCompanyIds
+          : (companyGeneralPermissions.canView ? assignedCompanyIds : [])
+      ),
+  );
+  const isCompanyScopedItemVisible = (item = {}) => (
+    clientPortalScope.isClientPortal
+      ? clientPortalItemIsVisible(clientPortalScope, item)
+      : visibleCompanyIds.has(String(item.companyId))
+  );
+  const isOrganizationOrCompanyItemVisible = (item = {}) => (
+    clientPortalScope.isClientPortal
+      ? clientPortalItemIsVisible(clientPortalScope, item)
+      : (
+        String(item.organizationId) === String(organizationId)
+        || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
+      )
   );
 
   return {
@@ -1633,52 +1772,37 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       canDelete: Boolean(companyGeneralPermissions.canDelete),
     },
     companies: (rawSnapshot.companies ?? []).filter((item) => visibleCompanyIds.has(String(item.id))),
-    locations: (rawSnapshot.locations ?? []).filter((item) => visibleCompanyIds.has(String(item.companyId))),
-    workOrders: (rawSnapshot.workOrders ?? []).filter((item) => visibleCompanyIds.has(String(item.companyId))),
-    reminders: (rawSnapshot.reminders ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
+    locations: (rawSnapshot.locations ?? []).filter((item) => (
+      visibleCompanyIds.has(String(item.companyId))
+      && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.id)))
     )),
-    todoTasks: (rawSnapshot.todoTasks ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
-    )).map((item) => ({
+    workOrders: (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible),
+    reminders: (rawSnapshot.reminders ?? []).filter(isOrganizationOrCompanyItemVisible),
+    todoTasks: (rawSnapshot.todoTasks ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
-    offers: (rawSnapshot.offers ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
-    )).map((item) => ({
+    offers: (rawSnapshot.offers ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
     })),
-    purchaseOrders: (rawSnapshot.purchaseOrders ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
-    )).map((item) => ({
+    purchaseOrders: (rawSnapshot.purchaseOrders ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
-    contracts: (rawSnapshot.contracts ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
-    )).map((item) => ({
+    contracts: (rawSnapshot.contracts ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       linkedOfferIds: [...(item.linkedOfferIds ?? [])],
       linkedOfferNumbers: [...(item.linkedOfferNumbers ?? [])],
       linkedOffers: (item.linkedOffers ?? []).map((entry) => ({ ...entry })),
       annexes: (item.annexes ?? []).map((entry) => ({ ...entry })),
     })),
-    drawings: (rawSnapshot.drawings ?? []).filter((item) => (
-      String(item.organizationId) === String(organizationId)
-      || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
-    )).map((item) => ({
+    drawings: (rawSnapshot.drawings ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       referenceDocuments: (item.referenceDocuments ?? []).map((document) => ({ ...document })),
       layers: (item.layers ?? []).map((layer) => ({ ...layer })),
@@ -2479,6 +2603,21 @@ export class MemoryTenantRepository {
       })),
       actor,
     );
+    const actorClientCompanyIds = new Set(normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json));
+    const isActorClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+    const visibleUsers = normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+      ? this.users.filter((item) => item.role === ROLE_SUPER_ADMIN || item.organizationIds.includes(String(activeOrganizationId)))
+      : this.users.filter((item) => (
+        item.role !== ROLE_SUPER_ADMIN
+        && item.organizationIds.includes(String(activeOrganizationId))
+        && item.organizationIds.every((organizationId) => mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(organizationId))
+        && (
+          !isActorClientPortal
+          || item.id === String(actor?.id)
+          || !isClientPortalProfileRole(item.profileRole)
+          || normalizeClientScopeIds(item.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+        )
+      ));
 
     return {
       organizations: this.organizations.filter((organization) => (
@@ -2488,13 +2627,7 @@ export class MemoryTenantRepository {
       activeOrganizationId,
       currentOrganization: this.organizations.find((item) => item.id === activeOrganizationId) ?? null,
       users: decorateUsersWithOrganizations(
-        normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
-          ? this.users.filter((item) => item.role === ROLE_SUPER_ADMIN || item.organizationIds.includes(String(activeOrganizationId)))
-          : this.users.filter((item) => (
-            item.role !== ROLE_SUPER_ADMIN
-            && item.organizationIds.includes(String(activeOrganizationId))
-            && item.organizationIds.every((organizationId) => mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(organizationId))
-          )),
+        visibleUsers,
         this.organizations.filter((organization) => (
           normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
           || mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(String(organization.id))
@@ -2591,6 +2724,9 @@ export class MemoryTenantRepository {
       profileRole: normalized.profileRole,
       title: normalized.title,
       oib: normalized.oib,
+      clientCompanyIds: [...(normalized.clientCompanyIds ?? [])],
+      clientLocationIds: [...(normalized.clientLocationIds ?? [])],
+      clientAccessAllLocations: Boolean(normalized.clientAccessAllLocations),
       email: normalized.email,
       username: normalized.legacyUsername || normalized.email,
       legacyUsername: normalized.legacyUsername || normalized.email,
@@ -2641,6 +2777,9 @@ export class MemoryTenantRepository {
     current.profileRole = normalized.profileRole;
     current.title = normalized.title;
     current.oib = normalized.oib;
+    current.clientCompanyIds = [...(normalized.clientCompanyIds ?? [])];
+    current.clientLocationIds = [...(normalized.clientLocationIds ?? [])];
+    current.clientAccessAllLocations = Boolean(normalized.clientAccessAllLocations);
     current.email = normalized.email;
     current.legacyUsername = normalized.legacyUsername || current.legacyUsername;
     current.username = current.legacyUsername || current.email;
@@ -3025,7 +3164,8 @@ export class MySqlTenantRepository {
     try {
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+                 u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username, u.role, u.is_active, u.must_change_password, u.last_login_at, u.created_at, u.updated_at,
@@ -3057,7 +3197,8 @@ export class MySqlTenantRepository {
       const needle = dbString(identifier).toLowerCase();
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+                 u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
@@ -3520,10 +3661,11 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib, avatar_data_url,
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib,
+             client_company_ids_json, client_location_ids_json, client_access_all_locations, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
              electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, must_change_password, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
@@ -3534,6 +3676,9 @@ export class MySqlTenantRepository {
           normalized.title,
           normalized.profileRole,
           normalized.oib,
+          JSON.stringify(normalized.clientCompanyIds ?? []),
+          JSON.stringify(normalized.clientLocationIds ?? []),
+          normalized.clientAccessAllLocations ? 1 : 0,
           preparedAvatar.storedAvatar.dataUrl || null,
           preparedAvatar.storedAvatar.storageProvider || null,
           preparedAvatar.storedAvatar.storageBucket || null,
@@ -3665,6 +3810,9 @@ export class MySqlTenantRepository {
         "title = ?",
         "profile_role = ?",
         "oib = ?",
+        "client_company_ids_json = ?",
+        "client_location_ids_json = ?",
+        "client_access_all_locations = ?",
         "avatar_data_url = ?",
         "avatar_storage_provider = ?",
         "avatar_storage_bucket = ?",
@@ -3686,6 +3834,9 @@ export class MySqlTenantRepository {
         normalized.title,
         normalized.profileRole,
         normalized.oib,
+        JSON.stringify(normalized.clientCompanyIds ?? []),
+        JSON.stringify(normalized.clientLocationIds ?? []),
+        normalized.clientAccessAllLocations ? 1 : 0,
         preparedAvatar.storedAvatar.dataUrl || null,
         preparedAvatar.storedAvatar.storageProvider || null,
         preparedAvatar.storedAvatar.storageBucket || null,

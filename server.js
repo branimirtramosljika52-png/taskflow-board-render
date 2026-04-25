@@ -14,6 +14,7 @@ import {
   canDeleteWorkOrders,
   canManageMasterData,
   canManageWorkOrders,
+  isClientPortalUser,
 } from "./src/accessControl.js";
 import {
   buildAppCapabilitiesPdfBuffer,
@@ -2690,7 +2691,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/document-records") {
-      if (!canManageWorkOrders(user)) {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo pregledavati zapisnike.");
         return true;
       }
@@ -2711,12 +2712,19 @@ async function handleApiRequest(request, response, url) {
         assertInScope(scopedSnapshot.locations ?? [], locationId, "Lokacija nije dostupna za odabranu organizaciju.");
       }
 
-      const items = await domainRepository.listDocumentRecords({
+      const visibleCompanyIds = new Set((scopedSnapshot.companies ?? []).map((item) => String(item.id)));
+      const visibleLocationIds = new Set((scopedSnapshot.locations ?? []).map((item) => String(item.id)));
+      const items = (await domainRepository.listDocumentRecords({
         organizationId: scopedSnapshot.activeOrganizationId,
         templateId,
         companyId,
         locationId,
         limit,
+      })).filter((item) => {
+        const itemCompanyId = String(item.companyId || "");
+        const itemLocationId = String(item.locationId || "");
+        return (!itemCompanyId || visibleCompanyIds.has(itemCompanyId))
+          && (!itemLocationId || visibleLocationIds.has(itemLocationId));
       });
 
       sendJson(response, 200, { items });
@@ -3717,7 +3725,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
         return true;
       }
@@ -3733,7 +3741,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF narudzbenice.");
         return true;
       }
@@ -3765,7 +3773,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ugovora.");
         return true;
       }

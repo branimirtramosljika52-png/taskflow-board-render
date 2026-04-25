@@ -2660,6 +2660,58 @@
                           Još nema lokacija vezanih uz ovu tvrtku.
                         </p>
                       </section>
+
+                      <section id="company-client-portal-card" class="masterdata-group-card company-client-portal-card" hidden>
+                        <div class="company-related-contracts-head">
+                          <div>
+                            <p class="section-kicker">Portal</p>
+                            <h4 class="subsection-title">Klijentski pristup</h4>
+                          </div>
+                          <span id="company-client-users-count" class="work-order-activity-count is-compact">0</span>
+                        </div>
+                        <p class="helper-copy company-client-copy">
+                          Dodaj osobu klijenta i pošalji joj pristup samo za ovu tvrtku i odabrane lokacije.
+                        </p>
+                        <div class="form-grid company-client-user-grid">
+                          <label class="field">
+                            <span>Ime</span>
+                            <input id="company-client-first-name" type="text" maxlength="120" autocomplete="given-name" />
+                          </label>
+                          <label class="field">
+                            <span>Prezime</span>
+                            <input id="company-client-last-name" type="text" maxlength="160" autocomplete="family-name" />
+                          </label>
+                          <label class="field">
+                            <span>Email</span>
+                            <input id="company-client-email" type="email" maxlength="180" autocomplete="email" />
+                          </label>
+                          <label class="field">
+                            <span>OIB</span>
+                            <input id="company-client-oib" type="text" inputmode="numeric" maxlength="11" />
+                          </label>
+                          <label class="field">
+                            <span>Titula</span>
+                            <input id="company-client-title" type="text" maxlength="160" placeholder="npr. voditelj održavanja" />
+                          </label>
+                          <label class="field">
+                            <span>Lokacije</span>
+                            <select id="company-client-location-ids" multiple size="4"></select>
+                          </label>
+                        </div>
+                        <label class="toggle-row company-client-all-locations-toggle">
+                          <input id="company-client-all-locations" type="checkbox" checked />
+                          <span>Pristup svim lokacijama ove tvrtke</span>
+                        </label>
+                        <div class="entity-actions company-client-user-actions">
+                          <button id="company-client-create-user" type="button" class="primary-button">Dodaj i pošalji pristup</button>
+                          <button id="company-client-clear-user" type="button" class="ghost-button">Očisti</button>
+                        </div>
+                        <div id="company-client-users-list" class="company-linked-records-list"></div>
+                        <p id="company-client-users-empty" class="work-order-activity-empty is-compact">
+                          Još nema klijentskih pristupa za ovu tvrtku.
+                        </p>
+                        <p id="company-client-feedback" class="form-error" aria-live="polite"></p>
+                      </section>
                     </div>
 
                     <section class="masterdata-group-card masterdata-company-note-card">

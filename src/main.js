@@ -690,6 +690,7 @@ const APP_CAPABILITY_STATUS_OPTIONS = Object.freeze([
 ]);
 const APP_CAPABILITY_STATUS_VALUES = new Set(APP_CAPABILITY_STATUS_OPTIONS.map((option) => option.value));
 const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
+  { value: "client_user", label: "Klijent portal" },
   { value: "new_user", label: "New User" },
   { value: "junior_user", label: "Junior User" },
   { value: "senior_user", label: "Senior User" },
@@ -3773,6 +3774,20 @@ const companyLinkedContractsCount = document.querySelector("#company-linked-cont
 const companyLinkedLocationsList = document.querySelector("#company-linked-locations-list");
 const companyLinkedLocationsEmpty = document.querySelector("#company-linked-locations-empty");
 const companyLinkedLocationsCount = document.querySelector("#company-linked-locations-count");
+const companyClientPortalCard = document.querySelector("#company-client-portal-card");
+const companyClientUsersCount = document.querySelector("#company-client-users-count");
+const companyClientFirstNameInput = document.querySelector("#company-client-first-name");
+const companyClientLastNameInput = document.querySelector("#company-client-last-name");
+const companyClientEmailInput = document.querySelector("#company-client-email");
+const companyClientOibInput = document.querySelector("#company-client-oib");
+const companyClientTitleInput = document.querySelector("#company-client-title");
+const companyClientLocationIdsInput = document.querySelector("#company-client-location-ids");
+const companyClientAllLocationsInput = document.querySelector("#company-client-all-locations");
+const companyClientCreateUserButton = document.querySelector("#company-client-create-user");
+const companyClientClearUserButton = document.querySelector("#company-client-clear-user");
+const companyClientUsersList = document.querySelector("#company-client-users-list");
+const companyClientUsersEmpty = document.querySelector("#company-client-users-empty");
+const companyClientFeedback = document.querySelector("#company-client-feedback");
 const companyActivityList = document.querySelector("#company-activity-list");
 const companyActivityEmpty = document.querySelector("#company-activity-empty");
 const companyActivityCount = document.querySelector("#company-activity-count");
@@ -5276,6 +5291,42 @@ function getCanManageMasterData() {
   return ["super_admin", "admin"].includes(state.user?.role);
 }
 
+function getCanEditOperationalData() {
+  return !isClientPortalUser(state.user);
+}
+
+function syncWorkOrderEditorAccess() {
+  const canEdit = getCanEditOperationalData();
+  if (workOrderForm) {
+    workOrderForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+      control.disabled = !canEdit;
+    });
+  }
+
+  [
+    workOrderDocumentDropzone,
+    workOrderActivityDropzone,
+  ].forEach((control) => {
+    if (!control) {
+      return;
+    }
+    control.disabled = !canEdit;
+    control.hidden = !canEdit;
+  });
+
+  if (workOrderResetButton) {
+    workOrderResetButton.hidden = !canEdit;
+    workOrderResetButton.disabled = !canEdit;
+  }
+  if (workOrderOpenFormButton) {
+    workOrderOpenFormButton.hidden = !canEdit;
+  }
+  if (workOrderOpenDocumentsButton) {
+    workOrderOpenDocumentsButton.hidden = !canEdit;
+  }
+  workOrderEditorPanel?.classList.toggle("is-client-read-only", !canEdit);
+}
+
 function normalizeCompanyPermissionFlags(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -5482,6 +5533,35 @@ function getUserRoleSummary(user = {}) {
     title: profileRoleLabel,
     subtitle: shouldShowSystemRole ? `Sustav: ${systemRoleLabel}` : "",
   };
+}
+
+function isClientPortalUser(user = state.user) {
+  return normalizeUserProfileRoleValue(user?.profileRole ?? user?.profile_role) === "client_user";
+}
+
+function normalizeClientScopeIdsClient(values = []) {
+  const entries = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    entries
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function getClientPortalLocationLabel(user = {}) {
+  if (!isClientPortalUser(user)) {
+    return "";
+  }
+
+  if (user.clientAccessAllLocations !== false) {
+    return "Sve lokacije";
+  }
+
+  const labels = normalizeClientScopeIdsClient(user.clientLocationIds)
+    .map((locationId) => state.locations.find((location) => String(location.id) === String(locationId))?.name || "")
+    .filter(Boolean);
+
+  return labels.length > 0 ? labels.join(", ") : "Bez lokacija";
 }
 
 function getUserAuthorizationSummary(user = {}) {
@@ -12377,6 +12457,12 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
     return false;
   }
 
+  if (!getCanEditOperationalData()) {
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("saved", "Samo pregled za klijentski portal.");
+    return false;
+  }
+
   if (state.workOrderAutoSave.saving) {
     state.workOrderAutoSave.dirty = true;
     state.workOrderAutoSave.timerId = window.setTimeout(() => {
@@ -12449,6 +12535,13 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
 
 function queueWorkOrderAutoSave() {
   if (!state.workOrderEditorOpen || !state.user) {
+    return;
+  }
+
+  if (!getCanEditOperationalData()) {
+    clearWorkOrderAutoSaveTimer();
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("saved", "Samo pregled za klijentski portal.");
     return;
   }
 
@@ -43790,9 +43883,14 @@ function dismissVehicleReservationEditor() {
 function openWorkOrderEditor() {
   state.workOrderEditorOpen = true;
   renderWorkOrderEditorSummary();
+  syncWorkOrderEditorAccess();
   if (workOrderIdInput.value) {
-    state.workOrderAutoSave.lastFingerprint = getWorkOrderPayloadFingerprint();
-    setWorkOrderSaveState("saved");
+    if (getCanEditOperationalData()) {
+      state.workOrderAutoSave.lastFingerprint = getWorkOrderPayloadFingerprint();
+      setWorkOrderSaveState("saved");
+    } else {
+      setWorkOrderSaveState("saved", "Samo pregled za klijentski portal.");
+    }
   } else if (canAutoSaveWorkOrder()) {
     setWorkOrderSaveState("idle");
   } else {
@@ -43815,6 +43913,10 @@ function closeWorkOrderEditor({ reset = false } = {}) {
 }
 
 function focusWorkOrderComposer(prefill = {}) {
+  if (!getCanEditOperationalData()) {
+    return;
+  }
+
   resetWorkOrderForm();
   resetWorkOrderActivityState();
 
@@ -44009,6 +44111,10 @@ function renderAuthState() {
     if (companyAddNavItem) {
       companyAddNavItem.hidden = !canCreateCompany;
     }
+    if (workOrderOpenFormButton) {
+      workOrderOpenFormButton.hidden = !getCanEditOperationalData();
+    }
+    syncWorkOrderEditorAccess();
     if (!canManageMasterData && isDashboardControlPanelItem()) {
       state.activeSidebarItem = "dashboard";
     }
@@ -44784,6 +44890,199 @@ function buildWorkOrderPayload() {
     description: workOrderDescriptionInput.value,
     invoiceNote: workOrderInvoiceNoteInput.value,
   };
+}
+
+function getCompanyLocations(companyId = companyIdInput?.value || "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  return state.locations
+    .filter((location) => String(location.companyId || "").trim() === normalizedCompanyId)
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"));
+}
+
+function getCompanyClientUsers(companyId = companyIdInput?.value || "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  return state.users
+    .filter((user) => (
+      isClientPortalUser(user)
+      && normalizeClientScopeIdsClient(user.clientCompanyIds).includes(normalizedCompanyId)
+    ))
+    .sort((left, right) => String(left.fullName || left.email || "").localeCompare(String(right.fullName || right.email || ""), "hr"));
+}
+
+function rebuildCompanyClientLocationOptions(selectedIds = []) {
+  if (!(companyClientLocationIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const selectedSet = new Set(normalizeClientScopeIdsClient(selectedIds));
+  const locations = getCompanyLocations();
+  if (locations.length === 0) {
+    companyClientLocationIdsInput.replaceChildren(createOption("", "Nema lokacija za ovu tvrtku"));
+    companyClientLocationIdsInput.disabled = true;
+    return;
+  }
+
+  companyClientLocationIdsInput.disabled = Boolean(companyClientAllLocationsInput?.checked);
+  companyClientLocationIdsInput.replaceChildren(
+    ...locations.map((location) => createOption(location.id, location.name || "Lokacija")),
+  );
+  Array.from(companyClientLocationIdsInput.options).forEach((option) => {
+    option.selected = selectedSet.has(String(option.value));
+  });
+}
+
+function resetCompanyClientUserForm() {
+  if (companyClientFirstNameInput) {
+    companyClientFirstNameInput.value = "";
+  }
+  if (companyClientLastNameInput) {
+    companyClientLastNameInput.value = "";
+  }
+  if (companyClientEmailInput) {
+    companyClientEmailInput.value = "";
+  }
+  if (companyClientOibInput) {
+    companyClientOibInput.value = "";
+  }
+  if (companyClientTitleInput) {
+    companyClientTitleInput.value = "";
+  }
+  if (companyClientAllLocationsInput) {
+    companyClientAllLocationsInput.checked = true;
+  }
+  rebuildCompanyClientLocationOptions([]);
+  setInlineMessage(companyClientFeedback, "");
+}
+
+function renderCompanyClientPortalPanel() {
+  if (!companyClientPortalCard) {
+    return;
+  }
+
+  const companyId = String(companyIdInput?.value || "").trim();
+  const canManageClientAccess = Boolean(companyId && getCanEditCompany(companyId));
+  companyClientPortalCard.hidden = !canManageClientAccess;
+  if (!canManageClientAccess) {
+    companyClientUsersList?.replaceChildren();
+    if (companyClientUsersEmpty) {
+      companyClientUsersEmpty.hidden = true;
+    }
+    if (companyClientUsersCount) {
+      companyClientUsersCount.textContent = "0";
+    }
+    return;
+  }
+
+  rebuildCompanyClientLocationOptions(getSelectedMultiSelectValues(companyClientLocationIdsInput));
+  const clientUsers = getCompanyClientUsers(companyId);
+  if (companyClientUsersCount) {
+    companyClientUsersCount.textContent = String(clientUsers.length);
+  }
+  if (companyClientUsersEmpty) {
+    companyClientUsersEmpty.hidden = clientUsers.length > 0;
+  }
+  if (!companyClientUsersList) {
+    return;
+  }
+
+  companyClientUsersList.replaceChildren(...clientUsers.map((user) => {
+    const row = document.createElement("div");
+    row.className = "company-linked-record-item company-client-user-item";
+
+    const copy = document.createElement("div");
+    copy.className = "company-linked-record-copy";
+    const title = document.createElement("strong");
+    title.textContent = user.fullName || user.email || "Klijent";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      user.email || "",
+      user.title || "",
+      getClientPortalLocationLabel(user),
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "company-linked-record-actions";
+    actions.append(createActionButton("Pošalji lozinku", "card-button", () => {
+      void runMutation(() => apiRequest(`/users/${encodeURIComponent(String(user.id))}/password-reset`, {
+        method: "POST",
+      }), companyClientFeedback).then((success) => {
+        if (success) {
+          setInlineMessage(companyClientFeedback, "Nova privremena lozinka je poslana emailom.", "success");
+        }
+      });
+    }));
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+function buildCompanyClientUserPayload() {
+  const companyId = String(companyIdInput?.value || "").trim();
+  const selectedLocationIds = companyClientAllLocationsInput?.checked
+    ? []
+    : getSelectedMultiSelectValues(companyClientLocationIdsInput);
+
+  return {
+    firstName: String(companyClientFirstNameInput?.value || "").trim(),
+    lastName: String(companyClientLastNameInput?.value || "").trim(),
+    displayName: "",
+    profileRole: "client_user",
+    title: String(companyClientTitleInput?.value || "").trim(),
+    oib: String(companyClientOibInput?.value || "").trim(),
+    email: String(companyClientEmailInput?.value || "").trim(),
+    organizationId: state.activeOrganizationId,
+    organizationIds: [state.activeOrganizationId].filter(Boolean),
+    role: "user",
+    isActive: "true",
+    clientCompanyIds: [companyId].filter(Boolean),
+    clientLocationIds: selectedLocationIds,
+    clientAccessAllLocations: Boolean(companyClientAllLocationsInput?.checked),
+    legacyUsername: "",
+    avatarDataUrl: "",
+    documents: [],
+    electricalQualification: {},
+  };
+}
+
+async function createCompanyClientUser() {
+  const companyId = String(companyIdInput?.value || "").trim();
+  if (!companyId || !getCanEditCompany(companyId)) {
+    setInlineMessage(companyClientFeedback, "Prvo spremi ili otvori tvrtku za koju dodaješ klijenta.");
+    return false;
+  }
+
+  const payload = buildCompanyClientUserPayload();
+  if (!payload.firstName || !payload.lastName || !payload.email) {
+    setInlineMessage(companyClientFeedback, "Ime, prezime i email su obavezni.");
+    return false;
+  }
+  if (!payload.clientAccessAllLocations && payload.clientLocationIds.length === 0) {
+    setInlineMessage(companyClientFeedback, "Odaberi barem jednu lokaciju ili uključi sve lokacije.");
+    return false;
+  }
+
+  if (companyClientCreateUserButton) {
+    companyClientCreateUserButton.disabled = true;
+  }
+  const success = await runMutation(() => apiRequest("/users", {
+    method: "POST",
+    body: payload,
+  }), companyClientFeedback);
+  if (companyClientCreateUserButton) {
+    companyClientCreateUserButton.disabled = false;
+  }
+  if (success) {
+    resetCompanyClientUserForm();
+    renderCompanyClientPortalPanel();
+    setInlineMessage(companyClientFeedback, "Klijentski pristup je kreiran i podaci su poslani emailom.", "success");
+  }
+  return success;
 }
 
 function buildCompanyPayload() {
@@ -46109,6 +46408,8 @@ function resetCompanyForm() {
   if (companyEditorTitle) {
     companyEditorTitle.textContent = "Nova tvrtka";
   }
+  resetCompanyClientUserForm();
+  renderCompanyClientPortalPanel();
   syncCompanyEditorChrome();
   scheduleCompanyEditorRelatedData("", { defer: false });
 }
@@ -46274,6 +46575,8 @@ function hydrateCompanyForm(company) {
   if (companyEditorTitle) {
     companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
   }
+  resetCompanyClientUserForm();
+  renderCompanyClientPortalPanel();
   syncCompanyEditorChrome();
   openCompanyEditor();
   scheduleCompanyEditorRelatedData(company.id, { defer: true });
@@ -51473,6 +51776,7 @@ function createOfferStatusBadge(status = "draft") {
 function createOfferStatusDropdown(item) {
   const statusOptions = getActiveCommercialStatusOptions();
   const apiBasePath = getActiveCommercialApiBasePath();
+  const canEditCommercialDocuments = getCanEditOperationalData();
   const wrapper = document.createElement("div");
   wrapper.className = "work-item-status-dropdown";
   wrapper.dataset.preventRowOpen = "true";
@@ -51484,10 +51788,11 @@ function createOfferStatusDropdown(item) {
   trigger.textContent = getOfferStatusLabel(item.status || "draft");
   trigger.setAttribute("aria-haspopup", "menu");
   trigger.setAttribute("aria-expanded", "false");
+  trigger.disabled = !canEditCommercialDocuments;
 
   const setPendingState = (isPending) => {
     wrapper.classList.toggle("is-pending", isPending);
-    trigger.disabled = isPending;
+    trigger.disabled = isPending || !canEditCommercialDocuments;
   };
 
   const setCurrentStatus = (value) => {
@@ -51589,6 +51894,9 @@ function createOfferStatusDropdown(item) {
 
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
+    if (!canEditCommercialDocuments) {
+      return;
+    }
 
     if (wrapper.classList.contains("is-open")) {
       closeOpenWorkOrderStatusMenus();
@@ -52668,6 +52976,14 @@ function hydrateOfferForm(offer) {
   const configKey = isPurchaseOrder ? "purchase-orders" : "offers";
   const config = COMMERCIAL_DOCUMENT_MODULE_CONFIG[configKey];
 
+  if (!getCanEditOperationalData()) {
+    void runMutation(() => downloadOfferPdf(offer.id, {
+      preview: true,
+      apiBasePath: config.apiBasePath || "/offers",
+    }), offerError);
+    return;
+  }
+
   state.activeView = "module";
   state.activeSidebarGroup = "operations";
   state.activeSidebarItem = configKey;
@@ -52859,8 +53175,7 @@ async function removeOfferTemplateReference() {
   renderOfferTemplatePlaceholderList();
 }
 
-async function downloadOfferPdf(offerId, { preview = false } = {}) {
-  const apiBasePath = getActiveCommercialApiBasePath();
+async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getActiveCommercialApiBasePath() } = {}) {
   const response = await apiBinaryRequest(`${apiBasePath}/${offerId}/export-pdf`, {
     method: "POST",
   });
@@ -52925,6 +53240,14 @@ function renderOffersModule() {
   const filterItems = isPurchaseOrdersContextActive() ? filterPurchaseOrders : filterOffers;
   const activeStatusOptions = getActiveCommercialStatusOptions();
   const activeDirection = getActiveCommercialDocumentDirection();
+  const canEditCommercialDocuments = getCanEditOperationalData();
+
+  if (offerOpenFormButton) {
+    offerOpenFormButton.hidden = !canEditCommercialDocuments;
+  }
+  if (offerOpenTemplateButton) {
+    offerOpenTemplateButton.hidden = !canEditCommercialDocuments;
+  }
 
   if (lastCommercialDocumentContextKey !== contextKey) {
     lastCommercialDocumentContextKey = contextKey;
@@ -53059,7 +53382,11 @@ function renderOffersModule() {
     footer.append(footerLeft, actions);
     card.append(head, contact, footer);
     const openOffer = () => {
-      hydrateOfferForm(offer);
+      if (canEditCommercialDocuments) {
+        hydrateOfferForm(offer);
+      } else {
+        void runMutation(() => downloadOfferPdf(offer.id, { preview: true }), offerError);
+      }
     };
 
     card.addEventListener("click", (event) => {
@@ -53093,7 +53420,7 @@ function renderOffersModule() {
   }
 
   if (offerDeleteButton) {
-    offerDeleteButton.hidden = !offerIdInput?.value;
+    offerDeleteButton.hidden = !offerIdInput?.value || !canEditCommercialDocuments;
   }
   syncOfferNumberPreview();
   syncOfferTotals();
@@ -66278,6 +66605,9 @@ vehicleReservationForm?.addEventListener("submit", (event) => {
 });
 
 offerOpenFormButton?.addEventListener("click", () => {
+  if (!getCanEditOperationalData()) {
+    return;
+  }
   resetOfferForm();
   renderOffersModule();
   openOfferEditor();
@@ -66591,6 +66921,11 @@ offerDeleteButton?.addEventListener("click", () => {
 offerForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
+  if (!getCanEditOperationalData()) {
+    setInlineMessage(offerError, "Klijentski portal ima pregled bez uređivanja.");
+    return;
+  }
+
   const isEditing = Boolean(offerIdInput.value);
   const apiBasePath = getActiveCommercialApiBasePath();
   const path = isEditing ? `${apiBasePath}/${offerIdInput.value}` : apiBasePath;
@@ -66616,6 +66951,10 @@ offerEditorBackdrop?.addEventListener("click", () => {
 });
 
 offerOpenTemplateButton?.addEventListener("click", () => {
+  if (!getCanEditOperationalData()) {
+    return;
+  }
+
   if (offerTemplateError) {
     offerTemplateError.textContent = "";
   }
@@ -68181,6 +68520,18 @@ companyLogoFileInput?.addEventListener("change", () => {
       companyLogoFileInput.value = "";
     }
   });
+});
+
+companyClientAllLocationsInput?.addEventListener("change", () => {
+  rebuildCompanyClientLocationOptions(getSelectedMultiSelectValues(companyClientLocationIdsInput));
+});
+
+companyClientCreateUserButton?.addEventListener("click", () => {
+  void createCompanyClientUser();
+});
+
+companyClientClearUserButton?.addEventListener("click", () => {
+  resetCompanyClientUserForm();
 });
 
 companyNameInput?.addEventListener("input", () => {

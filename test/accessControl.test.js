@@ -13,7 +13,9 @@ import {
   canManageLoginContent,
   canManageOrganizationUsers,
   canManageOrganizations,
+  canManageWorkOrders,
   canViewCompanies,
+  isClientPortalUser,
   normalizeCompanyRolePermissions,
   normalizeRole,
   normalizeUserProfileRole,
@@ -128,6 +130,22 @@ test("company permissions resolve by profile role while admin and super admin st
     canEdit: true,
     canDelete: true,
   });
+});
+
+test("client portal users get read-only company access", () => {
+  const client = { role: ROLE_USER, profileRole: "client_user" };
+
+  assert.equal(normalizeUserProfileRole("client_user"), "client_user");
+  assert.equal(isClientPortalUser(client), true);
+  assert.deepEqual(resolveCompanyPermissionsForActor(client, []), {
+    canView: true,
+    canCreate: false,
+    canEdit: false,
+    canDelete: false,
+  });
+  assert.equal(canViewCompanies(client, []), true);
+  assert.equal(canCreateCompanies(client, []), false);
+  assert.equal(canManageWorkOrders(client), false);
 });
 
 test("company permissions can be scoped per company while create stays general", () => {
