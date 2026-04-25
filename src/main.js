@@ -39333,24 +39333,28 @@ function getDocumentTemplateRuntimeCommonDateInitialValue(field = {}, workOrderI
 }
 
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
-  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
-  if (runtimeValue !== undefined) {
-    return runtimeValue;
-  }
-
   const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
   const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
   const template = buildDocumentTemplateDraft();
   const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id);
+  const commonDateValue = getDocumentTemplateRuntimeCommonDateInitialValue(field, normalizedWorkOrderId);
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
+  if (runtimeValue !== undefined) {
+    return commonDateValue !== undefined && !hasMeaningfulDocumentRecordValue(runtimeValue)
+      ? commonDateValue
+      : runtimeValue;
+  }
 
   if (sourceId === "blank") {
+    if (commonDateValue !== undefined) {
+      return commonDateValue;
+    }
     if (String(field?.type || "").trim().toLowerCase() === "system_description") {
       return createDocumentTemplateSystemDescriptionBlankValue(field);
     }
     return field.type === "checkbox" || field.type === "toggle" ? false : "";
   }
 
-  const commonDateValue = getDocumentTemplateRuntimeCommonDateInitialValue(field, normalizedWorkOrderId);
   if (commonDateValue !== undefined) {
     return commonDateValue;
   }
@@ -62746,15 +62750,24 @@ function restoreDocumentTemplateRuntimeLocalDraft() {
 function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
   const normalizedId = String(workOrderId || "").trim();
   const normalizedFieldName = String(fieldName || "").trim();
+  const isDateField = normalizedFieldName === "inspectionDate" || normalizedFieldName === "issuedDate";
   const current = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) ?? {} : {};
   if (current && Object.prototype.hasOwnProperty.call(current, normalizedFieldName)) {
     const value = String(current?.[normalizedFieldName] ?? "").trim();
-    return normalizedFieldName === "inspectionDate" || normalizedFieldName === "issuedDate"
+    if (!value && isDateField) {
+      const commonFallback = String(state.documentTemplateRuntime.common?.[normalizedFieldName]
+        || state.workOrderDocumentWizard.common?.[normalizedFieldName]
+        || "").trim();
+      return normalizeDateInputValue(commonFallback);
+    }
+    return isDateField
       ? normalizeDateInputValue(value)
       : value;
   }
 
-  const commonValue = String(state.documentTemplateRuntime.common?.[normalizedFieldName] ?? "").trim();
+  const commonValue = String(state.documentTemplateRuntime.common?.[normalizedFieldName]
+    || (isDateField ? state.workOrderDocumentWizard.common?.[normalizedFieldName] : "")
+    || "").trim();
   if (
     normalizedId
     && state.documentTemplateRuntime.common?.randomizeEnvironment
@@ -62762,7 +62775,7 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
   ) {
     return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${normalizedFieldName}`, normalizedFieldName);
   }
-  return normalizedFieldName === "inspectionDate" || normalizedFieldName === "issuedDate"
+  return isDateField
     ? normalizeDateInputValue(commonValue)
     : commonValue;
 }
