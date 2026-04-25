@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260425b" />
+  <link rel="stylesheet" href="/styles.css?v=20260425c" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -668,6 +668,17 @@
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="documents">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6.5 4.5h7l4 4v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2Z"></path>
+                      <path d="M13.5 4.5v4h4"></path>
+                      <path d="M8.5 13h7"></path>
+                      <path d="M8.5 16h4.5"></path>
+                    </svg>
+                  </span>
+                  <strong>Documents</strong>
+                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="cloud">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -3526,16 +3537,16 @@
             <section id="documents-module" class="documents-module" hidden>
               <div class="documents-summary-grid">
                 <article class="documents-stat-card">
-                  <span class="documents-stat-label">Tvrtke</span>
-                  <strong id="documents-company-count" class="documents-stat-value">0</strong>
+                  <span class="documents-stat-label">Kategorije</span>
+                  <strong id="documents-category-count" class="documents-stat-value">0</strong>
                 </article>
                 <article class="documents-stat-card">
-                  <span class="documents-stat-label">Lokacije</span>
-                  <strong id="documents-location-count" class="documents-stat-value">0</strong>
+                  <span class="documents-stat-label">Folderi</span>
+                  <strong id="documents-folder-count" class="documents-stat-value">0</strong>
                 </article>
                 <article class="documents-stat-card">
-                  <span class="documents-stat-label">RN</span>
-                  <strong id="documents-rn-count" class="documents-stat-value">0</strong>
+                  <span class="documents-stat-label">PDF</span>
+                  <strong id="documents-pdf-count" class="documents-stat-value">0</strong>
                 </article>
                 <article class="documents-stat-card">
                   <span class="documents-stat-label">Dokumenti</span>
@@ -3546,8 +3557,8 @@
               <section class="panel documents-toolbar-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
-                    <p class="section-kicker">Explorer</p>
-                    <h3>Dokumenti po tvrtki, lokaciji i RN-u</h3>
+                    <p class="section-kicker">Documents</p>
+                    <h3>Centralni pregled dokumenata</h3>
                   </div>
                   <button id="documents-refresh" type="button" class="ghost-button" title="Osvježi prikaz">&#10227;</button>
                 </div>
@@ -3555,23 +3566,42 @@
                 <div class="documents-filters">
                   <label class="field">
                     <span>Pretraga</span>
-                    <input id="documents-search" type="search" placeholder="RN, tvrtka, lokacija, odjel, usluga..." />
+                    <input id="documents-search" type="search" placeholder="Dokument, folder, tvrtka, oprema, ponuda..." />
                   </label>
                   <label class="field">
-                    <span>Prikaz</span>
-                    <select id="documents-filter-scope">
+                    <span>Vrsta</span>
+                    <select id="documents-filter-kind">
                       <option value="all">Sve</option>
-                      <option value="linked">Samo RN</option>
-                      <option value="unlinked">Bez RN</option>
+                      <option value="pdf">PDF</option>
+                      <option value="word">Word</option>
+                      <option value="image">Slike</option>
+                      <option value="record">Zapisnici</option>
+                      <option value="other">Ostalo</option>
                     </select>
                   </label>
                 </div>
               </section>
 
-              <section class="panel documents-explorer-panel">
-                <p id="documents-helper" class="helper-copy module-copy">Explorer prikaz s folder logikom: Tvrtka -> Lokacija -> RN.</p>
-                <div id="documents-explorer-list" class="documents-explorer-list"></div>
-                <p id="documents-explorer-empty" class="helper-copy" hidden>Nema dokumenata za trenutni prikaz.</p>
+              <section class="panel documents-categories-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Folderi</p>
+                    <h3>Kategorije dokumenata</h3>
+                  </div>
+                </div>
+                <p id="documents-helper" class="helper-copy module-copy">Svi dokumenti i zapisnici skupljeni su na jednom mjestu po kategorijama i mapama.</p>
+                <div id="documents-category-list" class="documents-category-list"></div>
+              </section>
+
+              <section class="panel documents-library-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Library</p>
+                    <h3>Dokumenti po mapama</h3>
+                  </div>
+                </div>
+                <div id="documents-folder-list" class="documents-folder-list"></div>
+                <p id="documents-library-empty" class="helper-copy" hidden>Nema dokumenata za trenutni prikaz.</p>
               </section>
             </section>
 
@@ -6560,6 +6590,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-  <script type="module" src="/src/main.js?v=20260425b"></script>
+  <script type="module" src="/src/main.js?v=20260425c"></script>
   </body>
 </html>

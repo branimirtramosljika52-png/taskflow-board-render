@@ -204,6 +204,107 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
   "OPISRADOVA",
   "RADILOSE",
 ]);
+const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    id: "all",
+    label: "Sve",
+    description: "Svi dokumenti i zapisnici na jednom mjestu.",
+    iconName: "document",
+    toneClass: "is-all",
+  }),
+  Object.freeze({
+    id: "document-records",
+    label: "Zapisnici",
+    description: "RN evidencije i spremljeni zapisnici.",
+    iconName: "number",
+    toneClass: "is-records",
+  }),
+  Object.freeze({
+    id: "measurement-equipment",
+    label: "Mjerna i ispitna oprema",
+    description: "Umjernice, certifikati i servisni prilozi.",
+    iconName: "measurement",
+    toneClass: "is-measurement",
+  }),
+  Object.freeze({
+    id: "legal-frameworks",
+    label: "Legal Framework",
+    description: "Zakoni, pravilnici i norme s prilozima.",
+    iconName: "notes",
+    toneClass: "is-legal",
+  }),
+  Object.freeze({
+    id: "safety-authorizations",
+    label: "Safety Authorization",
+    description: "Ovlaštenja i pripadajući PDF-ovi.",
+    iconName: "status",
+    toneClass: "is-authorization",
+  }),
+  Object.freeze({
+    id: "offers",
+    label: "Ponude",
+    description: "Ponude i pripadajući izvozi ili prilozi.",
+    iconName: "billing",
+    toneClass: "is-offers",
+  }),
+  Object.freeze({
+    id: "purchase-orders",
+    label: "Narudžbenice",
+    description: "Ulazne i izlazne narudžbenice s dokumentima.",
+    iconName: "document",
+    toneClass: "is-purchase-orders",
+  }),
+  Object.freeze({
+    id: "contracts",
+    label: "Ugovori",
+    description: "Ugovori i generirani PDF izvozi.",
+    iconName: "billing",
+    toneClass: "is-contracts",
+  }),
+  Object.freeze({
+    id: "contract-templates",
+    label: "Predlošci ugovora",
+    description: "Word predlošci za ugovore i anekse.",
+    iconName: "document",
+    toneClass: "is-contract-templates",
+  }),
+  Object.freeze({
+    id: "document-templates",
+    label: "Predlošci zapisnika",
+    description: "Template Development reference dokumenti.",
+    iconName: "document",
+    toneClass: "is-document-templates",
+  }),
+  Object.freeze({
+    id: "vehicles",
+    label: "Vozila",
+    description: "Prometne, police i ostala vozna dokumentacija.",
+    iconName: "team",
+    toneClass: "is-vehicles",
+  }),
+  Object.freeze({
+    id: "people",
+    label: "People",
+    description: "Korisnički i stručni dokumenti zaposlenika.",
+    iconName: "assignees",
+    toneClass: "is-people",
+  }),
+  Object.freeze({
+    id: "absence",
+    label: "Bolovanja i dopusti",
+    description: "Medicinska i ostala prateća dokumentacija odsutnosti.",
+    iconName: "dates",
+    toneClass: "is-absence",
+  }),
+]);
+const DOCUMENT_LIBRARY_FILE_KIND_LABELS = Object.freeze({
+  all: "Sve",
+  pdf: "PDF",
+  word: "Word",
+  image: "Slika",
+  record: "Zapisnik",
+  other: "Ostalo",
+});
 const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
@@ -1244,12 +1345,15 @@ const state = {
     organizationId: "",
     query: "",
     scope: "all",
+    fileKind: "all",
+    category: "all",
     loading: false,
     loaded: false,
     error: "",
     records: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
+    expandedFolderIds: new Set(),
   },
   periodicsFeed: {
     organizationId: "",
@@ -2143,16 +2247,17 @@ const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector(
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const settingsPeriodicsVisualFeedback = document.querySelector("#settings-periodics-visual-feedback");
-const documentsCompanyCount = document.querySelector("#documents-company-count");
-const documentsLocationCount = document.querySelector("#documents-location-count");
-const documentsRnCount = document.querySelector("#documents-rn-count");
+const documentsCategoryCount = document.querySelector("#documents-category-count");
+const documentsFolderCount = document.querySelector("#documents-folder-count");
+const documentsPdfCount = document.querySelector("#documents-pdf-count");
 const documentsFileCount = document.querySelector("#documents-file-count");
 const documentsSearchInput = document.querySelector("#documents-search");
-const documentsFilterScopeInput = document.querySelector("#documents-filter-scope");
+const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
 const documentsHelper = document.querySelector("#documents-helper");
-const documentsExplorerList = document.querySelector("#documents-explorer-list");
-const documentsExplorerEmpty = document.querySelector("#documents-explorer-empty");
+const documentsCategoryList = document.querySelector("#documents-category-list");
+const documentsFolderList = document.querySelector("#documents-folder-list");
+const documentsLibraryEmpty = document.querySelector("#documents-library-empty");
 const periodicsModule = document.querySelector("#periodics-module");
 const periodicsTotalCount = document.querySelector("#periodics-total-count");
 const periodicsOverdueCount = document.querySelector("#periodics-overdue-count");
@@ -14504,6 +14609,1271 @@ function renderDocumentsExplorerTree(tree = { companies: [] }) {
   documentsExplorerList.replaceChildren(...nodes);
 }
 
+function getDocumentLibraryCategoryDefinition(categoryId = "all") {
+  const normalizedId = String(categoryId || "").trim();
+  return DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS.find((entry) => entry.id === normalizedId)
+    ?? DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS[0];
+}
+
+function normalizeDocumentLibraryCategory(categoryId = "") {
+  return getDocumentLibraryCategoryDefinition(categoryId).id;
+}
+
+function normalizeDocumentLibraryFileKind(fileKind = "") {
+  const normalized = String(fileKind || "").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(DOCUMENT_LIBRARY_FILE_KIND_LABELS, normalized)
+    ? normalized
+    : "all";
+}
+
+function getDocumentLibraryAttachmentFileName(document = {}) {
+  return String(
+    document?.fileName
+    || document?.name
+    || document?.title
+    || "",
+  ).trim();
+}
+
+function getDocumentLibraryAttachmentHref(document = {}) {
+  return String(
+    document?.storageUrl
+    || document?.dataUrl
+    || document?.url
+    || document?.href
+    || "",
+  ).trim();
+}
+
+function getDocumentLibraryAttachmentExtension(document = {}) {
+  const fileName = getDocumentLibraryAttachmentFileName(document).toLowerCase();
+  if (fileName.includes(".")) {
+    return fileName.split(".").pop() || "";
+  }
+  const href = getDocumentLibraryAttachmentHref(document).toLowerCase();
+  const cleanHref = href.split("?")[0].split("#")[0];
+  return cleanHref.includes(".") ? (cleanHref.split(".").pop() || "") : "";
+}
+
+function getDocumentLibraryTimestamp(value = "") {
+  const parsedDate = parseDateValue(value);
+  return parsedDate ? parsedDate.getTime() : 0;
+}
+
+function formatDocumentLibraryTimestamp(value = "") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) {
+    return "";
+  }
+  return rawValue.includes("T") ? formatCompactDateTime(rawValue) : formatCompactDate(rawValue);
+}
+
+function resolveDocumentLibraryAttachmentFileKind(document = {}) {
+  const fileType = String(document?.fileType || document?.mimeType || "").trim().toLowerCase();
+  const extension = getDocumentLibraryAttachmentExtension(document);
+
+  if (fileType.includes("pdf") || extension === "pdf") {
+    return "pdf";
+  }
+  if (
+    fileType.includes("word")
+    || ["doc", "docx", "dot", "dotx", "rtf"].includes(extension)
+  ) {
+    return "word";
+  }
+  if (
+    fileType.startsWith("image/")
+    || ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"].includes(extension)
+  ) {
+    return "image";
+  }
+  return "other";
+}
+
+function matchesDocumentLibraryFileKind(entry = {}, fileKind = "all") {
+  const normalizedKind = normalizeDocumentLibraryFileKind(fileKind);
+  if (normalizedKind === "all") {
+    return true;
+  }
+  return String(entry?.fileKind || "").trim().toLowerCase() === normalizedKind;
+}
+
+function createDocumentLibraryEntry(input = {}) {
+  const label = String(input.label || input.fileName || "Dokument").trim() || "Dokument";
+  const description = String(input.description || "").trim();
+  const fileKind = normalizeDocumentLibraryFileKind(input.fileKind || resolveDocumentLibraryAttachmentFileKind(input));
+  const fileKindLabel = DOCUMENT_LIBRARY_FILE_KIND_LABELS[fileKind] || DOCUMENT_LIBRARY_FILE_KIND_LABELS.other;
+  const updatedAt = String(input.updatedAt || "").trim();
+  const updatedLabel = formatDocumentLibraryTimestamp(updatedAt);
+  const updatedAtMs = getDocumentLibraryTimestamp(updatedAt);
+  const fileName = String(input.fileName || label).trim() || label;
+  const href = String(input.href || "").trim();
+  const exportPath = String(input.exportPath || "").trim();
+  const previewType = String(
+    input.previewType
+    || (exportPath ? "generated-pdf" : href ? "href" : "source")
+    || "source",
+  ).trim();
+  const metaParts = Array.from(new Set(
+    (Array.isArray(input.metaParts) ? input.metaParts : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  ));
+  const searchTerms = [
+    label,
+    description,
+    fileName,
+    String(input.fileType || "").trim(),
+    ...metaParts,
+    ...(Array.isArray(input.searchTerms) ? input.searchTerms : []),
+  ];
+
+  return {
+    id: String(input.id || crypto.randomUUID()).trim(),
+    label,
+    description,
+    fileName,
+    fileType: String(input.fileType || "").trim(),
+    fileSize: Number(input.fileSize || 0) || 0,
+    href,
+    exportPath,
+    fileKind,
+    fileKindLabel,
+    updatedAt,
+    updatedAtMs,
+    updatedLabel,
+    previewType,
+    sourceTarget: input.sourceTarget ?? null,
+    metaParts,
+    canPreview: Boolean(href || exportPath || input.sourceTarget),
+    canDownload: input.canDownload === false ? false : Boolean(href || exportPath),
+    searchBlob: normalizeLooseName(searchTerms.join(" ")),
+  };
+}
+
+function createDocumentLibraryGeneratedPdfEntry({
+  id = "",
+  label = "PDF izvoz",
+  description = "",
+  exportPath = "",
+  fileName = "",
+  updatedAt = "",
+  sourceTarget = null,
+  searchTerms = [],
+} = {}) {
+  if (!exportPath) {
+    return null;
+  }
+  return createDocumentLibraryEntry({
+    id: id || crypto.randomUUID(),
+    label,
+    description: description || "Generirani PDF dokument.",
+    exportPath,
+    fileName: fileName || `${slugifyValue(label || "dokument") || "dokument"}.pdf`,
+    fileKind: "pdf",
+    updatedAt,
+    metaParts: ["PDF export"],
+    sourceTarget,
+    searchTerms,
+  });
+}
+
+function createDocumentLibraryRecordEntry({
+  id = "",
+  label = "Zapisnik",
+  description = "",
+  updatedAt = "",
+  sourceTarget = null,
+  searchTerms = [],
+} = {}) {
+  return createDocumentLibraryEntry({
+    id: id || crypto.randomUUID(),
+    label,
+    description,
+    fileName: label,
+    fileKind: "record",
+    updatedAt,
+    previewType: "source",
+    sourceTarget,
+    canDownload: false,
+    metaParts: ["Zapisnik"],
+    searchTerms,
+  });
+}
+
+function dedupeDocumentLibraryAttachments(documents = []) {
+  const seenKeys = new Set();
+  const unique = [];
+
+  (Array.isArray(documents) ? documents : []).forEach((document) => {
+    const fileName = getDocumentLibraryAttachmentFileName(document);
+    const href = getDocumentLibraryAttachmentHref(document);
+    const key = [fileName, href].join("|");
+    if (!fileName || !href || seenKeys.has(key)) {
+      return;
+    }
+    seenKeys.add(key);
+    unique.push(document);
+  });
+
+  return unique;
+}
+
+function finalizeDocumentLibraryFolder(folder = {}) {
+  const documents = (Array.isArray(folder.documents) ? folder.documents : [])
+    .filter(Boolean)
+    .slice()
+    .sort((left, right) => (
+      right.updatedAtMs - left.updatedAtMs
+      || String(left.label || "").localeCompare(String(right.label || ""), "hr", {
+        sensitivity: "base",
+        numeric: true,
+      })
+    ));
+
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const pdfCount = documents.filter((entry) => entry.fileKind === "pdf").length;
+  const searchTerms = [
+    String(folder.label || "").trim(),
+    String(folder.subtitle || "").trim(),
+    ...(Array.isArray(folder.metaParts) ? folder.metaParts : []),
+    ...(Array.isArray(folder.searchTerms) ? folder.searchTerms : []),
+    ...documents.map((entry) => entry.searchBlob),
+  ];
+  const latestEntry = documents[0] ?? null;
+
+  return {
+    id: String(folder.id || crypto.randomUUID()).trim(),
+    categoryId: normalizeDocumentLibraryCategory(folder.categoryId || "all"),
+    categoryDefinition: getDocumentLibraryCategoryDefinition(folder.categoryId || "all"),
+    label: String(folder.label || "Folder").trim() || "Folder",
+    subtitle: String(folder.subtitle || "").trim(),
+    metaParts: Array.from(new Set(
+      (Array.isArray(folder.metaParts) ? folder.metaParts : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    )),
+    sourceTarget: folder.sourceTarget ?? null,
+    documents,
+    documentCount: documents.length,
+    pdfCount,
+    latestTimestamp: latestEntry?.updatedAtMs || 0,
+    latestLabel: latestEntry?.updatedLabel || "Bez datuma",
+    searchBlob: normalizeLooseName(searchTerms.join(" ")),
+  };
+}
+
+function buildDocumentLibraryAttachmentFolders(items = [], {
+  categoryId = "all",
+  getFolderLabel = () => "Folder",
+  getFolderSubtitle = () => "",
+  getFolderMetaParts = () => [],
+  getFolderSearchTerms = () => [],
+  getDocuments = (item) => item?.documents ?? [],
+  getSourceTarget = () => null,
+  mapDocument = () => ({}),
+  buildExtraEntries = () => [],
+} = {}) {
+  return (Array.isArray(items) ? items : [])
+    .map((item, itemIndex) => {
+      const sourceTarget = getSourceTarget(item);
+      const documents = dedupeDocumentLibraryAttachments(getDocuments(item))
+        .map((document, documentIndex) => {
+          const fileName = getDocumentLibraryAttachmentFileName(document);
+          const href = getDocumentLibraryAttachmentHref(document);
+          if (!fileName || !href) {
+            return null;
+          }
+
+          const mapped = mapDocument(document, item, sourceTarget) ?? {};
+          return createDocumentLibraryEntry({
+            id: mapped.id || `${categoryId}:${String(item?.id || itemIndex)}:${String(document?.id || documentIndex)}:${fileName}`,
+            label: mapped.label || fileName,
+            description: mapped.description || "",
+            fileName,
+            fileType: mapped.fileType || document?.fileType || document?.mimeType || "",
+            fileSize: mapped.fileSize ?? document?.fileSize ?? 0,
+            href,
+            fileKind: mapped.fileKind || resolveDocumentLibraryAttachmentFileKind(document),
+            updatedAt: mapped.updatedAt || document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+            metaParts: mapped.metaParts || [],
+            sourceTarget: mapped.sourceTarget || sourceTarget,
+            previewType: mapped.previewType || "href",
+            searchTerms: mapped.searchTerms || [],
+          });
+        })
+        .filter(Boolean);
+
+      const extraEntries = (Array.isArray(buildExtraEntries(item, sourceTarget)) ? buildExtraEntries(item, sourceTarget) : [])
+        .filter(Boolean);
+
+      return finalizeDocumentLibraryFolder({
+        id: `${categoryId}:folder:${String(item?.id || itemIndex)}`,
+        categoryId,
+        label: getFolderLabel(item),
+        subtitle: getFolderSubtitle(item),
+        metaParts: getFolderMetaParts(item),
+        searchTerms: getFolderSearchTerms(item),
+        sourceTarget,
+        documents: [...documents, ...extraEntries],
+      });
+    })
+    .filter(Boolean);
+}
+
+function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.records) {
+  const buckets = new Map();
+
+  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
+    const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
+    const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
+    const company = getCompany(linkedWorkOrder?.companyId || record?.companyId || "");
+    const location = getLocation(linkedWorkOrder?.locationId || record?.locationId || "");
+    const serviceLabel = String(
+      getWorkOrderServiceSummary(linkedWorkOrder)
+      || linkedWorkOrder?.serviceLine
+      || extractDocumentsExplorerFieldValueByHints(record, DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS)
+      || "",
+    ).trim();
+    const workOrderNumber = String(
+      linkedWorkOrder?.workOrderNumber
+      || extractedWorkOrderNumber
+      || `Zapisnik ${recordIndex + 1}`,
+    ).trim();
+    const folderKey = linkedWorkOrder?.id
+      ? `document-records:work-order:${linkedWorkOrder.id}`
+      : `document-records:record:${String(record?.id || recordIndex)}`;
+
+    if (!buckets.has(folderKey)) {
+      buckets.set(folderKey, {
+        id: folderKey,
+        categoryId: "document-records",
+        label: workOrderNumber || "Zapisnik",
+        subtitle: [
+          company?.name || linkedWorkOrder?.companyName || "",
+          createCompactLocationLabel(location?.name || linkedWorkOrder?.locationName || ""),
+          serviceLabel,
+        ].filter(Boolean).join(" · "),
+        metaParts: [
+          company?.name || "",
+          serviceLabel || "",
+        ].filter(Boolean),
+        searchTerms: [
+          company?.name || "",
+          location?.name || linkedWorkOrder?.locationName || "",
+          serviceLabel,
+        ],
+        sourceTarget: linkedWorkOrder
+          ? { kind: "work-order", record: linkedWorkOrder }
+          : null,
+        documents: [],
+      });
+    }
+
+    const bucket = buckets.get(folderKey);
+    bucket.documents.push(createDocumentLibraryRecordEntry({
+      id: `document-record:${String(record?.id || recordIndex)}`,
+      label: String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik",
+      description: [
+        record?.inspectionDate ? `Ispitivanje ${formatCompactDate(record.inspectionDate)}` : "",
+        record?.issuedDate ? `Izdano ${formatCompactDate(record.issuedDate)}` : "",
+        record?.createdByLabel || "",
+      ].filter(Boolean).join(" · "),
+      updatedAt: record?.updatedAt || record?.issuedDate || record?.inspectionDate || record?.createdAt || "",
+      sourceTarget: bucket.sourceTarget,
+      searchTerms: [
+        record?.templateTitle || "",
+        record?.documentType || "",
+        workOrderNumber,
+        serviceLabel,
+        company?.name || "",
+      ],
+    }));
+  });
+
+  return [...buckets.values()]
+    .map((folder) => finalizeDocumentLibraryFolder(folder))
+    .filter(Boolean);
+}
+
+function buildDocumentsLibraryFolders() {
+  const users = [...(state.users ?? [])].sort((left, right) => String(
+    left?.fullName || left?.email || left?.username || "",
+  ).localeCompare(String(
+    right?.fullName || right?.email || right?.username || "",
+  ), "hr", { sensitivity: "base" }));
+
+  const contracts = sortContracts(state.contracts ?? []);
+  const contractTemplates = sortContractTemplates(state.contractTemplates ?? []);
+
+  const folders = [
+    ...buildDocumentRecordLibraryFolders(state.documentsExplorer.records),
+    ...buildDocumentLibraryAttachmentFolders(sortMeasurementEquipmentItems(state.measurementEquipment ?? []), {
+      categoryId: "measurement-equipment",
+      getFolderLabel: (item) => item?.name || item?.deviceCode || item?.inventoryNumber || "Mjerna oprema",
+      getFolderSubtitle: (item) => [
+        item?.manufacturer || "",
+        item?.deviceType || "",
+        item?.inventoryNumber ? `Inv ${item.inventoryNumber}` : "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        item?.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.manufacturer || "",
+        item?.deviceType || "",
+        item?.deviceCode || "",
+        item?.inventoryNumber || "",
+        ...(getLinkedServiceCatalogTitlesForItem(item, { fallbackTemplateTitles: false }) ?? []),
+      ],
+      getDocuments: (item) => (Array.isArray(item?.documents) ? item.documents : [])
+        .filter((document) => normalizeMeasurementEquipmentDocumentCategoryValue(document?.documentCategory) !== MEASUREMENT_EQUIPMENT_CARD_TEMPLATE_CATEGORY),
+      getSourceTarget: (item) => ({ kind: "measurement-equipment", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getMeasurementEquipmentDocumentCategoryLabel(document?.documentCategory) || "Dokument",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+        searchTerms: [
+          document?.documentCategory || "",
+          document?.description || "",
+        ],
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortLegalFrameworks(state.legalFrameworks ?? []), {
+      categoryId: "legal-frameworks",
+      getFolderLabel: (item) => item?.title || item?.referenceCode || "Pravni dokument",
+      getFolderSubtitle: (item) => [
+        item?.authority || "",
+        item?.referenceCode || "",
+        getLegalFrameworkStatusLabel(item?.status || ""),
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.authority || "",
+        item?.referenceCode || "",
+        item?.category || "",
+        ...(getLinkedServiceCatalogTitlesForItem(item, { fallbackTemplateTitles: false }) ?? []),
+      ],
+      getSourceTarget: (item) => ({ kind: "legal-framework", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.note || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getLegalFrameworkStatusLabel(item?.status || ""),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+        searchTerms: [
+          item?.status || "",
+          item?.note || "",
+        ],
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortSafetyAuthorizations(state.safetyAuthorizations ?? []), {
+      categoryId: "safety-authorizations",
+      getFolderLabel: (item) => item?.title || "Ovlaštenje",
+      getFolderSubtitle: (item) => [
+        item?.scope || "",
+        item?.validForever
+          ? "Trajno"
+          : item?.validUntil
+            ? `Vrijedi do ${formatCompactDate(item.validUntil)}`
+            : "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.scope || "",
+        item?.note || "",
+        ...(getLinkedServiceCatalogTitlesForItem(item, { fallbackTemplateTitles: false }) ?? []),
+      ],
+      getSourceTarget: (item) => ({ kind: "safety-authorization", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.note || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          item?.scope || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortOffers(state.offers ?? []), {
+      categoryId: "offers",
+      getFolderLabel: (item) => item?.offerNumber || item?.title || "Ponuda",
+      getFolderSubtitle: (item) => [
+        item?.title || "",
+        item?.companyName || "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getOptionLabel(OFFER_STATUS_OPTIONS, item?.status || "draft") || "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.offerNumber || "",
+        item?.title || "",
+        item?.companyName || "",
+        item?.contactName || "",
+        item?.contactEmail || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "offer", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getOptionLabel(OFFER_STATUS_OPTIONS, item?.status || "draft") || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+      buildExtraEntries: (item, sourceTarget) => {
+        if (!item?.id) {
+          return [];
+        }
+        return [createDocumentLibraryGeneratedPdfEntry({
+          id: `offers:pdf:${item.id}`,
+          label: `${item.offerNumber || item.title || "Ponuda"} PDF`,
+          description: "Generirani PDF izvozne ponude.",
+          exportPath: `/offers/${encodeURIComponent(String(item.id))}/export-pdf`,
+          fileName: `${slugifyValue(item.offerNumber || item.title || "ponuda") || "ponuda"}.pdf`,
+          updatedAt: item?.updatedAt || item?.createdAt || "",
+          sourceTarget,
+          searchTerms: [item?.companyName || "", item?.title || ""],
+        })];
+      },
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortPurchaseOrders(state.purchaseOrders ?? []), {
+      categoryId: "purchase-orders",
+      getFolderLabel: (item) => item?.purchaseOrderNumber || item?.title || "Narudžbenica",
+      getFolderSubtitle: (item) => [
+        item?.title || "",
+        item?.companyName || "",
+        item?.externalDocumentNumber || "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, item?.status || "draft") || "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.purchaseOrderNumber || "",
+        item?.title || "",
+        item?.companyName || "",
+        item?.externalDocumentNumber || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "purchase-order", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, item?.status || "draft") || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+      buildExtraEntries: (item, sourceTarget) => {
+        if (!item?.id) {
+          return [];
+        }
+        return [createDocumentLibraryGeneratedPdfEntry({
+          id: `purchase-orders:pdf:${item.id}`,
+          label: `${item.purchaseOrderNumber || item.title || "Narudžbenica"} PDF`,
+          description: "Generirani PDF narudžbenice.",
+          exportPath: `/purchase-orders/${encodeURIComponent(String(item.id))}/export-pdf`,
+          fileName: `${slugifyValue(item.purchaseOrderNumber || item.title || "narudzbenica") || "narudzbenica"}.pdf`,
+          updatedAt: item?.updatedAt || item?.createdAt || "",
+          sourceTarget,
+          searchTerms: [item?.companyName || "", item?.title || ""],
+        })];
+      },
+    }),
+    ...contracts.map((item) => {
+      if (!item?.id) {
+        return null;
+      }
+      const sourceTarget = { kind: "contract", record: item };
+      const linkedTemplate = contractTemplates.find((template) => String(template?.id || "") === String(item?.templateId || "")) ?? null;
+      const linkedTemplateDocument = linkedTemplate?.referenceDocument ?? null;
+      const linkedTemplateHref = getDocumentLibraryAttachmentHref(linkedTemplateDocument);
+      return finalizeDocumentLibraryFolder({
+        id: `contracts:folder:${String(item.id)}`,
+        categoryId: "contracts",
+        label: item?.contractNumber || item?.title || "Ugovor",
+        subtitle: [
+          item?.title || "",
+          item?.companyName || "",
+          getContractStatusLabel(item?.status || "draft"),
+        ].filter(Boolean).join(" · "),
+        metaParts: [
+          item?.templateTitle || linkedTemplate?.title || "",
+          item?.validTo ? `Vrijedi do ${formatCompactDate(item.validTo)}` : "",
+        ].filter(Boolean),
+        searchTerms: [
+          item?.contractNumber || "",
+          item?.title || "",
+          item?.companyName || "",
+          item?.templateTitle || "",
+        ],
+        sourceTarget,
+        documents: [
+          createDocumentLibraryGeneratedPdfEntry({
+            id: `contracts:pdf:${item.id}`,
+            label: `${item?.contractNumber || item?.title || "Ugovor"} PDF`,
+            description: "Generirani PDF ugovora.",
+            exportPath: `/contracts/${encodeURIComponent(String(item.id))}/export-pdf`,
+            fileName: `${slugifyValue(item?.contractNumber || item?.title || "ugovor") || "ugovor"}.pdf`,
+            updatedAt: item?.updatedAt || item?.createdAt || "",
+            sourceTarget,
+            searchTerms: [item?.companyName || "", item?.templateTitle || ""],
+          }),
+          linkedTemplateDocument?.fileName && linkedTemplateHref
+            ? createDocumentLibraryEntry({
+              id: `contracts:template:${String(item.id)}`,
+              label: linkedTemplateDocument.fileName,
+              description: "Povezani Word predložak za ovaj ugovor.",
+              fileName: linkedTemplateDocument.fileName,
+              fileType: linkedTemplateDocument.fileType || "",
+              fileSize: linkedTemplateDocument.fileSize || 0,
+              href: linkedTemplateHref,
+              fileKind: resolveDocumentLibraryAttachmentFileKind(linkedTemplateDocument),
+              updatedAt: linkedTemplateDocument.updatedAt || linkedTemplate?.updatedAt || item?.updatedAt || "",
+              metaParts: ["Predložak ugovora"],
+              sourceTarget: { kind: "contract-template", record: linkedTemplate },
+              searchTerms: [linkedTemplate?.title || ""],
+            })
+            : null,
+        ],
+      });
+    }).filter(Boolean),
+    ...buildDocumentLibraryAttachmentFolders(contractTemplates, {
+      categoryId: "contract-templates",
+      getFolderLabel: (item) => item?.title || "Predložak ugovora",
+      getFolderSubtitle: (item) => [
+        getContractTemplateStatusLabel(item?.status || "active"),
+        item?.description || "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.description || "",
+        item?.status || "",
+      ],
+      getDocuments: (item) => item?.referenceDocument?.fileName ? [item.referenceDocument] : [],
+      getSourceTarget: (item) => ({ kind: "contract-template", record: item }),
+      mapDocument: (document, item) => ({
+        description: "Word predložak ugovora.",
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getContractTemplateStatusLabel(item?.status || "active"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortDocumentTemplates(state.documentTemplates ?? []), {
+      categoryId: "document-templates",
+      getFolderLabel: (item) => item?.title || item?.documentType || "Predložak zapisnika",
+      getFolderSubtitle: (item) => [
+        item?.documentType || "",
+        item?.status || "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.documentType || "",
+        item?.description || "",
+      ],
+      getDocuments: (item) => item?.referenceDocument?.fileName ? [item.referenceDocument] : [],
+      getSourceTarget: (item) => ({ kind: "document-template", record: item }),
+      mapDocument: (document, item) => ({
+        description: "Reference dokument za Template Development.",
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          item?.status || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortVehicles(state.vehicles ?? []), {
+      categoryId: "vehicles",
+      getFolderLabel: (item) => item?.name || item?.registration || item?.licensePlate || "Vozilo",
+      getFolderSubtitle: (item) => [
+        item?.registration || item?.licensePlate || "",
+        item?.brand || "",
+        item?.model || "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.name || "",
+        item?.registration || "",
+        item?.licensePlate || "",
+        item?.brand || "",
+        item?.model || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "vehicle", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getVehicleDocumentCategoryLabel(document?.documentCategory) || "Dokument",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(users, {
+      categoryId: "people",
+      getFolderLabel: (item) => item?.fullName || item?.email || item?.username || "Korisnik",
+      getFolderSubtitle: (item) => [
+        item?.title || "",
+        item?.oib ? `OIB ${item.oib}` : "",
+        item?.email || "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.fullName || "",
+        item?.email || "",
+        item?.username || "",
+        item?.title || "",
+      ],
+      getDocuments: (item) => {
+        const qualificationDocuments = getUserElectricalQualification(item)?.documents ?? [];
+        return [
+          ...(getUserDocuments(item) ?? []),
+          ...qualificationDocuments,
+        ];
+      },
+      getSourceTarget: (item) => ({ kind: "user", record: item }),
+      mapDocument: (document) => ({
+        description: String(document?.description || "").trim(),
+        updatedAt: document?.updatedAt || "",
+        metaParts: [
+          document?.documentCategory || "",
+          document?.customCategory || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders((state.absenceEntries ?? []).slice(), {
+      categoryId: "absence",
+      getFolderLabel: (item) => {
+        const matchedUser = (state.users ?? []).find((user) => String(user?.id || "") === String(item?.userId || ""));
+        return [
+          matchedUser?.fullName || matchedUser?.email || "Korisnik",
+          getAbsenceTypeLabelClient(item?.type || ""),
+        ].filter(Boolean).join(" · ");
+      },
+      getFolderSubtitle: (item) => [
+        item?.startDate ? formatCompactDate(item.startDate) : "",
+        item?.endDate ? `do ${formatCompactDate(item.endDate)}` : "",
+        getAbsenceStatusLabelClient(item?.status || ""),
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.note || "",
+        item?.type || "",
+        item?.status || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "absence", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.note || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getAbsenceTypeLabelClient(item?.type || ""),
+          getAbsenceStatusLabelClient(item?.status || ""),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+  ];
+
+  return folders
+    .filter(Boolean)
+    .sort((left, right) => (
+      DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS.findIndex((entry) => entry.id === left.categoryId)
+      - DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS.findIndex((entry) => entry.id === right.categoryId)
+      || right.latestTimestamp - left.latestTimestamp
+      || String(left.label || "").localeCompare(String(right.label || ""), "hr", {
+        sensitivity: "base",
+        numeric: true,
+      })
+    ));
+}
+
+function buildDocumentsLibraryViewModel() {
+  const queryNeedle = normalizeLooseName(state.documentsExplorer.query || "");
+  const selectedCategory = normalizeDocumentLibraryCategory(state.documentsExplorer.category || "all");
+  const fileKind = normalizeDocumentLibraryFileKind(state.documentsExplorer.fileKind || "all");
+  const folders = buildDocumentsLibraryFolders();
+
+  const filteredFolders = folders
+    .map((folder) => {
+      const visibleDocumentsByKind = folder.documents.filter((entry) => matchesDocumentLibraryFileKind(entry, fileKind));
+      const folderMatchesQuery = !queryNeedle || folder.searchBlob.includes(queryNeedle);
+      const visibleDocuments = !queryNeedle
+        ? visibleDocumentsByKind
+        : folderMatchesQuery
+          ? visibleDocumentsByKind
+          : visibleDocumentsByKind.filter((entry) => entry.searchBlob.includes(queryNeedle));
+
+      if (visibleDocuments.length === 0) {
+        return null;
+      }
+
+      const latestVisible = visibleDocuments[0] ?? null;
+      return {
+        ...folder,
+        visibleDocuments,
+        visibleDocumentCount: visibleDocuments.length,
+        visiblePdfCount: visibleDocuments.filter((entry) => entry.fileKind === "pdf").length,
+        visibleLatestLabel: latestVisible?.updatedLabel || folder.latestLabel,
+      };
+    })
+    .filter(Boolean);
+
+  const visibleFolders = selectedCategory === "all"
+    ? filteredFolders
+    : filteredFolders.filter((folder) => folder.categoryId === selectedCategory);
+  const categories = DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS
+    .filter((entry) => entry.id !== "all")
+    .map((definition) => {
+      const categoryFolders = filteredFolders.filter((folder) => folder.categoryId === definition.id);
+      return {
+        ...definition,
+        folderCount: categoryFolders.length,
+        documentCount: categoryFolders.reduce((sum, folder) => sum + folder.visibleDocumentCount, 0),
+        pdfCount: categoryFolders.reduce((sum, folder) => sum + folder.visiblePdfCount, 0),
+      };
+    });
+
+  return {
+    selectedCategory,
+    fileKind,
+    categories,
+    filteredFolders,
+    visibleFolders,
+    totals: {
+      categories: categories.filter((entry) => entry.documentCount > 0).length,
+      folders: visibleFolders.length,
+      files: visibleFolders.reduce((sum, folder) => sum + folder.visibleDocumentCount, 0),
+      pdfs: visibleFolders.reduce((sum, folder) => sum + folder.visiblePdfCount, 0),
+    },
+  };
+}
+
+function syncDocumentsLibraryDefaultExpansion(visibleFolders = []) {
+  const nextExpanded = state.documentsExplorer.expandedFolderIds instanceof Set
+    ? new Set(state.documentsExplorer.expandedFolderIds)
+    : new Set();
+
+  if (state.documentsExplorer.query) {
+    visibleFolders.forEach((folder) => {
+      nextExpanded.add(folder.id);
+    });
+    state.documentsExplorer.expandedFolderIds = nextExpanded;
+    return;
+  }
+
+  if (nextExpanded.size === 0) {
+    visibleFolders.slice(0, Math.min(3, visibleFolders.length)).forEach((folder) => {
+      nextExpanded.add(folder.id);
+    });
+  }
+
+  state.documentsExplorer.expandedFolderIds = nextExpanded;
+}
+
+function toggleDocumentsLibraryFolder(folderId = "") {
+  const normalizedId = String(folderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const nextExpanded = new Set(state.documentsExplorer.expandedFolderIds ?? []);
+  if (nextExpanded.has(normalizedId)) {
+    nextExpanded.delete(normalizedId);
+  } else {
+    nextExpanded.add(normalizedId);
+  }
+  state.documentsExplorer.expandedFolderIds = nextExpanded;
+  renderDocumentsModule();
+}
+
+function selectDocumentsLibraryCategory(categoryId = "all") {
+  state.documentsExplorer.category = normalizeDocumentLibraryCategory(categoryId);
+  state.documentsExplorer.expandedFolderIds = new Set();
+  renderDocumentsModule();
+}
+
+function createDocumentsLibraryCategoryIcon(categoryId = "all", className = "") {
+  const icon = document.createElement("span");
+  icon.className = ["documents-category-icon", className].filter(Boolean).join(" ");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(getDocumentLibraryCategoryDefinition(categoryId).iconName || "document");
+  return icon;
+}
+
+function openDocumentsLibrarySource(target = null) {
+  if (!target?.kind) {
+    return;
+  }
+
+  const options = { expandSidebar: state.sidebarCollapsed };
+  switch (target.kind) {
+    case "measurement-equipment":
+      activateSidebarItem("measurement-equipment", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateMeasurementEquipmentForm(target.record);
+        });
+      }
+      break;
+    case "legal-framework":
+      activateSidebarItem("legal-framework", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateLegalFrameworkForm(target.record);
+        });
+      }
+      break;
+    case "safety-authorization":
+      activateSidebarItem("safety-authorization", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateSafetyAuthorizationForm(target.record);
+        });
+      }
+      break;
+    case "offer":
+      activateSidebarItem("offers", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateOfferForm(target.record);
+        });
+      }
+      break;
+    case "purchase-order":
+      activateSidebarItem("purchase-orders", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateOfferForm(target.record);
+        });
+      }
+      break;
+    case "contract":
+      activateSidebarItem("contract", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateContractForm(target.record);
+        });
+      }
+      break;
+    case "contract-template":
+      activateSidebarItem("contract", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateContractTemplateForm(target.record);
+          openContractTemplateModal();
+        });
+      }
+      break;
+    case "document-template":
+      activateSidebarItem("template-development", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateDocumentTemplateForm(target.record);
+        });
+      }
+      break;
+    case "vehicle":
+      activateSidebarItem("vehicles", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateVehicleForm(target.record);
+        });
+      }
+      break;
+    case "user":
+      activateSidebarItem("people", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateUserForm(target.record);
+        });
+      }
+      break;
+    case "absence": {
+      const isMedical = ABSENCE_MEDICAL_TYPE_OPTIONS.some((option) => option.value === String(target.record?.type || "").trim().toLowerCase());
+      activateSidebarItem(isMedical ? "sick-leave" : "annual-leave", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateAbsenceForm(target.record);
+        });
+      }
+      break;
+    }
+    case "work-order":
+      activateSidebarItem("rn", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateWorkOrderForm(target.record, { loadActivity: true });
+        });
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+async function previewDocumentsLibraryEntry(entry = null) {
+  if (!entry) {
+    return;
+  }
+
+  if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
+    previewBlobInNewTab(blob, fileName || entry.fileName || "dokument.pdf");
+    return;
+  }
+
+  if (entry.previewType === "href" && entry.href) {
+    window.open(entry.href, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  if (entry.sourceTarget) {
+    openDocumentsLibrarySource(entry.sourceTarget);
+  }
+}
+
+async function downloadDocumentsLibraryEntry(entry = null) {
+  if (!entry?.canDownload) {
+    return;
+  }
+
+  if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
+    triggerBlobDownload(blob, fileName || entry.fileName || "dokument.pdf");
+    return;
+  }
+
+  triggerModuleAttachmentDownload({
+    fileName: entry.fileName,
+    storageUrl: entry.href,
+    dataUrl: entry.href,
+  });
+}
+
+function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel()) {
+  if (!documentsCategoryList) {
+    return;
+  }
+
+  const cards = [];
+  const allDefinition = getDocumentLibraryCategoryDefinition("all");
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.className = [
+    "documents-category-card",
+    allDefinition.toneClass,
+    model.selectedCategory === "all" ? "is-active" : "",
+  ].filter(Boolean).join(" ");
+  allButton.append(
+    createDocumentsLibraryCategoryIcon("all"),
+  );
+
+  const allCopy = document.createElement("div");
+  allCopy.className = "documents-category-copy";
+  const allTitle = document.createElement("strong");
+  allTitle.textContent = allDefinition.label;
+  const allDescription = document.createElement("span");
+  allDescription.textContent = allDefinition.description;
+  const allMeta = document.createElement("div");
+  allMeta.className = "documents-category-meta";
+  allMeta.append(
+    createMetaPill(`${model.filteredFolders.length} foldera`, "is-muted"),
+    createMetaPill(`${model.filteredFolders.reduce((sum, folder) => sum + folder.visibleDocumentCount, 0)} dokumenata`, "is-info"),
+  );
+  allCopy.append(allTitle, allDescription, allMeta);
+  allButton.append(allCopy);
+  allButton.addEventListener("click", () => {
+    selectDocumentsLibraryCategory("all");
+  });
+  cards.push(allButton);
+
+  model.categories.forEach((category) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = [
+      "documents-category-card",
+      category.toneClass,
+      model.selectedCategory === category.id ? "is-active" : "",
+    ].filter(Boolean).join(" ");
+    button.append(createDocumentsLibraryCategoryIcon(category.id));
+
+    const copy = document.createElement("div");
+    copy.className = "documents-category-copy";
+    const title = document.createElement("strong");
+    title.textContent = category.label;
+    const description = document.createElement("span");
+    description.textContent = category.description;
+    const meta = document.createElement("div");
+    meta.className = "documents-category-meta";
+    meta.append(
+      createMetaPill(`${category.folderCount} foldera`, category.folderCount > 0 ? "is-info" : "is-muted"),
+      createMetaPill(`${category.documentCount} dokumenata`, category.documentCount > 0 ? "is-success" : "is-muted"),
+    );
+    copy.append(title, description, meta);
+    button.append(copy);
+    button.addEventListener("click", () => {
+      selectDocumentsLibraryCategory(category.id);
+    });
+    cards.push(button);
+  });
+
+  documentsCategoryList.replaceChildren(...cards);
+}
+
+function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel()) {
+  if (!documentsFolderList) {
+    return;
+  }
+
+  syncDocumentsLibraryDefaultExpansion(model.visibleFolders);
+  const expandedFolderIds = state.documentsExplorer.expandedFolderIds ?? new Set();
+  const nodes = model.visibleFolders.map((folder) => {
+    const card = document.createElement("article");
+    card.className = "documents-folder-card";
+    card.classList.toggle("is-expanded", expandedFolderIds.has(folder.id));
+
+    const head = document.createElement("div");
+    head.className = "documents-folder-head";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "documents-folder-toggle";
+    toggle.setAttribute("aria-expanded", expandedFolderIds.has(folder.id) ? "true" : "false");
+    toggle.addEventListener("click", () => {
+      toggleDocumentsLibraryFolder(folder.id);
+    });
+
+    const copy = document.createElement("div");
+    copy.className = "documents-folder-copy";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "documents-folder-title-row";
+    titleRow.append(
+      createDocumentsLibraryCategoryIcon(folder.categoryId, "is-folder"),
+    );
+    const title = document.createElement("strong");
+    title.className = "documents-folder-title";
+    title.textContent = folder.label;
+    titleRow.append(title);
+
+    if (model.selectedCategory === "all") {
+      titleRow.append(createMetaPill(folder.categoryDefinition.label, folder.categoryDefinition.toneClass));
+    }
+
+    const subtitle = document.createElement("span");
+    subtitle.className = "documents-folder-subtitle";
+    subtitle.textContent = folder.subtitle || "Bez dodatnog opisa.";
+
+    copy.append(titleRow, subtitle);
+    toggle.append(copy);
+
+    const meta = document.createElement("div");
+    meta.className = "documents-folder-meta";
+    meta.append(
+      createMetaPill(`${folder.visibleDocumentCount} dokumenata`, "is-info"),
+    );
+    if (folder.visiblePdfCount > 0) {
+      meta.append(createMetaPill(`${folder.visiblePdfCount} PDF`, "is-success"));
+    }
+    if (folder.visibleLatestLabel) {
+      meta.append(createMetaPill(folder.visibleLatestLabel, "is-muted"));
+    }
+    const toggleMarker = document.createElement("span");
+    toggleMarker.className = "documents-folder-toggle-mark";
+    toggleMarker.textContent = expandedFolderIds.has(folder.id) ? "−" : "+";
+    meta.append(toggleMarker);
+    toggle.append(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "documents-folder-head-actions";
+    if (folder.sourceTarget) {
+      actions.append(createIconActionButton("Otvori izvor", "edit", "", () => {
+        openDocumentsLibrarySource(folder.sourceTarget);
+      }));
+    }
+
+    head.append(toggle, actions);
+
+    const body = document.createElement("div");
+    body.className = "documents-folder-body";
+    body.hidden = !expandedFolderIds.has(folder.id);
+    body.replaceChildren(...folder.visibleDocuments.map((entry) => {
+      const row = document.createElement("article");
+      row.className = "documents-file-row";
+
+      const fileCopy = document.createElement("div");
+      fileCopy.className = "documents-file-copy";
+
+      const fileTitleRow = document.createElement("div");
+      fileTitleRow.className = "documents-file-title-row";
+      fileTitleRow.append(createDocumentsExplorerIcon("document"));
+      const fileTitle = document.createElement("strong");
+      fileTitle.className = "documents-file-title";
+      fileTitle.textContent = entry.label;
+      fileTitleRow.append(fileTitle);
+      fileCopy.append(fileTitleRow);
+
+      if (entry.description) {
+        const description = document.createElement("span");
+        description.className = "documents-file-description";
+        description.textContent = entry.description;
+        fileCopy.append(description);
+      }
+
+      const fileMeta = document.createElement("div");
+      fileMeta.className = "documents-file-meta";
+      [entry.fileKindLabel, ...entry.metaParts, entry.updatedLabel || ""]
+        .filter(Boolean)
+        .forEach((metaValue, index) => {
+          fileMeta.append(createMetaPill(metaValue, index === 0 ? "is-muted" : ""));
+        });
+      fileCopy.append(fileMeta);
+
+      const fileActions = document.createElement("div");
+      fileActions.className = "documents-file-actions";
+
+      if (entry.canPreview) {
+        fileActions.append(createIconActionButton(
+          entry.previewType === "source" ? "Otvori" : "Pregled",
+          "preview",
+          "",
+          () => {
+            void runMutation(() => previewDocumentsLibraryEntry(entry), documentsHelper);
+          },
+        ));
+      }
+
+      if (entry.canDownload) {
+        fileActions.append(createIconActionButton("Preuzmi", "download", "", () => {
+          void runMutation(() => downloadDocumentsLibraryEntry(entry), documentsHelper);
+        }));
+      }
+
+      if (entry.sourceTarget) {
+        fileActions.append(createIconActionButton("Izvor", "edit", "", () => {
+          openDocumentsLibrarySource(entry.sourceTarget);
+        }));
+      }
+
+      row.append(fileCopy, fileActions);
+      return row;
+    }));
+
+    card.append(head, body);
+    return card;
+  });
+
+  documentsFolderList.replaceChildren(...nodes);
+}
+
 function renderSettingsModule() {
   if (!settingsModule) {
     return;
@@ -14932,8 +16302,8 @@ function renderDocumentsModule() {
   if (documentsSearchInput && documentsSearchInput.value !== state.documentsExplorer.query) {
     documentsSearchInput.value = state.documentsExplorer.query;
   }
-  if (documentsFilterScopeInput && documentsFilterScopeInput.value !== state.documentsExplorer.scope) {
-    documentsFilterScopeInput.value = state.documentsExplorer.scope;
+  if (documentsFilterKindInput && documentsFilterKindInput.value !== state.documentsExplorer.fileKind) {
+    documentsFilterKindInput.value = state.documentsExplorer.fileKind;
   }
 
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
@@ -14948,6 +16318,7 @@ function renderDocumentsModule() {
     state.documentsExplorer.error = "";
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
+    state.documentsExplorer.expandedFolderIds = new Set();
   }
 
   if (
@@ -14961,35 +16332,39 @@ function renderDocumentsModule() {
     void loadDocumentsExplorerRecords();
   }
 
-  const tree = buildDocumentsExplorerTree(state.documentsExplorer.records);
-  syncDocumentsExplorerDefaultExpansion(tree);
-  renderDocumentsExplorerTree(tree);
+  const model = buildDocumentsLibraryViewModel();
+  renderDocumentsLibraryCategories(model);
+  renderDocumentsLibraryFolders(model);
 
-  if (documentsCompanyCount) {
-    documentsCompanyCount.textContent = String(tree.totals.companies);
+  if (documentsCategoryCount) {
+    documentsCategoryCount.textContent = String(model.totals.categories);
   }
-  if (documentsLocationCount) {
-    documentsLocationCount.textContent = String(tree.totals.locations);
+  if (documentsFolderCount) {
+    documentsFolderCount.textContent = String(model.totals.folders);
   }
-  if (documentsRnCount) {
-    documentsRnCount.textContent = String(tree.totals.workOrders);
+  if (documentsPdfCount) {
+    documentsPdfCount.textContent = String(model.totals.pdfs);
   }
   if (documentsFileCount) {
-    documentsFileCount.textContent = String(tree.totals.records);
+    documentsFileCount.textContent = String(model.totals.files);
   }
 
   if (documentsHelper) {
     if (state.documentsExplorer.loading) {
-      documentsHelper.textContent = "Učitavanje dokumenata...";
+      documentsHelper.textContent = "Učitavanje zapisnika i dokumenata...";
     } else if (state.documentsExplorer.error) {
       documentsHelper.textContent = state.documentsExplorer.error;
     } else {
-      documentsHelper.textContent = `Prikazano ${tree.totals.records} dokumenata kroz ${tree.totals.workOrders} RN redaka.`;
+      const selectedCategoryDefinition = getDocumentLibraryCategoryDefinition(model.selectedCategory);
+      const categoryLabel = model.selectedCategory === "all"
+        ? "svim kategorijama"
+        : selectedCategoryDefinition.label;
+      documentsHelper.textContent = `Prikazano ${model.totals.files} dokumenata u ${model.totals.folders} foldera kroz ${categoryLabel}.`;
     }
   }
 
-  if (documentsExplorerEmpty) {
-    documentsExplorerEmpty.hidden = state.documentsExplorer.loading || Boolean(state.documentsExplorer.error) || tree.totals.records > 0;
+  if (documentsLibraryEmpty) {
+    documentsLibraryEmpty.hidden = state.documentsExplorer.loading || Boolean(state.documentsExplorer.error) || model.totals.files > 0;
   }
 }
 
@@ -15017,6 +16392,7 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     state.documentsExplorer.organizationId = activeOrganizationId;
     state.documentsExplorer.expandedCompanyIds = new Set();
     state.documentsExplorer.expandedLocationIds = new Set();
+    state.documentsExplorer.expandedFolderIds = new Set();
   } catch (error) {
     state.documentsExplorer.error = error.message;
   } finally {
@@ -64422,8 +65798,9 @@ documentsSearchInput?.addEventListener("input", () => {
   renderDocumentsModule();
 });
 
-documentsFilterScopeInput?.addEventListener("change", () => {
-  state.documentsExplorer.scope = documentsFilterScopeInput.value || "all";
+documentsFilterKindInput?.addEventListener("change", () => {
+  state.documentsExplorer.fileKind = documentsFilterKindInput.value || "all";
+  state.documentsExplorer.expandedFolderIds = new Set();
   renderDocumentsModule();
 });
 
@@ -67497,12 +68874,15 @@ function resetAuthenticatedWorkspaceState() {
     organizationId: "",
     query: "",
     scope: "all",
+    fileKind: "all",
+    category: "all",
     loading: false,
     loaded: false,
     error: "",
     records: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
+    expandedFolderIds: new Set(),
   };
   state.users = [];
   state.signupRequests = [];
