@@ -2122,6 +2122,7 @@ const globalLoadingIndicatorCopy = document.querySelector("#global-loading-indic
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
+const topbarShortcutRuntimeSaveButton = document.querySelector("#topbar-shortcut-runtime-save");
 const topbarShortcutCapabilitiesButton = document.querySelector("#topbar-shortcut-capabilities");
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
@@ -2752,6 +2753,7 @@ const documentTemplateRuntimeClearButton = document.querySelector("#document-tem
 const documentTemplateRuntimeBackButton = document.querySelector("#document-template-runtime-back");
 const documentTemplateRuntimePrevButton = document.querySelector("#document-template-runtime-prev");
 const documentTemplateRuntimeNextButton = document.querySelector("#document-template-runtime-next");
+const documentTemplateRuntimeSaveProgressButton = document.querySelector("#document-template-runtime-save-progress");
 const documentTemplateRuntimeSendSignatureButton = document.querySelector("#document-template-runtime-send-signature");
 const documentTemplateRuntimePrintAllButton = document.querySelector("#document-template-runtime-print-all");
 const documentTemplateRuntimeSequenceProgress = document.querySelector("#document-template-runtime-sequence-progress");
@@ -34862,6 +34864,22 @@ function scrollDocumentTemplateRuntimeDockTrack(direction = 1) {
   });
 }
 
+function syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode = isDocumentTemplateRuntimeFillMode(), activeWorkOrder = null, isSummaryStep = false } = {}) {
+  const shouldShow = Boolean(fillMode && activeWorkOrder && !isSummaryStep);
+  const label = activeWorkOrder
+    ? `Spremi trenutni dio za RN ${activeWorkOrder.workOrderNumber || "bez broja"}`
+    : "Spremi trenutni dio zapisnika";
+
+  [documentTemplateRuntimeSaveProgressButton, topbarShortcutRuntimeSaveButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.hidden = !shouldShow;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  });
+}
+
 function renderDocumentTemplateRuntimeContext() {
   if (!documentTemplateRuntimeContext || !documentTemplateRuntimeWorkOrders || !documentTemplateRuntimeCommon) {
     return;
@@ -34900,6 +34918,7 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
     documentTemplateRuntimeNextButton.textContent = "NEXT";
   }
+  syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode, activeWorkOrder, isSummaryStep });
   if (documentTemplateRuntimePrintAllButton) {
     documentTemplateRuntimePrintAllButton.hidden = true;
   }
@@ -35396,6 +35415,14 @@ function syncDocumentTemplateEditorChrome() {
   }
   if (documentTemplateExportPreviewButton) {
     documentTemplateExportPreviewButton.hidden = true;
+  }
+  {
+    const saveSequenceState = fillMode ? getDocumentTemplateRuntimeSequenceState() : null;
+    syncDocumentTemplateRuntimeSaveProgressButtons({
+      fillMode,
+      activeWorkOrder: fillMode ? getDocumentTemplateRuntimeActiveWorkOrder() : null,
+      isSummaryStep: Boolean(saveSequenceState?.isSummary),
+    });
   }
   if (documentTemplateRuntimeSendSignatureButton) {
     documentTemplateRuntimeSendSignatureButton.hidden = true;
@@ -39454,6 +39481,7 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
     .map((entry) => entry?.field)
     .filter((field) => field && isDocumentTemplateRuntimeVisibleField(field));
   const total = items.length;
+  const template = buildDocumentTemplateDraft();
 
   if (!workOrder || total === 0) {
     return {
@@ -39467,19 +39495,34 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
 
   const details = [];
   const complete = items.reduce((count, field) => {
-    const value = getDocumentTemplateRuntimeInitialValue(field, workOrder.id);
     const fieldType = String(field?.type || "").trim().toLowerCase();
-    const isComplete = fieldType === "checkbox" || fieldType === "toggle"
+    const label = String(field?.label || field?.wordLabel || getDocumentTemplateFieldTypeLabel(fieldType) || "Polje").trim();
+    let value = getDocumentTemplateRuntimeInitialValue(field, workOrder.id);
+    let displayValue = hasMeaningfulDocumentRecordValue(value)
+      ? formatDocumentTemplateLookupResolvedValue(value)
+      : "prazno";
+    let isComplete = fieldType === "checkbox" || fieldType === "toggle"
       ? true
       : hasMeaningfulDocumentRecordValue(value);
 
+    if (fieldType === "equipment_list") {
+      const selectedIds = getDocumentTemplateRuntimeSelectedEquipmentIds(workOrder.id, field, template);
+      const selectedIdSet = new Set(selectedIds.map((id) => String(id || "").trim()).filter(Boolean));
+      const selectedItems = getDocumentTemplateLinkedEquipmentItems(template)
+        .filter((item) => selectedIdSet.has(String(item?.id || "").trim()));
+      isComplete = selectedIds.length > 0;
+      displayValue = selectedItems.length > 0
+        ? selectedItems.map((item) => item.name || item.inventoryNumber || item.code || "Uređaj").slice(0, 3).join(", ")
+        : (selectedIds.length > 0 ? `${selectedIds.length} uređaja` : "prazno");
+    } else if (fieldType === "legal_list") {
+      const selectedIds = getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field);
+      isComplete = selectedIds.length > 0;
+      displayValue = selectedIds.length > 0 ? `${selectedIds.length} propisa` : "prazno";
+    }
+
     if (details.length < 3) {
-      const label = String(field?.label || field?.wordLabel || getDocumentTemplateFieldTypeLabel(fieldType) || "Polje").trim();
-      const displayValue = hasMeaningfulDocumentRecordValue(value)
-        ? formatDocumentTemplateLookupResolvedValue(value)
-        : "prazno";
       const normalizedDisplay = String(displayValue || "").trim();
-      details.push(`${label}: ${normalizedDisplay.length > 34 ? `${normalizedDisplay.slice(0, 34)}...` : normalizedDisplay}`);
+      details.push(`${label}: ${normalizedDisplay || "prazno"}`);
     }
 
     return count + (isComplete ? 1 : 0);
@@ -40939,7 +40982,28 @@ function renderDocumentTemplateRuntimeFieldRows() {
       groupedList.append(entryCard);
     });
 
-    summaryBody.append(batchCard, signatureCard, exportCard, groupedList);
+    const finalPanel = document.createElement("article");
+    finalPanel.className = "document-template-runtime-summary-card document-template-runtime-summary-final-panel";
+    const finalCopy = document.createElement("div");
+    finalCopy.className = "document-template-runtime-summary-final-copy";
+    const finalTitle = document.createElement("strong");
+    finalTitle.textContent = "Završetak i potpis";
+    const finalMeta = document.createElement("p");
+    finalMeta.className = "helper-copy module-copy";
+    finalMeta.textContent = [
+      batchCardMeta.textContent,
+      signatureCardMeta.textContent,
+      exportCardMeta.textContent,
+    ].filter(Boolean).join(" ");
+    finalCopy.append(finalTitle, finalMeta);
+    const finalActions = document.createElement("div");
+    finalActions.className = "document-template-runtime-summary-final-actions";
+    signatureActions.classList.add("is-signature-actions");
+    exportActions.classList.add("is-export-actions");
+    finalActions.append(signatureActions, exportActions);
+    finalPanel.append(finalCopy, finalActions);
+
+    summaryBody.append(groupedList, finalPanel);
     summaryBlock.append(summaryHead, summaryBody);
     shell.append(summaryBlock);
     documentTemplateCustomFields.replaceChildren(shell);
@@ -42032,7 +42096,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
     headMeta.append(
       statusDot,
       createBadge(completion.ok ? "OK" : "Provjeri", `document-template-meta-badge ${completion.ok ? "is-success" : "is-warning"}`),
-      createBadge(`${block.items.length} polja`, "document-template-meta-badge"),
       toggleButton,
     );
     head.append(copy, headMeta);
@@ -62545,6 +62608,41 @@ async function persistActiveDocumentTemplateRuntimeRecord() {
   );
 }
 
+async function saveActiveDocumentTemplateRuntimeProgress() {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    setDocumentTemplateMessage("Prvo otvori zapisnik iz RN batcha.");
+    return;
+  }
+
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  if (!activeWorkOrder) {
+    setDocumentTemplateMessage("Nema aktivnog RN-a za spremanje.");
+    return;
+  }
+
+  const saveButtons = [documentTemplateRuntimeSaveProgressButton, topbarShortcutRuntimeSaveButton]
+    .filter((button) => button instanceof HTMLButtonElement);
+  saveButtons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-saving");
+  });
+
+  try {
+    await persistActiveDocumentTemplateRuntimeRecord();
+    setDocumentTemplateMessage(`Spremljen je trenutni dio za RN ${activeWorkOrder.workOrderNumber || "bez broja"}.`, {
+      type: "success",
+    });
+  } catch (error) {
+    console.error("Ne mogu spremiti trenutni dio zapisnika.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu spremiti trenutni dio zapisnika.");
+  } finally {
+    saveButtons.forEach((button) => {
+      button.disabled = false;
+      button.classList.remove("is-saving");
+    });
+  }
+}
+
 async function persistDocumentTemplateRuntimeRecordFor(
   template = buildDocumentTemplateDraft(),
   workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
@@ -68756,6 +68854,12 @@ documentTemplateRuntimeSideNextButton?.addEventListener("click", () => {
     return;
   }
   openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
+});
+documentTemplateRuntimeSaveProgressButton?.addEventListener("click", () => {
+  void saveActiveDocumentTemplateRuntimeProgress();
+});
+topbarShortcutRuntimeSaveButton?.addEventListener("click", () => {
+  void saveActiveDocumentTemplateRuntimeProgress();
 });
 documentTemplateRuntimePrintAllButton?.addEventListener("click", () => {
   void exportDocumentTemplateBatchPdf({ print: true });

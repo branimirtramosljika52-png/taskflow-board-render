@@ -983,6 +983,17 @@ fieldset {
   border-color: rgba(136, 82, 233, 0.6);
 }
 
+.topbar-runtime-save-button:not([hidden]) {
+  background: linear-gradient(135deg, rgba(40, 128, 240, 0.96), rgba(31, 80, 184, 0.96));
+  color: #ffffff;
+  border-color: rgba(31, 80, 184, 0.5);
+}
+
+.topbar-runtime-save-button.is-saving {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .topbar-shortcut-count {
   position: absolute;
   top: -6px;
@@ -22479,6 +22490,19 @@ body.is-vehicle-reservation-open {
   gap: 12px;
 }
 
+.document-template-runtime-save-progress {
+  align-items: center;
+  gap: 7px;
+}
+
+.document-template-runtime-save-progress .icon-svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+}
+
 .document-template-layout-actions {
   display: inline-flex;
   flex-wrap: wrap;
@@ -22832,6 +22856,12 @@ body.is-vehicle-reservation-open {
   width: min(1780px, calc(100vw - 8px));
   height: min(98.5vh, calc(100vh - 8px));
   border-radius: 24px;
+}
+
+@media (min-width: 961px) {
+  .document-template-editor-panel.is-modal-open.is-fill-mode {
+    width: min(1780px, calc(100vw - 112px));
+  }
 }
 
 .legal-framework-editor-body,
@@ -24789,6 +24819,11 @@ body.is-measurement-equipment-export-open {
   gap: 12px;
 }
 
+.document-template-runtime-block-head > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block-head {
   gap: 8px;
   margin-bottom: 2px;
@@ -24798,6 +24833,7 @@ body.is-measurement-equipment-export-open {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
 }
 
 .document-template-runtime-block-status-dot {
@@ -24846,6 +24882,8 @@ body.is-measurement-equipment-export-open {
   margin-top: 2px;
   font-size: 0.76rem;
   line-height: 1.35;
+  max-width: none;
+  white-space: normal;
 }
 
 .document-template-runtime-block-body {
@@ -24949,7 +24987,7 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-body {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -24974,6 +25012,37 @@ body.is-measurement-equipment-export-open {
   gap: 10px;
 }
 
+.document-template-runtime-summary-final-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.document-template-runtime-summary-final-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.document-template-runtime-summary-final-copy p {
+  margin: 0;
+  max-width: 82ch;
+}
+
+.document-template-runtime-summary-final-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.document-template-runtime-summary-final-actions .document-template-runtime-summary-actions {
+  gap: 6px;
+}
+
 .document-template-runtime-summary-actions .ghost-button.is-active,
 .document-template-runtime-summary-actions .ghost-button:hover,
 .document-template-runtime-summary-actions .ghost-button:focus-visible {
@@ -24991,12 +25060,12 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-entry {
-  padding: 14px 16px;
+  padding: 10px 14px;
   border: 1px solid rgba(220, 156, 212, 0.3);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(255, 248, 253, 0.95), rgba(255, 255, 255, 0.98));
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .document-template-runtime-summary-entry.is-ok {
@@ -25077,12 +25146,12 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-service,
 .document-template-runtime-summary-service-empty {
-  min-height: 34px;
+  min-height: 28px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  padding: 5px 10px;
   border-radius: 14px;
   border: 1px solid rgba(220, 156, 212, 0.22);
   background: rgba(255, 255, 255, 0.78);
@@ -25343,9 +25412,9 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-side-nav {
-  position: absolute;
+  position: fixed;
   top: 50%;
-  z-index: 10;
+  z-index: 222;
   width: 52px;
   height: 52px;
   border: 1px solid rgba(240, 79, 151, 0.32);
@@ -25359,17 +25428,17 @@ body.is-measurement-equipment-export-open {
   place-items: center;
   cursor: pointer;
   transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.94;
+  pointer-events: auto;
   transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .document-template-runtime-side-nav.is-prev {
-  left: 18px;
+  left: 12px;
 }
 
 .document-template-runtime-side-nav.is-next {
-  right: 18px;
+  right: 12px;
 }
 
 .document-template-editor-panel.is-fill-mode:hover .document-template-runtime-side-nav:not([hidden]),
@@ -25421,6 +25490,16 @@ body.is-measurement-equipment-export-open {
 
   .document-template-runtime-summary-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-summary-final-panel,
+  .document-template-runtime-summary-entry-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-summary-final-actions,
+  .document-template-runtime-summary-entry-head {
+    justify-items: start;
   }
 
   .document-template-runtime-dock {
