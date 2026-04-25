@@ -130,6 +130,8 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
+const DOCUMENT_TEMPLATE_RUNTIME_AUTOSAVE_DELAY_MS = 1400;
+const DOCUMENT_TEMPLATE_RUNTIME_DRAFT_STORAGE_PREFIX = "safenexus.document-template-runtime-draft.v1";
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
@@ -2078,6 +2080,7 @@ let companiesColumnResizeInitialized = false;
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
 let companyEditorRelatedDataIdleId = 0;
+let documentTemplateRuntimeAutosaveTimerId = 0;
 const companySearchHaystackCache = new WeakMap();
 
 const GLOBAL_LOADING_DELAY_MS = 180;
@@ -2123,6 +2126,7 @@ const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-d
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
 const topbarShortcutRuntimeSaveButton = document.querySelector("#topbar-shortcut-runtime-save");
+const topbarShortcutRuntimeResumeButton = document.querySelector("#topbar-shortcut-runtime-resume");
 const topbarShortcutCapabilitiesButton = document.querySelector("#topbar-shortcut-capabilities");
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
@@ -6064,6 +6068,7 @@ function applySnapshot(payload) {
   );
   pruneWorkOrderDocumentWizardState();
   pruneDocumentTemplateRuntimeContext();
+  syncDocumentTemplateRuntimeResumeButton();
   if (!state.workOrders.some((item) => String(item.id) === String(state.workOrderMap.selectedWorkOrderId))) {
     state.workOrderMap.selectedWorkOrderId = "";
   }
@@ -34878,6 +34883,7 @@ function syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode = isDocumentT
     button.title = label;
     button.setAttribute("aria-label", label);
   });
+  syncDocumentTemplateRuntimeResumeButton();
 }
 
 function renderDocumentTemplateRuntimeContext() {
@@ -39281,6 +39287,51 @@ function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
   return field.defaultValue ?? "";
 }
 
+function getDocumentTemplateRuntimeCommonDateFieldName(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
+  if (type !== "date" && source !== "CUSTOM_VALUE") {
+    return "";
+  }
+
+  const labelText = normalizeLooseName([
+    field.label,
+    field.wordLabel,
+    field.name,
+    field.key,
+    field.token,
+    field.placeholder,
+  ].filter(Boolean).join(" "));
+
+  if (!labelText) {
+    return "";
+  }
+
+  if (labelText.includes("datum ispitivanja") || labelText.includes("ispitivanje datum")) {
+    return "inspectionDate";
+  }
+
+  if (labelText.includes("datum izdavanja") || labelText.includes("izdavanje datum")) {
+    return "issuedDate";
+  }
+
+  return "";
+}
+
+function getDocumentTemplateRuntimeCommonDateInitialValue(field = {}, workOrderId = "") {
+  const commonDateFieldName = getDocumentTemplateRuntimeCommonDateFieldName(field);
+  if (!commonDateFieldName) {
+    return undefined;
+  }
+
+  const value = normalizeDateInputValue(getDocumentTemplateRuntimeValue(workOrderId, commonDateFieldName));
+  if (!value) {
+    return undefined;
+  }
+
+  return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
+}
+
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
   if (runtimeValue !== undefined) {
@@ -39297,6 +39348,11 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
       return createDocumentTemplateSystemDescriptionBlankValue(field);
     }
     return field.type === "checkbox" || field.type === "toggle" ? false : "";
+  }
+
+  const commonDateValue = getDocumentTemplateRuntimeCommonDateInitialValue(field, normalizedWorkOrderId);
+  if (commonDateValue !== undefined) {
+    return commonDateValue;
   }
 
   if (workOrder && sourceId === "template") {
@@ -39407,6 +39463,7 @@ function setDocumentTemplateRuntimeBlockCollapsed(block = {}, blockIndex = 0, co
   if (render) {
     renderDocumentTemplateFieldRows();
   }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
 }
 
 function getDocumentTemplateRuntimeSkippedWorkOrderIdSet() {
@@ -39445,6 +39502,7 @@ function setDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "", skipped = 
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
   }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
 }
 
 function getDocumentTemplateRuntimeExportableSequenceEntries(entries = getDocumentTemplateRuntimeSequenceEntries()) {
@@ -56383,6 +56441,7 @@ function renderActiveView() {
   syncAbsenceEditorModal();
   syncAbsenceBalanceModal();
   syncDocumentTemplateEditorModal();
+  syncDocumentTemplateRuntimeResumeButton();
 }
 
 function renderSharedOptions() {
@@ -61713,8 +61772,8 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
   return {
     ...source,
     recordSourceId: String(source.recordSourceId ?? "").trim(),
-    inspectionDate: String(source.inspectionDate ?? "").trim(),
-    issuedDate: String(source.issuedDate ?? "").trim(),
+    inspectionDate: normalizeDateInputValue(source.inspectionDate ?? ""),
+    issuedDate: normalizeDateInputValue(source.issuedDate ?? ""),
     issuedPlace: String(source.issuedPlace ?? "").trim(),
     note: String(source.note ?? "").trim(),
     outsideTemperature: String(source.outsideTemperature ?? "").trim(),
@@ -61811,6 +61870,7 @@ function setDocumentTemplateRuntimeRecordSource(workOrderId, sourceId, { render 
   if (render) {
     syncDocumentTemplateEditorChrome();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function setDocumentTemplateRuntimeFieldSource(workOrderId, fieldId, sourceId, { render = true } = {}) {
@@ -61842,6 +61902,7 @@ function setDocumentTemplateRuntimeFieldSource(workOrderId, fieldId, sourceId, {
   if (render) {
     syncDocumentTemplateEditorChrome();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { render = true, preserveBlank = true } = {}) {
@@ -61886,6 +61947,7 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
   if (render) {
     syncDocumentTemplateEditorChrome();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function getDocumentTemplateRuntimeMeasurementSheet(workOrderId, field = {}) {
@@ -61971,6 +62033,7 @@ function setDocumentTemplateRuntimeMeasurementSheet(workOrderId, fieldId, snapsh
   if (render) {
     syncDocumentTemplateEditorChrome();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function applyDocumentTemplateRuntimePersistedFieldCandidate(
@@ -62042,6 +62105,7 @@ function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true 
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
   }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
 }
 
 function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {}) {
@@ -62073,11 +62137,11 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
   const nextCommon = {
     ...state.documentTemplateRuntime.common,
     inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
-      ? String(patch.inspectionDate ?? "").trim()
-      : String(state.documentTemplateRuntime.common?.inspectionDate ?? "").trim(),
+      ? normalizeDateInputValue(patch.inspectionDate ?? "")
+      : normalizeDateInputValue(state.documentTemplateRuntime.common?.inspectionDate ?? ""),
     issuedDate: Object.prototype.hasOwnProperty.call(patch, "issuedDate")
-      ? String(patch.issuedDate ?? "").trim()
-      : String(state.documentTemplateRuntime.common?.issuedDate ?? "").trim(),
+      ? normalizeDateInputValue(patch.issuedDate ?? "")
+      : normalizeDateInputValue(state.documentTemplateRuntime.common?.issuedDate ?? ""),
     issuedPlace: Object.prototype.hasOwnProperty.call(patch, "issuedPlace")
       ? String(patch.issuedPlace ?? "").trim()
       : String(state.documentTemplateRuntime.common?.issuedPlace ?? "").trim(),
@@ -62134,6 +62198,7 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     syncDocumentTemplateEditorChrome();
     renderDocumentTemplateFieldRows();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render = true } = {}) {
@@ -62171,11 +62236,11 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
   const nextRecord = {
     ...record,
     inspectionDate: Object.prototype.hasOwnProperty.call(patch, "inspectionDate")
-      ? String(patch.inspectionDate ?? "").trim()
-      : String(record.inspectionDate ?? "").trim(),
+      ? normalizeDateInputValue(patch.inspectionDate ?? "")
+      : normalizeDateInputValue(record.inspectionDate ?? ""),
     issuedDate: Object.prototype.hasOwnProperty.call(patch, "issuedDate")
-      ? String(patch.issuedDate ?? "").trim()
-      : String(record.issuedDate ?? "").trim(),
+      ? normalizeDateInputValue(patch.issuedDate ?? "")
+      : normalizeDateInputValue(record.issuedDate ?? ""),
     issuedPlace: Object.prototype.hasOwnProperty.call(patch, "issuedPlace")
       ? String(patch.issuedPlace ?? "").trim()
       : String(record.issuedPlace ?? "").trim(),
@@ -62234,9 +62299,14 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
   if (render) {
     syncDocumentTemplateEditorChrome();
   }
+  scheduleDocumentTemplateRuntimeAutosave();
 }
 
 function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
+  if (documentTemplateRuntimeAutosaveTimerId) {
+    window.clearTimeout(documentTemplateRuntimeAutosaveTimerId);
+    documentTemplateRuntimeAutosaveTimerId = 0;
+  }
   state.documentTemplateRuntime = {
     mode: "builder",
     source: "",
@@ -62290,6 +62360,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     renderDocumentTemplatePlaceholderPalette();
     renderDocumentTemplatePreviewContent();
   }
+  syncDocumentTemplateRuntimeResumeButton();
 }
 
 function pruneDocumentTemplateRuntimeContext() {
@@ -62361,22 +62432,339 @@ function getDocumentTemplateRuntimeActiveWorkOrder() {
   return workOrders.find((item) => String(item.id) === activeId) ?? workOrders[0] ?? null;
 }
 
-function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
-  const normalizedId = String(workOrderId || "").trim();
-  const current = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) ?? {} : {};
-  if (current && Object.prototype.hasOwnProperty.call(current, fieldName)) {
-    return String(current?.[fieldName] ?? "").trim();
+function getDocumentTemplateRuntimeDraftStorageScope() {
+  return [
+    String(state.activeOrganizationId || "global").trim() || "global",
+    String(state.user?.id || state.user?.email || "guest").trim() || "guest",
+  ].join(":");
+}
+
+function getDocumentTemplateRuntimeDraftStorageKey() {
+  return `${DOCUMENT_TEMPLATE_RUNTIME_DRAFT_STORAGE_PREFIX}:${getDocumentTemplateRuntimeDraftStorageScope()}`;
+}
+
+function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
+  const source = common && typeof common === "object" ? common : {};
+  const inspectorUserIds = normalizeQualifiedUserIdList(source.inspectorUserIds ?? []);
+  const electricalInspectorUserIds = normalizeQualifiedUserIdList(source.electricalInspectorUserIds ?? []);
+  const tipkaloInspectorUserIds = normalizeQualifiedUserIdList(source.tipkaloInspectorUserIds ?? []);
+
+  return {
+    inspectionDate: normalizeDateInputValue(source.inspectionDate ?? ""),
+    issuedDate: normalizeDateInputValue(source.issuedDate ?? ""),
+    issuedPlace: String(source.issuedPlace ?? "").trim(),
+    note: String(source.note ?? "").trim(),
+    outsideTemperature: String(source.outsideTemperature ?? "").trim(),
+    relativeHumidity: String(source.relativeHumidity ?? "").trim(),
+    airflowSpeed: String(source.airflowSpeed ?? "").trim(),
+    weather: String(source.weather ?? "").trim(),
+    groundCondition: String(source.groundCondition ?? "").trim(),
+    groundResistance: String(source.groundResistance ?? "").trim(),
+    randomizeEnvironment: Boolean(source.randomizeEnvironment),
+    signatureMode: normalizeDocumentTemplateSignatureMethod(source.signatureMode),
+    electricalValidityMonths: String(source.electricalValidityMonths ?? "12").trim(),
+    tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "12").trim(),
+    inspectorUserIds,
+    inspectorUserId: String(source.inspectorUserId ?? inspectorUserIds[0] ?? "").trim(),
+    authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
+    electricalInspectorUserIds,
+    electricalInspectorUserId: String(source.electricalInspectorUserId ?? electricalInspectorUserIds[0] ?? "").trim(),
+    electricalAuthorizationHolderUserId: String(source.electricalAuthorizationHolderUserId ?? "").trim(),
+    tipkaloInspectorUserIds,
+    tipkaloInspectorUserId: String(source.tipkaloInspectorUserId ?? tipkaloInspectorUserIds[0] ?? "").trim(),
+    tipkaloAuthorizationHolderUserId: String(source.tipkaloAuthorizationHolderUserId ?? "").trim(),
+  };
+}
+
+function buildDocumentTemplateRuntimeLocalDraftSnapshot() {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    return null;
   }
 
-  const commonValue = String(state.documentTemplateRuntime.common?.[fieldName] ?? "").trim();
+  const workOrderIds = (state.documentTemplateRuntime.workOrderIds ?? [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const templateId = String(
+    documentTemplateIdInput?.value
+      || state.documentTemplateRuntime.sequenceEntries?.[0]?.templateId
+      || "",
+  ).trim();
+
+  if (workOrderIds.length === 0 || !templateId) {
+    return null;
+  }
+
+  const sequenceEntries = getDocumentTemplateRuntimeSequenceEntries();
+  const sequenceIndex = sequenceEntries.length > 0
+    ? clampDocumentTemplateRuntimeSequenceIndex(state.documentTemplateRuntime.sequenceIndex, sequenceEntries)
+    : -1;
+  const overrides = {};
+
+  workOrderIds.forEach((workOrderId) => {
+    const record = state.documentTemplateRuntime.overrides?.[workOrderId];
+    if (record) {
+      overrides[workOrderId] = normalizeDocumentTemplateRuntimeOverrideRecord(record);
+    }
+  });
+
+  return {
+    version: 1,
+    organizationId: String(state.activeOrganizationId || "").trim(),
+    userId: String(state.user?.id || state.user?.email || "").trim(),
+    templateId,
+    updatedAt: new Date().toISOString(),
+    runtime: {
+      mode: "fill",
+      source: state.documentTemplateRuntime.source || "wizard",
+      workOrderIds,
+      activeWorkOrderId: String(state.documentTemplateRuntime.activeWorkOrderId || workOrderIds[0] || "").trim(),
+      returnState: state.documentTemplateRuntime.returnState ?? null,
+      sequenceEntries,
+      sequenceIndex,
+      collapsedBlocks: {
+        ...(state.documentTemplateRuntime.collapsedBlocks ?? {}),
+      },
+      collapsedBlocksInitializedKey: String(state.documentTemplateRuntime.collapsedBlocksInitializedKey || "").trim(),
+      skippedWorkOrderIds: (Array.isArray(state.documentTemplateRuntime.skippedWorkOrderIds)
+        ? state.documentTemplateRuntime.skippedWorkOrderIds
+        : [])
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+      common: normalizeDocumentTemplateRuntimeCommonDraft(state.documentTemplateRuntime.common ?? {}),
+      overrides,
+    },
+  };
+}
+
+function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
+  const draft = snapshot && typeof snapshot === "object" ? snapshot : null;
+  const runtime = draft?.runtime && typeof draft.runtime === "object" ? draft.runtime : null;
+  if (!draft || !runtime) {
+    return null;
+  }
+
+  const workOrderIds = (Array.isArray(runtime.workOrderIds) ? runtime.workOrderIds : [])
+    .map((value) => String(value ?? "").trim())
+    .filter((value, index, array) => value && array.indexOf(value) === index)
+    .filter((value) => (state.workOrders ?? []).some((item) => String(item.id) === value));
+  if (workOrderIds.length === 0) {
+    return null;
+  }
+
+  const sequenceEntries = normalizeDocumentTemplateRuntimeSequenceEntries(runtime.sequenceEntries ?? []);
+  const templateId = String(
+    draft.templateId
+      || sequenceEntries[0]?.templateId
+      || runtime.templateId
+      || "",
+  ).trim();
+  if (!templateId || !getDocumentTemplateById(templateId)) {
+    return null;
+  }
+
+  const overrides = {};
+  Object.entries(runtime.overrides ?? {}).forEach(([workOrderId, record]) => {
+    const normalizedWorkOrderId = String(workOrderId || "").trim();
+    if (workOrderIds.includes(normalizedWorkOrderId)) {
+      overrides[normalizedWorkOrderId] = normalizeDocumentTemplateRuntimeOverrideRecord(record);
+    }
+  });
+
+  const activeWorkOrderId = workOrderIds.includes(String(runtime.activeWorkOrderId || "").trim())
+    ? String(runtime.activeWorkOrderId || "").trim()
+    : workOrderIds[0];
+
+  return {
+    ...draft,
+    templateId,
+    updatedAt: String(draft.updatedAt || "").trim(),
+    runtime: {
+      mode: "fill",
+      source: String(runtime.source || "wizard").trim() || "wizard",
+      workOrderIds,
+      activeWorkOrderId,
+      returnState: runtime.returnState && typeof runtime.returnState === "object" ? runtime.returnState : null,
+      sequenceEntries,
+      sequenceIndex: sequenceEntries.length > 0
+        ? clampDocumentTemplateRuntimeSequenceIndex(runtime.sequenceIndex, sequenceEntries)
+        : -1,
+      previousRecordOptions: {},
+      savedRecordFingerprints: {},
+      collapsedBlocks: runtime.collapsedBlocks && typeof runtime.collapsedBlocks === "object"
+        ? { ...runtime.collapsedBlocks }
+        : {},
+      collapsedBlocksInitializedKey: String(runtime.collapsedBlocksInitializedKey || "").trim(),
+      skippedWorkOrderIds: (Array.isArray(runtime.skippedWorkOrderIds) ? runtime.skippedWorkOrderIds : [])
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => workOrderIds.includes(value)),
+      common: normalizeDocumentTemplateRuntimeCommonDraft(runtime.common ?? {}),
+      overrides,
+    },
+  };
+}
+
+function readDocumentTemplateRuntimeLocalDraft() {
+  return normalizeDocumentTemplateRuntimeLocalDraft(
+    readJsonFromLocalStorage(getDocumentTemplateRuntimeDraftStorageKey(), null),
+  );
+}
+
+function saveDocumentTemplateRuntimeLocalDraft({ syncButton = true } = {}) {
+  const snapshot = buildDocumentTemplateRuntimeLocalDraftSnapshot();
+  if (!snapshot) {
+    if (syncButton) {
+      syncDocumentTemplateRuntimeResumeButton();
+    }
+    return false;
+  }
+
+  writeJsonToLocalStorage(getDocumentTemplateRuntimeDraftStorageKey(), snapshot);
+  if (syncButton) {
+    syncDocumentTemplateRuntimeResumeButton();
+  }
+  return true;
+}
+
+function syncDocumentTemplateRuntimeResumeButton() {
+  if (!topbarShortcutRuntimeResumeButton) {
+    return;
+  }
+
+  const draft = readDocumentTemplateRuntimeLocalDraft();
+  const shouldShow = Boolean(draft && !isDocumentTemplateRuntimeFillMode());
+  topbarShortcutRuntimeResumeButton.hidden = !shouldShow;
+  topbarShortcutRuntimeResumeButton.disabled = !shouldShow;
+
+  if (!shouldShow) {
+    topbarShortcutRuntimeResumeButton.title = "Nastavi gdje sam stao";
+    topbarShortcutRuntimeResumeButton.setAttribute("aria-label", "Nastavi gdje sam stao");
+    return;
+  }
+
+  const when = draft.updatedAt ? formatCompactDateTime(draft.updatedAt) : "";
+  const label = when ? `Nastavi gdje sam stao (${when})` : "Nastavi gdje sam stao";
+  topbarShortcutRuntimeResumeButton.title = label;
+  topbarShortcutRuntimeResumeButton.setAttribute("aria-label", label);
+}
+
+function scheduleDocumentTemplateRuntimeAutosave({ persist = true } = {}) {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    syncDocumentTemplateRuntimeResumeButton();
+    return;
+  }
+
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+
+  if (!persist) {
+    return;
+  }
+
+  if (documentTemplateRuntimeAutosaveTimerId) {
+    window.clearTimeout(documentTemplateRuntimeAutosaveTimerId);
+  }
+
+  documentTemplateRuntimeAutosaveTimerId = window.setTimeout(() => {
+    documentTemplateRuntimeAutosaveTimerId = 0;
+    if (!isDocumentTemplateRuntimeFillMode()) {
+      return;
+    }
+
+    void persistActiveDocumentTemplateRuntimeRecord()
+      .then(() => {
+        saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+      })
+      .catch((error) => {
+        console.error("Live spremanje zapisnika nije uspjelo.", error);
+      });
+  }, DOCUMENT_TEMPLATE_RUNTIME_AUTOSAVE_DELAY_MS);
+}
+
+function restoreDocumentTemplateRuntimeLocalDraft() {
+  const draft = readDocumentTemplateRuntimeLocalDraft();
+  if (!draft) {
+    setDocumentTemplateMessage("Nema spremljenog nacrta za nastavak.");
+    syncDocumentTemplateRuntimeResumeButton();
+    return false;
+  }
+
+  const runtime = draft.runtime;
+  const workOrders = runtime.workOrderIds
+    .map((id) => (state.workOrders ?? []).find((item) => String(item.id) === String(id)))
+    .filter(Boolean);
+  if (workOrders.length === 0) {
+    setDocumentTemplateMessage("Spremljeni nacrt vise ne odgovara postojecim RN-ovima.");
+    syncDocumentTemplateRuntimeResumeButton();
+    return false;
+  }
+
+  state.workOrderDocumentWizard.mode = "inspection";
+  state.workOrderDocumentWizard.selectedIds = new Set(runtime.workOrderIds);
+  state.workOrderDocumentWizard.open = false;
+  state.documentTemplateRuntime = {
+    mode: "fill",
+    source: runtime.source || "wizard",
+    workOrderIds: runtime.workOrderIds,
+    activeWorkOrderId: runtime.activeWorkOrderId || runtime.workOrderIds[0] || "",
+    returnState: runtime.returnState ?? {
+      activeView: state.activeView,
+      activeSidebarGroup: state.activeSidebarGroup,
+      activeSidebarItem: state.activeSidebarItem,
+      activeModuleItem: state.activeModuleItem,
+      activeWorkOrderViewMode: state.activeWorkOrderViewMode,
+    },
+    sequenceEntries: runtime.sequenceEntries,
+    sequenceIndex: runtime.sequenceIndex,
+    previousRecordOptions: {},
+    savedRecordFingerprints: {},
+    collapsedBlocks: runtime.collapsedBlocks ?? {},
+    collapsedBlocksInitializedKey: runtime.collapsedBlocksInitializedKey || "",
+    skippedWorkOrderIds: runtime.skippedWorkOrderIds ?? [],
+    common: runtime.common,
+    overrides: runtime.overrides ?? {},
+  };
+
+  const opened = openDocumentTemplateFromWizard(draft.templateId, workOrders, {
+    sequenceEntries: runtime.sequenceEntries,
+    sequenceIndex: runtime.sequenceIndex,
+    activeWorkOrderId: runtime.activeWorkOrderId,
+    closeWizard: true,
+    preserveRuntimeContext: true,
+    keepCurrentRuntimeView: false,
+  });
+
+  if (!opened) {
+    setDocumentTemplateMessage("Nacrt postoji, ali zapisnik se nije uspio otvoriti. Provjeri template i pokušaj ponovno.");
+    syncDocumentTemplateRuntimeResumeButton();
+    return false;
+  }
+
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+  setDocumentTemplateMessage("Nastavljeno je tamo gdje si stao.", { type: "success" });
+  return true;
+}
+
+function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
+  const normalizedId = String(workOrderId || "").trim();
+  const normalizedFieldName = String(fieldName || "").trim();
+  const current = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) ?? {} : {};
+  if (current && Object.prototype.hasOwnProperty.call(current, normalizedFieldName)) {
+    const value = String(current?.[normalizedFieldName] ?? "").trim();
+    return normalizedFieldName === "inspectionDate" || normalizedFieldName === "issuedDate"
+      ? normalizeDateInputValue(value)
+      : value;
+  }
+
+  const commonValue = String(state.documentTemplateRuntime.common?.[normalizedFieldName] ?? "").trim();
   if (
     normalizedId
     && state.documentTemplateRuntime.common?.randomizeEnvironment
-    && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(String(fieldName || ""))
+    && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(normalizedFieldName)
   ) {
-    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${fieldName}`, fieldName);
+    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${normalizedFieldName}`, normalizedFieldName);
   }
-  return commonValue;
+  return normalizedFieldName === "inspectionDate" || normalizedFieldName === "issuedDate"
+    ? normalizeDateInputValue(commonValue)
+    : commonValue;
 }
 
 function getDocumentTemplateRuntimeArrayValue(workOrderId, fieldName) {
@@ -62405,8 +62793,8 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
     common: {
-      inspectionDate: String(state.workOrderDocumentWizard.common?.inspectionDate ?? "").trim(),
-      issuedDate: String(state.workOrderDocumentWizard.common?.issuedDate ?? "").trim(),
+      inspectionDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? ""),
+      issuedDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.issuedDate ?? ""),
       issuedPlace: String(state.workOrderDocumentWizard.common?.issuedPlace ?? "").trim(),
       note: String(state.workOrderDocumentWizard.common?.note ?? "").trim(),
       outsideTemperature: String(state.workOrderDocumentWizard.common?.outsideTemperature ?? "").trim(),
@@ -62620,6 +63008,7 @@ async function saveActiveDocumentTemplateRuntimeProgress() {
 
   try {
     await persistActiveDocumentTemplateRuntimeRecord();
+    saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
     setDocumentTemplateMessage(`Spremljen je trenutni dio za RN ${activeWorkOrder.workOrderNumber || "bez broja"}.`, {
       type: "success",
     });
@@ -63982,6 +64371,7 @@ function openDocumentTemplateFromWizard(
     state.workOrderDocumentWizard.open = false;
     syncWorkOrderDocumentWizardModal();
   }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
   return true;
 }
 
@@ -63998,6 +64388,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
+    saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
     return true;
   }
 
@@ -66119,6 +66510,22 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   }
   if (mode !== "inspection") {
     return;
+  }
+  state.workOrderDocumentWizard.common.inspectionDate = normalizeDateInputValue(
+    state.workOrderDocumentWizard.common.inspectionDate || workOrderDocumentCommonInspectionDateInput?.value || "",
+  );
+  state.workOrderDocumentWizard.common.issuedDate = normalizeDateInputValue(
+    state.workOrderDocumentWizard.common.issuedDate || workOrderDocumentCommonIssuedDateInput?.value || "",
+  );
+  if (workOrderDocumentCommonInspectionDateInput) {
+    workOrderDocumentCommonInspectionDateInput.value = formatDateInputDisplayValue(
+      state.workOrderDocumentWizard.common.inspectionDate,
+    );
+  }
+  if (workOrderDocumentCommonIssuedDateInput) {
+    workOrderDocumentCommonIssuedDateInput.value = formatDateInputDisplayValue(
+      state.workOrderDocumentWizard.common.issuedDate,
+    );
   }
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
@@ -68851,6 +69258,9 @@ documentTemplateRuntimeSaveProgressButton?.addEventListener("click", () => {
 });
 topbarShortcutRuntimeSaveButton?.addEventListener("click", () => {
   void saveActiveDocumentTemplateRuntimeProgress();
+});
+topbarShortcutRuntimeResumeButton?.addEventListener("click", () => {
+  restoreDocumentTemplateRuntimeLocalDraft();
 });
 documentTemplateRuntimePrintAllButton?.addEventListener("click", () => {
   void exportDocumentTemplateBatchPdf({ print: true });
