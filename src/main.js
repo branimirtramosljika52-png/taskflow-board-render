@@ -42059,15 +42059,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const head = document.createElement("div");
     head.className = "document-template-runtime-block-head";
-    const toggleButton = document.createElement("button");
-    toggleButton.type = "button";
-    toggleButton.className = "document-template-runtime-block-toggle";
-    toggleButton.textContent = collapsed ? "+" : "−";
-    toggleButton.setAttribute("aria-label", collapsed ? "Prikaži blok" : "Sakrij blok");
-    toggleButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
-    });
+    head.title = collapsed ? "Klikni za prikaz bloka" : "Klikni za sažimanje bloka";
     head.addEventListener("click", (event) => {
       if (event.target instanceof HTMLElement && event.target.closest("button, a, input, textarea, select")) {
         return;
@@ -42096,7 +42088,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
     headMeta.append(
       statusDot,
       createBadge(completion.ok ? "OK" : "Provjeri", `document-template-meta-badge ${completion.ok ? "is-success" : "is-warning"}`),
-      toggleButton,
     );
     head.append(copy, headMeta);
     blockNode.append(head);
