@@ -1706,7 +1706,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     })),
     legalFrameworks: (rawSnapshot.legalFrameworks ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-    )).map((item) => ({ ...item })),
+    )).map((item) => ({
+      ...item,
+      linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+      linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
+      linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+      linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+    })),
     documentTemplates: (rawSnapshot.documentTemplates ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -1745,6 +1751,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
+      linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+      linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
       documents: (item.documents ?? []).map((document) => ({ ...document })),
@@ -1891,6 +1899,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
+      linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+      linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
       documents: (item.documents ?? []).map((document) => ({ ...document })),

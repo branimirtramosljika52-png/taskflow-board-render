@@ -24888,7 +24888,8 @@ const MEASUREMENT_EQUIPMENT_CARD_PLACEHOLDER_BASE_DEFINITIONS = Object.freeze([
   { key: "DATUM_UMJERAVANJA", label: "Datum umjeravanja" },
   { key: "PERIODIKA_UMJERAVANJA", label: "Periodika umjeravanja (mjeseci)" },
   { key: "VRIJEDI_DO", label: "Vrijedi do" },
-  { key: "ZAPISNICI", label: "Povezani zapisnici / predlošci" },
+  { key: "ZAPISNICI", label: "Povezane usluge (legacy ključ)" },
+  { key: "USLUGE", label: "Povezane usluge" },
   { key: "AKTIVNOSTI", label: "Sve aktivnosti (jedna ispod druge)" },
   { key: "AKTIVNOSTI_UMJERAVANJE", label: "Aktivnosti umjeravanja (max 6)" },
   { key: "AKTIVNOSTI_PREGLED", label: "Aktivnosti pregleda (max 6)" },
@@ -26627,18 +26628,64 @@ function rebuildDocumentTemplateLocationOptions(selectedValue = "") {
   replaceSelectOptions(documentTemplateLocationIdInput, options, selectedValue || documentTemplateLocationIdInput.value || "");
 }
 
+function getTemplateLinkedServiceCatalogIds(templateId = "", { organizationId = "" } = {}) {
+  const normalizedTemplateId = String(templateId || "").trim();
+  const normalizedOrganizationId = String(organizationId || "").trim();
+  if (!normalizedTemplateId) {
+    return [];
+  }
+
+  return sortServiceCatalogItems((state.serviceCatalog ?? []).filter((service) => (
+    (!normalizedOrganizationId || String(service.organizationId) === normalizedOrganizationId)
+    && (service.linkedTemplateIds ?? []).map(String).includes(normalizedTemplateId)
+  ))).map((service) => String(service.id || "").trim()).filter(Boolean);
+}
+
+function getServiceDerivedLegalFrameworkIdsForTemplate(templateId = "", { organizationId = "" } = {}) {
+  const linkedServiceIds = new Set(getTemplateLinkedServiceCatalogIds(templateId, { organizationId }));
+  if (linkedServiceIds.size === 0) {
+    return [];
+  }
+
+  return sortLegalFrameworks(state.legalFrameworks ?? [])
+    .filter((item) => getLegalFrameworkLinkedServiceIds(item).some((serviceId) => linkedServiceIds.has(String(serviceId))))
+    .map((item) => String(item.id || "").trim())
+    .filter(Boolean);
+}
+
+function getServiceDerivedMeasurementEquipmentItemsForTemplate(templateId = "", { organizationId = "" } = {}) {
+  const linkedServiceIds = new Set(getTemplateLinkedServiceCatalogIds(templateId, { organizationId }));
+  if (linkedServiceIds.size === 0) {
+    return [];
+  }
+
+  return sortMeasurementEquipmentItems(state.measurementEquipment ?? [])
+    .filter((item) => getMeasurementEquipmentLinkedServiceIds(item).some((serviceId) => linkedServiceIds.has(String(serviceId))));
+}
+
 function getSelectedDocumentTemplateLegalFrameworkIds() {
+  const activeTemplateId = String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "");
+  const activeTemplate = activeTemplateId
+    ? (state.documentTemplates.find((item) => String(item.id) === activeTemplateId) ?? null)
+    : null;
+  const derivedIds = activeTemplateId
+    ? getServiceDerivedLegalFrameworkIdsForTemplate(activeTemplateId, {
+      organizationId: activeTemplate?.organizationId || state.activeOrganizationId || "",
+    })
+    : [];
+
   if (!documentTemplateLegalFrameworkList) {
-    const activeTemplateId = String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "");
     const storedIds = activeTemplateId
-      ? (state.documentTemplates.find((item) => String(item.id) === activeTemplateId)?.selectedLegalFrameworkIds ?? [])
+      ? (activeTemplate?.selectedLegalFrameworkIds ?? [])
       : [];
     const linkedIds = activeTemplateId
       ? sortLegalFrameworks(state.legalFrameworks ?? [])
         .filter((item) => (item.linkedTemplateIds ?? []).map(String).includes(activeTemplateId))
         .map((item) => String(item.id))
       : [];
-    return Array.from(new Set([...storedIds.map(String), ...linkedIds])).filter(Boolean);
+    return derivedIds.length > 0
+      ? derivedIds
+      : Array.from(new Set([...storedIds.map(String), ...linkedIds])).filter(Boolean);
   }
 
   return Array.from(
@@ -27044,12 +27091,20 @@ function saveDocumentTemplate() {
 }
 
 function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemplateDraft()) {
-  const selectedIds = new Set((template.selectedLegalFrameworkIds ?? []).map((value) => String(value)));
   const templateId = String(template.id || "");
+  const derivedIds = templateId
+    ? getServiceDerivedLegalFrameworkIdsForTemplate(templateId, {
+      organizationId: template.organizationId || state.activeOrganizationId || "",
+    })
+    : [];
+  const selectedIds = new Set(
+    (derivedIds.length > 0 ? derivedIds : (template.selectedLegalFrameworkIds ?? []))
+      .map((value) => String(value)),
+  );
 
   return sortLegalFrameworks(state.legalFrameworks ?? []).filter((item) => (
     selectedIds.has(String(item.id))
-    || ((item.linkedTemplateIds ?? []).map(String).includes(templateId))
+    || (derivedIds.length === 0 && (item.linkedTemplateIds ?? []).map(String).includes(templateId))
   ));
 }
 
@@ -27102,6 +27157,14 @@ function getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrderId, field 
 
 function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplateDraft()) {
   const templateId = String(template.id || "");
+  const linkedByServices = templateId
+    ? getServiceDerivedMeasurementEquipmentItemsForTemplate(templateId, {
+      organizationId: template.organizationId || state.activeOrganizationId || "",
+    })
+    : [];
+  if (linkedByServices.length > 0) {
+    return linkedByServices;
+  }
   const linkedItems = sortMeasurementEquipmentItems(state.measurementEquipment ?? []).filter((item) => (
     templateId
       ? (item.linkedTemplateIds ?? []).map(String).includes(templateId)
@@ -30545,6 +30608,117 @@ function getTemplateTitlesByIds(ids = []) {
     .filter(Boolean);
 }
 
+function getServiceCatalogItemsByIds(ids = [], { organizationId = "" } = {}) {
+  const normalizedOrganizationId = String(organizationId || "").trim();
+  const servicesById = new Map(
+    (state.serviceCatalog ?? [])
+      .filter((item) => !normalizedOrganizationId || String(item.organizationId) === normalizedOrganizationId)
+      .map((item) => [String(item.id), item]),
+  );
+
+  return Array.from(new Set(
+    (ids ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  ))
+    .map((serviceId) => servicesById.get(String(serviceId)) ?? null)
+    .filter(Boolean);
+}
+
+function getServiceCatalogTitlesByIds(ids = [], { organizationId = "" } = {}) {
+  return getServiceCatalogItemsByIds(ids, { organizationId })
+    .map((item) => String(item?.name || item?.serviceCode || "Usluga").trim())
+    .filter(Boolean);
+}
+
+function getLinkedServiceCatalogIdsForItem(item = {}, { legacyTemplateIds = [], organizationId = "" } = {}) {
+  const normalizedOrganizationId = String(organizationId || item?.organizationId || "").trim();
+  const explicitIds = Array.isArray(item?.linkedServiceCatalogIds)
+    ? item.linkedServiceCatalogIds.map((value) => String(value ?? "").trim()).filter(Boolean)
+    : [];
+  const explicitServices = getServiceCatalogItemsByIds(explicitIds, { organizationId: normalizedOrganizationId });
+
+  if (explicitServices.length > 0 || explicitIds.length > 0) {
+    return explicitServices.map((service) => String(service.id || "").trim()).filter(Boolean);
+  }
+
+  const templateIdSet = new Set(
+    (legacyTemplateIds ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+
+  if (templateIdSet.size === 0) {
+    return [];
+  }
+
+  return sortServiceCatalogItems((state.serviceCatalog ?? []).filter((service) => (
+    (!normalizedOrganizationId || String(service.organizationId) === normalizedOrganizationId)
+    && (service.linkedTemplateIds ?? []).some((templateId) => templateIdSet.has(String(templateId)))
+  ))).map((service) => String(service.id || "").trim()).filter(Boolean);
+}
+
+function getLinkedServiceCatalogTitlesForItem(item = {}, options = {}) {
+  const serviceIds = getLinkedServiceCatalogIdsForItem(item, options);
+  return getServiceCatalogTitlesByIds(serviceIds, {
+    organizationId: options.organizationId || item?.organizationId || "",
+  });
+}
+
+function renderServiceCatalogUsageChecklist(container, {
+  selectedIds = [],
+  inputName = "service-catalog-usage-id",
+  emptyText = "Prvo dodaj usluge u List Of Services pa ih ovdje poveži.",
+} = {}) {
+  if (!container) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageMasterData();
+  const selectedSet = new Set(selectedIds.map((value) => String(value)));
+  const services = sortServiceCatalogItems((state.serviceCatalog ?? []).filter((item) => (
+    String(item.serviceType || (item.isTraining ? "znr" : "inspection")) === "inspection"
+    && (!state.activeOrganizationId || String(item.organizationId) === String(state.activeOrganizationId))
+  )));
+
+  if (services.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = emptyText;
+    container.replaceChildren(empty);
+    return;
+  }
+
+  container.replaceChildren(...services.map((service) => {
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = inputName;
+    checkbox.value = service.id;
+    checkbox.checked = selectedSet.has(String(service.id));
+    checkbox.disabled = !canManageMasterData;
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = service.name || service.serviceCode || "Usluga";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      service.serviceCode || "",
+      getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, service.status || "active"),
+      (service.linkedTemplateTitles ?? []).length > 0 ? `${(service.linkedTemplateTitles ?? []).length} zapisnika` : "Bez zapisnika",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
 function getLegalFrameworkLinkedTemplateIds(item = {}) {
   if (Array.isArray(item?.linkedTemplateIds) && item.linkedTemplateIds.length > 0) {
     return item.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean);
@@ -30566,6 +30740,20 @@ function getLegalFrameworkLinkedTemplateTitles(item = {}) {
   }
 
   return getTemplateTitlesByIds(getLegalFrameworkLinkedTemplateIds(item));
+}
+
+function getLegalFrameworkLinkedServiceIds(item = {}) {
+  return getLinkedServiceCatalogIdsForItem(item, {
+    legacyTemplateIds: getLegalFrameworkLinkedTemplateIds(item),
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
+}
+
+function getLegalFrameworkLinkedServiceTitles(item = {}) {
+  return getLinkedServiceCatalogTitlesForItem(item, {
+    legacyTemplateIds: getLegalFrameworkLinkedTemplateIds(item),
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
 }
 
 function isLegalFrameworkDocumentFileAllowed(file) {
@@ -30592,18 +30780,18 @@ function formatLegalFrameworkTemplateCountLabel(count = 0) {
   const safeCount = Math.max(0, Number(count) || 0);
 
   if (safeCount === 0) {
-    return "Bez povezanih zapisnika";
+    return "Bez povezanih usluga";
   }
 
   if (safeCount === 1) {
-    return "1 povezani zapisnik";
+    return "1 povezana usluga";
   }
 
   if (safeCount >= 2 && safeCount <= 4) {
-    return `${safeCount} povezana zapisnika`;
+    return `${safeCount} povezane usluge`;
   }
 
-  return `${safeCount} povezanih zapisnika`;
+  return `${safeCount} povezanih usluga`;
 }
 
 function setLegalFrameworkDocumentDrafts(items = []) {
@@ -32049,7 +32237,9 @@ function buildMeasurementEquipmentPlaceholderWordMarkup() {
 
 function buildMeasurementEquipmentExportPlaceholders() {
   const requiresCalibration = measurementEquipmentRequiresCalibrationInput?.value === "true";
-  const linkedTemplateTitles = getTemplateTitlesByIds(getMeasurementEquipmentTemplateSelectionIds());
+  const linkedServiceTitles = getServiceCatalogTitlesByIds(getMeasurementEquipmentServiceSelectionIds(), {
+    organizationId: state.activeOrganizationId || "",
+  });
   const activityAll = buildMeasurementEquipmentExportActivityLines();
   const activityCalibration = buildMeasurementEquipmentExportActivityLines("umjeravanje", { limit: 6 });
   const activityReview = buildMeasurementEquipmentExportActivityLines("pregled", { limit: 6 });
@@ -32073,7 +32263,8 @@ function buildMeasurementEquipmentExportPlaceholders() {
     DATUM_UMJERAVANJA: measurementEquipmentCalibrationDateInput?.value ? formatCompactDate(measurementEquipmentCalibrationDateInput.value) : "",
     PERIODIKA_UMJERAVANJA: measurementEquipmentCalibrationPeriodInput?.value || "",
     VRIJEDI_DO: measurementEquipmentValidUntilInput?.value ? formatCompactDate(measurementEquipmentValidUntilInput.value) : "",
-    ZAPISNICI: linkedTemplateTitles.join(", "),
+    ZAPISNICI: linkedServiceTitles.join(", "),
+    USLUGE: linkedServiceTitles.join(", "),
     AKTIVNOSTI: activityAll.join("\n"),
     AKTIVNOSTI_UMJERAVANJE: activityCalibration.join("\n"),
     AKTIVNOSTI_PREGLED: activityReview.join("\n"),
@@ -32099,9 +32290,7 @@ function buildMeasurementEquipmentExportPlaceholdersForItem(item = {}) {
   const requiresCalibration = item?.requiresCalibration === true
     || String(item?.requiresCalibration || "").toLowerCase() === "true"
     || String(item?.requiresCalibration || "") === "1";
-  const linkedTemplateTitles = (Array.isArray(item?.linkedTemplateTitles) && item.linkedTemplateTitles.length > 0)
-    ? item.linkedTemplateTitles
-    : getTemplateTitlesByIds(Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : []);
+  const linkedServiceTitles = getMeasurementEquipmentLinkedServiceTitles(item);
   const activityEntries = Array.isArray(item?.activityItems) ? item.activityItems : [];
   const activityAll = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries);
   const activityCalibration = buildMeasurementEquipmentExportActivityLinesFromEntries(activityEntries, "umjeravanje", { limit: 6 });
@@ -32134,7 +32323,8 @@ function buildMeasurementEquipmentExportPlaceholdersForItem(item = {}) {
     DATUM_UMJERAVANJA: item?.calibrationDate ? formatCompactDate(item.calibrationDate) : "",
     PERIODIKA_UMJERAVANJA: item?.calibrationPeriod || "",
     VRIJEDI_DO: item?.validUntil ? formatCompactDate(item.validUntil) : "",
-    ZAPISNICI: linkedTemplateTitles.join(", "),
+    ZAPISNICI: linkedServiceTitles.join(", "),
+    USLUGE: linkedServiceTitles.join(", "),
     AKTIVNOSTI: activityAll.join("\n"),
     AKTIVNOSTI_UMJERAVANJE: activityCalibration.join("\n"),
     AKTIVNOSTI_PREGLED: activityReview.join("\n"),
@@ -33459,7 +33649,7 @@ function buildLegalFrameworkPayload() {
       const { documentCategoryLocked, ...payload } = item;
       return { ...payload };
     }),
-    linkedTemplateIds: getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"),
+    linkedServiceCatalogIds: getCheckedValues(legalFrameworkTemplateList, "legal-framework-service-id"),
     note: legalFrameworkNoteInput?.value || "",
   };
 }
@@ -33487,10 +33677,10 @@ function resetLegalFrameworkForm() {
 }
 
 function renderLegalFrameworkTemplateChecklist(selectedIds = []) {
-  renderTemplateSelectionChecklist(legalFrameworkTemplateList, {
+  renderServiceCatalogUsageChecklist(legalFrameworkTemplateList, {
     selectedIds,
-    inputName: "legal-framework-template-id",
-    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s propisom.",
+    inputName: "legal-framework-service-id",
+    emptyText: "Prvo dodaj usluge u List Of Services pa ih ovdje povezi s propisom.",
   });
 }
 
@@ -33514,7 +33704,7 @@ function hydrateLegalFrameworkForm(item) {
   legalFrameworkTagsTextInput.value = item.tagsText || "";
   legalFrameworkNoteInput.value = item.note || "";
   setLegalFrameworkDocumentDrafts(item.documents ?? []);
-  renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedTemplateIds(item));
+  renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedServiceIds(item));
   renderLegalFrameworkDocuments();
   if (legalFrameworkError) {
     legalFrameworkError.textContent = "";
@@ -33587,13 +33777,13 @@ function renderLegalFrameworkModule() {
     heading.className = "legal-framework-card-heading";
     const title = document.createElement("h4");
     title.textContent = item.title || "Bez naziva";
-    const linkedTemplateTitles = getLegalFrameworkLinkedTemplateTitles(item);
+    const linkedServiceTitles = getLegalFrameworkLinkedServiceTitles(item);
     const documentCount = Array.isArray(item.documents) ? item.documents.length : 0;
     const meta = document.createElement("p");
     meta.className = "legal-framework-card-meta";
     meta.textContent = [
       documentCount > 0 ? formatLegalFrameworkDocumentCountLabel(documentCount) : "Bez PDF dokumenata",
-      formatLegalFrameworkTemplateCountLabel(linkedTemplateTitles.length),
+      formatLegalFrameworkTemplateCountLabel(linkedServiceTitles.length),
     ].filter(Boolean).join(" | ");
     heading.append(title, meta);
     primary.append(createLegalFrameworkStatusBadge(item.status), heading);
@@ -33612,10 +33802,10 @@ function renderLegalFrameworkModule() {
     footer.className = "legal-framework-card-footer";
     const tags = document.createElement("div");
     tags.className = "legal-framework-card-tags";
-    if (linkedTemplateTitles.length > 0) {
-      tags.append(...linkedTemplateTitles.slice(0, 5).map((entry) => createBadge(entry, "legal-framework-tag")));
+    if (linkedServiceTitles.length > 0) {
+      tags.append(...linkedServiceTitles.slice(0, 5).map((entry) => createBadge(entry, "legal-framework-tag")));
     } else {
-      tags.append(createBadge("Bez zapisnika", "legal-framework-tag is-muted"));
+      tags.append(createBadge("Bez usluga", "legal-framework-tag is-muted"));
     }
 
     const documentsMeta = document.createElement("div");
@@ -34048,15 +34238,33 @@ function isUpcomingIsoDate(value, windowDays = 45) {
   return date >= now && date <= soon;
 }
 
+function getMeasurementEquipmentLinkedServiceIds(item = {}) {
+  return getLinkedServiceCatalogIdsForItem(item, {
+    legacyTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : [],
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
+}
+
+function getMeasurementEquipmentLinkedServiceTitles(item = {}) {
+  return getLinkedServiceCatalogTitlesForItem(item, {
+    legacyTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : [],
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
+}
+
+function getMeasurementEquipmentServiceSelectionIds() {
+  return getCheckedValues(measurementEquipmentTemplateList, "measurement-equipment-service-id");
+}
+
 function getMeasurementEquipmentTemplateSelectionIds() {
-  return getCheckedValues(measurementEquipmentTemplateList, "measurement-equipment-template-id");
+  return getMeasurementEquipmentServiceSelectionIds();
 }
 
 function renderMeasurementEquipmentTemplateChecklist(selectedIds = []) {
-  renderTemplateSelectionChecklist(measurementEquipmentTemplateList, {
+  renderServiceCatalogUsageChecklist(measurementEquipmentTemplateList, {
     selectedIds,
-    inputName: "measurement-equipment-template-id",
-    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje povezi s opremom.",
+    inputName: "measurement-equipment-service-id",
+    emptyText: "Prvo dodaj usluge u List Of Services pa ih ovdje povezi s opremom.",
   });
 }
 
@@ -35295,7 +35503,7 @@ function buildMeasurementEquipmentPayload() {
     calibrationDate: requiresCalibration ? (measurementEquipmentCalibrationDateInput?.value || "") : "",
     calibrationPeriod: requiresCalibration ? (measurementEquipmentCalibrationPeriodInput?.value || "") : "",
     validUntil: requiresCalibration ? (measurementEquipmentValidUntilInput?.value || "") : "",
-    linkedTemplateIds: getMeasurementEquipmentTemplateSelectionIds(),
+    linkedServiceCatalogIds: getMeasurementEquipmentServiceSelectionIds(),
     documents: measurementEquipmentDocumentDrafts.map((item) => {
       const { documentCategoryLocked, ...payload } = item;
       return { ...payload };
@@ -35422,7 +35630,7 @@ function hydrateMeasurementEquipmentForm(item) {
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentSpecs();
-  renderMeasurementEquipmentTemplateChecklist(item.linkedTemplateIds ?? []);
+  renderMeasurementEquipmentTemplateChecklist(getMeasurementEquipmentLinkedServiceIds(item));
   state.measurementEquipmentTemplateSectionExpanded = false;
   state.measurementEquipmentActivitySectionExpanded = (item.activityItems ?? []).length > 0;
   state.measurementEquipmentDocumentsSectionExpanded = false;
@@ -35654,15 +35862,16 @@ function renderMeasurementEquipmentModule() {
     templatesGroup.className = "measurement-equipment-card-group";
     const templatesLabel = document.createElement("p");
     templatesLabel.className = "measurement-equipment-card-group-label";
-    templatesLabel.textContent = "Koristi se u zapisnicima";
+    templatesLabel.textContent = "Koristi se u uslugama";
     const templates = document.createElement("div");
     templates.className = "measurement-equipment-card-chips";
-    if ((item.linkedTemplateTitles ?? []).length > 0) {
-      (item.linkedTemplateTitles ?? []).slice(0, 4).forEach((entry) => {
+    const linkedServiceTitles = getMeasurementEquipmentLinkedServiceTitles(item);
+    if (linkedServiceTitles.length > 0) {
+      linkedServiceTitles.slice(0, 4).forEach((entry) => {
         templates.append(createBadge(entry, "service-catalog-template-badge"));
       });
     } else {
-      templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
+      templates.append(createBadge("Bez usluga", "service-catalog-template-badge is-muted"));
     }
     templatesGroup.append(templatesLabel, templates);
 
@@ -35695,7 +35904,7 @@ function renderMeasurementEquipmentModule() {
     const empty = document.createElement("div");
     empty.className = "offers-empty-card";
     empty.textContent = canManageMasterData
-      ? "Nema opreme za ove filtere. Dodaj prvu stavku opreme i povezi je sa zapisnicima."
+      ? "Nema opreme za ove filtere. Dodaj prvu stavku opreme i povezi je s uslugama."
       : "Nema opreme za prikaz u odabranoj organizaciji.";
     measurementEquipmentList.replaceChildren(empty);
   }
@@ -35706,8 +35915,26 @@ function renderMeasurementEquipmentModule() {
   }
 }
 
+function getSafetyAuthorizationLinkedServiceIds(item = {}) {
+  return getLinkedServiceCatalogIdsForItem(item, {
+    legacyTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : [],
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
+}
+
+function getSafetyAuthorizationLinkedServiceTitles(item = {}) {
+  return getLinkedServiceCatalogTitlesForItem(item, {
+    legacyTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds : [],
+    organizationId: item?.organizationId || state.activeOrganizationId || "",
+  });
+}
+
+function getSafetyAuthorizationServiceSelectionIds() {
+  return getCheckedValues(safetyAuthorizationTemplateList, "safety-authorization-service-id");
+}
+
 function getSafetyAuthorizationTemplateSelectionIds() {
-  return getCheckedValues(safetyAuthorizationTemplateList, "safety-authorization-template-id");
+  return getSafetyAuthorizationServiceSelectionIds();
 }
 
 function isSafetyAuthorizationDocumentFileAllowed(file) {
@@ -35855,10 +36082,10 @@ function syncSafetyAuthorizationValidityInput() {
 }
 
 function renderSafetyAuthorizationTemplateChecklist(selectedIds = []) {
-  renderTemplateSelectionChecklist(safetyAuthorizationTemplateList, {
+  renderServiceCatalogUsageChecklist(safetyAuthorizationTemplateList, {
     selectedIds,
-    inputName: "safety-authorization-template-id",
-    emptyText: "Prvo dodaj zapisnike u Template Development pa ih ovdje poveži s ovlaštenjem.",
+    inputName: "safety-authorization-service-id",
+    emptyText: "Prvo dodaj usluge u List Of Services pa ih ovdje poveži s ovlaštenjem.",
   });
 }
 
@@ -35870,7 +36097,7 @@ function buildSafetyAuthorizationPayload() {
     issuedOn: safetyAuthorizationIssuedOnInput?.value || "",
     validUntil: safetyAuthorizationValidForeverInput?.checked ? "" : (safetyAuthorizationValidUntilInput?.value || ""),
     validForever: Boolean(safetyAuthorizationValidForeverInput?.checked),
-    linkedTemplateIds: getSafetyAuthorizationTemplateSelectionIds(),
+    linkedServiceCatalogIds: getSafetyAuthorizationServiceSelectionIds(),
     documents: safetyAuthorizationDocumentDrafts.map((entry) => ({ ...entry })),
     note: safetyAuthorizationNoteInput?.value || "",
   };
@@ -35932,7 +36159,7 @@ function hydrateSafetyAuthorizationForm(item) {
   setSafetyAuthorizationDocumentDrafts(item.documents ?? []);
   renderSafetyAuthorizationDocuments();
   syncSafetyAuthorizationValidityInput();
-  renderSafetyAuthorizationTemplateChecklist(item.linkedTemplateIds ?? []);
+  renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationLinkedServiceIds(item));
   syncSafetyAuthorizationEditorChrome();
   openSafetyAuthorizationEditor();
   requestAnimationFrame(() => {
@@ -35978,7 +36205,7 @@ function renderSafetyAuthorizationModule() {
   }
   if (safetyAuthorizationHelper) {
     safetyAuthorizationHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} ovlaštenja. Ovdje ih povezuješ sa zapisnicima.`
+      ? `Prikazano ${visibleItems.length} ovlaštenja. Ovdje ih povezuješ s uslugama.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} ovlaštenja.`;
   }
 
@@ -36026,12 +36253,13 @@ function renderSafetyAuthorizationModule() {
 
     const templates = document.createElement("div");
     templates.className = "safety-authorization-card-chips";
-    if ((item.linkedTemplateTitles ?? []).length > 0) {
-      (item.linkedTemplateTitles ?? []).slice(0, 4).forEach((entry) => {
+    const linkedServiceTitles = getSafetyAuthorizationLinkedServiceTitles(item);
+    if (linkedServiceTitles.length > 0) {
+      linkedServiceTitles.slice(0, 4).forEach((entry) => {
         templates.append(createBadge(entry, "service-catalog-template-badge"));
       });
     } else {
-      templates.append(createBadge("Bez zapisnika", "service-catalog-template-badge is-muted"));
+      templates.append(createBadge("Bez usluga", "service-catalog-template-badge is-muted"));
     }
 
     const note = document.createElement("p");
@@ -36087,7 +36315,7 @@ function renderSafetyAuthorizationModule() {
     const empty = document.createElement("div");
     empty.className = "offers-empty-card";
     empty.textContent = canManageMasterData
-      ? "Nema ovlaštenja za ove filtere. Dodaj prvo ovlaštenje i poveži ga sa zapisnicima."
+      ? "Nema ovlaštenja za ove filtere. Dodaj prvo ovlaštenje i poveži ga s uslugama."
       : "Nema ovlaštenja za prikaz u odabranoj organizaciji.";
     safetyAuthorizationList.replaceChildren(empty);
   }
@@ -41552,8 +41780,15 @@ function hydrateDocumentTemplateForm(
   renderDocumentTemplateEquipmentRows();
   renderDocumentTemplateSectionRows();
   renderDocumentTemplateLegalFrameworkChecklist();
+  const derivedLegalFrameworkIds = getServiceDerivedLegalFrameworkIdsForTemplate(template.id || "", {
+    organizationId: template.organizationId || state.activeOrganizationId || "",
+  });
+  const checkedFrameworkIds = new Set([
+    ...(template.selectedLegalFrameworkIds ?? []).map(String),
+    ...derivedLegalFrameworkIds.map(String),
+  ]);
   Array.from(documentTemplateLegalFrameworkList?.querySelectorAll('input[name="document-template-legal-framework-id"]') ?? []).forEach((input) => {
-    input.checked = (template.selectedLegalFrameworkIds ?? []).map(String).includes(String(input.value));
+    input.checked = checkedFrameworkIds.has(String(input.value));
   });
   setDocumentTemplateMessage("");
   syncDocumentTemplateEditorChrome();
@@ -53700,15 +53935,15 @@ function renderSharedOptions() {
     renderServiceCatalogTemplateChecklist(getServiceCatalogTemplateSelectionIds());
   }
   if (state.legalFrameworkEditorOpen) {
-    renderLegalFrameworkTemplateChecklist(getCheckedValues(legalFrameworkTemplateList, "legal-framework-template-id"));
+    renderLegalFrameworkTemplateChecklist(getCheckedValues(legalFrameworkTemplateList, "legal-framework-service-id"));
     renderLegalFrameworkDocuments();
   }
   if (state.measurementEquipmentEditorOpen) {
-    renderMeasurementEquipmentTemplateChecklist(getMeasurementEquipmentTemplateSelectionIds());
+    renderMeasurementEquipmentTemplateChecklist(getMeasurementEquipmentServiceSelectionIds());
     renderMeasurementEquipmentDocuments();
   }
   if (state.safetyAuthorizationEditorOpen) {
-    renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationTemplateSelectionIds());
+    renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationServiceSelectionIds());
   }
   renderPurchaseOrderDocuments();
   if (userDocumentsInput) {

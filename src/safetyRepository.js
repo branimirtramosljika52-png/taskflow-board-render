@@ -1987,6 +1987,107 @@ async function syncLegalFrameworkTemplatesInDatabase(connection, {
   }
 }
 
+function normalizeLinkedServiceCatalogIds(serviceCatalog = [], linkedServiceCatalogIds = [], organizationId = "") {
+  const validServiceIds = new Set(
+    (serviceCatalog ?? [])
+      .filter((item) => !organizationId || String(item.organizationId) === String(organizationId))
+      .map((item) => String(item.id)),
+  );
+
+  return Array.from(new Set(
+    (linkedServiceCatalogIds ?? [])
+      .map((value) => dbString(value))
+      .filter((value) => validServiceIds.has(String(value))),
+  ));
+}
+
+function deriveLinkedServiceCatalogIdsFromTemplateIds(serviceCatalog = [], linkedTemplateIds = [], organizationId = "") {
+  const templateIdSet = new Set(
+    (linkedTemplateIds ?? [])
+      .map((value) => dbString(value))
+      .filter(Boolean),
+  );
+
+  if (templateIdSet.size === 0) {
+    return [];
+  }
+
+  return (serviceCatalog ?? [])
+    .filter((item) => (
+      (!organizationId || String(item.organizationId) === String(organizationId))
+      && (item.linkedTemplateIds ?? []).some((templateId) => templateIdSet.has(String(templateId)))
+    ))
+    .map((item) => String(item.id))
+    .filter(Boolean);
+}
+
+function getLinkedServiceCatalogTitles(serviceCatalog = [], linkedServiceCatalogIds = [], organizationId = "") {
+  const servicesById = new Map(
+    (serviceCatalog ?? [])
+      .filter((item) => !organizationId || String(item.organizationId) === String(organizationId))
+      .map((item) => [String(item.id), item]),
+  );
+
+  return Array.from(new Set(
+    (linkedServiceCatalogIds ?? [])
+      .map((serviceId) => {
+        const service = servicesById.get(String(serviceId));
+        return dbString(service?.name || service?.serviceCode);
+      })
+      .filter(Boolean),
+  ));
+}
+
+function deriveLinkedTemplateSnapshotFromServiceCatalog(serviceCatalog = [], linkedServiceCatalogIds = [], {
+  fallbackTemplateIds = [],
+  fallbackTemplateTitles = [],
+  organizationId = "",
+} = {}) {
+  const servicesById = new Map(
+    (serviceCatalog ?? [])
+      .filter((item) => !organizationId || String(item.organizationId) === String(organizationId))
+      .map((item) => [String(item.id), item]),
+  );
+  const linkedTemplateIds = [];
+  const linkedTemplateTitles = [];
+
+  (linkedServiceCatalogIds ?? []).forEach((serviceId) => {
+    const service = servicesById.get(String(serviceId));
+    if (!service) {
+      return;
+    }
+
+    (service.linkedTemplateIds ?? [])
+      .map((value) => dbString(value))
+      .filter(Boolean)
+      .forEach((value) => linkedTemplateIds.push(value));
+    (service.linkedTemplateTitles ?? [])
+      .map((value) => dbString(value))
+      .filter(Boolean)
+      .forEach((value) => linkedTemplateTitles.push(value));
+  });
+
+  if (linkedTemplateIds.length === 0 && linkedTemplateTitles.length === 0) {
+    return {
+      linkedTemplateIds: Array.from(new Set(
+        (fallbackTemplateIds ?? [])
+          .map((value) => dbString(value))
+          .filter(Boolean),
+      )),
+      linkedTemplateTitles: Array.from(new Set(
+        (fallbackTemplateTitles ?? [])
+          .map((value) => dbString(value))
+          .filter(Boolean),
+      )),
+    };
+  }
+
+  return {
+    linkedTemplateIds: Array.from(new Set(linkedTemplateIds)),
+    linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+  };
+}
+
 function mapWorkOrderDocumentRow(row) {
   const storedDocument = mapStoredDocumentLocation({
     dataUrl: row.data_url ?? row.dataUrl ?? "",
@@ -2691,6 +2792,7 @@ async function fetchSnapshotFromConnection(connection) {
   const [legalFrameworkRows] = await connection.query(`
     SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
            published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json,
+           linked_service_catalog_ids_json,
            created_at, updated_at
     FROM web_legal_frameworks
     ORDER BY
@@ -2703,28 +2805,6 @@ async function fetchSnapshotFromConnection(connection) {
       updated_at DESC,
       id DESC
   `);
-
-  const legalFrameworks = legalFrameworkRows.map((row) => ({
-    id: String(row.id),
-    organizationId: dbString(row.organization_id),
-    title: row.title ?? "",
-    category: row.category ?? "",
-    authority: row.authority_name ?? "",
-    referenceCode: row.reference_code ?? "",
-    versionLabel: row.version_label ?? "",
-    publishedOn: normalizeDateOnly(row.published_on),
-    effectiveFrom: normalizeDateOnly(row.effective_from),
-    reviewDate: normalizeDateOnly(row.review_date),
-    status: row.status ?? "active",
-    tagsText: row.tags_text ?? "",
-    sourceUrl: row.source_url ?? "",
-    note: row.note ?? "",
-    documents: parseJsonArray(row.documents_json)
-      .map((document) => mapStoredAttachmentDocument(document))
-      .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
-    createdAt: normalizeTimestamp(row.created_at),
-    updatedAt: normalizeTimestamp(row.updated_at),
-  }));
 
   const [documentTemplateRows] = await connection.query(`
     SELECT id, organization_id, title, document_type, status, description, output_file_name,
@@ -2908,11 +2988,64 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const legalFrameworks = legalFrameworkRows.map((row) => {
+    const organizationId = dbString(row.organization_id);
+    const legacyTemplateIds = documentTemplates
+      .filter((template) => (
+        String(template.organizationId) === String(organizationId)
+        && (template.selectedLegalFrameworkIds ?? []).some((entryId) => String(entryId) === String(row.id))
+      ))
+      .map((template) => String(template.id))
+      .filter(Boolean);
+    const explicitServiceIds = normalizeLinkedServiceCatalogIds(
+      serviceCatalog,
+      parseJsonArray(row.linked_service_catalog_ids_json),
+      organizationId,
+    );
+    const linkedServiceCatalogIds = explicitServiceIds.length > 0
+      ? explicitServiceIds
+      : deriveLinkedServiceCatalogIdsFromTemplateIds(serviceCatalog, legacyTemplateIds, organizationId);
+    const linkedServiceCatalogTitles = getLinkedServiceCatalogTitles(serviceCatalog, linkedServiceCatalogIds, organizationId);
+    const templateSnapshot = deriveLinkedTemplateSnapshotFromServiceCatalog(serviceCatalog, linkedServiceCatalogIds, {
+      fallbackTemplateIds: legacyTemplateIds,
+      fallbackTemplateTitles: legacyTemplateIds
+        .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+        .filter(Boolean),
+      organizationId,
+    });
+
+    return {
+      id: String(row.id),
+      organizationId,
+      title: row.title ?? "",
+      category: row.category ?? "",
+      authority: row.authority_name ?? "",
+      referenceCode: row.reference_code ?? "",
+      versionLabel: row.version_label ?? "",
+      publishedOn: normalizeDateOnly(row.published_on),
+      effectiveFrom: normalizeDateOnly(row.effective_from),
+      reviewDate: normalizeDateOnly(row.review_date),
+      status: row.status ?? "active",
+      tagsText: row.tags_text ?? "",
+      sourceUrl: row.source_url ?? "",
+      note: row.note ?? "",
+      linkedServiceCatalogIds,
+      linkedServiceCatalogTitles,
+      linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+      linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [measurementEquipmentRows] = await connection.query(`
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
            entered_by, approved_by, entry_date,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
-           linked_template_ids_json, documents_json, activity_items_json, measurement_specs_json, created_at, updated_at
+           linked_template_ids_json, linked_service_catalog_ids_json, documents_json, activity_items_json, measurement_specs_json, created_at, updated_at
     FROM web_measurement_equipment
     ORDER BY
       valid_until ASC,
@@ -2921,14 +3054,28 @@ async function fetchSnapshotFromConnection(connection) {
   `);
 
   const measurementEquipment = measurementEquipmentRows.map((row) => {
-    const linkedTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
-    const linkedTemplateTitles = linkedTemplateIds
-      .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
-      .filter(Boolean);
+    const organizationId = dbString(row.organization_id);
+    const legacyTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const explicitServiceIds = normalizeLinkedServiceCatalogIds(
+      serviceCatalog,
+      parseJsonArray(row.linked_service_catalog_ids_json),
+      organizationId,
+    );
+    const linkedServiceCatalogIds = explicitServiceIds.length > 0
+      ? explicitServiceIds
+      : deriveLinkedServiceCatalogIdsFromTemplateIds(serviceCatalog, legacyTemplateIds, organizationId);
+    const linkedServiceCatalogTitles = getLinkedServiceCatalogTitles(serviceCatalog, linkedServiceCatalogIds, organizationId);
+    const templateSnapshot = deriveLinkedTemplateSnapshotFromServiceCatalog(serviceCatalog, linkedServiceCatalogIds, {
+      fallbackTemplateIds: legacyTemplateIds,
+      fallbackTemplateTitles: legacyTemplateIds
+        .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+        .filter(Boolean),
+      organizationId,
+    });
 
     return {
       id: String(row.id),
-      organizationId: dbString(row.organization_id),
+      organizationId,
       name: row.name ?? "",
       equipmentKind: row.equipment_kind ?? "measurement",
       manufacturer: row.manufacturer ?? "",
@@ -2944,8 +3091,10 @@ async function fetchSnapshotFromConnection(connection) {
       calibrationPeriod: row.calibration_period ?? "",
       validUntil: normalizeDateOnly(row.valid_until),
       note: row.note ?? "",
-      linkedTemplateIds,
-      linkedTemplateTitles,
+      linkedServiceCatalogIds,
+      linkedServiceCatalogTitles,
+      linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+      linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
       documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
       activityItems: parseJsonArray(row.activity_items_json),
       measurementSpecs: normalizeMeasurementEquipmentSpecRows(parseJsonArray(row.measurement_specs_json)),
@@ -3115,7 +3264,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [safetyAuthorizationRows] = await connection.query(`
     SELECT id, organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
-           linked_template_ids_json, documents_json, created_at, updated_at
+           linked_template_ids_json, linked_service_catalog_ids_json, documents_json, created_at, updated_at
     FROM web_safety_authorizations
     ORDER BY
       valid_until ASC,
@@ -3124,22 +3273,38 @@ async function fetchSnapshotFromConnection(connection) {
   `);
 
   const safetyAuthorizations = safetyAuthorizationRows.map((row) => {
-    const linkedTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
-    const linkedTemplateTitles = linkedTemplateIds
-      .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
-      .filter(Boolean);
+    const organizationId = dbString(row.organization_id);
+    const legacyTemplateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const explicitServiceIds = normalizeLinkedServiceCatalogIds(
+      serviceCatalog,
+      parseJsonArray(row.linked_service_catalog_ids_json),
+      organizationId,
+    );
+    const linkedServiceCatalogIds = explicitServiceIds.length > 0
+      ? explicitServiceIds
+      : deriveLinkedServiceCatalogIdsFromTemplateIds(serviceCatalog, legacyTemplateIds, organizationId);
+    const linkedServiceCatalogTitles = getLinkedServiceCatalogTitles(serviceCatalog, linkedServiceCatalogIds, organizationId);
+    const templateSnapshot = deriveLinkedTemplateSnapshotFromServiceCatalog(serviceCatalog, linkedServiceCatalogIds, {
+      fallbackTemplateIds: legacyTemplateIds,
+      fallbackTemplateTitles: legacyTemplateIds
+        .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+        .filter(Boolean),
+      organizationId,
+    });
 
     return {
       id: String(row.id),
-      organizationId: dbString(row.organization_id),
+      organizationId,
       title: row.title ?? "",
       scope: row.authorization_scope ?? "",
       issuedOn: normalizeDateOnly(row.issued_on),
       validUntil: row.valid_forever ? null : normalizeDateOnly(row.valid_until),
       validForever: Boolean(row.valid_forever),
       note: row.note ?? "",
-      linkedTemplateIds,
-      linkedTemplateTitles,
+      linkedServiceCatalogIds,
+      linkedServiceCatalogTitles,
+      linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+      linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
       documents: parseJsonArray(row.documents_json).map((document) => mapStoredAttachmentDocument(document)).filter((document) => document.fileName && document.dataUrl),
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
@@ -3483,6 +3648,10 @@ export class InMemorySafetyRepository {
       })),
       legalFrameworks: this.snapshot.legalFrameworks.map((item) => ({
         ...item,
+        linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+        linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
+        linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
+        linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
       documentTemplates: this.snapshot.documentTemplates.map((item) => ({
@@ -3506,6 +3675,8 @@ export class InMemorySafetyRepository {
       })),
       measurementEquipment: this.snapshot.measurementEquipment.map((item) => ({
         ...item,
+        linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+        linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
@@ -3548,6 +3719,8 @@ export class InMemorySafetyRepository {
       })),
       safetyAuthorizations: this.snapshot.safetyAuthorizations.map((item) => ({
         ...item,
+        linkedServiceCatalogIds: [...(item.linkedServiceCatalogIds ?? [])],
+        linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         documents: (item.documents ?? []).map((document) => ({ ...document })),
@@ -4344,7 +4517,6 @@ export class InMemorySafetyRepository {
     const timestamp = new Date().toISOString();
     const item = createLegalFramework(input, this.snapshot, () => crypto.randomUUID(), () => timestamp);
     this.snapshot.legalFrameworks = [item, ...this.snapshot.legalFrameworks];
-    syncLegalFrameworkTemplatesInSnapshot(this.snapshot, item.id, input.linkedTemplateIds ?? [], timestamp);
     return item;
   }
 
@@ -4358,9 +4530,6 @@ export class InMemorySafetyRepository {
     const timestamp = new Date().toISOString();
     const next = updateLegalFramework(current, patch, this.snapshot, () => timestamp);
     this.snapshot.legalFrameworks = this.snapshot.legalFrameworks.map((item) => (item.id === id ? next : item));
-    if (Object.prototype.hasOwnProperty.call(patch, "linkedTemplateIds")) {
-      syncLegalFrameworkTemplatesInSnapshot(this.snapshot, id, patch.linkedTemplateIds ?? [], timestamp);
-    }
     return next;
   }
 
@@ -4398,6 +4567,43 @@ export class InMemorySafetyRepository {
   async deleteServiceCatalogItem(id) {
     const before = this.snapshot.serviceCatalog.length;
     this.snapshot.serviceCatalog = this.snapshot.serviceCatalog.filter((item) => item.id !== id);
+    const nowValue = new Date().toISOString();
+    this.snapshot.legalFrameworks = this.snapshot.legalFrameworks.map((item) => ({
+      ...item,
+      linkedServiceCatalogIds: (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedServiceCatalogTitles: [...getLinkedServiceCatalogTitles(
+        this.snapshot.serviceCatalog,
+        (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+        item.organizationId,
+      )],
+      updatedAt: (item.linkedServiceCatalogIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? nowValue
+        : item.updatedAt,
+    }));
+    this.snapshot.measurementEquipment = this.snapshot.measurementEquipment.map((item) => ({
+      ...item,
+      linkedServiceCatalogIds: (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedServiceCatalogTitles: [...getLinkedServiceCatalogTitles(
+        this.snapshot.serviceCatalog,
+        (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+        item.organizationId,
+      )],
+      updatedAt: (item.linkedServiceCatalogIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? nowValue
+        : item.updatedAt,
+    }));
+    this.snapshot.safetyAuthorizations = this.snapshot.safetyAuthorizations.map((item) => ({
+      ...item,
+      linkedServiceCatalogIds: (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+      linkedServiceCatalogTitles: [...getLinkedServiceCatalogTitles(
+        this.snapshot.serviceCatalog,
+        (item.linkedServiceCatalogIds ?? []).filter((entryId) => String(entryId) !== String(id)),
+        item.organizationId,
+      )],
+      updatedAt: (item.linkedServiceCatalogIds ?? []).some((entryId) => String(entryId) === String(id))
+        ? nowValue
+        : item.updatedAt,
+    }));
     return this.snapshot.serviceCatalog.length !== before;
   }
 
@@ -5488,6 +5694,7 @@ export class MySqlSafetyRepository {
         source_url VARCHAR(255) NOT NULL DEFAULT '',
         note TEXT NULL,
         documents_json LONGTEXT NULL,
+        linked_service_catalog_ids_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_legal_frameworks_org_status (organization_id, status),
@@ -5514,6 +5721,7 @@ export class MySqlSafetyRepository {
         valid_until DATE NULL,
         note TEXT NULL,
         linked_template_ids_json LONGTEXT NULL,
+        linked_service_catalog_ids_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
         activity_items_json LONGTEXT NULL,
         measurement_specs_json LONGTEXT NULL,
@@ -5595,6 +5803,7 @@ export class MySqlSafetyRepository {
         valid_forever TINYINT(1) NOT NULL DEFAULT 0,
         note TEXT NULL,
         linked_template_ids_json LONGTEXT NULL,
+        linked_service_catalog_ids_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -5694,6 +5903,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_legal_frameworks", "documents_json", "LONGTEXT NULL AFTER note");
+    await ensureColumnExists(this.pool, "web_legal_frameworks", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entered_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER inventory_number");
@@ -5701,10 +5911,12 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entry_date", "DATE NULL AFTER approved_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "measurement_specs_json", "LONGTEXT NULL AFTER activity_items_json");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment_settings", "notification_rules_json", "LONGTEXT NULL AFTER card_template_json");
     await ensureColumnExists(this.pool, "web_vehicle_settings", "notification_rules_json", "LONGTEXT NULL");
     await ensureColumnExists(this.pool, "web_safety_authorization_settings", "notification_rules_json", "LONGTEXT NULL");
     await ensureColumnExists(this.pool, "web_safety_authorizations", "valid_forever", "TINYINT(1) NOT NULL DEFAULT 0 AFTER valid_until");
+    await ensureColumnExists(this.pool, "web_safety_authorizations", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -8672,8 +8884,37 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
+      await connection.beginTransaction();
       const [result] = await connection.query("DELETE FROM web_service_catalog WHERE id = ?", [Number(id)]);
+
+      for (const tableName of ["web_legal_frameworks", "web_measurement_equipment", "web_safety_authorizations"]) {
+        const [rows] = await connection.query(
+          `SELECT id, linked_service_catalog_ids_json FROM ${tableName} WHERE linked_service_catalog_ids_json IS NOT NULL`,
+        );
+
+        for (const row of rows) {
+          const currentIds = parseJsonArray(row.linked_service_catalog_ids_json).map((entry) => dbString(entry)).filter(Boolean);
+          if (!currentIds.some((entryId) => String(entryId) === String(id))) {
+            continue;
+          }
+
+          const nextIds = currentIds.filter((entryId) => String(entryId) !== String(id));
+          await connection.query(
+            `
+              UPDATE ${tableName}
+              SET linked_service_catalog_ids_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            [JSON.stringify(Array.from(new Set(nextIds))), Number(row.id)],
+          );
+        }
+      }
+
+      await connection.commit();
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
@@ -8696,8 +8937,8 @@ export class MySqlSafetyRepository {
             (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
              entered_by, approved_by, entry_date,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
-             linked_template_ids_json, documents_json, activity_items_json, measurement_specs_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             linked_template_ids_json, linked_service_catalog_ids_json, documents_json, activity_items_json, measurement_specs_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -8717,6 +8958,7 @@ export class MySqlSafetyRepository {
           draft.validUntil,
           draft.note,
           JSON.stringify(draft.linkedTemplateIds ?? []),
+          JSON.stringify(draft.linkedServiceCatalogIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(draft.activityItems ?? []),
           JSON.stringify(draft.measurementSpecs ?? []),
@@ -9056,7 +9298,7 @@ export class MySqlSafetyRepository {
           SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
               entered_by = ?, approved_by = ?, entry_date = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
-              note = ?, linked_template_ids_json = ?, documents_json = ?, activity_items_json = ?, measurement_specs_json = ?
+              note = ?, linked_template_ids_json = ?, linked_service_catalog_ids_json = ?, documents_json = ?, activity_items_json = ?, measurement_specs_json = ?
           WHERE id = ?
         `,
         [
@@ -9076,6 +9318,7 @@ export class MySqlSafetyRepository {
           next.validUntil,
           next.note,
           JSON.stringify(next.linkedTemplateIds ?? []),
+          JSON.stringify(next.linkedServiceCatalogIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(next.activityItems ?? []),
           JSON.stringify(next.measurementSpecs ?? []),
@@ -9132,8 +9375,8 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_safety_authorizations
             (organization_id, title, authorization_scope, issued_on, valid_until, valid_forever, note,
-             linked_template_ids_json, documents_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             linked_template_ids_json, linked_service_catalog_ids_json, documents_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9144,6 +9387,7 @@ export class MySqlSafetyRepository {
           draft.validForever ? 1 : 0,
           draft.note,
           JSON.stringify(draft.linkedTemplateIds ?? []),
+          JSON.stringify(draft.linkedServiceCatalogIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
         ],
       );
@@ -9186,7 +9430,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_safety_authorizations
           SET title = ?, authorization_scope = ?, issued_on = ?, valid_until = ?, valid_forever = ?,
-              note = ?, linked_template_ids_json = ?, documents_json = ?
+              note = ?, linked_template_ids_json = ?, linked_service_catalog_ids_json = ?, documents_json = ?
           WHERE id = ?
         `,
         [
@@ -9197,6 +9441,7 @@ export class MySqlSafetyRepository {
           next.validForever ? 1 : 0,
           next.note,
           JSON.stringify(next.linkedTemplateIds ?? []),
+          JSON.stringify(next.linkedServiceCatalogIds ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           Number(id),
         ],
@@ -9433,8 +9678,8 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_legal_frameworks
             (organization_id, title, category, authority_name, reference_code, version_label,
-             published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json, linked_service_catalog_ids_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9451,14 +9696,9 @@ export class MySqlSafetyRepository {
           draft.sourceUrl,
           draft.note,
           JSON.stringify(draft.documents ?? []),
+          JSON.stringify(draft.linkedServiceCatalogIds ?? []),
         ],
       );
-
-      await syncLegalFrameworkTemplatesInDatabase(connection, {
-        organizationId: draft.organizationId,
-        legalFrameworkId: String(result.insertId),
-        linkedTemplateIds: input.linkedTemplateIds ?? [],
-      });
 
       await connection.commit();
       return {
@@ -9495,7 +9735,7 @@ export class MySqlSafetyRepository {
           UPDATE web_legal_frameworks
           SET title = ?, category = ?, authority_name = ?, reference_code = ?, version_label = ?,
               published_on = ?, effective_from = ?, review_date = ?, status = ?, tags_text = ?,
-              source_url = ?, note = ?, documents_json = ?
+              source_url = ?, note = ?, documents_json = ?, linked_service_catalog_ids_json = ?
           WHERE id = ?
         `,
         [
@@ -9512,17 +9752,10 @@ export class MySqlSafetyRepository {
           next.sourceUrl,
           next.note,
           JSON.stringify(next.documents ?? []),
+          JSON.stringify(next.linkedServiceCatalogIds ?? []),
           Number(id),
         ],
       );
-
-      if (Object.prototype.hasOwnProperty.call(patch, "linkedTemplateIds")) {
-        await syncLegalFrameworkTemplatesInDatabase(connection, {
-          organizationId: next.organizationId,
-          legalFrameworkId: id,
-          linkedTemplateIds: patch.linkedTemplateIds ?? [],
-        });
-      }
 
       await connection.commit();
       return next;

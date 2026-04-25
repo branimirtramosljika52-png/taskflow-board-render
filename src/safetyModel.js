@@ -1510,6 +1510,69 @@ function deriveServiceLearningTestSnapshot(state, learningTestIds = [], fallback
   };
 }
 
+function deriveLinkedServiceCatalogSnapshot(state, serviceIds = [], fallbackTitles = []) {
+  const servicesById = new Map(
+    (state.serviceCatalog ?? []).map((item) => [String(item.id), item]),
+  );
+  const linkedServiceCatalogIds = normalizeIdList(serviceIds)
+    .filter((serviceId) => servicesById.has(String(serviceId)));
+  const linkedServiceCatalogTitles = [];
+
+  linkedServiceCatalogIds.forEach((serviceId) => {
+    const service = servicesById.get(String(serviceId));
+    const label = normalizeText(service?.name || service?.serviceCode);
+    if (label) {
+      linkedServiceCatalogTitles.push(label);
+    }
+  });
+
+  if (linkedServiceCatalogTitles.length === 0 && Array.isArray(fallbackTitles)) {
+    fallbackTitles
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .forEach((value) => linkedServiceCatalogTitles.push(value));
+  }
+
+  return {
+    linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: Array.from(new Set(linkedServiceCatalogTitles)),
+  };
+}
+
+function deriveTemplateSnapshotFromLinkedServices(state, serviceIds = [], fallbackTemplateIds = [], fallbackTitles = []) {
+  const serviceIdList = normalizeIdList(serviceIds);
+  const servicesById = new Map(
+    (state.serviceCatalog ?? []).map((item) => [String(item.id), item]),
+  );
+  const linkedTemplateIds = [];
+  const linkedTemplateTitles = [];
+
+  serviceIdList.forEach((serviceId) => {
+    const service = servicesById.get(String(serviceId));
+    if (!service) {
+      return;
+    }
+
+    (service.linkedTemplateIds ?? [])
+      .map((value) => normalizeId(value))
+      .filter(Boolean)
+      .forEach((value) => linkedTemplateIds.push(value));
+    (service.linkedTemplateTitles ?? [])
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .forEach((value) => linkedTemplateTitles.push(value));
+  });
+
+  if (linkedTemplateIds.length === 0 && linkedTemplateTitles.length === 0) {
+    return normalizeLinkedTemplateSnapshot(state, fallbackTemplateIds, fallbackTitles);
+  }
+
+  return {
+    linkedTemplateIds: Array.from(new Set(linkedTemplateIds)),
+    linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
+  };
+}
+
 function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const name = normalizeText(item.name);
   const serviceCode = normalizeText(item.serviceCode);
@@ -4125,6 +4188,17 @@ export function createLegalFramework(
 ) {
   const timestamp = now();
   const organizationId = requireText(input.organizationId, "Organizacija");
+  const serviceSnapshot = deriveLinkedServiceCatalogSnapshot(
+    state,
+    hasOwn(input, "linkedServiceCatalogIds") ? input.linkedServiceCatalogIds : (input.linkedServiceIds ?? []),
+    hasOwn(input, "linkedServiceCatalogTitles") ? input.linkedServiceCatalogTitles : [],
+  );
+  const templateSnapshot = deriveTemplateSnapshotFromLinkedServices(
+    state,
+    serviceSnapshot.linkedServiceCatalogIds,
+    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+    hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
+  );
 
   return {
     id: createId(),
@@ -4141,6 +4215,10 @@ export function createLegalFramework(
     tagsText: normalizeText(input.tagsText),
     sourceUrl: normalizeText(input.sourceUrl),
     note: normalizeText(input.note),
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: normalizeAttachmentDocuments(input.documents),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -4148,6 +4226,27 @@ export function createLegalFramework(
 }
 
 export function updateLegalFramework(current, patch, state, now = isoNow) {
+  const serviceSnapshot = hasOwn(patch, "linkedServiceCatalogIds") || hasOwn(patch, "linkedServiceIds")
+    ? deriveLinkedServiceCatalogSnapshot(
+      state,
+      hasOwn(patch, "linkedServiceCatalogIds") ? patch.linkedServiceCatalogIds : patch.linkedServiceIds,
+      current.linkedServiceCatalogTitles,
+    )
+    : deriveLinkedServiceCatalogSnapshot(
+      state,
+      current.linkedServiceCatalogIds,
+      current.linkedServiceCatalogTitles,
+    );
+  const templateSnapshot = serviceSnapshot.linkedServiceCatalogIds.length > 0
+    ? deriveTemplateSnapshotFromLinkedServices(
+      state,
+      serviceSnapshot.linkedServiceCatalogIds,
+      current.linkedTemplateIds,
+      current.linkedTemplateTitles,
+    )
+    : (hasOwn(patch, "linkedTemplateIds")
+      ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+      : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles));
   return {
     ...current,
     title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv propisa") : current.title,
@@ -4162,6 +4261,10 @@ export function updateLegalFramework(current, patch, state, now = isoNow) {
     tagsText: hasOwn(patch, "tagsText") ? normalizeText(patch.tagsText) : current.tagsText,
     sourceUrl: hasOwn(patch, "sourceUrl") ? normalizeText(patch.sourceUrl) : current.sourceUrl,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
+    linkedTemplateIds: templateSnapshot.linkedTemplateIds,
+    linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: hasOwn(patch, "documents")
       ? normalizeAttachmentDocuments(patch.documents)
       : normalizeAttachmentDocuments(current.documents),
@@ -4192,6 +4295,8 @@ export function filterLegalFrameworks(
       item.versionLabel,
       item.tagsText,
       item.note,
+      ...(item.linkedServiceCatalogTitles ?? []),
+      ...(item.linkedTemplateTitles ?? []),
       ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
     ].join(" ").toLowerCase();
 
@@ -4264,10 +4369,23 @@ export function createMeasurementEquipmentItem(
     calibrationPeriod = syncFromActivities.calibrationPeriod;
     validUntil = syncFromActivities.validUntil;
   }
-  const templateSnapshot = normalizeLinkedTemplateSnapshot(
+  const serviceSnapshot = deriveLinkedServiceCatalogSnapshot(
     state,
-    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+    hasOwn(input, "linkedServiceCatalogIds") ? input.linkedServiceCatalogIds : (input.linkedServiceIds ?? []),
+    hasOwn(input, "linkedServiceCatalogTitles") ? input.linkedServiceCatalogTitles : [],
   );
+  const templateSnapshot = serviceSnapshot.linkedServiceCatalogIds.length > 0
+    ? deriveTemplateSnapshotFromLinkedServices(
+      state,
+      serviceSnapshot.linkedServiceCatalogIds,
+      hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+      hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
+    )
+    : normalizeLinkedTemplateSnapshot(
+      state,
+      hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+      hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
+    );
 
   if (
     inventoryNumber
@@ -4297,6 +4415,8 @@ export function createMeasurementEquipmentItem(
     calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
     validUntil: requiresCalibration ? validUntil : null,
     note: normalizeText(input.note),
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: normalizeAttachmentDocuments(input.documents),
@@ -4366,9 +4486,27 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     calibrationPeriod = syncFromActivities.calibrationPeriod;
     validUntil = syncFromActivities.validUntil;
   }
-  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
-    ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
-    : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+  const serviceSnapshot = hasOwn(patch, "linkedServiceCatalogIds") || hasOwn(patch, "linkedServiceIds")
+    ? deriveLinkedServiceCatalogSnapshot(
+      state,
+      hasOwn(patch, "linkedServiceCatalogIds") ? patch.linkedServiceCatalogIds : patch.linkedServiceIds,
+      current.linkedServiceCatalogTitles,
+    )
+    : deriveLinkedServiceCatalogSnapshot(
+      state,
+      current.linkedServiceCatalogIds,
+      current.linkedServiceCatalogTitles,
+    );
+  const templateSnapshot = serviceSnapshot.linkedServiceCatalogIds.length > 0
+    ? deriveTemplateSnapshotFromLinkedServices(
+      state,
+      serviceSnapshot.linkedServiceCatalogIds,
+      current.linkedTemplateIds,
+      current.linkedTemplateTitles,
+    )
+    : (hasOwn(patch, "linkedTemplateIds")
+      ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+      : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles));
 
   if (
     inventoryNumber
@@ -4403,6 +4541,8 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     calibrationPeriod: requiresCalibration ? calibrationPeriod : "",
     validUntil: requiresCalibration ? validUntil : null,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: hasOwn(patch, "documents")
@@ -4437,6 +4577,7 @@ export function filterMeasurementEquipmentItems(
       item.entryDate,
       item.note,
       item.calibrationPeriod,
+      ...(item.linkedServiceCatalogTitles ?? []),
       ...(item.linkedTemplateTitles ?? []),
       ...(item.documents ?? []).flatMap((document) => [
         document.fileName,
@@ -4580,10 +4721,23 @@ export function createSafetyAuthorization(
   now = isoNow,
 ) {
   const timestamp = now();
-  const templateSnapshot = normalizeLinkedTemplateSnapshot(
+  const serviceSnapshot = deriveLinkedServiceCatalogSnapshot(
     state,
-    hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+    hasOwn(input, "linkedServiceCatalogIds") ? input.linkedServiceCatalogIds : (input.linkedServiceIds ?? []),
+    hasOwn(input, "linkedServiceCatalogTitles") ? input.linkedServiceCatalogTitles : [],
   );
+  const templateSnapshot = serviceSnapshot.linkedServiceCatalogIds.length > 0
+    ? deriveTemplateSnapshotFromLinkedServices(
+      state,
+      serviceSnapshot.linkedServiceCatalogIds,
+      hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+      hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
+    )
+    : normalizeLinkedTemplateSnapshot(
+      state,
+      hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+      hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
+    );
   const validForever = normalizeBoolean(input.validForever, false);
   const validUntil = validForever
     ? null
@@ -4598,6 +4752,8 @@ export function createSafetyAuthorization(
     validUntil,
     validForever,
     note: normalizeText(input.note),
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: normalizeAttachmentDocuments(input.documents),
@@ -4607,9 +4763,27 @@ export function createSafetyAuthorization(
 }
 
 export function updateSafetyAuthorization(current, patch, state, now = isoNow) {
-  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
-    ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
-    : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
+  const serviceSnapshot = hasOwn(patch, "linkedServiceCatalogIds") || hasOwn(patch, "linkedServiceIds")
+    ? deriveLinkedServiceCatalogSnapshot(
+      state,
+      hasOwn(patch, "linkedServiceCatalogIds") ? patch.linkedServiceCatalogIds : patch.linkedServiceIds,
+      current.linkedServiceCatalogTitles,
+    )
+    : deriveLinkedServiceCatalogSnapshot(
+      state,
+      current.linkedServiceCatalogIds,
+      current.linkedServiceCatalogTitles,
+    );
+  const templateSnapshot = serviceSnapshot.linkedServiceCatalogIds.length > 0
+    ? deriveTemplateSnapshotFromLinkedServices(
+      state,
+      serviceSnapshot.linkedServiceCatalogIds,
+      current.linkedTemplateIds,
+      current.linkedTemplateTitles,
+    )
+    : (hasOwn(patch, "linkedTemplateIds")
+      ? normalizeLinkedTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+      : normalizeLinkedTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles));
   const nextValidForever = hasOwn(patch, "validForever")
     ? normalizeBoolean(patch.validForever, false)
     : normalizeBoolean(current.validForever, false);
@@ -4633,6 +4807,8 @@ export function updateSafetyAuthorization(current, patch, state, now = isoNow) {
         : current.validUntil,
     validForever: nextValidForever,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
+    linkedServiceCatalogIds: serviceSnapshot.linkedServiceCatalogIds,
+    linkedServiceCatalogTitles: serviceSnapshot.linkedServiceCatalogTitles,
     linkedTemplateIds: templateSnapshot.linkedTemplateIds,
     linkedTemplateTitles: templateSnapshot.linkedTemplateTitles,
     documents: hasOwn(patch, "documents")
@@ -4657,6 +4833,7 @@ export function filterSafetyAuthorizations(
       item.title,
       item.scope,
       item.note,
+      ...(item.linkedServiceCatalogTitles ?? []),
       ...(item.linkedTemplateTitles ?? []),
       ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
     ].join(" ").toLowerCase();
