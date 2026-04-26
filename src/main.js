@@ -27131,13 +27131,13 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
 
 const DOCUMENT_TEMPLATE_LOOKUP_MODE_OPTIONS = [
   { value: "WORK_ORDER_NUMBER", label: "Po broju radnog naloga" },
-  { value: "PREVIOUS_DOCUMENT_LOCATION", label: "Po starom zapisniku (ista tvrtka + ista lokacija)" },
+  { value: "PREVIOUS_DOCUMENT_LOCATION", label: "Po prethodnom ispitivanju (ista tvrtka + ista lokacija)" },
   { value: "CUSTOM_VALUE", label: "Rucno" },
 ];
 
 const DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS = [
-  { value: "NONE", label: "Bez ranijeg zapisnika" },
-  { value: "SAME_TEMPLATE_LOCATION", label: "Po starom zapisniku (ista tvrtka + ista lokacija)" },
+  { value: "NONE", label: "Bez prethodnog ispitivanja" },
+  { value: "SAME_TEMPLATE_LOCATION", label: "Po prethodnom ispitivanju (ista tvrtka + ista lokacija)" },
 ];
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
@@ -27442,19 +27442,52 @@ function getDocumentTemplatePreviousRecordOptionsCacheEntry(templateId = "", wor
   return state.documentTemplateRuntime.previousRecordOptions?.[key] ?? null;
 }
 
-function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 0) {
+function getDocumentTemplatePreviousRecordDateValue(record = {}) {
   const anchorDate = String(record.inspectionDate || record.issuedDate || record.createdAt || "").trim();
-  let normalizedDate = "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(anchorDate)) {
-    normalizedDate = anchorDate;
-  } else if (anchorDate) {
-    const parsedDate = new Date(anchorDate);
-    if (!Number.isNaN(parsedDate.getTime())) {
-      normalizedDate = parsedDate.toISOString().slice(0, 10);
-    }
+    return anchorDate;
   }
-  const dateLabel = normalizedDate ? formatCompactDate(normalizedDate) : "bez datuma";
-  return dateLabel;
+  if (!anchorDate) {
+    return "";
+  }
+  const parsedDate = new Date(anchorDate);
+  return Number.isNaN(parsedDate.getTime()) ? "" : parsedDate.toISOString().slice(0, 10);
+}
+
+function getDocumentTemplatePreviousRecordWorkOrderNumber(record = {}) {
+  const rawValue = String(
+    record.workOrderNumber
+    || record.workOrderNo
+    || record.workOrder
+    || record.documentNumber
+    || record.reportNumber
+    || record.number
+    || extractDocumentsExplorerWorkOrderNumber(record)
+    || "",
+  ).trim();
+  return rawValue.replace(/^RN\s+/i, "").trim();
+}
+
+function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 0) {
+  const dateValue = getDocumentTemplatePreviousRecordDateValue(record);
+  const dateLabel = dateValue ? formatCompactDate(dateValue) : "bez datuma";
+  const workOrderNumber = getDocumentTemplatePreviousRecordWorkOrderNumber(record);
+  return [
+    workOrderNumber ? `RN ${workOrderNumber}` : "",
+    dateLabel,
+  ].filter(Boolean).join(" · ") || `Prethodno ispitivanje ${index + 1}`;
+}
+
+function buildDocumentTemplatePreviousRecordSelectLabel(candidate = {}) {
+  if (candidate.id === "template") {
+    return "Template vrijednosti";
+  }
+
+  return [
+    "Prethodno ispitivanje",
+    candidate.label,
+    candidate.meta,
+  ].filter(Boolean).join(" · ");
 }
 
 async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocumentTemplateDraft(), workOrder = {}) {
@@ -27499,7 +27532,7 @@ async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocum
       [cacheKey]: {
         status: "error",
         items: [],
-        error: error.message || "Ne mogu ucitati stare zapisnike.",
+        error: error.message || "Ne mogu ucitati prethodna ispitivanja.",
       },
     };
   }
@@ -27613,7 +27646,7 @@ function getDocumentTemplatePreviousRecordCandidates(field = {}, workOrder = {},
     label: "Template",
     meta: hasMeaningfulDocumentRecordValue(field?.defaultValue)
       ? "Zadana vrijednost iz predloska"
-      : "Ako nema starog zapisnika, ostaje vrijednost iz templatea",
+      : "Ako nema prethodnog ispitivanja, ostaje vrijednost iz templatea",
     value: field?.defaultValue ?? "",
   });
 
@@ -27668,7 +27701,7 @@ function getDocumentTemplatePreviousRecordFieldCandidates(
       ? "Početna Excel tablica iz predloška"
       : (hasMeaningfulDocumentRecordValue(field?.defaultValue)
         ? "Zadana vrijednost iz predloška"
-        : "Ako nema starog zapisnika, ostaje vrijednost iz templatea"),
+        : "Ako nema prethodnog ispitivanja, ostaje vrijednost iz templatea"),
     value: normalizedKind === "sheet"
       ? normalizeWorkOrderMeasurementSheet(field?.sheet ?? field?.measurementSheet) ?? null
       : (field?.defaultValue ?? ""),
@@ -31196,9 +31229,9 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
       : runtimeSourceId === "template"
       ? "Početna tablica iz templatea"
       : runtimeSourceId.startsWith("record:")
-      ? "Podaci iz starog zapisnika"
+      ? "Podaci iz prethodnog ispitivanja"
       : runtimeSnapshot
-      ? "Podaci iz starog zapisnika"
+      ? "Podaci iz prethodnog ispitivanja"
       : fieldSnapshot
       ? "Podaci iz template Excel bloka"
       : (context.sampleWorkOrder?.workOrderNumber
@@ -33474,6 +33507,34 @@ function getDocumentTemplateRuntimeResolvedServiceItems(workOrder = {}) {
   return getWorkOrderServiceItems(workOrder);
 }
 
+function setDocumentTemplateRuntimeServiceItemCompleted(workOrderId = "", serviceIndex = -1, isCompleted = false, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(normalizedId);
+  if (!normalizedId || !workOrder) {
+    return;
+  }
+
+  const currentItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  if (serviceIndex < 0 || serviceIndex >= currentItems.length) {
+    return;
+  }
+
+  const nextItems = currentItems.map((item, index) => (
+    index === serviceIndex
+      ? { ...item, isCompleted: Boolean(isCompleted) }
+      : item
+  ));
+
+  updateDocumentTemplateRuntimeOverride(normalizedId, { serviceItems: nextItems }, { render: false });
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
 function getDocumentTemplateRuntimeMatchedServiceItems(workOrder = {}, template = buildDocumentTemplateDraft()) {
   const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
   const normalizedTemplateTitle = String(template?.title || "").trim().toLowerCase();
@@ -35570,18 +35631,12 @@ function renderDocumentTemplateRuntimeContext() {
       recordBadgeSelect,
       recordSourceState.candidates.map((candidate, candidateIndex) => ({
         value: candidate.id,
-        label: candidate.id === "template"
-          ? "Template vrijednosti"
-          : [
-            candidateIndex === 0 ? "Zadnje ispitivanje" : "Staro ispitivanje",
-            candidate.label,
-            candidate.meta,
-          ].filter(Boolean).join(" · "),
+        label: buildDocumentTemplatePreviousRecordSelectLabel(candidate, candidateIndex),
       })),
       selectedRecordSourceId,
     );
     recordBadgeSelect.disabled = recordSourceState.status === "loading" && recordSourceState.candidates.length <= 1;
-    recordBadgeSelect.title = recordSourceState.error || "Periodika koristi zadnje ispitivanje. Prvo ispitivanje prebaci na Template vrijednosti.";
+    recordBadgeSelect.title = recordSourceState.error || "Periodika koristi prethodno ispitivanje. Prvo ispitivanje prebaci na Template vrijednosti.";
     recordBadgeSelect.addEventListener("change", () => {
       applyDocumentTemplateRuntimeRecordCandidate(activeWorkOrder.id, recordBadgeSelect.value || "template", template, {
         render: true,
@@ -41146,6 +41201,28 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const exportableGroups = groupDocumentTemplateRuntimeDockEntries(exportableEntries);
     const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
+    const summaryGroupStates = groupedEntries.map((group) => {
+      const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
+      const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
+      const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
+      const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
+      const servicesOk = serviceItems.length === 0 || completedServices >= serviceItems.length;
+      const groupOk = !skipped && servicesOk && group.items.length > 0;
+      return {
+        group,
+        workOrder,
+        skipped,
+        serviceItems,
+        completedServices,
+        servicesOk,
+        groupOk,
+      };
+    });
+    const readyGroupCount = summaryGroupStates.filter((item) => item.groupOk).length;
+    const skippedGroupCount = summaryGroupStates.filter((item) => item.skipped).length;
+    const warningGroupCount = summaryGroupStates.filter((item) => !item.groupOk && !item.skipped).length;
+    const totalSummaryServices = summaryGroupStates.reduce((total, item) => total + item.serviceItems.length, 0);
+    const completedSummaryServices = summaryGroupStates.reduce((total, item) => total + item.completedServices, 0);
 
     const summaryBlock = document.createElement("section");
     summaryBlock.className = "document-template-runtime-block document-template-runtime-summary-block";
@@ -41257,15 +41334,41 @@ function renderDocumentTemplateRuntimeFieldRows() {
     exportActions.append(wordButton, pdfButton, printAllButton, sendSignatureButton);
     exportCard.append(exportCardTitle, exportCardMeta, exportActions);
 
+    const summaryOverview = document.createElement("div");
+    summaryOverview.className = "document-template-runtime-summary-overview";
+    const createOverviewCard = (label, value, meta, className = "") => {
+      const card = document.createElement("article");
+      card.className = `document-template-runtime-summary-overview-card ${className}`.trim();
+      const valueElement = document.createElement("strong");
+      valueElement.textContent = value;
+      const labelElement = document.createElement("span");
+      labelElement.textContent = label;
+      const metaElement = document.createElement("small");
+      metaElement.textContent = meta;
+      card.append(valueElement, labelElement, metaElement);
+      return card;
+    };
+    summaryOverview.append(
+      createOverviewCard("Spremno", String(readyGroupCount), "RN-ovi spremni za završetak", "is-ok"),
+      createOverviewCard("Za provjeru", String(warningGroupCount), "Nedostaje oznaka završetka", "is-warning"),
+      createOverviewCard("Preskočeno", String(skippedGroupCount), "Ne ulaze u export", "is-skipped"),
+      createOverviewCard(
+        "Usluge",
+        totalSummaryServices > 0 ? `${completedSummaryServices}/${totalSummaryServices}` : "0",
+        "označeno kao odrađeno",
+        completedSummaryServices >= totalSummaryServices ? "is-ok" : "is-warning",
+      ),
+    );
+
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
-    groupedEntries.forEach((group) => {
-      const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
-      const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
-      const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
-      const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
-      const servicesOk = serviceItems.length === 0 || completedServices >= serviceItems.length;
-      const groupOk = !skipped && servicesOk && group.items.length > 0;
+    summaryGroupStates.forEach(({
+      group,
+      skipped,
+      serviceItems,
+      completedServices,
+      groupOk,
+    }) => {
       const entryCard = document.createElement("article");
       entryCard.className = "document-template-runtime-summary-entry";
       entryCard.classList.toggle("is-skipped", skipped);
@@ -41290,7 +41393,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       statusPill.className = "document-template-runtime-summary-status";
       statusPill.textContent = skipped
         ? "Preskočeno"
-        : (groupOk ? "OK" : "Provjeri");
+        : (groupOk ? "Spremno" : "Provjeri");
       const skipButton = document.createElement("button");
       skipButton.type = "button";
       skipButton.className = "ghost-button document-template-runtime-summary-skip";
@@ -41314,15 +41417,31 @@ function renderDocumentTemplateRuntimeFieldRows() {
         emptyService.textContent = "Nema odabranih usluga na ovom RN-u.";
         serviceList.append(emptyService);
       } else {
-        serviceItems.forEach((service) => {
-          const serviceRow = document.createElement("div");
+        serviceItems.forEach((service, serviceIndex) => {
+          const serviceLabel = service?.name || service?.serviceName || service?.serviceCode || "Usluga";
+          const serviceRow = document.createElement("label");
           serviceRow.className = "document-template-runtime-summary-service";
           serviceRow.classList.toggle("is-complete", Boolean(service?.isCompleted));
+          const serviceCheckbox = document.createElement("input");
+          serviceCheckbox.type = "checkbox";
+          serviceCheckbox.className = "document-template-runtime-summary-service-check";
+          serviceCheckbox.checked = Boolean(service?.isCompleted);
+          serviceCheckbox.disabled = skipped;
+          serviceCheckbox.setAttribute("aria-label", `${service?.isCompleted ? "Makni završeno" : "Označi završeno"} za ${serviceLabel}`);
+          serviceCheckbox.addEventListener("change", (event) => {
+            setDocumentTemplateRuntimeServiceItemCompleted(
+              group.workOrderId,
+              serviceIndex,
+              Boolean(event.currentTarget.checked),
+              { render: true },
+            );
+          });
           const serviceName = document.createElement("span");
-          serviceName.textContent = service.name || service.serviceName || service.serviceCode || "Usluga";
+          serviceName.className = "document-template-runtime-summary-service-name";
+          serviceName.textContent = serviceLabel;
           const serviceStatus = document.createElement("strong");
-          serviceStatus.textContent = service?.isCompleted ? "Odrađeno" : "Nije označeno";
-          serviceRow.append(serviceName, serviceStatus);
+          serviceStatus.textContent = service?.isCompleted ? "Završeno" : "Nije završeno";
+          serviceRow.append(serviceCheckbox, serviceName, serviceStatus);
           serviceList.append(serviceRow);
         });
       }
@@ -41358,7 +41477,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalActions.append(signatureActions, exportActions);
     finalPanel.append(finalCopy, finalActions);
 
-    summaryBody.append(groupedList, finalPanel);
+    summaryBody.append(summaryOverview, groupedList, finalPanel);
     summaryBlock.append(summaryHead, summaryBody);
     shell.append(summaryBlock);
     documentTemplateCustomFields.replaceChildren(shell);
@@ -41435,12 +41554,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
     if (suggestionState.status === "loading" && suggestionState.candidates.length <= 1) {
       const loading = document.createElement("span");
       loading.className = "document-template-runtime-source-empty";
-      loading.textContent = "Učitavam stare zapisnike...";
+      loading.textContent = "Učitavam prethodna ispitivanja...";
       optionList.append(loading);
     } else if (suggestionState.candidates.length === 0) {
       const empty = document.createElement("span");
       empty.className = "document-template-runtime-source-empty";
-      empty.textContent = suggestionState.error || "Nema ranijih zapisnika za ovu tvrtku i lokaciju.";
+      empty.textContent = suggestionState.error || "Nema prethodnih ispitivanja za ovu tvrtku i lokaciju.";
       optionList.append(empty);
     } else {
       suggestionState.candidates.forEach((candidate, candidateIndex) => {
@@ -41477,8 +41596,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const helper = document.createElement("small");
     helper.className = "document-template-runtime-field-help";
     helper.textContent = kind === "sheet"
-      ? "Najprije nudi zadnju spremljenu tablicu, zatim starije verzije, pa početnu tablicu iz templatea."
-      : "Najprije nudi najnoviji stari zapisnik, zatim starije varijante, pa template fallback.";
+      ? "Najprije nudi zadnju spremljenu tablicu, zatim prethodne verzije, pa početnu tablicu iz templatea."
+      : "Najprije nudi najnovije prethodno ispitivanje, zatim prethodne varijante, pa template fallback.";
 
     picker.append(pickerLabel, optionList, helper);
     return picker;
@@ -62617,6 +62736,12 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
 
   const record = getDocumentTemplateRuntimeOverrideRecord(normalizedId, { ensure: true }) ?? {};
   const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
+  const hasServiceItemsPatch = Object.prototype.hasOwnProperty.call(patch, "serviceItems");
+  const serviceItems = hasServiceItemsPatch
+    ? getWorkOrderServiceItems({ serviceItems: Array.isArray(patch.serviceItems) ? patch.serviceItems : [] })
+    : (Object.prototype.hasOwnProperty.call(record, "serviceItems")
+      ? getWorkOrderServiceItems({ serviceItems: record.serviceItems })
+      : null);
   const areaSpecificOverrideFields = Object.fromEntries(
     WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.flatMap((definition) => {
       if (definition.listFieldName) {
@@ -62691,6 +62816,9 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
       ? String(patch.authorizationHolderUserId ?? "").trim()
       : String(record.authorizationHolderUserId ?? "").trim(),
     ...areaSpecificOverrideFields,
+    ...(hasServiceItemsPatch || Object.prototype.hasOwnProperty.call(record, "serviceItems")
+      ? { serviceItems: serviceItems ?? [] }
+      : {}),
     fieldValues: {
       ...(record.fieldValues ?? {}),
     },
@@ -63332,6 +63460,11 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
       fieldValues[fieldKey] = value;
     }
   });
+
+  const workOrderNumber = String(workOrder.workOrderNumber || "").trim();
+  if (workOrderNumber && !hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_NUMBER)) {
+    fieldValues.WORK_ORDER_NUMBER = workOrderNumber;
+  }
 
   return {
     templateId,

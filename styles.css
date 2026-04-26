@@ -4308,8 +4308,8 @@ body.is-location-editor-open {
 }
 
 .checkbox-field input {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   accent-color: #d54dc0;
 }
 
@@ -7676,7 +7676,9 @@ button.dashboard-widget-list-row {
 }
 
 .field-checkbox input {
-  width: auto;
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
   margin: 0;
 }
 
@@ -14809,8 +14811,8 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-row-select {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -14826,8 +14828,8 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-row-select.master {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
 }
 
 .work-orders-scroll-shell:hover .work-group-column-select .work-order-row-select.master,
@@ -14841,8 +14843,8 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-row-select input {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   margin: 0;
   cursor: pointer;
 }
@@ -25084,14 +25086,14 @@ body.is-measurement-equipment-export-open {
 .document-template-editor-panel.is-fill-mode .document-template-runtime-media-field,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-measurement-field,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-digital-signature-card {
-  padding: 10px 12px;
-  border: 1px solid rgba(181, 116, 165, 0.5);
-  border-left: 4px solid rgba(96, 160, 126, 0.75);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(246, 252, 248, 0.98));
+  padding: 9px 11px;
+  border: 1px solid rgba(151, 178, 166, 0.42);
+  border-left: 4px solid rgba(82, 154, 113, 0.78);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 252, 250, 0.98));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 12px 24px rgba(108, 83, 153, 0.07);
+    0 8px 18px rgba(54, 84, 72, 0.06);
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-field-card {
@@ -25114,27 +25116,27 @@ body.is-measurement-equipment-export-open {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #533662;
+  color: #4b5262;
   width: fit-content;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(245, 236, 248, 0.96);
-  border: 1px solid rgba(220, 156, 212, 0.28);
+  background: rgba(244, 248, 246, 0.96);
+  border: 1px solid rgba(143, 173, 160, 0.28);
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block input:not([type="checkbox"]):not([type="radio"]),
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block select,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block textarea {
   width: 100%;
-  min-height: 40px;
-  border-radius: 14px;
-  border: 1px solid rgba(164, 93, 149, 0.48);
+  min-height: 38px;
+  border-radius: 13px;
+  border: 1px solid rgba(173, 193, 184, 0.74);
   background: rgba(255, 255, 255, 1);
   color: #26192f;
   font-weight: 600;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 2px 6px rgba(90, 58, 116, 0.08);
+    0 1px 4px rgba(57, 76, 70, 0.06);
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block input:not([type="checkbox"]):not([type="radio"])::placeholder,
@@ -25145,9 +25147,9 @@ body.is-measurement-equipment-export-open {
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block input:not([type="checkbox"]):not([type="radio"]):focus,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block select:focus,
 .document-template-editor-panel.is-fill-mode .document-template-runtime-block textarea:focus {
-  border-color: rgba(198, 64, 172, 0.55);
+  border-color: rgba(82, 154, 113, 0.62);
   box-shadow:
-    0 0 0 4px rgba(198, 64, 172, 0.12),
+    0 0 0 4px rgba(82, 154, 113, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.98);
   outline: none;
 }
@@ -25175,6 +25177,64 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-summary-card strong,
 .document-template-runtime-summary-entry strong {
   color: #3d2152;
+}
+
+.document-template-runtime-summary-overview {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.document-template-runtime-summary-overview-card {
+  display: grid;
+  gap: 2px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid rgba(186, 199, 217, 0.72);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+}
+
+.document-template-runtime-summary-overview-card strong {
+  color: #26324c;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.document-template-runtime-summary-overview-card span {
+  color: #273653;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.document-template-runtime-summary-overview-card small {
+  color: #69758c;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.document-template-runtime-summary-overview-card.is-ok {
+  border-color: rgba(60, 170, 111, 0.32);
+  background: linear-gradient(180deg, rgba(242, 252, 246, 0.99), rgba(255, 255, 255, 0.98));
+}
+
+.document-template-runtime-summary-overview-card.is-ok strong {
+  color: #25734d;
+}
+
+.document-template-runtime-summary-overview-card.is-warning {
+  border-color: rgba(220, 82, 95, 0.3);
+  background: linear-gradient(180deg, rgba(255, 244, 245, 0.99), rgba(255, 255, 255, 0.98));
+}
+
+.document-template-runtime-summary-overview-card.is-warning strong {
+  color: #a93d49;
+}
+
+.document-template-runtime-summary-overview-card.is-skipped {
+  border-color: rgba(119, 129, 146, 0.24);
+  background: linear-gradient(180deg, rgba(246, 248, 251, 0.99), rgba(255, 255, 255, 0.98));
 }
 
 .document-template-runtime-summary-actions {
@@ -25238,21 +25298,22 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-entry {
-  padding: 8px 12px;
+  padding: 9px 12px;
   border: 1px solid rgba(220, 156, 212, 0.3);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 248, 253, 0.95), rgba(255, 255, 255, 0.98));
   display: grid;
-  gap: 5px;
+  gap: 7px;
 }
 
 .document-template-runtime-summary-entry.is-ok {
-  border-color: rgba(48, 164, 108, 0.28);
+  border-color: rgba(48, 164, 108, 0.36);
   background: linear-gradient(180deg, rgba(245, 253, 248, 0.98), rgba(255, 255, 255, 0.98));
 }
 
 .document-template-runtime-summary-entry.is-warning {
-  border-color: rgba(220, 82, 95, 0.28);
+  border-color: rgba(220, 82, 95, 0.34);
+  background: linear-gradient(180deg, rgba(255, 245, 246, 0.98), rgba(255, 255, 255, 0.98));
 }
 
 .document-template-runtime-summary-entry.is-skipped {
@@ -25329,22 +25390,41 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-service,
 .document-template-runtime-summary-service-empty {
-  min-height: 24px;
+  min-height: 28px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 12px;
   border: 1px solid rgba(220, 156, 212, 0.22);
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 246, 247, 0.86);
   color: #5e5870;
   font-size: 0.78rem;
 }
 
+.document-template-runtime-summary-service-empty {
+  grid-template-columns: minmax(0, 1fr);
+  background: rgba(247, 249, 252, 0.86);
+}
+
 .document-template-runtime-summary-service.is-complete {
-  border-color: rgba(48, 164, 108, 0.2);
+  border-color: rgba(48, 164, 108, 0.26);
   background: rgba(244, 252, 247, 0.96);
+}
+
+.document-template-runtime-summary-service-check {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.document-template-runtime-summary-service-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .document-template-runtime-summary-service strong {
@@ -25675,6 +25755,10 @@ body.is-measurement-equipment-export-open {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .document-template-runtime-summary-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .document-template-runtime-summary-final-panel,
   .document-template-runtime-summary-entry-head {
     grid-template-columns: minmax(0, 1fr);
@@ -25854,9 +25938,9 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 12px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
   border: 1px solid rgba(220, 156, 212, 0.4);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.96);
@@ -25864,8 +25948,8 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-checkbox input {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   accent-color: #c640ac;
 }
 
@@ -26148,9 +26232,9 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-checklist-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 12px;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
   border: 1px solid rgba(220, 156, 212, 0.34);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.96);
@@ -26162,10 +26246,10 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-checklist-item input[type="checkbox"] {
-  width: 18px;
-  min-width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
   margin: 0;
 }
 
@@ -26173,14 +26257,15 @@ body.is-measurement-equipment-export-open {
 .field-checkbox input[type="checkbox"],
 .work-order-row-select input[type="checkbox"],
 .document-template-runtime-checkbox input[type="checkbox"],
-.document-template-runtime-checklist-item input[type="checkbox"] {
+.document-template-runtime-checklist-item input[type="checkbox"],
+.document-template-runtime-summary-service-check {
   appearance: none;
   -webkit-appearance: none;
   display: inline-grid;
   place-content: center;
-  border: 1.5px solid rgba(94, 111, 142, 0.52);
+  border: 1.25px solid rgba(94, 111, 142, 0.56);
   border-top-color: rgba(62, 75, 104, 0.76);
-  border-radius: 5px;
+  border-radius: 4px;
   background: linear-gradient(180deg, #ffffff, #f7f9ff);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
@@ -26191,13 +26276,14 @@ body.is-measurement-equipment-export-open {
 .field-checkbox input[type="checkbox"]::after,
 .work-order-row-select input[type="checkbox"]::after,
 .document-template-runtime-checkbox input[type="checkbox"]::after,
-.document-template-runtime-checklist-item input[type="checkbox"]::after {
+.document-template-runtime-checklist-item input[type="checkbox"]::after,
+.document-template-runtime-summary-service-check::after {
   content: "";
-  width: 9px;
-  height: 5px;
+  width: 7px;
+  height: 4px;
   margin-top: -1px;
-  border-left: 2px solid #ffffff;
-  border-bottom: 2px solid #ffffff;
+  border-left: 1.75px solid #ffffff;
+  border-bottom: 1.75px solid #ffffff;
   transform: rotate(-45deg) scale(0);
   transform-origin: center;
   transition: transform 120ms ease;
@@ -26207,7 +26293,8 @@ body.is-measurement-equipment-export-open {
 .field-checkbox input[type="checkbox"]:checked,
 .work-order-row-select input[type="checkbox"]:checked,
 .document-template-runtime-checkbox input[type="checkbox"]:checked,
-.document-template-runtime-checklist-item input[type="checkbox"]:checked {
+.document-template-runtime-checklist-item input[type="checkbox"]:checked,
+.document-template-runtime-summary-service-check:checked {
   border-color: rgba(198, 64, 172, 0.92);
   border-top-color: rgba(138, 41, 118, 0.95);
   background: linear-gradient(135deg, #f04f97, #7b5cff);
@@ -26217,7 +26304,8 @@ body.is-measurement-equipment-export-open {
 .field-checkbox input[type="checkbox"]:checked::after,
 .work-order-row-select input[type="checkbox"]:checked::after,
 .document-template-runtime-checkbox input[type="checkbox"]:checked::after,
-.document-template-runtime-checklist-item input[type="checkbox"]:checked::after {
+.document-template-runtime-checklist-item input[type="checkbox"]:checked::after,
+.document-template-runtime-summary-service-check:checked::after {
   transform: rotate(-45deg) scale(1);
 }
 
