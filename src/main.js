@@ -1647,6 +1647,7 @@ function createEmptyAppCapabilityModule({ withItem = true } = {}) {
   return {
     id: createClientSideId("app-capability-module"),
     title: "",
+    description: "",
     items: withItem ? [createEmptyAppCapabilityItem()] : [],
   };
 }
@@ -1655,6 +1656,7 @@ function cloneAppCapabilityModules(modules = []) {
   return (Array.isArray(modules) ? modules : []).map((module) => ({
     id: String(module?.id || createClientSideId("app-capability-module")),
     title: String(module?.title || "").trim(),
+    description: String(module?.description || "").trim(),
     items: (Array.isArray(module?.items) ? module.items : []).map((item) => ({
       id: String(item?.id || createClientSideId("app-capability-item")),
       title: String(item?.title || "").trim(),
@@ -1667,6 +1669,7 @@ function normalizeAppCapabilities(value = []) {
   return cloneAppCapabilityModules(value)
     .map((module) => {
       const title = String(module.title || "").trim();
+      const description = String(module.description || "").trim();
       const items = module.items
         .map((item) => ({
           id: String(item.id || createClientSideId("app-capability-item")),
@@ -1675,13 +1678,14 @@ function normalizeAppCapabilities(value = []) {
         }))
         .filter((item) => item.title);
 
-      if (!title && items.length === 0) {
+      if (!title && !description && items.length === 0) {
         return null;
       }
 
       return {
         id: String(module.id || createClientSideId("app-capability-module")),
         title: title || "Modul",
+        description,
         items,
       };
     })
@@ -4473,6 +4477,7 @@ function buildAppCapabilitiesPdfMarkup(modules = [], organizationName = "") {
           <div>
             <div class="module-eyebrow">MODUL</div>
             <h2>${escapeHtml(module.title || "Bez naziva")}</h2>
+            ${module.description ? `<p class="module-description">${escapeHtml(module.description)}</p>` : ""}
           </div>
           <div class="module-count">${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}</div>
         </div>
@@ -4638,6 +4643,13 @@ function buildAppCapabilitiesPdfMarkup(modules = [], organizationName = "") {
       .module-head h2 {
         margin: 0;
         font-size: 22px;
+      }
+      .module-description {
+        max-width: 560px;
+        margin: 8px 0 0;
+        color: #5a6c91;
+        font-size: 13px;
+        line-height: 1.45;
       }
       .module-eyebrow {
         margin: 0 0 6px;
@@ -4933,10 +4945,24 @@ function renderAppCapabilitiesDialog({ preserveScroll = false } = {}) {
         targetModule.title = titleInput.value;
       }
     });
+    const descriptionLabel = document.createElement("span");
+    descriptionLabel.className = "app-capabilities-module-label";
+    descriptionLabel.textContent = "Opis";
+    const descriptionInput = document.createElement("textarea");
+    descriptionInput.className = "app-capabilities-module-description-input";
+    descriptionInput.placeholder = "Kratko opiši što modul pokriva, što je gotovo i što još treba doraditi...";
+    descriptionInput.value = module.description || "";
+    descriptionInput.disabled = !canEdit;
+    descriptionInput.addEventListener("input", () => {
+      const targetModule = state.appCapabilitiesDialog.modules[moduleIndex];
+      if (targetModule) {
+        targetModule.description = descriptionInput.value;
+      }
+    });
     const titleMeta = document.createElement("span");
     titleMeta.className = "app-capabilities-module-meta";
     titleMeta.textContent = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
-    titleField.append(titleLabel, titleInput, titleMeta);
+    titleField.append(titleLabel, titleInput, descriptionLabel, descriptionInput, titleMeta);
 
     const moduleActions = document.createElement("div");
     moduleActions.className = "app-capabilities-module-actions";
@@ -27455,7 +27481,7 @@ function getDocumentTemplatePreviousRecordDateValue(record = {}) {
 }
 
 function getDocumentTemplatePreviousRecordWorkOrderNumber(record = {}) {
-  const rawValue = String(
+  const directValue = String(
     record.workOrderNumber
     || record.workOrderNo
     || record.workOrder
@@ -27465,7 +27491,13 @@ function getDocumentTemplatePreviousRecordWorkOrderNumber(record = {}) {
     || extractDocumentsExplorerWorkOrderNumber(record)
     || "",
   ).trim();
-  return rawValue.replace(/^RN\s+/i, "").trim();
+  const normalizedDirectValue = directValue.replace(/^RN\s+/i, "").trim();
+  if (normalizedDirectValue) {
+    return normalizedDirectValue;
+  }
+
+  const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record);
+  return String(linkedWorkOrder?.workOrderNumber || "").replace(/^RN\s+/i, "").trim();
 }
 
 function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 0) {
@@ -27473,8 +27505,8 @@ function buildDocumentTemplatePreviousRecordCandidateLabel(record = {}, index = 
   const dateLabel = dateValue ? formatCompactDate(dateValue) : "bez datuma";
   const workOrderNumber = getDocumentTemplatePreviousRecordWorkOrderNumber(record);
   return [
-    workOrderNumber ? `RN ${workOrderNumber}` : "",
     dateLabel,
+    workOrderNumber ? `RN ${workOrderNumber}` : "",
   ].filter(Boolean).join(" · ") || `Prethodno ispitivanje ${index + 1}`;
 }
 
@@ -27486,7 +27518,6 @@ function buildDocumentTemplatePreviousRecordSelectLabel(candidate = {}) {
   return [
     "Prethodno ispitivanje",
     candidate.label,
-    candidate.meta,
   ].filter(Boolean).join(" · ");
 }
 
@@ -41334,32 +41365,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
     exportActions.append(wordButton, pdfButton, printAllButton, sendSignatureButton);
     exportCard.append(exportCardTitle, exportCardMeta, exportActions);
 
-    const summaryOverview = document.createElement("div");
-    summaryOverview.className = "document-template-runtime-summary-overview";
-    const createOverviewCard = (label, value, meta, className = "") => {
-      const card = document.createElement("article");
-      card.className = `document-template-runtime-summary-overview-card ${className}`.trim();
-      const valueElement = document.createElement("strong");
-      valueElement.textContent = value;
-      const labelElement = document.createElement("span");
-      labelElement.textContent = label;
-      const metaElement = document.createElement("small");
-      metaElement.textContent = meta;
-      card.append(valueElement, labelElement, metaElement);
-      return card;
-    };
-    summaryOverview.append(
-      createOverviewCard("Spremno", String(readyGroupCount), "RN-ovi spremni za završetak", "is-ok"),
-      createOverviewCard("Za provjeru", String(warningGroupCount), "Nedostaje oznaka završetka", "is-warning"),
-      createOverviewCard("Preskočeno", String(skippedGroupCount), "Ne ulaze u export", "is-skipped"),
-      createOverviewCard(
-        "Usluge",
-        totalSummaryServices > 0 ? `${completedSummaryServices}/${totalSummaryServices}` : "0",
-        "označeno kao odrađeno",
-        completedSummaryServices >= totalSummaryServices ? "is-ok" : "is-warning",
-      ),
-    );
-
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
     summaryGroupStates.forEach(({
@@ -41446,13 +41451,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         });
       }
 
-      const serviceMeta = document.createElement("p");
-      serviceMeta.className = "helper-copy module-copy document-template-runtime-summary-service-meta";
-      serviceMeta.textContent = serviceItems.length > 0
-        ? `${completedServices}/${serviceItems.length} usluga označeno kao odrađeno.`
-        : "Dodaj usluge na RN ako ovaj zapisnik treba pratiti uslugu.";
-
-      entryCard.append(entryHead, entryChips, serviceList, serviceMeta);
+      entryCard.append(entryHead, entryChips, serviceList);
       groupedList.append(entryCard);
     });
 
@@ -41464,11 +41463,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalTitle.textContent = "Završetak i potpis";
     const finalMeta = document.createElement("p");
     finalMeta.className = "helper-copy module-copy";
-    finalMeta.textContent = [
-      batchCardMeta.textContent,
-      signatureCardMeta.textContent,
-      exportCardMeta.textContent,
-    ].filter(Boolean).join(" ");
+    finalMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN" : "RN-a"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} za export.`;
     finalCopy.append(finalTitle, finalMeta);
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
@@ -41477,7 +41472,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalActions.append(signatureActions, exportActions);
     finalPanel.append(finalCopy, finalActions);
 
-    summaryBody.append(summaryOverview, groupedList, finalPanel);
+    summaryBody.append(groupedList, finalPanel);
     summaryBlock.append(summaryHead, summaryBody);
     shell.append(summaryBlock);
     documentTemplateCustomFields.replaceChildren(shell);

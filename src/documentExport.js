@@ -1978,6 +1978,7 @@ export async function buildAppCapabilitiesPdfBuffer({
   const safeModules = (Array.isArray(modules) ? modules : [])
     .map((module) => ({
       title: clean(module?.title) || "Bez naziva",
+      description: clean(module?.description),
       items: (Array.isArray(module?.items) ? module.items : [])
         .map((item) => ({
           title: clean(item?.title) || "Bez opisa",
@@ -2091,11 +2092,17 @@ export async function buildAppCapabilitiesPdfBuffer({
   }
 
   safeModules.forEach((module) => {
-    helpers.ensureSpace(60);
     const headerX = doc.page.margins.left;
-    const headerY = doc.y;
+    let headerY = doc.y;
     const headerWidth = helpers.availableWidth;
-    const headerHeight = 42;
+    const descriptionWidth = headerWidth - 64;
+    doc.font("dejavu").fontSize(8.8);
+    const descriptionHeight = module.description
+      ? doc.heightOfString(module.description, { width: descriptionWidth, lineGap: 1.1 })
+      : 0;
+    const headerHeight = module.description ? Math.max(58, 45 + descriptionHeight) : 42;
+    helpers.ensureSpace(headerHeight + 18);
+    headerY = doc.y;
 
     doc.save();
     doc.roundedRect(headerX, headerY, headerWidth, headerHeight, 16);
@@ -2107,6 +2114,12 @@ export async function buildAppCapabilitiesPdfBuffer({
     doc.font("dejavu-bold").fontSize(12).fillColor("#111827").text(module.title, headerX + 28, headerY + 9, {
       width: headerWidth - 160,
     });
+    if (module.description) {
+      doc.font("dejavu").fontSize(8.8).fillColor("#64748b").text(module.description, headerX + 28, headerY + 28, {
+        width: descriptionWidth,
+        lineGap: 1.1,
+      });
+    }
     const countLabel = `${module.items.length} ${module.items.length === 1 ? "stavka" : "stavki"}`;
     doc.font("dejavu-bold").fontSize(8.8).fillColor("#5f6f95").text(countLabel, headerX + headerWidth - 120, headerY + 14, {
       width: 92,

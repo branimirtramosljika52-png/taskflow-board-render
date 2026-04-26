@@ -488,6 +488,7 @@ function normalizeAppCapabilitiesModules(value = []) {
   return value
     .map((module) => {
       const title = dbString(module?.title ?? module?.name ?? module?.label).trim();
+      const description = dbString(module?.description ?? module?.summary ?? module?.note).trim();
       if (!title) {
         return null;
       }
@@ -514,6 +515,7 @@ function normalizeAppCapabilitiesModules(value = []) {
       return {
         ...(moduleId ? { id: moduleId } : {}),
         title,
+        description,
         items,
       };
     })
