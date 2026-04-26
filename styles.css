@@ -10299,8 +10299,8 @@ body.is-work-order-editor-open {
 .work-order-bulk-bar {
   position: fixed;
   left: 50%;
-  bottom: 20px;
-  width: min(1240px, calc(100vw - 52px));
+  bottom: 18px;
+  width: min(1240px, calc(100vw - 72px));
   transform: translateX(-50%);
   z-index: 180;
   pointer-events: none;
@@ -10308,13 +10308,13 @@ body.is-work-order-editor-open {
 
 .work-order-bulk-bar-shell {
   pointer-events: auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(142px, 180px) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 14px;
-  padding: 12px 14px;
-  border-radius: 20px;
+  gap: 16px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-radius: 22px;
   background: rgba(18, 20, 25, 0.96);
   color: #f7f8fb;
   box-shadow: 0 24px 60px rgba(10, 12, 18, 0.34);
@@ -10322,8 +10322,11 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-count-group {
-  min-width: 180px;
-  display: grid;
+  min-width: 0;
+  display: flex;
+  min-height: 48px;
+  flex-direction: column;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -10352,22 +10355,28 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-actions-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns:
+    minmax(138px, 154px)
+    minmax(126px, 144px)
+    minmax(156px, 170px)
+    minmax(210px, 1fr)
+    minmax(176px, 190px)
+    minmax(98px, 112px);
+  align-items: end;
   justify-content: flex-end;
-  flex-wrap: wrap;
   gap: 10px;
-  flex: 1;
+  min-width: 0;
 }
 
 .work-order-bulk-field,
 .work-order-bulk-picker-slot {
-  min-width: 132px;
+  min-width: 0;
 }
 
 .work-order-bulk-field {
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .work-order-bulk-field > span {
@@ -10381,7 +10390,7 @@ body.is-work-order-editor-open {
 .work-order-bulk-choice-trigger,
 .work-order-bulk-field input,
 .work-order-bulk-executor-trigger {
-  min-height: 44px;
+  min-height: 40px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
@@ -10392,7 +10401,7 @@ body.is-work-order-editor-open {
 
 .work-order-bulk-choice-trigger,
 .work-order-bulk-field input {
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .work-order-bulk-choice-trigger {
@@ -10436,13 +10445,18 @@ body.is-work-order-editor-open {
   cursor: wait;
 }
 
-.work-order-bulk-field input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  opacity: 0.9;
+.work-order-bulk-field input {
+  width: 100%;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.work-order-bulk-field input::placeholder {
+  color: rgba(247, 248, 251, 0.72);
 }
 
 .work-order-bulk-action-button {
-  min-height: 44px;
+  min-height: 42px;
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
@@ -10462,12 +10476,13 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-executor-picker {
-  min-width: 196px;
+  min-width: 0;
+  width: 100%;
 }
 
 .work-order-bulk-executor-trigger {
   width: 100%;
-  padding: 8px 12px;
+  padding: 7px 12px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -10597,7 +10612,43 @@ body.is-work-order-editor-open {
 }
 
 .work-orders-scroll-shell.has-bulk-bar {
-  padding-bottom: 114px;
+  padding-bottom: 104px;
+}
+
+@media (max-width: 1180px) {
+  .work-order-bulk-bar {
+    width: min(1040px, calc(100vw - 36px));
+  }
+
+  .work-order-bulk-bar-shell {
+    grid-template-columns: minmax(132px, 160px) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .work-order-bulk-actions-row {
+    grid-template-columns:
+      minmax(120px, 1fr)
+      minmax(120px, 1fr)
+      minmax(138px, 1fr)
+      minmax(180px, 1.4fr)
+      minmax(160px, 1fr)
+      minmax(92px, auto);
+  }
+}
+
+@media (max-width: 860px) {
+  .work-order-bulk-bar {
+    width: calc(100vw - 24px);
+    bottom: 12px;
+  }
+
+  .work-order-bulk-bar-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-order-bulk-actions-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .workspace-view-chips {

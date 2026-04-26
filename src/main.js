@@ -61478,9 +61478,15 @@ function renderWorkOrderBatchBar() {
   }
 
   if (workOrderBulkDueDateInput) {
-    workOrderBulkDueDateInput.value = sharedDueDate.mixed ? "" : sharedDueDate.value;
+    workOrderBulkDueDateInput.value = sharedDueDate.mixed
+      ? ""
+      : (sharedDueDate.value ? formatCompactDate(sharedDueDate.value) : "");
+    workOrderBulkDueDateInput.placeholder = sharedDueDate.mixed ? "Različiti rokovi" : "dd.mm.yyyy";
+    workOrderBulkDueDateInput.dataset.isoValue = sharedDueDate.mixed ? "" : sharedDueDate.value;
     workOrderBulkDueDateInput.disabled = state.workOrderBatch.pending;
-    workOrderBulkDueDateInput.title = sharedDueDate.mixed ? "Odabrani RN-ovi imaju različite rokove" : "Postavi rok";
+    workOrderBulkDueDateInput.title = sharedDueDate.mixed
+      ? "Odabrani RN-ovi imaju različite rokove. Upiši novi rok kao dd.mm.yyyy."
+      : "Postavi rok kao dd.mm.yyyy";
   }
 
   if (workOrderBulkExecutorsPicker) {
@@ -66961,7 +66967,15 @@ workOrderBulkDueDateInput?.addEventListener("change", () => {
     return;
   }
 
-  const nextValue = String(workOrderBulkDueDateInput.value || "").trim();
+  const rawValue = String(workOrderBulkDueDateInput.value || "").trim();
+  const nextValue = normalizeDateInputValue(rawValue);
+  if (rawValue && !/^\d{4}-\d{2}-\d{2}$/.test(nextValue)) {
+    state.workOrderBatch.message = "Upiši rok u formatu dd.mm.yyyy.";
+    state.workOrderBatch.tone = "error";
+    renderWorkOrderBatchBar();
+    return;
+  }
+  workOrderBulkDueDateInput.value = nextValue ? formatCompactDate(nextValue) : "";
   void applyWorkOrderBatchUpdate({ dueDate: nextValue }, {
     successMessage: nextValue
       ? `Rok je ažuriran za ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`
