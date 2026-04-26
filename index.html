@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260426k" />
+    <link rel="stylesheet" href="/styles.css?v=20260426l" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -630,6 +630,16 @@
                     </svg>
                   </span>
                   <strong>Add New</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="client-portal">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 4 19 7v5c0 4.1-2.8 6.7-7 8-4.2-1.3-7-3.9-7-8V7l7-3Z"></path>
+                      <circle cx="12" cy="11" r="2"></circle>
+                      <path d="M12 13v3"></path>
+                    </svg>
+                  </span>
+                  <strong>Client Portal</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="contract">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -4758,6 +4768,146 @@
               </div>
             </section>
 
+            <section id="client-portal-module" class="client-portal-module" hidden>
+              <section class="panel client-portal-hero">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Portal klijenta</p>
+                    <h3>Dodjela pristupa po tvrtki i lokaciji</h3>
+                  </div>
+                  <div class="client-portal-head-actions">
+                    <button id="client-portal-open-company" type="button" class="ghost-button">Otvori tvrtku</button>
+                    <button id="client-portal-refresh" type="button" class="ghost-button">Osvježi</button>
+                  </div>
+                </div>
+                <div class="client-portal-summary-grid">
+                  <article>
+                    <span>Klijentski korisnici</span>
+                    <strong id="client-portal-total-users">0</strong>
+                  </article>
+                  <article>
+                    <span>Tvrtke s pristupom</span>
+                    <strong id="client-portal-company-count">0</strong>
+                  </article>
+                  <article>
+                    <span>Samo odabrane lokacije</span>
+                    <strong id="client-portal-location-scoped-count">0</strong>
+                  </article>
+                  <article>
+                    <span>Pristup svim lokacijama</span>
+                    <strong id="client-portal-all-locations-count">0</strong>
+                  </article>
+                </div>
+              </section>
+
+              <div class="client-portal-layout">
+                <section class="panel client-portal-access-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Pristup</p>
+                      <h3>Novi klijentski korisnik</h3>
+                    </div>
+                  </div>
+
+                  <label class="field client-portal-company-field">
+                    <span>Tvrtka</span>
+                    <select id="client-portal-company-id"></select>
+                  </label>
+
+                  <div class="company-client-form-card client-portal-form-card">
+                    <div class="company-client-person-panel">
+                      <div class="company-client-mini-title">
+                        <span>Podaci korisnika</span>
+                      </div>
+                      <div class="form-grid company-client-person-grid">
+                        <label class="field">
+                          <span>Ime</span>
+                          <input id="client-portal-first-name" type="text" maxlength="120" autocomplete="given-name" />
+                        </label>
+                        <label class="field">
+                          <span>Prezime</span>
+                          <input id="client-portal-last-name" type="text" maxlength="160" autocomplete="family-name" />
+                        </label>
+                        <label class="field">
+                          <span>OIB</span>
+                          <input id="client-portal-oib" type="text" inputmode="numeric" maxlength="11" />
+                        </label>
+                        <label class="field">
+                          <span>Email</span>
+                          <input id="client-portal-email" type="email" maxlength="180" autocomplete="email" />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="company-client-location-panel">
+                      <div class="company-client-location-toolbar">
+                        <span>Lokacije</span>
+                        <label class="toggle-row company-client-all-locations-toggle">
+                          <input id="client-portal-all-locations" type="checkbox" checked />
+                          <span>Sve lokacije</span>
+                        </label>
+                      </div>
+                      <label class="field company-client-location-field">
+                        <span>Pretraga lokacija</span>
+                        <input id="client-portal-location-search" type="search" placeholder="Pretraži lokacije..." autocomplete="off" />
+                        <div id="client-portal-location-list" class="company-client-location-list" role="listbox" aria-label="Odabir lokacija za portal" aria-multiselectable="true"></div>
+                        <select id="client-portal-location-ids" multiple size="4" hidden></select>
+                      </label>
+                    </div>
+
+                    <div class="company-client-action-panel">
+                      <p id="client-portal-feedback" class="form-error" aria-live="polite"></p>
+                      <div class="entity-actions company-client-user-actions">
+                        <button id="client-portal-create-user" type="button" class="primary-button">Dodaj i pošalji pristup</button>
+                        <button id="client-portal-clear-user" type="button" class="ghost-button">Očisti</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="panel client-portal-users-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Korisnici</p>
+                      <h3>Aktivni pristupi za odabranu tvrtku</h3>
+                    </div>
+                    <span id="client-portal-selected-users-count" class="work-order-activity-count is-compact">0</span>
+                  </div>
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="client-portal-search" type="search" placeholder="Ime, email, lokacija..." autocomplete="off" />
+                  </label>
+                  <div id="client-portal-users-list" class="client-portal-users-list"></div>
+                  <p id="client-portal-users-empty" class="helper-copy" hidden>Nema klijentskih pristupa za odabranu tvrtku.</p>
+                </section>
+              </div>
+
+              <section class="panel client-portal-preview-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Preview</p>
+                    <h3>Kako će klijent vidjeti portal</h3>
+                  </div>
+                  <span id="client-portal-preview-scope" class="client-portal-scope-pill">Sve lokacije</span>
+                </div>
+                <div class="client-portal-preview-card">
+                  <div class="client-portal-preview-brand">
+                    <span class="client-portal-preview-logo" aria-hidden="true">
+                      <svg class="icon-svg" viewBox="0 0 24 24">
+                        <path d="M12 4 19 7v5c0 4.1-2.8 6.7-7 8-4.2-1.3-7-3.9-7-8V7l7-3Z"></path>
+                        <path d="m9.5 12 1.7 1.7 3.4-3.9"></path>
+                      </svg>
+                    </span>
+                    <div>
+                      <strong id="client-portal-preview-company">Odaberi tvrtku</strong>
+                      <span id="client-portal-preview-location">Sve lokacije tvrtke</span>
+                    </div>
+                  </div>
+                  <div id="client-portal-preview-list" class="client-portal-preview-list"></div>
+                </div>
+              </section>
+            </section>
+
             <section id="periodics-module" class="periodics-module" hidden>
               <div class="periodics-summary-grid">
                 <article class="periodics-stat-card is-total">
@@ -6711,6 +6861,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260426k"></script>
+    <script type="module" src="/src/main.js?v=20260426l"></script>
   </body>
 </html>

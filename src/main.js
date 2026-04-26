@@ -1016,6 +1016,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Ovdje mozemo kasnije izdvojiti ugovore, broj ugovora, anekse i povezane komercijalne dokumente.",
     chips: ["Contracts", "Renewals", "Annexes"],
   },
+  "client-portal": {
+    kicker: "Company",
+    title: "Client Portal",
+    description: "Dodjela klijentskih pristupa po tvrtki i lokaciji, uz slanje privremene lozinke emailom.",
+    chips: ["Client access", "Companies", "Locations"],
+  },
   documents: {
     kicker: "Documents",
     title: "Documents",
@@ -1059,6 +1065,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "drawing-studio": { group: "operations", view: "module", module: "drawing-studio" },
   "list-company": { group: "company", view: "companies", focus: "list" },
   "add-company": { group: "company", view: "companies", focus: "form" },
+  "client-portal": { group: "company", view: "module", module: "client-portal" },
   contract: { group: "company", view: "module", module: "contract" },
   "list-location": { group: "locations", view: "locations", focus: "list" },
   "add-location": { group: "locations", view: "locations", focus: "form" },
@@ -1108,6 +1115,7 @@ const SIDEBAR_ITEM_LABELS = {
   "drawing-studio": "Drawing Studio",
   "list-company": "List Company",
   "add-company": "Add New",
+  "client-portal": "Client Portal",
   contract: "Contract",
   "list-location": "List Location",
   "add-location": "Add New",
@@ -2230,6 +2238,7 @@ const sidebarNavItems = Array.from(document.querySelectorAll("[data-sidebar-item
 const controlPanelNavItem = document.querySelector('[data-sidebar-item="control-panel"]');
 const companyListNavItem = document.querySelector('[data-sidebar-item="list-company"]');
 const companyAddNavItem = document.querySelector('[data-sidebar-item="add-company"]');
+const companyClientPortalNavItem = document.querySelector('[data-sidebar-item="client-portal"]');
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -2682,6 +2691,33 @@ const contractTemplatePlaceholderList = document.querySelector("#contract-templa
 const contractTemplateError = document.querySelector("#contract-template-error");
 const contractTemplateToggleReferenceButton = document.querySelector("#contract-template-toggle-reference");
 const contractTemplateReferenceBody = document.querySelector("#contract-template-reference-body");
+const clientPortalModule = document.querySelector("#client-portal-module");
+const clientPortalCompanyInput = document.querySelector("#client-portal-company-id");
+const clientPortalFirstNameInput = document.querySelector("#client-portal-first-name");
+const clientPortalLastNameInput = document.querySelector("#client-portal-last-name");
+const clientPortalOibInput = document.querySelector("#client-portal-oib");
+const clientPortalEmailInput = document.querySelector("#client-portal-email");
+const clientPortalAllLocationsInput = document.querySelector("#client-portal-all-locations");
+const clientPortalLocationSearchInput = document.querySelector("#client-portal-location-search");
+const clientPortalLocationList = document.querySelector("#client-portal-location-list");
+const clientPortalLocationIdsInput = document.querySelector("#client-portal-location-ids");
+const clientPortalFeedback = document.querySelector("#client-portal-feedback");
+const clientPortalCreateUserButton = document.querySelector("#client-portal-create-user");
+const clientPortalClearUserButton = document.querySelector("#client-portal-clear-user");
+const clientPortalSearchInput = document.querySelector("#client-portal-search");
+const clientPortalRefreshButton = document.querySelector("#client-portal-refresh");
+const clientPortalOpenCompanyButton = document.querySelector("#client-portal-open-company");
+const clientPortalTotalUsers = document.querySelector("#client-portal-total-users");
+const clientPortalCompanyCount = document.querySelector("#client-portal-company-count");
+const clientPortalLocationScopedCount = document.querySelector("#client-portal-location-scoped-count");
+const clientPortalAllLocationsCount = document.querySelector("#client-portal-all-locations-count");
+const clientPortalSelectedUsersCount = document.querySelector("#client-portal-selected-users-count");
+const clientPortalUsersList = document.querySelector("#client-portal-users-list");
+const clientPortalUsersEmpty = document.querySelector("#client-portal-users-empty");
+const clientPortalPreviewScope = document.querySelector("#client-portal-preview-scope");
+const clientPortalPreviewCompany = document.querySelector("#client-portal-preview-company");
+const clientPortalPreviewLocation = document.querySelector("#client-portal-preview-location");
+const clientPortalPreviewList = document.querySelector("#client-portal-preview-list");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
@@ -9287,6 +9323,7 @@ function renderModuleView() {
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
   const isContractModule = state.activeModuleItem === "contract";
+  const isClientPortalModule = state.activeModuleItem === "client-portal";
   const isPeriodicsModule = state.activeModuleItem === "periodics";
   const isDrawingStudioModule = state.activeModuleItem === "drawing-studio";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
@@ -9303,6 +9340,7 @@ function renderModuleView() {
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isContractModule
+    && !isClientPortalModule
     && !isSafetyAuthorizationModule
     && !isServiceCatalogModule
     && !isSettingsModule
@@ -9371,6 +9409,10 @@ function renderModuleView() {
     contractModule.hidden = !isContractModule;
   }
 
+  if (clientPortalModule) {
+    clientPortalModule.hidden = !isClientPortalModule;
+  }
+
   if (periodicsModule) {
     periodicsModule.hidden = !isPeriodicsModule;
   }
@@ -9425,6 +9467,10 @@ function renderModuleView() {
 
   if (isContractModule) {
     renderContractModule();
+  }
+
+  if (isClientPortalModule) {
+    renderClientPortalModule();
   }
 
   if (isPeriodicsModule) {
@@ -44999,6 +45045,9 @@ function renderAuthState() {
     if (companyAddNavItem) {
       companyAddNavItem.hidden = !canCreateCompany;
     }
+    if (companyClientPortalNavItem) {
+      companyClientPortalNavItem.hidden = !canViewCompanies;
+    }
     if (workOrderOpenFormButton) {
       workOrderOpenFormButton.hidden = !getCanEditOperationalData();
     }
@@ -46057,6 +46106,448 @@ async function createCompanyClientUser() {
     setInlineMessage(companyClientFeedback, "Klijentski pristup je kreiran i podaci su poslani emailom.", "success");
   }
   return success;
+}
+
+function getClientPortalUsers(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const users = (state.users ?? []).filter(isClientPortalUser);
+  if (!normalizedCompanyId) {
+    return users.sort((left, right) => String(left.fullName || left.email || "").localeCompare(String(right.fullName || right.email || ""), "hr"));
+  }
+
+  return users
+    .filter((user) => normalizeClientScopeIdsClient(user.clientCompanyIds).includes(normalizedCompanyId))
+    .sort((left, right) => String(left.fullName || left.email || "").localeCompare(String(right.fullName || right.email || ""), "hr"));
+}
+
+function getClientPortalSelectedCompanyId() {
+  return String(clientPortalCompanyInput?.value || "").trim();
+}
+
+function rebuildClientPortalCompanyOptions() {
+  if (!(clientPortalCompanyInput instanceof HTMLSelectElement)) {
+    return "";
+  }
+
+  const currentValue = getClientPortalSelectedCompanyId();
+  const companies = (state.companies ?? [])
+    .slice()
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr", { sensitivity: "base" }));
+
+  if (companies.length === 0 || !getCanViewCompanies()) {
+    clientPortalCompanyInput.replaceChildren(createOption("", companies.length === 0 ? "Nema tvrtki" : "Nemaš pristup tvrtkama"));
+    clientPortalCompanyInput.value = "";
+    clientPortalCompanyInput.disabled = true;
+    return "";
+  }
+
+  clientPortalCompanyInput.disabled = false;
+  replaceSelectOptions(
+    clientPortalCompanyInput,
+    companies.map((company) => ({ value: company.id, label: company.name || "Tvrtka" })),
+    currentValue || companies[0]?.id || "",
+  );
+  return getClientPortalSelectedCompanyId();
+}
+
+function renderClientPortalLocationList() {
+  if (!clientPortalLocationList || !(clientPortalLocationIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const companyId = getClientPortalSelectedCompanyId();
+  const allLocationsMode = Boolean(clientPortalAllLocationsInput?.checked);
+  const selectedIds = new Set(getSelectedMultiSelectValues(clientPortalLocationIdsInput));
+  const queryNeedle = normalizeLooseName(clientPortalLocationSearchInput?.value || "");
+  const allCompanyLocations = companyId ? getCompanyLocations(companyId) : [];
+  const locations = allCompanyLocations.filter((location) => (
+    !queryNeedle
+    || normalizeLooseName([
+      location.name,
+      location.region,
+      location.coordinates,
+    ].filter(Boolean).join(" ")).includes(queryNeedle)
+  ));
+
+  if (clientPortalLocationSearchInput) {
+    clientPortalLocationSearchInput.disabled = allLocationsMode || !companyId;
+  }
+  clientPortalLocationList.classList.toggle("is-disabled", allLocationsMode || !companyId);
+
+  if (!companyId) {
+    const empty = document.createElement("p");
+    empty.className = "company-client-location-empty";
+    empty.textContent = "Prvo odaberi tvrtku.";
+    clientPortalLocationList.replaceChildren(empty);
+    return;
+  }
+
+  if (allLocationsMode) {
+    const summary = document.createElement("p");
+    summary.className = "company-client-location-summary";
+    summary.textContent = allCompanyLocations.length > 0
+      ? `Pristup vrijedi za sve lokacije ove tvrtke (${allCompanyLocations.length}).`
+      : "Pristup vrijedi za sve sadašnje i buduće lokacije ove tvrtke.";
+    clientPortalLocationList.replaceChildren(summary);
+    return;
+  }
+
+  if (locations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "company-client-location-empty";
+    empty.textContent = queryNeedle ? "Nema lokacija za pretragu." : "Nema lokacija za ovu tvrtku.";
+    clientPortalLocationList.replaceChildren(empty);
+    return;
+  }
+
+  clientPortalLocationList.replaceChildren(...locations.map((location) => {
+    const locationId = String(location.id);
+    const isSelected = selectedIds.has(locationId);
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "company-client-location-option";
+    option.dataset.locationId = locationId;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(isSelected));
+
+    const checkbox = document.createElement("span");
+    checkbox.className = "company-client-location-check";
+    checkbox.textContent = isSelected ? "✓" : "";
+
+    const copy = document.createElement("span");
+    copy.className = "company-client-location-copy";
+    const title = document.createElement("strong");
+    title.textContent = location.name || "Lokacija";
+    const meta = document.createElement("small");
+    meta.textContent = [location.region, location.coordinates].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    option.append(checkbox, copy);
+    return option;
+  }));
+}
+
+function rebuildClientPortalLocationOptions(selectedIds = []) {
+  if (!(clientPortalLocationIdsInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const companyId = getClientPortalSelectedCompanyId();
+  const selectedSet = new Set(normalizeClientScopeIdsClient(selectedIds));
+  const locations = companyId ? getCompanyLocations(companyId) : [];
+  if (locations.length === 0) {
+    clientPortalLocationIdsInput.replaceChildren(createOption("", companyId ? "Nema lokacija za ovu tvrtku" : "Prvo odaberi tvrtku"));
+    clientPortalLocationIdsInput.disabled = true;
+    renderClientPortalLocationList();
+    return;
+  }
+
+  clientPortalLocationIdsInput.disabled = Boolean(clientPortalAllLocationsInput?.checked);
+  clientPortalLocationIdsInput.replaceChildren(...locations.map((location) => createOption(location.id, location.name || "Lokacija")));
+  Array.from(clientPortalLocationIdsInput.options).forEach((option) => {
+    option.selected = selectedSet.has(String(option.value));
+  });
+  renderClientPortalLocationList();
+}
+
+function toggleClientPortalLocationSelection(locationId = "") {
+  if (!(clientPortalLocationIdsInput instanceof HTMLSelectElement) || clientPortalAllLocationsInput?.checked) {
+    return;
+  }
+
+  const option = Array.from(clientPortalLocationIdsInput.options)
+    .find((entry) => String(entry.value) === String(locationId));
+  if (!option) {
+    return;
+  }
+
+  option.selected = !option.selected;
+  renderClientPortalLocationList();
+  renderClientPortalPreview();
+}
+
+function resetClientPortalUserForm() {
+  if (clientPortalFirstNameInput) {
+    clientPortalFirstNameInput.value = "";
+  }
+  if (clientPortalLastNameInput) {
+    clientPortalLastNameInput.value = "";
+  }
+  if (clientPortalOibInput) {
+    clientPortalOibInput.value = "";
+  }
+  if (clientPortalEmailInput) {
+    clientPortalEmailInput.value = "";
+  }
+  if (clientPortalLocationSearchInput) {
+    clientPortalLocationSearchInput.value = "";
+  }
+  if (clientPortalAllLocationsInput) {
+    clientPortalAllLocationsInput.checked = true;
+  }
+  rebuildClientPortalLocationOptions([]);
+  setInlineMessage(clientPortalFeedback, "");
+  renderClientPortalPreview();
+}
+
+function buildClientPortalUserPayload() {
+  const companyId = getClientPortalSelectedCompanyId();
+  const selectedLocationIds = clientPortalAllLocationsInput?.checked
+    ? []
+    : getSelectedMultiSelectValues(clientPortalLocationIdsInput);
+
+  return {
+    firstName: String(clientPortalFirstNameInput?.value || "").trim(),
+    lastName: String(clientPortalLastNameInput?.value || "").trim(),
+    displayName: "",
+    profileRole: "client_user",
+    title: "",
+    oib: String(clientPortalOibInput?.value || "").trim(),
+    email: String(clientPortalEmailInput?.value || "").trim(),
+    organizationId: state.activeOrganizationId,
+    organizationIds: [state.activeOrganizationId].filter(Boolean),
+    role: "user",
+    isActive: "true",
+    clientCompanyIds: [companyId].filter(Boolean),
+    clientLocationIds: selectedLocationIds,
+    clientAccessAllLocations: Boolean(clientPortalAllLocationsInput?.checked),
+    legacyUsername: "",
+    avatarDataUrl: "",
+    documents: [],
+    electricalQualification: {},
+  };
+}
+
+async function createClientPortalUserFromModule() {
+  const companyId = getClientPortalSelectedCompanyId();
+  if (!companyId || !getCanEditCompany(companyId)) {
+    setInlineMessage(clientPortalFeedback, "Odaberi tvrtku za koju dodaješ klijenta.");
+    return false;
+  }
+
+  const payload = buildClientPortalUserPayload();
+  if (!payload.firstName || !payload.lastName || !payload.email) {
+    setInlineMessage(clientPortalFeedback, "Ime, prezime i email su obavezni.");
+    return false;
+  }
+  if (!payload.clientAccessAllLocations && payload.clientLocationIds.length === 0) {
+    setInlineMessage(clientPortalFeedback, "Odaberi barem jednu lokaciju ili uključi sve lokacije.");
+    return false;
+  }
+
+  if (clientPortalCreateUserButton) {
+    clientPortalCreateUserButton.disabled = true;
+  }
+  const success = await runMutation(() => apiRequest("/users", {
+    method: "POST",
+    body: payload,
+  }), clientPortalFeedback);
+  if (clientPortalCreateUserButton) {
+    clientPortalCreateUserButton.disabled = false;
+  }
+  if (success) {
+    resetClientPortalUserForm();
+    renderClientPortalModule();
+    renderCompanyClientPortalPanel();
+    setInlineMessage(clientPortalFeedback, "Klijentski pristup je kreiran i privremena lozinka je poslana emailom.", "success");
+  }
+  return success;
+}
+
+function getClientPortalUserSearchText(user = {}) {
+  const companyNames = normalizeClientScopeIdsClient(user.clientCompanyIds)
+    .map((companyId) => getCompany(companyId)?.name || "")
+    .filter(Boolean);
+  const locationNames = normalizeClientScopeIdsClient(user.clientLocationIds)
+    .map((locationId) => getLocation(locationId)?.name || "")
+    .filter(Boolean);
+
+  return normalizeLooseName([
+    user.fullName,
+    user.email,
+    user.oib,
+    ...companyNames,
+    ...locationNames,
+    getClientPortalLocationLabel(user),
+  ].filter(Boolean).join(" "));
+}
+
+function createClientPortalUserCard(user) {
+  const row = document.createElement("article");
+  row.className = "client-portal-user-card";
+
+  const avatar = document.createElement("span");
+  avatar.className = "client-portal-user-avatar";
+  avatar.textContent = getUserInitials(user) || "KP";
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-user-copy";
+  const title = document.createElement("strong");
+  title.textContent = user.fullName || user.email || "Klijent";
+  const meta = document.createElement("span");
+  meta.textContent = user.email || "Bez emaila";
+  const scope = document.createElement("small");
+  scope.className = "client-portal-user-scope";
+  scope.textContent = getClientPortalLocationLabel(user);
+  copy.append(title, meta, scope);
+
+  const actions = document.createElement("div");
+  actions.className = "client-portal-user-actions";
+  actions.append(
+    createActionButton("Pošalji lozinku", "card-button", () => {
+      void runMutation(() => apiRequest(`/users/${encodeURIComponent(String(user.id))}/password-reset`, {
+        method: "POST",
+      }), clientPortalFeedback).then((success) => {
+        if (success) {
+          setInlineMessage(clientPortalFeedback, "Nova privremena lozinka je poslana emailom.", "success");
+        }
+      });
+    }),
+  );
+
+  const primaryCompanyId = normalizeClientScopeIdsClient(user.clientCompanyIds)[0] || getClientPortalSelectedCompanyId();
+  const company = getCompany(primaryCompanyId);
+  if (company) {
+    actions.append(createActionButton("Otvori tvrtku", "ghost-button", () => {
+      activateSidebarItem("list-company", { expandSidebar: state.sidebarCollapsed });
+      requestAnimationFrame(() => {
+        hydrateCompanyForm(company);
+      });
+    }));
+  }
+
+  row.append(avatar, copy, actions);
+  return row;
+}
+
+function getClientPortalSelectedLocationIdsForPreview() {
+  if (clientPortalAllLocationsInput?.checked) {
+    return [];
+  }
+  return getSelectedMultiSelectValues(clientPortalLocationIdsInput);
+}
+
+function filterClientPortalRecordsByScope(records = [], companyId = "", locationIds = []) {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const locationSet = new Set(normalizeClientScopeIdsClient(locationIds));
+  return (records ?? []).filter((record) => {
+    if (normalizedCompanyId && String(record?.companyId || "") !== normalizedCompanyId) {
+      return false;
+    }
+    if (locationSet.size > 0 && !locationSet.has(String(record?.locationId || ""))) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function renderClientPortalPreview() {
+  const companyId = getClientPortalSelectedCompanyId();
+  const company = getCompany(companyId);
+  const selectedLocationIds = getClientPortalSelectedLocationIdsForPreview();
+  const allLocations = Boolean(clientPortalAllLocationsInput?.checked);
+  const companyLocations = companyId ? getCompanyLocations(companyId) : [];
+  const selectedLocationNames = selectedLocationIds
+    .map((locationId) => getLocation(locationId)?.name || "")
+    .filter(Boolean);
+  const scopeLabel = allLocations
+    ? "Sve lokacije"
+    : (selectedLocationNames.length > 0 ? `${selectedLocationNames.length} odabrane lokacije` : "Odaberi lokacije");
+
+  if (clientPortalPreviewScope) {
+    clientPortalPreviewScope.textContent = scopeLabel;
+  }
+  if (clientPortalPreviewCompany) {
+    clientPortalPreviewCompany.textContent = company?.name || "Odaberi tvrtku";
+  }
+  if (clientPortalPreviewLocation) {
+    clientPortalPreviewLocation.textContent = allLocations
+      ? (companyLocations.length > 0 ? `Sve lokacije tvrtke (${companyLocations.length})` : "Sve sadašnje i buduće lokacije")
+      : (selectedLocationNames.join(", ") || "Odaberi jednu ili više lokacija");
+  }
+
+  if (!clientPortalPreviewList) {
+    return;
+  }
+
+  const scopedWorkOrders = filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds);
+  const scopedOffers = (state.offers ?? []).filter((offer) => String(offer?.companyId || "") === companyId);
+  const scopedPurchaseOrders = (state.purchaseOrders ?? []).filter((item) => String(item?.companyId || "") === companyId);
+  const scopedUsers = getClientPortalUsers(companyId);
+  const previewItems = [
+    { label: "RN i ispitivanja", value: scopedWorkOrders.length, copy: "Radni nalozi, statusi i zapisnici za opseg pristupa." },
+    { label: "Zapisnici", value: scopedWorkOrders.filter((item) => Array.isArray(item.serviceItems) && item.serviceItems.length > 0).length, copy: "Dokumenti i završeni zapisnici iz odabranih RN-ova." },
+    { label: "Ponude", value: scopedOffers.length, copy: "Ponude povezane s ovom tvrtkom." },
+    { label: "Narudžbenice", value: scopedPurchaseOrders.length, copy: "Ulazne i izlazne narudžbenice za klijenta." },
+    { label: "Klijentski korisnici", value: scopedUsers.length, copy: "Osobe koje imaju pristup portalu." },
+  ];
+
+  clientPortalPreviewList.replaceChildren(...previewItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = "client-portal-preview-item";
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    const value = document.createElement("strong");
+    value.textContent = String(item.value);
+    const copy = document.createElement("small");
+    copy.textContent = item.copy;
+    card.append(label, value, copy);
+    return card;
+  }));
+}
+
+function renderClientPortalModule() {
+  if (!clientPortalModule) {
+    return;
+  }
+
+  const companyId = rebuildClientPortalCompanyOptions();
+  rebuildClientPortalLocationOptions(getSelectedMultiSelectValues(clientPortalLocationIdsInput));
+
+  const clientUsers = getClientPortalUsers();
+  const companyIdsWithAccess = new Set(clientUsers.flatMap((user) => normalizeClientScopeIdsClient(user.clientCompanyIds)));
+  const allLocationUsers = clientUsers.filter((user) => user.clientAccessAllLocations !== false);
+  const locationScopedUsers = clientUsers.filter((user) => user.clientAccessAllLocations === false);
+
+  if (clientPortalTotalUsers) {
+    clientPortalTotalUsers.textContent = String(clientUsers.length);
+  }
+  if (clientPortalCompanyCount) {
+    clientPortalCompanyCount.textContent = String(companyIdsWithAccess.size);
+  }
+  if (clientPortalLocationScopedCount) {
+    clientPortalLocationScopedCount.textContent = String(locationScopedUsers.length);
+  }
+  if (clientPortalAllLocationsCount) {
+    clientPortalAllLocationsCount.textContent = String(allLocationUsers.length);
+  }
+
+  const queryNeedle = normalizeLooseName(clientPortalSearchInput?.value || "");
+  const visibleUsers = getClientPortalUsers(companyId).filter((user) => (
+    !queryNeedle || getClientPortalUserSearchText(user).includes(queryNeedle)
+  ));
+
+  if (clientPortalSelectedUsersCount) {
+    clientPortalSelectedUsersCount.textContent = String(visibleUsers.length);
+  }
+  if (clientPortalUsersEmpty) {
+    clientPortalUsersEmpty.hidden = visibleUsers.length > 0;
+    clientPortalUsersEmpty.textContent = companyId
+      ? "Nema klijentskih pristupa za odabranu tvrtku."
+      : "Odaberi tvrtku za pregled pristupa.";
+  }
+  if (clientPortalUsersList) {
+    clientPortalUsersList.replaceChildren(...visibleUsers.map(createClientPortalUserCard));
+  }
+
+  if (clientPortalCreateUserButton) {
+    clientPortalCreateUserButton.disabled = !companyId || !getCanEditCompany(companyId);
+  }
+  if (clientPortalOpenCompanyButton) {
+    clientPortalOpenCompanyButton.disabled = !companyId || !getCompany(companyId);
+  }
+
+  renderClientPortalPreview();
 }
 
 function buildCompanyPayload() {
@@ -70183,6 +70674,64 @@ companyClientCreateUserButton?.addEventListener("click", () => {
 
 companyClientClearUserButton?.addEventListener("click", () => {
   resetCompanyClientUserForm();
+});
+
+clientPortalCompanyInput?.addEventListener("change", () => {
+  if (clientPortalLocationSearchInput) {
+    clientPortalLocationSearchInput.value = "";
+  }
+  rebuildClientPortalLocationOptions([]);
+  setInlineMessage(clientPortalFeedback, "");
+  renderClientPortalModule();
+});
+
+clientPortalAllLocationsInput?.addEventListener("change", () => {
+  rebuildClientPortalLocationOptions(getSelectedMultiSelectValues(clientPortalLocationIdsInput));
+  renderClientPortalPreview();
+});
+
+clientPortalLocationSearchInput?.addEventListener("input", () => {
+  renderClientPortalLocationList();
+});
+
+clientPortalLocationList?.addEventListener("click", (event) => {
+  const option = event.target instanceof Element
+    ? event.target.closest("[data-location-id]")
+    : null;
+  if (!(option instanceof HTMLElement) || !clientPortalLocationList.contains(option)) {
+    return;
+  }
+
+  toggleClientPortalLocationSelection(option.dataset.locationId || "");
+});
+
+clientPortalSearchInput?.addEventListener("input", () => {
+  renderClientPortalModule();
+});
+
+clientPortalCreateUserButton?.addEventListener("click", () => {
+  void createClientPortalUserFromModule();
+});
+
+clientPortalClearUserButton?.addEventListener("click", () => {
+  resetClientPortalUserForm();
+});
+
+clientPortalRefreshButton?.addEventListener("click", () => {
+  renderClientPortalModule();
+  setInlineMessage(clientPortalFeedback, "Pregled je osvježen.", "success");
+});
+
+clientPortalOpenCompanyButton?.addEventListener("click", () => {
+  const company = getCompany(getClientPortalSelectedCompanyId());
+  if (!company) {
+    return;
+  }
+
+  activateSidebarItem("list-company", { expandSidebar: state.sidebarCollapsed });
+  requestAnimationFrame(() => {
+    hydrateCompanyForm(company);
+  });
 });
 
 companyNameInput?.addEventListener("input", () => {
