@@ -28956,6 +28956,38 @@ function saveDocumentTemplate() {
   });
 }
 
+function deleteDocumentTemplate(templateOrId = "", { closeEditorOnSuccess = false } = {}) {
+  const templateId = String(typeof templateOrId === "object" ? templateOrId?.id : templateOrId || "").trim();
+  if (!templateId) {
+    return;
+  }
+
+  const template = typeof templateOrId === "object"
+    ? templateOrId
+    : ((state.documentTemplates ?? []).find((item) => String(item.id) === templateId) ?? null);
+  const templateTitle = String(template?.title || "").trim() || "ovaj template";
+
+  if (!window.confirm(`Obrisati template "${templateTitle}"?`)) {
+    return;
+  }
+
+  const currentEditorTemplateId = String(documentTemplateIdInput?.value || "").trim();
+  const shouldCloseEditor = closeEditorOnSuccess || currentEditorTemplateId === templateId;
+
+  void runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(templateId)}`, {
+    method: "DELETE",
+  }), state.documentTemplateEditorOpen ? documentTemplateError : null).then((success) => {
+    if (!success) {
+      return;
+    }
+
+    if (shouldCloseEditor) {
+      closeDocumentTemplateEditor({ reset: true });
+    }
+    renderDocumentTemplateModule();
+  });
+}
+
 function getDocumentTemplateSelectedLegalFrameworks(template = buildDocumentTemplateDraft()) {
   const templateId = String(template.id || "");
   const derivedIds = templateId
@@ -44068,7 +44100,22 @@ function renderDocumentTemplateModule() {
     footer.className = "document-template-card-footer";
     const updated = document.createElement("span");
     updated.textContent = template.updatedAt ? `Ažurirano ${formatDateTime(template.updatedAt)}` : "Nova skica";
-    footer.append(updated);
+    const actions = document.createElement("div");
+    actions.className = "document-template-card-actions";
+    actions.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    actions.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    actions.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+    });
+    actions.append(createActionButton("Obriši", "ghost-button document-template-card-action is-danger", (event) => {
+      event.stopPropagation();
+      deleteDocumentTemplate(template);
+    }));
+    footer.append(updated, actions);
 
     const openCard = () => {
       hydrateDocumentTemplateForm(template);
@@ -69306,20 +69353,7 @@ documentTemplateRuntimeDockScrollNextButton?.addEventListener("click", () => {
 });
 
 documentTemplateDeleteButton?.addEventListener("click", () => {
-  const templateId = documentTemplateIdInput?.value || "";
-
-  if (!templateId || !window.confirm("Obrisati ovaj template?")) {
-    return;
-  }
-
-  void runMutation(() => apiRequest(`/document-templates/${templateId}`, {
-    method: "DELETE",
-  }), documentTemplateError).then((success) => {
-    if (success) {
-      closeDocumentTemplateEditor({ reset: true });
-      renderDocumentTemplateModule();
-    }
-  });
+  deleteDocumentTemplate(documentTemplateIdInput?.value || "", { closeEditorOnSuccess: true });
 });
 
 documentTemplateCompanyIdInput?.addEventListener("change", () => {

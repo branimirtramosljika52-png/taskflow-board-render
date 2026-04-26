@@ -22692,7 +22692,30 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-card-footer {
-  justify-content: flex-start;
+  justify-content: space-between;
+}
+
+.document-template-card-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.document-template-card-action.is-danger {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: rgba(205, 76, 94, 0.34);
+  color: #a73547;
+  background: rgba(255, 247, 249, 0.96);
+}
+
+.document-template-card-action.is-danger:hover,
+.document-template-card-action.is-danger:focus-visible {
+  border-color: rgba(205, 76, 94, 0.58);
+  color: #8f2637;
+  background: rgba(255, 239, 243, 0.98);
 }
 
 .legal-framework-card-dates,
