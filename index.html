@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260426b" />
+    <link rel="stylesheet" href="/styles.css?v=20260426c" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1979,6 +1979,62 @@
                         <input id="measurement-validation-allow-custom" type="checkbox" checked />
                         <span>Dopusti ručni unos izvan liste</span>
                       </label>
+                    </div>
+                  </div>
+
+                  <div class="measurement-toolbar-ai">
+                    <button id="measurement-ai-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="AI opis kolone" aria-label="AI opis kolone">AI</button>
+                    <div id="measurement-ai-popover" class="measurement-ai-popover" hidden>
+                      <div class="measurement-ai-popover-head">
+                        <div>
+                          <strong>AI opis kolone</strong>
+                          <span id="measurement-ai-column-label">Odaberi kolonu</span>
+                        </div>
+                      </div>
+
+                      <label class="measurement-toolbar-format is-compact">
+                        <span class="measurement-toolbar-label">Format</span>
+                        <select id="measurement-ai-format" aria-label="AI format vrijednosti">
+                          <option value="text">Tekst</option>
+                          <option value="number">Broj</option>
+                          <option value="date">Datum</option>
+                          <option value="boolean">Da / ne</option>
+                          <option value="enum">Lista vrijednosti</option>
+                          <option value="measurement">Mjerenje s jedinicom</option>
+                        </select>
+                      </label>
+
+                      <label class="measurement-toolbar-format measurement-ai-description-field">
+                        <span class="measurement-toolbar-label">Opis</span>
+                        <textarea id="measurement-ai-description" rows="4" placeholder="Npr. Prostor, etaža ili konkretna lokacija unutar objekta gdje se oprema nalazi."></textarea>
+                      </label>
+
+                      <label class="measurement-toolbar-format">
+                        <span class="measurement-toolbar-label">Sinonimi</span>
+                        <input id="measurement-ai-synonyms" type="text" placeholder="prostor, prostorija, mjesto montaže" />
+                      </label>
+
+                      <label class="measurement-toolbar-format">
+                        <span class="measurement-toolbar-label">Moguće vrijednosti</span>
+                        <input id="measurement-ai-allowed-values" type="text" placeholder="Ispravno, Neispravno, N/P" />
+                      </label>
+
+                      <label class="measurement-toolbar-format">
+                        <span class="measurement-toolbar-label">Primjeri</span>
+                        <input id="measurement-ai-examples" type="text" placeholder="Hodnik prizemlje, Stubiste A, Kotlovnica" />
+                      </label>
+
+                      <label class="measurement-toolbar-format">
+                        <span class="measurement-toolbar-label">Ne popunjavati iz</span>
+                        <input id="measurement-ai-avoid" type="text" placeholder="npr. adresa tvrtke, sjedište, mjesto izdavanja" />
+                      </label>
+
+                      <label class="measurement-validation-checkbox">
+                        <input id="measurement-ai-required" type="checkbox" />
+                        <span>Obavezna kolona za AI popunjavanje</span>
+                      </label>
+
+                      <p class="measurement-ai-helper">Ovo ne mijenja izgled tablice. Služi kao uputa AI-ju kako mapirati stari zapisnik u tvoju Excel kolonu.</p>
                     </div>
                   </div>
 
@@ -6627,6 +6683,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260426b"></script>
+    <script type="module" src="/src/main.js?v=20260426c"></script>
   </body>
 </html>

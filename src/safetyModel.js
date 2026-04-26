@@ -1280,6 +1280,30 @@ function normalizeMeasurementSheetColumnValidationSnapshot(input = {}, available
   };
 }
 
+const MEASUREMENT_AI_COLUMN_FORMATS = new Set([
+  "text",
+  "number",
+  "date",
+  "boolean",
+  "enum",
+  "measurement",
+]);
+
+function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const format = normalizeText(source?.format).toLowerCase();
+
+  return {
+    description: normalizeText(source?.description).slice(0, 2000),
+    synonyms: normalizeMeasurementSheetValidationOptions(source?.synonyms).slice(0, 80),
+    allowedValues: normalizeMeasurementSheetValidationOptions(source?.allowedValues).slice(0, 160),
+    examples: normalizeMeasurementSheetValidationOptions(source?.examples).slice(0, 80),
+    avoid: normalizeText(source?.avoid).slice(0, 1000),
+    format: MEASUREMENT_AI_COLUMN_FORMATS.has(format) ? format : "text",
+    required: normalizeBoolean(source?.required, false),
+  };
+}
+
 function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
   const width = Number(input?.width);
   const computed = normalizeText(input?.computed);
@@ -1292,6 +1316,7 @@ function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
     computed: computed || null,
     readonly: normalizeBoolean(input?.readonly, false),
     validation: normalizeMeasurementSheetColumnValidationSnapshot(input?.validation, new Set(), normalizeText(input?.id) || `measurement-column-${index + 1}`),
+    aiMapping: normalizeMeasurementSheetColumnAiMappingSnapshot(input?.aiMapping ?? input?.ai),
   };
 }
 

@@ -9528,13 +9528,15 @@ body.is-work-order-editor-open {
   flex-wrap: wrap;
 }
 
-.measurement-toolbar-validation {
+.measurement-toolbar-validation,
+.measurement-toolbar-ai {
   position: relative;
   display: inline-flex;
   align-items: center;
 }
 
-.measurement-validation-popover {
+.measurement-validation-popover,
+.measurement-ai-popover {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -9548,6 +9550,59 @@ body.is-work-order-editor-open {
   border: 1px solid rgba(214, 89, 173, 0.22);
   background: rgba(255, 252, 255, 0.98);
   box-shadow: 0 20px 40px rgba(56, 35, 91, 0.16);
+}
+
+.measurement-ai-popover {
+  min-width: 460px;
+  max-width: min(560px, 86vw);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.measurement-ai-popover-head,
+.measurement-ai-description-field,
+.measurement-ai-helper {
+  grid-column: 1 / -1;
+}
+
+.measurement-ai-popover-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.measurement-ai-popover-head strong {
+  display: block;
+  color: #2d1c3d;
+  font-size: 0.95rem;
+}
+
+.measurement-ai-popover-head span,
+.measurement-ai-helper {
+  color: #6d6280;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.measurement-ai-popover textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid #d9deea;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1f2433;
+}
+
+.measurement-ai-popover textarea:focus {
+  outline: none;
+  border-color: rgba(83, 104, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(83, 104, 255, 0.12);
+}
+
+.measurement-ai-helper {
+  margin: 0;
 }
 
 .measurement-validation-options {
@@ -9671,6 +9726,13 @@ body.is-work-order-editor-open {
   min-width: 38px;
   padding: 0 10px;
   letter-spacing: 0.04em;
+}
+
+.measurement-toolbar-icon-button.is-active {
+  border-color: rgba(198, 64, 172, 0.44);
+  background: linear-gradient(135deg, rgba(255, 242, 252, 0.98), rgba(243, 250, 246, 0.98));
+  color: #74315f;
+  box-shadow: 0 10px 22px rgba(108, 83, 153, 0.1);
 }
 
 .measurement-toolbar-format.is-compact {
@@ -9821,7 +9883,8 @@ body.is-work-order-editor-open {
   box-shadow: none;
 }
 
-.measurement-column-validation-badge {
+.measurement-column-validation-badge,
+.measurement-column-ai-badge {
   grid-column: 1;
   grid-row: 1;
   justify-self: end;
@@ -9837,6 +9900,16 @@ body.is-work-order-editor-open {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.measurement-column-ai-badge {
+  transform: translateX(-42px);
+  background: rgba(47, 104, 84, 0.12);
+  color: #2f6854;
+}
+
+.measurement-sheet-grid thead th.has-ai-mapping:not(.has-validation-list) .measurement-column-ai-badge {
+  transform: none;
 }
 
 .measurement-sheet-grid thead th[data-column-id] {
