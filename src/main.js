@@ -3075,6 +3075,7 @@ let activeDocumentTemplateSheetIndex = 0;
 let activeDocumentTemplateSectionTarget = "";
 let activeDocumentTemplateTextTarget = null;
 let activeDocumentTemplateInspectorFieldId = "";
+let documentTemplateInspectorModalOpen = false;
 let documentTemplateEditorSupportRefreshTimer = 0;
 let documentTemplateEditorSupportRefreshFrame = 0;
 let documentTemplateDraftCache = null;
@@ -3676,6 +3677,7 @@ const measurementValidationOptionsInput = document.querySelector("#measurement-v
 const measurementValidationAllowCustomInput = document.querySelector("#measurement-validation-allow-custom");
 const measurementAiButton = document.querySelector("#measurement-ai-button");
 const measurementAiPopover = document.querySelector("#measurement-ai-popover");
+const measurementAiCloseButton = document.querySelector("#measurement-ai-close");
 const measurementAiColumnLabel = document.querySelector("#measurement-ai-column-label");
 const measurementAiFormatInput = document.querySelector("#measurement-ai-format");
 const measurementAiDescriptionInput = document.querySelector("#measurement-ai-description");
@@ -28294,6 +28296,7 @@ function focusDocumentTemplateFieldLabel(fieldId = "") {
   }
 
   activeDocumentTemplateInspectorFieldId = String(fieldId || "").trim();
+  documentTemplateInspectorModalOpen = true;
   if (!isDocumentTemplateRuntimeFillMode()) {
     renderDocumentTemplateFieldRows();
   }
@@ -28361,6 +28364,53 @@ function getDocumentTemplateBuilderInspectorFieldId(visibleFields = []) {
     return String(activeDocumentTemplateInspectorFieldId || "");
   }
   return String(safeFields[0]?.id || "").trim();
+}
+
+function syncDocumentTemplateInspectorModal() {
+  const shouldShow = Boolean(
+    documentTemplateInspectorModalOpen
+    && activeDocumentTemplateInspectorFieldId
+    && !isDocumentTemplateRuntimeFillMode(),
+  );
+
+  if (documentTemplateBuilderInspector) {
+    documentTemplateBuilderInspector.hidden = !shouldShow;
+    documentTemplateBuilderInspector.classList.toggle("is-open", shouldShow);
+    documentTemplateBuilderInspector.setAttribute("aria-hidden", String(!shouldShow));
+  }
+}
+
+function closeDocumentTemplateInspectorModal({ render = false } = {}) {
+  documentTemplateInspectorModalOpen = false;
+  if (render) {
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+    return;
+  }
+  syncDocumentTemplateInspectorModal();
+}
+
+function openDocumentTemplateInspectorModal(fieldId = "", { focus = false } = {}) {
+  const normalizedFieldId = String(fieldId || "").trim();
+  if (!normalizedFieldId) {
+    return;
+  }
+
+  activeDocumentTemplateInspectorFieldId = normalizedFieldId;
+  documentTemplateInspectorModalOpen = true;
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+  } else {
+    syncDocumentTemplateInspectorModal();
+  }
+
+  if (focus) {
+    requestAnimationFrame(() => {
+      const inspectorInput = documentTemplateFieldInspector?.querySelector("input, textarea, select");
+      if (inspectorInput instanceof HTMLElement) {
+        inspectorInput.focus({ preventScroll: true });
+      }
+    });
+  }
 }
 
 function getDocumentTemplateBuilderWidthPercent(field = {}) {
@@ -35629,7 +35679,7 @@ function syncDocumentTemplateEditorChrome() {
     documentTemplateBuilderSidebar.hidden = fillMode;
   }
   if (documentTemplateBuilderInspector) {
-    documentTemplateBuilderInspector.hidden = fillMode;
+    syncDocumentTemplateInspectorModal();
   }
   if (documentTemplatePreviewBlock) {
     documentTemplatePreviewBlock.hidden = fillMode;
@@ -42421,6 +42471,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
   inspectorShell.append(inspectorEmpty);
 
   if (visibleFields.length === 0) {
+    documentTemplateInspectorModalOpen = false;
+  }
+
+  if (visibleFields.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy document-template-sheet-empty";
     empty.textContent = "Template je prazan. Dodaj blok, pravilnike, opremu ili Excel tablicu pa nastavi slagati raspored.";
@@ -42506,16 +42560,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     headActions.className = "document-template-item-head-actions";
 
     const selectInspectorField = ({ focus = false } = {}) => {
-      activeDocumentTemplateInspectorFieldId = fieldId;
-      renderDocumentTemplateFieldRows({ renderSupport: false });
-      if (focus) {
-        requestAnimationFrame(() => {
-          const inspectorInput = documentTemplateFieldInspector?.querySelector("input, textarea, select");
-          if (inspectorInput instanceof HTMLElement) {
-            inspectorInput.focus({ preventScroll: true });
-          }
-        });
-      }
+      openDocumentTemplateInspectorModal(fieldId, { focus });
     };
 
     const settingsButton = createActionButton("Postavke", "ghost-button document-template-canvas-settings", () => {
@@ -42568,8 +42613,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       if (target?.closest("button, input, select, textarea, a")) {
         return;
       }
-      activeDocumentTemplateInspectorFieldId = fieldId;
-      renderDocumentTemplateFieldRows({ renderSupport: false });
+      openDocumentTemplateInspectorModal(fieldId);
     });
 
     row.addEventListener("dragover", (event) => {
@@ -43624,7 +43668,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       const inspectorMeta = document.createElement("span");
       inspectorMeta.textContent = "Mijenjaj placeholdere, izvore podataka i veličinu odabranog polja.";
       inspectorCopy.append(inspectorTitle, inspectorMeta);
-      inspectorHeader.append(inspectorCopy);
+      const inspectorCloseButton = createActionButton("Zatvori", "ghost-button document-template-inspector-close", () => {
+        closeDocumentTemplateInspectorModal();
+      });
+      inspectorHeader.append(inspectorCopy, inspectorCloseButton);
 
       inspectorShell.append(inspectorHeader);
       if (tokenRow) {
@@ -43740,6 +43787,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
   if (documentTemplateFieldInspector) {
     documentTemplateFieldInspector.replaceChildren(inspectorShell);
   }
+  syncDocumentTemplateInspectorModal();
 
   const activeTemplateSheetFieldId = String(state.measurementSheet.ownerFieldId || "").trim();
   const hasActiveTemplateSheetField = activeTemplateSheetFieldId
@@ -44033,6 +44081,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateTextTarget = null;
   activeDocumentTemplateSectionTarget = "";
   activeDocumentTemplateInspectorFieldId = "";
+  documentTemplateInspectorModalOpen = false;
   documentTemplateReferenceDraft = null;
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
@@ -44090,6 +44139,7 @@ function hydrateDocumentTemplateForm(
   state.activeDocumentTemplateId = template.id;
   activeDocumentTemplateSheetIndex = 0;
   activeDocumentTemplateInspectorFieldId = "";
+  documentTemplateInspectorModalOpen = false;
   collapsedDocumentTemplateChapterIds = new Set();
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
@@ -67315,9 +67365,17 @@ measurementAiButton?.addEventListener("click", (event) => {
 });
 measurementAiPopover?.addEventListener("pointerdown", (event) => {
   event.stopPropagation();
+  if (event.target === measurementAiPopover) {
+    state.measurementSheet.aiPopoverOpen = false;
+    syncMeasurementToolbar();
+  }
 });
 measurementAiPopover?.addEventListener("click", (event) => {
   event.stopPropagation();
+});
+measurementAiCloseButton?.addEventListener("click", () => {
+  state.measurementSheet.aiPopoverOpen = false;
+  syncMeasurementToolbar();
 });
 measurementAiFormatInput?.addEventListener("change", () => {
   applyMeasurementAiMappingToColumn({
@@ -67431,6 +67489,33 @@ document.addEventListener("pointerdown", (event) => {
   state.measurementSheet.validationPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   syncMeasurementToolbar();
+});
+
+documentTemplateBuilderInspector?.addEventListener("pointerdown", (event) => {
+  if (event.target !== documentTemplateBuilderInspector) {
+    return;
+  }
+
+  event.preventDefault();
+  closeDocumentTemplateInspectorModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (state.measurementSheet.aiPopoverOpen) {
+    event.preventDefault();
+    state.measurementSheet.aiPopoverOpen = false;
+    syncMeasurementToolbar();
+    return;
+  }
+
+  if (documentTemplateInspectorModalOpen) {
+    event.preventDefault();
+    closeDocumentTemplateInspectorModal();
+  }
 });
 
 workspaceViewChips.forEach((chip) => {
