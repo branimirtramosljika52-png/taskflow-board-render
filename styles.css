@@ -25761,6 +25761,71 @@ body.is-measurement-equipment-export-open {
   grid-column: 1 / -1;
 }
 
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(96, 160, 126, 0.34);
+  border-left: 5px solid rgba(96, 160, 126, 0.82);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(246, 252, 248, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 14px 28px rgba(67, 106, 90, 0.08);
+}
+
+.document-template-runtime-field-bundle-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.document-template-runtime-field-bundle-head strong {
+  color: #2f4d3f;
+  font-size: 0.92rem;
+}
+
+.document-template-runtime-field-bundle-head span {
+  color: #60796f;
+  font-size: 0.74rem;
+}
+
+.document-template-runtime-field-bundle-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card {
+  grid-column: span var(--document-template-runtime-span, 3);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card[data-field-width="9"],
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card[data-field-width="full"] {
+  grid-column: span 3;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle .field {
+  border-color: rgba(96, 160, 126, 0.26);
+  box-shadow: none;
+}
+
+@media (max-width: 960px) {
+  .document-template-runtime-field-bundle-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card,
+  .document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card[data-field-width="9"],
+  .document-template-editor-panel.is-fill-mode .document-template-runtime-field-bundle-grid .document-template-runtime-field-card[data-field-width="full"] {
+    grid-column: 1 / -1;
+  }
+}
+
 .document-template-runtime-field-grid {
   grid-template-columns: minmax(0, 1fr);
 }

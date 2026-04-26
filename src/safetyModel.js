@@ -159,6 +159,7 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "system_description", label: "Opis sustava" },
   { value: "text", label: "Tekst" },
   { value: "longtext", label: "Dugi tekst" },
+  { value: "dropdown", label: "Padajući izbor" },
   { value: "date", label: "Datum" },
   { value: "number", label: "Broj" },
   { value: "checkbox", label: "Checkbox" },
@@ -706,6 +707,31 @@ function normalizeDocumentTemplateFieldType(value) {
 
 function normalizeDocumentTemplateFieldSource(value) {
   return normalizeText(value).trim().toUpperCase().slice(0, 80);
+}
+
+function normalizeDocumentTemplateDropdownOptions(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[\n,;]/);
+  const seen = new Set();
+
+  return source
+    .map((entry) => {
+      if (entry && typeof entry === "object") {
+        return normalizeText(entry.label ?? entry.value);
+      }
+      return normalizeText(entry);
+    })
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
 }
 
 function normalizeMeasurementEquipmentKind(value) {
@@ -1886,6 +1912,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       helpText: normalizeText(field?.helpText),
       toggleTrueLabel: normalizeText(field?.toggleTrueLabel).slice(0, 120),
       toggleFalseLabel: normalizeText(field?.toggleFalseLabel).slice(0, 120),
+      dropdownOptions: type === "dropdown"
+        ? normalizeDocumentTemplateDropdownOptions(field?.dropdownOptions ?? field?.options ?? field?.choices)
+        : [],
       columns: type === "measurement_table"
         ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)
           ?? (columns.length > 0 ? columns.slice(0, 16) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]))

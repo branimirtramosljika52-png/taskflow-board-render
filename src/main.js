@@ -27771,6 +27771,48 @@ function getDocumentTemplateDefaultFieldSource(type = "text") {
   return isDocumentTemplateSpecialFieldType(type) ? "" : "CUSTOM_VALUE";
 }
 
+function normalizeDocumentTemplateDropdownOptionsLocal(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[\n,;]/);
+  const seen = new Set();
+
+  return source
+    .map((entry) => {
+      if (entry && typeof entry === "object") {
+        return String(entry.label ?? entry.value ?? "").trim();
+      }
+      return String(entry ?? "").trim();
+    })
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
+}
+
+function buildDocumentTemplateDropdownSelectOptions(field = {}, { includePlaceholder = false } = {}) {
+  const options = normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions ?? field.options ?? field.choices);
+  const selectOptions = options.map((option) => ({
+    value: option,
+    label: option,
+  }));
+
+  if (!includePlaceholder) {
+    return selectOptions;
+  }
+
+  return [
+    { value: "", label: options.length > 0 ? "Odaberi..." : "Nema definiranih izbora" },
+    ...selectOptions,
+  ];
+}
+
 function buildDocumentTemplateToolFieldDraft(tool = "text") {
   const safeTool = String(tool || "text").trim().toLowerCase();
   const baseIndex = documentTemplateFieldDrafts.length;
@@ -27960,6 +28002,13 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
       wordLabel: "Dugacak tekst",
       type: "longtext",
     },
+    dropdown: {
+      label: "Padajuci izbor",
+      wordLabel: "Padajuci izbor",
+      type: "dropdown",
+      dropdownOptions: ["Da", "Ne", "Nije primjenjivo"],
+      helpText: "Opcije definiras u postavkama polja, a korisnik u zapisniku bira jednu vrijednost.",
+    },
     date: {
       label: "Datum",
       wordLabel: "Datum",
@@ -28061,6 +28110,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     helpText: String(initial.helpText ?? "").trim(),
     toggleTrueLabel: String(initial.toggleTrueLabel ?? "").trim(),
     toggleFalseLabel: String(initial.toggleFalseLabel ?? "").trim(),
+    dropdownOptions: type === "dropdown"
+      ? normalizeDocumentTemplateDropdownOptionsLocal(initial.dropdownOptions ?? initial.options ?? initial.choices)
+      : [],
     sectionSubtitle: String(initial.sectionSubtitle ?? "").trim(),
     systemRows: type === "system_description"
       ? normalizeDocumentTemplateSystemDescriptionRows(
@@ -28872,6 +28924,9 @@ function buildDocumentTemplateDraft() {
       previousDocumentMode: String(field.previousDocumentMode || "NONE").trim().toUpperCase() || "NONE",
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
+      dropdownOptions: field.type === "dropdown"
+        ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions ?? field.options ?? field.choices)
+        : [],
       sectionSubtitle: String(field.sectionSubtitle || "").trim(),
       systemRows: normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
         ensureOne: field.type === "system_description",
@@ -28971,6 +29026,9 @@ function buildDocumentTemplateDraft() {
           previousDocumentMode: field.previousDocumentMode || "NONE",
           sectionSubtitle: "",
           systemRows: [],
+          dropdownOptions: field.type === "dropdown"
+            ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions)
+            : [],
           legalFrameworkIds: [],
           defaultLegalFrameworkIds: [],
           columns: [],
@@ -28984,6 +29042,7 @@ function buildDocumentTemplateDraft() {
       || String(field.wordLabel || "").trim()
       || String(field.defaultValue || "").trim()
       || String(field.helpText || "").trim()
+      || (Array.isArray(field.dropdownOptions) && field.dropdownOptions.length > 0)
       || String(field.previousDocumentMode || "NONE").trim().toUpperCase() !== "NONE"
       || (String(field.source || "").trim().toUpperCase() && String(field.source || "").trim().toUpperCase() !== "CUSTOM_VALUE")
     ));
@@ -30935,6 +30994,10 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
   if (field.type === "number") {
     return "0";
+  }
+
+  if (field.type === "dropdown") {
+    return normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions)[0] || "Odaberi...";
   }
 
   if (field.type === "checkbox" || field.type === "toggle") {
@@ -41444,6 +41507,23 @@ function renderDocumentTemplateRuntimeFieldRows() {
         setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
         renderDocumentTemplatePreviewContent();
       });
+    } else if (field.type === "dropdown") {
+      const currentValue = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "").trim();
+      const options = buildDocumentTemplateDropdownSelectOptions(field, { includePlaceholder: true });
+      if (currentValue && !options.some((option) => String(option.value) === currentValue)) {
+        options.push({
+          value: currentValue,
+          label: `Trenutno: ${currentValue}`,
+        });
+      }
+      control = document.createElement("select");
+      control.className = "document-template-source-select document-template-runtime-dropdown";
+      replaceSelectOptions(control, options, currentValue);
+      control.disabled = options.length <= 1;
+      control.addEventListener("change", (event) => {
+        setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
+        renderDocumentTemplatePreviewContent();
+      });
     } else if (field.type === "date") {
       control = document.createElement("input");
       control.type = "text";
@@ -42329,6 +42409,69 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return card;
   };
 
+  const getRuntimeCompanyIdentityBundleRole = (entry = {}) => {
+    const field = entry?.field ?? {};
+    const source = String(field.source || "").trim().toUpperCase();
+    const text = normalizeLooseName([
+      field.label,
+      field.wordLabel,
+      field.key,
+      source,
+    ].filter(Boolean).join(" "));
+
+    if (source === "COMPANY_NAME" || text.includes("narucitelj")) {
+      return "customer";
+    }
+    if (source === "COMPANY_HEADQUARTERS" || text.includes("sjediste")) {
+      return "headquarters";
+    }
+    if (source === "COMPANY_OIB" || /\boib\b/.test(text)) {
+      return "oib";
+    }
+    return "";
+  };
+
+  const getRuntimeCompanyIdentityBundle = (items = [], startIndex = 0) => {
+    const entries = [];
+    const roles = new Set();
+
+    for (let offset = 0; offset < 3; offset += 1) {
+      const entry = items[startIndex + offset];
+      const role = getRuntimeCompanyIdentityBundleRole(entry);
+      if (!role || roles.has(role)) {
+        break;
+      }
+      entries.push(entry);
+      roles.add(role);
+    }
+
+    return roles.has("customer") && roles.has("headquarters") && roles.has("oib")
+      ? entries
+      : [];
+  };
+
+  const createRuntimeCompanyIdentityBundleNode = (entries = []) => {
+    const bundle = document.createElement("article");
+    bundle.className = "document-template-runtime-field-bundle is-company-identity";
+
+    const header = document.createElement("div");
+    header.className = "document-template-runtime-field-bundle-head";
+    const title = document.createElement("strong");
+    title.textContent = "Podaci naručitelja";
+    const meta = document.createElement("span");
+    meta.textContent = "Naručitelj, sjedište i OIB u jednom bloku.";
+    header.append(title, meta);
+
+    const grid = document.createElement("div");
+    grid.className = "document-template-runtime-field-bundle-grid";
+    entries.forEach((entry) => {
+      grid.append(createRuntimeFieldNode(entry));
+    });
+
+    bundle.append(header, grid);
+    return bundle;
+  };
+
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block";
@@ -42382,9 +42525,15 @@ function renderDocumentTemplateRuntimeFieldRows() {
       empty.textContent = "U ovom bloku nema ručnih polja. Sadržaj će se popuniti automatski iz RN-a i povezanih izvora.";
       body.append(empty);
     } else if (!collapsed) {
-      block.items.forEach((entry) => {
-        body.append(createRuntimeFieldNode(entry));
-      });
+      for (let itemIndex = 0; itemIndex < block.items.length; itemIndex += 1) {
+        const bundledEntries = getRuntimeCompanyIdentityBundle(block.items, itemIndex);
+        if (bundledEntries.length > 0) {
+          body.append(createRuntimeCompanyIdentityBundleNode(bundledEntries));
+          itemIndex += bundledEntries.length - 1;
+          continue;
+        }
+        body.append(createRuntimeFieldNode(block.items[itemIndex]));
+      }
     }
     blockNode.append(body);
     shell.append(blockNode);
@@ -42943,6 +43092,24 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     excelMeta.append(excelSummary, excelHint);
     columnsField.append(columnsSpan, excelMeta);
 
+    const dropdownOptionsField = document.createElement("label");
+    dropdownOptionsField.className = "field field-span-full document-template-dropdown-config";
+    dropdownOptionsField.hidden = field.type !== "dropdown";
+    const dropdownOptionsSpan = document.createElement("span");
+    dropdownOptionsSpan.textContent = "Izbori u padajucem izborniku";
+    const dropdownOptionsInput = document.createElement("textarea");
+    dropdownOptionsInput.rows = 5;
+    dropdownOptionsInput.placeholder = "Jedna opcija po redu, npr.\nIspravno\nNeispravno\nNije primjenjivo";
+    dropdownOptionsInput.value = normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions).join("\n");
+    dropdownOptionsInput.addEventListener("input", (event) => {
+      documentTemplateFieldDrafts[draftIndex].dropdownOptions = normalizeDocumentTemplateDropdownOptionsLocal(event.currentTarget.value);
+      refreshEditorSupport();
+    });
+    const dropdownOptionsHint = document.createElement("small");
+    dropdownOptionsHint.className = "document-template-source-config-hint";
+    dropdownOptionsHint.textContent = "U izradi zapisnika korisnik će moći odabrati samo jednu od ovih vrijednosti.";
+    dropdownOptionsField.append(dropdownOptionsSpan, dropdownOptionsInput, dropdownOptionsHint);
+
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();
       if (field.type === "chapter") {
@@ -43271,6 +43438,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       // legal fields already appended above
     } else if (isSpecialType) {
       grid.append(specialInfoField);
+    } else if (field.type === "dropdown") {
+      grid.append(dropdownOptionsField, sourceField, sourceConfigField);
     } else {
       grid.append(sourceField, sourceConfigField);
     }

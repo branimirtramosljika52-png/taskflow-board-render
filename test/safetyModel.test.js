@@ -576,6 +576,12 @@ test("document templates keep nested builder data and support filtering", () => 
             ],
           },
         },
+        {
+          label: "Ocjena",
+          key: "ocjena",
+          type: "dropdown",
+          dropdownOptions: ["Ispravno", "Neispravno", "Ispravno"],
+        },
       ],
       equipmentItems: [
         { name: "Panik rasvjeta", code: "PR-01", quantity: 12, note: "Etaža 1" },
@@ -597,7 +603,7 @@ test("document templates keep nested builder data and support filtering", () => 
     () => "2026-03-31T12:00:00.000Z",
   );
 
-  assert.equal(template.customFields.length, 8);
+  assert.equal(template.customFields.length, 9);
   assert.equal(template.customFields[0].source, "COMPANY_NAME");
   assert.equal(template.customFields[0].wordLabel, "Tvrtka");
   assert.equal(template.customFields[0].fieldHeight, 5);
@@ -617,6 +623,8 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[7].sheet?.merges[0]?.colSpan, 2);
   assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.type, "list");
   assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.allowCustom, false);
+  assert.equal(template.customFields[8].type, "dropdown");
+  assert.deepEqual(template.customFields[8].dropdownOptions, ["Ispravno", "Neispravno"]);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");
