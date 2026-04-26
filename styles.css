@@ -24616,7 +24616,7 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-badge-select-wrap {
-  min-width: 0;
+  min-width: min(100%, 260px);
 }
 
 .document-template-runtime-badge-select {
@@ -26825,7 +26825,7 @@ body.is-measurement-equipment-export-open {
   width: 100%;
   height: auto;
   max-height: none;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto;
   align-content: start;
   padding: 10px 12px 12px;
   overflow: visible;
@@ -26848,10 +26848,12 @@ body.is-measurement-equipment-export-open {
   justify-content: flex-end;
 }
 
+.measurement-sheet-panel.is-runtime-inline-sheet .measurement-sheet-head-actions {
+  display: none;
+}
+
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-meta {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding-top: 0;
+  display: none;
 }
 
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-preset-wrap {

@@ -22900,6 +22900,10 @@ function syncMeasurementSheetPanelMount() {
       inlineHost.append(measurementSheetPanel);
     }
     measurementSheetPanel.classList.add("is-inline-template-sheet");
+    measurementSheetPanel.classList.toggle(
+      "is-runtime-inline-sheet",
+      state.measurementSheet.ownerKind === "document_template_runtime_field",
+    );
     if (measurementSheetModal) {
       measurementSheetModal.hidden = true;
     }
@@ -22909,6 +22913,7 @@ function syncMeasurementSheetPanelMount() {
   }
 
   measurementSheetPanel.classList.remove("is-inline-template-sheet");
+  measurementSheetPanel.classList.remove("is-runtime-inline-sheet");
   if (measurementSheetModal && measurementSheetPanel.parentElement !== measurementSheetModal) {
     measurementSheetModal.append(measurementSheetPanel);
   }
@@ -34870,18 +34875,14 @@ function scrollDocumentTemplateRuntimeDockTrack(direction = 1) {
 }
 
 function syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode = isDocumentTemplateRuntimeFillMode(), activeWorkOrder = null, isSummaryStep = false } = {}) {
-  const shouldShow = Boolean(fillMode && activeWorkOrder && !isSummaryStep);
-  const label = activeWorkOrder
-    ? `Spremi trenutni dio za RN ${activeWorkOrder.workOrderNumber || "bez broja"}`
-    : "Spremi trenutni dio zapisnika";
-
+  void fillMode;
+  void activeWorkOrder;
+  void isSummaryStep;
   [documentTemplateRuntimeSaveProgressButton, topbarShortcutRuntimeSaveButton].forEach((button) => {
     if (!button) {
       return;
     }
-    button.hidden = !shouldShow;
-    button.title = label;
-    button.setAttribute("aria-label", label);
+    button.hidden = true;
   });
   syncDocumentTemplateRuntimeResumeButton();
 }
@@ -35274,21 +35275,25 @@ function renderDocumentTemplateRuntimeContext() {
     const recordBadge = document.createElement("label");
     recordBadge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap";
     const recordBadgeLabel = document.createElement("span");
-    recordBadgeLabel.textContent = String(template?.title || getDocumentTemplateTypeLabel(template?.documentType) || "Zapisnik").trim() || "Zapisnik";
+    recordBadgeLabel.textContent = "Izvor vrijednosti";
     const recordBadgeSelect = document.createElement("select");
     recordBadgeSelect.className = "document-template-runtime-badge-select";
     replaceSelectOptions(
       recordBadgeSelect,
-      recordSourceState.candidates.map((candidate) => ({
+      recordSourceState.candidates.map((candidate, candidateIndex) => ({
         value: candidate.id,
         label: candidate.id === "template"
-          ? "Template"
-          : candidate.label,
+          ? "Template vrijednosti"
+          : [
+            candidateIndex === 0 ? "Zadnje ispitivanje" : "Staro ispitivanje",
+            candidate.label,
+            candidate.meta,
+          ].filter(Boolean).join(" · "),
       })),
       selectedRecordSourceId,
     );
     recordBadgeSelect.disabled = recordSourceState.status === "loading" && recordSourceState.candidates.length <= 1;
-    recordBadgeSelect.title = recordSourceState.error || "Odaberi najnoviji stari zapisnik, starije verzije ili template fallback.";
+    recordBadgeSelect.title = recordSourceState.error || "Periodika koristi zadnje ispitivanje. Prvo ispitivanje prebaci na Template vrijednosti.";
     recordBadgeSelect.addEventListener("change", () => {
       applyDocumentTemplateRuntimeRecordCandidate(activeWorkOrder.id, recordBadgeSelect.value || "template", template, {
         render: true,
@@ -41109,6 +41114,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
   const createFieldTitle = (field, fallbackIndex) => field.label || field.wordLabel || `Polje ${fallbackIndex + 1}`;
 
   const createPersistedFieldSourcePicker = (field, workOrder, { kind = "value" } = {}) => {
+    if (isDocumentTemplateRuntimeFillMode()) {
+      return null;
+    }
     if (!workOrder || !isDocumentTemplateRuntimePersistedField(field)) {
       return null;
     }
@@ -42013,38 +42021,24 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.className = "document-template-runtime-measurement-field";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
-    const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "sheet" });
-    const summaryButton = document.createElement("button");
-    summaryButton.type = "button";
-    summaryButton.className = "ghost-button document-template-runtime-excel-trigger";
-    summaryButton.textContent = getMeasurementSheetTemplateSummary(
-      getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field) ?? field.sheet,
-    );
-    summaryButton.addEventListener("click", () => {
-      ensureDocumentTemplateRuntimeMeasurementSheetForField(field.id, workOrder.id);
-      requestAnimationFrame(() => {
-        shellNode.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      });
-    });
-
-    const helper = document.createElement("p");
-    helper.className = "helper-copy module-copy";
-    helper.textContent = "Klik otvara napredni Excel unutar ovog bloka. Ono što upišeš ide u pregled i Word export.";
 
     const inlineExcelHost = document.createElement("div");
     inlineExcelHost.className = "document-template-inline-excel-host";
     inlineExcelHost.dataset.templateFieldId = String(field.id || "");
     const preview = document.createElement("div");
     preview.className = "document-template-inline-excel-preview document-template-runtime-excel-preview";
-    preview.textContent = "Napredni Excel editor prikazuje se ovdje kada otvoriš ovu tablicu.";
+    preview.textContent = "Učitavam Excel tablicu...";
     inlineExcelHost.append(preview);
     documentTemplateMeasurementInlineHosts.set(String(field.id || ""), inlineExcelHost);
 
-    shellNode.append(title);
-    if (sourcePicker) {
-      shellNode.append(sourcePicker);
-    }
-    shellNode.append(summaryButton, helper, inlineExcelHost);
+    requestAnimationFrame(() => {
+      if (!inlineExcelHost.isConnected || !workOrder?.id) {
+        return;
+      }
+      ensureDocumentTemplateRuntimeMeasurementSheetForField(field.id, workOrder.id);
+    });
+
+    shellNode.append(title, inlineExcelHost);
     return shellNode;
   };
 
@@ -42162,7 +42156,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       empty.className = "helper-copy module-copy";
       empty.textContent = "U ovom bloku nema ručnih polja. Sadržaj će se popuniti automatski iz RN-a i povezanih izvora.";
       body.append(empty);
-    } else {
+    } else if (!collapsed) {
       block.items.forEach((entry) => {
         body.append(createRuntimeFieldNode(entry));
       });
@@ -42178,6 +42172,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       !state.measurementSheet.isOpen
       || String(state.measurementSheet.ownerRuntimeWorkOrderId || "") !== String(activeWorkOrder.id || "")
       || !documentTemplateFieldDrafts.some((field) => String(field.id) === String(state.measurementSheet.ownerFieldId || ""))
+      || !documentTemplateMeasurementInlineHosts.has(String(state.measurementSheet.ownerFieldId || ""))
     );
   if (shouldCloseRuntimeSheet) {
     setMeasurementSheetOpen(false);
