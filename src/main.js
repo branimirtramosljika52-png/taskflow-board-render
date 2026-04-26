@@ -60891,13 +60891,19 @@ function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = 
   if (normalizedValues.length > 0) {
     const stack = document.createElement("span");
     stack.className = "work-order-bulk-executor-stack";
-    normalizedValues.forEach((value) => {
+    normalizedValues.slice(0, 3).forEach((value) => {
       const avatar = createWorkOrderMiniExecutor(value, {
         className: "work-order-mini-executor work-order-bulk-executor-avatar",
       });
       avatar.removeAttribute("title");
       stack.append(avatar);
     });
+    if (normalizedValues.length > 3) {
+      stack.append(createExecutorOverflowBadge(
+        normalizedValues.length - 3,
+        "work-order-mini-executor work-order-bulk-executor-avatar",
+      ));
+    }
 
     trigger.append(stack);
   }
@@ -60909,7 +60915,7 @@ function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = 
   } else if (normalizedValues.length === 1) {
     label.textContent = normalizedValues[0];
   } else if (normalizedValues.length > 1) {
-    label.textContent = normalizedValues.join(", ");
+    label.textContent = `${normalizedValues.length} izvršitelja`;
   } else {
     label.textContent = "Izvršitelji";
   }
