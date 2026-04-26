@@ -10307,14 +10307,15 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-bar-shell {
+  --work-order-bulk-control-height: 36px;
   pointer-events: auto;
   display: grid;
   grid-template-columns: minmax(142px, 180px) minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
-  min-height: 76px;
-  padding: 12px 16px;
-  border-radius: 22px;
+  gap: 14px;
+  min-height: 62px;
+  padding: 8px 12px;
+  border-radius: 18px;
   background: rgba(18, 20, 25, 0.96);
   color: #f7f8fb;
   box-shadow: 0 24px 60px rgba(10, 12, 18, 0.34);
@@ -10324,14 +10325,14 @@ body.is-work-order-editor-open {
 .work-order-bulk-count-group {
   min-width: 0;
   display: flex;
-  min-height: 48px;
+  min-height: var(--work-order-bulk-control-height);
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .work-order-bulk-count-label {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   font-weight: 800;
   letter-spacing: 0.01em;
 }
@@ -10365,7 +10366,7 @@ body.is-work-order-editor-open {
     minmax(98px, 112px);
   align-items: end;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -10376,12 +10377,12 @@ body.is-work-order-editor-open {
 
 .work-order-bulk-field {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .work-order-bulk-field > span {
   color: rgba(229, 233, 244, 0.72);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -10390,8 +10391,9 @@ body.is-work-order-editor-open {
 .work-order-bulk-choice-trigger,
 .work-order-bulk-field input,
 .work-order-bulk-executor-trigger {
-  min-height: 40px;
-  border-radius: 14px;
+  min-height: var(--work-order-bulk-control-height);
+  height: var(--work-order-bulk-control-height);
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
   color: #f6f8fb;
@@ -10401,7 +10403,7 @@ body.is-work-order-editor-open {
 
 .work-order-bulk-choice-trigger,
 .work-order-bulk-field input {
-  padding: 8px 12px;
+  padding: 6px 10px;
 }
 
 .work-order-bulk-choice-trigger {
@@ -10409,15 +10411,15 @@ body.is-work-order-editor-open {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding-right: 38px;
+  padding-right: 32px;
   justify-content: flex-start;
   border-radius: 14px;
   background-image:
     linear-gradient(45deg, transparent 50%, rgba(247, 248, 251, 0.72) 50%),
     linear-gradient(135deg, rgba(247, 248, 251, 0.72) 50%, transparent 50%);
   background-position:
-    calc(100% - 18px) calc(50% - 2px),
-    calc(100% - 13px) calc(50% - 2px);
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px);
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   color: #f7f8fb;
@@ -10456,12 +10458,13 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-action-button {
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: var(--work-order-bulk-control-height);
+  height: var(--work-order-bulk-control-height);
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
   color: #f7f8fb;
@@ -10482,7 +10485,7 @@ body.is-work-order-editor-open {
 
 .work-order-bulk-executor-trigger {
   width: 100%;
-  padding: 7px 12px;
+  padding: 6px 10px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -10503,15 +10506,15 @@ body.is-work-order-editor-open {
 }
 
 .work-order-bulk-executor-avatar {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 .work-order-bulk-action-label {
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10612,7 +10615,7 @@ body.is-work-order-editor-open {
 }
 
 .work-orders-scroll-shell.has-bulk-bar {
-  padding-bottom: 104px;
+  padding-bottom: 88px;
 }
 
 @media (max-width: 1180px) {
