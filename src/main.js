@@ -6679,6 +6679,15 @@ function syncCompanySelectionPreview(
   renderCompanyLogo(previewLogo, company);
 }
 
+const WORK_ORDER_EDITOR_SECTION_ICON_NAMES = {
+  client: "company",
+  route: "location",
+  executors: "assignees",
+  services: "service",
+  billing: "billing",
+  documents: "document",
+};
+
 function syncWorkOrderEditorSectionCollapse(section) {
   if (!(section instanceof HTMLElement)) {
     return;
@@ -6686,9 +6695,15 @@ function syncWorkOrderEditorSectionCollapse(section) {
 
   const sectionKey = String(section.dataset.workOrderSection || "").trim();
   const toggle = section.querySelector("[data-work-order-section-toggle]");
+  const toggleIcon = section.querySelector(".work-order-section-toggle-icon");
   const collapsed = Boolean(sectionKey && state.workOrderEditorCollapsedSections[sectionKey]);
   section.classList.toggle("is-collapsed", collapsed);
   toggle?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  toggle?.setAttribute("aria-label", collapsed ? "Prikaži blok" : "Sakrij blok");
+
+  if (toggleIcon) {
+    toggleIcon.innerHTML = getWorkOrderIconMarkup(collapsed ? "expand" : "collapse");
+  }
 }
 
 function toggleWorkOrderEditorSection(section) {
@@ -6708,6 +6723,16 @@ function toggleWorkOrderEditorSection(section) {
 function initializeWorkOrderEditorSectionToggles() {
   workOrderSectionToggleButtons.forEach((button) => {
     const section = button.closest(".work-order-editor-section[data-work-order-section]");
+    const sectionKey = String(section?.dataset.workOrderSection || "").trim();
+
+    if (!button.querySelector(".work-order-section-mark")) {
+      const icon = document.createElement("span");
+      icon.className = "work-order-section-mark";
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = getWorkOrderIconMarkup(WORK_ORDER_EDITOR_SECTION_ICON_NAMES[sectionKey] || "service");
+      button.prepend(icon);
+    }
+
     syncWorkOrderEditorSectionCollapse(section);
     button.addEventListener("click", () => {
       toggleWorkOrderEditorSection(section);
