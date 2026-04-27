@@ -125,6 +125,7 @@ fieldset {
 .app-rail {
   position: sticky;
   top: 12px;
+  z-index: 1700;
   min-height: calc(100vh - 60px);
   padding: 12px 9px;
   border-radius: 28px;

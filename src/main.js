@@ -2235,6 +2235,7 @@ const sidebarHomeButton = document.querySelector("#sidebar-home-button");
 const sidebarActiveOrganization = document.querySelector("#sidebar-active-organization");
 const sidebarCollapseToggle = document.querySelector("#sidebar-collapse-toggle");
 const railButtons = Array.from(document.querySelectorAll("[data-sidebar-group]"));
+const railLocationsButton = document.querySelector('[data-sidebar-group="locations"]');
 const railOrganisationsButton = document.querySelector("#rail-organisations-button");
 const sidebarGroupButtons = Array.from(document.querySelectorAll("[data-group-toggle]"));
 const sidebarGroupPanels = Array.from(document.querySelectorAll("[data-sidebar-group-panel]"));
@@ -46164,6 +46165,74 @@ function closeTransientNavigationOverlays() {
   if (state.clientPortalAccessModalOpen) {
     closeClientPortalAccessModal();
   }
+
+  const editorFlags = [
+    "workOrderEditorOpen",
+    "companyEditorOpen",
+    "locationEditorOpen",
+    "userEditorOpen",
+    "offerEditorOpen",
+    "offerTemplateModalOpen",
+    "reminderEditorOpen",
+    "todoEditorOpen",
+    "legalFrameworkEditorOpen",
+    "serviceCatalogEditorOpen",
+    "measurementEquipmentEditorOpen",
+    "measurementEquipmentDocumentPreviewOpen",
+    "measurementEquipmentExportDialogOpen",
+    "safetyAuthorizationEditorOpen",
+    "documentTemplateEditorOpen",
+    "absenceEditorOpen",
+    "absenceBalanceEditorOpen",
+    "learningTestEditorOpen",
+    "vehicleEditorOpen",
+    "vehicleReservationEditorOpen",
+    "contractEditorOpen",
+    "contractTemplateModalOpen",
+  ];
+
+  editorFlags.forEach((flagName) => {
+    if (Object.prototype.hasOwnProperty.call(state, flagName)) {
+      state[flagName] = false;
+    }
+  });
+
+  if (state.workOrderDocumentWizard) {
+    state.workOrderDocumentWizard.open = false;
+  }
+
+  syncWorkOrderEditorModal();
+  syncCompanyEditorModal();
+  syncLocationEditorModal();
+  syncUserEditorModal();
+  syncOfferEditorModal();
+  syncOfferTemplateModal();
+  syncReminderEditorModal();
+  syncTodoEditorModal();
+  syncLegalFrameworkEditorModal();
+  syncServiceCatalogEditorModal();
+  syncMeasurementEquipmentEditorModal();
+  syncMeasurementEquipmentDocumentPreviewModal();
+  syncMeasurementEquipmentExportDialogModal();
+  syncSafetyAuthorizationEditorModal();
+  syncDocumentTemplateEditorModal();
+  syncAbsenceEditorModal();
+  syncAbsenceBalanceModal();
+  syncLearningTestEditorModal();
+  syncVehicleEditorModal();
+  syncVehicleReservationModal();
+  syncContractEditorModal();
+  syncContractTemplateModal();
+  syncWorkOrderDocumentWizardModal();
+}
+
+function activateLocationsRailShortcut(event) {
+  event?.preventDefault();
+  event?.stopImmediatePropagation();
+  activateSidebarGroup("locations", {
+    navigate: true,
+    expandSidebar: state.sidebarCollapsed,
+  });
 }
 
 function getClientPortalUsers(companyId = "") {
@@ -67511,6 +67580,8 @@ sidebarNavItems.forEach((button) => {
     });
   });
 });
+
+railLocationsButton?.addEventListener("click", activateLocationsRailShortcut, { capture: true });
 
 railButtons.forEach((button) => {
   button.addEventListener("click", () => {
