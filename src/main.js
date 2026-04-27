@@ -137,6 +137,12 @@ const WORK_ORDER_TEMPLATE_STORAGE_PREFIX = "safenexus.work-order-template.v1";
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
+const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
+  { value: "Ovjereni Radni nalog", label: "Ovjereni Radni nalog" },
+  { value: "Radni listovi", label: "Radni listovi" },
+  { value: "Projektna dokumentacija", label: "Projektna dokumentacija" },
+]);
+const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
   "bmp",
@@ -1575,6 +1581,16 @@ const state = {
     items: [],
     error: "",
   },
+  workOrderDocumentCategoryDialog: {
+    open: false,
+    title: "",
+    helper: "",
+    files: [],
+    entries: [],
+    error: "",
+    resolve: null,
+  },
+  workOrderRowDocumentTargetId: "",
   workOrderEditorOpen: false,
   workOrderAutoSave: {
     timerId: null,
@@ -3480,6 +3496,7 @@ const workOrderActivityCommentAddButton = document.querySelector("#work-order-ac
 const workOrderActivityCommentError = document.querySelector("#work-order-activity-comment-error");
 const workOrderDocumentDropzone = document.querySelector("#work-order-document-dropzone");
 const workOrderDocumentFileInput = document.querySelector("#work-order-document-file-input");
+const workOrderRowDocumentFileInput = document.querySelector("#work-order-row-document-file-input");
 const workOrderDocumentList = document.querySelector("#work-order-document-list");
 const workOrderDocumentEmpty = document.querySelector("#work-order-document-empty");
 const workOrderDocumentLoading = document.querySelector("#work-order-document-loading");
@@ -3492,6 +3509,15 @@ const workOrderActivityDocumentEmpty = document.querySelector("#work-order-activ
 const workOrderActivityDocumentLoading = document.querySelector("#work-order-activity-document-loading");
 const workOrderActivityDocumentError = document.querySelector("#work-order-activity-document-error");
 const workOrderActivityDocumentCount = document.querySelector("#work-order-activity-document-count");
+const workOrderDocumentCategoryBackdrop = document.querySelector("#work-order-document-category-backdrop");
+const workOrderDocumentCategoryPanel = document.querySelector("#work-order-document-category-panel");
+const workOrderDocumentCategoryTitle = document.querySelector("#work-order-document-category-title");
+const workOrderDocumentCategoryHelper = document.querySelector("#work-order-document-category-helper");
+const workOrderDocumentCategoryList = document.querySelector("#work-order-document-category-list");
+const workOrderDocumentCategoryError = document.querySelector("#work-order-document-category-error");
+const workOrderDocumentCategoryCancelButton = document.querySelector("#work-order-document-category-cancel");
+const workOrderDocumentCategoryClearButton = document.querySelector("#work-order-document-category-clear");
+const workOrderDocumentCategoryConfirmButton = document.querySelector("#work-order-document-category-confirm");
 const workOrderDocumentWizardBackdrop = document.querySelector("#work-order-document-wizard-backdrop");
 const workOrderDocumentWizardPanel = document.querySelector("#work-order-document-wizard-panel");
 const workOrderDocumentWizardCloseButton = document.querySelector("#work-order-document-wizard-close");
@@ -25276,7 +25302,21 @@ function getWorkOrderDocumentExtension(fileName = "", fileType = "") {
 }
 
 function getWorkOrderDocumentSourceLabel(sourceType = "editor") {
-  return sourceType === "activity" ? "Activity" : "Otvaranje";
+  if (sourceType === "activity") {
+    return "Activity";
+  }
+
+  if (sourceType === "list") {
+    return "ListRN";
+  }
+
+  return "Otvaranje";
+}
+
+function getWorkOrderDocumentCategoryLabel(value = "") {
+  const normalized = String(value || "").trim();
+  return WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS.find((option) => option.value === normalized)?.label
+    || normalized;
 }
 
 function formatFileSize(value) {
@@ -25322,6 +25362,7 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const meta = document.createElement("span");
   meta.className = "work-order-document-meta";
   meta.textContent = [
+    getWorkOrderDocumentCategoryLabel(item.documentCategory),
     formatFileSize(item.fileSize),
     getWorkOrderDocumentSourceLabel(item.sourceType),
     formatDateTime(item.createdAt),
@@ -25457,6 +25498,166 @@ function renderWorkOrderDocuments() {
   workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || items.length > 0;
 }
 
+function resetWorkOrderDocumentCategoryDialogState() {
+  state.workOrderDocumentCategoryDialog = {
+    open: false,
+    title: "",
+    helper: "",
+    files: [],
+    entries: [],
+    error: "",
+    resolve: null,
+  };
+}
+
+function renderWorkOrderDocumentCategoryDialog() {
+  const dialog = state.workOrderDocumentCategoryDialog;
+  const isOpen = Boolean(dialog.open);
+
+  document.body.classList.toggle("is-work-order-document-category-open", isOpen);
+
+  if (workOrderDocumentCategoryBackdrop) {
+    workOrderDocumentCategoryBackdrop.hidden = !isOpen;
+  }
+
+  if (workOrderDocumentCategoryPanel) {
+    workOrderDocumentCategoryPanel.hidden = !isOpen;
+    workOrderDocumentCategoryPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (!isOpen) {
+    return;
+  }
+
+  if (workOrderDocumentCategoryTitle) {
+    workOrderDocumentCategoryTitle.textContent = dialog.title || "Vrsta dokumenta";
+  }
+
+  if (workOrderDocumentCategoryHelper) {
+    workOrderDocumentCategoryHelper.textContent = dialog.helper || "Odaberi što je svaka datoteka prije spremanja.";
+  }
+
+  if (workOrderDocumentCategoryError) {
+    workOrderDocumentCategoryError.textContent = dialog.error || "";
+    workOrderDocumentCategoryError.hidden = !dialog.error;
+  }
+
+  if (!workOrderDocumentCategoryList) {
+    return;
+  }
+
+  workOrderDocumentCategoryList.replaceChildren();
+
+  dialog.entries.forEach((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "work-order-document-category-row";
+
+    const icon = document.createElement("span");
+    icon.className = "work-order-document-category-row-icon";
+    icon.innerHTML = getWorkOrderIconMarkup("document");
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-document-category-row-copy";
+
+    const name = document.createElement("strong");
+    name.textContent = entry.fileName || `Dokument ${index + 1}`;
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      getWorkOrderDocumentExtension(entry.fileName, entry.fileType),
+      formatFileSize(entry.fileSize),
+    ].filter(Boolean).join(" · ");
+
+    copy.append(name, meta);
+
+    const select = document.createElement("select");
+    select.className = "work-order-document-category-select";
+    select.setAttribute("aria-label", `Vrsta dokumenta ${entry.fileName || index + 1}`);
+    WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS.forEach((option) => {
+      const node = document.createElement("option");
+      node.value = option.value;
+      node.textContent = option.label;
+      select.append(node);
+    });
+    select.value = entry.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY;
+    select.addEventListener("change", () => {
+      state.workOrderDocumentCategoryDialog.entries = state.workOrderDocumentCategoryDialog.entries.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, documentCategory: select.value } : item
+      ));
+    });
+
+    row.append(icon, copy, select);
+    workOrderDocumentCategoryList.append(row);
+  });
+}
+
+function closeWorkOrderDocumentCategoryDialog(result = null) {
+  const resolver = state.workOrderDocumentCategoryDialog.resolve;
+  resetWorkOrderDocumentCategoryDialogState();
+  renderWorkOrderDocumentCategoryDialog();
+
+  if (typeof resolver === "function") {
+    resolver(result);
+  }
+}
+
+function confirmWorkOrderDocumentCategoryDialog() {
+  const dialog = state.workOrderDocumentCategoryDialog;
+
+  if (!dialog.open) {
+    return;
+  }
+
+  const entries = dialog.entries.map((entry) => ({
+    ...entry,
+    documentCategory: entry.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+  }));
+
+  if (entries.some((entry) => !entry.documentCategory)) {
+    state.workOrderDocumentCategoryDialog.error = "Odaberi vrstu za svaki dokument.";
+    renderWorkOrderDocumentCategoryDialog();
+    return;
+  }
+
+  const result = dialog.files.map((file, index) => ({
+    file,
+    documentCategory: entries[index]?.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+  }));
+  closeWorkOrderDocumentCategoryDialog(result);
+}
+
+function openWorkOrderDocumentCategoryDialog(files, {
+  title = "",
+  helper = "",
+} = {}) {
+  const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!selectedFiles.length) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    state.workOrderDocumentCategoryDialog = {
+      open: true,
+      title,
+      helper,
+      files: selectedFiles,
+      entries: selectedFiles.map((file) => ({
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        documentCategory: DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+      })),
+      error: "",
+      resolve,
+    };
+    renderWorkOrderDocumentCategoryDialog();
+    requestAnimationFrame(() => {
+      workOrderDocumentCategoryPanel?.querySelector("select, button")?.focus({ preventScroll: true });
+    });
+  });
+}
+
 async function loadWorkOrderDocuments(workOrderId) {
   if (!workOrderId) {
     resetWorkOrderDocumentsState();
@@ -25547,8 +25748,16 @@ async function ensureWorkOrderReadyForDocumentUpload() {
   return String(workOrderIdInput.value || "");
 }
 
-async function buildWorkOrderDocumentUploadPayload(files) {
+async function buildWorkOrderDocumentUploadPayload(files, metadataEntries = []) {
   const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  const metadataList = Array.from(metadataEntries ?? []);
+  const metadataByFile = new Map();
+
+  metadataList.forEach((entry) => {
+    if (entry?.file instanceof File) {
+      metadataByFile.set(entry.file, entry);
+    }
+  });
 
   if (!uploadFiles.length) {
     return [];
@@ -25564,35 +25773,73 @@ async function buildWorkOrderDocumentUploadPayload(files) {
     }
   }
 
-  return Promise.all(uploadFiles.map(async (file) => ({
-    fileName: file.name,
-    fileType: file.type,
-    fileSize: file.size,
-    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
-  })));
+  return Promise.all(uploadFiles.map(async (file, index) => {
+    const metadata = metadataByFile.get(file) || metadataList[index] || {};
+    const documentCategory = getWorkOrderDocumentCategoryLabel(
+      metadata.documentCategory || metadata.category || "",
+    );
+
+    return {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      documentCategory,
+      description: String(metadata.description || "").trim(),
+      dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    };
+  }));
 }
 
-async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
+function findWorkOrderById(workOrderId) {
+  return state.workOrders.find((item) => String(item.id) === String(workOrderId)) ?? null;
+}
+
+function getWorkOrderDocumentDialogTitle(workOrderId = "", workOrder = null) {
+  const item = workOrder || findWorkOrderById(workOrderId);
+  const number = String(item?.workOrderNumber || workOrderEditorTitle?.textContent || "").trim();
+  return number ? `Dokumentacija za RN ${number}` : "Dokumentacija za RN";
+}
+
+async function handleWorkOrderDocumentSelection(files, sourceType = "editor", options = {}) {
   const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
   workOrderEditorMain?.classList.remove("is-document-panel-active");
   workOrderActivityPanel?.classList.remove("is-document-panel-active");
 
-  if (!selectedFiles.length || state.workOrderDocuments.uploading || state.workOrderDocuments.busyId) {
+  if (
+    !selectedFiles.length
+    || state.workOrderDocuments.uploading
+    || state.workOrderDocuments.busyId
+    || state.workOrderDocumentCategoryDialog.open
+  ) {
     return;
   }
 
   state.workOrderDocuments.error = "";
-  state.workOrderDocuments.uploading = true;
   renderWorkOrderDocuments();
 
   try {
-    const workOrderId = await ensureWorkOrderReadyForDocumentUpload();
+    const workOrderId = options.workOrderId
+      ? String(options.workOrderId)
+      : await ensureWorkOrderReadyForDocumentUpload();
 
     if (!workOrderId) {
       return;
     }
 
-    const payloadFiles = await buildWorkOrderDocumentUploadPayload(selectedFiles);
+    const workOrder = options.workOrder || findWorkOrderById(workOrderId);
+    const selectedCategories = await openWorkOrderDocumentCategoryDialog(selectedFiles, {
+      title: options.title || getWorkOrderDocumentDialogTitle(workOrderId, workOrder),
+      helper: options.helper || "Odaberi vrstu za svaku datoteku. Ako ih je više, svaka dobiva svoj red.",
+    });
+
+    if (!selectedCategories) {
+      return;
+    }
+
+    state.workOrderDocuments.uploading = true;
+    renderWorkOrderDocuments();
+
+    const payloadFiles = await buildWorkOrderDocumentUploadPayload(selectedFiles, selectedCategories);
     await apiRequest(`/work-orders/${workOrderId}/documents`, {
       method: "POST",
       body: {
@@ -25601,10 +25848,14 @@ async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
       },
     });
     workOrderError.textContent = "";
-    await Promise.all([
-      loadWorkOrderDocuments(workOrderId),
-      loadWorkOrderActivity(workOrderId),
-    ]);
+    const isOpenWorkOrder = String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === String(workOrderId);
+
+    if (isOpenWorkOrder) {
+      await Promise.all([
+        loadWorkOrderDocuments(workOrderId),
+        loadWorkOrderActivity(workOrderId),
+      ]);
+    }
   } catch (error) {
     state.workOrderDocuments.error = error.message;
     workOrderError.textContent = error.message;
@@ -25619,7 +25870,21 @@ async function handleWorkOrderDocumentSelection(files, sourceType = "editor") {
     if (workOrderActivityFileInput) {
       workOrderActivityFileInput.value = "";
     }
+
+    if (workOrderRowDocumentFileInput) {
+      workOrderRowDocumentFileInput.value = "";
+    }
   }
+}
+
+function openWorkOrderRowDocumentPicker(workOrder) {
+  if (!workOrder?.id || !workOrderRowDocumentFileInput || state.workOrderDocuments.uploading) {
+    return;
+  }
+
+  state.workOrderRowDocumentTargetId = String(workOrder.id);
+  workOrderRowDocumentFileInput.value = "";
+  workOrderRowDocumentFileInput.click();
 }
 
 async function saveWorkOrderDocument(documentId, patch = {}) {
@@ -67001,8 +67266,8 @@ function renderCompactWorkOrdersList() {
   columns.append(selectionColumn);
 
   (isExpanded
-    ? ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvršitelji", "PDF"]
-    : ["Osnovno", "Tvrtka", "Lokacija", "Izvršitelji", "PDF"]
+    ? ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvršitelji", "Akcije"]
+    : ["Osnovno", "Tvrtka", "Lokacija", "Izvršitelji", "Akcije"]
   ).forEach((label) => {
     const cell = document.createElement("div");
     cell.className = "work-group-column";
@@ -67375,6 +67640,17 @@ function renderCompactWorkOrdersList() {
         void downloadWorkOrderPdf(item);
       });
       actionsCell.append(downloadButton);
+
+      const documentButton = document.createElement("button");
+      documentButton.type = "button";
+      documentButton.className = "work-item-document-button";
+      documentButton.title = `Dodaj dokumentaciju za RN ${item.workOrderNumber || "bez broja"}`;
+      documentButton.setAttribute("aria-label", documentButton.title);
+      documentButton.innerHTML = getWorkOrderIconMarkup("document");
+      documentButton.addEventListener("click", () => {
+        openWorkOrderRowDocumentPicker(item);
+      });
+      actionsCell.append(documentButton);
 
       if (isExpanded) {
         row.append(selectionCell, basicCell, clientCell, locationCell, contactCell, serviceCell, executorsCell, actionsCell);
@@ -68195,6 +68471,40 @@ bindWorkOrderDocumentDropzone(workOrderDocumentDropzone, workOrderDocumentFileIn
 bindWorkOrderDocumentDropzone(workOrderActivityDropzone, workOrderActivityFileInput, "activity");
 bindWorkOrderDocumentPanelTarget(workOrderEditorMain, "editor");
 bindWorkOrderDocumentPanelTarget(workOrderActivityPanel, "activity");
+workOrderRowDocumentFileInput?.addEventListener("change", () => {
+  const workOrderId = state.workOrderRowDocumentTargetId;
+  const workOrder = findWorkOrderById(workOrderId);
+  state.workOrderRowDocumentTargetId = "";
+
+  if (!workOrderId || !workOrder) {
+    workOrderRowDocumentFileInput.value = "";
+    return;
+  }
+
+  void handleWorkOrderDocumentSelection(workOrderRowDocumentFileInput.files, "list", {
+    workOrderId,
+    workOrder,
+    title: getWorkOrderDocumentDialogTitle(workOrderId, workOrder),
+    helper: "Dokumentacija se sprema točno na ovaj RN. Odaberi vrstu za svaku datoteku.",
+  });
+});
+workOrderDocumentCategoryBackdrop?.addEventListener("click", () => {
+  closeWorkOrderDocumentCategoryDialog(null);
+});
+workOrderDocumentCategoryCancelButton?.addEventListener("click", () => {
+  closeWorkOrderDocumentCategoryDialog(null);
+});
+workOrderDocumentCategoryClearButton?.addEventListener("click", () => {
+  closeWorkOrderDocumentCategoryDialog(null);
+});
+workOrderDocumentCategoryConfirmButton?.addEventListener("click", () => {
+  confirmWorkOrderDocumentCategoryDialog();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.workOrderDocumentCategoryDialog.open) {
+    closeWorkOrderDocumentCategoryDialog(null);
+  }
+});
 workOrderActivityCommentAddButton?.addEventListener("click", () => {
   void submitWorkOrderActivityComment();
 });
@@ -68210,6 +68520,7 @@ renderWorkOrderEditorExecutorPicker();
 renderWorkOrderServicePicker();
 renderWorkOrderServiceSelection();
 renderWorkOrderDocuments();
+renderWorkOrderDocumentCategoryDialog();
 
 workOrdersTableWrap.addEventListener("scroll", () => {
   if (state.activeWorkOrderViewMode !== "list") {

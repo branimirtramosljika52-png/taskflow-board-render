@@ -1254,7 +1254,17 @@ function mapWorkOrderActivityRow(row) {
 }
 
 function normalizeWorkOrderDocumentSource(value) {
-  return value === "activity" ? "activity" : "editor";
+  const normalized = dbString(value).toLowerCase();
+
+  if (normalized === "activity" || normalized === "list") {
+    return normalized;
+  }
+
+  return "editor";
+}
+
+function normalizeWorkOrderDocumentCategory(value = "") {
+  return dbString(value).slice(0, 96);
 }
 
 function inferWorkOrderDocumentExtension(fileName = "", fileType = "") {
@@ -1296,6 +1306,9 @@ function normalizeWorkOrderDocumentInput(input = {}, defaultSourceType = "editor
     fileName: fileName.slice(0, 255),
     fileType,
     fileExtension: inferWorkOrderDocumentExtension(fileName, fileType),
+    documentCategory: normalizeWorkOrderDocumentCategory(
+      input.documentCategory ?? input.category ?? input.documentType,
+    ),
     description: dbString(input.description),
     fileSize,
     dataUrl,
@@ -1321,18 +1334,29 @@ function normalizeWorkOrderDocumentPatch(input = {}) {
     patch.description = dbString(input.description);
   }
 
+  if (Object.prototype.hasOwnProperty.call(input, "documentCategory") || Object.prototype.hasOwnProperty.call(input, "category")) {
+    patch.documentCategory = normalizeWorkOrderDocumentCategory(input.documentCategory ?? input.category);
+  }
+
   return patch;
 }
 
 function buildWorkOrderDocumentActivityEntries(documents = []) {
-  return documents.map((document) => ({
-    actionType: "attachment_added",
-    fieldKey: "document",
-    fieldLabel: "Dokument",
-    oldValue: "",
-    newValue: document.fileName,
-    description: `Dodan dokument ${document.fileName}`,
-  }));
+  return documents.map((document) => {
+    const category = normalizeWorkOrderDocumentCategory(document.documentCategory);
+    const label = [document.fileName, category].filter(Boolean).join(" · ");
+
+    return {
+      actionType: "attachment_added",
+      fieldKey: "document",
+      fieldLabel: "Dokument",
+      oldValue: "",
+      newValue: label || document.fileName,
+      description: category
+        ? `Dodan dokument ${document.fileName} (${category})`
+        : `Dodan dokument ${document.fileName}`,
+    };
+  });
 }
 
 function buildWorkOrderDocumentUpdatedActivityEntries(current, next) {
@@ -1359,6 +1383,19 @@ function buildWorkOrderDocumentUpdatedActivityEntries(current, next) {
       description: next.description
         ? `Opis dokumenta ažuriran za ${next.fileName}`
         : `Opis dokumenta uklonjen za ${next.fileName}`,
+    });
+  }
+
+  if (normalizeWorkOrderDocumentCategory(current.documentCategory) !== normalizeWorkOrderDocumentCategory(next.documentCategory)) {
+    entries.push({
+      actionType: "attachment_updated",
+      fieldKey: "document_category",
+      fieldLabel: "Vrsta dokumenta",
+      oldValue: current.documentCategory,
+      newValue: next.documentCategory,
+      description: next.documentCategory
+        ? `Vrsta dokumenta postavljena za ${next.fileName}`
+        : `Vrsta dokumenta uklonjena za ${next.fileName}`,
     });
   }
 
@@ -2124,6 +2161,7 @@ function mapWorkOrderDocumentRow(row) {
     fileName: row.file_name ?? row.fileName ?? "",
     fileExtension: row.file_extension ?? row.fileExtension ?? "",
     fileType: row.file_type ?? row.fileType ?? "",
+    documentCategory: normalizeWorkOrderDocumentCategory(row.document_category ?? row.documentCategory),
     description: row.file_description ?? row.description ?? "",
     fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
     dataUrl: storedDocument.dataUrl,
@@ -3951,6 +3989,7 @@ export class InMemorySafetyRepository {
       fileName: file.fileName,
       fileExtension: file.fileExtension,
       fileType: file.fileType,
+      documentCategory: file.documentCategory,
       description: file.description,
       fileSize: file.fileSize,
       dataUrl: file.dataUrl,
@@ -4001,6 +4040,9 @@ export class InMemorySafetyRepository {
       fileExtension: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName")
         ? (normalizedPatch.fileExtension || current.fileExtension)
         : current.fileExtension,
+      documentCategory: Object.prototype.hasOwnProperty.call(normalizedPatch, "documentCategory")
+        ? normalizedPatch.documentCategory
+        : current.documentCategory,
       description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
       updatedAt: new Date().toISOString(),
     };
@@ -5403,6 +5445,7 @@ export class MySqlSafetyRepository {
         file_extension VARCHAR(24) NOT NULL DEFAULT '',
         file_type VARCHAR(160) NOT NULL DEFAULT '',
         file_description TEXT NULL,
+        document_category VARCHAR(96) NOT NULL DEFAULT '',
         file_size BIGINT NOT NULL DEFAULT 0,
         data_url LONGTEXT NOT NULL,
         storage_provider VARCHAR(32) NULL,
@@ -5416,6 +5459,7 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureColumnExists(this.pool, "web_work_order_documents", "file_description", "TEXT NULL AFTER file_type");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "document_category", "VARCHAR(96) NOT NULL DEFAULT '' AFTER file_description");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_provider", "VARCHAR(32) NULL AFTER data_url");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_bucket", "VARCHAR(128) NULL AFTER storage_provider");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_key", "VARCHAR(512) NULL AFTER storage_bucket");
@@ -6941,9 +6985,9 @@ export class MySqlSafetyRepository {
           `
             INSERT INTO web_work_order_documents
               (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
-               file_type, file_description, file_size, data_url,
+               file_type, file_description, document_category, file_size, data_url,
                storage_provider, storage_bucket, storage_key, storage_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             Number(workOrderId),
@@ -6954,6 +6998,7 @@ export class MySqlSafetyRepository {
             storedDocument.fileExtension,
             storedDocument.fileType,
             storedDocument.description,
+            storedDocument.documentCategory,
             storedDocument.fileSize,
             storedDocument.inlineDataUrl,
             storedDocument.storageProvider,
@@ -6972,6 +7017,7 @@ export class MySqlSafetyRepository {
           fileName: storedDocument.fileName,
           fileExtension: storedDocument.fileExtension,
           fileType: storedDocument.fileType,
+          documentCategory: storedDocument.documentCategory,
           description: storedDocument.description,
           fileSize: storedDocument.fileSize,
           dataUrl: storedDocument.dataUrl,
@@ -7008,7 +7054,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, data_url,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -7034,7 +7080,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, data_url,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -7057,6 +7103,9 @@ export class MySqlSafetyRepository {
         fileExtension: Object.prototype.hasOwnProperty.call(normalizedPatch, "fileName")
           ? (normalizedPatch.fileExtension || current.fileExtension)
           : current.fileExtension,
+        documentCategory: Object.prototype.hasOwnProperty.call(normalizedPatch, "documentCategory")
+          ? normalizedPatch.documentCategory
+          : current.documentCategory,
         description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
         updatedAt: new Date().toISOString(),
       };
@@ -7064,13 +7113,14 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_work_order_documents
-          SET file_name = ?, file_extension = ?, file_description = ?, updated_at = CURRENT_TIMESTAMP
+          SET file_name = ?, file_extension = ?, file_description = ?, document_category = ?, updated_at = CURRENT_TIMESTAMP
           WHERE work_order_id = ? AND id = ?
         `,
         [
           next.fileName,
           next.fileExtension,
           next.description,
+          next.documentCategory,
           Number(workOrderId),
           Number(documentId),
         ],
@@ -7103,7 +7153,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, data_url,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents

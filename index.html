@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260427h" />
+    <link rel="stylesheet" href="/styles.css?v=20260427i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1711,8 +1711,49 @@
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
             <p id="work-orders-load-state" class="load-state" hidden></p>
+            <input
+              id="work-order-row-document-file-input"
+              type="file"
+              multiple
+              hidden
+              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml,message/rfc822,application/vnd.ms-outlook,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,application/rtf,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.text"
+            />
           </section>
         </section>
+
+        <button
+          id="work-order-document-category-backdrop"
+          type="button"
+          class="work-order-document-category-backdrop"
+          aria-label="Zatvori odabir vrste dokumenta"
+          hidden
+        ></button>
+        <aside
+          id="work-order-document-category-panel"
+          class="work-order-document-category-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="work-order-document-category-title"
+          aria-hidden="true"
+          hidden
+        >
+          <div class="work-order-document-category-head">
+            <div>
+              <p class="section-kicker">Dokumentacija RN</p>
+              <h2 id="work-order-document-category-title">Vrsta dokumenta</h2>
+              <p id="work-order-document-category-helper" class="helper-copy">
+                Odaberi što je svaka datoteka prije spremanja.
+              </p>
+            </div>
+            <button id="work-order-document-category-cancel" type="button" class="ghost-button">Zatvori</button>
+          </div>
+          <div id="work-order-document-category-list" class="work-order-document-category-list"></div>
+          <p id="work-order-document-category-error" class="form-error work-order-document-category-error" hidden></p>
+          <div class="work-order-document-category-actions">
+            <button id="work-order-document-category-clear" type="button" class="ghost-button">Odustani</button>
+            <button id="work-order-document-category-confirm" type="button" class="primary-button">Spremi dokumente</button>
+          </div>
+        </aside>
 
         <button
           id="work-order-document-wizard-backdrop"
@@ -6919,6 +6960,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260427h"></script>
+    <script type="module" src="/src/main.js?v=20260427i"></script>
   </body>
 </html>
