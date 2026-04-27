@@ -214,6 +214,7 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{RN_PRIORITET}}", "Prioritet RN-a"],
   ["{{RN_DATUM_OTVARANJA}}", "Datum otvaranja u formatu dd.mm.yyyy"],
   ["{{RN_ROK_ZAVRSETKA}}", "Rok završetka u formatu dd.mm.yyyy"],
+  ["{{VEZA_RN}}", "Veza RN / povezani nalog ili projekt"],
   ["{{TVRTKA_NAZIV}}", "Naziv tvrtke / naručitelja"],
   ["{{TVRTKA_SJEDISTE}}", "Sjedište tvrtke"],
   ["{{TVRTKA_OIB}}", "OIB tvrtke"],
@@ -227,6 +228,14 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{NAPOMENA}}", "Opis, opseg i napomena RN-a"],
   ["{{ODJEL}}", "Odjel ili vrsta izvedbe"],
   ["{{KOORDINATE}}", "Koordinate lokacije"],
+  ...Array.from({ length: 10 }, (_, index) => [
+    `{{IZVRSITELJ_${index + 1}_BROJ}}`,
+    `Redni broj izvršitelja ${index + 1}, npr. ${index + 1}.`,
+  ]),
+  ...Array.from({ length: 10 }, (_, index) => [
+    `{{IZVRSITELJ_${index + 1}_IME}}`,
+    `Ime i prezime izvršitelja ${index + 1}`,
+  ]),
 ]);
 const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
   Object.freeze({
@@ -1547,6 +1556,7 @@ const state = {
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   workOrderTemplateSettings: {
     storageScope: "",
+    selectedTemplateId: "",
     fileName: "",
     updatedAt: "",
   },
@@ -2100,6 +2110,7 @@ function loadWorkOrderTemplateSettings(force = false) {
   const stored = readJsonFromLocalStorage(getWorkOrderTemplateStorageKey(), {});
   state.workOrderTemplateSettings = {
     storageScope: nextScope,
+    selectedTemplateId: String(stored.selectedTemplateId || "").trim(),
     fileName: String(stored.fileName || "").trim(),
     updatedAt: String(stored.updatedAt || "").trim(),
   };
@@ -2111,6 +2122,7 @@ function persistWorkOrderTemplateSettings() {
   }
 
   writeJsonToLocalStorage(getWorkOrderTemplateStorageKey(), {
+    selectedTemplateId: state.workOrderTemplateSettings.selectedTemplateId,
     fileName: state.workOrderTemplateSettings.fileName,
     updatedAt: state.workOrderTemplateSettings.updatedAt,
   });
@@ -3441,6 +3453,7 @@ const workOrderTemplateFileInput = document.querySelector("#work-order-template-
 const workOrderTemplateUploadButton = document.querySelector("#work-order-template-upload");
 const workOrderTemplatePlaceholdersButton = document.querySelector("#work-order-template-placeholders");
 const workOrderTemplateMeta = document.querySelector("#work-order-template-meta");
+const workOrderTemplateSelect = document.querySelector("#work-order-template-select");
 const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
 const workOrderBulkBar = document.querySelector("#work-order-bulk-bar");
 const workOrderBulkCountLabel = document.querySelector("#work-order-bulk-count-label");
@@ -62691,19 +62704,45 @@ function getWorkOrderTemplateEntries() {
   });
 }
 
+function getSelectedWorkOrderTemplateId(templates = getWorkOrderTemplateEntries()) {
+  const selectedTemplateId = String(state.workOrderTemplateSettings.selectedTemplateId || "").trim();
+  if (selectedTemplateId && templates.some((template) => String(template.id) === selectedTemplateId)) {
+    return selectedTemplateId;
+  }
+
+  return templates[0]?.id ? String(templates[0].id) : "";
+}
+
+function getSelectedWorkOrderTemplate(templates = getWorkOrderTemplateEntries()) {
+  const selectedTemplateId = getSelectedWorkOrderTemplateId(templates);
+  return templates.find((template) => String(template.id) === selectedTemplateId) ?? null;
+}
+
 function renderWorkOrderTemplateStrip() {
   if (!workOrderTemplateMeta || !workOrderTemplateUploadButton || !workOrderTemplatePlaceholdersButton) {
     return;
   }
 
   const templates = getWorkOrderTemplateEntries();
-  const latest = templates[0] ?? null;
+  const selectedTemplate = getSelectedWorkOrderTemplate(templates);
+  const selectedTemplateId = selectedTemplate?.id ? String(selectedTemplate.id) : "";
   const localFileName = state.workOrderTemplateSettings.fileName;
-  const templateLabel = latest?.title || localFileName || "";
-  const timestamp = latest?.updatedAt || state.workOrderTemplateSettings.updatedAt || "";
+  const templateLabel = selectedTemplate?.title || localFileName || "";
+  const timestamp = selectedTemplate?.updatedAt || state.workOrderTemplateSettings.updatedAt || "";
+
+  if (workOrderTemplateSelect) {
+    const options = templates.length > 0
+      ? templates.map((template) => ({
+        value: template.id,
+        label: template.title || template.referenceDocument?.fileName || "RN template",
+      }))
+      : [{ value: "", label: "Nema RN templatea" }];
+    replaceSelectOptions(workOrderTemplateSelect, options, selectedTemplateId);
+    workOrderTemplateSelect.disabled = templates.length === 0;
+  }
 
   workOrderTemplateMeta.textContent = templateLabel
-    ? `${templates.length || 1} RN template · ${templateLabel}${timestamp ? ` · ${formatCompactDateTime(timestamp)}` : ""}`
+    ? `Aktivan je jedan template: ${templateLabel}${timestamp ? ` · ${formatCompactDateTime(timestamp)}` : ""}`
     : "Dodaj Word template ili preuzmi popis placeholdera za PDF.";
   workOrderTemplateUploadButton.disabled = !getCanManageMasterData();
   workOrderTemplateUploadButton.title = getCanManageMasterData()
@@ -62715,7 +62754,8 @@ function buildWorkOrderTemplatePlaceholderText() {
   const lines = [
     "SafeNexus RN template placeholderi",
     "",
-    "U Word predlosku koristi ove oznake. PDF export RN-a moze koristiti iste nazive u sljedecem koraku integracije templatea.",
+    "U Word predlosku koristi ove oznake. Odabran moze biti samo jedan aktivni RN template.",
+    "Za tablicu izvrsitelja koristi npr. {{IZVRSITELJ_1_BROJ}} u stupcu rednog broja i {{IZVRSITELJ_1_IME}} u stupcu ime i prezime.",
     "",
     ...WORK_ORDER_TEMPLATE_PLACEHOLDERS.map(([key, description]) => `${key} - ${description}`),
   ];
@@ -62769,6 +62809,12 @@ async function uploadWorkOrderTemplateFile(file) {
   });
 
   if (success) {
+    const uploadedTitle = `RN template - ${file.name.replace(/\.(docx|dotx)$/i, "")}`;
+    const uploadedTemplate = getWorkOrderTemplateEntries().find((template) => (
+      String(template.title || "") === uploadedTitle
+      || String(template.referenceDocument?.fileName || "") === String(file.name || "")
+    ));
+    state.workOrderTemplateSettings.selectedTemplateId = uploadedTemplate?.id ? String(uploadedTemplate.id) : "";
     state.workOrderTemplateSettings.fileName = file.name;
     state.workOrderTemplateSettings.updatedAt = new Date().toISOString();
     persistWorkOrderTemplateSettings();
@@ -62788,8 +62834,10 @@ async function downloadWorkOrderPdf(workOrder = {}) {
   }
 
   try {
+    const templateId = getSelectedWorkOrderTemplateId();
     const response = await apiBinaryRequest(`/work-orders/${workOrderId}/export-pdf`, {
       method: "POST",
+      body: templateId ? { templateId } : undefined,
     });
     triggerBlobDownload(response.blob, response.fileName || `${sanitizeDocumentTemplateFileName(workOrder.workOrderNumber || "radni-nalog", "radni-nalog")}.pdf`);
   } catch (error) {
@@ -68198,6 +68246,16 @@ workOrderTemplateFileInput?.addEventListener("change", () => {
   void uploadWorkOrderTemplateFile(file).finally(() => {
     workOrderTemplateFileInput.value = "";
   });
+});
+workOrderTemplateSelect?.addEventListener("change", () => {
+  const selectedTemplate = getWorkOrderTemplateEntries().find((template) => (
+    String(template.id) === String(workOrderTemplateSelect.value || "")
+  ));
+  state.workOrderTemplateSettings.selectedTemplateId = selectedTemplate?.id ? String(selectedTemplate.id) : "";
+  state.workOrderTemplateSettings.fileName = selectedTemplate?.title || selectedTemplate?.referenceDocument?.fileName || "";
+  state.workOrderTemplateSettings.updatedAt = selectedTemplate?.updatedAt || new Date().toISOString();
+  persistWorkOrderTemplateSettings();
+  renderWorkOrderTemplateStrip();
 });
 workOrderTemplatePlaceholdersButton?.addEventListener("click", downloadWorkOrderTemplatePlaceholders);
 workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {

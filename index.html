@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260427g" />
+    <link rel="stylesheet" href="/styles.css?v=20260427h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1552,6 +1552,10 @@
                 <p class="section-kicker">RN template</p>
                 <h3>Predložak za radni nalog</h3>
                 <span id="work-order-template-meta">Dodaj Word template ili preuzmi popis placeholdera za PDF.</span>
+                <label class="work-order-template-select-field">
+                  <span>Aktivni template</span>
+                  <select id="work-order-template-select"></select>
+                </label>
               </div>
               <div class="work-order-template-actions">
                 <button id="work-order-template-upload" type="button" class="ghost-button work-order-template-action">
@@ -6915,6 +6919,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260427g"></script>
+    <script type="module" src="/src/main.js?v=20260427h"></script>
   </body>
 </html>

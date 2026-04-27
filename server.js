@@ -610,6 +610,78 @@ function getPurchaseOrderStatusLabel(value = "") {
   return "Skica";
 }
 
+function normalizeWorkOrderTemplateValue(value = "") {
+  return String(value ?? "").trim();
+}
+
+function getWorkOrderTemplateExecutors(workOrder = {}) {
+  const source = Array.isArray(workOrder.executors)
+    ? workOrder.executors
+    : [workOrder.executor1, workOrder.executor2];
+
+  return source
+    .map((entry) => {
+      if (entry && typeof entry === "object") {
+        return normalizeWorkOrderTemplateValue(entry.label || entry.name || entry.value || entry.fullName);
+      }
+
+      return normalizeWorkOrderTemplateValue(entry);
+    })
+    .filter(Boolean);
+}
+
+function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}) {
+  const normalizedWorkOrder = workOrder && typeof workOrder === "object" ? workOrder : {};
+  const executors = getWorkOrderTemplateExecutors(normalizedWorkOrder);
+  const serviceItems = Array.isArray(normalizedWorkOrder.serviceItems)
+    ? normalizedWorkOrder.serviceItems
+    : [];
+  const services = serviceItems.length > 0
+    ? serviceItems
+      .map((item, index) => {
+        const label = item && typeof item === "object"
+          ? normalizeWorkOrderTemplateValue(item.name || item.serviceCode || item.title)
+          : normalizeWorkOrderTemplateValue(item);
+        return label ? `${index + 1}. ${label}` : "";
+      })
+      .filter(Boolean)
+      .join("\n")
+    : normalizeWorkOrderTemplateValue(normalizedWorkOrder.serviceLine);
+  const payload = {
+    RN_BROJ: normalizeWorkOrderTemplateValue(normalizedWorkOrder.workOrderNumber) || "Dodijeljen nakon spremanja",
+    RN_STATUS: normalizeWorkOrderTemplateValue(normalizedWorkOrder.status),
+    RN_PRIORITET: normalizeWorkOrderTemplateValue(normalizedWorkOrder.priority),
+    RN_DATUM_OTVARANJA: normalizedWorkOrder.openedDate ? formatOfferDocumentDate(normalizedWorkOrder.openedDate) : "",
+    RN_ROK_ZAVRSETKA: normalizedWorkOrder.dueDate ? formatOfferDocumentDate(normalizedWorkOrder.dueDate) : "",
+    VEZA_RN: normalizeWorkOrderTemplateValue(normalizedWorkOrder.linkReference),
+    TVRTKA_NAZIV: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyName),
+    TVRTKA_SJEDISTE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.headquarters),
+    TVRTKA_OIB: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyOib),
+    LOKACIJA_NAZIV: normalizeWorkOrderTemplateValue(normalizedWorkOrder.locationName),
+    LOKACIJA_REGIJA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.region),
+    KONTAKT_OSOBA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactName),
+    KONTAKT_TELEFON: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactPhone),
+    KONTAKT_EMAIL: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactEmail),
+    IZVRSITELJI: executors.map((name, index) => `${index + 1}. ${name}`).join("\n"),
+    USLUGE: services,
+    NAPOMENA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.description),
+    ODJEL: normalizeWorkOrderTemplateValue(normalizedWorkOrder.department || normalizedWorkOrder.serviceLine),
+    KOORDINATE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.coordinates),
+  };
+
+  for (let index = 0; index < 10; index += 1) {
+    const position = index + 1;
+    const executorName = executors[index] || "";
+    const ordinal = executorName ? `${position}.` : "";
+    payload[`IZVRSITELJ_${position}_BROJ`] = ordinal;
+    payload[`IZVRSITELJ_${position}_REDNI_BROJ`] = ordinal;
+    payload[`IZVRSITELJ_${position}_IME`] = executorName;
+    payload[`IZVRSITELJ_${position}`] = executorName ? `${position}. ${executorName}` : "";
+  }
+
+  return payload;
+}
+
 function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const normalizedOffer = offer && typeof offer === "object" ? offer : {};
   const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
@@ -3428,13 +3500,37 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden.");
-      const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
+      const templateId = String(body?.templateId ?? "").trim();
       const fileName = sanitizeGeneratedDocumentFileName(
         workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
         { fallback: "radni-nalog", extension: "pdf" },
       );
+
+      if (templateId) {
+        const template = assertInScope(scopedSnapshot.documentTemplates ?? [], templateId, "RN template nije pronaden.");
+        if (!template.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
+          sendError(response, 400, "RN template mora imati .docx ili .dotx Word predlozak.");
+          return true;
+        }
+
+        const pdfBuffer = await generatePdfBufferForTemplate(template, {
+          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
+          fileName: sanitizeGeneratedDocumentFileName(
+            workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
+            { fallback: "radni-nalog", extension: "docx" },
+          ),
+        });
+        sendBinary(response, 200, pdfBuffer, {
+          contentType: "application/pdf",
+          fileName,
+        });
+        return true;
+      }
+
+      const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,

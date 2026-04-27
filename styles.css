@@ -15517,6 +15517,32 @@ body.is-document-template-editor-open .chat-dock {
   line-height: 1.35;
 }
 
+.work-order-template-select-field {
+  display: grid;
+  gap: 5px;
+  max-width: 420px;
+  margin-top: 6px;
+}
+
+.work-order-template-select-field span {
+  color: #52617a;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-template-select-field select {
+  min-height: 36px;
+  border: 1px solid rgba(190, 208, 232, 0.9);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+  color: #17233b;
+  font-weight: 700;
+  padding: 0 36px 0 12px;
+  box-shadow: 0 8px 18px rgba(54, 74, 112, 0.08);
+}
+
 .work-order-template-actions {
   display: flex;
   align-items: center;
