@@ -1378,6 +1378,7 @@ const state = {
     offers: "outgoing",
     "purchase-orders": "outgoing",
   },
+  clientPortalAccessModalOpen: false,
   clientPortalPreviewCollapsed: {
     workOrders: false,
     documents: false,
@@ -2696,6 +2697,11 @@ const contractTemplateError = document.querySelector("#contract-template-error")
 const contractTemplateToggleReferenceButton = document.querySelector("#contract-template-toggle-reference");
 const contractTemplateReferenceBody = document.querySelector("#contract-template-reference-body");
 const clientPortalModule = document.querySelector("#client-portal-module");
+const clientPortalOpenAccessButton = document.querySelector("#client-portal-open-access");
+const clientPortalAccessModalBackdrop = document.querySelector("#client-portal-access-modal-backdrop");
+const clientPortalAccessModal = document.querySelector("#client-portal-access-modal");
+const clientPortalAccessModalCloseButton = document.querySelector("#client-portal-access-modal-close");
+const clientPortalModalCompanySummary = document.querySelector("#client-portal-modal-company-summary");
 const clientPortalCompanyInput = document.querySelector("#client-portal-company-id");
 const clientPortalFirstNameInput = document.querySelector("#client-portal-first-name");
 const clientPortalLastNameInput = document.querySelector("#client-portal-last-name");
@@ -46112,6 +46118,42 @@ async function createCompanyClientUser() {
   return success;
 }
 
+function syncClientPortalAccessModal() {
+  const isOpen = Boolean(state.clientPortalAccessModalOpen);
+  if (clientPortalAccessModalBackdrop) {
+    clientPortalAccessModalBackdrop.hidden = !isOpen;
+  }
+  if (clientPortalAccessModal) {
+    clientPortalAccessModal.hidden = !isOpen;
+    clientPortalAccessModal.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (clientPortalModalCompanySummary) {
+    const company = getCompany(getClientPortalSelectedCompanyId());
+    clientPortalModalCompanySummary.textContent = company
+      ? `Pristup se dodaje za ${company.name || "odabranu tvrtku"}.`
+      : "Prvo odaberi tvrtku u Client Portal modulu.";
+  }
+}
+
+function openClientPortalAccessModal() {
+  const companyId = getClientPortalSelectedCompanyId();
+  if (!companyId || !getCanEditCompany(companyId)) {
+    return;
+  }
+
+  resetClientPortalUserForm();
+  state.clientPortalAccessModalOpen = true;
+  syncClientPortalAccessModal();
+  requestAnimationFrame(() => {
+    clientPortalFirstNameInput?.focus();
+  });
+}
+
+function closeClientPortalAccessModal() {
+  state.clientPortalAccessModalOpen = false;
+  syncClientPortalAccessModal();
+}
+
 function getClientPortalUsers(companyId = "") {
   const normalizedCompanyId = String(companyId || "").trim();
   const users = (state.users ?? []).filter(isClientPortalUser);
@@ -46354,6 +46396,7 @@ async function createClientPortalUserFromModule() {
     renderClientPortalModule();
     renderCompanyClientPortalPanel();
     setInlineMessage(clientPortalFeedback, "Klijentski pristup je kreiran i privremena lozinka je poslana emailom.", "success");
+    closeClientPortalAccessModal();
   }
   return success;
 }
@@ -46788,10 +46831,14 @@ function renderClientPortalModule() {
   if (clientPortalCreateUserButton) {
     clientPortalCreateUserButton.disabled = !companyId || !getCanEditCompany(companyId);
   }
+  if (clientPortalOpenAccessButton) {
+    clientPortalOpenAccessButton.disabled = !companyId || !getCanEditCompany(companyId);
+  }
   if (clientPortalOpenCompanyButton) {
     clientPortalOpenCompanyButton.disabled = !companyId || !getCompany(companyId);
   }
 
+  syncClientPortalAccessModal();
   renderClientPortalPreview();
 }
 
@@ -70954,6 +71001,24 @@ clientPortalSearchInput?.addEventListener("input", () => {
   renderClientPortalModule();
 });
 
+clientPortalOpenAccessButton?.addEventListener("click", () => {
+  openClientPortalAccessModal();
+});
+
+clientPortalAccessModalCloseButton?.addEventListener("click", () => {
+  closeClientPortalAccessModal();
+});
+
+clientPortalAccessModalBackdrop?.addEventListener("click", () => {
+  closeClientPortalAccessModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.clientPortalAccessModalOpen) {
+    closeClientPortalAccessModal();
+  }
+});
+
 clientPortalCreateUserButton?.addEventListener("click", () => {
   void createClientPortalUserFromModule();
 });
@@ -70964,7 +71029,6 @@ clientPortalClearUserButton?.addEventListener("click", () => {
 
 clientPortalRefreshButton?.addEventListener("click", () => {
   renderClientPortalModule();
-  setInlineMessage(clientPortalFeedback, "Pregled je osvježen.", "success");
 });
 
 clientPortalOpenCompanyButton?.addEventListener("click", () => {
