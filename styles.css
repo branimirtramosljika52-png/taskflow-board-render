@@ -8468,6 +8468,12 @@ button:hover {
   color: var(--muted);
 }
 
+.locations-list-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px;
+}
+
 .load-state {
   margin: 12px 0 0;
   color: var(--muted);

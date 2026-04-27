@@ -129,6 +129,7 @@ import {
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
+const LOCATION_LIST_BATCH_SIZE = 120;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const DOCUMENT_TEMPLATE_RUNTIME_AUTOSAVE_DELAY_MS = 1400;
 const DOCUMENT_TEMPLATE_RUNTIME_DRAFT_STORAGE_PREFIX = "safenexus.document-template-runtime-draft.v1";
@@ -780,6 +781,7 @@ const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 120;
 const MEASUREMENT_COMPUTE_DEBOUNCE_MS = 90;
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
+const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
 const WORK_ORDER_VIEW_MODES = [
   { value: "list", label: "List" },
   { value: "calendar", label: "Calendar" },
@@ -1303,6 +1305,7 @@ const state = {
   locationFilters: {
     query: "",
   },
+  locationRenderLimit: LOCATION_LIST_BATCH_SIZE,
   contractFilters: {
     query: "",
     status: "all",
@@ -2092,6 +2095,7 @@ let sessionLastActivityAtMs = 0;
 let logoutInProgress = false;
 let companiesListRenderSignature = "";
 let companiesSearchDebounceId = 0;
+let locationsSearchDebounceId = 0;
 let companiesColumnWidths = [];
 let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
@@ -4037,6 +4041,7 @@ const locationForm = document.querySelector("#location-form");
 const locationError = document.querySelector("#location-error");
 const locationOpenFormButton = document.querySelector("#location-open-form");
 const locationsSearchInput = document.querySelector("#locations-search");
+const locationsLoadMoreButton = document.querySelector("#locations-load-more");
 const locationEditorBackdrop = document.querySelector("#location-editor-backdrop");
 const locationEditorPanel = document.querySelector("#location-editor-panel");
 const locationEditorTitle = document.querySelector("#location-editor-title");
@@ -6262,6 +6267,7 @@ function applySnapshot(payload) {
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
+  state.locationRenderLimit = LOCATION_LIST_BATCH_SIZE;
   loadWorkOrderFilterPreferences();
   setConnectionStatus();
   setSyncError("");
@@ -11890,7 +11896,11 @@ function focusCompanyArea(target = "list") {
 }
 
 function focusLocationArea(target = "list") {
+  const wasLocationsView = state.activeView === "locations";
   state.activeView = "locations";
+  if (target !== "form" && !wasLocationsView) {
+    resetLocationListWindow({ scroll: false });
+  }
   renderActiveView();
   renderLocations();
 
@@ -58849,6 +58859,22 @@ function resetWorkOrderListWindow() {
   }
 }
 
+function resetLocationListWindow({ scroll = true } = {}) {
+  state.locationRenderLimit = LOCATION_LIST_BATCH_SIZE;
+
+  if (scroll) {
+    workspaceViews.locations?.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+  }
+}
+
+function loadMoreLocations() {
+  state.locationRenderLimit += LOCATION_LIST_BATCH_SIZE;
+  renderLocations();
+}
+
 function loadMoreWorkOrders() {
   const total = getFilteredWorkOrders().length;
 
@@ -67156,6 +67182,8 @@ function renderLocations() {
     });
   const queryNeedle = normalizeLooseName(state.locationFilters.query || "");
   const filteredLocations = sortedLocations.filter((location) => matchesLocationSearch(location, queryNeedle));
+  const renderLimit = Math.max(LOCATION_LIST_BATCH_SIZE, Number(state.locationRenderLimit) || LOCATION_LIST_BATCH_SIZE);
+  const visibleLocations = filteredLocations.slice(0, renderLimit);
   const canManageMasterData = getCanManageMasterData();
 
   if (locationOpenFormButton) {
@@ -67168,12 +67196,21 @@ function renderLocations() {
   }
 
   if (locationsHelper) {
-    locationsHelper.textContent = filteredLocations.length === sortedLocations.length
-      ? `${filteredLocations.length} lokacija u listi.`
-      : `Prikazano ${filteredLocations.length} od ${sortedLocations.length} lokacija.`;
+    if (filteredLocations.length === 0) {
+      locationsHelper.textContent = sortedLocations.length === 0
+        ? "Nema lokacija za prikaz."
+        : "Nema lokacija za zadanu pretragu.";
+    } else if (visibleLocations.length < filteredLocations.length) {
+      locationsHelper.textContent = `Prikazano ${visibleLocations.length} od ${filteredLocations.length} lokacija. Pretraga odmah sužava cijelu listu.`;
+    } else {
+      locationsHelper.textContent = filteredLocations.length === sortedLocations.length
+        ? `${filteredLocations.length} lokacija u listi.`
+        : `Prikazano svih ${filteredLocations.length} od ${sortedLocations.length} lokacija.`;
+    }
   }
 
-  locationsBody.replaceChildren(...filteredLocations.map((location) => {
+  const fragment = document.createDocumentFragment();
+  visibleLocations.forEach((location) => {
     const row = document.createElement("tr");
     row.className = "list-row";
     const companyName = getCompany(location.companyId)?.name ?? "Nepoznata tvrtka";
@@ -67221,8 +67258,10 @@ function renderLocations() {
       actionsCell,
     );
 
-    return row;
-  }));
+    fragment.append(row);
+  });
+
+  locationsBody.replaceChildren(fragment);
 
   locationsEmpty.hidden = filteredLocations.length !== 0;
   locationsEmpty.textContent = sortedLocations.length === 0
@@ -67230,6 +67269,14 @@ function renderLocations() {
     : queryNeedle
       ? "Nema lokacija za zadanu pretragu."
       : "Nema unesenih lokacija.";
+
+  if (locationsLoadMoreButton) {
+    const hidden = visibleLocations.length >= filteredLocations.length;
+    locationsLoadMoreButton.hidden = hidden;
+    locationsLoadMoreButton.textContent = hidden
+      ? "Sve lokacije su prikazane"
+      : `Prikaži još ${Math.min(LOCATION_LIST_BATCH_SIZE, filteredLocations.length - visibleLocations.length)} lokacija`;
+  }
 }
 
 function renderUsers() {
@@ -71148,9 +71195,21 @@ companiesSearchInput?.addEventListener("input", () => {
 
 locationsSearchInput?.addEventListener("input", () => {
   state.locationFilters.query = locationsSearchInput.value.trim();
-  if (state.activeView === "locations") {
-    renderLocations();
+  resetLocationListWindow({ scroll: false });
+
+  if (locationsSearchDebounceId) {
+    window.clearTimeout(locationsSearchDebounceId);
   }
+  locationsSearchDebounceId = window.setTimeout(() => {
+    locationsSearchDebounceId = 0;
+    if (state.activeView === "locations") {
+      renderLocations();
+    }
+  }, LOCATIONS_SEARCH_DEBOUNCE_MS);
+});
+
+locationsLoadMoreButton?.addEventListener("click", () => {
+  loadMoreLocations();
 });
 
 companiesPeriodFilterInput?.addEventListener("change", () => {
