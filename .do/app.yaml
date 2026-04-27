@@ -5,11 +5,19 @@ domains:
     type: PRIMARY
   - domain: www.safe-nexus.org
     type: ALIAS
+ingress:
+  rules:
+    - component:
+        name: web
+      match:
+        path:
+          prefix: /
 services:
   - name: web
     git:
       branch: main
       repo_clone_url: https://github.com/branimirtramosljika52-png/taskflow-board-render.git
+    dockerfile_path: Dockerfile
     http_port: 8080
     health_check:
       http_path: /api/health
