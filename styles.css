@@ -34456,9 +34456,83 @@ button.work-order-editor-section-head {
     padding-right: 72px;
   }
 
-  .work-order-company-picker::after {
+.work-order-company-picker::after {
     content: "";
     width: 34px;
     padding: 0;
+  }
+}
+
+/* RN editor linear order: client, dates, status, location. */
+.work-order-company-preview-inline {
+  display: none !important;
+}
+
+.work-order-editor-section.is-work-order-basics {
+  --section-accent: #2fb06f;
+  --section-accent-soft: rgba(47, 176, 111, 0.11);
+  --section-accent-line: rgba(47, 176, 111, 0.38);
+}
+
+.work-order-editor-section.is-work-order-basics .work-order-editor-section-body {
+  gap: 8px;
+}
+
+.form-grid-work-order-client {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.form-grid-work-order-dates {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid-work-order-status {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid-location-contact {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.form-grid-location-contact .field-span-3 {
+  grid-column: span 3;
+}
+
+.form-grid-location-contact .field-span-2,
+.form-grid-work-order-client .field-span-2 {
+  grid-column: span 2;
+}
+
+.work-order-editor-form .field > input[readonly] {
+  background: linear-gradient(180deg, #fbfdff, #f2f7f4);
+  color: #27384d;
+}
+
+.work-order-editor-form .entity-link-actions {
+  margin: 0;
+  padding: 0 2px;
+}
+
+@media (max-width: 1180px) {
+  .form-grid-work-order-client,
+  .form-grid-work-order-dates,
+  .form-grid-work-order-status,
+  .form-grid-location-contact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-grid-work-order-client .field-span-2,
+  .form-grid-location-contact .field-span-2,
+  .form-grid-location-contact .field-span-3 {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .form-grid-work-order-client,
+  .form-grid-work-order-dates,
+  .form-grid-work-order-status,
+  .form-grid-location-contact {
+    grid-template-columns: 1fr;
   }
 }

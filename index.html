@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260427j" />
+    <link rel="stylesheet" href="/styles.css?v=20260427k" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -965,55 +965,47 @@
                     <input id="work-order-team-label" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
 
-                    <section class="work-order-editor-section is-client-identity" data-work-order-section="client">
-                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
-                        <div>
-                          <p class="work-order-editor-section-kicker">Klijent</p>
-                          <h3>Tvrtka, sjedište i OIB</h3>
-                        </div>
-                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
-                      </button>
-
-                      <div class="work-order-editor-section-body work-order-company-card-wrap">
-                        <label id="work-order-company-preview" class="company-selection-preview work-order-company-picker" data-keep-visible="true">
-                          <div id="work-order-company-preview-logo" class="company-selection-preview-logo"></div>
-                          <div class="company-selection-preview-copy">
-                            <strong id="work-order-company-preview-name">Tvrtka</strong>
-                            <span id="work-order-company-preview-meta">Odaberi tvrtku za detalje.</span>
-                          </div>
-                          <select id="work-order-company-id" aria-label="Odaberi tvrtku"></select>
-                        </label>
-                        <input id="work-order-headquarters" type="hidden" readonly />
-                        <input id="work-order-company-oib" type="hidden" readonly />
-
-                        <div id="work-order-relation-actions" class="entity-link-actions field-span-full" hidden>
-                          <button id="work-order-open-company" type="button" class="ghost-button">Otvori tvrtku</button>
-                          <button id="work-order-open-location" type="button" class="ghost-button">Otvori lokaciju</button>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section class="work-order-editor-section is-work-order-route" data-work-order-section="route">
+                    <section class="work-order-editor-section is-client-identity is-work-order-basics" data-work-order-section="client">
                       <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
                           <p class="work-order-editor-section-kicker">RN</p>
-                          <h3>Status, veza i lokacija</h3>
+                          <h3>Osnovni podaci</h3>
                         </div>
                         <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
                       </button>
 
                       <div class="work-order-editor-section-body">
-                        <div class="form-grid form-grid-work-order-rn">
-                          <label class="field">
-                            <span>Status RN</span>
-                            <select id="work-order-status"></select>
+                        <div id="work-order-company-preview" class="company-selection-preview work-order-company-preview-inline" hidden>
+                          <div id="work-order-company-preview-logo" class="company-selection-preview-logo"></div>
+                          <div class="company-selection-preview-copy">
+                            <strong id="work-order-company-preview-name">Tvrtka</strong>
+                            <span id="work-order-company-preview-meta">Odaberi tvrtku za detalje.</span>
+                          </div>
+                        </div>
+
+                        <div class="form-grid form-grid-work-order-client">
+                          <label class="field field-span-2">
+                            <span>Tvrtka</span>
+                            <select id="work-order-company-id" aria-label="Odaberi tvrtku"></select>
+                          </label>
+
+                          <label class="field field-span-2">
+                            <span>Sjedište</span>
+                            <input id="work-order-headquarters" type="text" readonly />
                           </label>
 
                           <label class="field">
-                            <span>Prioritet</span>
-                            <select id="work-order-priority"></select>
+                            <span>OIB</span>
+                            <input id="work-order-company-oib" type="text" readonly />
                           </label>
+                        </div>
 
+                        <div id="work-order-relation-actions" class="entity-link-actions field-span-full" hidden>
+                          <button id="work-order-open-company" type="button" class="ghost-button">Otvori tvrtku</button>
+                          <button id="work-order-open-location" type="button" class="ghost-button">Otvori lokaciju</button>
+                        </div>
+
+                        <div class="form-grid form-grid-work-order-dates">
                           <label class="field">
                             <span>Datum otvaranja</span>
                             <input id="work-order-opened-date" type="date" />
@@ -1025,12 +1017,24 @@
                           </label>
                         </div>
 
-                        <div class="form-grid form-grid-location-contact">
+                        <div class="form-grid form-grid-work-order-status">
+                          <label class="field">
+                            <span>Status RN</span>
+                            <select id="work-order-status"></select>
+                          </label>
+
+                          <label class="field">
+                            <span>Prioritet</span>
+                            <select id="work-order-priority"></select>
+                          </label>
+
                           <label class="field">
                             <span>Veza RN</span>
                             <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
                           </label>
+                        </div>
 
+                        <div class="form-grid form-grid-location-contact">
                           <label class="field field-span-3">
                             <span>Lokacija</span>
                             <select id="work-order-location-id"></select>
