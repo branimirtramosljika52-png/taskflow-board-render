@@ -9689,6 +9689,7 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-form .field {
+  position: relative;
   border: 1.5px solid rgba(189, 204, 229, 0.96);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.98)),
@@ -9701,6 +9702,38 @@ button.work-order-editor-section-head {
 .work-order-editor-form .field > span,
 .work-order-field-heading {
   color: #50617d;
+}
+
+.work-order-editor-form .field > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.work-order-editor-form .work-order-field-heading {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+}
+
+.work-order-editor-form .work-order-field-label {
+  display: none;
+}
+
+.work-order-editor-form .work-order-field-icon {
+  width: 24px;
+  height: 24px;
+  border-color: var(--section-accent-line);
+  background: var(--section-accent-soft);
+  color: var(--section-accent);
 }
 
 .work-order-editor-form input,
@@ -9728,6 +9761,22 @@ button.work-order-editor-section-head {
   box-shadow:
     0 12px 28px rgba(32, 72, 52, 0.08),
     inset 5px 0 0 var(--section-accent);
+}
+
+.form-grid-location-contact {
+  grid-template-columns: minmax(210px, 0.85fr) minmax(360px, 1.85fr) minmax(150px, 0.7fr) minmax(190px, 0.9fr);
+}
+
+.form-grid-location-contact #work-order-location-id {
+  font-size: 0.96rem;
+}
+
+.work-order-service-selection-field {
+  padding: 10px;
+}
+
+.work-order-service-template-hint[hidden] {
+  display: none;
 }
 
 .work-order-document-stack {
@@ -14958,8 +15007,9 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-service-selection {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .work-order-service-empty,
@@ -14972,14 +15022,18 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-service-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  display: inline-flex;
+  gap: 10px;
   align-items: center;
-  padding: 12px 14px;
-  border: 1px solid rgba(47, 104, 84, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.98);
+  max-width: 100%;
+  min-height: 42px;
+  padding: 6px 8px 6px 12px;
+  border: 1.5px solid rgba(47, 104, 84, 0.18);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(236, 249, 242, 0.9), rgba(255, 255, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(32, 72, 52, 0.07);
 }
 
 .work-order-service-item.is-completed {
@@ -14988,20 +15042,25 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-service-item-copy {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.work-order-service-item-title-row,
-.work-order-service-item-templates {
+.work-order-service-item-title-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .work-order-service-item-title-row strong {
+  min-width: 0;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.94rem;
   color: #22352d;
 }
@@ -15027,19 +15086,33 @@ body.is-document-template-editor-open .chat-dock {
 .work-order-service-item-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .work-order-service-status-toggle,
 .work-order-service-remove {
-  min-height: 34px;
-  min-width: 34px;
-  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
   border: 1px solid rgba(47, 104, 84, 0.14);
   background: rgba(247, 250, 248, 0.98);
   color: #315346;
   font-weight: 800;
   cursor: pointer;
+}
+
+.work-order-service-status-toggle svg,
+.work-order-service-remove svg {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 .work-order-service-status-toggle.is-completed {
@@ -15048,9 +15121,9 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 .work-order-service-remove {
-  padding: 0 10px;
-  min-width: unset;
-  font-size: 0.74rem;
+  color: #8a3941;
+  background: rgba(255, 246, 247, 0.98);
+  border-color: rgba(207, 99, 108, 0.18);
 }
 
 .work-order-calendar-content {

@@ -6740,6 +6740,33 @@ function initializeWorkOrderEditorSectionToggles() {
   });
 }
 
+function initializeWorkOrderFieldLabelTooltips() {
+  if (!workOrderForm) {
+    return;
+  }
+
+  workOrderForm.querySelectorAll(".field").forEach((field) => {
+    const heading = field.querySelector(":scope > span");
+    const label = String(heading?.dataset.originalLabel || heading?.textContent || "").trim();
+
+    if (!label) {
+      return;
+    }
+
+    field.title = label;
+    field.dataset.fieldTooltip = label;
+
+    field.querySelectorAll("input, select, textarea, button").forEach((control) => {
+      if (!control.getAttribute("aria-label")) {
+        control.setAttribute("aria-label", label);
+      }
+      if (!control.getAttribute("title")) {
+        control.setAttribute("title", label);
+      }
+    });
+  });
+}
+
 function applyPresenceToAvatar(target, presence = "online") {
   if (!target) {
     return;
@@ -13660,31 +13687,15 @@ function renderWorkOrderServiceSelection() {
     if (workOrderServiceTemplateHint) {
       workOrderServiceTemplateHint.textContent = legacySummary
         ? "Ako odabereš usluge iz kataloga, stari tekst usluge zamijenit će se strukturiranim stavkama."
-        : "Odaberi jednu ili više usluga. Templatei povezani s uslugom prikazuju se ovdje kao podsjetnik za zapisnik.";
+        : "Odaberi jednu ili više usluga.";
+      workOrderServiceTemplateHint.hidden = false;
     }
     return;
   }
 
-  const templateNames = Array.from(new Set(
-    selectedItems.flatMap((item) => item.linkedTemplateTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
-  ));
-  const learningTestNames = Array.from(new Set(
-    selectedItems.flatMap((item) => item.linkedLearningTestTitles ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
-  ));
-  const selectionType = getWorkOrderSelectionServiceType(selectedItems);
-
   if (workOrderServiceTemplateHint) {
-    if (selectionType === "znr") {
-      workOrderServiceTemplateHint.textContent = learningTestNames.length > 0
-        ? `Povezani ispiti: ${learningTestNames.join(" · ")}`
-        : "Odabrane ZNR usluge trenutno nemaju povezan ispit.";
-    } else if (selectionType === "other") {
-      workOrderServiceTemplateHint.textContent = "Za usluge vrste Ostalo trenutno nema posebnog toka kroz zapisnike ili ispite.";
-    } else {
-      workOrderServiceTemplateHint.textContent = templateNames.length > 0
-        ? `Povezani templatei: ${templateNames.join(" · ")}`
-        : "Odabrane usluge trenutno nemaju povezan template.";
-    }
+    workOrderServiceTemplateHint.hidden = true;
+    workOrderServiceTemplateHint.textContent = "";
   }
 
   workOrderServiceSelection.replaceChildren(...selectedItems.map((item) => {
@@ -13700,35 +13711,7 @@ function renderWorkOrderServiceSelection() {
     title.textContent = item.name || item.serviceCode || "Usluga";
     titleRow.append(title);
 
-    if (item.serviceCode) {
-      titleRow.append(createBadge(item.serviceCode, "work-order-service-code-badge"));
-    }
-    titleRow.append(createBadge(getServiceCatalogTypeLabel(getWorkOrderServiceType(item)), "work-order-service-template-badge"));
-
-    const templates = document.createElement("div");
-    templates.className = "work-order-service-item-templates";
-    const templateTitles = (item.linkedTemplateTitles ?? []).filter(Boolean);
-
-    if (getWorkOrderServiceType(item) === "inspection" && templateTitles.length > 0) {
-      templateTitles.forEach((templateTitle) => {
-        templates.append(createBadge(templateTitle, "work-order-service-template-badge"));
-      });
-    } else if (getWorkOrderServiceType(item) === "inspection") {
-      templates.append(createBadge("Bez templatea", "work-order-service-template-badge is-muted"));
-    }
-
-    if (getWorkOrderServiceType(item) === "znr") {
-      const learningTitles = (item.linkedLearningTestTitles ?? []).filter(Boolean);
-      if (learningTitles.length > 0) {
-        learningTitles.forEach((learningTitle) => {
-          templates.append(createBadge(learningTitle, "work-order-service-template-badge"));
-        });
-      } else {
-        templates.append(createBadge("Bez ispita", "work-order-service-template-badge is-muted"));
-      }
-    }
-
-    copy.append(titleRow, templates);
+    copy.append(titleRow);
 
     const actions = document.createElement("div");
     actions.className = "work-order-service-item-actions";
@@ -13736,7 +13719,7 @@ function renderWorkOrderServiceSelection() {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = `work-order-service-status-toggle${item.isCompleted ? " is-completed" : ""}`;
-    toggle.textContent = item.isCompleted ? "✓" : "✕";
+    toggle.innerHTML = getWorkOrderIconMarkup("status");
     toggle.title = item.isCompleted ? "Označi kao neodrađeno" : "Označi kao odrađeno";
     toggle.addEventListener("click", () => {
       const nextItems = selectedItems.map((entry) => (
@@ -13752,7 +13735,9 @@ function renderWorkOrderServiceSelection() {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "work-order-service-remove";
-    remove.textContent = "Ukloni";
+    remove.innerHTML = getWorkOrderIconMarkup("trash");
+    remove.title = "Ukloni uslugu";
+    remove.setAttribute("aria-label", "Ukloni uslugu");
     remove.addEventListener("click", () => {
       const nextItems = selectedItems.filter((entry) => entry.serviceId !== item.serviceId);
       writeWorkOrderServiceSelection(nextItems, {
@@ -68743,6 +68728,7 @@ workOrderActivityCommentInput?.addEventListener("keydown", (event) => {
 });
 enhanceWorkOrderEditorChrome();
 initializeWorkOrderEditorSectionToggles();
+initializeWorkOrderFieldLabelTooltips();
 enhanceOfferChrome();
 renderWorkOrderEditorExecutorPicker();
 renderWorkOrderServicePicker();
