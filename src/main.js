@@ -1594,6 +1594,7 @@ const state = {
   },
   workOrderRowDocumentTargetId: "",
   workOrderEditorOpen: false,
+  workOrderEditorCollapsedSections: {},
   workOrderAutoSave: {
     timerId: null,
     saving: false,
@@ -3767,6 +3768,7 @@ if (workOrderDocumentWizardPanel) {
 }
 
 const workOrderIdInput = document.querySelector("#work-order-id");
+const workOrderSectionToggleButtons = Array.from(document.querySelectorAll("[data-work-order-section-toggle]"));
 const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
 const workOrderOpenedDateInput = document.querySelector("#work-order-opened-date");
@@ -5516,6 +5518,10 @@ function syncWorkOrderEditorAccess() {
   const canEdit = getCanEditOperationalData();
   if (workOrderForm) {
     workOrderForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+      if (control.matches("[data-work-order-section-toggle]")) {
+        control.disabled = false;
+        return;
+      }
       control.disabled = !canEdit;
     });
   }
@@ -6657,7 +6663,9 @@ function syncCompanySelectionPreview(
   }
 
   const company = getCompany(companyId);
-  previewWrap.hidden = !company;
+  const keepVisible = previewWrap.dataset.keepVisible === "true";
+  previewWrap.hidden = !company && !keepVisible;
+  previewWrap.classList.toggle("has-selection", Boolean(company));
 
   if (!company) {
     previewName.textContent = "Tvrtka";
@@ -6669,6 +6677,42 @@ function syncCompanySelectionPreview(
   previewName.textContent = company.name || "Tvrtka";
   previewMeta.textContent = describeCompanyPreview(company);
   renderCompanyLogo(previewLogo, company);
+}
+
+function syncWorkOrderEditorSectionCollapse(section) {
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+
+  const sectionKey = String(section.dataset.workOrderSection || "").trim();
+  const toggle = section.querySelector("[data-work-order-section-toggle]");
+  const collapsed = Boolean(sectionKey && state.workOrderEditorCollapsedSections[sectionKey]);
+  section.classList.toggle("is-collapsed", collapsed);
+  toggle?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+}
+
+function toggleWorkOrderEditorSection(section) {
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+
+  const sectionKey = String(section.dataset.workOrderSection || "").trim();
+  if (!sectionKey) {
+    return;
+  }
+
+  state.workOrderEditorCollapsedSections[sectionKey] = !state.workOrderEditorCollapsedSections[sectionKey];
+  syncWorkOrderEditorSectionCollapse(section);
+}
+
+function initializeWorkOrderEditorSectionToggles() {
+  workOrderSectionToggleButtons.forEach((button) => {
+    const section = button.closest(".work-order-editor-section[data-work-order-section]");
+    syncWorkOrderEditorSectionCollapse(section);
+    button.addEventListener("click", () => {
+      toggleWorkOrderEditorSection(section);
+    });
+  });
 }
 
 function applyPresenceToAvatar(target, presence = "online") {
@@ -68673,6 +68717,7 @@ workOrderActivityCommentInput?.addEventListener("keydown", (event) => {
   }
 });
 enhanceWorkOrderEditorChrome();
+initializeWorkOrderEditorSectionToggles();
 enhanceOfferChrome();
 renderWorkOrderEditorExecutorPicker();
 renderWorkOrderServicePicker();

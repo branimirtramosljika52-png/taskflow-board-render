@@ -3884,6 +3884,7 @@ export class InMemorySafetyRepository {
     const generatedNumber = `${String(now.getFullYear()).slice(-2)}-${this.snapshot.workOrders.length + 1}`;
     const workOrder = createWorkOrder(input, this.snapshot, () => crypto.randomUUID(), generatedNumber);
     this.snapshot.workOrders = [workOrder, ...this.snapshot.workOrders];
+    this.snapshot.locations = this.snapshot.locations.map((location) => syncLocationFieldsFromWorkOrder(location, workOrder));
     this.workOrderActivity.set(String(workOrder.id), [
       ...buildWorkOrderCreatedActivityEntries(workOrder).map((entry, index) => ({
         id: `${workOrder.id}-created-${index}`,
@@ -3912,6 +3913,7 @@ export class InMemorySafetyRepository {
 
     const next = updateWorkOrder(current, patch, this.snapshot);
     this.snapshot.workOrders = this.snapshot.workOrders.map((item) => (item.id === id ? next : item));
+    this.snapshot.locations = this.snapshot.locations.map((location) => syncLocationFieldsFromWorkOrder(location, next));
     const existingEntries = this.workOrderActivity.get(String(id)) ?? [];
     const nextEntries = buildWorkOrderUpdatedActivityEntries(current, next).map((entry, index) => ({
       id: `${id}-updated-${Date.now()}-${index}`,

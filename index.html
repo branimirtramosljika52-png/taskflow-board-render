@@ -962,177 +962,155 @@
                     <input id="work-order-id" type="hidden" />
                     <input id="work-order-service-line" type="hidden" />
                     <input id="work-order-service-items-data" type="hidden" />
+                    <input id="work-order-team-label" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
 
-                    <section class="work-order-editor-section is-overview">
-                      <div class="work-order-editor-section-head">
+                    <section class="work-order-editor-section is-client-identity" data-work-order-section="client">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
-                          <p class="work-order-editor-section-kicker">Pregled</p>
-                          <h3>Osnovni detalji</h3>
+                          <p class="work-order-editor-section-kicker">Klijent</p>
+                          <h3>Tvrtka, sjedište i OIB</h3>
                         </div>
-                      </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
 
-                      <div class="form-grid form-grid-work-order-essentials">
-                        <label class="field">
-                          <span>Status RN</span>
-                          <select id="work-order-status"></select>
-                        </label>
-
-                        <label class="field">
-                          <span>Prioritet</span>
-                          <select id="work-order-priority"></select>
-                        </label>
-
-                        <label class="field">
-                          <span>Datum otvaranja</span>
-                          <input id="work-order-opened-date" type="date" />
-                        </label>
-
-                        <label class="field">
-                          <span>Rok zavrsetka</span>
-                          <input id="work-order-due-date" type="date" />
-                        </label>
-
-                        <div class="work-order-client-bundle field-span-full">
-                          <div class="work-order-client-bundle-head">
-                            <span class="work-order-client-bundle-icon" aria-hidden="true">
-                              <svg viewBox="0 0 16 16">
-                                <path d="M2.5 13.5h11M4 13.5V4.75c0-.41.34-.75.75-.75h3.5c.41 0 .75.34.75.75V13.5M10 13.5V2.75c0-.41.34-.75.75-.75h1.5c.41 0 .75.34.75.75V13.5M6 6.5h1M6 8.75h1M11.25 5.25h.5M11.25 7.5h.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
-                              </svg>
-                            </span>
-                            <strong>Tvrtka, sjedište i OIB</strong>
-                          </div>
-                          <div class="work-order-client-bundle-grid">
-                            <label class="field">
-                              <span>Tvrtka</span>
-                              <select id="work-order-company-id"></select>
-                            </label>
-
-                            <label class="field">
-                              <span>Sjedište</span>
-                              <input id="work-order-headquarters" type="text" readonly />
-                            </label>
-
-                            <label class="field">
-                              <span>OIB</span>
-                              <input id="work-order-company-oib" type="text" readonly />
-                            </label>
-                          </div>
-                        </div>
-
-                        <label class="field">
-                          <span>Lokacija</span>
-                          <select id="work-order-location-id"></select>
-                        </label>
-
-                        <div id="work-order-company-preview" class="company-selection-preview field-span-full" hidden>
+                      <div class="work-order-editor-section-body work-order-company-card-wrap">
+                        <label id="work-order-company-preview" class="company-selection-preview work-order-company-picker" data-keep-visible="true">
                           <div id="work-order-company-preview-logo" class="company-selection-preview-logo"></div>
                           <div class="company-selection-preview-copy">
                             <strong id="work-order-company-preview-name">Tvrtka</strong>
                             <span id="work-order-company-preview-meta">Odaberi tvrtku za detalje.</span>
                           </div>
-                        </div>
+                          <select id="work-order-company-id" aria-label="Odaberi tvrtku"></select>
+                        </label>
+                        <input id="work-order-headquarters" type="hidden" readonly />
+                        <input id="work-order-company-oib" type="hidden" readonly />
 
                         <div id="work-order-relation-actions" class="entity-link-actions field-span-full" hidden>
                           <button id="work-order-open-company" type="button" class="ghost-button">Otvori tvrtku</button>
                           <button id="work-order-open-location" type="button" class="ghost-button">Otvori lokaciju</button>
                         </div>
-
-                        <label class="field">
-                          <span>Veza RN</span>
-                          <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
-                        </label>
-
-                        <label class="field work-order-team-field" hidden>
-                          <span>Tim</span>
-                          <input id="work-order-team-label" type="text" list="work-order-team-suggestions" placeholder="npr. Zagreb, Slavonija, Periodika" />
-                        </label>
-
-                        <label class="field work-order-executors-field">
-                          <span>Izvršitelji</span>
-                          <input id="work-order-executors-data" type="hidden" />
-                          <div id="work-order-executors-picker" class="work-order-inline-executor-picker"></div>
-                        </label>
-
-                        <label class="field">
-                          <span>Tagovi</span>
-                          <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
-                        </label>
-
-                        <label class="field">
-                          <span>Regija</span>
-                          <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
-                        </label>
-                      </div>
-
-                      <label class="field field-span-full work-order-inline-note">
-                        <span>Napomena</span>
-                        <textarea id="work-order-description" rows="3" placeholder="Što se radi, koji je opseg i što je bitno za RN."></textarea>
-                      </label>
-                    </section>
-
-                    <section class="work-order-editor-section is-client">
-                      <div class="work-order-editor-section-head">
-                        <div>
-                          <p class="work-order-editor-section-kicker">Klijent</p>
-                          <h3>Lokacija i kontakt</h3>
-                        </div>
-                      </div>
-
-                      <div class="work-order-editor-subgrid">
-                        <div class="work-order-editor-subsection">
-                          <div class="work-order-editor-subsection-head">Ugovor i lokacija</div>
-                          <div class="form-grid form-grid-client-identity">
-                            <label class="field">
-                              <span>Vrsta ugovora</span>
-                              <input id="work-order-contract-type" type="text" readonly />
-                            </label>
-
-                            <label class="field">
-                              <span>Koordinate</span>
-                              <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
-                            </label>
-                          </div>
-                        </div>
-
-                        <div class="work-order-editor-subsection">
-                          <div class="work-order-editor-subsection-head">Kontakt</div>
-                          <div class="form-grid form-grid-client-contact">
-                            <label class="field">
-                              <span>Kontakt osoba</span>
-                              <select id="work-order-contact-slot"></select>
-                            </label>
-
-                            <label class="field">
-                              <span>Kontakt broj</span>
-                              <input id="work-order-contact-phone" type="text" placeholder="+385 ..." />
-                            </label>
-
-                            <label class="field">
-                              <span>Kontakt email</span>
-                              <input id="work-order-contact-email" type="email" placeholder="kontakt@tvrtka.hr" />
-                            </label>
-                          </div>
-                        </div>
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section is-service">
-                      <div class="work-order-editor-section-head">
+                    <section class="work-order-editor-section is-work-order-route" data-work-order-section="route">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
-                          <p class="work-order-editor-section-kicker">Izvedba</p>
-                          <h3>Usluga i veza</h3>
+                          <p class="work-order-editor-section-kicker">RN</p>
+                          <h3>Status, veza i lokacija</h3>
+                        </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
+
+                      <div class="work-order-editor-section-body">
+                        <div class="form-grid form-grid-work-order-rn">
+                          <label class="field">
+                            <span>Status RN</span>
+                            <select id="work-order-status"></select>
+                          </label>
+
+                          <label class="field">
+                            <span>Prioritet</span>
+                            <select id="work-order-priority"></select>
+                          </label>
+
+                          <label class="field">
+                            <span>Datum otvaranja</span>
+                            <input id="work-order-opened-date" type="date" />
+                          </label>
+
+                          <label class="field">
+                            <span>Rok završetka</span>
+                            <input id="work-order-due-date" type="date" />
+                          </label>
+                        </div>
+
+                        <div class="form-grid form-grid-location-contact">
+                          <label class="field">
+                            <span>Veza RN</span>
+                            <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
+                          </label>
+
+                          <label class="field field-span-2">
+                            <span>Lokacija</span>
+                            <select id="work-order-location-id"></select>
+                          </label>
+
+                          <label class="field">
+                            <span>Regija</span>
+                            <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
+                          </label>
+
+                          <label class="field field-span-2">
+                            <span>Koordinate</span>
+                            <input id="work-order-coordinates" type="text" placeholder="npr. 45.8150, 15.9819" />
+                          </label>
+
+                          <label class="field">
+                            <span>Kontakt osoba</span>
+                            <select id="work-order-contact-slot"></select>
+                          </label>
+
+                          <label class="field">
+                            <span>Kontakt broj</span>
+                            <input id="work-order-contact-phone" type="text" placeholder="+385 ..." />
+                          </label>
+
+                          <label class="field field-span-2">
+                            <span>Kontakt email</span>
+                            <input id="work-order-contact-email" type="email" placeholder="kontakt@tvrtka.hr" />
+                          </label>
+                        </div>
+
+                        <label class="field field-span-full work-order-inline-note">
+                          <span>Napomena RN</span>
+                          <textarea id="work-order-description" rows="3" placeholder="Što se radi, koji je opseg i što je bitno za RN."></textarea>
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="work-order-editor-section is-executors" data-work-order-section="executors">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
+                        <div>
+                          <p class="work-order-editor-section-kicker">Izvršitelji</p>
+                          <h3>Osobe i oznake</h3>
+                        </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
+
+                      <div class="work-order-editor-section-body">
+                        <div class="form-grid form-grid-executors">
+                          <label class="field field-span-3 work-order-executors-field">
+                            <span>Izvršitelji</span>
+                            <input id="work-order-executors-data" type="hidden" />
+                            <div id="work-order-executors-picker" class="work-order-inline-executor-picker"></div>
+                          </label>
+
+                          <label class="field">
+                            <span>Tagovi</span>
+                            <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
+                          </label>
                         </div>
                       </div>
+                    </section>
 
-                      <div class="work-order-editor-subgrid">
-                        <div class="work-order-editor-subsection">
-                          <div class="work-order-editor-subsection-head">Usluga</div>
-                          <div class="form-grid form-grid-service-main">
-                            <label class="field">
-                              <span>Odjel</span>
-                              <input id="work-order-department" type="text" placeholder="Odjel" />
-                            </label>
+                    <section class="work-order-editor-section is-service" data-work-order-section="services">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
+                        <div>
+                          <p class="work-order-editor-section-kicker">Usluge</p>
+                          <h3>Odabir usluga</h3>
+                        </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
+
+                      <div class="work-order-editor-section-body">
+                        <div class="work-order-editor-subgrid">
+                          <div class="work-order-editor-subsection">
+                            <div class="form-grid form-grid-service-main">
+                              <label class="field">
+                                <span>Odjel</span>
+                                <input id="work-order-department" type="text" placeholder="Odjel" />
+                              </label>
 
                             <label class="field field-span-full work-order-services-field">
                               <span>Usluge iz kataloga</span>
@@ -1173,55 +1151,60 @@
                             Ovaj dio se prikazuje samo kad je barem jedna odabrana usluga označena kao osposobljavanje.
                           </p>
                         </div>
-
-                        <div class="work-order-editor-subsection">
-                          <div class="work-order-editor-subsection-head">Obrada</div>
-                          <div class="form-grid form-grid-service-meta">
-                            <label class="field">
-                              <span>Tezinski faktor / iznos</span>
-                              <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
-                            </label>
-
-                            <label class="field">
-                              <span>Nalog zavrsio</span>
-                              <input id="work-order-completed-by" type="text" placeholder="Završio" />
-                            </label>
-
-                            <label class="field">
-                              <span>Datum fakture</span>
-                              <input id="work-order-invoice-date" type="date" />
-                            </label>
-                          </div>
-                        </div>
+                      </div>
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section is-notes">
-                      <div class="work-order-editor-section-head">
+                    <section class="work-order-editor-section is-billing" data-work-order-section="billing">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
-                          <p class="work-order-editor-section-kicker">Bilješke</p>
-                          <h3>Interna napomena i faktura</h3>
+                          <p class="work-order-editor-section-kicker">Faktura</p>
+                          <h3>Fakturni dio</h3>
                         </div>
-                      </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
 
-                      <div class="form-grid form-grid-notes">
-                        <label class="field field-span-full">
-                          <span>Napomena / faktura</span>
-                          <textarea id="work-order-invoice-note" rows="5" placeholder="Napomena za RN ili fakturu."></textarea>
-                        </label>
+                      <div class="work-order-editor-section-body">
+                        <div class="form-grid form-grid-billing">
+                          <label class="field">
+                            <span>Vrsta ugovora</span>
+                            <input id="work-order-contract-type" type="text" readonly />
+                          </label>
+
+                          <label class="field">
+                            <span>Težinski faktor / iznos</span>
+                            <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
+                          </label>
+
+                          <label class="field">
+                            <span>Nalog završio</span>
+                            <input id="work-order-completed-by" type="text" placeholder="Završio" />
+                          </label>
+
+                          <label class="field">
+                            <span>Datum fakture</span>
+                            <input id="work-order-invoice-date" type="date" />
+                          </label>
+
+                          <label class="field field-span-full">
+                            <span>Napomena / faktura</span>
+                            <textarea id="work-order-invoice-note" rows="3" placeholder="Napomena za RN ili fakturu."></textarea>
+                          </label>
+                        </div>
                       </div>
                     </section>
 
-                    <section class="work-order-editor-section is-documents">
-                      <div class="work-order-editor-section-head">
+                    <section class="work-order-editor-section is-documents" data-work-order-section="documents">
+                      <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
                           <p class="work-order-editor-section-kicker">Dokumenti</p>
                           <h3>Prilozi radnog naloga</h3>
                         </div>
                         <span id="work-order-document-count" class="work-order-document-count">0</span>
-                      </div>
+                        <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
+                      </button>
 
-                      <div class="work-order-document-stack">
+                      <div class="work-order-editor-section-body work-order-document-stack">
                         <input
                           id="work-order-document-file-input"
                           type="file"
