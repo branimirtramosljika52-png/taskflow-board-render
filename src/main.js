@@ -46429,16 +46429,248 @@ function getClientPortalSelectedLocationIdsForPreview() {
 
 function filterClientPortalRecordsByScope(records = [], companyId = "", locationIds = []) {
   const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
   const locationSet = new Set(normalizeClientScopeIdsClient(locationIds));
   return (records ?? []).filter((record) => {
     if (normalizedCompanyId && String(record?.companyId || "") !== normalizedCompanyId) {
       return false;
     }
-    if (locationSet.size > 0 && !locationSet.has(String(record?.locationId || ""))) {
+    const recordLocationIds = [
+      record?.locationId,
+      ...(Array.isArray(record?.selectedLocationIds) ? record.selectedLocationIds : []),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (
+      locationSet.size > 0
+      && recordLocationIds.length > 0
+      && !recordLocationIds.some((locationId) => locationSet.has(locationId))
+    ) {
       return false;
     }
     return true;
   });
+}
+
+function ensureClientPortalDocumentRecordsLoaded(companyId = "") {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const loadedOrganizationId = String(state.documentsExplorer.organizationId || "").trim();
+  const shouldLoad = Boolean(companyId)
+    && !state.documentsExplorer.loading
+    && (!state.documentsExplorer.loaded || loadedOrganizationId !== activeOrganizationId);
+
+  if (!shouldLoad) {
+    return;
+  }
+
+  void loadDocumentsExplorerRecords().then(() => {
+    if (state.activeView === "module" && state.activeModuleItem === "client-portal") {
+      renderClientPortalPreview();
+    }
+  });
+}
+
+function getClientPortalDocumentDate(record = {}) {
+  return String(
+    record?.inspectionDate
+    || record?.issuedDate
+    || record?.updatedAt
+    || record?.createdAt
+    || "",
+  ).trim();
+}
+
+function getClientPortalDocumentRecordPreviews(companyId = "", locationIds = []) {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  const locationSet = new Set(normalizeClientScopeIdsClient(locationIds));
+  return (state.documentsExplorer.records ?? [])
+    .map((record, recordIndex) => ({
+      record,
+      recordIndex,
+      context: getDocumentRecordLibraryContext(record, recordIndex),
+    }))
+    .filter(({ record, context }) => {
+      const recordCompanyId = String(
+        context.linkedWorkOrder?.companyId
+        || context.company?.id
+        || record?.companyId
+        || "",
+      ).trim();
+      if (recordCompanyId !== normalizedCompanyId) {
+        return false;
+      }
+
+      const recordLocationId = String(
+        context.linkedWorkOrder?.locationId
+        || context.location?.id
+        || record?.locationId
+        || "",
+      ).trim();
+      return locationSet.size === 0 || !recordLocationId || locationSet.has(recordLocationId);
+    })
+    .sort((left, right) => (
+      String(getClientPortalDocumentDate(right.record)).localeCompare(String(getClientPortalDocumentDate(left.record)))
+      || String(right.context.workOrderNumber || "").localeCompare(String(left.context.workOrderNumber || ""), "hr", {
+        numeric: true,
+        sensitivity: "base",
+      })
+    ));
+}
+
+function getClientPortalWorkOrderDateLabel(workOrder = {}) {
+  const openedDate = workOrder?.openedDate ? `Otvoren ${formatCompactDate(workOrder.openedDate)}` : "";
+  const dueDate = workOrder?.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "";
+  return [openedDate, dueDate].filter(Boolean).join(" · ") || "Bez datuma";
+}
+
+function getClientPortalWorkOrderLocationLabel(workOrder = {}) {
+  return getLocation(workOrder?.locationId)?.name
+    || createCompactLocationLabel(workOrder?.locationName || "")
+    || "Bez lokacije";
+}
+
+function getClientPortalWorkOrderServiceLabel(workOrder = {}) {
+  const summary = String(getWorkOrderServiceSummary(workOrder) || workOrder?.serviceLine || "").trim();
+  if (summary) {
+    return summary;
+  }
+
+  const serviceLabels = getWorkOrderServiceItems(workOrder)
+    .map((item) => item?.name || item?.serviceCode || "")
+    .filter(Boolean);
+  return serviceLabels.length > 0 ? serviceLabels.join(", ") : "Bez usluge";
+}
+
+function createClientPortalPreviewStat(item = {}) {
+  const card = document.createElement("article");
+  card.className = "client-portal-preview-item";
+  const label = document.createElement("span");
+  label.textContent = item.label || "";
+  const value = document.createElement("strong");
+  value.textContent = String(item.value ?? 0);
+  const copy = document.createElement("small");
+  copy.textContent = item.copy || "";
+  card.append(label, value, copy);
+  return card;
+}
+
+function createClientPortalPreviewSection({
+  title = "",
+  subtitle = "",
+  count = 0,
+  rows = [],
+  emptyMessage = "",
+} = {}) {
+  const section = document.createElement("section");
+  section.className = "client-portal-preview-section";
+
+  const head = document.createElement("div");
+  head.className = "client-portal-preview-section-head";
+  const copy = document.createElement("div");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const subheading = document.createElement("span");
+  subheading.textContent = subtitle;
+  copy.append(heading, subheading);
+  const badge = document.createElement("span");
+  badge.className = "client-portal-preview-count";
+  badge.textContent = String(count);
+  head.append(copy, badge);
+
+  const list = document.createElement("div");
+  list.className = "client-portal-preview-records";
+  if (rows.length > 0) {
+    list.replaceChildren(...rows);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "client-portal-preview-empty";
+    empty.textContent = emptyMessage;
+    list.replaceChildren(empty);
+  }
+
+  section.append(head, list);
+  return section;
+}
+
+function createClientPortalWorkOrderPreviewRow(workOrder = {}) {
+  const row = document.createElement("article");
+  row.className = "client-portal-preview-row";
+
+  const main = document.createElement("div");
+  main.className = "client-portal-preview-row-main";
+  const number = document.createElement("strong");
+  number.textContent = workOrder?.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "RN bez broja";
+  const date = document.createElement("span");
+  date.textContent = getClientPortalWorkOrderDateLabel(workOrder);
+  main.append(number, date);
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-preview-row-copy";
+  const service = document.createElement("strong");
+  service.textContent = getClientPortalWorkOrderServiceLabel(workOrder);
+  const location = document.createElement("span");
+  location.textContent = getClientPortalWorkOrderLocationLabel(workOrder);
+  copy.append(service, location);
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-preview-row-meta";
+  const company = document.createElement("span");
+  company.textContent = getCompany(workOrder?.companyId)?.name || workOrder?.companyName || "Tvrtka";
+  const department = document.createElement("span");
+  department.textContent = workOrder?.department || "Bez odjela";
+  meta.append(company, department);
+
+  const status = document.createElement("span");
+  status.className = `client-portal-preview-row-badge ${statusBadgeClass(workOrder?.status || "")}`;
+  status.textContent = getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder?.status || "") || "Bez statusa";
+
+  row.append(main, copy, meta, status);
+  return row;
+}
+
+function createClientPortalDocumentPreviewRow({ record = {}, context = {} } = {}) {
+  const row = document.createElement("article");
+  row.className = "client-portal-preview-row is-document";
+
+  const main = document.createElement("div");
+  main.className = "client-portal-preview-row-main";
+  const title = document.createElement("strong");
+  title.textContent = String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik";
+  const date = document.createElement("span");
+  const rawDate = getClientPortalDocumentDate(record);
+  date.textContent = rawDate ? formatCompactDate(rawDate) : "Bez datuma";
+  main.append(title, date);
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-preview-row-copy";
+  const service = document.createElement("strong");
+  service.textContent = context.serviceLabel || "Bez usluge";
+  const location = document.createElement("span");
+  location.textContent = context.location?.name
+    || createCompactLocationLabel(context.linkedWorkOrder?.locationName || "")
+    || "Bez lokacije";
+  copy.append(service, location);
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-preview-row-meta";
+  const workOrderNumber = document.createElement("span");
+  workOrderNumber.textContent = context.workOrderNumber ? `RN ${context.workOrderNumber}` : "Bez RN";
+  const author = document.createElement("span");
+  author.textContent = record?.createdByLabel || record?.createdBy || "Dokument";
+  meta.append(workOrderNumber, author);
+
+  const badge = document.createElement("span");
+  badge.className = "client-portal-preview-row-badge is-document";
+  badge.textContent = "Zapisnik";
+
+  row.append(main, copy, meta, badge);
+  return row;
 }
 
 function renderClientPortalPreview() {
@@ -46447,6 +46679,7 @@ function renderClientPortalPreview() {
   const selectedLocationIds = getClientPortalSelectedLocationIdsForPreview();
   const allLocations = Boolean(clientPortalAllLocationsInput?.checked);
   const companyLocations = companyId ? getCompanyLocations(companyId) : [];
+  ensureClientPortalDocumentRecordsLoaded(companyId);
   const selectedLocationNames = selectedLocationIds
     .map((locationId) => getLocation(locationId)?.name || "")
     .filter(Boolean);
@@ -46470,30 +46703,49 @@ function renderClientPortalPreview() {
     return;
   }
 
-  const scopedWorkOrders = filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds);
-  const scopedOffers = (state.offers ?? []).filter((offer) => String(offer?.companyId || "") === companyId);
-  const scopedPurchaseOrders = (state.purchaseOrders ?? []).filter((item) => String(item?.companyId || "") === companyId);
+  const scopedWorkOrders = sortWorkOrders(filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds));
+  const scopedDocumentRecords = getClientPortalDocumentRecordPreviews(companyId, selectedLocationIds);
+  const scopedOffers = filterClientPortalRecordsByScope(state.offers, companyId, selectedLocationIds);
+  const scopedPurchaseOrders = filterClientPortalRecordsByScope(state.purchaseOrders, companyId, selectedLocationIds);
   const scopedUsers = getClientPortalUsers(companyId);
+  const serviceCount = scopedWorkOrders.reduce((sum, workOrder) => (
+    sum + getWorkOrderServiceItems(workOrder).length
+  ), 0);
   const previewItems = [
-    { label: "RN i ispitivanja", value: scopedWorkOrders.length, copy: "Radni nalozi, statusi i zapisnici za opseg pristupa." },
-    { label: "Zapisnici", value: scopedWorkOrders.filter((item) => Array.isArray(item.serviceItems) && item.serviceItems.length > 0).length, copy: "Dokumenti i završeni zapisnici iz odabranih RN-ova." },
+    { label: "Radni nalozi", value: scopedWorkOrders.length, copy: "Svi RN-ovi koje klijent smije otvoriti." },
+    { label: "Zapisnici", value: scopedDocumentRecords.length, copy: "Spremljeni zapisnici i dokumenti iz RN-ova." },
+    { label: "Usluge", value: serviceCount, copy: "Stavke usluga prikazane kroz radne naloge." },
     { label: "Ponude", value: scopedOffers.length, copy: "Ponude povezane s ovom tvrtkom." },
     { label: "Narudžbenice", value: scopedPurchaseOrders.length, copy: "Ulazne i izlazne narudžbenice za klijenta." },
-    { label: "Klijentski korisnici", value: scopedUsers.length, copy: "Osobe koje imaju pristup portalu." },
   ];
 
-  clientPortalPreviewList.replaceChildren(...previewItems.map((item) => {
-    const card = document.createElement("article");
-    card.className = "client-portal-preview-item";
-    const label = document.createElement("span");
-    label.textContent = item.label;
-    const value = document.createElement("strong");
-    value.textContent = String(item.value);
-    const copy = document.createElement("small");
-    copy.textContent = item.copy;
-    card.append(label, value, copy);
-    return card;
-  }));
+  const stats = document.createElement("div");
+  stats.className = "client-portal-preview-stats";
+  stats.replaceChildren(...previewItems.map(createClientPortalPreviewStat));
+
+  const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
+  const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
+  const documentsLoading = Boolean(companyId && state.documentsExplorer.loading);
+  const recordsCopy = documentsLoading
+    ? "Ucitavam spremljene zapisnike za odabrani opseg."
+    : "Spremljeni zapisnici koje klijent vidi u Documents.";
+
+  const workOrdersSection = createClientPortalPreviewSection({
+    title: "Radni nalozi",
+    subtitle: `${scopedUsers.length} klijentski korisnik vidi ovaj RN pregled.`,
+    count: scopedWorkOrders.length,
+    rows: workOrderRows,
+    emptyMessage: companyId ? "Nema radnih naloga za odabranu tvrtku i lokacije." : "Odaberi tvrtku za preview radnih naloga.",
+  });
+  const documentsSection = createClientPortalPreviewSection({
+    title: "Zapisnici",
+    subtitle: recordsCopy,
+    count: scopedDocumentRecords.length,
+    rows: documentRows,
+    emptyMessage: documentsLoading ? "Ucitavanje zapisnika..." : "Nema spremljenih zapisnika za odabrani opseg.",
+  });
+
+  clientPortalPreviewList.replaceChildren(stats, workOrdersSection, documentsSection);
 }
 
 function renderClientPortalModule() {

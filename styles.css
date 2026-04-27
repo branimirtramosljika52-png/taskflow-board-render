@@ -3766,7 +3766,6 @@ body.is-location-editor-open {
 
 .client-portal-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
   gap: 16px;
   align-items: start;
 }
@@ -3919,6 +3918,11 @@ body.is-location-editor-open {
 
 .client-portal-preview-list {
   display: grid;
+  gap: 14px;
+}
+
+.client-portal-preview-stats {
+  display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
@@ -3948,6 +3952,137 @@ body.is-location-editor-open {
 .client-portal-preview-item small {
   color: #6b7690;
   line-height: 1.35;
+}
+
+.client-portal-preview-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.client-portal-preview-section-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.client-portal-preview-section-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-portal-preview-section-head strong {
+  color: #1d2b4f;
+  font-size: 0.98rem;
+}
+
+.client-portal-preview-section-head span {
+  color: #64728c;
+  font-size: 0.82rem;
+}
+
+.client-portal-preview-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(74, 118, 223, 0.2);
+  border-radius: 999px;
+  background: rgba(235, 242, 255, 0.92);
+  color: #1f4a99;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.client-portal-preview-records {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.client-portal-preview-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.55fr) minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 214, 234, 0.76);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.84));
+}
+
+.client-portal-preview-row.is-document {
+  border-color: rgba(129, 192, 158, 0.38);
+  background:
+    linear-gradient(135deg, rgba(247, 253, 249, 0.96), rgba(255, 255, 255, 0.86));
+}
+
+.client-portal-preview-row-main,
+.client-portal-preview-row-copy,
+.client-portal-preview-row-meta {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.client-portal-preview-row-main strong,
+.client-portal-preview-row-copy strong {
+  color: #1d2b4f;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-portal-preview-row-main span,
+.client-portal-preview-row-copy span,
+.client-portal-preview-row-meta span {
+  color: #66728c;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-portal-preview-row-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(154, 178, 220, 0.72);
+  border-radius: 999px;
+  background: rgba(235, 242, 255, 0.9);
+  color: #244a8f;
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.client-portal-preview-row-badge.is-document {
+  border-color: rgba(129, 192, 158, 0.54);
+  background: rgba(237, 250, 241, 0.94);
+  color: #20623e;
+}
+
+.client-portal-preview-empty {
+  padding: 14px;
+  border: 1px dashed rgba(154, 178, 220, 0.7);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.72);
+  color: #66728c;
+  font-size: 0.86rem;
 }
 
 .entity-link-actions {
@@ -4683,7 +4818,7 @@ body.is-location-editor-open {
     grid-template-columns: 1fr;
   }
 
-  .client-portal-preview-list {
+  .client-portal-preview-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -4728,8 +4863,12 @@ body.is-location-editor-open {
   .client-portal-summary-grid,
   .company-client-access-shell,
   .company-client-person-grid,
-  .client-portal-preview-list {
+  .client-portal-preview-stats {
     grid-template-columns: 1fr;
+  }
+
+  .client-portal-preview-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .company-client-portal-head,
