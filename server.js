@@ -20,6 +20,7 @@ import {
   buildAppCapabilitiesPdfBuffer,
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
+  buildWorkOrderPdfBuffer,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   isWordTemplateFile,
@@ -1865,6 +1866,7 @@ async function handleApiRequest(request, response, url) {
     const chatConversationReadMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/read$/);
     const chatConversationArchiveMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/archive$/);
     const chatConversationClearHistoryMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/clear-history$/);
+    const workOrderPdfExportMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/export-pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
@@ -3385,6 +3387,58 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.getWorkOrderActivity(workOrderActivityMatch[1]);
       sendJson(response, 200, { items });
+      return true;
+    }
+
+    if (workOrderActivityMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo komentirati radne naloge.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const message = String(body?.message ?? "").trim();
+
+      if (!message) {
+        sendError(response, 400, "Komentar ne moze biti prazan.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.workOrders, workOrderActivityMatch[1], "Radni nalog nije pronaden.");
+      const mentionUserId = String(body?.mentionUserId ?? "").trim();
+      const mentionUser = mentionUserId
+        ? (scopedSnapshot.users ?? []).find((entry) => String(entry.id) === mentionUserId)
+        : null;
+      const items = await domainRepository.addWorkOrderActivityComment(
+        workOrderActivityMatch[1],
+        {
+          message,
+          mentionLabel: mentionUser?.fullName || mentionUser?.username || "",
+        },
+        user,
+      );
+      sendJson(response, 201, { items });
+      return true;
+    }
+
+    if (workOrderPdfExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF radnog naloga.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden.");
+      const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
+      const fileName = sanitizeGeneratedDocumentFileName(
+        workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
+        { fallback: "radni-nalog", extension: "pdf" },
+      );
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
       return true;
     }
 

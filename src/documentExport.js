@@ -1945,6 +1945,118 @@ function drawOfferPdfSectionTitle(doc, text) {
   doc.y = startY + 24;
 }
 
+export async function buildWorkOrderPdfBuffer(workOrder = {}) {
+  const title = clean(workOrder.workOrderNumber)
+    ? `Radni nalog ${clean(workOrder.workOrderNumber)}`
+    : "Radni nalog";
+  const serviceItems = Array.isArray(workOrder.serviceItems) ? workOrder.serviceItems : [];
+  const executors = Array.isArray(workOrder.executors)
+    ? workOrder.executors.map((entry) => clean(entry?.label || entry?.value || entry)).filter(Boolean)
+    : normalizePdfLines([workOrder.executor1, workOrder.executor2]);
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 38,
+      bottom: 38,
+      left: 38,
+      right: 38,
+    },
+    info: {
+      Title: title,
+      Author: "SafeNexus",
+      Subject: "Radni nalog",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  helpers.ensureSpace(116);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("SAFE NEXUS - RADNI NALOG");
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(22).fillColor("#111827").text(title, {
+    width: helpers.availableWidth - 148,
+  });
+  doc.font("dejavu").fontSize(10.5).fillColor("#64748b").text(
+    normalizePdfLines([
+      workOrder.companyName || "",
+      workOrder.locationName || "",
+      formatOfferPdfDate(workOrder.openedDate),
+    ]).join(" · "),
+  );
+
+  const badgeWidth = 138;
+  const badgeX = doc.page.width - doc.page.margins.right - badgeWidth;
+  const badgeY = doc.page.margins.top;
+  doc.save();
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 54, 16);
+  doc.fillColor("#eff6ff").fill();
+  doc.restore();
+  doc.font("dejavu-bold").fontSize(9).fillColor("#2563eb").text("STATUS", badgeX + 14, badgeY + 12, {
+    width: badgeWidth - 28,
+  });
+  doc.font("dejavu-bold").fontSize(12).fillColor("#0f172a").text(clean(workOrder.status || "Otvoreni RN"), badgeX + 14, badgeY + 27, {
+    width: badgeWidth - 28,
+  });
+
+  doc.moveDown(1);
+  drawOfferPdfSectionTitle(doc, "Osnovni podaci");
+  writeOfferPdfMetaRow(doc, "Broj RN", workOrder.workOrderNumber || "");
+  writeOfferPdfMetaRow(doc, "Datum otvaranja", formatOfferPdfDate(workOrder.openedDate));
+  writeOfferPdfMetaRow(doc, "Rok zavrsetka", formatOfferPdfDate(workOrder.dueDate));
+  writeOfferPdfMetaRow(doc, "Prioritet", workOrder.priority || "");
+  writeOfferPdfMetaRow(doc, "Izvrsitelji", executors.join(", "));
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Klijent i lokacija");
+  writeOfferPdfMetaRow(doc, "Tvrtka", workOrder.companyName || "");
+  writeOfferPdfMetaRow(doc, "Sjediste", workOrder.headquarters || "");
+  writeOfferPdfMetaRow(doc, "OIB", workOrder.companyOib || "");
+  writeOfferPdfMetaRow(doc, "Lokacija", workOrder.locationName || "");
+  writeOfferPdfMetaRow(doc, "Regija", workOrder.region || "");
+  writeOfferPdfMetaRow(doc, "Kontakt", normalizePdfLines([
+    workOrder.contactName,
+    workOrder.contactPhone,
+    workOrder.contactEmail,
+  ]).join(" · "));
+
+  doc.moveDown(0.45);
+  drawOfferPdfSectionTitle(doc, "Usluge");
+  if (serviceItems.length > 0) {
+    serviceItems.forEach((item, index) => {
+      const status = item?.isCompleted ? "odradeno" : "nije oznaceno";
+      doc.font("dejavu").fontSize(10).fillColor("#1f2937").text(
+        `${index + 1}. ${normalizePdfText(item?.name || item?.serviceCode || "Usluga")} - ${status}`,
+        { width: helpers.availableWidth },
+      );
+    });
+  } else {
+    doc.font("dejavu").fontSize(10).fillColor("#1f2937").text(normalizePdfText(workOrder.serviceLine || workOrder.department || "Bez usluge"));
+  }
+
+  if (clean(workOrder.description)) {
+    doc.moveDown(0.45);
+    drawOfferPdfSectionTitle(doc, "Napomena");
+    doc.font("dejavu").fontSize(10).fillColor("#1f2937").text(normalizePdfText(workOrder.description), {
+      width: helpers.availableWidth,
+      lineGap: 2,
+    });
+  }
+
+  doc.moveDown(1);
+  doc.font("dejavu").fontSize(8.5).fillColor("#94a3b8").text(
+    `Generirano iz SafeNexus aplikacije ${formatOfferPdfDate(new Date().toISOString().slice(0, 10))}.`,
+    { align: "right" },
+  );
+
+  return pdfBufferFromDocument(doc);
+}
+
 export async function buildAppCapabilitiesPdfBuffer({
   organizationName = "",
   modules = [],

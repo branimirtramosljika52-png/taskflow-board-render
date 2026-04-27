@@ -1217,6 +1217,20 @@ function buildWorkOrderUpdatedActivityEntries(current, next) {
   });
 }
 
+function buildWorkOrderCommentActivityEntry(input = {}) {
+  const message = dbString(input.message).slice(0, 2000);
+  const mentionLabel = dbString(input.mentionLabel);
+
+  return {
+    actionType: "comment",
+    fieldKey: "comment",
+    fieldLabel: mentionLabel ? `@${mentionLabel}` : "Komentar",
+    oldValue: "",
+    newValue: message,
+    description: mentionLabel ? `Komentar za ${mentionLabel}` : "Komentar dodan",
+  };
+}
+
 function normalizeActivityTimestamp(value) {
   return normalizeTimestamp(value) ?? new Date().toISOString();
 }
@@ -3882,6 +3896,37 @@ export class InMemorySafetyRepository {
     return (this.workOrderActivity.get(String(id)) ?? [])
       .slice()
       .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
+  async addWorkOrderActivityComment(workOrderId, input = {}, actor = null) {
+    const workOrder = this.snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+    if (!workOrder) {
+      return [];
+    }
+
+    const entry = buildWorkOrderCommentActivityEntry(input);
+    const timestamp = new Date().toISOString();
+    const actorId = getActivityActorId(actor);
+    const existingEntries = this.workOrderActivity.get(String(workOrderId)) ?? [];
+    this.workOrderActivity.set(String(workOrderId), [
+      {
+        id: `${workOrderId}-comment-${Date.now()}`,
+        workOrderId: String(workOrderId),
+        actorLabel: getActivityActorLabel(actor),
+        actorUserId: actorId === null ? "" : String(actorId),
+        actionType: entry.actionType,
+        fieldKey: entry.fieldKey,
+        fieldLabel: entry.fieldLabel,
+        oldValue: entry.oldValue,
+        newValue: entry.newValue,
+        description: entry.description,
+        createdAt: timestamp,
+      },
+      ...existingEntries,
+    ]);
+
+    return this.getWorkOrderActivity(workOrderId);
   }
 
   async addWorkOrderDocuments(workOrderId, files, actor = null, options = {}) {
@@ -10711,6 +10756,30 @@ export class MySqlSafetyRepository {
     } finally {
       connection.release();
     }
+  }
+
+  async addWorkOrderActivityComment(workOrderId, input = {}, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const workOrder = snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+      if (!workOrder) {
+        return [];
+      }
+
+      await insertWorkOrderActivityEntries(
+        connection,
+        workOrderId,
+        actor,
+        [buildWorkOrderCommentActivityEntry(input)],
+      );
+    } finally {
+      connection.release();
+    }
+
+    return this.getWorkOrderActivity(workOrderId);
   }
 }
 

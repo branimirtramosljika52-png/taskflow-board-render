@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260427e" />
+    <link rel="stylesheet" href="/styles.css?v=20260427f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -993,20 +993,32 @@
                           <input id="work-order-due-date" type="date" />
                         </label>
 
-                        <label class="field">
-                          <span>Tvrtka</span>
-                          <select id="work-order-company-id"></select>
-                        </label>
+                        <div class="work-order-client-bundle field-span-full">
+                          <div class="work-order-client-bundle-head">
+                            <span class="work-order-client-bundle-icon" aria-hidden="true">
+                              <svg viewBox="0 0 16 16">
+                                <path d="M2.5 13.5h11M4 13.5V4.75c0-.41.34-.75.75-.75h3.5c.41 0 .75.34.75.75V13.5M10 13.5V2.75c0-.41.34-.75.75-.75h1.5c.41 0 .75.34.75.75V13.5M6 6.5h1M6 8.75h1M11.25 5.25h.5M11.25 7.5h.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
+                              </svg>
+                            </span>
+                            <strong>Tvrtka, sjedište i OIB</strong>
+                          </div>
+                          <div class="work-order-client-bundle-grid">
+                            <label class="field">
+                              <span>Tvrtka</span>
+                              <select id="work-order-company-id"></select>
+                            </label>
 
-                        <label class="field">
-                          <span>OIB</span>
-                          <input id="work-order-company-oib" type="text" readonly />
-                        </label>
+                            <label class="field">
+                              <span>Sjedište</span>
+                              <input id="work-order-headquarters" type="text" readonly />
+                            </label>
 
-                        <label class="field">
-                          <span>Sjedište</span>
-                          <input id="work-order-headquarters" type="text" readonly />
-                        </label>
+                            <label class="field">
+                              <span>OIB</span>
+                              <input id="work-order-company-oib" type="text" readonly />
+                            </label>
+                          </div>
+                        </div>
 
                         <label class="field">
                           <span>Lokacija</span>
@@ -1031,7 +1043,7 @@
                           <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
                         </label>
 
-                        <label class="field">
+                        <label class="field work-order-team-field" hidden>
                           <span>Tim</span>
                           <input id="work-order-team-label" type="text" list="work-order-team-suggestions" placeholder="npr. Zagreb, Slavonija, Periodika" />
                         </label>
@@ -1280,6 +1292,19 @@
                   <div id="work-order-activity-document-list" class="work-order-activity-document-list"></div>
                 </section>
 
+                <section class="work-order-activity-comment-panel">
+                  <div class="work-order-activity-comment-head">
+                    <strong>Komentar</strong>
+                    <span>Dodaj kratku bilješku i po potrebi tagiraj osobu.</span>
+                  </div>
+                  <textarea id="work-order-activity-comment-input" rows="2" placeholder="Napiši komentar za ovaj RN..."></textarea>
+                  <div class="work-order-activity-comment-actions">
+                    <select id="work-order-activity-mention-user" aria-label="Tagiraj osobu"></select>
+                    <button id="work-order-activity-comment-add" type="button" class="ghost-button">Dodaj</button>
+                  </div>
+                  <p id="work-order-activity-comment-error" class="form-error work-order-activity-comment-error" hidden></p>
+                </section>
+
                 <div id="work-order-activity-loading" class="work-order-activity-loading" hidden>Ucitavanje aktivnosti...</div>
                 <p id="work-order-activity-empty" class="work-order-activity-empty">Otvori radni nalog da vidis promjene i status timeline.</p>
                 <p id="work-order-activity-error" class="form-error work-order-activity-error" hidden></p>
@@ -1520,6 +1545,33 @@
                 <button id="work-order-open-form" type="button" class="primary-button workspace-add-button">+ RN</button>
               </div>
             </div>
+
+            <section class="work-order-template-strip">
+              <input id="work-order-template-file-input" type="file" accept=".docx,.dotx" hidden />
+              <div class="work-order-template-copy">
+                <p class="section-kicker">RN template</p>
+                <h3>Predložak za radni nalog</h3>
+                <span id="work-order-template-meta">Dodaj Word template ili preuzmi popis placeholdera za PDF.</span>
+              </div>
+              <div class="work-order-template-actions">
+                <button id="work-order-template-upload" type="button" class="ghost-button work-order-template-action">
+                  <span aria-hidden="true">
+                    <svg viewBox="0 0 16 16">
+                      <path d="M8 13.75v-7.5M5.25 8.5 8 5.75l2.75 2.75M3 3.75h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
+                    </svg>
+                  </span>
+                  <span>Dodaj template</span>
+                </button>
+                <button id="work-order-template-placeholders" type="button" class="ghost-button work-order-template-action">
+                  <span aria-hidden="true">
+                    <svg viewBox="0 0 16 16">
+                      <path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
+                    </svg>
+                  </span>
+                  <span>Placeholderi</span>
+                </button>
+              </div>
+            </section>
 
             <div class="work-order-list-toolbar">
               <div class="workspace-view-chips" aria-label="Pogledi radnog prostora">
@@ -6863,6 +6915,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260427e"></script>
+    <script type="module" src="/src/main.js?v=20260427f"></script>
   </body>
 </html>
