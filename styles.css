@@ -16268,31 +16268,59 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-item-download-button {
   display: inline-flex;
+  position: relative;
   width: 34px;
   height: 34px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(191, 202, 220, 0.9);
+  border: 1px solid rgba(91, 125, 209, 0.34);
   border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff, #f4f7fd);
-  color: #4b5a78;
-  box-shadow: 0 6px 14px rgba(45, 58, 94, 0.08);
+  background: linear-gradient(180deg, #ffffff, #eef5ff);
+  color: #2452a7;
+  box-shadow: 0 8px 18px rgba(43, 92, 181, 0.12);
   cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.work-item-download-button::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.work-item-download-button::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 9px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .work-item-download-button:hover,
 .work-item-download-button:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(79, 108, 180, 0.36);
-  color: #244d96;
-  box-shadow: 0 10px 20px rgba(45, 58, 94, 0.12);
+  border-color: rgba(44, 92, 196, 0.52);
+  background: linear-gradient(180deg, #f8fbff, #e3efff);
+  color: #173f8c;
+  box-shadow: 0 12px 24px rgba(43, 92, 181, 0.18);
 }
 
 .work-item-download-button svg {
-  width: 15px;
-  height: 15px;
-  display: block;
+  display: none;
 }
 
 .work-executor-list {
