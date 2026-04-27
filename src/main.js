@@ -1378,6 +1378,10 @@ const state = {
     offers: "outgoing",
     "purchase-orders": "outgoing",
   },
+  clientPortalPreviewCollapsed: {
+    workOrders: false,
+    documents: false,
+  },
   periodicsFeed: {
     organizationId: "",
     loaded: false,
@@ -46547,28 +46551,17 @@ function getClientPortalWorkOrderServiceLabel(workOrder = {}) {
   return serviceLabels.length > 0 ? serviceLabels.join(", ") : "Bez usluge";
 }
 
-function createClientPortalPreviewStat(item = {}) {
-  const card = document.createElement("article");
-  card.className = "client-portal-preview-item";
-  const label = document.createElement("span");
-  label.textContent = item.label || "";
-  const value = document.createElement("strong");
-  value.textContent = String(item.value ?? 0);
-  const copy = document.createElement("small");
-  copy.textContent = item.copy || "";
-  card.append(label, value, copy);
-  return card;
-}
-
 function createClientPortalPreviewSection({
+  key = "",
   title = "",
   subtitle = "",
-  count = 0,
   rows = [],
   emptyMessage = "",
 } = {}) {
+  const isCollapsed = Boolean(key && state.clientPortalPreviewCollapsed?.[key]);
   const section = document.createElement("section");
   section.className = "client-portal-preview-section";
+  section.classList.toggle("is-collapsed", isCollapsed);
 
   const head = document.createElement("div");
   head.className = "client-portal-preview-section-head";
@@ -46578,13 +46571,30 @@ function createClientPortalPreviewSection({
   const subheading = document.createElement("span");
   subheading.textContent = subtitle;
   copy.append(heading, subheading);
-  const badge = document.createElement("span");
-  badge.className = "client-portal-preview-count";
-  badge.textContent = String(count);
-  head.append(copy, badge);
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "client-portal-preview-toggle";
+  toggle.textContent = isCollapsed ? "Otkrij" : "Sakrij";
+  toggle.setAttribute("aria-expanded", String(!isCollapsed));
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (key) {
+      state.clientPortalPreviewCollapsed[key] = !state.clientPortalPreviewCollapsed[key];
+      renderClientPortalPreview();
+    }
+  });
+  head.addEventListener("click", () => {
+    if (key) {
+      state.clientPortalPreviewCollapsed[key] = !state.clientPortalPreviewCollapsed[key];
+      renderClientPortalPreview();
+    }
+  });
+  head.append(copy, toggle);
 
   const list = document.createElement("div");
   list.className = "client-portal-preview-records";
+  list.hidden = isCollapsed;
   if (rows.length > 0) {
     list.replaceChildren(...rows);
   } else {
@@ -46705,23 +46715,6 @@ function renderClientPortalPreview() {
 
   const scopedWorkOrders = sortWorkOrders(filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds));
   const scopedDocumentRecords = getClientPortalDocumentRecordPreviews(companyId, selectedLocationIds);
-  const scopedOffers = filterClientPortalRecordsByScope(state.offers, companyId, selectedLocationIds);
-  const scopedPurchaseOrders = filterClientPortalRecordsByScope(state.purchaseOrders, companyId, selectedLocationIds);
-  const scopedUsers = getClientPortalUsers(companyId);
-  const serviceCount = scopedWorkOrders.reduce((sum, workOrder) => (
-    sum + getWorkOrderServiceItems(workOrder).length
-  ), 0);
-  const previewItems = [
-    { label: "Radni nalozi", value: scopedWorkOrders.length, copy: "Svi RN-ovi koje klijent smije otvoriti." },
-    { label: "Zapisnici", value: scopedDocumentRecords.length, copy: "Spremljeni zapisnici i dokumenti iz RN-ova." },
-    { label: "Usluge", value: serviceCount, copy: "Stavke usluga prikazane kroz radne naloge." },
-    { label: "Ponude", value: scopedOffers.length, copy: "Ponude povezane s ovom tvrtkom." },
-    { label: "Narudžbenice", value: scopedPurchaseOrders.length, copy: "Ulazne i izlazne narudžbenice za klijenta." },
-  ];
-
-  const stats = document.createElement("div");
-  stats.className = "client-portal-preview-stats";
-  stats.replaceChildren(...previewItems.map(createClientPortalPreviewStat));
 
   const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
@@ -46731,21 +46724,21 @@ function renderClientPortalPreview() {
     : "Spremljeni zapisnici koje klijent vidi u Documents.";
 
   const workOrdersSection = createClientPortalPreviewSection({
+    key: "workOrders",
     title: "Radni nalozi",
-    subtitle: `${scopedUsers.length} klijentski korisnik vidi ovaj RN pregled.`,
-    count: scopedWorkOrders.length,
+    subtitle: "Klijent vidi RN pregled prema odabranoj tvrtki i lokacijama.",
     rows: workOrderRows,
     emptyMessage: companyId ? "Nema radnih naloga za odabranu tvrtku i lokacije." : "Odaberi tvrtku za preview radnih naloga.",
   });
   const documentsSection = createClientPortalPreviewSection({
+    key: "documents",
     title: "Zapisnici",
     subtitle: recordsCopy,
-    count: scopedDocumentRecords.length,
     rows: documentRows,
     emptyMessage: documentsLoading ? "Ucitavanje zapisnika..." : "Nema spremljenih zapisnika za odabrani opseg.",
   });
 
-  clientPortalPreviewList.replaceChildren(stats, workOrdersSection, documentsSection);
+  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection);
 }
 
 function renderClientPortalModule() {
