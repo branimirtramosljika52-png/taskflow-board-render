@@ -1140,6 +1140,90 @@ function formatDocxRenderError(error) {
   return clean(error?.message) || "Ne mogu generirati Word iz predloška.";
 }
 
+function shouldRetryDocxRenderWithEscapedDelimiters(error) {
+  const message = [
+    error?.message,
+    ...(Array.isArray(error?.properties?.errors)
+      ? error.properties.errors.map((entry) => entry?.message || entry?.properties?.explanation || "")
+      : []),
+  ].join(" ");
+
+  return /unopened/i.test(message) && /\}\}/.test(message);
+}
+
+function escapeStrayDocxClosingDelimiters(xml = "") {
+  const source = String(xml ?? "");
+  let result = "";
+  let depth = 0;
+
+  for (let index = 0; index < source.length;) {
+    if (source.startsWith("{{", index)) {
+      depth += 1;
+      result += "{{";
+      index += 2;
+      continue;
+    }
+
+    if (source.startsWith("}}", index)) {
+      if (depth > 0) {
+        depth -= 1;
+        result += "}}";
+      } else {
+        result += "&#125;&#125;";
+      }
+      index += 2;
+      continue;
+    }
+
+    result += source[index];
+    index += 1;
+  }
+
+  return result;
+}
+
+function createDocxZipWithEscapedStrayDelimiters(templateBuffer) {
+  const zip = new PizZip(templateBuffer);
+
+  Object.keys(zip.files)
+    .filter((name) => /^word\/.+\.xml$/i.test(name))
+    .forEach((name) => {
+      const file = zip.files[name];
+      if (!file || file.dir) {
+        return;
+      }
+
+      const content = file.asText();
+      const nextContent = escapeStrayDocxClosingDelimiters(content);
+      if (nextContent !== content) {
+        zip.file(name, nextContent);
+      }
+    });
+
+  return zip;
+}
+
+function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlaceholders = new Map()) {
+  const doc = new Docxtemplater(zip, {
+    delimiters: {
+      start: "{{",
+      end: "}}",
+    },
+    paragraphLoop: true,
+    linebreaks: true,
+    nullGetter() {
+      return "";
+    },
+  });
+
+  doc.render(normalizedPlaceholders);
+  applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
+  return doc.getZip().generate({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  });
+}
+
 export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders = {}) {
   const safeBuffer = Buffer.isBuffer(templateBuffer)
     ? templateBuffer
@@ -1174,26 +1258,20 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
   );
 
   try {
-    const zip = new PizZip(safeBuffer);
-    const doc = new Docxtemplater(zip, {
-      delimiters: {
-        start: "{{",
-        end: "}}",
-      },
-      paragraphLoop: true,
-      linebreaks: true,
-      nullGetter() {
-        return "";
-      },
-    });
-
-    doc.render(normalizedPlaceholders);
-    applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
-    return doc.getZip().generate({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-    });
+    return renderDocxTemplateZip(new PizZip(safeBuffer), normalizedPlaceholders, specialPlaceholders);
   } catch (error) {
+    if (shouldRetryDocxRenderWithEscapedDelimiters(error)) {
+      try {
+        return renderDocxTemplateZip(
+          createDocxZipWithEscapedStrayDelimiters(safeBuffer),
+          normalizedPlaceholders,
+          specialPlaceholders,
+        );
+      } catch (retryError) {
+        throw new Error(formatDocxRenderError(retryError));
+      }
+    }
+
     throw new Error(formatDocxRenderError(error));
   }
 }

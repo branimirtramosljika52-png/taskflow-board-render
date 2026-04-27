@@ -1256,7 +1256,7 @@ function mapWorkOrderActivityRow(row) {
 function normalizeWorkOrderDocumentSource(value) {
   const normalized = dbString(value).toLowerCase();
 
-  if (normalized === "activity" || normalized === "list") {
+  if (normalized === "activity" || normalized === "list" || normalized === "pdf") {
     return normalized;
   }
 
@@ -4017,6 +4017,73 @@ export class InMemorySafetyRepository {
     this.workOrderActivity.set(String(workOrderId), [...activityEntries, ...existingEntries]);
 
     return nextDocuments;
+  }
+
+  async upsertWorkOrderGeneratedPdfDocument(workOrderId, file, actor = null) {
+    const workOrder = this.snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+    if (!workOrder) {
+      return null;
+    }
+
+    const timestamp = new Date().toISOString();
+    const actorId = getActivityActorId(actor);
+    const actorLabel = getActivityActorLabel(actor);
+    const normalized = normalizeWorkOrderDocumentInput(
+      {
+        ...file,
+        sourceType: "pdf",
+        documentCategory: file?.documentCategory || "Radni nalog PDF",
+      },
+      "pdf",
+    );
+    const existingDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
+    const existing = existingDocuments.find((item) => (
+      String(item.sourceType || "").toLowerCase() === "pdf"
+      && String(item.documentCategory || "") === "Radni nalog PDF"
+    ));
+    const nextDocument = {
+      id: existing?.id || `${workOrderId}-generated-pdf-${Date.now()}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      sourceType: "pdf",
+      fileName: normalized.fileName,
+      fileExtension: normalized.fileExtension,
+      fileType: normalized.fileType || "application/pdf",
+      documentCategory: "Radni nalog PDF",
+      description: normalized.description,
+      fileSize: normalized.fileSize,
+      dataUrl: normalized.dataUrl,
+      createdAt: existing?.createdAt || timestamp,
+      updatedAt: timestamp,
+    };
+
+    if (existing) {
+      this.workOrderDocuments.set(
+        String(workOrderId),
+        existingDocuments.map((item) => (String(item.id) === String(existing.id) ? nextDocument : item)),
+      );
+      return nextDocument;
+    }
+
+    this.workOrderDocuments.set(String(workOrderId), [nextDocument, ...existingDocuments]);
+    const existingEntries = this.workOrderActivity.get(String(workOrderId)) ?? [];
+    const activityEntries = buildWorkOrderDocumentActivityEntries([nextDocument]).map((entry, index) => ({
+      id: `${workOrderId}-generated-pdf-activity-${Date.now()}-${index}`,
+      workOrderId: String(workOrderId),
+      actorLabel,
+      actorUserId: actorId === null ? "" : String(actorId),
+      actionType: entry.actionType,
+      fieldKey: entry.fieldKey,
+      fieldLabel: entry.fieldLabel,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      description: entry.description,
+      createdAt: timestamp,
+    }));
+    this.workOrderActivity.set(String(workOrderId), [...activityEntries, ...existingEntries]);
+    return nextDocument;
   }
 
   async getWorkOrderDocuments(id) {
@@ -7039,6 +7106,162 @@ export class MySqlSafetyRepository {
       await connection.commit();
 
       return createdDocuments;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async upsertWorkOrderGeneratedPdfDocument(workOrderId, file, actor = null) {
+    const connection = await this.pool.getConnection();
+    let previousStoredDocument = null;
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const workOrder = snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+
+      if (!workOrder) {
+        await connection.rollback();
+        return null;
+      }
+
+      const normalized = normalizeWorkOrderDocumentInput(
+        {
+          ...file,
+          sourceType: "pdf",
+          documentCategory: file?.documentCategory || "Radni nalog PDF",
+        },
+        "pdf",
+      );
+      const storedDocument = await prepareStoredWorkOrderDocument(normalized, workOrderId);
+      const actorId = getActivityActorId(actor);
+      const actorLabel = getActivityActorLabel(actor);
+      const timestamp = new Date().toISOString();
+      const [existingRows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
+                 file_extension, file_type, file_description, document_category, file_size, data_url,
+                 storage_provider, storage_bucket, storage_key, storage_url,
+                 created_at, updated_at
+          FROM web_work_order_documents
+          WHERE work_order_id = ? AND source_type = 'pdf' AND document_category = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        `,
+        [Number(workOrderId), "Radni nalog PDF"],
+      );
+      const existing = existingRows[0] ? mapWorkOrderDocumentRow(existingRows[0]) : null;
+
+      if (existing) {
+        previousStoredDocument = existing;
+        await connection.query(
+          `
+            UPDATE web_work_order_documents
+            SET actor_user_id = ?, actor_label = ?, file_name = ?, file_extension = ?,
+                file_type = ?, file_description = ?, document_category = ?, file_size = ?,
+                data_url = ?, storage_provider = ?, storage_bucket = ?, storage_key = ?, storage_url = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE work_order_id = ? AND id = ?
+          `,
+          [
+            actorId,
+            actorLabel,
+            storedDocument.fileName,
+            storedDocument.fileExtension,
+            storedDocument.fileType || "application/pdf",
+            storedDocument.description,
+            "Radni nalog PDF",
+            storedDocument.fileSize,
+            storedDocument.inlineDataUrl,
+            storedDocument.storageProvider,
+            storedDocument.storageBucket,
+            storedDocument.storageKey,
+            storedDocument.storageUrl,
+            Number(workOrderId),
+            Number(existing.id),
+          ],
+        );
+        await connection.commit();
+        await cleanupStoredObjects([previousStoredDocument]);
+        return {
+          ...existing,
+          actorLabel,
+          actorUserId: actorId === null ? "" : String(actorId),
+          sourceType: "pdf",
+          fileName: storedDocument.fileName,
+          fileExtension: storedDocument.fileExtension,
+          fileType: storedDocument.fileType || "application/pdf",
+          documentCategory: "Radni nalog PDF",
+          description: storedDocument.description,
+          fileSize: storedDocument.fileSize,
+          dataUrl: storedDocument.dataUrl,
+          storageProvider: storedDocument.storageProvider,
+          storageBucket: storedDocument.storageBucket,
+          storageKey: storedDocument.storageKey,
+          storageUrl: storedDocument.storageUrl,
+          updatedAt: timestamp,
+        };
+      }
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_work_order_documents
+            (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
+             file_type, file_description, document_category, file_size, data_url,
+             storage_provider, storage_bucket, storage_key, storage_url)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(workOrderId),
+          actorId,
+          actorLabel,
+          "pdf",
+          storedDocument.fileName,
+          storedDocument.fileExtension,
+          storedDocument.fileType || "application/pdf",
+          storedDocument.description,
+          "Radni nalog PDF",
+          storedDocument.fileSize,
+          storedDocument.inlineDataUrl,
+          storedDocument.storageProvider,
+          storedDocument.storageBucket,
+          storedDocument.storageKey,
+          storedDocument.storageUrl,
+        ],
+      );
+      const createdDocument = {
+        id: String(result.insertId),
+        workOrderId: String(workOrderId),
+        actorLabel,
+        actorUserId: actorId === null ? "" : String(actorId),
+        sourceType: "pdf",
+        fileName: storedDocument.fileName,
+        fileExtension: storedDocument.fileExtension,
+        fileType: storedDocument.fileType || "application/pdf",
+        documentCategory: "Radni nalog PDF",
+        description: storedDocument.description,
+        fileSize: storedDocument.fileSize,
+        dataUrl: storedDocument.dataUrl,
+        storageProvider: storedDocument.storageProvider,
+        storageBucket: storedDocument.storageBucket,
+        storageKey: storedDocument.storageKey,
+        storageUrl: storedDocument.storageUrl,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      await insertWorkOrderActivityEntries(
+        connection,
+        workOrderId,
+        actor,
+        buildWorkOrderDocumentActivityEntries([createdDocument]),
+      );
+      await connection.commit();
+      return createdDocument;
     } catch (error) {
       await connection.rollback();
       throw error;

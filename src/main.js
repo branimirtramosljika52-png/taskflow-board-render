@@ -143,6 +143,8 @@ const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
   { value: "Projektna dokumentacija", label: "Projektna dokumentacija" },
 ]);
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
+const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
+const WORK_ORDER_PDF_AUTOSAVE_DELAY_MS = 2600;
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
   "bmp",
@@ -1673,6 +1675,9 @@ const state = {
     lastOrganizationId: "",
   },
 };
+
+const workOrderPdfSaveTimers = new Map();
+const workOrderPdfSaveInFlight = new Set();
 
 function readSidebarCollapsedPreference() {
   try {
@@ -3468,6 +3473,7 @@ const workOrderOpenDocumentsCount = document.querySelector("#work-order-open-doc
 const workOrderTemplateFileInput = document.querySelector("#work-order-template-file-input");
 const workOrderTemplateUploadButton = document.querySelector("#work-order-template-upload");
 const workOrderTemplatePlaceholdersButton = document.querySelector("#work-order-template-placeholders");
+const workOrderTemplateDeleteButton = document.querySelector("#work-order-template-delete");
 const workOrderTemplateMeta = document.querySelector("#work-order-template-meta");
 const workOrderTemplateSelect = document.querySelector("#work-order-template-select");
 const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
@@ -12781,6 +12787,7 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
   if (isEditing) {
     renderWorkOrderEditorSummary();
     void loadWorkOrderActivity(editingId);
+    queueGeneratedWorkOrderPdfSave(editingId);
   } else {
     const created = findCreatedWorkOrderMatch(previousIds, payload);
 
@@ -12789,6 +12796,7 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
       renderWorkOrderEditorSummary();
       void loadWorkOrderActivity(created.id);
       void loadWorkOrderDocuments(created.id);
+      queueGeneratedWorkOrderPdfSave(created.id);
     }
   }
 
@@ -25310,6 +25318,10 @@ function getWorkOrderDocumentSourceLabel(sourceType = "editor") {
     return "ListRN";
   }
 
+  if (sourceType === "pdf") {
+    return "Automatski PDF";
+  }
+
   return "Otvaranje";
 }
 
@@ -25885,6 +25897,65 @@ function openWorkOrderRowDocumentPicker(workOrder) {
   state.workOrderRowDocumentTargetId = String(workOrder.id);
   workOrderRowDocumentFileInput.value = "";
   workOrderRowDocumentFileInput.click();
+}
+
+function bindWorkOrderRowDocumentDropTarget(rowCard, workOrder = {}) {
+  if (!rowCard || !workOrder?.id || !getCanEditOperationalData()) {
+    return;
+  }
+
+  let dragDepth = 0;
+  const resetDragState = () => {
+    dragDepth = 0;
+    rowCard.classList.remove("is-document-drag-over");
+  };
+
+  rowCard.addEventListener("dragenter", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth += 1;
+    rowCard.classList.add("is-document-drag-over");
+  });
+
+  rowCard.addEventListener("dragover", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    rowCard.classList.add("is-document-drag-over");
+  });
+
+  rowCard.addEventListener("dragleave", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      rowCard.classList.remove("is-document-drag-over");
+    }
+  });
+
+  rowCard.addEventListener("drop", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resetDragState();
+    void handleWorkOrderDocumentSelection(event.dataTransfer?.files, "list", {
+      workOrderId: workOrder.id,
+      workOrder,
+      title: getWorkOrderDocumentDialogTitle(workOrder.id, workOrder),
+      helper: "Dokumenti su dodani s retka RN-a. Odaberi vrstu za svaku datoteku.",
+    });
+  });
 }
 
 async function saveWorkOrderDocument(documentId, patch = {}) {
@@ -63013,6 +63084,13 @@ function renderWorkOrderTemplateStrip() {
   workOrderTemplateUploadButton.title = getCanManageMasterData()
     ? "Dodaj .docx ili .dotx RN template u Template Development"
     : "Nemaš ovlaštenje za dodavanje templatea.";
+
+  if (workOrderTemplateDeleteButton) {
+    workOrderTemplateDeleteButton.disabled = !selectedTemplate || !getCanManageMasterData();
+    workOrderTemplateDeleteButton.title = selectedTemplate
+      ? `Obriši RN template ${templateLabel || ""}`.trim()
+      : "Nema RN templatea za brisanje.";
+  }
 }
 
 function buildWorkOrderTemplatePlaceholderText() {
@@ -63092,6 +63170,85 @@ async function uploadWorkOrderTemplateFile(file) {
   }
 }
 
+async function deleteSelectedWorkOrderTemplate() {
+  const selectedTemplate = getSelectedWorkOrderTemplate();
+  const templateId = String(selectedTemplate?.id || "").trim();
+
+  if (!templateId || !getCanManageMasterData()) {
+    return;
+  }
+
+  const title = selectedTemplate.title || selectedTemplate.referenceDocument?.fileName || "RN template";
+  if (!window.confirm(`Obrisati RN template "${title}"?`)) {
+    return;
+  }
+
+  if (workOrderTemplateDeleteButton) {
+    workOrderTemplateDeleteButton.disabled = true;
+    workOrderTemplateDeleteButton.classList.add("is-loading");
+  }
+
+  const success = await runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(templateId)}`, {
+    method: "DELETE",
+  }), null);
+
+  if (success) {
+    state.workOrderTemplateSettings.selectedTemplateId = "";
+    state.workOrderTemplateSettings.fileName = "";
+    state.workOrderTemplateSettings.updatedAt = new Date().toISOString();
+    persistWorkOrderTemplateSettings();
+    renderDocumentTemplateModule();
+    renderWorkOrderTemplateStrip();
+    setSyncError("");
+  }
+
+  if (workOrderTemplateDeleteButton) {
+    workOrderTemplateDeleteButton.classList.remove("is-loading");
+  }
+}
+
+async function saveGeneratedWorkOrderPdf(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId || workOrderPdfSaveInFlight.has(normalizedId)) {
+    return false;
+  }
+
+  workOrderPdfSaveInFlight.add(normalizedId);
+
+  try {
+    await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
+      method: "POST",
+      body: {
+        templateId: getSelectedWorkOrderTemplateId(),
+      },
+    });
+
+    if (String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
+      await loadWorkOrderDocuments(normalizedId);
+    }
+
+    return true;
+  } catch (error) {
+    console.warn("Automatsko spremanje RN PDF-a nije uspjelo.", error);
+    return false;
+  } finally {
+    workOrderPdfSaveInFlight.delete(normalizedId);
+  }
+}
+
+function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId || !getCanEditOperationalData()) {
+    return;
+  }
+
+  window.clearTimeout(workOrderPdfSaveTimers.get(normalizedId));
+  workOrderPdfSaveTimers.set(normalizedId, window.setTimeout(() => {
+    workOrderPdfSaveTimers.delete(normalizedId);
+    void saveGeneratedWorkOrderPdf(normalizedId);
+  }, WORK_ORDER_PDF_AUTOSAVE_DELAY_MS));
+}
+
 async function downloadWorkOrderPdf(workOrder = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
@@ -63100,7 +63257,7 @@ async function downloadWorkOrderPdf(workOrder = {}) {
 
   try {
     const templateId = getSelectedWorkOrderTemplateId();
-    const response = await apiBinaryRequest(`/work-orders/${workOrderId}/export-pdf`, {
+    const response = await apiBinaryRequest(`/work-orders/${workOrderId}/pdf`, {
       method: "POST",
       body: templateId ? { templateId } : undefined,
     });
@@ -67460,6 +67617,7 @@ function renderCompactWorkOrdersList() {
           hydrateWorkOrderForm(item);
         }
       });
+      bindWorkOrderRowDocumentDropTarget(rowCard, item);
 
       const selectionCell = document.createElement("div");
       selectionCell.className = "work-item-cell work-item-select-cell";
@@ -68569,6 +68727,9 @@ workOrderTemplateSelect?.addEventListener("change", () => {
   renderWorkOrderTemplateStrip();
 });
 workOrderTemplatePlaceholdersButton?.addEventListener("click", downloadWorkOrderTemplatePlaceholders);
+workOrderTemplateDeleteButton?.addEventListener("click", () => {
+  void deleteSelectedWorkOrderTemplate();
+});
 workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();

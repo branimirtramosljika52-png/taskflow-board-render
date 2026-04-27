@@ -66,6 +66,7 @@ const canonicalAppOrigin = (() => {
   }
 })();
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
+const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const securityContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -680,6 +681,81 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}) {
   }
 
   return payload;
+}
+
+function getWorkOrderPdfExportFileName(workOrder = {}) {
+  return sanitizeGeneratedDocumentFileName(
+    workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
+    { fallback: "radni-nalog", extension: "pdf" },
+  );
+}
+
+async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {}, templateId = "") {
+  const normalizedTemplateId = String(templateId || "").trim();
+  const fileName = getWorkOrderPdfExportFileName(workOrder);
+
+  if (normalizedTemplateId) {
+    const template = assertInScope(
+      scopedSnapshot.documentTemplates ?? [],
+      normalizedTemplateId,
+      "RN template nije pronaden.",
+    );
+
+    if (!template.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
+      throw new Error("RN template mora imati .docx ili .dotx Word predlozak.");
+    }
+
+    const pdfBuffer = await generatePdfBufferForTemplate(template, {
+      placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
+      fileName: sanitizeGeneratedDocumentFileName(
+        workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
+        { fallback: "radni-nalog", extension: "docx" },
+      ),
+    });
+    return { pdfBuffer, fileName };
+  }
+
+  const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
+  return { pdfBuffer, fileName };
+}
+
+function buildGeneratedWorkOrderPdfDocumentPayload(workOrder = {}, pdfBuffer = Buffer.alloc(0), fileName = "") {
+  const safeFileName = fileName || getWorkOrderPdfExportFileName(workOrder);
+  const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+
+  return {
+    fileName: safeFileName,
+    fileType: "application/pdf",
+    fileSize: safeBuffer.length,
+    documentCategory: GENERATED_WORK_ORDER_PDF_CATEGORY,
+    description: `Automatski spremljen PDF za RN ${workOrder.workOrderNumber || "bez broja"}.`,
+    sourceType: "pdf",
+    dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
+  };
+}
+
+function findGeneratedWorkOrderPdfDocument(documents = []) {
+  return (Array.isArray(documents) ? documents : []).find((document) => (
+    String(document.sourceType || "").toLowerCase() === "pdf"
+    && String(document.documentCategory || "") === GENERATED_WORK_ORDER_PDF_CATEGORY
+  )) ?? null;
+}
+
+async function saveGeneratedWorkOrderPdfDocument(workOrderId, workOrder = {}, scopedSnapshot = {}, user = null, templateId = "") {
+  const { pdfBuffer, fileName } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
+  const filePayload = buildGeneratedWorkOrderPdfDocumentPayload(workOrder, pdfBuffer, fileName);
+
+  if (typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function") {
+    return await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user);
+  }
+
+  const items = await domainRepository.addWorkOrderDocuments(
+    workOrderId,
+    [filePayload],
+    user,
+    { sourceType: "pdf" },
+  );
+  return items[0] ?? null;
 }
 
 function buildOfferTemplatePlaceholderPayload(offer = {}) {
@@ -1939,6 +2015,8 @@ async function handleApiRequest(request, response, url) {
     const chatConversationArchiveMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/archive$/);
     const chatConversationClearHistoryMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/clear-history$/);
     const workOrderPdfExportMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/export-pdf$/);
+    const workOrderPdfSaveMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/save-pdf$/);
+    const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
@@ -3504,37 +3582,70 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden.");
       const templateId = String(body?.templateId ?? "").trim();
-      const fileName = sanitizeGeneratedDocumentFileName(
-        workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-        { fallback: "radni-nalog", extension: "pdf" },
-      );
-
-      if (templateId) {
-        const template = assertInScope(scopedSnapshot.documentTemplates ?? [], templateId, "RN template nije pronaden.");
-        if (!template.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
-          sendError(response, 400, "RN template mora imati .docx ili .dotx Word predlozak.");
-          return true;
-        }
-
-        const pdfBuffer = await generatePdfBufferForTemplate(template, {
-          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
-          fileName: sanitizeGeneratedDocumentFileName(
-            workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-            { fallback: "radni-nalog", extension: "docx" },
-          ),
-        });
-        sendBinary(response, 200, pdfBuffer, {
-          contentType: "application/pdf",
-          fileName,
-        });
-        return true;
-      }
-
-      const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
+      const { pdfBuffer, fileName } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,
       });
+      return true;
+    }
+
+    if (workOrderPdfSaveMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo spremati PDF radnog naloga.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfSaveMatch[1], "Radni nalog nije pronaden.");
+      const templateId = String(body?.templateId ?? "").trim();
+      const item = await saveGeneratedWorkOrderPdfDocument(workOrderPdfSaveMatch[1], workOrder, scopedSnapshot, user, templateId);
+      sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (workOrderPdfDownloadMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo preuzeti PDF radnog naloga.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfDownloadMatch[1], "Radni nalog nije pronaden.");
+      const templateId = String(body?.templateId ?? "").trim();
+      const documents = await domainRepository.getWorkOrderDocuments(workOrderPdfDownloadMatch[1]);
+      let document = findGeneratedWorkOrderPdfDocument(documents);
+
+      if (!document && canManageWorkOrders(user)) {
+        document = await saveGeneratedWorkOrderPdfDocument(workOrderPdfDownloadMatch[1], workOrder, scopedSnapshot, user, templateId);
+      }
+
+      if (!document) {
+        sendError(response, 404, "PDF radnog naloga jos nije spremljen.");
+        return true;
+      }
+
+      try {
+        const stored = await readStoredDocumentBuffer(document);
+        sendBinary(response, 200, stored.buffer, {
+          contentType: stored.mimeType || document.fileType || "application/pdf",
+          fileName: document.fileName || getWorkOrderPdfExportFileName(workOrder),
+        });
+      } catch {
+        if (!canManageWorkOrders(user)) {
+          sendError(response, 404, "Spremljeni PDF radnog naloga nije dostupan.");
+          return true;
+        }
+
+        document = await saveGeneratedWorkOrderPdfDocument(workOrderPdfDownloadMatch[1], workOrder, scopedSnapshot, user, templateId);
+        const stored = await readStoredDocumentBuffer(document);
+        sendBinary(response, 200, stored.buffer, {
+          contentType: stored.mimeType || document.fileType || "application/pdf",
+          fileName: document.fileName || getWorkOrderPdfExportFileName(workOrder),
+        });
+      }
       return true;
     }
 
