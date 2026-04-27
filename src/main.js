@@ -11922,6 +11922,7 @@ function activateSidebarItem(itemName, options = {}) {
     return;
   }
 
+  closeTransientNavigationOverlays();
   ensureSidebarExpanded(expandSidebar);
   state.activeSidebarItem = itemConfig.sidebarItem || itemName;
 
@@ -12025,6 +12026,11 @@ function activateSidebarGroup(groupName, options = {}) {
     expandSidebar = false,
   } = options;
 
+  if (!isSidebarGroupAccessible(groupName)) {
+    return;
+  }
+
+  closeTransientNavigationOverlays();
   state.activeSidebarGroup = groupName;
   ensureSidebarExpanded(expandSidebar);
 
@@ -46154,6 +46160,12 @@ function closeClientPortalAccessModal() {
   syncClientPortalAccessModal();
 }
 
+function closeTransientNavigationOverlays() {
+  if (state.clientPortalAccessModalOpen) {
+    closeClientPortalAccessModal();
+  }
+}
+
 function getClientPortalUsers(companyId = "") {
   const normalizedCompanyId = String(companyId || "").trim();
   const users = (state.users ?? []).filter(isClientPortalUser);
@@ -67508,9 +67520,8 @@ railButtons.forEach((button) => {
       return;
     }
 
-    const shouldNavigate = state.activeSidebarGroup !== groupName;
     activateSidebarGroup(groupName, {
-      navigate: shouldNavigate,
+      navigate: true,
       expandSidebar: state.sidebarCollapsed,
     });
   });
@@ -67525,7 +67536,7 @@ sidebarGroupButtons.forEach((button) => {
     }
 
     activateSidebarGroup(groupName, {
-      navigate: state.activeSidebarGroup !== groupName,
+      navigate: true,
       expandSidebar: state.sidebarCollapsed,
     });
   });

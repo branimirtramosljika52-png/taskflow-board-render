@@ -3824,6 +3824,12 @@ body.is-location-editor-open {
   overflow: auto;
 }
 
+.client-portal-modal[hidden],
+.client-portal-modal-backdrop[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .client-portal-access-dialog {
   width: min(1040px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
