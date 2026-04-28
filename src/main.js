@@ -1331,6 +1331,7 @@ const state = {
     liveCallsEnabled: false,
     endpointReady: false,
     model: "",
+    modelTiers: [],
   },
   activeTodoTaskId: "",
   todoExpandedTaskIds: new Set(),
@@ -6465,6 +6466,7 @@ async function loadOpenAiIntegrationStatus({ force = false } = {}) {
       liveCallsEnabled: Boolean(payload.liveCallsEnabled),
       endpointReady: Boolean(payload.endpointReady),
       model: String(payload.model || ""),
+      modelTiers: Array.isArray(payload.modelTiers) ? payload.modelTiers : [],
     };
   } catch (error) {
     state.openAiIntegration = {
@@ -30063,6 +30065,46 @@ function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
   return pill;
 }
 
+const DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS = Object.freeze([
+  {
+    value: "fast",
+    label: "Brzi",
+    strength: "Slabiji / jeftiniji",
+    description: "Za probu, kratke zapisnike i brzu provjeru mapiranja.",
+  },
+  {
+    value: "standard",
+    label: "Standard",
+    strength: "Uravnotežen",
+    description: "Default za većinu starih zapisnika i normalno popunjavanje.",
+  },
+  {
+    value: "strong",
+    label: "Jaki",
+    strength: "Precizniji",
+    description: "Za loš PDF, skenove, slike i složenije Excel tablice.",
+  },
+  {
+    value: "max",
+    label: "Najjači",
+    strength: "Najsporiji / najskuplji",
+    description: "Kad treba maksimalna pažnja i više provjera prije prijedloga.",
+  },
+]);
+
+function normalizeDocumentTemplateRuntimeAiModelTier(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS.some((option) => option.value === normalized)
+    ? normalized
+    : "standard";
+}
+
+function getDocumentTemplateRuntimeAiModelTierOption(value = "") {
+  const normalized = normalizeDocumentTemplateRuntimeAiModelTier(value);
+  return DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS.find((option) => option.value === normalized)
+    || DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS[1];
+}
+
 function getDocumentTemplateRuntimeAiAssistantScopeKey(template = {}, workOrder = {}) {
   return [
     String(template?.id || state.activeDocumentTemplateId || "template").trim() || "template",
@@ -30080,9 +30122,23 @@ function getDocumentTemplateRuntimeAiAssistantState(template = {}, workOrder = {
       status: "idle",
       message: "",
       lastPlan: null,
+      modelTier: "standard",
     };
+  } else {
+    current.modelTier = normalizeDocumentTemplateRuntimeAiModelTier(current.modelTier);
   }
   return state.documentTemplateRuntime.aiAssistant;
+}
+
+function setDocumentTemplateRuntimeAiModelTier(modelTier, template = {}, workOrder = {}) {
+  const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  assistant.modelTier = normalizeDocumentTemplateRuntimeAiModelTier(modelTier);
+  assistant.lastPlan = null;
+  assistant.message = assistant.files?.length
+    ? `Model postavljen na ${getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier).label}. Spremno za AI pripremu.`
+    : "Odaberi snagu modela, zatim dodaj stari zapisnik.";
+  assistant.status = assistant.files?.length ? "ready" : "idle";
+  renderDocumentTemplateFieldRows({ renderSupport: false });
 }
 
 function createDocumentTemplateRuntimeAiFileMeta(file = {}) {
@@ -30191,6 +30247,7 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
 
 async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
   if (!assistant.files?.length) {
     assistant.status = "error";
     assistant.message = "Prvo dodaj stari zapisnik ili sliku pa pokreni AI.";
@@ -30218,13 +30275,18 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
         files: assistant.files,
         fields,
         columns,
+        modelTier: modelOption.value,
+        modelPreference: {
+          label: modelOption.label,
+          strength: modelOption.strength,
+          description: modelOption.description,
+        },
         dryRun: true,
       },
     });
-    const summary = payload?.summary ?? {};
     assistant.status = "success";
     assistant.lastPlan = payload;
-    assistant.message = `AI plan spreman: ${summary.files ?? assistant.files.length} datoteka, ${summary.fields ?? fields.length} polja i ${summary.excelColumns ?? columns.length} Excel kolona. Dry-run, bez potrošnje tokena.`;
+    assistant.message = `AI plan spreman za model ${payload?.modelLabel || modelOption.label}. Dry-run je prošao, tokeni se nisu trošili.`;
   } catch (error) {
     assistant.status = "error";
     assistant.message = error?.message || "AI priprema trenutno nije dostupna.";
@@ -30235,8 +30297,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
 
 function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
-  const aiFields = getDocumentTemplateRuntimeAiFields(template);
-  const aiColumns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
+  const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
 
   const panel = document.createElement("section");
   panel.className = "document-template-runtime-ai-assistant";
@@ -30265,7 +30326,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const title = document.createElement("strong");
   title.textContent = "Uvezi stari zapisnik i pripremi popunjavanje";
   const description = document.createElement("p");
-  description.textContent = "Dodaj PDF, Word ili sliku starog zapisnika. Aplikacija priprema AI mapiranje za polja i Excel tablice, ali trenutno ne šalje sadržaj OpenAI-ju.";
+  description.textContent = "Dodaj PDF, Word ili sliku starog zapisnika. Prvo radimo sigurni dry-run: provjera veze, modela i mapiranja bez slanja sadržaja i bez trošenja tokena.";
   const connectionStatus = document.createElement("span");
   connectionStatus.className = "document-template-ai-connection-status document-template-runtime-ai-connection";
   syncOpenAiIntegrationStatusTargets(connectionStatus);
@@ -30274,24 +30335,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   });
   copy.append(eyebrow, title, description, connectionStatus);
   introHead.append(mark, copy);
-
-  const stats = document.createElement("div");
-  stats.className = "document-template-runtime-ai-stats";
-  [
-    { label: "AI polja", value: aiFields.length },
-    { label: "Excel kolone", value: aiColumns.length },
-    { label: "Datoteke", value: assistant.files?.length || 0 },
-  ].forEach((item) => {
-    const stat = document.createElement("span");
-    stat.className = "document-template-runtime-ai-stat";
-    const value = document.createElement("strong");
-    value.textContent = String(item.value);
-    const label = document.createElement("span");
-    label.textContent = item.label;
-    stat.append(value, label);
-    stats.append(stat);
-  });
-  intro.append(introHead, stats);
+  intro.append(introHead);
 
   const uploadWrap = document.createElement("div");
   uploadWrap.className = "document-template-runtime-ai-upload";
@@ -30397,7 +30441,31 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const actionMeta = document.createElement("span");
   actionMeta.textContent = assistant.status === "success"
     ? "Plan je pripremljen. Sljedeći korak je live čitanje sadržaja kad ga uključimo."
-    : "Pokretanje sada radi samo sigurni dry-run plan.";
+    : "Odaberi snagu modela i pokreni sigurnu provjeru.";
+  const modelPicker = document.createElement("label");
+  modelPicker.className = "document-template-runtime-ai-model";
+  const modelHeader = document.createElement("span");
+  modelHeader.className = "document-template-runtime-ai-model-head";
+  const modelTitle = document.createElement("strong");
+  modelTitle.textContent = "Snaga AI modela";
+  const modelStrength = document.createElement("small");
+  modelStrength.textContent = modelOption.strength;
+  modelHeader.append(modelTitle, modelStrength);
+  const modelSelect = document.createElement("select");
+  modelSelect.value = modelOption.value;
+  DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS.forEach((option) => {
+    const optionNode = document.createElement("option");
+    optionNode.value = option.value;
+    optionNode.textContent = `${option.label} - ${option.strength}`;
+    modelSelect.append(optionNode);
+  });
+  const modelDescription = document.createElement("span");
+  modelDescription.className = "document-template-runtime-ai-model-copy";
+  modelDescription.textContent = modelOption.description;
+  modelSelect.addEventListener("change", () => {
+    setDocumentTemplateRuntimeAiModelTier(modelSelect.value, template, workOrder);
+  });
+  modelPicker.append(modelHeader, modelSelect, modelDescription);
   const runButton = document.createElement("button");
   runButton.type = "button";
   runButton.className = "primary-button document-template-runtime-ai-run";
@@ -30414,7 +30482,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const status = document.createElement("p");
   status.className = "document-template-runtime-ai-message";
   status.textContent = assistant.message || "Upload starog zapisnika pa pokreni AI pripremu.";
-  action.append(actionTitle, actionMeta, runButton, status);
+  action.append(actionTitle, actionMeta, modelPicker, runButton, status);
 
   panel.append(intro, uploadWrap, action);
   return panel;

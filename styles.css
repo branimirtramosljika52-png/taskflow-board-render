@@ -27101,7 +27101,8 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-ai-intro {
   display: grid;
-  gap: 12px;
+  align-content: center;
+  gap: 10px;
   padding: 13px 14px 12px 16px;
 }
 
@@ -27166,35 +27167,6 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-ai-connection {
   margin-top: 4px;
-}
-
-.document-template-runtime-ai-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.document-template-runtime-ai-stat {
-  display: grid;
-  gap: 1px;
-  padding: 8px 10px;
-  border: 1px solid rgba(151, 178, 166, 0.28);
-  border-radius: 14px;
-  background: rgba(248, 252, 250, 0.92);
-}
-
-.document-template-runtime-ai-stat strong {
-  color: #1c6447;
-  font-size: 1.05rem;
-  line-height: 1;
-}
-
-.document-template-runtime-ai-stat span {
-  color: #697891;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .document-template-runtime-ai-upload {
@@ -27338,6 +27310,49 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-ai-action > span {
   color: #64738f;
   font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.document-template-runtime-ai-model {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(133, 161, 214, 0.32);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(245, 249, 255, 0.94), rgba(255, 250, 253, 0.96));
+}
+
+.document-template-runtime-ai-model-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-template-runtime-ai-model-head strong {
+  color: #17213a;
+  font-size: 0.78rem;
+}
+
+.document-template-runtime-ai-model-head small {
+  color: #7b4f9f;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.document-template-runtime-ai-model select {
+  min-height: 38px;
+  border: 1px solid rgba(152, 173, 213, 0.64);
+  border-radius: 13px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #14213d;
+  font-weight: 750;
+}
+
+.document-template-runtime-ai-model-copy {
+  color: #65738d;
+  font-size: 0.72rem;
   line-height: 1.35;
 }
 
@@ -28085,6 +28100,28 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-dock-item.is-active.is-complete {
   border-color: rgba(74, 222, 128, 0.58);
   background: linear-gradient(135deg, rgba(22, 163, 74, 0.9), rgba(123, 92, 255, 0.88));
+}
+
+.document-template-runtime-dock-item.is-complete {
+  padding-right: 28px;
+  border-color: rgba(74, 222, 128, 0.68);
+  background: linear-gradient(135deg, rgba(21, 128, 61, 0.92), rgba(20, 184, 166, 0.82));
+  color: #ecfdf5;
+  box-shadow: 0 12px 24px rgba(22, 163, 74, 0.24);
+}
+
+.document-template-runtime-dock-item.is-complete::after {
+  content: "OK";
+  right: 5px;
+  width: 20px;
+  background: #ecfdf5;
+  color: #062818;
+  font-size: 0.52rem;
+}
+
+.document-template-runtime-dock-item.is-active.is-complete {
+  border-color: rgba(74, 222, 128, 0.72);
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.98), rgba(13, 148, 136, 0.94));
 }
 
 .document-template-runtime-dock-actions {

@@ -69,6 +69,12 @@ const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.t
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_RESPONSES_PATH = "/responses";
+const OPENAI_MODEL_TIERS = Object.freeze([
+  { value: "fast", label: "Brzi", strength: "Slabiji / jeftiniji", env: "OPENAI_MODEL_FAST" },
+  { value: "standard", label: "Standard", strength: "Uravnotežen", env: "OPENAI_MODEL" },
+  { value: "strong", label: "Jaki", strength: "Precizniji", env: "OPENAI_MODEL_STRONG" },
+  { value: "max", label: "Najjači", strength: "Najsporiji / najskuplji", env: "OPENAI_MODEL_MAX" },
+]);
 const securityContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -116,6 +122,30 @@ function getOpenAiRuntimeConfig() {
   };
 }
 
+function normalizeOpenAiModelTier(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return OPENAI_MODEL_TIERS.some((option) => option.value === normalized) ? normalized : "standard";
+}
+
+function getOpenAiModelTierOption(value = "") {
+  const normalized = normalizeOpenAiModelTier(value);
+  return OPENAI_MODEL_TIERS.find((option) => option.value === normalized) || OPENAI_MODEL_TIERS[1];
+}
+
+function getOpenAiModelForTier(tier = "standard", config = getOpenAiRuntimeConfig()) {
+  const option = getOpenAiModelTierOption(tier);
+  return String(process.env[option.env] || config.model || "").trim();
+}
+
+function buildOpenAiModelTierPayload(config = getOpenAiRuntimeConfig()) {
+  return OPENAI_MODEL_TIERS.map((option) => ({
+    value: option.value,
+    label: option.label,
+    strength: option.strength,
+    modelConfigured: Boolean(getOpenAiModelForTier(option.value, config)),
+  }));
+}
+
 function buildOpenAiStatusPayload() {
   const config = getOpenAiRuntimeConfig();
   return {
@@ -126,6 +156,7 @@ function buildOpenAiStatusPayload() {
     liveCallsEnabled: config.liveCallsEnabled,
     endpointReady: config.keyConfigured && config.dryRun,
     model: config.model,
+    modelTiers: buildOpenAiModelTierPayload(config),
     endpoint: config.endpoint,
     tokenSpend: "disabled",
   };
@@ -136,6 +167,9 @@ function buildOpenAiDryRunPlan(body = {}, user = null) {
   const files = Array.isArray(body.files) ? body.files : [];
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
+  const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
+  const modelTierOption = getOpenAiModelTierOption(modelTier);
+  const selectedModel = String(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config)).trim();
 
   return {
     ok: true,
@@ -143,7 +177,10 @@ function buildOpenAiDryRunPlan(body = {}, user = null) {
     tokenSpend: "disabled",
     provider: config.provider,
     endpoint: config.endpoint,
-    model: config.model,
+    model: selectedModel,
+    modelTier,
+    modelLabel: modelTierOption.label,
+    modelStrength: modelTierOption.strength,
     keyConfigured: config.keyConfigured,
     liveCallsEnabled: config.liveCallsEnabled,
     preparedAt: new Date().toISOString(),
