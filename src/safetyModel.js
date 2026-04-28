@@ -133,6 +133,23 @@ export const ABSENCE_STATUS_OPTIONS = [
   { value: "cancelled", label: "Otkazano" },
 ];
 
+export const PERSON_TRAINING_TYPE_OPTIONS = [
+  { value: "safe_work", label: "Rad na siguran način", shortLabel: "ZNR" },
+  { value: "fire_initial", label: "Početno gašenje požara", shortLabel: "Požar" },
+  { value: "flammable_storage", label: "Skladištenje zapaljivih tekućina i plinova", shortLabel: "Zapaljivo" },
+  { value: "adr", label: "ADR", shortLabel: "ADR" },
+  { value: "medical_exam", label: "Liječnički pregled", shortLabel: "Liječnički" },
+  { value: "professional_training", label: "Stručno osposobljavanje", shortLabel: "Stručno" },
+];
+
+export const PERSON_TRAINING_STATUS_OPTIONS = [
+  { value: "missing", label: "Nema podatka" },
+  { value: "valid", label: "Važeće" },
+  { value: "expiring", label: "Uskoro ističe" },
+  { value: "expired", label: "Isteklo" },
+  { value: "not_required", label: "Nije potrebno" },
+];
+
 export const DOCUMENT_TEMPLATE_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -5238,6 +5255,243 @@ export function sortAbsenceEntries(items) {
     }
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+function getPersonTrainingTypeOption(type = "") {
+  const normalized = normalizeText(type).toLowerCase();
+  return PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized)
+    ?? PERSON_TRAINING_TYPE_OPTIONS[0];
+}
+
+function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TYPE_OPTIONS[0]) {
+  const source = input && typeof input === "object" ? input : {};
+  const normalizedType = getPersonTrainingTypeOption(source.type ?? typeOption.value);
+  const validForever = normalizeBoolean(source.validForever, false);
+
+  return {
+    type: normalizedType.value,
+    label: normalizedType.label,
+    shortLabel: normalizedType.shortLabel,
+    issuedOn: normalizeOptionalDate(source.issuedOn ?? source.issuedDate),
+    validUntil: validForever ? null : normalizeOptionalDate(source.validUntil ?? source.validTo ?? source.expiresOn),
+    validForever,
+    certificateNumber: normalizeText(source.certificateNumber ?? source.documentNumber ?? source.number).slice(0, 120),
+    provider: normalizeText(source.provider ?? source.institution ?? source.organizer).slice(0, 180),
+    note: normalizeText(source.note).slice(0, 1000),
+    status: normalizeText(source.status).toLowerCase(),
+  };
+}
+
+function normalizePersonTrainingItems(input = []) {
+  const source = Array.isArray(input)
+    ? input
+    : Object.entries(input && typeof input === "object" ? input : {})
+      .map(([type, value]) => ({ ...(value && typeof value === "object" ? value : {}), type }));
+  const byType = new Map(
+    source
+      .map((item) => normalizePersonTrainingItem(item))
+      .filter((item) => item.type)
+      .map((item) => [item.type, item]),
+  );
+
+  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => normalizePersonTrainingItem(
+    byType.get(typeOption.value) ?? {},
+    typeOption,
+  ));
+}
+
+function getPersonTrainingItemStatus(item = {}, today = todayString()) {
+  if (normalizeText(item.status) === "not_required") {
+    return "not_required";
+  }
+  if (normalizeBoolean(item.validForever, false)) {
+    return "valid";
+  }
+
+  const validUntil = normalizeOptionalDate(item.validUntil);
+  const issuedOn = normalizeOptionalDate(item.issuedOn);
+  const certificateNumber = normalizeText(item.certificateNumber);
+
+  if (!validUntil && !issuedOn && !certificateNumber) {
+    return "missing";
+  }
+  if (!validUntil) {
+    return "valid";
+  }
+  if (validUntil < today) {
+    return "expired";
+  }
+
+  const due = new Date(`${validUntil}T00:00:00Z`);
+  const now = new Date(`${today}T00:00:00Z`);
+  const daysUntilDue = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return daysUntilDue <= 60 ? "expiring" : "valid";
+}
+
+function enrichPersonTrainingItems(items = []) {
+  return normalizePersonTrainingItems(items).map((item) => ({
+    ...item,
+    status: getPersonTrainingItemStatus(item),
+  }));
+}
+
+export function createPersonTrainingRecord(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  const companyId = requireText(input.companyId, "Tvrtka");
+  const company = (state.companies ?? []).find((item) => String(item.id) === String(companyId));
+
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const locationId = normalizeText(input.locationId);
+  const location = locationId
+    ? (state.locations ?? []).find((item) => String(item.id) === String(locationId) && String(item.companyId) === String(companyId))
+    : null;
+
+  if (locationId && !location) {
+    throw new Error("Odabrana lokacija ne pripada toj tvrtki.");
+  }
+
+  const firstName = normalizeText(input.firstName).slice(0, 120);
+  const lastName = normalizeText(input.lastName).slice(0, 160);
+  const fullName = normalizeText(input.fullName || [firstName, lastName].filter(Boolean).join(" ")).slice(0, 240);
+
+  return {
+    id: createId(),
+    organizationId,
+    companyId,
+    companyName: company.name ?? "",
+    companyOib: company.oib ?? "",
+    locationId,
+    locationName: location?.name ?? "",
+    firstName,
+    lastName,
+    fullName: requireText(fullName, "Ime i prezime"),
+    oib: normalizeText(input.oib).replace(/\s+/g, "").slice(0, 32),
+    email: normalizeText(input.email).toLowerCase().slice(0, 180),
+    phone: normalizeText(input.phone).slice(0, 80),
+    jobTitle: normalizeText(input.jobTitle).slice(0, 180),
+    employmentStatus: normalizeBoolean(input.isActive ?? input.active, true) ? "active" : "inactive",
+    trainingItems: enrichPersonTrainingItems(input.trainingItems),
+    note: normalizeText(input.note).slice(0, 1000),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updatePersonTrainingRecord(current, patch, state, now = isoNow) {
+  const merged = {
+    ...current,
+    ...patch,
+    organizationId: hasOwn(patch, "organizationId") ? patch.organizationId : current.organizationId,
+    companyId: hasOwn(patch, "companyId") ? patch.companyId : current.companyId,
+    locationId: hasOwn(patch, "locationId") ? patch.locationId : current.locationId,
+    firstName: hasOwn(patch, "firstName") ? patch.firstName : current.firstName,
+    lastName: hasOwn(patch, "lastName") ? patch.lastName : current.lastName,
+    fullName: hasOwn(patch, "fullName") ? patch.fullName : current.fullName,
+    oib: hasOwn(patch, "oib") ? patch.oib : current.oib,
+    email: hasOwn(patch, "email") ? patch.email : current.email,
+    phone: hasOwn(patch, "phone") ? patch.phone : current.phone,
+    jobTitle: hasOwn(patch, "jobTitle") ? patch.jobTitle : current.jobTitle,
+    isActive: hasOwn(patch, "isActive") ? patch.isActive : current.employmentStatus !== "inactive",
+    trainingItems: hasOwn(patch, "trainingItems") ? patch.trainingItems : current.trainingItems,
+    note: hasOwn(patch, "note") ? patch.note : current.note,
+  };
+
+  return {
+    ...createPersonTrainingRecord(merged, state, () => current.id, () => current.createdAt || now()),
+    createdAt: current.createdAt,
+    updatedAt: now(),
+  };
+}
+
+export function filterPersonTrainingRecords(
+  items,
+  {
+    query = "",
+    companyId = "all",
+    locationId = "all",
+    trainingType = "all",
+    status = "all",
+  } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedCompanyId = normalizeText(companyId);
+  const normalizedLocationId = normalizeText(locationId);
+  const normalizedTrainingType = normalizeText(trainingType).toLowerCase();
+  const normalizedStatus = normalizeText(status).toLowerCase();
+
+  return (items ?? []).filter((item) => {
+    if (normalizedCompanyId && normalizedCompanyId !== "all" && String(item.companyId) !== normalizedCompanyId) {
+      return false;
+    }
+    if (normalizedLocationId && normalizedLocationId !== "all" && String(item.locationId || "") !== normalizedLocationId) {
+      return false;
+    }
+    const trainingItems = enrichPersonTrainingItems(item.trainingItems);
+    if (normalizedTrainingType && normalizedTrainingType !== "all") {
+      const selected = trainingItems.find((entry) => entry.type === normalizedTrainingType);
+      if (!selected) {
+        return false;
+      }
+      if (normalizedStatus && normalizedStatus !== "all" && selected.status !== normalizedStatus) {
+        return false;
+      }
+    } else if (normalizedStatus && normalizedStatus !== "all" && !trainingItems.some((entry) => entry.status === normalizedStatus)) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.fullName,
+      item.firstName,
+      item.lastName,
+      item.oib,
+      item.email,
+      item.phone,
+      item.jobTitle,
+      item.companyName,
+      item.companyOib,
+      item.locationName,
+      item.note,
+      ...trainingItems.flatMap((entry) => [
+        entry.label,
+        entry.shortLabel,
+        entry.certificateNumber,
+        entry.provider,
+        entry.note,
+        entry.issuedOn,
+        entry.validUntil,
+      ]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortPersonTrainingRecords(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const companyCompare = String(left.companyName || "").localeCompare(String(right.companyName || ""), "hr");
+    if (companyCompare !== 0) {
+      return companyCompare;
+    }
+
+    const locationCompare = String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr");
+    if (locationCompare !== 0) {
+      return locationCompare;
+    }
+
+    return String(left.fullName || "").localeCompare(String(right.fullName || ""), "hr");
   });
 }
 

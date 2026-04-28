@@ -22,6 +22,7 @@ import {
   createLocation,
   createMeasurementEquipmentItem,
   createOffer,
+  createPersonTrainingRecord,
   createPurchaseOrder,
   createReminder,
   createSafetyAuthorization,
@@ -41,6 +42,7 @@ import {
   filterLegalFrameworks,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterPersonTrainingRecords,
   filterPurchaseOrders,
   filterSafetyAuthorizations,
   filterServiceCatalogItems,
@@ -72,6 +74,7 @@ import {
   sortLegalFrameworks,
   sortMeasurementEquipmentItems,
   sortOffers,
+  sortPersonTrainingRecords,
   sortPurchaseOrders,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
@@ -89,6 +92,7 @@ import {
   updateLocation,
   updateMeasurementEquipmentItem,
   updateOffer,
+  updatePersonTrainingRecord,
   updatePurchaseOrder,
   updateReminder,
   updateSafetyAuthorization,
@@ -319,6 +323,73 @@ test("absence entries default to sensible statuses and support filtering/sorting
 
   const sorted = sortAbsenceEntries([updatedAnnualLeave, sickLeave]);
   assert.equal(sorted[0].id, "absence-1");
+});
+
+test("people training records normalize certificates, statuses and filters", () => {
+  const state = buildState();
+  const record = createPersonTrainingRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      firstName: "Ivan",
+      lastName: "Horvat",
+      oib: " 123 456 ",
+      email: "IVAN@ACME.HR",
+      jobTitle: "SkladiĹˇtar",
+      trainingItems: [
+        {
+          type: "safe_work",
+          issuedOn: "2026-01-15",
+          validUntil: "2027-01-15",
+          certificateNumber: "ZNR-1",
+        },
+        {
+          type: "adr",
+          validUntil: "2026-04-10",
+          certificateNumber: "ADR-9",
+        },
+      ],
+    },
+    state,
+    () => "training-1",
+    () => "2026-04-28T08:00:00.000Z",
+  );
+
+  assert.equal(record.companyName, "Acme d.o.o.");
+  assert.equal(record.locationName, "Pogon Jankomir");
+  assert.equal(record.fullName, "Ivan Horvat");
+  assert.equal(record.oib, "123456");
+  assert.equal(record.email, "ivan@acme.hr");
+  assert.equal(record.trainingItems.length, 6);
+  assert.equal(record.trainingItems.find((item) => item.type === "safe_work").status, "valid");
+  assert.equal(record.trainingItems.find((item) => item.type === "adr").status, "expired");
+
+  const updated = updatePersonTrainingRecord(
+    record,
+    {
+      trainingItems: record.trainingItems.map((item) => (
+        item.type === "adr"
+          ? { ...item, validUntil: "2027-04-10" }
+          : item
+      )),
+    },
+    state,
+    () => "2026-04-28T09:00:00.000Z",
+  );
+  assert.equal(updated.trainingItems.find((item) => item.type === "adr").status, "valid");
+
+  const filtered = filterPersonTrainingRecords([record, updated], {
+    query: "adr-9",
+    companyId: "company-1",
+    locationId: "all",
+    trainingType: "adr",
+    status: "expired",
+  });
+  assert.deepEqual(filtered.map((item) => item.id), ["training-1"]);
+
+  const sorted = sortPersonTrainingRecords([updated, record]);
+  assert.equal(sorted[0].fullName, "Ivan Horvat");
 });
 
 test("absence balances and monthly work report count regular work vs absence types", () => {

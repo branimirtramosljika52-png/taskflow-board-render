@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428p" />
+    <link rel="stylesheet" href="/styles.css?v=20260428q" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3399,6 +3399,18 @@
                 <span class="people-workspace-tab-copy">Role, pristupi i dokumenti</span>
               </button>
               <button
+                id="people-tab-trainings"
+                type="button"
+                class="tab-button people-workspace-tab"
+                data-people-workspace-tab="trainings"
+                role="tab"
+                aria-controls="people-training-panel"
+                aria-selected="false"
+              >
+                <strong>Osposobljavanja</strong>
+                <span class="people-workspace-tab-copy">ZNR, požar, ADR i liječnički</span>
+              </button>
+              <button
                 id="people-tab-annual-leave"
                 type="button"
                 class="tab-button people-workspace-tab"
@@ -3690,6 +3702,139 @@
                 </form>
               </div>
             </section>
+          </section>
+
+          <section id="people-training-panel" class="panel people-training-panel" hidden>
+            <div class="section-heading offers-section-heading">
+              <div>
+                <p class="section-kicker">People</p>
+                <h3>Osposobljavanja ljudi</h3>
+                <p class="helper-copy module-copy">Evidencija po osobi, tvrtki i lokaciji: rad na siguran način, požar, zapaljive tekućine i plinovi, ADR, liječnički pregledi i stručna osposobljavanja.</p>
+              </div>
+              <div class="vehicles-panel-head-actions">
+                <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
+                <button id="people-training-new-button" type="button" class="primary-button">+ Nova osoba</button>
+                <input id="people-training-import-input" type="file" accept=".xlsx,.xls,.csv" hidden />
+              </div>
+            </div>
+
+            <div class="people-training-stats" aria-label="Sažetak osposobljavanja">
+              <article class="people-training-stat-card is-total">
+                <span>Osoba</span>
+                <strong id="people-training-total-count">0</strong>
+                <small>u evidenciji</small>
+              </article>
+              <article class="people-training-stat-card is-valid">
+                <span>Važeće</span>
+                <strong id="people-training-valid-count">0</strong>
+                <small>sve uredno</small>
+              </article>
+              <article class="people-training-stat-card is-warning">
+                <span>Uskoro ističe</span>
+                <strong id="people-training-expiring-count">0</strong>
+                <small>do 60 dana</small>
+              </article>
+              <article class="people-training-stat-card is-expired">
+                <span>Isteklo / nema</span>
+                <strong id="people-training-expired-count">0</strong>
+                <small>treba provjeru</small>
+              </article>
+            </div>
+
+            <div class="people-training-toolbar">
+              <label>
+                <span>Pretraga</span>
+                <input id="people-training-search" type="search" placeholder="Ime, OIB, tvrtka, potvrda..." />
+              </label>
+              <label>
+                <span>Tvrtka</span>
+                <select id="people-training-company-filter"></select>
+              </label>
+              <label>
+                <span>Lokacija</span>
+                <select id="people-training-location-filter"></select>
+              </label>
+              <label>
+                <span>Vrsta</span>
+                <select id="people-training-type-filter"></select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="people-training-status-filter"></select>
+              </label>
+            </div>
+
+            <div class="people-training-layout">
+              <form id="people-training-form" class="people-training-form-card">
+                <input id="people-training-id" type="hidden" />
+                <div class="people-training-form-head">
+                  <div>
+                    <p class="section-kicker">Evidencija</p>
+                    <h4 id="people-training-form-title">Nova osoba</h4>
+                  </div>
+                  <p id="people-training-form-feedback" class="inline-feedback" role="status"></p>
+                </div>
+
+                <div class="people-training-form-grid is-person">
+                  <label>
+                    <span>Tvrtka</span>
+                    <select id="people-training-company" required></select>
+                  </label>
+                  <label>
+                    <span>Lokacija</span>
+                    <select id="people-training-location"></select>
+                  </label>
+                  <label>
+                    <span>Ime</span>
+                    <input id="people-training-first-name" type="text" autocomplete="given-name" required />
+                  </label>
+                  <label>
+                    <span>Prezime</span>
+                    <input id="people-training-last-name" type="text" autocomplete="family-name" required />
+                  </label>
+                  <label>
+                    <span>OIB</span>
+                    <input id="people-training-oib" type="text" inputmode="numeric" />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input id="people-training-email" type="email" autocomplete="email" />
+                  </label>
+                  <label>
+                    <span>Mobitel</span>
+                    <input id="people-training-phone" type="text" />
+                  </label>
+                  <label>
+                    <span>Radno mjesto</span>
+                    <input id="people-training-job-title" type="text" />
+                  </label>
+                  <label class="is-wide">
+                    <span>Napomena</span>
+                    <input id="people-training-note" type="text" placeholder="Interna napomena, ograničenja, specifičnosti..." />
+                  </label>
+                </div>
+
+                <div id="people-training-form-training-grid" class="people-training-type-grid"></div>
+
+                <div class="people-training-form-actions">
+                  <button id="people-training-save" type="submit" class="primary-button">Spremi evidenciju</button>
+                  <button id="people-training-reset" type="button" class="ghost-button">Očisti</button>
+                  <button id="people-training-delete" type="button" class="danger-button" hidden>Obriši</button>
+                </div>
+              </form>
+
+              <section class="people-training-list-card" aria-labelledby="people-training-list-title">
+                <div class="people-training-list-head">
+                  <div>
+                    <p class="section-kicker">Pregled</p>
+                    <h4 id="people-training-list-title">Ljudi po tvrtkama</h4>
+                  </div>
+                  <span id="people-training-list-count" class="soft-pill">0 zapisa</span>
+                </div>
+                <div id="people-training-list" class="people-training-list"></div>
+                <p id="people-training-empty" class="empty-state" hidden>Nema evidentiranih osposobljavanja za odabrane filtere.</p>
+              </section>
+            </div>
           </section>
 
           <section id="absence-module" class="absence-module" hidden>
@@ -7124,6 +7269,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260428z"></script>
+    <script type="module" src="/src/main.js?v=20260428aa"></script>
   </body>
 </html>

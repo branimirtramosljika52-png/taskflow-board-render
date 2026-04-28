@@ -22,6 +22,8 @@
   MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
   MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
   OFFER_STATUS_OPTIONS,
+  PERSON_TRAINING_STATUS_OPTIONS,
+  PERSON_TRAINING_TYPE_OPTIONS,
   PURCHASE_ORDER_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
@@ -47,6 +49,7 @@
   filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterPersonTrainingRecords,
   filterPurchaseOrders,
   filterAbsenceEntries,
   filterReminders,
@@ -81,6 +84,7 @@
   sortLearningTests,
   sortMeasurementEquipmentItems,
   sortAbsenceEntries,
+  sortPersonTrainingRecords,
   sortTodoTasks,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
@@ -1211,6 +1215,10 @@ const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
     label: "Korisnici",
     description: "",
   }),
+  trainings: Object.freeze({
+    label: "Osposobljavanja",
+    description: "Evidencija ZNR osposobljavanja, požara, ADR-a, liječničkih pregleda i stručnih potvrda po tvrtkama.",
+  }),
   "annual-leave": Object.freeze({
     label: "GO i dopusti",
     description: "Zahtjevi za godišnji odmor, plaćene i ostale dopuste sa saldom i odobrenjima.",
@@ -1315,6 +1323,7 @@ const state = {
   },
   safetyAuthorizations: [],
   absenceEntries: [],
+  peopleTrainingRecords: [],
   absenceBalances: [],
   dashboardWidgets: [],
   activeView: "selfdash",
@@ -1441,6 +1450,14 @@ const state = {
     status: "all",
     type: "all",
   },
+  peopleTrainingFilters: {
+    query: "",
+    companyId: "all",
+    locationId: "all",
+    trainingType: "all",
+    status: "all",
+  },
+  activePeopleTrainingRecordId: "",
   absenceReportMonth: new Date().toISOString().slice(0, 7),
   absenceReportFilters: {
     userId: "all",
@@ -1477,6 +1494,7 @@ const state = {
   clientPortalPreviewCollapsed: {
     workOrders: false,
     documents: false,
+    trainings: false,
   },
   periodicsFeed: {
     organizationId: "",
@@ -4517,6 +4535,39 @@ const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
 const peopleUsersPanel = document.querySelector("#people-users-panel");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
+const peopleTrainingPanel = document.querySelector("#people-training-panel");
+const peopleTrainingImportButton = document.querySelector("#people-training-import-button");
+const peopleTrainingImportInput = document.querySelector("#people-training-import-input");
+const peopleTrainingNewButton = document.querySelector("#people-training-new-button");
+const peopleTrainingTotalCount = document.querySelector("#people-training-total-count");
+const peopleTrainingValidCount = document.querySelector("#people-training-valid-count");
+const peopleTrainingExpiringCount = document.querySelector("#people-training-expiring-count");
+const peopleTrainingExpiredCount = document.querySelector("#people-training-expired-count");
+const peopleTrainingSearchInput = document.querySelector("#people-training-search");
+const peopleTrainingCompanyFilterInput = document.querySelector("#people-training-company-filter");
+const peopleTrainingLocationFilterInput = document.querySelector("#people-training-location-filter");
+const peopleTrainingTypeFilterInput = document.querySelector("#people-training-type-filter");
+const peopleTrainingStatusFilterInput = document.querySelector("#people-training-status-filter");
+const peopleTrainingForm = document.querySelector("#people-training-form");
+const peopleTrainingIdInput = document.querySelector("#people-training-id");
+const peopleTrainingFormTitle = document.querySelector("#people-training-form-title");
+const peopleTrainingFormFeedback = document.querySelector("#people-training-form-feedback");
+const peopleTrainingCompanyInput = document.querySelector("#people-training-company");
+const peopleTrainingLocationInput = document.querySelector("#people-training-location");
+const peopleTrainingFirstNameInput = document.querySelector("#people-training-first-name");
+const peopleTrainingLastNameInput = document.querySelector("#people-training-last-name");
+const peopleTrainingOibInput = document.querySelector("#people-training-oib");
+const peopleTrainingEmailInput = document.querySelector("#people-training-email");
+const peopleTrainingPhoneInput = document.querySelector("#people-training-phone");
+const peopleTrainingJobTitleInput = document.querySelector("#people-training-job-title");
+const peopleTrainingNoteInput = document.querySelector("#people-training-note");
+const peopleTrainingFormTrainingGrid = document.querySelector("#people-training-form-training-grid");
+const peopleTrainingSaveButton = document.querySelector("#people-training-save");
+const peopleTrainingResetButton = document.querySelector("#people-training-reset");
+const peopleTrainingDeleteButton = document.querySelector("#people-training-delete");
+const peopleTrainingListCount = document.querySelector("#people-training-list-count");
+const peopleTrainingList = document.querySelector("#people-training-list");
+const peopleTrainingEmpty = document.querySelector("#people-training-empty");
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -6594,6 +6645,7 @@ function applySnapshot(payload) {
   );
   state.safetyAuthorizations = payload.safetyAuthorizations ?? [];
   state.absenceEntries = payload.absenceEntries ?? [];
+  state.peopleTrainingRecords = payload.peopleTrainingRecords ?? [];
   state.absenceBalances = payload.absenceBalances ?? [];
   state.documentTemplates = payload.documentTemplates ?? [];
   state.dashboardWidgets = normalizeDashboardWidgetPositionsByGrid(payload.dashboardWidgets ?? []);
@@ -6639,6 +6691,9 @@ function applySnapshot(payload) {
   }
   if (!state.absenceEntries.some((item) => String(item.id) === String(state.activeAbsenceId))) {
     state.activeAbsenceId = "";
+  }
+  if (!state.peopleTrainingRecords.some((item) => String(item.id) === String(state.activePeopleTrainingRecordId))) {
+    state.activePeopleTrainingRecordId = "";
   }
   if (!state.vehicles.some((item) => String(item.id) === String(state.activeVehicleId))) {
     state.activeVehicleId = "";
@@ -6885,6 +6940,674 @@ function replaceSelectOptions(select, options, selectedValue = "") {
     select.value = String(options[0].value);
   } else {
     select.value = "";
+  }
+}
+
+function getPeopleTrainingTypeOption(type = "") {
+  const normalized = String(type ?? "").trim().toLowerCase();
+  return PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized)
+    ?? PERSON_TRAINING_TYPE_OPTIONS[0];
+}
+
+function getPeopleTrainingStatusOption(status = "") {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return PERSON_TRAINING_STATUS_OPTIONS.find((option) => option.value === normalized)
+    ?? PERSON_TRAINING_STATUS_OPTIONS[0];
+}
+
+function normalizePeopleTrainingDate(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+  const hrMatch = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\.?$/);
+  if (hrMatch) {
+    return `${hrMatch[3]}-${hrMatch[2].padStart(2, "0")}-${hrMatch[1].padStart(2, "0")}`;
+  }
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    return `${slashMatch[3]}-${slashMatch[2].padStart(2, "0")}-${slashMatch[1].padStart(2, "0")}`;
+  }
+  return "";
+}
+
+function getPeopleTrainingItemStatus(item = {}) {
+  const explicitStatus = String(item?.status ?? "").trim().toLowerCase();
+  if (explicitStatus === "not_required") {
+    return "not_required";
+  }
+  if (item?.validForever === true || String(item?.validForever) === "true") {
+    return "valid";
+  }
+
+  const validUntil = normalizePeopleTrainingDate(item?.validUntil ?? item?.validTo ?? item?.expiresOn);
+  const issuedOn = normalizePeopleTrainingDate(item?.issuedOn ?? item?.issuedDate);
+  const certificateNumber = String(item?.certificateNumber ?? item?.documentNumber ?? item?.number ?? "").trim();
+  if (!validUntil && !issuedOn && !certificateNumber) {
+    return "missing";
+  }
+  if (!validUntil) {
+    return "valid";
+  }
+
+  const today = new Date();
+  const todayIso = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+  if (validUntil < todayIso) {
+    return "expired";
+  }
+
+  const due = new Date(`${validUntil}T00:00:00`);
+  const now = new Date(`${todayIso}T00:00:00`);
+  const days = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+  return days <= 60 ? "expiring" : "valid";
+}
+
+function normalizePeopleTrainingItemsForUi(items = []) {
+  const source = Array.isArray(items)
+    ? items
+    : Object.entries(items && typeof items === "object" ? items : {})
+      .map(([type, value]) => ({ ...(value && typeof value === "object" ? value : {}), type }));
+  const byType = new Map(source.map((item) => [String(item?.type ?? "").trim().toLowerCase(), item]));
+
+  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => {
+    const sourceItem = byType.get(typeOption.value) ?? {};
+    const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
+    const item = {
+      type: typeOption.value,
+      label: typeOption.label,
+      shortLabel: typeOption.shortLabel,
+      issuedOn: normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate),
+      validUntil: validForever ? "" : normalizePeopleTrainingDate(sourceItem?.validUntil ?? sourceItem?.validTo ?? sourceItem?.expiresOn),
+      validForever,
+      certificateNumber: String(sourceItem?.certificateNumber ?? sourceItem?.documentNumber ?? sourceItem?.number ?? "").trim(),
+      provider: String(sourceItem?.provider ?? sourceItem?.institution ?? sourceItem?.organizer ?? "").trim(),
+      note: String(sourceItem?.note ?? "").trim(),
+      status: String(sourceItem?.status ?? "").trim().toLowerCase(),
+    };
+    return {
+      ...item,
+      status: getPeopleTrainingItemStatus(item),
+    };
+  });
+}
+
+function getPeopleTrainingOverallStatus(record = {}) {
+  const statuses = normalizePeopleTrainingItemsForUi(record.trainingItems).map((item) => item.status);
+  if (statuses.some((status) => status === "expired" || status === "missing")) {
+    return "expired";
+  }
+  if (statuses.some((status) => status === "expiring")) {
+    return "expiring";
+  }
+  if (statuses.some((status) => status === "valid")) {
+    return "valid";
+  }
+  return "missing";
+}
+
+function getPeopleTrainingStatusClass(status = "") {
+  const normalized = String(status || "missing").trim().toLowerCase();
+  if (normalized === "valid" || normalized === "not_required") {
+    return "is-valid";
+  }
+  if (normalized === "expiring") {
+    return "is-expiring";
+  }
+  if (normalized === "expired") {
+    return "is-expired";
+  }
+  return "is-missing";
+}
+
+function getPeopleTrainingStatusLabel(status = "") {
+  return getPeopleTrainingStatusOption(status).label || "Nema podatka";
+}
+
+function getPeopleTrainingCompany(companyId = "") {
+  return state.companies.find((item) => String(item.id) === String(companyId)) ?? null;
+}
+
+function getPeopleTrainingLocation(locationId = "") {
+  return state.locations.find((item) => String(item.id) === String(locationId)) ?? null;
+}
+
+function getPeopleTrainingFilteredRecords() {
+  return sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, state.peopleTrainingFilters));
+}
+
+function setPeopleTrainingFeedback(message = "", type = "error") {
+  setInlineMessage(peopleTrainingFormFeedback, message, type);
+}
+
+function buildPeopleTrainingCompanyOptions({ includeAll = false, selectedValue = "" } = {}) {
+  const options = [
+    includeAll ? { value: "all", label: "Sve tvrtke" } : null,
+    ...state.companies
+      .slice()
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+      .map((company) => ({ value: String(company.id), label: company.name || "Tvrtka bez naziva" })),
+  ].filter(Boolean);
+  if (!includeAll && selectedValue && !options.some((option) => String(option.value) === String(selectedValue))) {
+    const company = getPeopleTrainingCompany(selectedValue);
+    if (company) {
+      options.unshift({ value: String(company.id), label: company.name || "Tvrtka" });
+    }
+  }
+  return options;
+}
+
+function buildPeopleTrainingLocationOptions({ companyId = "", includeAll = false, includeEmpty = false } = {}) {
+  const normalizedCompanyId = String(companyId ?? "").trim();
+  const locations = state.locations
+    .filter((location) => !normalizedCompanyId || normalizedCompanyId === "all" || String(location.companyId) === normalizedCompanyId)
+    .slice()
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"));
+  return [
+    includeAll ? { value: "all", label: "Sve lokacije" } : null,
+    includeEmpty ? { value: "", label: "Sve lokacije tvrtke / nije vezano" } : null,
+    ...locations.map((location) => ({
+      value: String(location.id),
+      label: [
+        location.name || "Lokacija",
+        getPeopleTrainingCompany(location.companyId)?.name || "",
+      ].filter(Boolean).join(" - "),
+    })),
+  ].filter(Boolean);
+}
+
+function syncPeopleTrainingSelectOptions() {
+  if (peopleTrainingCompanyFilterInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingCompanyFilterInput,
+      buildPeopleTrainingCompanyOptions({ includeAll: true }),
+      state.peopleTrainingFilters.companyId || "all",
+    );
+    state.peopleTrainingFilters.companyId = peopleTrainingCompanyFilterInput.value || "all";
+  }
+
+  if (peopleTrainingLocationFilterInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingLocationFilterInput,
+      buildPeopleTrainingLocationOptions({
+        companyId: state.peopleTrainingFilters.companyId,
+        includeAll: true,
+      }),
+      state.peopleTrainingFilters.locationId || "all",
+    );
+    state.peopleTrainingFilters.locationId = peopleTrainingLocationFilterInput.value || "all";
+  }
+
+  if (peopleTrainingTypeFilterInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingTypeFilterInput,
+      [
+        { value: "all", label: "Sve vrste" },
+        ...PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+      ],
+      state.peopleTrainingFilters.trainingType || "all",
+    );
+    state.peopleTrainingFilters.trainingType = peopleTrainingTypeFilterInput.value || "all";
+  }
+
+  if (peopleTrainingStatusFilterInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingStatusFilterInput,
+      [
+        { value: "all", label: "Svi statusi" },
+        ...PERSON_TRAINING_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+      ],
+      state.peopleTrainingFilters.status || "all",
+    );
+    state.peopleTrainingFilters.status = peopleTrainingStatusFilterInput.value || "all";
+  }
+
+  const selectedCompanyId = peopleTrainingCompanyInput?.value
+    || (state.peopleTrainingFilters.companyId !== "all" ? state.peopleTrainingFilters.companyId : "")
+    || state.companies[0]?.id
+    || "";
+  if (peopleTrainingCompanyInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingCompanyInput,
+      buildPeopleTrainingCompanyOptions({ selectedValue: selectedCompanyId }),
+      selectedCompanyId,
+    );
+  }
+
+  if (peopleTrainingLocationInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingLocationInput,
+      buildPeopleTrainingLocationOptions({
+        companyId: peopleTrainingCompanyInput?.value || selectedCompanyId,
+        includeEmpty: true,
+      }),
+      peopleTrainingLocationInput.value || "",
+    );
+  }
+}
+
+function renderPeopleTrainingStats() {
+  const records = state.peopleTrainingRecords ?? [];
+  const counts = records.reduce((accumulator, record) => {
+    const status = getPeopleTrainingOverallStatus(record);
+    accumulator.total += 1;
+    if (status === "valid") {
+      accumulator.valid += 1;
+    } else if (status === "expiring") {
+      accumulator.expiring += 1;
+    } else {
+      accumulator.expired += 1;
+    }
+    return accumulator;
+  }, { total: 0, valid: 0, expiring: 0, expired: 0 });
+
+  if (peopleTrainingTotalCount) {
+    peopleTrainingTotalCount.textContent = String(counts.total);
+  }
+  if (peopleTrainingValidCount) {
+    peopleTrainingValidCount.textContent = String(counts.valid);
+  }
+  if (peopleTrainingExpiringCount) {
+    peopleTrainingExpiringCount.textContent = String(counts.expiring);
+  }
+  if (peopleTrainingExpiredCount) {
+    peopleTrainingExpiredCount.textContent = String(counts.expired);
+  }
+}
+
+function renderPeopleTrainingGrid(record = null) {
+  if (!peopleTrainingFormTrainingGrid) {
+    return;
+  }
+
+  const items = normalizePeopleTrainingItemsForUi(record?.trainingItems ?? []);
+  const cards = items.map((item) => {
+    const card = document.createElement("article");
+    card.className = `people-training-type-card ${getPeopleTrainingStatusClass(item.status)}`;
+    card.dataset.trainingType = item.type;
+
+    const head = document.createElement("div");
+    head.className = "people-training-type-head";
+    const title = document.createElement("strong");
+    title.textContent = item.label;
+    const chip = document.createElement("span");
+    chip.className = `people-training-status-chip ${getPeopleTrainingStatusClass(item.status)}`;
+    chip.textContent = getPeopleTrainingStatusLabel(item.status);
+    head.append(title, chip);
+
+    const fields = document.createElement("div");
+    fields.className = "people-training-mini-grid";
+
+    const issuedLabel = document.createElement("label");
+    issuedLabel.innerHTML = "<span>Izdano</span>";
+    const issuedInput = document.createElement("input");
+    issuedInput.type = "date";
+    issuedInput.value = item.issuedOn || "";
+    issuedInput.dataset.trainingField = "issuedOn";
+    issuedLabel.append(issuedInput);
+
+    const validLabel = document.createElement("label");
+    validLabel.innerHTML = "<span>Vrijedi do</span>";
+    const validInput = document.createElement("input");
+    validInput.type = "date";
+    validInput.value = item.validUntil || "";
+    validInput.dataset.trainingField = "validUntil";
+    validInput.disabled = item.validForever;
+    validLabel.append(validInput);
+
+    const certificateLabel = document.createElement("label");
+    certificateLabel.innerHTML = "<span>Broj potvrde</span>";
+    const certificateInput = document.createElement("input");
+    certificateInput.type = "text";
+    certificateInput.value = item.certificateNumber || "";
+    certificateInput.placeholder = "npr. ZNR-2026-15";
+    certificateInput.dataset.trainingField = "certificateNumber";
+    certificateLabel.append(certificateInput);
+
+    const providerLabel = document.createElement("label");
+    providerLabel.innerHTML = "<span>Ustanova</span>";
+    const providerInput = document.createElement("input");
+    providerInput.type = "text";
+    providerInput.value = item.provider || "";
+    providerInput.placeholder = "npr. SafeNexus";
+    providerInput.dataset.trainingField = "provider";
+    providerLabel.append(providerInput);
+
+    const noteLabel = document.createElement("label");
+    noteLabel.className = "is-wide";
+    noteLabel.innerHTML = "<span>Napomena</span>";
+    const noteInput = document.createElement("input");
+    noteInput.type = "text";
+    noteInput.value = item.note || "";
+    noteInput.placeholder = "ograničenja, lokacija potvrde, dodatno...";
+    noteInput.dataset.trainingField = "note";
+    noteLabel.append(noteInput);
+
+    const foreverLabel = document.createElement("label");
+    foreverLabel.className = "people-training-check";
+    const foreverInput = document.createElement("input");
+    foreverInput.type = "checkbox";
+    foreverInput.checked = item.validForever;
+    foreverInput.dataset.trainingField = "validForever";
+    foreverInput.addEventListener("change", () => {
+      validInput.disabled = foreverInput.checked;
+      if (foreverInput.checked) {
+        validInput.value = "";
+      }
+    });
+    const foreverText = document.createElement("span");
+    foreverText.textContent = "Bez isteka";
+    foreverLabel.append(foreverInput, foreverText);
+
+    fields.append(issuedLabel, validLabel, certificateLabel, providerLabel, noteLabel, foreverLabel);
+    card.append(head, fields);
+    return card;
+  });
+
+  peopleTrainingFormTrainingGrid.replaceChildren(...cards);
+}
+
+function resetPeopleTrainingForm() {
+  if (!peopleTrainingForm) {
+    return;
+  }
+  peopleTrainingForm.reset();
+  if (peopleTrainingIdInput) {
+    peopleTrainingIdInput.value = "";
+  }
+  state.activePeopleTrainingRecordId = "";
+  syncPeopleTrainingSelectOptions();
+  if (peopleTrainingFormTitle) {
+    peopleTrainingFormTitle.textContent = "Nova osoba";
+  }
+  if (peopleTrainingDeleteButton) {
+    peopleTrainingDeleteButton.hidden = true;
+  }
+  renderPeopleTrainingGrid(null);
+  setPeopleTrainingFeedback("");
+}
+
+function populatePeopleTrainingForm(record = {}) {
+  syncPeopleTrainingSelectOptions();
+  state.activePeopleTrainingRecordId = String(record.id || "");
+  if (peopleTrainingIdInput) {
+    peopleTrainingIdInput.value = String(record.id || "");
+  }
+  if (peopleTrainingFormTitle) {
+    peopleTrainingFormTitle.textContent = record.fullName || "Uredi osobu";
+  }
+  if (peopleTrainingCompanyInput) {
+    peopleTrainingCompanyInput.value = String(record.companyId || "");
+  }
+  if (peopleTrainingLocationInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingLocationInput,
+      buildPeopleTrainingLocationOptions({ companyId: record.companyId, includeEmpty: true }),
+      record.locationId || "",
+    );
+  }
+  if (peopleTrainingFirstNameInput) {
+    peopleTrainingFirstNameInput.value = record.firstName || "";
+  }
+  if (peopleTrainingLastNameInput) {
+    peopleTrainingLastNameInput.value = record.lastName || "";
+  }
+  if (peopleTrainingOibInput) {
+    peopleTrainingOibInput.value = record.oib || "";
+  }
+  if (peopleTrainingEmailInput) {
+    peopleTrainingEmailInput.value = record.email || "";
+  }
+  if (peopleTrainingPhoneInput) {
+    peopleTrainingPhoneInput.value = record.phone || "";
+  }
+  if (peopleTrainingJobTitleInput) {
+    peopleTrainingJobTitleInput.value = record.jobTitle || "";
+  }
+  if (peopleTrainingNoteInput) {
+    peopleTrainingNoteInput.value = record.note || "";
+  }
+  if (peopleTrainingDeleteButton) {
+    peopleTrainingDeleteButton.hidden = !record.id;
+  }
+  renderPeopleTrainingGrid(record);
+  setPeopleTrainingFeedback("");
+}
+
+function readPeopleTrainingGridItems() {
+  if (!peopleTrainingFormTrainingGrid) {
+    return [];
+  }
+  return Array.from(peopleTrainingFormTrainingGrid.querySelectorAll("[data-training-type]")).map((card) => {
+    const readField = (field) => {
+      const input = card.querySelector(`[data-training-field="${field}"]`);
+      if (input instanceof HTMLInputElement && input.type === "checkbox") {
+        return input.checked;
+      }
+      return input?.value ?? "";
+    };
+    return {
+      type: card.dataset.trainingType || "",
+      issuedOn: readField("issuedOn"),
+      validUntil: readField("validUntil"),
+      validForever: readField("validForever"),
+      certificateNumber: readField("certificateNumber"),
+      provider: readField("provider"),
+      note: readField("note"),
+    };
+  });
+}
+
+function buildPeopleTrainingPayload() {
+  return {
+    companyId: peopleTrainingCompanyInput?.value || "",
+    locationId: peopleTrainingLocationInput?.value || "",
+    firstName: peopleTrainingFirstNameInput?.value || "",
+    lastName: peopleTrainingLastNameInput?.value || "",
+    oib: peopleTrainingOibInput?.value || "",
+    email: peopleTrainingEmailInput?.value || "",
+    phone: peopleTrainingPhoneInput?.value || "",
+    jobTitle: peopleTrainingJobTitleInput?.value || "",
+    note: peopleTrainingNoteInput?.value || "",
+    trainingItems: readPeopleTrainingGridItems(),
+  };
+}
+
+async function handlePeopleTrainingSubmit(event) {
+  event.preventDefault();
+  const recordId = String(peopleTrainingIdInput?.value || "").trim();
+  const method = recordId ? "PATCH" : "POST";
+  const path = recordId ? `/people-training-records/${encodeURIComponent(recordId)}` : "/people-training-records";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildPeopleTrainingPayload(),
+  }), peopleTrainingFormFeedback);
+
+  if (success) {
+    const saved = recordId
+      ? state.peopleTrainingRecords.find((item) => String(item.id) === recordId)
+      : state.peopleTrainingRecords
+        .slice()
+        .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))[0];
+    if (saved) {
+      populatePeopleTrainingForm(saved);
+    }
+    setPeopleTrainingFeedback(recordId ? "Evidencija je spremljena." : "Osoba je dodana u evidenciju.", "success");
+    renderPeopleTrainingModule();
+  }
+}
+
+async function deletePeopleTrainingRecord() {
+  const recordId = String(peopleTrainingIdInput?.value || "").trim();
+  if (!recordId) {
+    return;
+  }
+  const record = state.peopleTrainingRecords.find((item) => String(item.id) === recordId);
+  const confirmed = window.confirm(`Obrisati evidenciju za ${record?.fullName || "ovu osobu"}?`);
+  if (!confirmed) {
+    return;
+  }
+  const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(recordId)}`, {
+    method: "DELETE",
+  }), peopleTrainingFormFeedback);
+  if (success) {
+    resetPeopleTrainingForm();
+    renderPeopleTrainingModule();
+    setPeopleTrainingFeedback("Evidencija je obrisana.", "success");
+  }
+}
+
+function createPeopleTrainingStatusPill(item = {}) {
+  const pill = document.createElement("span");
+  pill.className = `people-training-status-pill ${getPeopleTrainingStatusClass(item.status)}`;
+  pill.title = item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : getPeopleTrainingStatusLabel(item.status);
+  pill.textContent = item.shortLabel || item.label || item.type || "?";
+  return pill;
+}
+
+function createPeopleTrainingRecordCard(record = {}) {
+  const card = document.createElement("article");
+  card.className = `people-training-person-card ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `Uredi osposobljavanja za ${record.fullName || "osobu"}`);
+
+  const main = document.createElement("div");
+  main.className = "people-training-person-main";
+  const name = document.createElement("strong");
+  name.textContent = record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba bez imena";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    record.jobTitle,
+    record.oib ? `OIB ${record.oib}` : "",
+    record.email,
+  ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+  main.append(name, meta);
+
+  const location = document.createElement("div");
+  location.className = "people-training-person-location";
+  const companyName = document.createElement("strong");
+  companyName.textContent = record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka";
+  const locationName = document.createElement("span");
+  locationName.textContent = record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije / nije vezano";
+  location.append(companyName, locationName);
+
+  const statuses = document.createElement("div");
+  statuses.className = "people-training-person-statuses";
+  statuses.replaceChildren(...normalizePeopleTrainingItemsForUi(record.trainingItems).map(createPeopleTrainingStatusPill));
+
+  card.append(main, location, statuses);
+  card.addEventListener("click", () => {
+    populatePeopleTrainingForm(record);
+    peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      populatePeopleTrainingForm(record);
+    }
+  });
+  return card;
+}
+
+function renderPeopleTrainingList() {
+  if (!peopleTrainingList) {
+    return;
+  }
+
+  const records = getPeopleTrainingFilteredRecords();
+  if (peopleTrainingListCount) {
+    peopleTrainingListCount.textContent = `${records.length} zapisa`;
+  }
+  if (peopleTrainingEmpty) {
+    peopleTrainingEmpty.hidden = records.length > 0;
+  }
+
+  const groups = new Map();
+  records.forEach((record) => {
+    const key = [
+      record.companyId || "company",
+      record.locationId || "all",
+    ].join(":");
+    if (!groups.has(key)) {
+      groups.set(key, {
+        companyName: record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka",
+        locationName: record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije / nije vezano",
+        records: [],
+      });
+    }
+    groups.get(key).records.push(record);
+  });
+
+  const groupNodes = Array.from(groups.values()).map((group) => {
+    const section = document.createElement("section");
+    section.className = "people-training-company-group";
+    const head = document.createElement("div");
+    head.className = "people-training-company-head";
+    const copy = document.createElement("div");
+    const company = document.createElement("strong");
+    company.textContent = group.companyName;
+    const location = document.createElement("span");
+    location.textContent = group.locationName;
+    copy.append(company, location);
+    const count = document.createElement("span");
+    count.className = "soft-pill";
+    count.textContent = `${group.records.length} osoba`;
+    head.append(copy, count);
+    const list = document.createElement("div");
+    list.className = "people-training-company-people";
+    list.replaceChildren(...group.records.map(createPeopleTrainingRecordCard));
+    section.append(head, list);
+    return section;
+  });
+
+  peopleTrainingList.replaceChildren(...groupNodes);
+}
+
+function renderPeopleTrainingModule() {
+  if (!peopleTrainingPanel) {
+    return;
+  }
+
+  if (peopleTrainingSearchInput && peopleTrainingSearchInput.value !== state.peopleTrainingFilters.query) {
+    peopleTrainingSearchInput.value = state.peopleTrainingFilters.query || "";
+  }
+  syncPeopleTrainingSelectOptions();
+  renderPeopleTrainingStats();
+  if (!peopleTrainingFormTrainingGrid?.children.length) {
+    const active = state.peopleTrainingRecords.find((item) => String(item.id) === String(state.activePeopleTrainingRecordId));
+    renderPeopleTrainingGrid(active || null);
+  }
+  renderPeopleTrainingList();
+}
+
+async function importPeopleTrainingExcel(file) {
+  if (!file) {
+    return;
+  }
+  const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel tablicu.");
+  const selectedCompanyId = state.peopleTrainingFilters.companyId !== "all" ? state.peopleTrainingFilters.companyId : "";
+  const selectedLocationId = state.peopleTrainingFilters.locationId !== "all" ? state.peopleTrainingFilters.locationId : "";
+  const success = await runMutation(() => apiRequest("/people-training-records/import", {
+    method: "POST",
+    body: {
+      fileName: file.name,
+      dataUrl,
+      companyId: selectedCompanyId,
+      locationId: selectedLocationId,
+    },
+  }), peopleTrainingFormFeedback);
+
+  if (success) {
+    setPeopleTrainingFeedback("Excel import je završen. Pregled je osvježen.", "success");
+    renderPeopleTrainingModule();
   }
 }
 
@@ -50055,6 +50778,39 @@ function createClientPortalDocumentPreviewRow({ record = {}, context = {} } = {}
   return row;
 }
 
+function createClientPortalTrainingPreviewRow(record = {}) {
+  const row = document.createElement("article");
+  row.className = "client-portal-preview-row is-training";
+
+  const main = document.createElement("div");
+  main.className = "client-portal-preview-row-main";
+  const name = document.createElement("strong");
+  name.textContent = record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba";
+  const role = document.createElement("span");
+  role.textContent = record.jobTitle || record.email || "Bez radnog mjesta";
+  main.append(name, role);
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-preview-row-copy";
+  const company = document.createElement("strong");
+  company.textContent = record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka";
+  const location = document.createElement("span");
+  location.textContent = record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije";
+  copy.append(company, location);
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-preview-row-meta is-training-statuses";
+  meta.replaceChildren(...normalizePeopleTrainingItemsForUi(record.trainingItems).map(createPeopleTrainingStatusPill));
+
+  const overall = getPeopleTrainingOverallStatus(record);
+  const badge = document.createElement("span");
+  badge.className = `client-portal-preview-row-badge is-training ${getPeopleTrainingStatusClass(overall)}`;
+  badge.textContent = getPeopleTrainingStatusLabel(overall);
+
+  row.append(main, copy, meta, badge);
+  return row;
+}
+
 function renderClientPortalPreview() {
   const companyId = getClientPortalSelectedCompanyId();
   const company = getCompany(companyId);
@@ -50087,9 +50843,15 @@ function renderClientPortalPreview() {
 
   const scopedWorkOrders = sortWorkOrders(filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds));
   const scopedDocumentRecords = getClientPortalDocumentRecordPreviews(companyId, selectedLocationIds);
+  const scopedTrainingRecords = sortPersonTrainingRecords(filterClientPortalRecordsByScope(
+    state.peopleTrainingRecords,
+    companyId,
+    selectedLocationIds,
+  ));
 
   const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
+  const trainingRows = scopedTrainingRecords.map(createClientPortalTrainingPreviewRow);
   const documentsLoading = Boolean(companyId && state.documentsExplorer.loading);
   const recordsCopy = documentsLoading
     ? "Ucitavam spremljene zapisnike za odabrani opseg."
@@ -50109,8 +50871,15 @@ function renderClientPortalPreview() {
     rows: documentRows,
     emptyMessage: documentsLoading ? "Ucitavanje zapisnika..." : "Nema spremljenih zapisnika za odabrani opseg.",
   });
+  const trainingsSection = createClientPortalPreviewSection({
+    key: "trainings",
+    title: "Osposobljavanja i pregledi",
+    subtitle: "Klijent vidi važenja za svoje ljude: ZNR, požar, ADR, liječnički i stručna osposobljavanja.",
+    rows: trainingRows,
+    emptyMessage: companyId ? "Nema evidentiranih osposobljavanja za odabrani opseg." : "Odaberi tvrtku za preview osposobljavanja.",
+  });
 
-  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection);
+  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection, trainingsSection);
 }
 
 function renderClientPortalModule() {
@@ -71299,6 +72068,7 @@ function renderManagement() {
   const activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
   const activePeopleTabConfig = getPeopleWorkspaceTabConfig(activePeopleTab);
   const isUsersTab = activePeopleTab === "users";
+  const isTrainingTab = activePeopleTab === "trainings";
   const isAbsenceTab = activePeopleTab === "annual-leave" || activePeopleTab === "sick-leave";
   const isAbsenceReportTab = activePeopleTab === "absence-report";
 
@@ -71345,6 +72115,10 @@ function renderManagement() {
 
   if (peopleUsersPanel) {
     peopleUsersPanel.hidden = !isUsersTab;
+  }
+
+  if (peopleTrainingPanel) {
+    peopleTrainingPanel.hidden = !isTrainingTab;
   }
 
   if (absenceModule) {
@@ -71398,6 +72172,9 @@ function renderManagement() {
 
   if (isUsersTab) {
     renderUsers();
+  }
+  if (isTrainingTab) {
+    renderPeopleTrainingModule();
   }
   if (isAbsenceTab) {
     renderAbsenceModule();
@@ -76482,6 +77259,8 @@ function resetAuthenticatedWorkspaceState() {
   state.safetyAuthorizations = [];
   state.documentTemplates = [];
   state.dashboardWidgets = [];
+  state.peopleTrainingRecords = [];
+  state.activePeopleTrainingRecordId = "";
   state.companies = [];
   state.locations = [];
   state.documentsExplorer = {
@@ -76616,6 +77395,73 @@ peopleWorkspaceTabButtons.forEach((button) => {
     renderTopbarBreadcrumbs();
     renderManagement();
   });
+});
+
+peopleTrainingNewButton?.addEventListener("click", () => {
+  resetPeopleTrainingForm();
+  peopleTrainingFirstNameInput?.focus({ preventScroll: true });
+});
+
+peopleTrainingImportButton?.addEventListener("click", () => {
+  peopleTrainingImportInput?.click();
+});
+
+peopleTrainingImportInput?.addEventListener("change", () => {
+  const [file] = Array.from(peopleTrainingImportInput.files ?? []);
+  if (!file) {
+    return;
+  }
+  void importPeopleTrainingExcel(file).finally(() => {
+    peopleTrainingImportInput.value = "";
+  });
+});
+
+peopleTrainingForm?.addEventListener("submit", (event) => {
+  void handlePeopleTrainingSubmit(event);
+});
+
+peopleTrainingResetButton?.addEventListener("click", () => {
+  resetPeopleTrainingForm();
+});
+
+peopleTrainingDeleteButton?.addEventListener("click", () => {
+  void deletePeopleTrainingRecord();
+});
+
+peopleTrainingSearchInput?.addEventListener("input", () => {
+  state.peopleTrainingFilters.query = peopleTrainingSearchInput.value.trim();
+  renderPeopleTrainingList();
+});
+
+peopleTrainingCompanyFilterInput?.addEventListener("change", () => {
+  state.peopleTrainingFilters.companyId = peopleTrainingCompanyFilterInput.value || "all";
+  state.peopleTrainingFilters.locationId = "all";
+  renderPeopleTrainingModule();
+});
+
+peopleTrainingLocationFilterInput?.addEventListener("change", () => {
+  state.peopleTrainingFilters.locationId = peopleTrainingLocationFilterInput.value || "all";
+  renderPeopleTrainingList();
+});
+
+peopleTrainingTypeFilterInput?.addEventListener("change", () => {
+  state.peopleTrainingFilters.trainingType = peopleTrainingTypeFilterInput.value || "all";
+  renderPeopleTrainingList();
+});
+
+peopleTrainingStatusFilterInput?.addEventListener("change", () => {
+  state.peopleTrainingFilters.status = peopleTrainingStatusFilterInput.value || "all";
+  renderPeopleTrainingList();
+});
+
+peopleTrainingCompanyInput?.addEventListener("change", () => {
+  if (peopleTrainingLocationInput instanceof HTMLSelectElement) {
+    replaceSelectOptions(
+      peopleTrainingLocationInput,
+      buildPeopleTrainingLocationOptions({ companyId: peopleTrainingCompanyInput.value, includeEmpty: true }),
+      "",
+    );
+  }
 });
 
 userEditorCloseButton?.addEventListener("click", () => {
@@ -77273,6 +78119,7 @@ resetCompanyForm();
 resetLocationForm();
 resetOrganizationForm();
 resetUserForm();
+resetPeopleTrainingForm();
 resetLoginContentForm();
 renderActiveView();
 renderAuthState();

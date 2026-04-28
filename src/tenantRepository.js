@@ -1777,6 +1777,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.id)))
     )),
     workOrders: (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible),
+    peopleTrainingRecords: (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible).map((item) => ({
+      ...item,
+      trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
+    })),
     reminders: (rawSnapshot.reminders ?? []).filter(isOrganizationOrCompanyItemVisible),
     todoTasks: (rawSnapshot.todoTasks ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
@@ -2590,6 +2594,7 @@ export class MemoryTenantRepository {
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
+    peopleTrainingRecords: [],
     absenceBalances: [],
     dashboardWidgets: [],
   }) {
@@ -3431,6 +3436,7 @@ export class MySqlTenantRepository {
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
+    peopleTrainingRecords: [],
     absenceBalances: [],
     dashboardWidgets: [],
   }) {
@@ -3480,6 +3486,7 @@ export class MySqlTenantRepository {
         appCapabilities: [],
         safetyAuthorizations: [],
         absenceEntries: [],
+        peopleTrainingRecords: [],
         absenceBalances: [],
         dashboardWidgets: [],
       };

@@ -32967,6 +32967,370 @@ body.is-global-loading {
   }
 }
 
+.people-training-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.people-training-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.people-training-stat-card {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-height: 104px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.1), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.9));
+  box-shadow: 0 18px 42px rgba(35, 54, 98, 0.07);
+}
+
+.people-training-stat-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 16px 12px 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(104, 137, 205, 0.22);
+}
+
+.people-training-stat-card.is-valid::after {
+  background: linear-gradient(90deg, #3ab879, #9be7ba);
+}
+
+.people-training-stat-card.is-warning::after {
+  background: linear-gradient(90deg, #d39b24, #ffe08a);
+}
+
+.people-training-stat-card.is-expired::after {
+  background: linear-gradient(90deg, #d84d62, #ff9fb0);
+}
+
+.people-training-stat-card span {
+  color: #687d9f;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.people-training-stat-card strong {
+  color: #1c2d4d;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.people-training-stat-card small {
+  color: #667895;
+  font-size: 0.8rem;
+}
+
+.people-training-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(150px, 0.8fr));
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 232, 0.84);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.9)),
+    radial-gradient(circle at bottom left, rgba(211, 68, 188, 0.07), transparent 42%);
+}
+
+.people-training-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.82fr) minmax(0, 1.18fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.people-training-form-card,
+.people-training-list-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(36, 100, 235, 0.09), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.92));
+  box-shadow: 0 20px 52px rgba(35, 54, 98, 0.08);
+}
+
+.people-training-form-head,
+.people-training-list-head,
+.people-training-company-head,
+.people-training-type-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.people-training-form-head h4,
+.people-training-list-head h4 {
+  margin: 0;
+  color: #172743;
+}
+
+.people-training-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.people-training-form-grid .is-wide {
+  grid-column: 1 / -1;
+}
+
+.people-training-type-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.people-training-type-card {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-left-width: 5px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.people-training-type-card.is-valid {
+  border-left-color: #39ad72;
+}
+
+.people-training-type-card.is-expiring {
+  border-left-color: #d29721;
+}
+
+.people-training-type-card.is-expired,
+.people-training-type-card.is-missing {
+  border-left-color: #d75064;
+}
+
+.people-training-type-head strong {
+  color: #172743;
+  font-size: 0.96rem;
+}
+
+.people-training-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.people-training-mini-grid .is-wide {
+  grid-column: 1 / -1;
+}
+
+.people-training-check {
+  display: inline-flex;
+  align-items: center;
+  align-self: end;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-radius: 15px;
+  background: rgba(244, 248, 255, 0.84);
+  color: #24385d;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.people-training-check input {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  accent-color: #2f6fed;
+}
+
+.people-training-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.people-training-list {
+  display: grid;
+  gap: 12px;
+}
+
+.people-training-company-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.people-training-company-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.people-training-company-head strong {
+  color: #172743;
+}
+
+.people-training-company-head span:not(.soft-pill) {
+  color: #657891;
+  font-size: 0.82rem;
+}
+
+.people-training-company-people {
+  display: grid;
+  gap: 8px;
+}
+
+.people-training-person-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(160px, 0.85fr) minmax(210px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid rgba(203, 214, 234, 0.78);
+  border-radius: 17px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.86));
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.people-training-person-card:hover,
+.people-training-person-card:focus-visible {
+  border-color: rgba(72, 118, 222, 0.42);
+  box-shadow: 0 14px 28px rgba(47, 83, 149, 0.11);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.people-training-person-card.is-valid {
+  box-shadow: inset 4px 0 0 rgba(57, 173, 114, 0.72);
+}
+
+.people-training-person-card.is-expiring {
+  box-shadow: inset 4px 0 0 rgba(210, 151, 33, 0.76);
+}
+
+.people-training-person-card.is-expired,
+.people-training-person-card.is-missing {
+  box-shadow: inset 4px 0 0 rgba(215, 80, 100, 0.76);
+}
+
+.people-training-person-main,
+.people-training-person-location {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-person-main strong,
+.people-training-person-location strong {
+  color: #172743;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-person-main span,
+.people-training-person-location span {
+  color: #697b96;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-person-statuses,
+.client-portal-preview-row-meta.is-training-statuses {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.people-training-status-pill,
+.people-training-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 27px;
+  padding: 4px 9px;
+  border: 1px solid rgba(154, 178, 220, 0.62);
+  border-radius: 999px;
+  background: rgba(235, 242, 255, 0.9);
+  color: #244a8f;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.people-training-status-chip {
+  min-height: 30px;
+  padding-inline: 11px;
+}
+
+.people-training-status-pill.is-valid,
+.people-training-status-chip.is-valid,
+.client-portal-preview-row-badge.is-training.is-valid {
+  border-color: rgba(57, 173, 114, 0.44);
+  background: rgba(233, 250, 240, 0.94);
+  color: #17623c;
+}
+
+.people-training-status-pill.is-expiring,
+.people-training-status-chip.is-expiring,
+.client-portal-preview-row-badge.is-training.is-expiring {
+  border-color: rgba(210, 151, 33, 0.42);
+  background: rgba(255, 247, 225, 0.96);
+  color: #815600;
+}
+
+.people-training-status-pill.is-expired,
+.people-training-status-pill.is-missing,
+.people-training-status-chip.is-expired,
+.people-training-status-chip.is-missing,
+.client-portal-preview-row-badge.is-training.is-expired,
+.client-portal-preview-row-badge.is-training.is-missing {
+  border-color: rgba(215, 80, 100, 0.42);
+  background: rgba(255, 239, 242, 0.96);
+  color: #9a2737;
+}
+
+.client-portal-preview-row.is-training {
+  border-color: rgba(83, 149, 194, 0.34);
+  background:
+    linear-gradient(135deg, rgba(247, 252, 255, 0.98), rgba(255, 255, 255, 0.88));
+}
+
+.client-portal-preview-row-badge.is-training {
+  border-color: rgba(83, 149, 194, 0.44);
+  background: rgba(234, 246, 253, 0.94);
+  color: #195779;
+}
+
 .absence-module,
 .absence-report-module {
   display: grid;
@@ -33195,19 +33559,30 @@ body.is-global-loading {
 }
 
 @media (max-width: 1120px) {
+  .people-training-stats,
   .absence-summary-grid,
   .absence-report-card-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .people-training-toolbar,
+  .people-training-layout,
+  .people-training-form-grid,
+  .people-training-person-card,
   .absence-toolbar,
   .absence-balance-row,
   .absence-balance-row-fields {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .people-training-person-statuses {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
+  .people-training-stats,
+  .people-training-mini-grid,
   .absence-summary-grid,
   .absence-report-card-stats {
     grid-template-columns: minmax(0, 1fr);

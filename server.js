@@ -43,7 +43,7 @@ import {
   resolveJwtSecret,
   verifyToken,
 } from "./src/webAuth.js";
-import { doesAbsenceTypeRequireApproval } from "./src/safetyModel.js";
+import { PERSON_TRAINING_TYPE_OPTIONS, doesAbsenceTypeRequireApproval } from "./src/safetyModel.js";
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = resolve(process.cwd());
@@ -1983,6 +1983,202 @@ function normalizeInputValue(value) {
   return String(value ?? "").trim();
 }
 
+function normalizeLookupKey(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/Ä‘/g, "d")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function readDataUrlBuffer(dataUrl = "") {
+  const meta = getOpenAiDataUrlMeta(dataUrl);
+  if (!meta) {
+    return Buffer.alloc(0);
+  }
+
+  return meta.isBase64
+    ? Buffer.from(meta.payload, "base64")
+    : Buffer.from(decodeURIComponent(meta.payload), "utf8");
+}
+
+function normalizePersonTrainingImportDate(value = "") {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const raw = normalizeInputValue(value);
+  if (!raw) {
+    return "";
+  }
+
+  const croatianMatch = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (croatianMatch) {
+    const [, day, month, year] = croatianMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return normalizeDateOnlyValue(raw);
+}
+
+function getImportRowValue(row = {}, hints = []) {
+  const entries = Object.entries(row ?? {});
+  const normalizedHints = hints.map((hint) => normalizeLookupKey(hint)).filter(Boolean);
+  const exactMatch = entries.find(([key]) => normalizedHints.includes(normalizeLookupKey(key)));
+
+  if (exactMatch) {
+    return exactMatch[1];
+  }
+
+  const partialMatch = entries.find(([key]) => {
+    const normalizedKey = normalizeLookupKey(key);
+    return normalizedHints.some((hint) => normalizedKey.includes(hint) || hint.includes(normalizedKey));
+  });
+
+  return partialMatch?.[1] ?? "";
+}
+
+const PERSON_TRAINING_IMPORT_KEY_HINTS = Object.freeze({
+  safe_work: ["znr", "radnasiguran", "radnasigurannacin", "siguranrad"],
+  fire_initial: ["pozar", "pocetnogasenje", "gasenjepozara", "ppz"],
+  flammable_storage: ["zapaljiv", "skladistenje", "tekucina", "plin"],
+  adr: ["adr"],
+  medical_exam: ["lijecnicki", "liječnički", "medicinski", "pregled"],
+  professional_training: ["strucno", "stručno", "certifikat", "osposobljavanje"],
+});
+
+function buildTrainingItemsFromImportRow(row = {}) {
+  const normalizedEntries = Object.entries(row ?? {}).map(([key, value]) => ({
+    key,
+    lookupKey: normalizeLookupKey(key),
+    value: normalizeInputValue(value),
+  }));
+
+  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => {
+    const typeHints = PERSON_TRAINING_IMPORT_KEY_HINTS[typeOption.value] ?? [typeOption.value];
+    const normalizedHints = typeHints.map((hint) => normalizeLookupKey(hint));
+    const relatedEntries = normalizedEntries.filter((entry) => (
+      normalizedHints.some((hint) => entry.lookupKey.includes(hint))
+    ));
+    const item = {
+      type: typeOption.value,
+      label: typeOption.label,
+      shortLabel: typeOption.shortLabel,
+      issuedOn: "",
+      validUntil: "",
+      validForever: false,
+      certificateNumber: "",
+      provider: "",
+      note: "",
+    };
+
+    relatedEntries.forEach((entry) => {
+      if (!entry.value) {
+        return;
+      }
+      const dateValue = normalizePersonTrainingImportDate(entry.value);
+      if (/(vrijed|vaz|valid|rok|istek|do$|until|expires)/.test(entry.lookupKey)) {
+        item.validUntil = dateValue || item.validUntil;
+        return;
+      }
+      if (/(datum|izdan|poloz|od$|issued|date)/.test(entry.lookupKey)) {
+        item.issuedOn = dateValue || item.issuedOn;
+        return;
+      }
+      if (/(broj|potvrd|uvjeren|cert|number)/.test(entry.lookupKey)) {
+        item.certificateNumber = entry.value;
+        return;
+      }
+      if (/(ustanova|provider|organizator|predavac|doctor|ordinacija)/.test(entry.lookupKey)) {
+        item.provider = entry.value;
+        return;
+      }
+      if (dateValue && !item.validUntil) {
+        item.validUntil = dateValue;
+        return;
+      }
+      if (!item.note) {
+        item.note = entry.value;
+      }
+    });
+
+    return item;
+  });
+}
+
+function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
+  const fileDataUrl = normalizeInputValue(body.dataUrl || body.fileDataUrl || body.contentDataUrl);
+  const buffer = readDataUrlBuffer(fileDataUrl);
+  if (buffer.length === 0) {
+    throw new Error("Excel datoteka za import nije učitana.");
+  }
+
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: true,
+  });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    defval: "",
+    raw: false,
+  });
+  const selectedCompanyId = normalizeInputValue(body.companyId);
+  const selectedLocationId = normalizeInputValue(body.locationId);
+  const companiesByName = new Map(
+    (scopedSnapshot.companies ?? []).flatMap((company) => [
+      [normalizeLookupKey(company.name), company],
+      [normalizeLookupKey(company.oib), company],
+    ]).filter(([key]) => key),
+  );
+  const locationsByCompanyAndName = new Map(
+    (scopedSnapshot.locations ?? []).map((location) => [
+      `${String(location.companyId)}:${normalizeLookupKey(location.name)}`,
+      location,
+    ]),
+  );
+
+  return rows.map((row) => {
+    const companyHint = getImportRowValue(row, ["tvrtka", "firma", "company", "klijent", "oib tvrtke"]);
+    const company = selectedCompanyId
+      ? (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(selectedCompanyId))
+      : companiesByName.get(normalizeLookupKey(companyHint));
+    if (!company) {
+      return null;
+    }
+
+    const locationHint = getImportRowValue(row, ["lokacija", "mjesto rada", "objekt", "location"]);
+    const location = selectedLocationId
+      ? (scopedSnapshot.locations ?? []).find((item) => String(item.id) === String(selectedLocationId))
+      : locationsByCompanyAndName.get(`${String(company.id)}:${normalizeLookupKey(locationHint)}`);
+    const fullName = normalizeInputValue(getImportRowValue(row, ["ime i prezime", "imeprezime", "osoba", "djelatnik", "radnik"]));
+    const firstName = normalizeInputValue(getImportRowValue(row, ["ime", "firstname", "first name"]));
+    const lastName = normalizeInputValue(getImportRowValue(row, ["prezime", "lastname", "last name"]));
+    const resolvedFullName = fullName || [firstName, lastName].filter(Boolean).join(" ");
+
+    if (!resolvedFullName) {
+      return null;
+    }
+
+    return {
+      organizationId: scopedSnapshot.activeOrganizationId,
+      companyId: String(company.id),
+      locationId: location ? String(location.id) : "",
+      firstName: firstName || resolvedFullName.split(/\s+/).slice(0, -1).join(" "),
+      lastName: lastName || resolvedFullName.split(/\s+/).slice(-1).join(" "),
+      fullName: resolvedFullName,
+      oib: normalizeInputValue(getImportRowValue(row, ["oib", "oib osobe", "osobni identifikacijski broj"])),
+      email: normalizeInputValue(getImportRowValue(row, ["email", "e-mail", "mail"])),
+      phone: normalizeInputValue(getImportRowValue(row, ["telefon", "mobitel", "phone", "mob"])),
+      jobTitle: normalizeInputValue(getImportRowValue(row, ["radno mjesto", "zanimanje", "posao", "job title"])),
+      trainingItems: buildTrainingItemsFromImportRow(row),
+      note: normalizeInputValue(getImportRowValue(row, ["napomena", "note"])),
+    };
+  }).filter(Boolean);
+}
+
 function getScopedUserDisplayLabel(userLike = {}) {
   return String(
     userLike.fullName
@@ -2463,6 +2659,7 @@ async function handleApiRequest(request, response, url) {
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
     const absenceEntryMatch = url.pathname.match(/^\/api\/absence-entries\/([^/]+)$/);
+    const peopleTrainingRecordMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)$/);
     const measurementEquipmentExcelExportMatch = url.pathname === "/api/measurement-equipment/export-list-excel";
     const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
     const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
@@ -3058,6 +3255,74 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       await domainRepository.createSafetyAuthorization({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/people-training-records/import") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+
+      const records = buildPeopleTrainingImportRecords(body, scopedSnapshot);
+      if (records.length === 0) {
+        sendError(response, 400, "U Excelu nema prepoznatih osoba za import.");
+        return true;
+      }
+
+      const currentRecords = [...(scopedSnapshot.peopleTrainingRecords ?? [])];
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const record of records) {
+        const existing = currentRecords.find((item) => (
+          String(item.companyId) === String(record.companyId)
+          && (
+            (record.oib && String(item.oib || "") === String(record.oib))
+            || (!record.oib && normalizeLookupKey(item.fullName) === normalizeLookupKey(record.fullName))
+          )
+        ));
+
+        if (existing) {
+          const updated = await domainRepository.updatePersonTrainingRecord(existing.id, record);
+          if (updated) {
+            updatedCount += 1;
+            const index = currentRecords.findIndex((item) => String(item.id) === String(existing.id));
+            currentRecords[index] = updated;
+          }
+          continue;
+        }
+
+        const created = await domainRepository.createPersonTrainingRecord(record);
+        createdCount += 1;
+        currentRecords.push(created);
+      }
+
+      response.setHeader("X-People-Training-Import", JSON.stringify({ created: createdCount, updated: updatedCount }));
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/people-training-records") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createPersonTrainingRecord({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -3992,6 +4257,47 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Lokacija nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (peopleTrainingRecordMatch && request.method === "PATCH") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.peopleTrainingRecords ?? [], peopleTrainingRecordMatch[1], "Evidencija osposobljavanja nije pronađena.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updatePersonTrainingRecord(peopleTrainingRecordMatch[1], body);
+
+      if (!updated) {
+        sendError(response, 404, "Evidencija osposobljavanja nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (peopleTrainingRecordMatch && request.method === "DELETE") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.peopleTrainingRecords ?? [], peopleTrainingRecordMatch[1], "Evidencija osposobljavanja nije pronađena.");
+      const deleted = await domainRepository.deletePersonTrainingRecord(peopleTrainingRecordMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Evidencija osposobljavanja nije pronađena.");
         return true;
       }
 

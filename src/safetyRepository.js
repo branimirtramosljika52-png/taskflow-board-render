@@ -21,6 +21,7 @@ import {
   createLocation,
   createMeasurementEquipmentItem,
   createOffer,
+  createPersonTrainingRecord,
   createPurchaseOrder,
   createReminder,
   createSafetyAuthorization,
@@ -52,6 +53,7 @@ import {
   updateLocation,
   updateMeasurementEquipmentItem,
   updateOffer,
+  updatePersonTrainingRecord,
   updatePurchaseOrder,
   updateReminder,
   updateSafetyAuthorization,
@@ -1943,6 +1945,38 @@ function mapAbsenceBalanceRow(row = {}) {
   };
 }
 
+function mapPersonTrainingRecordRow(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const companyId = dbString(row.company_id);
+  const fullName = dbString(row.full_name);
+
+  if (!organizationId || !companyId || !fullName) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    organizationId,
+    companyId,
+    companyName: row.company_name ?? "",
+    companyOib: row.company_oib ?? "",
+    locationId: dbString(row.location_id),
+    locationName: row.location_name ?? "",
+    firstName: row.first_name ?? "",
+    lastName: row.last_name ?? "",
+    fullName,
+    oib: row.oib ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    jobTitle: row.job_title ?? "",
+    employmentStatus: row.employment_status ?? "active",
+    trainingItems: parseJsonArray(row.training_items_json),
+    note: row.note ?? "",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 async function prepareStoredAttachmentDocuments(documents = [], {
   keyPrefix = "",
   currentDocuments = [],
@@ -3438,6 +3472,23 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapAbsenceEntryRow(row))
     .filter(Boolean);
 
+  const [personTrainingRows] = await connection.query(`
+    SELECT ptr.id, ptr.organization_id, ptr.company_id, ptr.location_id,
+           c.naziv_tvrtke AS company_name, c.oib AS company_oib,
+           l.lokacija AS location_name,
+           ptr.first_name, ptr.last_name, ptr.full_name, ptr.oib, ptr.email, ptr.phone,
+           ptr.job_title, ptr.employment_status, ptr.training_items_json, ptr.note,
+           ptr.created_at, ptr.updated_at
+    FROM web_people_training_records ptr
+    LEFT JOIN firme c ON c.id = ptr.company_id
+    LEFT JOIN lokacije l ON l.id = ptr.location_id
+    ORDER BY c.naziv_tvrtke ASC, l.lokacija ASC, ptr.full_name ASC, ptr.id ASC
+  `);
+
+  const peopleTrainingRecords = personTrainingRows
+    .map((row) => mapPersonTrainingRecordRow(row))
+    .filter(Boolean);
+
   const [absenceBalanceRows] = await connection.query(`
     SELECT id, organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days,
            created_at, updated_at
@@ -3506,6 +3557,7 @@ async function fetchSnapshotFromConnection(connection) {
     companyRolePermissions,
     safetyAuthorizations,
     absenceEntries,
+    peopleTrainingRecords,
     absenceBalances,
     dashboardWidgets,
   };
@@ -3608,6 +3660,7 @@ export class InMemorySafetyRepository {
       companyRolePermissions: [],
       safetyAuthorizations: [],
       absenceEntries: [],
+      peopleTrainingRecords: [],
       absenceBalances: [],
       dashboardWidgets: [],
     };
@@ -3841,6 +3894,10 @@ export class InMemorySafetyRepository {
       absenceEntries: this.snapshot.absenceEntries.map((item) => ({
         ...item,
         documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      peopleTrainingRecords: this.snapshot.peopleTrainingRecords.map((item) => ({
+        ...item,
+        trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
       })),
       absenceBalances: this.snapshot.absenceBalances.map((item) => ({
         ...item,
@@ -5321,6 +5378,30 @@ export class InMemorySafetyRepository {
     return this.snapshot.absenceEntries.length !== before;
   }
 
+  async createPersonTrainingRecord(input) {
+    const item = createPersonTrainingRecord(input, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.peopleTrainingRecords = [item, ...this.snapshot.peopleTrainingRecords];
+    return item;
+  }
+
+  async updatePersonTrainingRecord(id, patch) {
+    const current = this.snapshot.peopleTrainingRecords.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updatePersonTrainingRecord(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.peopleTrainingRecords = this.snapshot.peopleTrainingRecords.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deletePersonTrainingRecord(id) {
+    const before = this.snapshot.peopleTrainingRecords.length;
+    this.snapshot.peopleTrainingRecords = this.snapshot.peopleTrainingRecords.filter((item) => item.id !== id);
+    return this.snapshot.peopleTrainingRecords.length !== before;
+  }
+
   async upsertAbsenceBalance(input = {}) {
     const draft = normalizeAbsenceBalanceEntry(input, () => crypto.randomUUID(), () => new Date().toISOString());
     const currentIndex = this.snapshot.absenceBalances.findIndex((entry) => (
@@ -6055,6 +6136,29 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_absence_entries_org_user_dates (organization_id, user_id, start_date, end_date),
         INDEX idx_web_absence_entries_status_dates (organization_id, status_key, start_date, end_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_records (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        first_name VARCHAR(120) NOT NULL DEFAULT '',
+        last_name VARCHAR(160) NOT NULL DEFAULT '',
+        full_name VARCHAR(240) NOT NULL DEFAULT '',
+        oib VARCHAR(32) NOT NULL DEFAULT '',
+        email VARCHAR(180) NOT NULL DEFAULT '',
+        phone VARCHAR(80) NOT NULL DEFAULT '',
+        job_title VARCHAR(180) NOT NULL DEFAULT '',
+        employment_status VARCHAR(32) NOT NULL DEFAULT 'active',
+        training_items_json LONGTEXT NULL,
+        note TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_people_training_org_company (organization_id, company_id),
+        INDEX idx_web_people_training_company_location (company_id, location_id),
+        INDEX idx_web_people_training_oib (organization_id, oib)
       )
     `);
     await this.pool.query(`
@@ -10039,6 +10143,116 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query("DELETE FROM web_absence_entries WHERE id = ?", [Number(id)]);
       await connection.commit();
       await cleanupStoredObjects(currentDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createPersonTrainingRecord(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createPersonTrainingRecord(input, snapshot, () => "pending-person-training", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_people_training_records
+            (organization_id, company_id, location_id, first_name, last_name, full_name,
+             oib, email, phone, job_title, employment_status, training_items_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          draft.locationId ? Number(draft.locationId) : null,
+          draft.firstName,
+          draft.lastName,
+          draft.fullName,
+          draft.oib,
+          draft.email,
+          draft.phone,
+          draft.jobTitle,
+          draft.employmentStatus,
+          JSON.stringify(draft.trainingItems ?? []),
+          draft.note,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updatePersonTrainingRecord(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.peopleTrainingRecords.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updatePersonTrainingRecord(current, patch, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_people_training_records
+          SET company_id = ?, location_id = ?, first_name = ?, last_name = ?, full_name = ?,
+              oib = ?, email = ?, phone = ?, job_title = ?, employment_status = ?,
+              training_items_json = ?, note = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          next.locationId ? Number(next.locationId) : null,
+          next.firstName,
+          next.lastName,
+          next.fullName,
+          next.oib,
+          next.email,
+          next.phone,
+          next.jobTitle,
+          next.employmentStatus,
+          JSON.stringify(next.trainingItems ?? []),
+          next.note,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deletePersonTrainingRecord(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.query("DELETE FROM web_people_training_records WHERE id = ?", [Number(id)]);
+      await connection.commit();
       return result.affectedRows > 0;
     } catch (error) {
       await connection.rollback();
