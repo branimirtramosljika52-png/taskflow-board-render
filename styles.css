@@ -34643,3 +34643,144 @@ button.work-order-editor-section-head {
     grid-template-columns: 1fr;
   }
 }
+
+/* RN editor compact labels above fields, no empty rows. */
+.work-order-editor-form .field {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: stretch;
+  gap: 5px;
+  padding: 7px 8px;
+}
+
+.work-order-editor-form .work-order-field-heading {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  justify-content: flex-start;
+  gap: 6px !important;
+  color: #50617d !important;
+  font-size: 0.62rem !important;
+  font-weight: 900;
+  letter-spacing: 0.07em !important;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.work-order-editor-form .work-order-field-label {
+  display: inline-flex !important;
+}
+
+.work-order-editor-form .work-order-field-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 8px;
+}
+
+.work-order-editor-form input,
+.work-order-editor-form select,
+.work-order-editor-form textarea,
+.work-order-inline-executor-picker,
+.work-order-inline-service-picker {
+  min-height: 38px;
+}
+
+.form-grid-work-order-status-row {
+  grid-template-columns:
+    minmax(142px, 1fr)
+    minmax(148px, 1fr)
+    minmax(148px, 1fr)
+    minmax(126px, 0.9fr)
+    minmax(130px, 0.95fr)
+    minmax(190px, 1.28fr);
+}
+
+.form-grid-work-order-client {
+  grid-template-columns: minmax(300px, 2fr) minmax(300px, 2fr) minmax(180px, 1fr);
+}
+
+.form-grid-work-order-client .field-span-2 {
+  grid-column: auto;
+}
+
+.form-grid-location-contact {
+  grid-template-columns: minmax(380px, 2.2fr) minmax(220px, 1.15fr) minmax(180px, 0.9fr);
+}
+
+.form-grid-location-contact .field-span-2,
+.form-grid-location-contact .field-span-3 {
+  grid-column: auto;
+}
+
+.form-grid-work-order-contact {
+  grid-template-columns: minmax(260px, 1.35fr) minmax(190px, 0.95fr) minmax(320px, 1.7fr);
+}
+
+.form-grid-work-order-contact .field-span-2 {
+  grid-column: auto;
+}
+
+.form-grid-service-main {
+  grid-template-columns: minmax(340px, 1fr);
+}
+
+.form-grid-service-main .work-order-services-field,
+.form-grid-service-main .work-order-service-selection-field {
+  grid-column: 1 / -1;
+}
+
+.form-grid-billing {
+  grid-template-columns:
+    minmax(190px, 1fr)
+    minmax(190px, 1fr)
+    minmax(190px, 1fr)
+    minmax(170px, 0.9fr);
+}
+
+.work-order-service-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+
+.work-order-service-type-tab {
+  min-height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(191, 207, 235, 0.9);
+  background: linear-gradient(180deg, #ffffff, #f5f8fd);
+  color: #263653;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.work-order-service-type-tab.is-active {
+  border-color: rgba(38, 123, 246, 0.55);
+  background: linear-gradient(180deg, #eaf2ff, #dfeaff);
+  color: #174ea6;
+}
+
+.work-order-service-type-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@media (max-width: 1180px) {
+  .form-grid-work-order-status-row,
+  .form-grid-work-order-client,
+  .form-grid-location-contact,
+  .form-grid-work-order-contact,
+  .form-grid-billing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .form-grid-work-order-status-row,
+  .form-grid-work-order-client,
+  .form-grid-location-contact,
+  .form-grid-work-order-contact,
+  .form-grid-billing,
+  .work-order-service-type-tabs {
+    grid-template-columns: 1fr;
+  }
+}

@@ -12471,6 +12471,26 @@ function normalizeDateInputValue(value) {
   return parsedDate ? toDateKey(parsedDate) : rawValue;
 }
 
+function getNormalizedWorkOrderDateInputValue(input) {
+  return normalizeDateInputValue(input?.value ?? "");
+}
+
+function setWorkOrderDateInputValue(input, value) {
+  if (!input) {
+    return;
+  }
+  input.value = formatDateInputDisplayValue(value);
+}
+
+function normalizeWorkOrderDateInputDisplay(input) {
+  if (!input) {
+    return "";
+  }
+  const normalizedValue = normalizeDateInputValue(input.value);
+  input.value = formatDateInputDisplayValue(normalizedValue);
+  return normalizedValue;
+}
+
 function getStartOfWeekDateKey(value) {
   const parsedDate = parseDateValue(value) ?? new Date();
   const start = new Date(parsedDate);
@@ -13015,17 +13035,15 @@ function renderWorkOrderEditorSummary() {
   const workOrderNumber = persistedItem?.workOrderNumber || "";
   const selectedServiceItems = readWorkOrderServiceSelection();
   const serviceLine = getSelectedWorkOrderServiceSummary();
-  const department = String(workOrderDepartmentInput.value ?? "").trim();
   const teamLabel = String(workOrderTeamLabelInput.value ?? "").trim();
   const description = String(workOrderDescriptionInput.value ?? "").trim();
   const company = getCompany(workOrderCompanyIdInput.value);
   const location = getLocation(workOrderLocationIdInput.value);
   const companyName = company?.name || "";
   const locationName = location?.name || "";
-  const compactServiceSummary = [serviceLine, department].filter(Boolean).join(" · ");
+  const compactServiceSummary = serviceLine;
   const completedServices = getWorkOrderCompletedServiceCount({ serviceItems: selectedServiceItems });
   const serviceSummary = [
-    department,
     serviceLine,
     selectedServiceItems.length > 0 ? `${completedServices}/${selectedServiceItems.length} odrađeno` : "",
   ].filter(Boolean).join(" · ");
@@ -13136,7 +13154,7 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorMetaItem(
       "dates",
       "Datumi",
-      `${formatCompactOpenedDate(workOrderOpenedDateInput.value)} · ${formatCompactDueDate(workOrderDueDateInput.value)}`,
+      `${formatCompactOpenedDate(getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput))} · ${formatCompactDueDate(getNormalizedWorkOrderDateInputValue(workOrderDueDateInput))}`,
     ),
     createWorkOrderEditorMetaItem(
       "service",
@@ -13450,7 +13468,7 @@ function renderWorkOrderEditorExecutorPicker() {
       applyDraftValues(draftValues);
     });
 
-    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    menu.append(searchWrap, typeTabs, selection, helper, optionsList, clearButton);
 
     syncMenuState();
 
@@ -13965,7 +13983,7 @@ function renderWorkOrderServicePicker() {
       const selectionType = getWorkOrderSelectionServiceType(draftItems);
       helper.textContent = draftItems.length > 0
         ? `${draftItems.length} odabranih usluga · ${getWorkOrderCompletedServiceCount({ serviceItems: draftItems })} označeno kao odrađeno.${selectionType ? ` Zaključano na vrstu: ${getServiceCatalogTypeLabel(selectionType)}.` : ""}`
-        : "Odaberi usluge iz kataloga. Na jednom RN-u može biti samo jedna vrsta usluge.";
+        : `Prvo odaberi vrstu usluge (${getServiceCatalogTypeLabel(selectedTypeFilter)}). Na jednom RN-u može biti samo jedna vrsta usluge.`;
       clearButton.disabled = draftItems.length === 0;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -14094,6 +14112,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
 
     let draftItems = getCurrentItems();
     let searchQuery = "";
+    let selectedTypeFilter = getWorkOrderSelectionServiceType(draftItems) || "inspection";
     let hasPendingChange = false;
 
     const menu = document.createElement("div");
@@ -14118,6 +14137,9 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     searchInput.className = "work-order-service-picker-search-input";
     searchInput.placeholder = "Traži po nazivu, šifri ili templateu";
     searchWrap.append(searchInput);
+
+    const typeTabs = document.createElement("div");
+    typeTabs.className = "work-order-service-type-tabs";
 
     const selection = document.createElement("div");
     selection.className = "work-order-service-picker-selection work-order-document-service-selection";
@@ -14180,6 +14202,30 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     };
 
     const syncMenuState = () => {
+      const lockedType = getWorkOrderSelectionServiceType(draftItems);
+      if (lockedType) {
+        selectedTypeFilter = lockedType;
+      }
+      if (!SERVICE_CATALOG_TYPE_OPTIONS.some((option) => option.value === selectedTypeFilter)) {
+        selectedTypeFilter = lockedType || "inspection";
+      }
+
+      typeTabs.replaceChildren(...SERVICE_CATALOG_TYPE_OPTIONS.map((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `work-order-service-type-tab${selectedTypeFilter === option.value ? " is-active" : ""}`;
+        button.textContent = option.label;
+        button.disabled = Boolean(lockedType && lockedType !== option.value);
+        button.title = button.disabled
+          ? `RN je zaključan na vrstu: ${getServiceCatalogTypeLabel(lockedType)}`
+          : `Prikaži usluge vrste: ${option.label}`;
+        button.addEventListener("click", () => {
+          selectedTypeFilter = option.value;
+          syncMenuState();
+        });
+        return button;
+      }));
+
       selection.replaceChildren();
 
       if (draftItems.length === 0) {
@@ -14204,15 +14250,15 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
 
       optionsList.replaceChildren();
       const visibleOptions = getWorkOrderServiceCatalogOptions(draftItems)
+        .filter((option) => getWorkOrderServiceType(option) === selectedTypeFilter)
         .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
 
       if (visibleOptions.length === 0) {
         const empty = document.createElement("p");
         empty.className = "work-order-service-picker-empty";
-        empty.textContent = "Nema usluga za ovaj pojam.";
+        empty.textContent = `Nema usluga za vrstu ${getServiceCatalogTypeLabel(selectedTypeFilter)} i upisani pojam.`;
         optionsList.append(empty);
       } else {
-        const lockedType = getWorkOrderSelectionServiceType(draftItems);
         visibleOptions.forEach((option) => {
           const normalizedOptionId = String(option.id || option.serviceId || "").trim();
           const isSelected = draftItems.some((item) => String(item.serviceId || "") === normalizedOptionId);
@@ -22823,7 +22869,7 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
   }
 
   if (measurementDateInput) {
-    measurementDateInput.value = workOrderOpenedDateInput.value || new Date().toISOString().slice(0, 10);
+    measurementDateInput.value = getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput) || new Date().toISOString().slice(0, 10);
   }
 }
 
@@ -45472,11 +45518,11 @@ function focusWorkOrderComposer(prefill = {}) {
   resetWorkOrderActivityState();
 
   if (Object.prototype.hasOwnProperty.call(prefill, "openedDate")) {
-    workOrderOpenedDateInput.value = prefill.openedDate || "";
+    setWorkOrderDateInputValue(workOrderOpenedDateInput, prefill.openedDate || "");
   }
 
   if (Object.prototype.hasOwnProperty.call(prefill, "dueDate")) {
-    workOrderDueDateInput.value = prefill.dueDate || "";
+    setWorkOrderDateInputValue(workOrderDueDateInput, prefill.dueDate || "");
   }
 
   if (Object.prototype.hasOwnProperty.call(prefill, "teamLabel")) {
@@ -46414,8 +46460,8 @@ function buildWorkOrderPayload() {
   return {
     status: workOrderStatusInput.value,
     priority: workOrderPriorityInput.value,
-    openedDate: workOrderOpenedDateInput.value,
-    dueDate: workOrderDueDateInput.value,
+    openedDate: getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput),
+    dueDate: getNormalizedWorkOrderDateInputValue(workOrderDueDateInput),
     teamLabel: workOrderTeamLabelInput.value,
     companyId: workOrderCompanyIdInput.value,
     locationId: workOrderLocationIdInput.value,
@@ -46435,13 +46481,13 @@ function buildWorkOrderPayload() {
       serviceItems,
       serviceLine: workOrderServiceLineInput.value,
     }),
-    department: workOrderDepartmentInput.value,
+    department: "",
     linkReference: workOrderLinkReferenceInput.value,
     weight: workOrderWeightInput.value,
     completedBy: workOrderCompletedByInput.value,
-    invoiceDate: workOrderInvoiceDateInput.value,
+    invoiceDate: getNormalizedWorkOrderDateInputValue(workOrderInvoiceDateInput),
     tagText: workOrderTagTextInput.value,
-    description: workOrderDescriptionInput.value,
+    description: "",
     invoiceNote: workOrderInvoiceNoteInput.value,
   };
 }
@@ -48878,7 +48924,9 @@ function resetWorkOrderForm() {
   workOrderNumberPreview.textContent = "Broj RN se generira pri spremanju.";
   workOrderStatusInput.value = "Otvoreni RN";
   workOrderPriorityInput.value = "Normal";
-  workOrderOpenedDateInput.value = new Date().toISOString().slice(0, 10);
+  setWorkOrderDateInputValue(workOrderOpenedDateInput, new Date().toISOString().slice(0, 10));
+  setWorkOrderDateInputValue(workOrderDueDateInput, "");
+  setWorkOrderDateInputValue(workOrderInvoiceDateInput, "");
   workOrderTeamLabelInput.value = "";
   rebuildWorkOrderCompanyOptions("");
   rebuildWorkOrderLocationOptions("");
@@ -49129,8 +49177,8 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderNumberPreview.textContent = `Uredujes ${workOrder.workOrderNumber}`;
   workOrderStatusInput.value = workOrder.status;
   workOrderPriorityInput.value = workOrder.priority;
-  workOrderOpenedDateInput.value = workOrder.openedDate ?? "";
-  workOrderDueDateInput.value = workOrder.dueDate ?? "";
+  setWorkOrderDateInputValue(workOrderOpenedDateInput, workOrder.openedDate ?? "");
+  setWorkOrderDateInputValue(workOrderDueDateInput, workOrder.dueDate ?? "");
   workOrderTeamLabelInput.value = workOrder.teamLabel ?? "";
   rebuildWorkOrderCompanyOptions(workOrder.companyId);
   fillWorkOrderCompanySnapshot(workOrder);
@@ -49151,13 +49199,13 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
     renderWorkOrderServicePicker();
   }
   syncWorkOrderTrainingSection(serviceItems);
-  workOrderDepartmentInput.value = workOrder.department;
+  workOrderDepartmentInput.value = "";
   workOrderLinkReferenceInput.value = workOrder.linkReference;
   workOrderWeightInput.value = workOrder.weight;
   workOrderCompletedByInput.value = workOrder.completedBy;
-  workOrderInvoiceDateInput.value = workOrder.invoiceDate ?? "";
+  setWorkOrderDateInputValue(workOrderInvoiceDateInput, workOrder.invoiceDate ?? "");
   workOrderTagTextInput.value = workOrder.tagText;
-  workOrderDescriptionInput.value = workOrder.description;
+  workOrderDescriptionInput.value = "";
   workOrderInvoiceNoteInput.value = workOrder.invoiceNote;
   workOrderError.textContent = "";
   renderWorkOrderEditorSummary();
@@ -68676,6 +68724,16 @@ workOrderLocationIdInput.addEventListener("change", () => {
 workOrderContactSlotInput.addEventListener("change", () => {
   applySelectedContactDefaults();
   renderWorkOrderEditorSummary();
+});
+
+[
+  workOrderOpenedDateInput,
+  workOrderDueDateInput,
+  workOrderInvoiceDateInput,
+].forEach((input) => {
+  input?.addEventListener("change", () => {
+    normalizeWorkOrderDateInputDisplay(input);
+  });
 });
 
 workOrderForm.addEventListener("input", () => {

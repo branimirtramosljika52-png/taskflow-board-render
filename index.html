@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428a" />
+    <link rel="stylesheet" href="/styles.css?v=20260428b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -962,6 +962,9 @@
                     <input id="work-order-id" type="hidden" />
                     <input id="work-order-service-line" type="hidden" />
                     <input id="work-order-service-items-data" type="hidden" />
+                    <input id="work-order-department" type="hidden" />
+                    <input id="work-order-description" type="hidden" />
+                    <input id="work-order-invoice-note" type="hidden" />
                     <input id="work-order-team-label" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
 
@@ -983,12 +986,12 @@
 
                           <label class="field">
                             <span>Datum otvaranja</span>
-                            <input id="work-order-opened-date" type="date" />
+                            <input id="work-order-opened-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
 
                           <label class="field">
                             <span>Rok završetka</span>
-                            <input id="work-order-due-date" type="date" />
+                            <input id="work-order-due-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
 
                           <label class="field">
@@ -1000,17 +1003,10 @@
                             <span>Tagovi</span>
                             <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
                           </label>
-                        </div>
 
-                        <div class="form-grid form-grid-work-order-note">
-                          <label class="field">
+                          <label class="field work-order-link-field">
                             <span>Veza RN</span>
                             <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
-                          </label>
-
-                          <label class="field work-order-inline-note">
-                            <span>Napomena RN</span>
-                            <textarea id="work-order-description" rows="2" placeholder="Opcionalna napomena: što se radi, opseg ili bitne informacije."></textarea>
                           </label>
                         </div>
                       </div>
@@ -1140,7 +1136,7 @@
                       <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
                           <p class="work-order-editor-section-kicker">Usluge</p>
-                          <h3>Odjel i odabir usluga</h3>
+                          <h3>Vrsta i odabir usluga</h3>
                         </div>
                         <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
                       </button>
@@ -1149,11 +1145,6 @@
                         <div class="work-order-editor-subgrid">
                           <div class="work-order-editor-subsection">
                             <div class="form-grid form-grid-service-main">
-                              <label class="field">
-                                <span>Odjel</span>
-                                <input id="work-order-department" type="text" placeholder="Odjel" />
-                              </label>
-
                             <label class="field work-order-services-field">
                               <span>Usluge iz kataloga</span>
                               <div id="work-order-service-picker" class="work-order-inline-service-picker"></div>
@@ -1225,13 +1216,9 @@
 
                           <label class="field">
                             <span>Datum fakture</span>
-                            <input id="work-order-invoice-date" type="date" />
+                            <input id="work-order-invoice-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
 
-                          <label class="field">
-                            <span>Napomena / faktura</span>
-                            <textarea id="work-order-invoice-note" rows="1" placeholder="Napomena za RN ili fakturu."></textarea>
-                          </label>
                         </div>
                       </div>
                     </section>
@@ -1627,7 +1614,7 @@
               <div class="filter-row filter-row-clickup work-order-filter-row">
                 <label class="field work-order-search-field">
                   <span>Pretraga</span>
-                  <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija, odjel..." />
+                  <input id="work-order-search" type="search" placeholder="RN, tvrtka, lokacija, regija..." />
                 </label>
 
                 <div class="work-order-filter-actions">
