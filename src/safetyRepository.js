@@ -2331,6 +2331,29 @@ async function fetchSnapshotFromConnection(connection) {
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
   `);
+  const [workOrderDocumentSummaryRows] = await connection.query(`
+    SELECT work_order_id,
+           COUNT(*) AS total_count,
+           SUM(CASE WHEN document_category = 'Ovjereni Radni nalog' THEN 1 ELSE 0 END) AS verified_work_order_count,
+           SUM(CASE WHEN document_category = 'Radni nalog PDF' THEN 1 ELSE 0 END) AS generated_pdf_count
+    FROM web_work_order_documents
+    GROUP BY work_order_id
+  `);
+  const emptyWorkOrderDocumentSummary = Object.freeze({
+    totalCount: 0,
+    verifiedWorkOrderCount: 0,
+    generatedPdfCount: 0,
+  });
+  const workOrderDocumentSummaryById = new Map(
+    workOrderDocumentSummaryRows.map((row) => [
+      String(row.work_order_id),
+      {
+        totalCount: Number(row.total_count) || 0,
+        verifiedWorkOrderCount: Number(row.verified_work_order_count) || 0,
+        generatedPdfCount: Number(row.generated_pdf_count) || 0,
+      },
+    ]),
+  );
 
   const workOrders = workOrderRows.map((row) => {
     const company = companiesByOib.get(row.oib ?? "");
@@ -2398,6 +2421,7 @@ async function fetchSnapshotFromConnection(connection) {
       updatedAt: normalizeTimestamp(row.datum_fakturiranja ?? row.datum_rn),
       year: row.godina_rn ?? null,
       ordinalNumber: row.redni_broj ?? null,
+      documentSummary: workOrderDocumentSummaryById.get(String(row.id)) ?? emptyWorkOrderDocumentSummary,
     };
   });
 

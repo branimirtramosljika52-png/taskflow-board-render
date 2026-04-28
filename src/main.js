@@ -143,6 +143,7 @@ const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
   { value: "Projektna dokumentacija", label: "Projektna dokumentacija" },
 ]);
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
+const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Zagreb - Centar",
@@ -161,6 +162,31 @@ const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Središnja Hrvatska",
   "Riječko područje",
 ]);
+const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v1";
+const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
+  collapsed: Object.freeze([
+    { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
+    { key: "basic", title: "Osnovno", defaultWidth: 164, minWidth: 128 },
+    { key: "client", title: "Klijent", defaultWidth: 244, minWidth: 170 },
+    { key: "location", title: "Lokacija", defaultWidth: 246, minWidth: 170 },
+    { key: "billing", title: "Fakture", defaultWidth: 206, minWidth: 156 },
+    { key: "priorityTags", title: "Prioritet i tagovi", defaultWidth: 174, minWidth: 132 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 180, minWidth: 132 },
+    { key: "actions", title: "Akcije", defaultWidth: 124, minWidth: 104 },
+  ]),
+  expanded: Object.freeze([
+    { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
+    { key: "basic", title: "Osnovno", defaultWidth: 150, minWidth: 124 },
+    { key: "client", title: "Klijent", defaultWidth: 236, minWidth: 170 },
+    { key: "location", title: "Lokacija", defaultWidth: 246, minWidth: 170 },
+    { key: "contact", title: "Kontakt", defaultWidth: 190, minWidth: 140 },
+    { key: "service", title: "Usluga", defaultWidth: 230, minWidth: 170 },
+    { key: "billing", title: "Fakture", defaultWidth: 210, minWidth: 156 },
+    { key: "priorityTags", title: "Prioritet i tagovi", defaultWidth: 178, minWidth: 132 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 190, minWidth: 132 },
+    { key: "actions", title: "Akcije", defaultWidth: 128, minWidth: 108 },
+  ]),
+});
 const WORK_ORDER_PDF_AUTOSAVE_DELAY_MS = 2600;
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
@@ -2211,6 +2237,8 @@ let locationsSearchDebounceId = 0;
 let companiesColumnWidths = [];
 let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
+let workOrderListColumnWidths = {};
+let workOrderListColumnResizeState = null;
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
 let companyEditorRelatedDataIdleId = 0;
@@ -4014,6 +4042,148 @@ const companiesLegacyIntroCopy = document.querySelector("#companies-view .master
 function clearLegacyCompanyCopy() {
   companiesLegacyIntroCopy?.remove();
   document.querySelector("#companies-helper")?.remove();
+}
+
+function getWorkOrderListColumnMode() {
+  return state.workOrderListDensity === "expanded" ? "expanded" : "collapsed";
+}
+
+function getWorkOrderListColumnLayout(mode = getWorkOrderListColumnMode()) {
+  return WORK_ORDER_LIST_COLUMN_LAYOUTS[mode] || WORK_ORDER_LIST_COLUMN_LAYOUTS.collapsed;
+}
+
+function getWorkOrderListColumnStorageKey(mode = getWorkOrderListColumnMode()) {
+  return [
+    WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX,
+    state.user?.id || "guest",
+    state.activeOrganizationId || "global",
+    mode,
+  ].join(":");
+}
+
+function loadWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
+  const layout = getWorkOrderListColumnLayout(mode);
+  const storedWidths = readJsonFromLocalStorage(getWorkOrderListColumnStorageKey(mode), []);
+  const values = Array.isArray(storedWidths) ? storedWidths : [];
+  return layout.map((column, index) => {
+    const nextWidth = Number(values[index]);
+    if (!Number.isFinite(nextWidth)) {
+      return column.defaultWidth;
+    }
+    return Math.max(column.minWidth, Math.round(nextWidth));
+  });
+}
+
+function getWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
+  const layout = getWorkOrderListColumnLayout(mode);
+  const widths = Array.isArray(workOrderListColumnWidths[mode])
+    ? workOrderListColumnWidths[mode]
+    : loadWorkOrderListColumnWidths(mode);
+
+  workOrderListColumnWidths[mode] = layout.map((column, index) => Math.max(
+    column.minWidth,
+    Math.round(Number(widths[index]) || column.defaultWidth),
+  ));
+
+  return workOrderListColumnWidths[mode];
+}
+
+function persistWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
+  const layout = getWorkOrderListColumnLayout(mode);
+  const widths = getWorkOrderListColumnWidths(mode);
+  writeJsonToLocalStorage(
+    getWorkOrderListColumnStorageKey(mode),
+    layout.map((column, index) => Math.max(
+      column.minWidth,
+      Math.round(Number(widths[index]) || column.defaultWidth),
+    )),
+  );
+}
+
+function applyWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
+  if (!(workOrdersTableWrap instanceof HTMLElement)) {
+    return;
+  }
+
+  const widths = getWorkOrderListColumnWidths(mode);
+  const layout = getWorkOrderListColumnLayout(mode);
+  const minWidth = widths.reduce((total, width) => total + width, 0)
+    + Math.max(0, layout.length - 1) * 14
+    + 28;
+
+  workOrdersTableWrap.style.setProperty("--work-order-list-grid-template", widths.map((width) => `${width}px`).join(" "));
+  workOrdersTableWrap.style.setProperty("--work-order-list-min-width", `${minWidth}px`);
+}
+
+function startWorkOrderListColumnResize(mode, columnIndex, pointerX, pointerId, handle) {
+  const layout = getWorkOrderListColumnLayout(mode);
+  const column = layout[columnIndex];
+  if (!column || column.resizable === false) {
+    return;
+  }
+
+  const widths = getWorkOrderListColumnWidths(mode);
+  workOrderListColumnResizeState = {
+    mode,
+    columnIndex,
+    startX: pointerX,
+    startWidth: widths[columnIndex] || column.defaultWidth,
+  };
+  handle?.setPointerCapture?.(pointerId);
+  document.body.classList.add("is-resizing-work-order-column");
+}
+
+function updateWorkOrderListColumnResize(pointerX) {
+  const resizeState = workOrderListColumnResizeState;
+  if (!resizeState) {
+    return;
+  }
+
+  const layout = getWorkOrderListColumnLayout(resizeState.mode);
+  const column = layout[resizeState.columnIndex];
+  if (!column) {
+    return;
+  }
+
+  const widths = getWorkOrderListColumnWidths(resizeState.mode);
+  widths[resizeState.columnIndex] = Math.max(
+    column.minWidth,
+    Math.round(resizeState.startWidth + (pointerX - resizeState.startX)),
+  );
+  applyWorkOrderListColumnWidths(resizeState.mode);
+}
+
+function stopWorkOrderListColumnResize() {
+  if (!workOrderListColumnResizeState) {
+    return;
+  }
+
+  const { mode } = workOrderListColumnResizeState;
+  workOrderListColumnResizeState = null;
+  document.body.classList.remove("is-resizing-work-order-column");
+  persistWorkOrderListColumnWidths(mode);
+}
+
+function appendWorkOrderListColumnResizeHandle(cell, column, columnIndex, mode) {
+  if (!column || column.resizable === false) {
+    return;
+  }
+
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "work-order-column-resize-handle";
+  handle.dataset.preventRowOpen = "true";
+  handle.title = `Promijeni širinu kolone ${column.title}`;
+  handle.setAttribute("aria-label", handle.title);
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    startWorkOrderListColumnResize(mode, columnIndex, event.clientX, event.pointerId, handle);
+  });
+  cell.append(handle);
 }
 
 function loadCompaniesColumnWidths() {
@@ -63631,6 +63801,46 @@ async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
   }
 }
 
+function findVerifiedWorkOrderDocument(documents = []) {
+  return (Array.isArray(documents) ? documents : []).find((document) => (
+    String(document.documentCategory || "").trim() === VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY
+  )) ?? null;
+}
+
+async function downloadVerifiedWorkOrderDocument(workOrder = {}, button = null) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+  }
+
+  try {
+    const payload = await apiRequest(`/work-orders/${workOrderId}/documents`);
+    const document = findVerifiedWorkOrderDocument(payload.items ?? []);
+
+    if (!document) {
+      setSyncError(`Za RN ${workOrder.workOrderNumber || "bez broja"} još nema ovjerenog naloga.`);
+      return;
+    }
+
+    triggerModuleAttachmentDownload(document);
+    setSyncError("");
+  } catch (error) {
+    setSyncError(error?.message || "Ne mogu preuzeti ovjereni nalog.");
+  } finally {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = false;
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+    }
+  }
+}
+
 async function downloadActiveWorkOrderPdfFromEditor() {
   const readiness = syncWorkOrderPdfAndRequiredFields();
   if (!readiness.ready) {
@@ -67792,6 +68002,9 @@ function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
   const isExpanded = state.workOrderListDensity === "expanded";
+  const columnMode = getWorkOrderListColumnMode();
+  const columnLayout = getWorkOrderListColumnLayout(columnMode);
+  applyWorkOrderListColumnWidths(columnMode);
 
   if (workOrdersHelper) {
     workOrdersHelper.textContent = "";
@@ -67805,46 +68018,48 @@ function renderCompactWorkOrdersList() {
   const columns = document.createElement("div");
   columns.className = `work-group-columns is-${isExpanded ? "expanded" : "collapsed"}`;
 
-  const selectionColumn = document.createElement("div");
-  selectionColumn.className = "work-group-column work-group-column-select";
-  selectionColumn.dataset.preventRowOpen = "true";
-
-  const selectionControl = document.createElement("label");
-  selectionControl.className = "work-order-row-select master";
-  selectionControl.dataset.preventRowOpen = "true";
-  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
-    selectionControl.addEventListener(eventName, (event) => {
-      event.stopPropagation();
-    });
-  });
-
-  const selectionInput = document.createElement("input");
-  selectionInput.type = "checkbox";
-  selectionInput.setAttribute("aria-label", "Oznaci sve prikazane RN-ove");
-  selectionInput.dataset.workOrderSelectAll = "true";
-  const selectedVisibleCount = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
-  selectionInput.checked = visibleItems.length > 0 && selectedVisibleCount === visibleItems.length;
-  selectionInput.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleItems.length;
-  selectionInput.addEventListener("change", () => {
-    setVisibleWorkOrderDocumentSelection(selectionInput.checked);
-  });
-
-  selectionControl.append(selectionInput);
-  selectionColumn.append(selectionControl);
-  columns.append(selectionColumn);
-
-  (isExpanded
-    ? ["Osnovno", "Klijent", "Lokacija", "Kontakt", "Usluga", "Izvršitelji", "Akcije"]
-    : ["Osnovno", "Tvrtka", "Lokacija", "Izvršitelji", "Akcije"]
-  ).forEach((label) => {
+  columnLayout.forEach((column, columnIndex) => {
     const cell = document.createElement("div");
-    cell.className = "work-group-column";
+    cell.className = column.key === "select"
+      ? "work-group-column work-group-column-select"
+      : "work-group-column";
+    cell.dataset.columnKey = column.key;
+
+    if (column.key === "select") {
+      cell.dataset.preventRowOpen = "true";
+
+      const selectionControl = document.createElement("label");
+      selectionControl.className = "work-order-row-select master";
+      selectionControl.dataset.preventRowOpen = "true";
+      ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+        selectionControl.addEventListener(eventName, (event) => {
+          event.stopPropagation();
+        });
+      });
+
+      const selectionInput = document.createElement("input");
+      selectionInput.type = "checkbox";
+      selectionInput.setAttribute("aria-label", "Označi sve prikazane RN-ove");
+      selectionInput.dataset.workOrderSelectAll = "true";
+      const selectedVisibleCount = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
+      selectionInput.checked = visibleItems.length > 0 && selectedVisibleCount === visibleItems.length;
+      selectionInput.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleItems.length;
+      selectionInput.addEventListener("change", () => {
+        setVisibleWorkOrderDocumentSelection(selectionInput.checked);
+      });
+
+      selectionControl.append(selectionInput);
+      cell.append(selectionControl);
+      columns.append(cell);
+      return;
+    }
 
     const title = document.createElement("strong");
     title.className = "work-group-column-title";
-    title.textContent = label;
+    title.textContent = column.title;
 
     cell.append(title);
+    appendWorkOrderListColumnResizeHandle(cell, column, columnIndex, columnMode);
     columns.append(cell);
   });
 
@@ -68010,6 +68225,79 @@ function renderCompactWorkOrdersList() {
         return pill;
       };
 
+      const createCompactInfoLine = (label, value, options = {}) => {
+        const line = document.createElement("div");
+        line.className = ["work-item-compact-info", options.className || ""].filter(Boolean).join(" ");
+
+        const labelNode = document.createElement("span");
+        labelNode.className = "work-item-compact-info-label";
+        labelNode.textContent = label;
+
+        const valueNode = document.createElement("strong");
+        valueNode.className = "work-item-compact-info-value";
+        valueNode.textContent = value || "-";
+
+        line.append(labelNode, valueNode);
+        return line;
+      };
+
+      const createContractPill = (value) => {
+        const normalizedValue = String(value || "").trim();
+
+        if (!normalizedValue) {
+          return null;
+        }
+
+        const pill = document.createElement("span");
+        pill.className = "work-item-contract-pill";
+        pill.textContent = `Ugovor: ${normalizedValue}`;
+        return pill;
+      };
+
+      const createTagPillList = (value) => {
+        const values = Array.from(new Set(String(value || "")
+          .split(/[|,;/]+/u)
+          .map((entry) => entry.trim())
+          .filter(Boolean)));
+
+        if (!values.length) {
+          return null;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "work-item-tag-list";
+        values.slice(0, 3).forEach((tag) => {
+          const pill = createTagPill(tag);
+          if (pill) {
+            wrap.append(pill);
+          }
+        });
+
+        if (values.length > 3) {
+          const overflow = document.createElement("span");
+          overflow.className = "work-item-tag-pill is-muted";
+          overflow.textContent = `+${values.length - 3}`;
+          wrap.append(overflow);
+        }
+
+        return wrap;
+      };
+
+      const formatWorkOrderInvoiceAmount = (value) => {
+        const rawValue = String(value ?? "").trim();
+
+        if (!rawValue) {
+          return "Bez iznosa";
+        }
+
+        const numericValue = Number(rawValue.replace(",", "."));
+        if (Number.isFinite(numericValue) && numericValue > 0) {
+          return formatCurrencyAmount(numericValue, "EUR");
+        }
+
+        return rawValue;
+      };
+
       const executorValues = getWorkOrderExecutors(item);
       rowCard.classList.add("is-clickable");
       const openWorkOrderFromRow = (event) => {
@@ -68114,10 +68402,11 @@ function renderCompactWorkOrdersList() {
           item.headquarters || "",
           item.companyOib ? `OIB ${item.companyOib}` : "",
         ));
-        const clientPills = createInlinePills(...getWorkOrderClientPills(item));
-        if (clientPills) {
-          clientPills.classList.add("work-item-inline-pills-compact");
-          clientCell.append(clientPills);
+        const contractPill = createContractPill(
+          item.contractType || getWorkOrderClientPills(item)[0] || normalizeWorkOrderClientReference(item.linkReference),
+        );
+        if (contractPill) {
+          clientCell.append(contractPill);
         }
 
         locationCell.append(createValueStack(
@@ -68125,22 +68414,6 @@ function renderCompactWorkOrdersList() {
           item.region || "",
           item.coordinates || "",
         ));
-
-        const locationMeta = document.createElement("div");
-        locationMeta.className = "work-item-location-meta";
-        const tagPill = createTagPill(item.tagText || "");
-        const priorityPill = createPriorityPill(
-          item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
-        );
-        if (tagPill) {
-          locationMeta.append(tagPill);
-        }
-        if (priorityPill) {
-          locationMeta.append(priorityPill);
-        }
-        if (locationMeta.childElementCount) {
-          locationCell.append(locationMeta);
-        }
 
         contactCell.append(createValueStack(
           item.contactName || item.contactPhone || "Bez kontakta",
@@ -68176,14 +68449,44 @@ function renderCompactWorkOrdersList() {
           serviceCell.append(serviceNote);
         }
       } else {
+        const compactContract = item.contractType || getWorkOrderClientPills(item)[0] || normalizeWorkOrderClientReference(item.linkReference);
         clientCell.append(createValueStack(
           item.companyName || "Bez tvrtke",
+          compactContract ? `Ugovor: ${compactContract}` : "",
         ));
 
         locationCell.append(createValueStack(
           createCompactLocationLabel(item.locationName),
           item.region || "",
         ));
+      }
+
+      const billingCell = document.createElement("div");
+      billingCell.className = "work-item-cell work-item-cell-group work-item-billing-cell";
+      billingCell.append(
+        createCompactInfoLine("Datum fakture", item.invoiceDate ? formatCompactDate(item.invoiceDate) : "Bez datuma", {
+          className: "is-date",
+        }),
+        createCompactInfoLine("RN završio", item.completedBy || "Nije završeno"),
+        createCompactInfoLine("Iznos", formatWorkOrderInvoiceAmount(item.weight), {
+          className: "is-amount",
+        }),
+      );
+
+      const priorityTagsCell = document.createElement("div");
+      priorityTagsCell.className = "work-item-cell work-item-cell-group work-item-priority-tags-cell";
+      const priorityPill = createPriorityPill(
+        item.priority ? getOptionLabel(PRIORITY_OPTIONS, item.priority) : "",
+      );
+      const tagList = createTagPillList(item.tagText || "");
+      if (priorityPill) {
+        priorityTagsCell.append(priorityPill);
+      }
+      if (tagList) {
+        priorityTagsCell.append(tagList);
+      }
+      if (!priorityTagsCell.childElementCount) {
+        priorityTagsCell.append(createValueStack("Bez prioriteta", "Bez tagova"));
       }
 
       const executorsCell = document.createElement("div");
@@ -68199,33 +68502,53 @@ function renderCompactWorkOrdersList() {
         });
       });
 
-      const downloadButton = document.createElement("button");
-      downloadButton.type = "button";
-      downloadButton.className = "work-item-download-button";
-      downloadButton.title = `Preuzmi PDF ${item.workOrderNumber || "RN"}`;
-      downloadButton.setAttribute("aria-label", downloadButton.title);
-      downloadButton.innerHTML = getWorkOrderIconMarkup("download");
-      downloadButton.addEventListener("click", () => {
-        void downloadWorkOrderPdf(item);
-      });
+      const createActionButton = (title, iconName, className, onClick) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = ["work-item-action-button", className].filter(Boolean).join(" ");
+        button.title = title;
+        button.setAttribute("aria-label", title);
+        button.innerHTML = getWorkOrderIconMarkup(iconName);
+        button.addEventListener("click", onClick);
+        return button;
+      };
+
+      const downloadButton = createActionButton(
+        `Preuzmi radni nalog ${item.workOrderNumber || "RN"}`,
+        "download",
+        "is-rn-pdf",
+        () => {
+          void downloadWorkOrderPdf(item);
+        },
+      );
       actionsCell.append(downloadButton);
 
-      const documentButton = document.createElement("button");
-      documentButton.type = "button";
-      documentButton.className = "work-item-document-button";
-      documentButton.title = `Dodaj dokumentaciju za RN ${item.workOrderNumber || "bez broja"}`;
-      documentButton.setAttribute("aria-label", documentButton.title);
-      documentButton.innerHTML = getWorkOrderIconMarkup("document");
-      documentButton.addEventListener("click", () => {
-        openWorkOrderRowDocumentPicker(item);
-      });
-      actionsCell.append(documentButton);
+      const hasVerifiedDocument = Number(item.documentSummary?.verifiedWorkOrderCount || 0) > 0;
+      const verifiedButton = createActionButton(
+        hasVerifiedDocument
+          ? `Preuzmi ovjereni nalog ${item.workOrderNumber || "RN"}`
+          : `Provjeri ovjereni nalog ${item.workOrderNumber || "RN"}`,
+        "document",
+        `is-verified${hasVerifiedDocument ? " has-document" : " is-soft"}`,
+        () => {
+          void downloadVerifiedWorkOrderDocument(item, verifiedButton);
+        },
+      );
+      actionsCell.append(verifiedButton);
 
-      if (isExpanded) {
-        row.append(selectionCell, basicCell, clientCell, locationCell, contactCell, serviceCell, executorsCell, actionsCell);
-      } else {
-        row.append(selectionCell, basicCell, clientCell, locationCell, executorsCell, actionsCell);
-      }
+      const rowCellsByKey = {
+        select: selectionCell,
+        basic: basicCell,
+        client: clientCell,
+        location: locationCell,
+        contact: contactCell,
+        service: serviceCell,
+        billing: billingCell,
+        priorityTags: priorityTagsCell,
+        executors: executorsCell,
+        actions: actionsCell,
+      };
+      row.append(...columnLayout.map((column) => rowCellsByKey[column.key]).filter(Boolean));
       rowCard.append(row);
       body.append(rowCard);
   });
@@ -73073,6 +73396,10 @@ document.addEventListener("pointermove", (event) => {
     updateCompaniesColumnResize(event.clientX);
   }
 
+  if (workOrderListColumnResizeState) {
+    updateWorkOrderListColumnResize(event.clientX);
+  }
+
   if (state.measurementSheet.resizing) {
     updateMeasurementColumnWidth(event.clientX);
   }
@@ -73089,6 +73416,7 @@ document.addEventListener("pointermove", (event) => {
 document.addEventListener("pointerup", (event) => {
   commitDashboardWidgetLayoutInteraction();
   stopCompaniesColumnResize();
+  stopWorkOrderListColumnResize();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(true, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();
@@ -73097,6 +73425,7 @@ document.addEventListener("pointerup", (event) => {
 document.addEventListener("pointercancel", (event) => {
   clearDashboardWidgetInteraction();
   stopCompaniesColumnResize();
+  stopWorkOrderListColumnResize();
   stopMeasurementColumnResize();
   stopMeasurementFillDrag(false, event.clientX, event.clientY);
   stopMeasurementSelectionDrag();
