@@ -31653,6 +31653,22 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
   margin: 0 0 8px auto;
 }
 
+.document-template-ai-pill.is-inline-runtime {
+  min-height: 18px;
+  padding: 2px 7px;
+  margin-left: 8px;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+}
+
+.document-template-runtime-field-title-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .document-template-ai-pill.is-filled {
   box-shadow: 0 10px 24px rgba(65, 82, 120, 0.12);
 }

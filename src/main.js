@@ -30078,6 +30078,25 @@ function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
   return pill;
 }
 
+function appendDocumentTemplateRuntimeTitleAiPill(titleNode, field = {}, workOrderId = "") {
+  if (!(titleNode instanceof HTMLElement)) {
+    return;
+  }
+  const runtimeAiMeta = workOrderId
+    ? getDocumentTemplateRuntimeFieldAiMeta(workOrderId, field?.id)
+    : null;
+  const pill = createDocumentTemplateAiStatusPill(field, {
+    confidence: runtimeAiMeta?.confidence,
+    runtimeMeta: runtimeAiMeta,
+  });
+  if (!pill) {
+    return;
+  }
+  pill.classList.add("is-inline-runtime");
+  titleNode.classList.add("document-template-runtime-field-title-ai");
+  titleNode.append(pill);
+}
+
 const DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS = Object.freeze([
   {
     value: "fast",
@@ -31015,6 +31034,11 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
     documentTemplateFieldDrafts[fieldIndex].ai = normalizeDocumentTemplateFieldAiConfig({}, field);
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
+    setDocumentTemplateMessage("Spremam uklanjanje AI postavki...");
+    void persistDocumentTemplateDraft({
+      successMessage: "AI postavke su uklonjene i template je spremljen.",
+      scrollToTop: false,
+    });
   });
   actions.append(clearButton, saveButton);
   form.append(actions);
@@ -31024,6 +31048,11 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
     documentTemplateFieldDrafts[fieldIndex].ai = collectDocumentTemplateAiWizardConfig(form, field);
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
+    setDocumentTemplateMessage("Spremam AI postavke u template...");
+    void persistDocumentTemplateDraft({
+      successMessage: "AI postavke su spremljene i odmah aktivne u izradi zapisnika.",
+      scrollToTop: false,
+    });
   });
 
   panel.append(head, form);
@@ -32106,13 +32135,16 @@ function resolveSavedDocumentTemplate({ currentId = "", title = "" } = {}) {
   )) ?? null;
 }
 
-function saveDocumentTemplate() {
+async function persistDocumentTemplateDraft({
+  successMessage = "Template spremljen.",
+  scrollToTop = true,
+} = {}) {
   if (!documentTemplateForm) {
-    return;
+    return false;
   }
 
   if (isDocumentTemplateRuntimeFillMode()) {
-    return;
+    return false;
   }
 
   if (state.measurementSheet.ownerKind === "template_field") {
@@ -32125,7 +32157,7 @@ function saveDocumentTemplate() {
   if (!documentTemplateForm.reportValidity()) {
     setDocumentTemplateMessage("Provjeri obavezna polja templatea prije spremanja.");
     scrollDocumentTemplateMessageIntoView();
-    return;
+    return false;
   }
 
   const isEditing = Boolean(documentTemplateIdInput?.value);
@@ -32140,13 +32172,14 @@ function saveDocumentTemplate() {
     documentTemplateSaveButton.disabled = true;
   }
 
-  void runMutation(() => apiRequest(path, {
-    method,
-    body: buildDocumentTemplatePayload(),
-  }), documentTemplateError).then((success) => {
+  try {
+    const success = await runMutation(() => apiRequest(path, {
+      method,
+      body: buildDocumentTemplatePayload(),
+    }), documentTemplateError);
     if (!success) {
       scrollDocumentTemplateMessageIntoView();
-      return;
+      return false;
     }
 
     renderDocumentTemplateModule();
@@ -32158,13 +32191,20 @@ function saveDocumentTemplate() {
     } else {
       syncDocumentTemplateEditorChrome();
     }
-    setDocumentTemplateMessage("Template spremljen.", { type: "success" });
-    documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-  }).finally(() => {
+    setDocumentTemplateMessage(successMessage, { type: "success" });
+    if (scrollToTop) {
+      documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    }
+    return true;
+  } finally {
     if (documentTemplateSaveButton instanceof HTMLButtonElement) {
       documentTemplateSaveButton.disabled = false;
     }
-  });
+  }
+}
+
+function saveDocumentTemplate() {
+  void persistDocumentTemplateDraft();
 }
 
 function deleteDocumentTemplate(templateOrId = "", { closeEditorOnSuccess = false } = {}) {
@@ -44691,6 +44731,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrderId);
     wrapper.append(title);
 
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
