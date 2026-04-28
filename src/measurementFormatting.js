@@ -2,6 +2,7 @@ const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   type: "general",
   decimals: 2,
   align: "auto",
+  verticalAlign: "middle",
   fontFamily: "default",
   fontSize: 14,
   bold: false,
@@ -155,11 +156,15 @@ export function normalizeMeasurementCellFormat(format = {}) {
   const align = ["auto", "left", "center", "right"].includes(format?.align)
     ? format.align
     : DEFAULT_MEASUREMENT_FORMAT.align;
+  const verticalAlign = ["top", "middle", "bottom"].includes(format?.verticalAlign)
+    ? format.verticalAlign
+    : DEFAULT_MEASUREMENT_FORMAT.verticalAlign;
 
   return {
     type,
     decimals: clampMeasurementDecimals(format?.decimals),
     align,
+    verticalAlign,
     fontFamily: normalizeMeasurementFontFamily(format?.fontFamily),
     fontSize: clampMeasurementFontSize(format?.fontSize),
     bold: Boolean(format?.bold),

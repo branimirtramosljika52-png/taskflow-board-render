@@ -3945,6 +3945,7 @@ const measurementQuickFloorInput = document.querySelector("#measurement-quick-fl
 const measurementQuickRoomInput = document.querySelector("#measurement-quick-room");
 const measurementQuickItemNameInput = document.querySelector("#measurement-quick-item-name");
 const measurementQuickItemCountInput = document.querySelector("#measurement-quick-item-count");
+const measurementQuickStartRowInput = document.querySelector("#measurement-quick-start-row");
 const measurementQuickColumnMap = document.querySelector("#measurement-quick-column-map");
 const measurementQuickGenerateButton = document.querySelector("#measurement-quick-generate");
 const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
@@ -3957,8 +3958,13 @@ const measurementFormatUnderlineButton = document.querySelector("#measurement-fo
 const measurementAlignLeftButton = document.querySelector("#measurement-align-left");
 const measurementAlignCenterButton = document.querySelector("#measurement-align-center");
 const measurementAlignRightButton = document.querySelector("#measurement-align-right");
+const measurementAlignTopButton = document.querySelector("#measurement-align-top");
+const measurementAlignMiddleButton = document.querySelector("#measurement-align-middle");
+const measurementAlignBottomButton = document.querySelector("#measurement-align-bottom");
 const measurementStyleTitleButton = document.querySelector("#measurement-style-title");
 const measurementMergeButton = document.querySelector("#measurement-merge");
+const measurementMergeRowsButton = document.querySelector("#measurement-merge-rows");
+const measurementMergeColumnsButton = document.querySelector("#measurement-merge-columns");
 const measurementUnmergeButton = document.querySelector("#measurement-unmerge");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
 const measurementSheetGridWrap = document.querySelector(".measurement-sheet-grid-wrap");
@@ -20646,18 +20652,16 @@ function canMergeMeasurementSelection(range = getMeasurementSelectedRange()) {
   return true;
 }
 
-function mergeMeasurementSelection() {
-  const range = getMeasurementSelectedRange();
+function canMergeMeasurementSelectionByRows(range = getMeasurementSelectedRange()) {
+  return canMergeMeasurementSelection(range) && range.startColumnIndex < range.endColumnIndex;
+}
 
-  if (!canMergeMeasurementSelection(range)) {
-    return;
-  }
+function canMergeMeasurementSelectionByColumns(range = getMeasurementSelectedRange()) {
+  return canMergeMeasurementSelection(range) && range.startRowIndex < range.endRowIndex;
+}
 
-  unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
-  const anchorRow = state.measurementSheet.rows[range.startRowIndex];
-  const anchorColumn = state.measurementSheet.columns[range.startColumnIndex];
-
-  if (!anchorRow || !anchorColumn) {
+function clearMeasurementRangeCells(range, anchorKeys = new Set()) {
+  if (!range) {
     return;
   }
 
@@ -20669,7 +20673,7 @@ function mergeMeasurementSelection() {
     }
 
     for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
-      if (rowIndex === range.startRowIndex && columnIndex === range.startColumnIndex) {
+      if (anchorKeys.has(`${rowIndex}:${columnIndex}`)) {
         continue;
       }
 
@@ -20684,6 +20688,19 @@ function mergeMeasurementSelection() {
       row.formats[column.id] = normalizeMeasurementCellFormat();
     }
   }
+}
+
+function appendMeasurementMergeForRange(range) {
+  if (!canMergeMeasurementSelection(range)) {
+    return false;
+  }
+
+  const anchorRow = state.measurementSheet.rows[range.startRowIndex];
+  const anchorColumn = state.measurementSheet.columns[range.startColumnIndex];
+
+  if (!anchorRow || !anchorColumn) {
+    return false;
+  }
 
   state.measurementSheet.merges = [
     ...(state.measurementSheet.merges ?? []),
@@ -20694,6 +20711,78 @@ function mergeMeasurementSelection() {
       colSpan: range.endColumnIndex - range.startColumnIndex + 1,
     },
   ];
+
+  return true;
+}
+
+function mergeMeasurementSelection() {
+  const range = getMeasurementSelectedRange();
+
+  if (!canMergeMeasurementSelection(range)) {
+    return;
+  }
+
+  unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
+  clearMeasurementRangeCells(range, new Set([`${range.startRowIndex}:${range.startColumnIndex}`]));
+  appendMeasurementMergeForRange(range);
+  renderMeasurementSheet();
+  handleMeasurementSheetMutation();
+}
+
+function mergeMeasurementSelectionByRows() {
+  const range = getMeasurementSelectedRange();
+
+  if (!canMergeMeasurementSelectionByRows(range)) {
+    return;
+  }
+
+  unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
+  const anchorKeys = new Set();
+
+  for (let rowIndex = range.startRowIndex; rowIndex <= range.endRowIndex; rowIndex += 1) {
+    anchorKeys.add(`${rowIndex}:${range.startColumnIndex}`);
+  }
+
+  clearMeasurementRangeCells(range, anchorKeys);
+
+  for (let rowIndex = range.startRowIndex; rowIndex <= range.endRowIndex; rowIndex += 1) {
+    appendMeasurementMergeForRange({
+      startRowIndex: rowIndex,
+      endRowIndex: rowIndex,
+      startColumnIndex: range.startColumnIndex,
+      endColumnIndex: range.endColumnIndex,
+    });
+  }
+
+  renderMeasurementSheet();
+  handleMeasurementSheetMutation();
+}
+
+function mergeMeasurementSelectionByColumns() {
+  const range = getMeasurementSelectedRange();
+
+  if (!canMergeMeasurementSelectionByColumns(range)) {
+    return;
+  }
+
+  unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
+  const anchorKeys = new Set();
+
+  for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
+    anchorKeys.add(`${range.startRowIndex}:${columnIndex}`);
+  }
+
+  clearMeasurementRangeCells(range, anchorKeys);
+
+  for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
+    appendMeasurementMergeForRange({
+      startRowIndex: range.startRowIndex,
+      endRowIndex: range.endRowIndex,
+      startColumnIndex: columnIndex,
+      endColumnIndex: columnIndex,
+    });
+  }
+
   renderMeasurementSheet();
   handleMeasurementSheetMutation();
 }
@@ -20870,6 +20959,7 @@ function getMeasurementCellStyleConfig(format = {}) {
 
   return {
     textAlign,
+    verticalAlign: normalized.verticalAlign,
     fontFamily: MEASUREMENT_FONT_FAMILY_STYLES[normalized.fontFamily] || MEASUREMENT_FONT_FAMILY_STYLES.default,
     fontSize: `${normalized.fontSize}px`,
     fontWeight: normalized.bold ? "700" : "400",
@@ -20885,9 +20975,18 @@ function applyMeasurementCellStyleToElements(cell, input, format = {}) {
   if (cell instanceof HTMLElement) {
     cell.style.backgroundColor = styleConfig.fillColor || "";
     cell.style.textAlign = styleConfig.textAlign;
+    cell.style.verticalAlign = styleConfig.verticalAlign;
   }
 
   if (input instanceof HTMLElement) {
+    const shell = input.closest(".measurement-cell-shell");
+    if (shell instanceof HTMLElement) {
+      shell.style.alignItems = styleConfig.verticalAlign === "top"
+        ? "flex-start"
+        : styleConfig.verticalAlign === "bottom"
+          ? "flex-end"
+          : "center";
+    }
     input.style.textAlign = styleConfig.textAlign;
     input.style.fontFamily = styleConfig.fontFamily;
     input.style.fontSize = styleConfig.fontSize;
@@ -21156,6 +21255,8 @@ function getDefaultMeasurementQuickFillColumnMode(column = {}) {
 function getMeasurementQuickFillColumnPlaceholder(mode = "custom", column = {}) {
   const label = String(column?.label || column?.id || "vrijednost").trim();
   switch (mode) {
+    case "formula":
+      return "npr. =RANDBETWEEN(1;100)";
     case "floor":
       return "Koristi gore upisanu etažu";
     case "room":
@@ -21171,6 +21272,35 @@ function getMeasurementQuickFillColumnPlaceholder(mode = "custom", column = {}) 
     default:
       return `Vrijednost za ${label}`;
   }
+}
+
+function getMeasurementQuickDefaultStartRowNumber() {
+  const lastMeaningfulRowIndex = state.measurementSheet.rows.reduce((lastIndex, row, index) => (
+    isMeasurementSheetRowMeaningful(row, state.measurementSheet.columns) ? index : lastIndex
+  ), -1);
+
+  return Math.max(1, lastMeaningfulRowIndex + 2);
+}
+
+function syncMeasurementQuickStartRowInput({ force = false } = {}) {
+  if (!(measurementQuickStartRowInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const currentValue = Number.parseInt(String(measurementQuickStartRowInput.value || ""), 10);
+  if (!force && Number.isFinite(currentValue) && currentValue >= 1) {
+    return;
+  }
+
+  measurementQuickStartRowInput.value = String(getMeasurementQuickDefaultStartRowNumber());
+}
+
+function normalizeMeasurementQuickFillFormula(value = "") {
+  const rawValue = String(value || "").trim() || "=RANDBETWEEN(1;100)";
+  const withEquals = rawValue.startsWith("=") ? rawValue : `=${rawValue}`;
+  return withEquals
+    .replace(/RAND\s*BETWEEN/gi, "RANDBETWEEN")
+    .replace(/RANDBE+TWIN/gi, "RANDBETWEEN");
 }
 
 function collectMeasurementQuickFillColumnSettings() {
@@ -21218,7 +21348,7 @@ function renderMeasurementQuickFillColumnMap() {
 
   const subtitle = document.createElement("p");
   subtitle.className = "measurement-quick-column-map-copy";
-  subtitle.textContent = "Odaberi izvor ili upiši fiksnu vrijednost koja se kopira u sve generirane redove. Mjerne vrijednosti možeš ostaviti prazne i upisati ih kasnije u tablici.";
+  subtitle.textContent = "Odaberi redni broj, formulu ili fiksnu vrijednost za svaku kolonu. Formula može biti Excel stil, npr. =RANDBETWEEN(1;100).";
   fragment.append(subtitle);
 
   const header = document.createElement("div");
@@ -21246,13 +21376,14 @@ function renderMeasurementQuickFillColumnMap() {
     const select = document.createElement("select");
     select.dataset.measurementQuickMode = "true";
     replaceSelectOptions(select, [
-      { value: "empty", label: "Prazno" },
-      { value: "custom", label: "Upisana vrijednost" },
+      { value: "itemIndex", label: "Redni broj" },
+      { value: "formula", label: "Formula" },
+      { value: "custom", label: "Vrijednost" },
       { value: "floor", label: "Etaža" },
       { value: "room", label: "Prostorija" },
-      { value: "item", label: "Naziv stavke" },
-      { value: "itemIndex", label: "Redni broj" },
+      { value: "item", label: "Stavka / naziv" },
       { value: "quantity", label: "Količina" },
+      { value: "empty", label: "Prazno" },
     ], previousSettings.get(column.id)?.mode || getDefaultMeasurementQuickFillColumnMode(column));
 
     const customInput = document.createElement("input");
@@ -21260,14 +21391,15 @@ function renderMeasurementQuickFillColumnMap() {
     customInput.dataset.measurementQuickCustom = "true";
     customInput.value = previousSettings.get(column.id)?.customValue || "";
     const syncCustomVisibility = () => {
-      const isCustom = select.value === "custom";
+      const isCustom = select.value === "custom" || select.value === "formula";
       row.classList.toggle("uses-custom", isCustom);
+      row.classList.toggle("uses-formula", select.value === "formula");
       customInput.disabled = !isCustom;
       customInput.placeholder = getMeasurementQuickFillColumnPlaceholder(select.value, column);
     };
     select.addEventListener("change", () => {
       syncCustomVisibility();
-      if (select.value === "custom") {
+      if (select.value === "custom" || select.value === "formula") {
         customInput.focus({ preventScroll: true });
       }
     });
@@ -21331,6 +21463,8 @@ function buildMeasurementQuickDataRows(settings = [], count = 1, context = {}) {
             return String(index + 1);
           case "quantity":
             return String(context.count);
+          case "formula":
+            return normalizeMeasurementQuickFillFormula(setting.customValue);
           case "custom":
             return setting.customValue;
           default:
@@ -21354,6 +21488,14 @@ function generateMeasurementQuickFillRows() {
   const room = String(measurementQuickRoomInput?.value || "").trim();
   const itemName = String(measurementQuickItemNameInput?.value || "").trim();
   const count = Math.max(1, Math.min(500, Number.parseInt(String(measurementQuickItemCountInput?.value || "1"), 10) || 1));
+  const requestedStartRow = Math.max(
+    1,
+    Math.min(
+      5000,
+      Number.parseInt(String(measurementQuickStartRowInput?.value || ""), 10)
+        || getMeasurementQuickDefaultStartRowNumber(),
+    ),
+  );
   const previousSettings = collectMeasurementQuickFillColumnSettings();
   const settings = editableColumns.map((column) => ({
     columnId: column.id,
@@ -21370,11 +21512,14 @@ function generateMeasurementQuickFillRows() {
   }
   rowsToInsert.push(...buildMeasurementQuickDataRows(settings, count, { floor, room, itemName, count }));
 
-  const lastMeaningfulRowIndex = state.measurementSheet.rows.reduce((lastIndex, row, index) => (
-    isMeasurementSheetRowMeaningful(row, state.measurementSheet.columns) ? index : lastIndex
-  ), -1);
-  const insertionIndex = Math.max(0, lastMeaningfulRowIndex + 1);
+  const insertionIndex = Math.max(0, requestedStartRow - 1);
+  if (insertionIndex > 0) {
+    ensureMeasurementRowsThrough(insertionIndex - 1);
+  }
   state.measurementSheet.rows.splice(insertionIndex, 0, ...rowsToInsert);
+  if (measurementQuickStartRowInput instanceof HTMLInputElement) {
+    measurementQuickStartRowInput.value = String(insertionIndex + rowsToInsert.length + 1);
+  }
   const firstEditableIndex = getFirstEditableMeasurementColumnIndex();
   renderMeasurementSheet();
   if (firstEditableIndex >= 0 && rowsToInsert.at(-1)) {
@@ -21727,6 +21872,10 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
         nextFormat.align = formatOverrides.align;
       }
 
+      if ("verticalAlign" in formatOverrides) {
+        nextFormat.verticalAlign = formatOverrides.verticalAlign;
+      }
+
       if ("fontFamily" in formatOverrides) {
         nextFormat.fontFamily = formatOverrides.fontFamily;
       }
@@ -21842,6 +21991,10 @@ function applyMeasurementStylePresetToSelectedRows(presetKey) {
 
 function setMeasurementAlignment(align) {
   applyMeasurementToolbarFormat({ align });
+}
+
+function setMeasurementVerticalAlignment(verticalAlign) {
+  applyMeasurementToolbarFormat({ verticalAlign });
 }
 
 function getEditableMeasurementColumnIndexes() {
@@ -22187,12 +22340,20 @@ function syncMeasurementToolbar() {
   toggleMeasurementToolbarButtonState(measurementAlignLeftButton, activeFormat.align === "left");
   toggleMeasurementToolbarButtonState(measurementAlignCenterButton, activeFormat.align === "center");
   toggleMeasurementToolbarButtonState(measurementAlignRightButton, activeFormat.align === "right");
+  toggleMeasurementToolbarButtonState(measurementAlignTopButton, activeFormat.verticalAlign === "top");
+  toggleMeasurementToolbarButtonState(measurementAlignMiddleButton, activeFormat.verticalAlign === "middle");
+  toggleMeasurementToolbarButtonState(measurementAlignBottomButton, activeFormat.verticalAlign === "bottom");
   [
     measurementAlignLeftButton,
     measurementAlignCenterButton,
     measurementAlignRightButton,
+    measurementAlignTopButton,
+    measurementAlignMiddleButton,
+    measurementAlignBottomButton,
     measurementStyleTitleButton,
     measurementMergeButton,
+    measurementMergeRowsButton,
+    measurementMergeColumnsButton,
     measurementUnmergeButton,
   ].forEach((button) => {
     if (button instanceof HTMLButtonElement) {
@@ -22214,6 +22375,14 @@ function syncMeasurementToolbar() {
   });
   if (measurementMergeButton instanceof HTMLButtonElement) {
     measurementMergeButton.disabled = !canMergeMeasurementSelection();
+  }
+
+  if (measurementMergeRowsButton instanceof HTMLButtonElement) {
+    measurementMergeRowsButton.disabled = !canMergeMeasurementSelectionByRows();
+  }
+
+  if (measurementMergeColumnsButton instanceof HTMLButtonElement) {
+    measurementMergeColumnsButton.disabled = !canMergeMeasurementSelectionByColumns();
   }
 
   if (measurementUnmergeButton instanceof HTMLButtonElement) {
@@ -33651,6 +33820,7 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
   const styles = [];
 
   styles.push(`text-align:${styleConfig.textAlign}`);
+  styles.push(`vertical-align:${styleConfig.verticalAlign}`);
   styles.push(`font-family:${styleConfig.fontFamily}`);
   styles.push(`font-size:${styleConfig.fontSize}`);
   styles.push(`font-weight:${styleConfig.fontWeight}`);
@@ -71559,6 +71729,12 @@ measurementSheetResetButton?.addEventListener("click", resetMeasurementSheet);
 measurementMergeButton?.addEventListener("click", () => {
   mergeMeasurementSelection();
 });
+measurementMergeRowsButton?.addEventListener("click", () => {
+  mergeMeasurementSelectionByRows();
+});
+measurementMergeColumnsButton?.addEventListener("click", () => {
+  mergeMeasurementSelectionByColumns();
+});
 measurementUnmergeButton?.addEventListener("click", () => {
   unmergeMeasurementSelection();
 });
@@ -71886,6 +72062,9 @@ measurementQuickFillButton?.addEventListener("click", (event) => {
   state.measurementSheet.quickFillPopoverOpen = !state.measurementSheet.quickFillPopoverOpen;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.validationPopoverOpen = false;
+  if (state.measurementSheet.quickFillPopoverOpen) {
+    syncMeasurementQuickStartRowInput({ force: true });
+  }
   syncMeasurementToolbar();
 });
 measurementQuickFillPopover?.addEventListener("pointerdown", (event) => {
@@ -71937,6 +72116,15 @@ measurementAlignCenterButton?.addEventListener("click", () => {
 });
 measurementAlignRightButton?.addEventListener("click", () => {
   setMeasurementAlignment("right");
+});
+measurementAlignTopButton?.addEventListener("click", () => {
+  setMeasurementVerticalAlignment("top");
+});
+measurementAlignMiddleButton?.addEventListener("click", () => {
+  setMeasurementVerticalAlignment("middle");
+});
+measurementAlignBottomButton?.addEventListener("click", () => {
+  setMeasurementVerticalAlignment("bottom");
 });
 measurementStyleTitleButton?.addEventListener("click", () => {
   const applied = toggleMeasurementHeaderRows();
