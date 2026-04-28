@@ -6680,8 +6680,11 @@ function syncCompanySelectionPreview(
 }
 
 const WORK_ORDER_EDITOR_SECTION_ICON_NAMES = {
+  status: "status",
   client: "company",
   route: "location",
+  location: "location",
+  contact: "contact",
   executors: "assignees",
   services: "service",
   billing: "billing",
@@ -12730,6 +12733,8 @@ function enhanceWorkOrderEditorChrome() {
     [workOrderContactPhoneInput, { iconName: "contact" }],
     [workOrderContactEmailInput, { iconName: "contact" }],
     [workOrderDepartmentInput, { iconName: "service" }],
+    [workOrderServicePicker, { iconName: "service", emphasize: true }],
+    [workOrderServiceSelection, { iconName: "service" }],
     [workOrderServiceLineInput, { iconName: "service", emphasize: true }],
     [workOrderLinkReferenceInput, { iconName: "number" }],
     [workOrderTagTextInput, { iconName: "tags" }],
@@ -12738,6 +12743,10 @@ function enhanceWorkOrderEditorChrome() {
     [workOrderInvoiceDateInput, { iconName: "billing" }],
     [workOrderDescriptionInput, { iconName: "notes", emphasize: true }],
     [workOrderInvoiceNoteInput, { iconName: "billing" }],
+    [workOrderTrainingAdminNameInput, { iconName: "contact" }],
+    [workOrderTrainingAdminRoleInput, { iconName: "service" }],
+    [workOrderTrainingAdminPhoneInput, { iconName: "contact" }],
+    [workOrderTrainingAdminEmailInput, { iconName: "contact" }],
   ].forEach(([input, config]) => decorateWorkOrderFieldLabel(input, config));
 
   decorateWorkOrderActionButton(workOrderOpenTodoButton, "todo");

@@ -34536,3 +34536,110 @@ button.work-order-editor-section-head {
     grid-template-columns: 1fr;
   }
 }
+
+/* RN editor requested order: status, client, location, contact, executors, services, billing. */
+.work-order-editor-section.is-work-order-status {
+  --section-accent: #3478f6;
+  --section-accent-soft: rgba(52, 120, 246, 0.12);
+  --section-accent-line: rgba(52, 120, 246, 0.4);
+}
+
+.work-order-editor-section.is-work-order-location {
+  --section-accent: #18a77b;
+  --section-accent-soft: rgba(24, 167, 123, 0.12);
+  --section-accent-line: rgba(24, 167, 123, 0.38);
+}
+
+.work-order-editor-section.is-work-order-contact {
+  --section-accent: #7b61ff;
+  --section-accent-soft: rgba(123, 97, 255, 0.12);
+  --section-accent-line: rgba(123, 97, 255, 0.38);
+}
+
+.form-grid-work-order-status-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.form-grid-work-order-note {
+  grid-template-columns: minmax(180px, 0.72fr) minmax(360px, 2.28fr);
+}
+
+.form-grid-work-order-client {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.form-grid-location-contact {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.form-grid-work-order-contact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.form-grid-executors {
+  grid-template-columns: 1fr;
+}
+
+.form-grid-service-main {
+  grid-template-columns: minmax(180px, 0.8fr) minmax(420px, 2.2fr);
+}
+
+.form-grid-billing {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.form-grid-service-main .work-order-service-selection-field {
+  grid-column: 1 / -1;
+}
+
+.form-grid-billing .field {
+  min-width: 0;
+}
+
+.form-grid-billing textarea {
+  min-height: 38px !important;
+  resize: vertical;
+}
+
+.form-grid-work-order-contact .field-span-2,
+.form-grid-location-contact .field-span-2,
+.form-grid-work-order-client .field-span-2 {
+  grid-column: span 2;
+}
+
+.form-grid-location-contact .field-span-3 {
+  grid-column: span 3;
+}
+
+@media (max-width: 1180px) {
+  .form-grid-work-order-status-row,
+  .form-grid-work-order-note,
+  .form-grid-work-order-client,
+  .form-grid-location-contact,
+  .form-grid-work-order-contact,
+  .form-grid-service-main,
+  .form-grid-billing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-grid-work-order-note .work-order-inline-note,
+  .form-grid-work-order-client .field-span-2,
+  .form-grid-location-contact .field-span-2,
+  .form-grid-location-contact .field-span-3,
+  .form-grid-work-order-contact .field-span-2,
+  .form-grid-service-main .work-order-service-selection-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .form-grid-work-order-status-row,
+  .form-grid-work-order-note,
+  .form-grid-work-order-client,
+  .form-grid-location-contact,
+  .form-grid-work-order-contact,
+  .form-grid-service-main,
+  .form-grid-billing {
+    grid-template-columns: 1fr;
+  }
+}
