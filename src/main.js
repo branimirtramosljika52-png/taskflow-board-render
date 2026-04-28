@@ -1121,6 +1121,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Mjesto za testove, provjere znanja i internu edukaciju zaposlenika po organizacijama.",
     chips: ["Knowledge checks", "Exams", "Progress"],
   },
+  "people-training": {
+    kicker: "Learning",
+    title: "Osposobljavanja",
+    description: "Evidencija osposobljavanja po osobi, tvrtki, RN-u, online testu i uvjerenjima za klijentski portal.",
+    chips: ["RN", "Ispiti", "Uvjerenja"],
+  },
   "learning-people": {
     kicker: "Learning",
     title: "People",
@@ -1158,6 +1164,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "add-location": { group: "locations", view: "locations", focus: "form" },
   documents: { group: "documents", view: "module", module: "documents" },
   tests: { group: "learning", view: "module", module: "tests" },
+  "people-training": { group: "learning", view: "module", module: "people-training" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
 const SIDEBAR_GROUP_DEFAULT_ITEM = {
@@ -1167,7 +1174,7 @@ const SIDEBAR_GROUP_DEFAULT_ITEM = {
   company: "list-company",
   locations: "list-location",
   documents: "documents",
-  learning: "tests",
+  learning: "people-training",
 };
 const SIDEBAR_GROUP_LABELS = {
   home: "Home",
@@ -1208,16 +1215,13 @@ const SIDEBAR_ITEM_LABELS = {
   "add-location": "Add New",
   documents: "Documents",
   tests: "Test",
+  "people-training": "Osposobljavanja",
   "learning-people": "People",
 };
 const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
   users: Object.freeze({
     label: "Korisnici",
     description: "",
-  }),
-  trainings: Object.freeze({
-    label: "Osposobljavanja",
-    description: "Evidencija ZNR osposobljavanja, požara, ADR-a, liječničkih pregleda i stručnih potvrda po tvrtkama.",
   }),
   "annual-leave": Object.freeze({
     label: "GO i dopusti",
@@ -7020,15 +7024,25 @@ function normalizePeopleTrainingItemsForUi(items = []) {
   return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => {
     const sourceItem = byType.get(typeOption.value) ?? {};
     const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
+    const passedOn = normalizePeopleTrainingDate(sourceItem?.passedOn ?? sourceItem?.passedDate);
+    const issuedOn = normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate) || passedOn;
     const item = {
       type: typeOption.value,
       label: typeOption.label,
       shortLabel: typeOption.shortLabel,
-      issuedOn: normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate),
+      issuedOn,
+      passedOn,
       validUntil: validForever ? "" : normalizePeopleTrainingDate(sourceItem?.validUntil ?? sourceItem?.validTo ?? sourceItem?.expiresOn),
       validForever,
       certificateNumber: String(sourceItem?.certificateNumber ?? sourceItem?.documentNumber ?? sourceItem?.number ?? "").trim(),
       provider: String(sourceItem?.provider ?? sourceItem?.institution ?? sourceItem?.organizer ?? "").trim(),
+      examMode: String(sourceItem?.examMode ?? sourceItem?.sourceMode ?? "").trim(),
+      workOrderId: String(sourceItem?.workOrderId ?? "").trim(),
+      workOrderNumber: String(sourceItem?.workOrderNumber ?? "").trim(),
+      learningTestId: String(sourceItem?.learningTestId ?? "").trim(),
+      learningTestTitle: String(sourceItem?.learningTestTitle ?? "").trim(),
+      certificateStatus: String(sourceItem?.certificateStatus ?? "").trim(),
+      certificateDocumentId: String(sourceItem?.certificateDocumentId ?? "").trim(),
       note: String(sourceItem?.note ?? "").trim(),
       status: String(sourceItem?.status ?? "").trim().toLowerCase(),
     };
@@ -7385,6 +7399,12 @@ function readPeopleTrainingGridItems() {
   if (!peopleTrainingFormTrainingGrid) {
     return [];
   }
+  const activeRecordId = String(peopleTrainingIdInput?.value || "").trim();
+  const activeRecord = state.peopleTrainingRecords.find((item) => String(item.id) === activeRecordId) ?? null;
+  const existingByType = new Map(
+    normalizePeopleTrainingItemsForUi(activeRecord?.trainingItems ?? [])
+      .map((item) => [item.type, item]),
+  );
   return Array.from(peopleTrainingFormTrainingGrid.querySelectorAll("[data-training-type]")).map((card) => {
     const readField = (field) => {
       const input = card.querySelector(`[data-training-field="${field}"]`);
@@ -7393,8 +7413,11 @@ function readPeopleTrainingGridItems() {
       }
       return input?.value ?? "";
     };
+    const type = card.dataset.trainingType || "";
+    const existing = existingByType.get(type) ?? {};
     return {
-      type: card.dataset.trainingType || "",
+      ...existing,
+      type,
       issuedOn: readField("issuedOn"),
       validUntil: readField("validUntil"),
       validForever: readField("validForever"),
@@ -7467,17 +7490,205 @@ async function deletePeopleTrainingRecord() {
 function createPeopleTrainingStatusPill(item = {}) {
   const pill = document.createElement("span");
   pill.className = `people-training-status-pill ${getPeopleTrainingStatusClass(item.status)}`;
-  pill.title = item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : getPeopleTrainingStatusLabel(item.status);
-  pill.textContent = item.shortLabel || item.label || item.type || "?";
+  const sourceText = getPeopleTrainingItemSourceText(item);
+  pill.title = [
+    item.label || item.type || "Osposobljavanje",
+    getPeopleTrainingStatusLabel(item.status),
+    item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+    sourceText,
+  ].filter(Boolean).join(" - ");
+  const marker = item.status === "valid" || item.status === "not_required"
+    ? "✓"
+    : item.status === "expiring"
+      ? "!"
+      : "×";
+  pill.textContent = `${marker} ${item.shortLabel || item.label || item.type || "?"}`;
   return pill;
+}
+
+function getPeopleTrainingItemSourceText(item = {}) {
+  const parts = [];
+  if (item.examMode === "online") {
+    parts.push("Online");
+  } else if (item.examMode === "live") {
+    parts.push("Uživo");
+  }
+  if (item.workOrderNumber) {
+    parts.push(`RN ${item.workOrderNumber}`);
+  }
+  if (item.learningTestTitle) {
+    parts.push(item.learningTestTitle);
+  }
+  if (item.passedOn || item.issuedOn) {
+    parts.push(formatCompactDate(item.passedOn || item.issuedOn));
+  }
+  if (item.certificateStatus === "ready") {
+    parts.push("uvjerenje spremno");
+  } else if (item.certificateStatus === "issued") {
+    parts.push("uvjerenje izdano");
+  }
+  return parts.join(" · ");
+}
+
+function buildPeopleTrainingWorkOrderOptions(record = {}) {
+  const normalizedCompanyId = String(record.companyId || "").trim();
+  const options = (state.workOrders ?? [])
+    .filter((workOrder) => !normalizedCompanyId || String(workOrder.companyId || "") === normalizedCompanyId)
+    .slice()
+    .sort((left, right) => {
+      const leftValue = String(left.openedDate || left.createdAt || left.workOrderNumber || "");
+      const rightValue = String(right.openedDate || right.createdAt || right.workOrderNumber || "");
+      return rightValue.localeCompare(leftValue, "hr", { numeric: true });
+    })
+    .slice(0, 160)
+    .map((workOrder) => ({
+      value: String(workOrder.id || ""),
+      label: [
+        workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "RN bez broja",
+        workOrder.openedDate ? formatCompactDate(workOrder.openedDate) : "",
+        workOrder.locationName || "",
+      ].filter(Boolean).join(" · "),
+    }));
+  return [{ value: "", label: "Odaberi RN" }, ...options];
+}
+
+function buildPeopleTrainingLearningTestOptions() {
+  const options = sortLearningTests(state.learningTests ?? [])
+    .map((test) => ({
+      value: String(test.id || ""),
+      label: [
+        test.title || "Test bez naziva",
+        test.status ? getLearningTestStatusLabel(test.status) : "",
+      ].filter(Boolean).join(" · "),
+    }));
+  return [{ value: "", label: "Odaberi online test" }, ...options];
+}
+
+function getLearningTestStatusLabel(status = "") {
+  return LEARNING_TEST_STATUS_OPTIONS.find((option) => option.value === status)?.label || status || "";
+}
+
+async function handlePeopleTrainingQuickExamSubmit(record = {}, form = null) {
+  if (!record?.id || !(form instanceof HTMLFormElement)) {
+    return;
+  }
+  const formData = new FormData(form);
+  const trainingType = String(formData.get("trainingType") || "").trim();
+  const examMode = String(formData.get("examMode") || "live").trim();
+  const passedOn = normalizePeopleTrainingDate(formData.get("passedOn"));
+  const certificateNumber = String(formData.get("certificateNumber") || "").trim();
+  const workOrderId = String(formData.get("workOrderId") || "").trim();
+  const learningTestId = String(formData.get("learningTestId") || "").trim();
+
+  if (!trainingType || !passedOn) {
+    setPeopleTrainingFeedback("Odaberi vrstu ispita i datum polaganja.", "error");
+    return;
+  }
+
+  const selectedWorkOrder = (state.workOrders ?? []).find((item) => String(item.id) === workOrderId) ?? null;
+  const selectedTest = (state.learningTests ?? []).find((item) => String(item.id) === learningTestId) ?? null;
+  const nextItems = normalizePeopleTrainingItemsForUi(record.trainingItems).map((item) => {
+    if (item.type !== trainingType) {
+      return item;
+    }
+    return {
+      ...item,
+      issuedOn: passedOn,
+      passedOn,
+      certificateNumber,
+      provider: item.provider || selectedTest?.title || "SafeNexus",
+      examMode,
+      workOrderId: examMode === "live" ? (selectedWorkOrder?.id || workOrderId) : "",
+      workOrderNumber: examMode === "live" ? (selectedWorkOrder?.workOrderNumber || "") : "",
+      learningTestId: examMode === "online" ? (selectedTest?.id || learningTestId) : "",
+      learningTestTitle: examMode === "online" ? (selectedTest?.title || "") : "",
+      certificateStatus: "ready",
+      status: "",
+    };
+  });
+
+  const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(record.id)}`, {
+    method: "PATCH",
+    body: { trainingItems: nextItems },
+  }), peopleTrainingFormFeedback);
+
+  if (success) {
+    setPeopleTrainingFeedback("Ispit je upisan i uvjerenje je označeno kao spremno.", "success");
+    renderPeopleTrainingModule();
+    const updated = state.peopleTrainingRecords.find((item) => String(item.id) === String(record.id));
+    if (updated && String(updated.id) === String(state.activePeopleTrainingRecordId)) {
+      populatePeopleTrainingForm(updated);
+    }
+  }
+}
+
+function createPeopleTrainingQuickExamForm(record = {}) {
+  const form = document.createElement("form");
+  form.className = "people-training-inline-exam-form";
+  form.addEventListener("click", (event) => event.stopPropagation());
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void handlePeopleTrainingQuickExamSubmit(record, form);
+  });
+
+  const typeSelect = document.createElement("select");
+  typeSelect.name = "trainingType";
+  replaceSelectOptions(
+    typeSelect,
+    PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+    PERSON_TRAINING_TYPE_OPTIONS[0]?.value || "",
+  );
+
+  const modeSelect = document.createElement("select");
+  modeSelect.name = "examMode";
+  replaceSelectOptions(modeSelect, [
+    { value: "live", label: "Uživo / RN" },
+    { value: "online", label: "Online test" },
+    { value: "manual", label: "Ručni unos" },
+  ], "live");
+
+  const workOrderSelect = document.createElement("select");
+  workOrderSelect.name = "workOrderId";
+  replaceSelectOptions(workOrderSelect, buildPeopleTrainingWorkOrderOptions(record), "");
+
+  const testSelect = document.createElement("select");
+  testSelect.name = "learningTestId";
+  replaceSelectOptions(testSelect, buildPeopleTrainingLearningTestOptions(), "");
+  testSelect.hidden = true;
+
+  const passedInput = document.createElement("input");
+  passedInput.name = "passedOn";
+  passedInput.type = "date";
+  passedInput.value = getTodayDateKey();
+  passedInput.title = "Datum polaganja";
+
+  const certificateInput = document.createElement("input");
+  certificateInput.name = "certificateNumber";
+  certificateInput.type = "text";
+  certificateInput.placeholder = "Broj uvjerenja";
+  certificateInput.title = "Broj uvjerenja";
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button people-training-inline-save";
+  saveButton.textContent = "Upiši";
+
+  const syncSourceControls = () => {
+    const mode = modeSelect.value;
+    workOrderSelect.hidden = mode !== "live";
+    testSelect.hidden = mode !== "online";
+  };
+  modeSelect.addEventListener("change", syncSourceControls);
+  syncSourceControls();
+
+  form.append(typeSelect, modeSelect, workOrderSelect, testSelect, passedInput, certificateInput, saveButton);
+  return form;
 }
 
 function createPeopleTrainingRecordCard(record = {}) {
   const card = document.createElement("article");
-  card.className = `people-training-person-card ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
-  card.tabIndex = 0;
-  card.setAttribute("role", "button");
-  card.setAttribute("aria-label", `Uredi osposobljavanja za ${record.fullName || "osobu"}`);
+  card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
 
   const main = document.createElement("div");
   main.className = "people-training-person-main";
@@ -7501,19 +7712,36 @@ function createPeopleTrainingRecordCard(record = {}) {
 
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
-  statuses.replaceChildren(...normalizePeopleTrainingItemsForUi(record.trainingItems).map(createPeopleTrainingStatusPill));
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+  statuses.replaceChildren(...trainingItems.map(createPeopleTrainingStatusPill));
+  const sourceTrail = document.createElement("small");
+  sourceTrail.className = "people-training-source-trail";
+  const visibleSources = trainingItems
+    .filter((item) => item.status === "valid" || item.status === "expiring")
+    .map((item) => [item.shortLabel, getPeopleTrainingItemSourceText(item)].filter(Boolean).join(": "))
+    .filter(Boolean)
+    .slice(0, 2);
+  sourceTrail.textContent = visibleSources.length
+    ? visibleSources.join(" | ")
+    : "Upiši ispit iz RN-a, online testa ili ručno.";
+  statuses.append(sourceTrail);
 
-  card.append(main, location, statuses);
-  card.addEventListener("click", () => {
+  const actions = document.createElement("div");
+  actions.className = "people-training-person-actions";
+  actions.append(createPeopleTrainingQuickExamForm(record));
+
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "ghost-button people-training-edit-button";
+  editButton.textContent = "Uredi detalje";
+  editButton.addEventListener("click", (event) => {
+    event.stopPropagation();
     populatePeopleTrainingForm(record);
     peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  card.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      populatePeopleTrainingForm(record);
-    }
-  });
+  actions.append(editButton);
+
+  card.append(main, location, statuses, actions);
   return card;
 }
 
@@ -7530,45 +7758,7 @@ function renderPeopleTrainingList() {
     peopleTrainingEmpty.hidden = records.length > 0;
   }
 
-  const groups = new Map();
-  records.forEach((record) => {
-    const key = [
-      record.companyId || "company",
-      record.locationId || "all",
-    ].join(":");
-    if (!groups.has(key)) {
-      groups.set(key, {
-        companyName: record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka",
-        locationName: record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije / nije vezano",
-        records: [],
-      });
-    }
-    groups.get(key).records.push(record);
-  });
-
-  const groupNodes = Array.from(groups.values()).map((group) => {
-    const section = document.createElement("section");
-    section.className = "people-training-company-group";
-    const head = document.createElement("div");
-    head.className = "people-training-company-head";
-    const copy = document.createElement("div");
-    const company = document.createElement("strong");
-    company.textContent = group.companyName;
-    const location = document.createElement("span");
-    location.textContent = group.locationName;
-    copy.append(company, location);
-    const count = document.createElement("span");
-    count.className = "soft-pill";
-    count.textContent = `${group.records.length} osoba`;
-    head.append(copy, count);
-    const list = document.createElement("div");
-    list.className = "people-training-company-people";
-    list.replaceChildren(...group.records.map(createPeopleTrainingRecordCard));
-    section.append(head, list);
-    return section;
-  });
-
-  peopleTrainingList.replaceChildren(...groupNodes);
+  peopleTrainingList.replaceChildren(...records.map(createPeopleTrainingRecordCard));
 }
 
 function renderPeopleTrainingModule() {
@@ -10591,6 +10781,15 @@ function persistRailHidden() {
   }
 }
 
+function ensurePeopleTrainingPanelInModuleView() {
+  if (!peopleTrainingPanel || !workspaceViews.module) {
+    return;
+  }
+  if (peopleTrainingPanel.parentElement !== workspaceViews.module) {
+    workspaceViews.module.append(peopleTrainingPanel);
+  }
+}
+
 function renderModuleView() {
   const moduleDefinitionKey = state.activeModuleItem === "offers" && state.activeSidebarItem === "purchase-orders"
     ? "purchase-orders"
@@ -10607,6 +10806,7 @@ function renderModuleView() {
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
   const isLearningTestsModule = state.activeModuleItem === "tests";
+  const isPeopleTrainingModule = state.activeModuleItem === "people-training";
   const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
@@ -10623,7 +10823,8 @@ function renderModuleView() {
     && !isSettingsModule
     && !isPeriodicsModule
     && !isDrawingStudioModule
-    && !isVehiclesModule;
+    && !isVehiclesModule
+    && !isPeopleTrainingModule;
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -10672,6 +10873,13 @@ function renderModuleView() {
 
   if (learningTestsModule) {
     learningTestsModule.hidden = !isLearningTestsModule;
+  }
+
+  if (peopleTrainingPanel) {
+    if (isPeopleTrainingModule) {
+      ensurePeopleTrainingPanelInModuleView();
+    }
+    peopleTrainingPanel.hidden = !isPeopleTrainingModule;
   }
 
   if (learningPeopleModule) {
@@ -10732,6 +10940,10 @@ function renderModuleView() {
 
   if (isLearningTestsModule) {
     renderLearningTestsModule();
+  }
+
+  if (isPeopleTrainingModule) {
+    renderPeopleTrainingModule();
   }
 
   if (isLearningPeopleModule) {
@@ -72068,7 +72280,6 @@ function renderManagement() {
   const activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab);
   const activePeopleTabConfig = getPeopleWorkspaceTabConfig(activePeopleTab);
   const isUsersTab = activePeopleTab === "users";
-  const isTrainingTab = activePeopleTab === "trainings";
   const isAbsenceTab = activePeopleTab === "annual-leave" || activePeopleTab === "sick-leave";
   const isAbsenceReportTab = activePeopleTab === "absence-report";
 
@@ -72115,10 +72326,6 @@ function renderManagement() {
 
   if (peopleUsersPanel) {
     peopleUsersPanel.hidden = !isUsersTab;
-  }
-
-  if (peopleTrainingPanel) {
-    peopleTrainingPanel.hidden = !isTrainingTab;
   }
 
   if (absenceModule) {
@@ -72172,9 +72379,6 @@ function renderManagement() {
 
   if (isUsersTab) {
     renderUsers();
-  }
-  if (isTrainingTab) {
-    renderPeopleTrainingModule();
   }
   if (isAbsenceTab) {
     renderAbsenceModule();

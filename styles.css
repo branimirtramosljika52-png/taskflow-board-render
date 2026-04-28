@@ -33048,9 +33048,57 @@ body.is-global-loading {
 
 .people-training-layout {
   display: grid;
-  grid-template-columns: minmax(420px, 0.82fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.people-training-flow-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(47, 111, 237, 0.11), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.92));
+}
+
+.people-training-flow-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(193, 209, 237, 0.78);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.people-training-flow-step span {
+  grid-row: span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #2f6fed, #d84dc1);
+  color: #fff;
+  font-weight: 950;
+  box-shadow: 0 12px 24px rgba(84, 105, 218, 0.18);
+}
+
+.people-training-flow-step strong {
+  color: #172743;
+  font-size: 0.96rem;
+}
+
+.people-training-flow-step small {
+  color: #627490;
+  font-weight: 700;
 }
 
 .people-training-form-card,
@@ -33065,6 +33113,14 @@ body.is-global-loading {
     radial-gradient(circle at top left, rgba(36, 100, 235, 0.09), transparent 38%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.92));
   box-shadow: 0 20px 52px rgba(35, 54, 98, 0.08);
+}
+
+.people-training-list-card {
+  order: 1;
+}
+
+.people-training-form-card {
+  order: 2;
 }
 
 .people-training-form-head,
@@ -33170,7 +33226,89 @@ body.is-global-loading {
 
 .people-training-list {
   display: grid;
+  gap: 10px;
+}
+
+.people-training-person-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(190px, 0.78fr) minmax(260px, 1fr) minmax(520px, 1.25fr);
   gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(203, 214, 234, 0.82);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(247, 251, 255, 0.91)),
+    radial-gradient(circle at right, rgba(47, 111, 237, 0.08), transparent 42%);
+  box-shadow: 0 12px 28px rgba(38, 62, 112, 0.07);
+}
+
+.people-training-person-row.is-valid {
+  border-color: rgba(57, 173, 114, 0.38);
+  box-shadow: inset 4px 0 0 rgba(57, 173, 114, 0.72), 0 12px 28px rgba(38, 62, 112, 0.07);
+}
+
+.people-training-person-row.is-expiring {
+  border-color: rgba(210, 151, 33, 0.44);
+  box-shadow: inset 4px 0 0 rgba(210, 151, 33, 0.76), 0 12px 28px rgba(38, 62, 112, 0.07);
+}
+
+.people-training-person-row.is-expired,
+.people-training-person-row.is-missing {
+  border-color: rgba(215, 80, 100, 0.35);
+  box-shadow: inset 4px 0 0 rgba(215, 80, 100, 0.72), 0 12px 28px rgba(38, 62, 112, 0.07);
+}
+
+.people-training-person-row .people-training-person-statuses {
+  justify-content: flex-start;
+}
+
+.people-training-person-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.people-training-inline-exam-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.25fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(135px, 0.8fr) minmax(110px, 0.75fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+
+.people-training-inline-exam-form select,
+.people-training-inline-exam-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(178, 198, 230, 0.88);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #172743;
+  font-weight: 780;
+}
+
+.people-training-inline-exam-form select:focus,
+.people-training-inline-exam-form input:focus {
+  border-color: rgba(47, 111, 237, 0.72);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+}
+
+.people-training-inline-save {
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 13px;
+}
+
+.people-training-edit-button {
+  min-height: 38px;
+  white-space: nowrap;
 }
 
 .people-training-company-group {
@@ -33269,6 +33407,17 @@ body.is-global-loading {
   gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
+}
+
+.people-training-source-trail {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: #657891;
+  font-size: 0.76rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .people-training-status-pill,
@@ -33567,7 +33716,11 @@ body.is-global-loading {
 
   .people-training-toolbar,
   .people-training-layout,
+  .people-training-flow-panel,
   .people-training-form-grid,
+  .people-training-person-row,
+  .people-training-person-actions,
+  .people-training-inline-exam-form,
   .people-training-person-card,
   .absence-toolbar,
   .absence-balance-row,

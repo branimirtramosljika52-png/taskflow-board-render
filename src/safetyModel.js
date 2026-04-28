@@ -5268,16 +5268,26 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
   const source = input && typeof input === "object" ? input : {};
   const normalizedType = getPersonTrainingTypeOption(source.type ?? typeOption.value);
   const validForever = normalizeBoolean(source.validForever, false);
+  const passedOn = normalizeOptionalDate(source.passedOn ?? source.passedDate);
+  const issuedOn = normalizeOptionalDate(source.issuedOn ?? source.issuedDate) || passedOn;
 
   return {
     type: normalizedType.value,
     label: normalizedType.label,
     shortLabel: normalizedType.shortLabel,
-    issuedOn: normalizeOptionalDate(source.issuedOn ?? source.issuedDate),
+    issuedOn,
+    passedOn,
     validUntil: validForever ? null : normalizeOptionalDate(source.validUntil ?? source.validTo ?? source.expiresOn),
     validForever,
     certificateNumber: normalizeText(source.certificateNumber ?? source.documentNumber ?? source.number).slice(0, 120),
     provider: normalizeText(source.provider ?? source.institution ?? source.organizer).slice(0, 180),
+    examMode: normalizeText(source.examMode ?? source.sourceMode).slice(0, 40),
+    workOrderId: normalizeText(source.workOrderId).slice(0, 120),
+    workOrderNumber: normalizeText(source.workOrderNumber).slice(0, 80),
+    learningTestId: normalizeText(source.learningTestId).slice(0, 120),
+    learningTestTitle: normalizeText(source.learningTestTitle).slice(0, 180),
+    certificateStatus: normalizeText(source.certificateStatus).slice(0, 40),
+    certificateDocumentId: normalizeText(source.certificateDocumentId).slice(0, 120),
     note: normalizeText(source.note).slice(0, 1000),
     status: normalizeText(source.status).toLowerCase(),
   };

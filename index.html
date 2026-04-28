@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428q" />
+    <link rel="stylesheet" href="/styles.css?v=20260428r" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -733,6 +733,17 @@
                     </svg>
                   </span>
                   <strong>Testovi</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="people-training">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M8.5 12.5a4 4 0 1 1 7 0"></path>
+                      <path d="M6 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"></path>
+                      <path d="m15.5 5.5 1.5 1.5 3-3"></path>
+                      <path d="M4 5.5h3"></path>
+                    </svg>
+                  </span>
+                  <strong>Osposobljavanja</strong>
                 </button>
               </div>
             </section>
@@ -3399,18 +3410,6 @@
                 <span class="people-workspace-tab-copy">Role, pristupi i dokumenti</span>
               </button>
               <button
-                id="people-tab-trainings"
-                type="button"
-                class="tab-button people-workspace-tab"
-                data-people-workspace-tab="trainings"
-                role="tab"
-                aria-controls="people-training-panel"
-                aria-selected="false"
-              >
-                <strong>Osposobljavanja</strong>
-                <span class="people-workspace-tab-copy">ZNR, požar, ADR i liječnički</span>
-              </button>
-              <button
                 id="people-tab-annual-leave"
                 type="button"
                 class="tab-button people-workspace-tab"
@@ -3707,9 +3706,9 @@
           <section id="people-training-panel" class="panel people-training-panel" hidden>
             <div class="section-heading offers-section-heading">
               <div>
-                <p class="section-kicker">People</p>
+                <p class="section-kicker">Learning</p>
                 <h3>Osposobljavanja ljudi</h3>
-                <p class="helper-copy module-copy">Evidencija po osobi, tvrtki i lokaciji: rad na siguran način, požar, zapaljive tekućine i plinovi, ADR, liječnički pregledi i stručna osposobljavanja.</p>
+                <p class="helper-copy module-copy">Jedna osoba je jedan red: tvrtka, OIB, položeni ispiti, RN ili online izvor i status uvjerenja na jednom mjestu.</p>
               </div>
               <div class="vehicles-panel-head-actions">
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
@@ -3717,6 +3716,24 @@
                 <input id="people-training-import-input" type="file" accept=".xlsx,.xls,.csv" hidden />
               </div>
             </div>
+
+            <section class="people-training-flow-panel" aria-label="Flow osposobljavanja">
+              <article class="people-training-flow-step">
+                <span>1</span>
+                <strong>RN / narudžba</strong>
+                <small>Odaberi radni nalog ili ručno evidentiraj osobu.</small>
+              </article>
+              <article class="people-training-flow-step">
+                <span>2</span>
+                <strong>Ispit</strong>
+                <small>Uživo ili online test iz Learning modula.</small>
+              </article>
+              <article class="people-training-flow-step">
+                <span>3</span>
+                <strong>Uvjerenje</strong>
+                <small>Spremno za izradu i prikaz klijentu na portalu.</small>
+              </article>
+            </section>
 
             <div class="people-training-stats" aria-label="Sažetak osposobljavanja">
               <article class="people-training-stat-card is-total">
@@ -3827,7 +3844,7 @@
                 <div class="people-training-list-head">
                   <div>
                     <p class="section-kicker">Pregled</p>
-                    <h4 id="people-training-list-title">Ljudi po tvrtkama</h4>
+                    <h4 id="people-training-list-title">Evidencija po osobama</h4>
                   </div>
                   <span id="people-training-list-count" class="soft-pill">0 zapisa</span>
                 </div>
@@ -7269,6 +7286,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260428aa"></script>
+    <script type="module" src="/src/main.js?v=20260428ab"></script>
   </body>
 </html>
