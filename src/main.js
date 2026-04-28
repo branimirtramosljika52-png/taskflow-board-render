@@ -21120,13 +21120,24 @@ function applyMeasurementAiMappingToColumn(mappingPatch = {}) {
 
 function getDefaultMeasurementQuickFillColumnMode(column = {}) {
   const label = normalizeLooseName([column.label, column.id].filter(Boolean).join(" "));
+  if (label.includes("mjerno mjesto") || label.includes("mjerno_mjesto")) {
+    return "itemIndex";
+  }
   if (label.includes("etaza") || label.includes("kat")) {
     return "floor";
   }
-  if (label.includes("prostor") || label.includes("lokacija") || label.includes("mjesto")) {
+  if (label.includes("prostorija") || label.includes("lokacija")) {
     return "room";
   }
-  if (label.includes("opis") || label.includes("naziv") || label.includes("pozicija") || label.includes("element")) {
+  if (
+    label.includes("opis")
+    || label.includes("naziv")
+    || label.includes("pozicija")
+    || label.includes("element")
+    || label.includes("oznaka")
+    || label.includes("strujni")
+    || label.includes("uredaj")
+  ) {
     return "item";
   }
   if (label.includes("redni") || label === "broj" || label.includes(" rb")) {
@@ -21135,7 +21146,27 @@ function getDefaultMeasurementQuickFillColumnMode(column = {}) {
   if (label.includes("kolicina") || label.includes("kom")) {
     return "quantity";
   }
-  return "empty";
+  return "custom";
+}
+
+function getMeasurementQuickFillColumnPlaceholder(mode = "custom", column = {}) {
+  const label = String(column?.label || column?.id || "vrijednost").trim();
+  switch (mode) {
+    case "floor":
+      return "Koristi gore upisanu etažu";
+    case "room":
+      return "Koristi gore upisanu prostoriju";
+    case "item":
+      return "Koristi gore upisanu stavku";
+    case "itemIndex":
+      return "Automatski 1, 2, 3...";
+    case "quantity":
+      return "Koristi ukupnu količinu";
+    case "empty":
+      return "Ostavi prazno";
+    default:
+      return `Vrijednost za ${label}`;
+  }
 }
 
 function collectMeasurementQuickFillColumnSettings() {
@@ -21178,39 +21209,64 @@ function renderMeasurementQuickFillColumnMap() {
   const fragment = document.createDocumentFragment();
   const title = document.createElement("div");
   title.className = "measurement-quick-column-map-title";
-  title.textContent = "Što ide u koju kolonu";
+  title.textContent = "Vrijednosti po kolonama";
   fragment.append(title);
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "measurement-quick-column-map-copy";
+  subtitle.textContent = "Odaberi izvor ili upiši fiksnu vrijednost koja se kopira u sve generirane redove. Mjerne vrijednosti možeš ostaviti prazne i upisati ih kasnije u tablici.";
+  fragment.append(subtitle);
+
+  const header = document.createElement("div");
+  header.className = "measurement-quick-column-grid-head";
+  ["Kolona", "Što punim", "Vrijednost"].forEach((label) => {
+    const item = document.createElement("span");
+    item.textContent = label;
+    header.append(item);
+  });
+  fragment.append(header);
 
   editableColumns.forEach((column) => {
     const row = document.createElement("div");
     row.className = "measurement-quick-column-row";
     row.dataset.measurementQuickColumnId = column.id;
 
-    const label = document.createElement("span");
+    const label = document.createElement("div");
     label.className = "measurement-quick-column-label";
-    label.textContent = column.label || column.id;
+    const labelTitle = document.createElement("strong");
+    labelTitle.textContent = column.label || column.id;
+    const labelMeta = document.createElement("small");
+    labelMeta.textContent = column.id || "kolona";
+    label.append(labelTitle, labelMeta);
 
     const select = document.createElement("select");
     select.dataset.measurementQuickMode = "true";
     replaceSelectOptions(select, [
       { value: "empty", label: "Prazno" },
+      { value: "custom", label: "Upisana vrijednost" },
       { value: "floor", label: "Etaža" },
       { value: "room", label: "Prostorija" },
       { value: "item", label: "Naziv stavke" },
       { value: "itemIndex", label: "Redni broj" },
       { value: "quantity", label: "Količina" },
-      { value: "custom", label: "Moja vrijednost" },
     ], previousSettings.get(column.id)?.mode || getDefaultMeasurementQuickFillColumnMode(column));
 
     const customInput = document.createElement("input");
     customInput.type = "text";
     customInput.dataset.measurementQuickCustom = "true";
-    customInput.placeholder = "Vrijednost za kopiranje";
     customInput.value = previousSettings.get(column.id)?.customValue || "";
     const syncCustomVisibility = () => {
-      customInput.hidden = select.value !== "custom";
+      const isCustom = select.value === "custom";
+      row.classList.toggle("uses-custom", isCustom);
+      customInput.disabled = !isCustom;
+      customInput.placeholder = getMeasurementQuickFillColumnPlaceholder(select.value, column);
     };
-    select.addEventListener("change", syncCustomVisibility);
+    select.addEventListener("change", () => {
+      syncCustomVisibility();
+      if (select.value === "custom") {
+        customInput.focus({ preventScroll: true });
+      }
+    });
     syncCustomVisibility();
 
     row.append(label, select, customInput);
