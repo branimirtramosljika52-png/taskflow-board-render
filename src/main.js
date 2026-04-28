@@ -20746,6 +20746,10 @@ function isMeasurementInputElement(element) {
   return element instanceof HTMLInputElement && element.classList.contains("measurement-cell-input");
 }
 
+function isMeasurementColumnTitleInputElement(element) {
+  return element instanceof HTMLInputElement && element.classList.contains("measurement-column-title");
+}
+
 function getMeasurementFormulaInputElement() {
   if (!state.measurementSheet.editingCell) {
     return null;
@@ -24389,8 +24393,22 @@ function renderMeasurementSheet() {
     } else {
       title.type = "text";
       title.value = column.label;
+      title.title = "Uredi naziv kolone";
+      ["pointerdown", "mousedown", "click", "dblclick", "keydown", "copy", "cut", "paste"].forEach((eventName) => {
+        title.addEventListener(eventName, (event) => {
+          event.stopPropagation();
+        });
+      });
       title.addEventListener("input", (event) => {
         column.label = event.currentTarget.value || "Nova kolona";
+      });
+      title.addEventListener("change", () => {
+        handleMeasurementSheetMutation();
+      });
+      title.addEventListener("blur", () => {
+        column.label = title.value.trim() || "Nova kolona";
+        title.value = column.label;
+        handleMeasurementSheetMutation();
       });
     }
 
@@ -74889,6 +74907,7 @@ document.addEventListener("keydown", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-toolbar"));
   const isMeasurementContextMenuActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-context-menu"));
+  const isMeasurementColumnTitleFocused = isMeasurementColumnTitleInputElement(activeElement);
   const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
   const isMeasurementFormulaBarFocused = activeElement === measurementFormulaInput;
   const isMeasurementEditorFocused = isMeasurementInputFocused || isMeasurementFormulaBarFocused;
@@ -74896,6 +74915,10 @@ document.addEventListener("keydown", (event) => {
     ? measurementFormulaInput?.value ?? ""
     : (isMeasurementInputFocused ? activeElement.value : "");
   const isFormulaEditing = isMeasurementEditorFocused && isMeasurementFormula(activeEditorValue);
+
+  if (isMeasurementColumnTitleFocused) {
+    return;
+  }
 
   if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive) {
     return;
@@ -75077,9 +75100,14 @@ document.addEventListener("copy", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-meta"));
   const isMeasurementToolbarActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-sheet-toolbar"));
+  const isMeasurementColumnTitleFocused = isMeasurementColumnTitleInputElement(activeElement);
   const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
   const isMeasurementFormulaBarFocused = activeElement === measurementFormulaInput;
   const range = getMeasurementSelectedRange();
+
+  if (isMeasurementColumnTitleFocused) {
+    return;
+  }
 
   if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive || !range) {
     return;
@@ -75112,8 +75140,13 @@ document.addEventListener("paste", (event) => {
     && Boolean(activeElement.closest(".measurement-sheet-meta"));
   const isMeasurementToolbarActive = activeElement instanceof HTMLElement
     && Boolean(activeElement.closest(".measurement-sheet-toolbar"));
+  const isMeasurementColumnTitleFocused = isMeasurementColumnTitleInputElement(activeElement);
   const isMeasurementInputFocused = isMeasurementInputElement(activeElement);
   const isMeasurementFormulaBarFocused = activeElement === measurementFormulaInput;
+
+  if (isMeasurementColumnTitleFocused) {
+    return;
+  }
 
   if ((!isMeasurementGridActive && !state.measurementSheet.activeCell) || isMeasurementMetaActive) {
     return;
