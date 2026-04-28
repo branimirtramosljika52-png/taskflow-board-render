@@ -33101,6 +33101,113 @@ body.is-global-loading {
   font-weight: 700;
 }
 
+.people-training-exam-overview-card {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(57, 173, 114, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(248, 252, 255, 0.92));
+  box-shadow: 0 18px 44px rgba(35, 54, 98, 0.07);
+}
+
+.people-training-exam-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.people-training-exam-head h4 {
+  margin: 0;
+  color: #172743;
+}
+
+.people-training-exam-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: min(100%, 520px);
+}
+
+.people-training-exam-controls select {
+  flex: 1 1 280px;
+  min-width: 220px;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid rgba(178, 198, 230, 0.9);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #172743;
+  font-weight: 850;
+}
+
+.people-training-exam-list {
+  display: grid;
+  gap: 8px;
+}
+
+.people-training-exam-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(210px, 0.82fr) minmax(240px, 1fr) minmax(180px, 0.7fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 214, 234, 0.82);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.people-training-exam-row.is-valid {
+  border-color: rgba(57, 173, 114, 0.4);
+  background: linear-gradient(135deg, rgba(244, 255, 249, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.people-training-exam-row.is-expiring {
+  border-color: rgba(210, 151, 33, 0.42);
+  background: linear-gradient(135deg, rgba(255, 249, 235, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.people-training-exam-row.is-expired,
+.people-training-exam-row.is-missing {
+  border-color: rgba(215, 80, 100, 0.35);
+  background: linear-gradient(135deg, rgba(255, 244, 247, 0.95), rgba(255, 255, 255, 0.94));
+}
+
+.people-training-exam-person,
+.people-training-exam-company,
+.people-training-exam-meta,
+.people-training-exam-status {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-exam-person strong,
+.people-training-exam-company strong,
+.people-training-exam-meta strong {
+  overflow: hidden;
+  color: #172743;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-exam-person span,
+.people-training-exam-company span,
+.people-training-exam-meta span,
+.people-training-exam-status span:not(.people-training-status-pill) {
+  overflow: hidden;
+  color: #657891;
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .people-training-form-card,
 .people-training-list-card {
   display: grid;
@@ -33717,6 +33824,8 @@ body.is-global-loading {
   .people-training-toolbar,
   .people-training-layout,
   .people-training-flow-panel,
+  .people-training-exam-head,
+  .people-training-exam-row,
   .people-training-form-grid,
   .people-training-person-row,
   .people-training-person-actions,
@@ -33730,6 +33839,17 @@ body.is-global-loading {
 
   .people-training-person-statuses {
     justify-content: flex-start;
+  }
+
+  .people-training-exam-controls {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .people-training-exam-head,
+  .people-training-exam-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

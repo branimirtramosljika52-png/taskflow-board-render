@@ -1461,6 +1461,7 @@ const state = {
     trainingType: "all",
     status: "all",
   },
+  peopleTrainingExamSelection: "all",
   activePeopleTrainingRecordId: "",
   absenceReportMonth: new Date().toISOString().slice(0, 7),
   absenceReportFilters: {
@@ -4547,6 +4548,11 @@ const peopleTrainingTotalCount = document.querySelector("#people-training-total-
 const peopleTrainingValidCount = document.querySelector("#people-training-valid-count");
 const peopleTrainingExpiringCount = document.querySelector("#people-training-expiring-count");
 const peopleTrainingExpiredCount = document.querySelector("#people-training-expired-count");
+const peopleTrainingExamSelect = document.querySelector("#people-training-exam-select");
+const peopleTrainingOpenExamButton = document.querySelector("#people-training-open-exam");
+const peopleTrainingExamSummary = document.querySelector("#people-training-exam-summary");
+const peopleTrainingExamList = document.querySelector("#people-training-exam-list");
+const peopleTrainingExamEmpty = document.querySelector("#people-training-exam-empty");
 const peopleTrainingSearchInput = document.querySelector("#people-training-search");
 const peopleTrainingCompanyFilterInput = document.querySelector("#people-training-company-filter");
 const peopleTrainingLocationFilterInput = document.querySelector("#people-training-location-filter");
@@ -7236,6 +7242,168 @@ function renderPeopleTrainingStats() {
   }
 }
 
+function buildPeopleTrainingExamOverviewOptions() {
+  const trainingTypeOptions = PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({
+    value: `type:${option.value}`,
+    label: `Vrsta: ${option.label}`,
+  }));
+  const onlineTestOptions = sortLearningTests(state.learningTests ?? []).map((test) => ({
+    value: `test:${test.id}`,
+    label: `Online test: ${test.title || "Bez naziva"}`,
+  }));
+  return [
+    { value: "all", label: "Svi položeni ispiti" },
+    ...trainingTypeOptions,
+    ...onlineTestOptions,
+  ];
+}
+
+function isPeopleTrainingItemPassed(item = {}) {
+  const status = String(item.status || "").trim().toLowerCase();
+  if (status === "missing" || status === "not_required") {
+    return false;
+  }
+  return Boolean(
+    item.passedOn
+      || item.issuedOn
+      || item.certificateNumber
+      || item.workOrderNumber
+      || item.learningTestTitle
+      || item.certificateStatus === "ready"
+      || item.certificateStatus === "issued",
+  );
+}
+
+function getPeopleTrainingExamOverviewRows(selection = "all") {
+  const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
+    ...state.peopleTrainingFilters,
+    trainingType: "all",
+    status: "all",
+  }));
+  const normalizedSelection = String(selection || "all").trim();
+  const [selectionKind, selectionId = ""] = normalizedSelection.split(":");
+
+  return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
+    .filter((item) => {
+      if (!isPeopleTrainingItemPassed(item)) {
+        return false;
+      }
+      if (selectionKind === "type") {
+        return item.type === selectionId;
+      }
+      if (selectionKind === "test") {
+        return String(item.learningTestId || "") === selectionId;
+      }
+      return true;
+    })
+    .map((item) => ({ record, item })));
+}
+
+function createPeopleTrainingExamPassedRow({ record = {}, item = {} } = {}) {
+  const row = document.createElement("article");
+  row.className = `people-training-exam-row ${getPeopleTrainingStatusClass(item.status)}`;
+
+  const person = document.createElement("div");
+  person.className = "people-training-exam-person";
+  const name = document.createElement("strong");
+  name.textContent = record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba bez imena";
+  const personMeta = document.createElement("span");
+  personMeta.textContent = [
+    record.oib ? `OIB ${record.oib}` : "",
+    record.jobTitle,
+    record.email,
+  ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+  person.append(name, personMeta);
+
+  const company = document.createElement("div");
+  company.className = "people-training-exam-company";
+  const companyName = document.createElement("strong");
+  companyName.textContent = record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka";
+  const locationName = document.createElement("span");
+  locationName.textContent = record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije";
+  company.append(companyName, locationName);
+
+  const exam = document.createElement("div");
+  exam.className = "people-training-exam-meta";
+  const examName = document.createElement("strong");
+  examName.textContent = item.label || item.type || "Ispit";
+  const examSource = document.createElement("span");
+  examSource.textContent = getPeopleTrainingItemSourceText(item) || "Ručno evidentirano";
+  exam.append(examName, examSource);
+
+  const status = document.createElement("div");
+  status.className = "people-training-exam-status";
+  const statusPill = createPeopleTrainingStatusPill(item);
+  const certificate = document.createElement("span");
+  certificate.textContent = item.certificateNumber
+    ? `Uvjerenje ${item.certificateNumber}`
+    : item.certificateStatus === "ready"
+      ? "Uvjerenje spremno"
+      : "Bez broja uvjerenja";
+  status.append(statusPill, certificate);
+
+  row.append(person, company, exam, status);
+  return row;
+}
+
+function syncPeopleTrainingExamOverviewOptions() {
+  if (!(peopleTrainingExamSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+  const options = buildPeopleTrainingExamOverviewOptions();
+  const selectedValue = options.some((option) => option.value === state.peopleTrainingExamSelection)
+    ? state.peopleTrainingExamSelection
+    : "all";
+  replaceSelectOptions(peopleTrainingExamSelect, options, selectedValue);
+  state.peopleTrainingExamSelection = peopleTrainingExamSelect.value || "all";
+}
+
+function renderPeopleTrainingExamOverview() {
+  if (!peopleTrainingExamList) {
+    return;
+  }
+
+  syncPeopleTrainingExamOverviewOptions();
+  const selection = state.peopleTrainingExamSelection || "all";
+  const rows = getPeopleTrainingExamOverviewRows(selection);
+  const selectedOption = peopleTrainingExamSelect instanceof HTMLSelectElement
+    ? peopleTrainingExamSelect.selectedOptions?.[0]?.textContent || ""
+    : "";
+  const isOnlineTestSelection = selection.startsWith("test:");
+
+  if (peopleTrainingOpenExamButton) {
+    peopleTrainingOpenExamButton.hidden = !isOnlineTestSelection;
+    peopleTrainingOpenExamButton.disabled = !isOnlineTestSelection;
+  }
+  if (peopleTrainingExamSummary) {
+    peopleTrainingExamSummary.textContent = rows.length === 1
+      ? `${selectedOption || "Odabrani ispit"} ima 1 osobu s evidentiranim polaganjem.`
+      : `${selectedOption || "Odabrani ispit"} ima ${rows.length} osoba s evidentiranim polaganjem.`;
+  }
+  if (peopleTrainingExamEmpty) {
+    peopleTrainingExamEmpty.hidden = rows.length > 0;
+  }
+  peopleTrainingExamList.replaceChildren(...rows.map(createPeopleTrainingExamPassedRow));
+}
+
+function openSelectedPeopleTrainingExam() {
+  const selection = state.peopleTrainingExamSelection || peopleTrainingExamSelect?.value || "";
+  if (!selection.startsWith("test:")) {
+    return;
+  }
+  const testId = selection.slice("test:".length);
+  const test = (state.learningTests ?? []).find((item) => String(item.id) === String(testId));
+  if (!test) {
+    setPeopleTrainingFeedback("Taj online ispit više nije pronađen.", "error");
+    return;
+  }
+
+  activateSidebarItem("tests", { expandSidebar: true });
+  hydrateLearningTestForm(test);
+  renderSidebarState();
+  renderTopbarBreadcrumbs();
+}
+
 function renderPeopleTrainingGrid(record = null) {
   if (!peopleTrainingFormTrainingGrid) {
     return;
@@ -7775,6 +7943,7 @@ function renderPeopleTrainingModule() {
     const active = state.peopleTrainingRecords.find((item) => String(item.id) === String(state.activePeopleTrainingRecordId));
     renderPeopleTrainingGrid(active || null);
   }
+  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 }
 
@@ -77634,6 +77803,7 @@ peopleTrainingDeleteButton?.addEventListener("click", () => {
 
 peopleTrainingSearchInput?.addEventListener("input", () => {
   state.peopleTrainingFilters.query = peopleTrainingSearchInput.value.trim();
+  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
@@ -77645,17 +77815,29 @@ peopleTrainingCompanyFilterInput?.addEventListener("change", () => {
 
 peopleTrainingLocationFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.locationId = peopleTrainingLocationFilterInput.value || "all";
+  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
 peopleTrainingTypeFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.trainingType = peopleTrainingTypeFilterInput.value || "all";
+  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
 peopleTrainingStatusFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.status = peopleTrainingStatusFilterInput.value || "all";
+  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
+});
+
+peopleTrainingExamSelect?.addEventListener("change", () => {
+  state.peopleTrainingExamSelection = peopleTrainingExamSelect.value || "all";
+  renderPeopleTrainingExamOverview();
+});
+
+peopleTrainingOpenExamButton?.addEventListener("click", () => {
+  openSelectedPeopleTrainingExam();
 });
 
 peopleTrainingCompanyInput?.addEventListener("change", () => {

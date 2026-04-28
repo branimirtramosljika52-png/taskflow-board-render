@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428r" />
+    <link rel="stylesheet" href="/styles.css?v=20260428s" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3758,6 +3758,22 @@
               </article>
             </div>
 
+            <section class="people-training-exam-overview-card" aria-labelledby="people-training-exam-title">
+              <div class="people-training-exam-head">
+                <div>
+                  <p class="section-kicker">Ispiti</p>
+                  <h4 id="people-training-exam-title">Tko je položio ispit</h4>
+                </div>
+                <div class="people-training-exam-controls">
+                  <select id="people-training-exam-select" aria-label="Odaberi ispit za pregled"></select>
+                  <button id="people-training-open-exam" type="button" class="ghost-button">Otvori ispit</button>
+                </div>
+              </div>
+              <p id="people-training-exam-summary" class="helper-copy module-copy">Odaberi ispit i vidi osobe koje imaju položen rezultat ili spremno uvjerenje.</p>
+              <div id="people-training-exam-list" class="people-training-exam-list"></div>
+              <p id="people-training-exam-empty" class="empty-state" hidden>Nema položenih osoba za odabrani ispit.</p>
+            </section>
+
             <div class="people-training-toolbar">
               <label>
                 <span>Pretraga</span>
@@ -7286,6 +7302,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260428ab"></script>
+    <script type="module" src="/src/main.js?v=20260428ac"></script>
   </body>
 </html>
