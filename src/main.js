@@ -1609,6 +1609,13 @@ const state = {
       tipkaloAuthorizationHolderUserId: "",
     },
     overrides: {},
+    aiAssistant: {
+      scopeKey: "",
+      files: [],
+      status: "idle",
+      message: "",
+      lastPlan: null,
+    },
   },
   documentTemplateSidebarPanels: {
     referenceCollapsed: false,
@@ -29813,6 +29820,363 @@ function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
   return pill;
 }
 
+function getDocumentTemplateRuntimeAiAssistantScopeKey(template = {}, workOrder = {}) {
+  return [
+    String(template?.id || state.activeDocumentTemplateId || "template").trim() || "template",
+    String(workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId || "work-order").trim() || "work-order",
+  ].join("::");
+}
+
+function getDocumentTemplateRuntimeAiAssistantState(template = {}, workOrder = {}) {
+  const scopeKey = getDocumentTemplateRuntimeAiAssistantScopeKey(template, workOrder);
+  const current = state.documentTemplateRuntime.aiAssistant;
+  if (!current || current.scopeKey !== scopeKey) {
+    state.documentTemplateRuntime.aiAssistant = {
+      scopeKey,
+      files: [],
+      status: "idle",
+      message: "",
+      lastPlan: null,
+    };
+  }
+  return state.documentTemplateRuntime.aiAssistant;
+}
+
+function createDocumentTemplateRuntimeAiFileMeta(file = {}) {
+  const name = String(file?.name || "").trim();
+  const size = Number(file?.size || 0);
+  const type = String(file?.type || "").trim();
+  const lastModified = Number(file?.lastModified || 0);
+  const safeName = name || "stari-zapisnik";
+  return {
+    id: [safeName, Number.isFinite(size) ? size : 0, Number.isFinite(lastModified) ? lastModified : 0].join("::"),
+    name: safeName,
+    size: Number.isFinite(size) ? size : 0,
+    type,
+    lastModified: Number.isFinite(lastModified) ? lastModified : 0,
+  };
+}
+
+function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder = {}) {
+  const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  const incoming = Array.from(files ?? [])
+    .map(createDocumentTemplateRuntimeAiFileMeta)
+    .filter((file) => file.name);
+  if (incoming.length === 0) {
+    assistant.status = "error";
+    assistant.message = "Nisam dobio datoteku za AI pripremu.";
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+    return;
+  }
+
+  const fileMap = new Map((assistant.files ?? []).map((file) => [String(file.id || file.name), file]));
+  incoming.forEach((file) => {
+    fileMap.set(String(file.id || file.name), file);
+  });
+  assistant.files = Array.from(fileMap.values()).slice(0, 12);
+  assistant.status = "ready";
+  assistant.lastPlan = null;
+  assistant.message = assistant.files.length === 1
+    ? "1 datoteka je spremna za AI pripremu."
+    : `${assistant.files.length} datoteka je spremno za AI pripremu.`;
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+}
+
+function removeDocumentTemplateRuntimeAiFile(fileId, template = {}, workOrder = {}) {
+  const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  assistant.files = (assistant.files ?? []).filter((file) => String(file.id || file.name) !== String(fileId));
+  assistant.lastPlan = null;
+  assistant.status = assistant.files.length > 0 ? "ready" : "idle";
+  assistant.message = assistant.files.length > 0
+    ? (assistant.files.length === 1
+      ? "1 datoteka ostaje za AI pripremu."
+      : `${assistant.files.length} datoteka ostaje za AI pripremu.`)
+    : "";
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+}
+
+function getDocumentTemplateRuntimeAiFields(template = {}) {
+  const fields = Array.isArray(template?.customFields) && template.customFields.length > 0
+    ? template.customFields
+    : documentTemplateFieldDrafts;
+  return fields
+    .map((field, index) => {
+      const config = normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+      if (!hasDocumentTemplateFieldAiConfig(config, field)) {
+        return null;
+      }
+      return {
+        id: String(field?.id || `field-${index + 1}`),
+        key: config.key || String(field?.key || field?.wordLabel || field?.label || `field_${index + 1}`),
+        label: config.label || String(field?.label || field?.wordLabel || `Polje ${index + 1}`),
+        type: config.type || String(field?.type || "text"),
+        required: Boolean(config.required || field?.required),
+        ai: config,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
+  const fields = Array.isArray(template?.customFields) && template.customFields.length > 0
+    ? template.customFields
+    : documentTemplateFieldDrafts;
+  const columns = [];
+  fields.forEach((field) => {
+    if (String(field?.type || "").trim() !== "measurement_table") {
+      return;
+    }
+    const sheet = field?.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(field);
+    (Array.isArray(sheet?.columns) ? sheet.columns : []).forEach((column) => {
+      const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+      if (!hasMeasurementColumnAiMapping(aiMapping)) {
+        return;
+      }
+      columns.push({
+        fieldId: String(field?.id || ""),
+        fieldLabel: String(field?.label || field?.wordLabel || "Mjerenje"),
+        columnId: String(column?.id || ""),
+        key: aiMapping.key || String(column?.id || ""),
+        label: aiMapping.label || String(column?.label || column?.id || "Kolona"),
+        type: aiMapping.type || aiMapping.format || "text",
+        aiMapping,
+      });
+    });
+  });
+  return columns;
+}
+
+async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
+  const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  if (!assistant.files?.length) {
+    assistant.status = "error";
+    assistant.message = "Prvo dodaj stari zapisnik ili sliku pa pokreni AI.";
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+    return;
+  }
+
+  const fields = getDocumentTemplateRuntimeAiFields(template);
+  const columns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
+  assistant.status = "loading";
+  assistant.message = "Pripremam AI plan. Sadržaj datoteka se još ne šalje, tokeni se ne troše.";
+  assistant.lastPlan = null;
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+
+  try {
+    await loadOpenAiIntegrationStatus({ force: true });
+    const payload = await apiRequest("/ai/openai/prepare", {
+      method: "POST",
+      body: {
+        purpose: "document-template-runtime-ai-prefill",
+        organizationId: state.activeOrganizationId || "",
+        templateId: template?.id || state.activeDocumentTemplateId || "",
+        workOrderId: workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId || "",
+        workOrderNumber: workOrder?.workOrderNumber || workOrder?.number || "",
+        files: assistant.files,
+        fields,
+        columns,
+        dryRun: true,
+      },
+    });
+    const summary = payload?.summary ?? {};
+    assistant.status = "success";
+    assistant.lastPlan = payload;
+    assistant.message = `AI plan spreman: ${summary.files ?? assistant.files.length} datoteka, ${summary.fields ?? fields.length} polja i ${summary.excelColumns ?? columns.length} Excel kolona. Dry-run, bez potrošnje tokena.`;
+  } catch (error) {
+    assistant.status = "error";
+    assistant.message = error?.message || "AI priprema trenutno nije dostupna.";
+  }
+
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+}
+
+function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder = {}) {
+  const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
+  const aiFields = getDocumentTemplateRuntimeAiFields(template);
+  const aiColumns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
+
+  const panel = document.createElement("section");
+  panel.className = "document-template-runtime-ai-assistant";
+  panel.classList.toggle("is-loading", assistant.status === "loading");
+  panel.classList.toggle("is-success", assistant.status === "success");
+  panel.classList.toggle("is-error", assistant.status === "error");
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.multiple = true;
+  fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*";
+  fileInput.hidden = true;
+
+  const intro = document.createElement("div");
+  intro.className = "document-template-runtime-ai-intro";
+  const introHead = document.createElement("div");
+  introHead.className = "document-template-runtime-ai-head";
+  const mark = document.createElement("span");
+  mark.className = "document-template-runtime-ai-mark";
+  mark.innerHTML = getWorkOrderIconMarkup("document");
+  const copy = document.createElement("div");
+  copy.className = "document-template-runtime-ai-copy";
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "document-template-runtime-ai-eyebrow";
+  eyebrow.textContent = "AI asistent";
+  const title = document.createElement("strong");
+  title.textContent = "Uvezi stari zapisnik i pripremi popunjavanje";
+  const description = document.createElement("p");
+  description.textContent = "Dodaj PDF, Word ili sliku starog zapisnika. Aplikacija priprema AI mapiranje za polja i Excel tablice, ali trenutno ne šalje sadržaj OpenAI-ju.";
+  const connectionStatus = document.createElement("span");
+  connectionStatus.className = "document-template-ai-connection-status document-template-runtime-ai-connection";
+  syncOpenAiIntegrationStatusTargets(connectionStatus);
+  void loadOpenAiIntegrationStatus().then(() => {
+    syncOpenAiIntegrationStatusTargets(connectionStatus);
+  });
+  copy.append(eyebrow, title, description, connectionStatus);
+  introHead.append(mark, copy);
+
+  const stats = document.createElement("div");
+  stats.className = "document-template-runtime-ai-stats";
+  [
+    { label: "AI polja", value: aiFields.length },
+    { label: "Excel kolone", value: aiColumns.length },
+    { label: "Datoteke", value: assistant.files?.length || 0 },
+  ].forEach((item) => {
+    const stat = document.createElement("span");
+    stat.className = "document-template-runtime-ai-stat";
+    const value = document.createElement("strong");
+    value.textContent = String(item.value);
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    stat.append(value, label);
+    stats.append(stat);
+  });
+  intro.append(introHead, stats);
+
+  const uploadWrap = document.createElement("div");
+  uploadWrap.className = "document-template-runtime-ai-upload";
+  const dropzone = document.createElement("button");
+  dropzone.type = "button";
+  dropzone.className = "document-template-runtime-ai-dropzone";
+  const dropIcon = document.createElement("span");
+  dropIcon.className = "document-template-runtime-ai-drop-icon";
+  dropIcon.innerHTML = getWorkOrderIconMarkup("download");
+  const dropCopy = document.createElement("span");
+  dropCopy.className = "document-template-runtime-ai-drop-copy";
+  const dropTitle = document.createElement("strong");
+  dropTitle.textContent = "Dodaj stari zapisnik";
+  const dropMeta = document.createElement("span");
+  dropMeta.textContent = "Klikni ili povuci datoteke ovdje.";
+  dropCopy.append(dropTitle, dropMeta);
+  dropzone.append(dropIcon, dropCopy);
+
+  let dragDepth = 0;
+  dropzone.addEventListener("click", () => {
+    fileInput.click();
+  });
+  fileInput.addEventListener("change", () => {
+    addDocumentTemplateRuntimeAiFiles(fileInput.files, template, workOrder);
+    fileInput.value = "";
+  });
+  dropzone.addEventListener("dragenter", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepth += 1;
+    dropzone.classList.add("is-drag-over");
+  });
+  dropzone.addEventListener("dragover", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  });
+  dropzone.addEventListener("dragleave", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      dropzone.classList.remove("is-drag-over");
+    }
+  });
+  dropzone.addEventListener("drop", (event) => {
+    if (!isFileDragEvent(event)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepth = 0;
+    dropzone.classList.remove("is-drag-over");
+    addDocumentTemplateRuntimeAiFiles(event.dataTransfer?.files, template, workOrder);
+  });
+
+  const filesWrap = document.createElement("div");
+  filesWrap.className = "document-template-runtime-ai-files";
+  if (!assistant.files?.length) {
+    const empty = document.createElement("span");
+    empty.className = "document-template-runtime-ai-empty";
+    empty.textContent = "Nema dodanih datoteka. Za prvi korak dovoljan je stari PDF zapisnik.";
+    filesWrap.append(empty);
+  } else {
+    assistant.files.forEach((file) => {
+      const chip = document.createElement("article");
+      chip.className = "document-template-runtime-ai-file";
+      const fileCopy = document.createElement("span");
+      const fileName = document.createElement("strong");
+      fileName.textContent = file.name || "Datoteka";
+      const fileMeta = document.createElement("small");
+      fileMeta.textContent = [
+        formatFileSize(file.size),
+        file.type || "datoteka",
+      ].filter(Boolean).join(" · ");
+      fileCopy.append(fileName, fileMeta);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "document-template-runtime-ai-file-remove";
+      removeButton.title = "Makni datoteku";
+      removeButton.setAttribute("aria-label", `Makni ${file.name || "datoteku"}`);
+      removeButton.innerHTML = getWorkOrderIconMarkup("trash");
+      removeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeDocumentTemplateRuntimeAiFile(file.id || file.name, template, workOrder);
+      });
+      chip.append(fileCopy, removeButton);
+      filesWrap.append(chip);
+    });
+  }
+  uploadWrap.append(fileInput, dropzone, filesWrap);
+
+  const action = document.createElement("div");
+  action.className = "document-template-runtime-ai-action";
+  const actionTitle = document.createElement("strong");
+  actionTitle.textContent = assistant.status === "loading" ? "AI priprema..." : "Spremno za provjeru";
+  const actionMeta = document.createElement("span");
+  actionMeta.textContent = assistant.status === "success"
+    ? "Plan je pripremljen. Sljedeći korak je live čitanje sadržaja kad ga uključimo."
+    : "Pokretanje sada radi samo sigurni dry-run plan.";
+  const runButton = document.createElement("button");
+  runButton.type = "button";
+  runButton.className = "primary-button document-template-runtime-ai-run";
+  runButton.disabled = assistant.status === "loading" || !assistant.files?.length;
+  const runIcon = document.createElement("span");
+  runIcon.className = "document-template-runtime-ai-run-icon";
+  runIcon.innerHTML = getWorkOrderIconMarkup("measurement");
+  const runLabel = document.createElement("span");
+  runLabel.textContent = assistant.status === "loading" ? "Pripremam..." : "Pokreni AI";
+  runButton.append(runIcon, runLabel);
+  runButton.addEventListener("click", () => {
+    void runDocumentTemplateRuntimeAiAssistant(template, workOrder);
+  });
+  const status = document.createElement("p");
+  status.className = "document-template-runtime-ai-message";
+  status.textContent = assistant.message || "Upload starog zapisnika pa pokreni AI pripremu.";
+  action.append(actionTitle, actionMeta, runButton, status);
+
+  panel.append(intro, uploadWrap, action);
+  return panel;
+}
+
 function closeDocumentTemplateFieldAiWizard({ render = false } = {}) {
   document.querySelector(".document-template-ai-wizard-backdrop")?.remove();
   activeDocumentTemplateAiFieldId = "";
@@ -43608,6 +43972,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
+    shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
     shell.append(empty);
     documentTemplateCustomFields.replaceChildren(shell);
     return;
@@ -44692,6 +45057,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
     bundle.append(header, grid);
     return bundle;
   };
+
+  shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
 
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
