@@ -279,6 +279,10 @@ function parseNullableInteger(value) {
 }
 
 function parseJsonObject(value, fallback = {}) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return cloneJsonValue(value) ?? { ...fallback };
+  }
+
   const raw = dbString(value);
 
   if (!raw) {
@@ -296,6 +300,10 @@ function parseJsonObject(value, fallback = {}) {
 }
 
 function parseJsonArray(value, fallback = []) {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+
   const raw = dbString(value);
 
   if (!raw) {
@@ -538,6 +546,55 @@ function cloneLearningTest(test = {}) {
     questionItems: cloneJsonValue(test.questionItems ?? []),
     assignmentItems: cloneJsonValue(test.assignmentItems ?? []),
     attemptItems: cloneJsonValue(test.attemptItems ?? []),
+  };
+}
+
+export function mapStoredDocumentTemplateCustomField(field = {}) {
+  const source = field && typeof field === "object" && !Array.isArray(field)
+    ? field
+    : {};
+  const raw = cloneJsonValue(source) ?? {};
+  const type = dbString(source.type) || "text";
+
+  return {
+    ...raw,
+    id: dbString(source.id),
+    key: dbString(source.key),
+    label: dbString(source.label),
+    wordLabel: dbString(source.wordLabel),
+    type,
+    layoutWidth: dbString(source.layoutWidth),
+    fieldHeight: Number(source.fieldHeight ?? 0) || 0,
+    source: dbString(source.source ?? source.bindingSource),
+    sourceTable: dbString(source.sourceTable),
+    lookupColumn: dbString(source.lookupColumn),
+    lookupValueSource: dbString(source.lookupValueSource),
+    lookupValue: dbString(source.lookupValue),
+    valueColumn: dbString(source.valueColumn),
+    previousDocumentMode: dbString(source.previousDocumentMode),
+    signatureArea: dbString(source.signatureArea),
+    signatureRole: dbString(source.signatureRole),
+    signatureMultiple: source.signatureMultiple === undefined ? undefined : Boolean(source.signatureMultiple),
+    signatureIncludeScan: source.signatureIncludeScan === undefined ? undefined : Boolean(source.signatureIncludeScan),
+    defaultValue: dbString(source.defaultValue),
+    helpText: dbString(source.helpText),
+    ai: parseJsonObject(source.ai ?? source.aiConfig, {}),
+    toggleTrueLabel: dbString(source.toggleTrueLabel),
+    toggleFalseLabel: dbString(source.toggleFalseLabel),
+    dropdownOptions: parseJsonArray(source.dropdownOptions ?? source.options ?? source.choices)
+      .map((entry) => dbString(entry))
+      .filter(Boolean),
+    sectionSubtitle: dbString(source.sectionSubtitle),
+    systemRows: parseJsonArray(source.systemRows ?? source.rows),
+    legalFrameworkIds: parseJsonArray(source.legalFrameworkIds ?? source.availableLegalFrameworkIds)
+      .map((entry) => dbString(entry))
+      .filter(Boolean),
+    defaultLegalFrameworkIds: parseJsonArray(source.defaultLegalFrameworkIds ?? source.preselectedLegalFrameworkIds)
+      .map((entry) => dbString(entry))
+      .filter(Boolean),
+    columns: parseJsonArray(source.columns).map((entry) => dbString(entry)).filter(Boolean),
+    rowCount: Number(source.rowCount ?? 0) || 0,
+    sheet: normalizeWorkOrderMeasurementSheet(source.sheet ?? source.measurementSheet),
   };
 }
 
@@ -2919,33 +2976,7 @@ async function fetchSnapshotFromConnection(connection) {
     sampleCompanyId: dbString(row.sample_company_id),
     sampleLocationId: dbString(row.sample_location_id),
     selectedLegalFrameworkIds: parseJsonArray(row.selected_legal_framework_ids_json).map((entry) => dbString(entry)).filter(Boolean),
-    customFields: parseJsonArray(row.custom_fields_json).map((field) => ({
-      id: dbString(field.id),
-      key: dbString(field.key),
-      label: dbString(field.label),
-      wordLabel: dbString(field.wordLabel),
-      type: dbString(field.type) || "text",
-      layoutWidth: dbString(field.layoutWidth),
-      fieldHeight: Number(field.fieldHeight ?? 0) || 0,
-      source: dbString(field.source ?? field.bindingSource),
-      sourceTable: dbString(field.sourceTable),
-      lookupColumn: dbString(field.lookupColumn),
-      lookupValueSource: dbString(field.lookupValueSource),
-      lookupValue: dbString(field.lookupValue),
-      valueColumn: dbString(field.valueColumn),
-      previousDocumentMode: dbString(field.previousDocumentMode),
-      signatureArea: dbString(field.signatureArea),
-      signatureRole: dbString(field.signatureRole),
-      signatureMultiple: field.signatureMultiple === undefined ? undefined : Boolean(field.signatureMultiple),
-      signatureIncludeScan: field.signatureIncludeScan === undefined ? undefined : Boolean(field.signatureIncludeScan),
-      defaultValue: dbString(field.defaultValue),
-      helpText: dbString(field.helpText),
-      toggleTrueLabel: dbString(field.toggleTrueLabel),
-      toggleFalseLabel: dbString(field.toggleFalseLabel),
-      columns: parseJsonArray(field.columns).map((entry) => dbString(entry)).filter(Boolean),
-      rowCount: Number(field.rowCount ?? 0) || 0,
-      sheet: normalizeWorkOrderMeasurementSheet(field.sheet ?? field.measurementSheet),
-    })),
+    customFields: parseJsonArray(row.custom_fields_json).map((field) => mapStoredDocumentTemplateCustomField(field)),
     equipmentItems: parseJsonArray(row.equipment_items_json).map((item) => ({
       id: dbString(item.id),
       name: dbString(item.name),

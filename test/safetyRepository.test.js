@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { InMemorySafetyRepository } from "../src/safetyRepository.js";
+import {
+  InMemorySafetyRepository,
+  mapStoredDocumentTemplateCustomField,
+} from "../src/safetyRepository.js";
 
 test("in-memory safety repository stores document records without RN number and lists newest first", async () => {
   const repository = new InMemorySafetyRepository();
@@ -254,4 +257,33 @@ test("in-memory safety repository stores measurement sheet presets per template,
   assert.equal(items[0].createdByLabel, "Marko Admin");
   assert.equal(items[0].sheet.rows[0].cells.c1, "TZIN");
   assert.equal(items[0].sheet.columns[0].validation?.type, "none");
+});
+
+test("stored document template field mapping preserves AI and builder metadata", () => {
+  const mapped = mapStoredDocumentTemplateCustomField({
+    id: "field-project-docs",
+    key: "PROJEKTNA_DOKUMENTACIJA_14",
+    label: "Projektna dokumentacija",
+    wordLabel: "Projektna dokumentacija",
+    type: "text",
+    layoutWidth: "6",
+    ai: {
+      enabled: true,
+      aiDescription: "Prepoznaj projektnu dokumentaciju iz starog zapisnika.",
+      aiLookFor: ["projekt", "dokumentacija"],
+      confidenceRequired: "high",
+    },
+    dropdownOptions: ["DA", "NE"],
+    legalFrameworkIds: ["legal-1"],
+    defaultLegalFrameworkIds: ["legal-1"],
+    columns: ["Pozicija", "Opis"],
+  });
+
+  assert.equal(mapped.ai.enabled, true);
+  assert.equal(mapped.ai.confidenceRequired, "high");
+  assert.deepEqual(mapped.ai.aiLookFor, ["projekt", "dokumentacija"]);
+  assert.deepEqual(mapped.dropdownOptions, ["DA", "NE"]);
+  assert.deepEqual(mapped.legalFrameworkIds, ["legal-1"]);
+  assert.deepEqual(mapped.defaultLegalFrameworkIds, ["legal-1"]);
+  assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);
 });
