@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428s" />
+    <link rel="stylesheet" href="/styles.css?v=20260428t" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3708,7 +3708,7 @@
               <div>
                 <p class="section-kicker">Learning</p>
                 <h3>Osposobljavanja ljudi</h3>
-                <p class="helper-copy module-copy">Jedna osoba je jedan red: tvrtka, OIB, položeni ispiti, RN ili online izvor i status uvjerenja na jednom mjestu.</p>
+                <p class="helper-copy module-copy">Jedna osoba je jedan red: tvrtka, OIB, položeni ispiti, RN ili online izvor i status uvjerenja. Vrste osposobljavanja dolaze iz List Of Services za ZNR usluge.</p>
               </div>
               <div class="vehicles-panel-head-actions">
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
@@ -3845,6 +3845,11 @@
                     <span>Napomena</span>
                     <input id="people-training-note" type="text" placeholder="Interna napomena, ograničenja, specifičnosti..." />
                   </label>
+                </div>
+
+                <div id="people-training-dossier" class="people-training-dossier is-empty">
+                  <strong>Dosje zaposlenika</strong>
+                  <span>Odaberi osobu iz liste za pregled svih osposobljavanja, uvjerenja i priloga.</span>
                 </div>
 
                 <div id="people-training-form-training-grid" class="people-training-type-grid"></div>
@@ -7302,6 +7307,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260428ac"></script>
+    <script type="module" src="/src/main.js?v=20260428ad"></script>
   </body>
 </html>

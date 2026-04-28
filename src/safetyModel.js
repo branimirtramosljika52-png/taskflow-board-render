@@ -5258,23 +5258,75 @@ export function sortAbsenceEntries(items) {
   });
 }
 
-function getPersonTrainingTypeOption(type = "") {
+function buildPersonTrainingShortLabel(label = "", fallback = "OS") {
+  const words = normalizeText(label)
+    .split(/\s+/)
+    .map((entry) => entry.replace(/[^A-Za-z0-9ČĆĐŠŽčćđšž]/g, ""))
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return fallback;
+  }
+
+  return words
+    .slice(0, 3)
+    .map((entry) => entry.charAt(0).toUpperCase())
+    .join("")
+    .slice(0, 10)
+    || fallback;
+}
+
+function normalizePersonTrainingTextList(value = [], limit = 180) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[\n,;]/);
+
+  return Array.from(new Set(
+    source
+      .map((entry) => normalizeText(entry).slice(0, limit))
+      .filter(Boolean),
+  ));
+}
+
+function getPersonTrainingTypeOption(type = "", source = {}, fallback = PERSON_TRAINING_TYPE_OPTIONS[0]) {
   const normalized = normalizeText(type).toLowerCase();
-  return PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized)
-    ?? PERSON_TRAINING_TYPE_OPTIONS[0];
+  const staticOption = PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized);
+
+  if (staticOption) {
+    return staticOption;
+  }
+
+  const label = normalizeText(source?.label ?? source?.serviceName ?? source?.name ?? normalized).slice(0, 180)
+    || fallback.label
+    || "Osposobljavanje";
+  const shortLabel = normalizeText(source?.shortLabel ?? source?.serviceCode ?? source?.code).slice(0, 40)
+    || buildPersonTrainingShortLabel(label, fallback.shortLabel || "OS");
+
+  return {
+    value: normalized || fallback.value,
+    label,
+    shortLabel,
+  };
 }
 
 function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TYPE_OPTIONS[0]) {
   const source = input && typeof input === "object" ? input : {};
-  const normalizedType = getPersonTrainingTypeOption(source.type ?? typeOption.value);
+  const normalizedType = getPersonTrainingTypeOption(source.type ?? typeOption.value, source, typeOption);
   const validForever = normalizeBoolean(source.validForever, false);
   const passedOn = normalizeOptionalDate(source.passedOn ?? source.passedDate);
   const issuedOn = normalizeOptionalDate(source.issuedOn ?? source.issuedDate) || passedOn;
 
   return {
     type: normalizedType.value,
-    label: normalizedType.label,
-    shortLabel: normalizedType.shortLabel,
+    label: normalizeText(source.label).slice(0, 180) || normalizedType.label,
+    shortLabel: normalizeText(source.shortLabel).slice(0, 40) || normalizedType.shortLabel,
+    serviceId: normalizeText(source.serviceId ?? source.serviceCatalogId).slice(0, 120),
+    serviceName: normalizeText(source.serviceName).slice(0, 180),
+    serviceCode: normalizeText(source.serviceCode).slice(0, 80),
+    linkedTemplateIds: normalizeIdList(source.linkedTemplateIds),
+    linkedTemplateTitles: normalizePersonTrainingTextList(source.linkedTemplateTitles, 180),
+    linkedLearningTestIds: normalizeIdList(source.linkedLearningTestIds),
+    linkedLearningTestTitles: normalizePersonTrainingTextList(source.linkedLearningTestTitles, 180),
     issuedOn,
     passedOn,
     validUntil: validForever ? null : normalizeOptionalDate(source.validUntil ?? source.validTo ?? source.expiresOn),
@@ -5300,15 +5352,27 @@ function normalizePersonTrainingItems(input = []) {
       .map(([type, value]) => ({ ...(value && typeof value === "object" ? value : {}), type }));
   const byType = new Map(
     source
-      .map((item) => normalizePersonTrainingItem(item))
+      .map((item) => normalizePersonTrainingItem(item, getPersonTrainingTypeOption(item?.type, item)))
       .filter((item) => item.type)
       .map((item) => [item.type, item]),
   );
+  const staticTypes = new Set(PERSON_TRAINING_TYPE_OPTIONS.map((option) => option.value));
 
-  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => normalizePersonTrainingItem(
+  const normalizedItems = PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => normalizePersonTrainingItem(
     byType.get(typeOption.value) ?? {},
     typeOption,
   ));
+
+  source
+    .map((item) => normalizePersonTrainingItem(item, getPersonTrainingTypeOption(item?.type, item)))
+    .filter((item) => item.type && !staticTypes.has(item.type))
+    .forEach((item) => {
+      if (!normalizedItems.some((entry) => entry.type === item.type)) {
+        normalizedItems.push(item);
+      }
+    });
+
+  return normalizedItems;
 }
 
 function getPersonTrainingItemStatus(item = {}, today = todayString()) {
@@ -5391,6 +5455,7 @@ export function createPersonTrainingRecord(
     jobTitle: normalizeText(input.jobTitle).slice(0, 180),
     employmentStatus: normalizeBoolean(input.isActive ?? input.active, true) ? "active" : "inactive",
     trainingItems: enrichPersonTrainingItems(input.trainingItems),
+    attachments: normalizeAttachmentDocuments(input.attachments),
     note: normalizeText(input.note).slice(0, 1000),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -5413,6 +5478,7 @@ export function updatePersonTrainingRecord(current, patch, state, now = isoNow) 
     jobTitle: hasOwn(patch, "jobTitle") ? patch.jobTitle : current.jobTitle,
     isActive: hasOwn(patch, "isActive") ? patch.isActive : current.employmentStatus !== "inactive",
     trainingItems: hasOwn(patch, "trainingItems") ? patch.trainingItems : current.trainingItems,
+    attachments: hasOwn(patch, "attachments") ? patch.attachments : current.attachments,
     note: hasOwn(patch, "note") ? patch.note : current.note,
   };
 
@@ -5474,6 +5540,9 @@ export function filterPersonTrainingRecords(
       item.companyOib,
       item.locationName,
       item.note,
+      ...(item.attachments ?? []).map((entry) => entry.fileName),
+      ...(item.attachments ?? []).map((entry) => entry.documentCategory),
+      ...(item.attachments ?? []).map((entry) => entry.description),
       ...trainingItems.flatMap((entry) => [
         entry.label,
         entry.shortLabel,

@@ -4572,6 +4572,7 @@ const peopleTrainingPhoneInput = document.querySelector("#people-training-phone"
 const peopleTrainingJobTitleInput = document.querySelector("#people-training-job-title");
 const peopleTrainingNoteInput = document.querySelector("#people-training-note");
 const peopleTrainingFormTrainingGrid = document.querySelector("#people-training-form-training-grid");
+const peopleTrainingDossier = document.querySelector("#people-training-dossier");
 const peopleTrainingSaveButton = document.querySelector("#people-training-save");
 const peopleTrainingResetButton = document.querySelector("#people-training-reset");
 const peopleTrainingDeleteButton = document.querySelector("#people-training-delete");
@@ -7020,22 +7021,118 @@ function getPeopleTrainingItemStatus(item = {}) {
   return days <= 60 ? "expiring" : "valid";
 }
 
-function normalizePeopleTrainingItemsForUi(items = []) {
+const PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS = [
+  "Uvjerenje",
+  "Liječnički pregled",
+  "ADR potvrda",
+  "Zapisnik ispita",
+  "Radni nalog",
+  "Potpisna lista",
+  "Ostalo",
+];
+
+function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
+  const words = String(label || "")
+    .trim()
+    .split(/\s+/)
+    .map((entry) => entry.replace(/[^A-Za-z0-9ČĆĐŠŽčćđšž]/g, ""))
+    .filter(Boolean);
+  return words
+    .slice(0, 3)
+    .map((entry) => entry.charAt(0).toUpperCase())
+    .join("")
+    .slice(0, 10)
+    || fallback;
+}
+
+function getPeopleTrainingServiceTypeOptions() {
+  return sortServiceCatalogItems(state.serviceCatalog ?? [])
+    .filter((item) => normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr")
+    .map((item) => {
+      const label = String(item.name || item.serviceCode || "Usluga osposobljavanja").trim();
+      const serviceCode = String(item.serviceCode || "").trim();
+      return {
+        value: `service:${item.id}`.toLowerCase(),
+        label,
+        shortLabel: serviceCode || buildPeopleTrainingShortLabel(label, "ZNR"),
+        serviceId: String(item.id || ""),
+        serviceName: label,
+        serviceCode,
+        linkedTemplateIds: Array.isArray(item.linkedTemplateIds) ? item.linkedTemplateIds.map(String) : [],
+        linkedTemplateTitles: Array.isArray(item.linkedTemplateTitles) ? item.linkedTemplateTitles.map(String).filter(Boolean) : [],
+        linkedLearningTestIds: Array.isArray(item.linkedLearningTestIds) ? item.linkedLearningTestIds.map(String) : [],
+        linkedLearningTestTitles: Array.isArray(item.linkedLearningTestTitles) ? item.linkedLearningTestTitles.map(String).filter(Boolean) : [],
+      };
+    });
+}
+
+function normalizePeopleTrainingSourceItems(items = []) {
   const source = Array.isArray(items)
     ? items
     : Object.entries(items && typeof items === "object" ? items : {})
       .map(([type, value]) => ({ ...(value && typeof value === "object" ? value : {}), type }));
+  return source;
+}
+
+function getPeopleTrainingTypeOptions(items = []) {
+  const source = normalizePeopleTrainingSourceItems(items);
+  const options = [
+    ...PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ ...option })),
+    ...getPeopleTrainingServiceTypeOptions(),
+  ];
+  const seen = new Set(options.map((option) => String(option.value || "").trim().toLowerCase()).filter(Boolean));
+
+  source.forEach((item) => {
+    const value = String(item?.type || "").trim().toLowerCase();
+    if (!value || seen.has(value)) {
+      return;
+    }
+    const label = String(item?.label || item?.serviceName || item?.name || value).trim();
+    options.push({
+      value,
+      label: label || "Osposobljavanje",
+      shortLabel: String(item?.shortLabel || item?.serviceCode || "").trim() || buildPeopleTrainingShortLabel(label, "OS"),
+      serviceId: String(item?.serviceId || item?.serviceCatalogId || "").trim(),
+      serviceName: String(item?.serviceName || "").trim(),
+      serviceCode: String(item?.serviceCode || "").trim(),
+      linkedTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds.map(String) : [],
+      linkedTemplateTitles: Array.isArray(item?.linkedTemplateTitles) ? item.linkedTemplateTitles.map(String).filter(Boolean) : [],
+      linkedLearningTestIds: Array.isArray(item?.linkedLearningTestIds) ? item.linkedLearningTestIds.map(String) : [],
+      linkedLearningTestTitles: Array.isArray(item?.linkedLearningTestTitles) ? item.linkedLearningTestTitles.map(String).filter(Boolean) : [],
+    });
+    seen.add(value);
+  });
+
+  return options;
+}
+
+function getPeopleTrainingTypeOption(value = "", items = []) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return getPeopleTrainingTypeOptions(items).find((option) => String(option.value).trim().toLowerCase() === normalized)
+    ?? getPeopleTrainingTypeOptions()[0]
+    ?? PERSON_TRAINING_TYPE_OPTIONS[0];
+}
+
+function normalizePeopleTrainingItemsForUi(items = []) {
+  const source = normalizePeopleTrainingSourceItems(items);
   const byType = new Map(source.map((item) => [String(item?.type ?? "").trim().toLowerCase(), item]));
 
-  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => {
-    const sourceItem = byType.get(typeOption.value) ?? {};
+  return getPeopleTrainingTypeOptions(source).map((typeOption) => {
+    const sourceItem = byType.get(String(typeOption.value || "").trim().toLowerCase()) ?? {};
     const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
     const passedOn = normalizePeopleTrainingDate(sourceItem?.passedOn ?? sourceItem?.passedDate);
     const issuedOn = normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate) || passedOn;
     const item = {
       type: typeOption.value,
-      label: typeOption.label,
-      shortLabel: typeOption.shortLabel,
+      label: String(sourceItem?.label || typeOption.label || "").trim(),
+      shortLabel: String(sourceItem?.shortLabel || typeOption.shortLabel || "").trim(),
+      serviceId: String(sourceItem?.serviceId || sourceItem?.serviceCatalogId || typeOption.serviceId || "").trim(),
+      serviceName: String(sourceItem?.serviceName || typeOption.serviceName || "").trim(),
+      serviceCode: String(sourceItem?.serviceCode || typeOption.serviceCode || "").trim(),
+      linkedTemplateIds: Array.isArray(sourceItem?.linkedTemplateIds) ? sourceItem.linkedTemplateIds : (typeOption.linkedTemplateIds ?? []),
+      linkedTemplateTitles: Array.isArray(sourceItem?.linkedTemplateTitles) ? sourceItem.linkedTemplateTitles : (typeOption.linkedTemplateTitles ?? []),
+      linkedLearningTestIds: Array.isArray(sourceItem?.linkedLearningTestIds) ? sourceItem.linkedLearningTestIds : (typeOption.linkedLearningTestIds ?? []),
+      linkedLearningTestTitles: Array.isArray(sourceItem?.linkedLearningTestTitles) ? sourceItem.linkedLearningTestTitles : (typeOption.linkedLearningTestTitles ?? []),
       issuedOn,
       passedOn,
       validUntil: validForever ? "" : normalizePeopleTrainingDate(sourceItem?.validUntil ?? sourceItem?.validTo ?? sourceItem?.expiresOn),
@@ -7100,7 +7197,28 @@ function getPeopleTrainingLocation(locationId = "") {
 }
 
 function getPeopleTrainingFilteredRecords() {
-  return sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, state.peopleTrainingFilters));
+  const filters = state.peopleTrainingFilters ?? {};
+  const records = filterPersonTrainingRecords(state.peopleTrainingRecords, {
+    ...filters,
+    trainingType: "all",
+    status: "all",
+  }).filter((record) => {
+    const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+    const selectedType = String(filters.trainingType || "all").trim().toLowerCase();
+    const selectedStatus = String(filters.status || "all").trim().toLowerCase();
+
+    if (selectedType && selectedType !== "all") {
+      const selected = trainingItems.find((item) => item.type === selectedType);
+      if (!selected) {
+        return false;
+      }
+      return !selectedStatus || selectedStatus === "all" || selected.status === selectedStatus;
+    }
+
+    return !selectedStatus || selectedStatus === "all" || trainingItems.some((item) => item.status === selectedStatus);
+  });
+
+  return sortPersonTrainingRecords(records);
 }
 
 function setPeopleTrainingFeedback(message = "", type = "error") {
@@ -7170,7 +7288,10 @@ function syncPeopleTrainingSelectOptions() {
       peopleTrainingTypeFilterInput,
       [
         { value: "all", label: "Sve vrste" },
-        ...PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+        ...getPeopleTrainingTypeOptions().map((option) => ({
+          value: option.value,
+          label: option.serviceCode ? `${option.label} (${option.serviceCode})` : option.label,
+        })),
       ],
       state.peopleTrainingFilters.trainingType || "all",
     );
@@ -7243,7 +7364,7 @@ function renderPeopleTrainingStats() {
 }
 
 function buildPeopleTrainingExamOverviewOptions() {
-  const trainingTypeOptions = PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({
+  const trainingTypeOptions = getPeopleTrainingTypeOptions().map((option) => ({
     value: `type:${option.value}`,
     label: `Vrsta: ${option.label}`,
   }));
@@ -7424,6 +7545,15 @@ function renderPeopleTrainingGrid(record = null) {
     chip.textContent = getPeopleTrainingStatusLabel(item.status);
     head.append(title, chip);
 
+    const serviceMeta = document.createElement("small");
+    serviceMeta.className = "people-training-type-service-meta";
+    serviceMeta.textContent = [
+      item.serviceCode ? `Usluga ${item.serviceCode}` : "",
+      (item.linkedLearningTestTitles ?? []).length ? `Ispiti: ${item.linkedLearningTestTitles.join(", ")}` : "",
+      (item.linkedTemplateTitles ?? []).length ? `Template: ${item.linkedTemplateTitles.join(", ")}` : "",
+    ].filter(Boolean).join(" · ");
+    serviceMeta.hidden = !serviceMeta.textContent;
+
     const fields = document.createElement("div");
     fields.className = "people-training-mini-grid";
 
@@ -7489,7 +7619,7 @@ function renderPeopleTrainingGrid(record = null) {
     foreverLabel.append(foreverInput, foreverText);
 
     fields.append(issuedLabel, validLabel, certificateLabel, providerLabel, noteLabel, foreverLabel);
-    card.append(head, fields);
+    card.append(head, serviceMeta, fields);
     return card;
   });
 
@@ -7513,6 +7643,7 @@ function resetPeopleTrainingForm() {
     peopleTrainingDeleteButton.hidden = true;
   }
   renderPeopleTrainingGrid(null);
+  renderPeopleTrainingDossier(null);
   setPeopleTrainingFeedback("");
 }
 
@@ -7560,7 +7691,43 @@ function populatePeopleTrainingForm(record = {}) {
     peopleTrainingDeleteButton.hidden = !record.id;
   }
   renderPeopleTrainingGrid(record);
+  renderPeopleTrainingDossier(record);
   setPeopleTrainingFeedback("");
+}
+
+function getPeopleTrainingCertificatePrefix(typeOption = {}) {
+  return String(typeOption.shortLabel || typeOption.serviceCode || typeOption.label || "OS")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .toUpperCase()
+    .slice(0, 12)
+    || "OS";
+}
+
+function generatePeopleTrainingCertificateNumber(record = {}, typeOption = {}, dateValue = "", reservedNumbers = new Set()) {
+  const normalizedDate = normalizePeopleTrainingDate(dateValue) || getTodayDateKey();
+  const year = normalizedDate.slice(0, 4) || String(new Date().getFullYear());
+  const prefix = `POTV-${year}-${getPeopleTrainingCertificatePrefix(typeOption)}`;
+  const usedNumbers = (state.peopleTrainingRecords ?? [])
+    .flatMap((entry) => normalizePeopleTrainingItemsForUi(entry.trainingItems))
+    .map((item) => String(item.certificateNumber || "").trim())
+    .filter(Boolean);
+  reservedNumbers.forEach((number) => {
+    if (number) {
+      usedNumbers.push(String(number));
+    }
+  });
+  const maxSequence = usedNumbers.reduce((maxValue, number) => {
+    const match = number.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+)$`, "i"));
+    if (!match) {
+      return maxValue;
+    }
+    const nextValue = Number.parseInt(match[1], 10);
+    return Number.isFinite(nextValue) ? Math.max(maxValue, nextValue) : maxValue;
+  }, 0);
+  const sequence = String(maxSequence + 1).padStart(3, "0");
+  return `${prefix}-${sequence}`;
 }
 
 function readPeopleTrainingGridItems() {
@@ -7569,6 +7736,7 @@ function readPeopleTrainingGridItems() {
   }
   const activeRecordId = String(peopleTrainingIdInput?.value || "").trim();
   const activeRecord = state.peopleTrainingRecords.find((item) => String(item.id) === activeRecordId) ?? null;
+  const reservedCertificateNumbers = new Set();
   const existingByType = new Map(
     normalizePeopleTrainingItemsForUi(activeRecord?.trainingItems ?? [])
       .map((item) => [item.type, item]),
@@ -7583,13 +7751,32 @@ function readPeopleTrainingGridItems() {
     };
     const type = card.dataset.trainingType || "";
     const existing = existingByType.get(type) ?? {};
+    const issuedOn = readField("issuedOn");
+    const typeOption = getPeopleTrainingTypeOption(type, activeRecord?.trainingItems ?? []);
+    const explicitCertificateNumber = readField("certificateNumber");
+    const certificateNumber = explicitCertificateNumber
+      || ((issuedOn || existing.passedOn)
+        ? generatePeopleTrainingCertificateNumber(activeRecord || {}, typeOption, issuedOn || existing.passedOn, reservedCertificateNumbers)
+        : "");
+    if (!explicitCertificateNumber && certificateNumber) {
+      reservedCertificateNumbers.add(certificateNumber);
+    }
     return {
       ...existing,
       type,
-      issuedOn: readField("issuedOn"),
+      label: typeOption.label || existing.label || "",
+      shortLabel: typeOption.shortLabel || existing.shortLabel || "",
+      serviceId: typeOption.serviceId || existing.serviceId || "",
+      serviceName: typeOption.serviceName || existing.serviceName || "",
+      serviceCode: typeOption.serviceCode || existing.serviceCode || "",
+      linkedTemplateIds: typeOption.linkedTemplateIds || existing.linkedTemplateIds || [],
+      linkedTemplateTitles: typeOption.linkedTemplateTitles || existing.linkedTemplateTitles || [],
+      linkedLearningTestIds: typeOption.linkedLearningTestIds || existing.linkedLearningTestIds || [],
+      linkedLearningTestTitles: typeOption.linkedLearningTestTitles || existing.linkedLearningTestTitles || [],
+      issuedOn,
       validUntil: readField("validUntil"),
       validForever: readField("validForever"),
-      certificateNumber: readField("certificateNumber"),
+      certificateNumber,
       provider: readField("provider"),
       note: readField("note"),
     };
@@ -7687,6 +7874,9 @@ function getPeopleTrainingItemSourceText(item = {}) {
   if (item.learningTestTitle) {
     parts.push(item.learningTestTitle);
   }
+  if (item.serviceCode || item.serviceName) {
+    parts.push([item.serviceCode, item.serviceName].filter(Boolean).join(" "));
+  }
   if (item.passedOn || item.issuedOn) {
     parts.push(formatCompactDate(item.passedOn || item.issuedOn));
   }
@@ -7744,9 +7934,11 @@ async function handlePeopleTrainingQuickExamSubmit(record = {}, form = null) {
   const trainingType = String(formData.get("trainingType") || "").trim();
   const examMode = String(formData.get("examMode") || "live").trim();
   const passedOn = normalizePeopleTrainingDate(formData.get("passedOn"));
-  const certificateNumber = String(formData.get("certificateNumber") || "").trim();
   const workOrderId = String(formData.get("workOrderId") || "").trim();
   const learningTestId = String(formData.get("learningTestId") || "").trim();
+  const typeOption = getPeopleTrainingTypeOption(trainingType, record.trainingItems ?? []);
+  const certificateNumber = String(formData.get("certificateNumber") || "").trim()
+    || generatePeopleTrainingCertificateNumber(record, typeOption, passedOn);
 
   if (!trainingType || !passedOn) {
     setPeopleTrainingFeedback("Odaberi vrstu ispita i datum polaganja.", "error");
@@ -7761,6 +7953,15 @@ async function handlePeopleTrainingQuickExamSubmit(record = {}, form = null) {
     }
     return {
       ...item,
+      label: typeOption.label || item.label || "",
+      shortLabel: typeOption.shortLabel || item.shortLabel || "",
+      serviceId: typeOption.serviceId || item.serviceId || "",
+      serviceName: typeOption.serviceName || item.serviceName || "",
+      serviceCode: typeOption.serviceCode || item.serviceCode || "",
+      linkedTemplateIds: typeOption.linkedTemplateIds || item.linkedTemplateIds || [],
+      linkedTemplateTitles: typeOption.linkedTemplateTitles || item.linkedTemplateTitles || [],
+      linkedLearningTestIds: typeOption.linkedLearningTestIds || item.linkedLearningTestIds || [],
+      linkedLearningTestTitles: typeOption.linkedLearningTestTitles || item.linkedLearningTestTitles || [],
       issuedOn: passedOn,
       passedOn,
       certificateNumber,
@@ -7802,10 +8003,11 @@ function createPeopleTrainingQuickExamForm(record = {}) {
 
   const typeSelect = document.createElement("select");
   typeSelect.name = "trainingType";
+  const trainingTypeOptions = getPeopleTrainingTypeOptions(record.trainingItems);
   replaceSelectOptions(
     typeSelect,
-    PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
-    PERSON_TRAINING_TYPE_OPTIONS[0]?.value || "",
+    trainingTypeOptions.map((option) => ({ value: option.value, label: option.serviceCode ? `${option.label} (${option.serviceCode})` : option.label })),
+    trainingTypeOptions[0]?.value || "",
   );
 
   const modeSelect = document.createElement("select");
@@ -7834,7 +8036,7 @@ function createPeopleTrainingQuickExamForm(record = {}) {
   const certificateInput = document.createElement("input");
   certificateInput.name = "certificateNumber";
   certificateInput.type = "text";
-  certificateInput.placeholder = "Broj uvjerenja";
+  certificateInput.placeholder = "Auto broj ako prazno";
   certificateInput.title = "Broj uvjerenja";
 
   const saveButton = document.createElement("button");
@@ -7857,6 +8059,11 @@ function createPeopleTrainingQuickExamForm(record = {}) {
 function createPeopleTrainingRecordCard(record = {}) {
   const card = document.createElement("article");
   card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
+  card.tabIndex = 0;
+  card.dataset.peopleTrainingRecordId = String(record.id || "");
+
+  const top = document.createElement("div");
+  top.className = "people-training-person-top";
 
   const main = document.createElement("div");
   main.className = "people-training-person-main";
@@ -7878,6 +8085,21 @@ function createPeopleTrainingRecordCard(record = {}) {
   locationName.textContent = record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije / nije vezano";
   location.append(companyName, locationName);
 
+  const identity = document.createElement("div");
+  identity.className = "people-training-person-identity";
+  identity.append(main, location);
+
+  const overview = document.createElement("div");
+  overview.className = "people-training-person-overview";
+  const overallPill = document.createElement("span");
+  overallPill.className = `people-training-status-chip ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
+  overallPill.textContent = getPeopleTrainingStatusLabel(getPeopleTrainingOverallStatus(record));
+  const attachmentPill = document.createElement("span");
+  attachmentPill.className = "soft-pill";
+  attachmentPill.textContent = `${(record.attachments ?? []).length} priloga`;
+  overview.append(overallPill, attachmentPill);
+  top.append(identity, overview);
+
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
   const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
@@ -7898,18 +8120,57 @@ function createPeopleTrainingRecordCard(record = {}) {
   actions.className = "people-training-person-actions";
   actions.append(createPeopleTrainingQuickExamForm(record));
 
+  const dropHint = document.createElement("small");
+  dropHint.className = "people-training-drop-hint";
+  dropHint.textContent = "Povuci prilog bilo gdje na ovaj red za dosje.";
+
   const editButton = document.createElement("button");
   editButton.type = "button";
   editButton.className = "ghost-button people-training-edit-button";
-  editButton.textContent = "Uredi detalje";
+  editButton.textContent = "Dosje / detalji";
   editButton.addEventListener("click", (event) => {
     event.stopPropagation();
     populatePeopleTrainingForm(record);
     peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  actions.append(editButton);
+  actions.append(dropHint, editButton);
 
-  card.append(main, location, statuses, actions);
+  const openRecord = (event) => {
+    if (event?.target instanceof Element && event.target.closest("button,input,select,textarea,a,form")) {
+      return;
+    }
+    populatePeopleTrainingForm(record);
+    peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  card.addEventListener("click", openRecord);
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    openRecord(event);
+  });
+  card.addEventListener("dragover", (event) => {
+    if ((event.dataTransfer?.files?.length ?? 0) === 0) {
+      return;
+    }
+    event.preventDefault();
+    card.classList.add("is-drag-over");
+  });
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("is-drag-over");
+  });
+  card.addEventListener("drop", (event) => {
+    const files = Array.from(event.dataTransfer?.files ?? []).filter(Boolean);
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    card.classList.remove("is-drag-over");
+    void openPeopleTrainingAttachmentDialog(record, files);
+  });
+
+  card.append(top, statuses, actions);
   return card;
 }
 
@@ -7939,10 +8200,11 @@ function renderPeopleTrainingModule() {
   }
   syncPeopleTrainingSelectOptions();
   renderPeopleTrainingStats();
+  const active = state.peopleTrainingRecords.find((item) => String(item.id) === String(state.activePeopleTrainingRecordId));
   if (!peopleTrainingFormTrainingGrid?.children.length) {
-    const active = state.peopleTrainingRecords.find((item) => String(item.id) === String(state.activePeopleTrainingRecordId));
     renderPeopleTrainingGrid(active || null);
   }
+  renderPeopleTrainingDossier(active || null);
   renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 }
@@ -7968,6 +8230,301 @@ async function importPeopleTrainingExcel(file) {
     setPeopleTrainingFeedback("Excel import je završen. Pregled je osvježen.", "success");
     renderPeopleTrainingModule();
   }
+}
+
+function getPeopleTrainingAttachmentCategoryOptions(currentValue = "") {
+  const seen = new Set();
+  const options = [];
+  const addOption = (value) => {
+    const label = String(value || "").trim();
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    options.push({ value: label, label });
+  };
+
+  PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS.forEach(addOption);
+  (state.peopleTrainingRecords ?? []).forEach((record) => {
+    (record.attachments ?? []).forEach((attachment) => addOption(attachment.documentCategory));
+  });
+  addOption(currentValue);
+  options.push({ value: "__custom__", label: "+ Nova vrsta priloga" });
+  return options;
+}
+
+function createPeopleTrainingDocumentRow(documentItem = {}) {
+  const row = document.createElement("article");
+  row.className = "people-training-document-row";
+
+  const icon = document.createElement("span");
+  icon.className = "people-training-document-icon";
+  icon.textContent = "PDF";
+
+  const copy = document.createElement("div");
+  copy.className = "people-training-document-copy";
+  const title = document.createElement("strong");
+  title.textContent = documentItem.fileName || "Prilog";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    documentItem.documentCategory || "Bez vrste",
+    formatFileSize(documentItem.fileSize || 0),
+    documentItem.createdAt ? formatCompactDate(documentItem.createdAt) : "",
+    documentItem.description || "",
+  ].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "people-training-document-actions";
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "ghost-button";
+  openButton.textContent = "Otvori";
+  openButton.disabled = !(documentItem.storageUrl || documentItem.dataUrl);
+  openButton.addEventListener("click", () => triggerModuleAttachmentDownload(documentItem));
+  actions.append(openButton);
+
+  row.append(icon, copy, actions);
+  return row;
+}
+
+function renderPeopleTrainingDossier(record = null) {
+  if (!peopleTrainingDossier) {
+    return;
+  }
+
+  peopleTrainingDossier.replaceChildren();
+  peopleTrainingDossier.classList.toggle("is-empty", !record?.id);
+  peopleTrainingDossier.classList.remove("is-drag-over");
+  peopleTrainingDossier.ondragover = null;
+  peopleTrainingDossier.ondragleave = null;
+  peopleTrainingDossier.ondrop = null;
+
+  if (!record?.id) {
+    const title = document.createElement("strong");
+    title.textContent = "Dosje zaposlenika";
+    const copy = document.createElement("span");
+    copy.textContent = "Odaberi osobu iz liste za pregled svih osposobljavanja, uvjerenja i priloga.";
+    peopleTrainingDossier.append(title, copy);
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "people-training-dossier-head";
+  const copy = document.createElement("div");
+  copy.className = "people-training-dossier-title";
+  const title = document.createElement("strong");
+  title.textContent = record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka",
+    record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije",
+    record.oib ? `OIB ${record.oib}` : "",
+    record.email || "",
+  ].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+
+  const attachmentChip = document.createElement("span");
+  attachmentChip.className = "soft-pill";
+  attachmentChip.textContent = `${(record.attachments ?? []).length} priloga`;
+  head.append(copy, attachmentChip);
+
+  const trainingGrid = document.createElement("div");
+  trainingGrid.className = "people-training-dossier-training-grid";
+  normalizePeopleTrainingItemsForUi(record.trainingItems).forEach((item) => {
+    const itemRow = document.createElement("article");
+    itemRow.className = `people-training-dossier-training-item ${getPeopleTrainingStatusClass(item.status)}`;
+    const itemTitle = document.createElement("strong");
+    itemTitle.textContent = item.label || item.type || "Osposobljavanje";
+    const itemMeta = document.createElement("span");
+    itemMeta.textContent = [
+      item.certificateNumber ? `Potvrda ${item.certificateNumber}` : "",
+      getPeopleTrainingItemSourceText(item),
+      item.validUntil ? `vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+      (item.linkedLearningTestTitles ?? []).length ? `Ispiti: ${item.linkedLearningTestTitles.join(", ")}` : "",
+    ].filter(Boolean).join(" · ") || "Nema upisanog polaganja.";
+    itemRow.append(createPeopleTrainingStatusPill(item), itemTitle, itemMeta);
+    trainingGrid.append(itemRow);
+  });
+
+  const documents = document.createElement("div");
+  documents.className = "people-training-dossier-documents";
+  const documentsHead = document.createElement("div");
+  documentsHead.className = "people-training-dossier-subhead";
+  const documentsTitle = document.createElement("strong");
+  documentsTitle.textContent = "Prilozi i dokumenti";
+  const documentsHint = document.createElement("span");
+  documentsHint.textContent = "Povuci PDF, sliku ili dokument ovdje ili na red osobe.";
+  documentsHead.append(documentsTitle, documentsHint);
+  documents.append(documentsHead);
+
+  const rows = (record.attachments ?? []).map(createPeopleTrainingDocumentRow);
+  if (rows.length) {
+    documents.append(...rows);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Još nema priloga u dosjeu.";
+    documents.append(empty);
+  }
+
+  const handleFiles = (event) => {
+    const files = Array.from(event.dataTransfer?.files ?? []).filter(Boolean);
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    peopleTrainingDossier.classList.remove("is-drag-over");
+    void openPeopleTrainingAttachmentDialog(record, files);
+  };
+  peopleTrainingDossier.ondragover = (event) => {
+    if ((event.dataTransfer?.files?.length ?? 0) > 0) {
+      event.preventDefault();
+      peopleTrainingDossier.classList.add("is-drag-over");
+    }
+  };
+  peopleTrainingDossier.ondragleave = () => {
+    peopleTrainingDossier.classList.remove("is-drag-over");
+  };
+  peopleTrainingDossier.ondrop = handleFiles;
+
+  peopleTrainingDossier.append(head, trainingGrid, documents);
+}
+
+async function openPeopleTrainingAttachmentDialog(record = {}, files = []) {
+  if (!record?.id || files.length === 0) {
+    return;
+  }
+
+  const drafts = await Promise.all(files.map(async (file) => ({
+    id: crypto.randomUUID(),
+    fileName: file.name,
+    fileType: file.type || "application/octet-stream",
+    fileSize: file.size || 0,
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "people-training-attachment-dialog-backdrop";
+  const panel = document.createElement("section");
+  panel.className = "people-training-attachment-dialog";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+
+  const head = document.createElement("div");
+  head.className = "people-training-attachment-dialog-head";
+  const titleWrap = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = "Dosje";
+  const title = document.createElement("h3");
+  title.textContent = `Dodaj priloge za ${record.fullName || "osobu"}`;
+  titleWrap.append(kicker, title);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.textContent = "Zatvori";
+  head.append(titleWrap, closeButton);
+
+  const list = document.createElement("div");
+  list.className = "people-training-attachment-file-list";
+  drafts.forEach((draft) => {
+    const row = document.createElement("label");
+    row.className = "people-training-attachment-file-row";
+    const fileCopy = document.createElement("span");
+    const fileTitle = document.createElement("strong");
+    fileTitle.textContent = draft.fileName;
+    const fileSize = document.createElement("small");
+    fileSize.textContent = formatFileSize(draft.fileSize);
+    fileCopy.append(fileTitle, fileSize);
+    const select = document.createElement("select");
+    select.dataset.attachmentCategory = draft.id;
+    replaceSelectOptions(select, getPeopleTrainingAttachmentCategoryOptions(), PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS[0]);
+    const custom = document.createElement("input");
+    custom.type = "text";
+    custom.placeholder = "Upiši novu vrstu priloga";
+    custom.dataset.attachmentCustomCategory = draft.id;
+    custom.hidden = true;
+    const description = document.createElement("input");
+    description.type = "text";
+    description.placeholder = "Opis priloga (opcionalno)";
+    description.dataset.attachmentDescription = draft.id;
+    select.addEventListener("change", () => {
+      custom.hidden = select.value !== "__custom__";
+      if (!custom.hidden) {
+        custom.focus({ preventScroll: true });
+      }
+    });
+    row.append(fileCopy, select, custom, description);
+    list.append(row);
+  });
+
+  const footer = document.createElement("div");
+  footer.className = "people-training-attachment-dialog-actions";
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Spremi priloge";
+  footer.append(saveButton);
+
+  const closeDialog = () => {
+    backdrop.remove();
+    panel.remove();
+  };
+  closeButton.addEventListener("click", closeDialog);
+  backdrop.addEventListener("click", closeDialog);
+  saveButton.addEventListener("click", async () => {
+    const attachments = drafts.map((draft) => {
+      const select = list.querySelector(`[data-attachment-category="${draft.id}"]`);
+      const custom = list.querySelector(`[data-attachment-custom-category="${draft.id}"]`);
+      const description = list.querySelector(`[data-attachment-description="${draft.id}"]`);
+      const selectedCategory = String(select?.value || "").trim();
+      const customCategory = String(custom?.value || "").trim();
+      return {
+        ...draft,
+        documentCategory: selectedCategory === "__custom__" ? customCategory : selectedCategory,
+        description: String(description?.value || "").trim(),
+      };
+    });
+    const success = await addPeopleTrainingAttachments(record, attachments);
+    if (success) {
+      closeDialog();
+    }
+  });
+
+  panel.append(head, list, footer);
+  document.body.append(backdrop, panel);
+  requestAnimationFrame(() => panel.classList.add("is-open"));
+}
+
+async function addPeopleTrainingAttachments(record = {}, attachments = []) {
+  if (!record?.id || attachments.length === 0) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(record.id)}`, {
+    method: "PATCH",
+    body: {
+      attachments: [
+        ...(record.attachments ?? []),
+        ...attachments,
+      ],
+    },
+  }), peopleTrainingFormFeedback);
+
+  if (success) {
+    const updated = state.peopleTrainingRecords.find((item) => String(item.id) === String(record.id));
+    if (updated && String(updated.id) === String(state.activePeopleTrainingRecordId)) {
+      renderPeopleTrainingDossier(updated);
+    }
+    renderPeopleTrainingModule();
+    setPeopleTrainingFeedback("Prilozi su spremljeni u dosje zaposlenika.", "success");
+  }
+
+  return success;
 }
 
 function optionListIncludesValue(options = [], value = "") {
@@ -51181,14 +51738,42 @@ function createClientPortalTrainingPreviewRow(record = {}) {
 
   const meta = document.createElement("div");
   meta.className = "client-portal-preview-row-meta is-training-statuses";
-  meta.replaceChildren(...normalizePeopleTrainingItemsForUi(record.trainingItems).map(createPeopleTrainingStatusPill));
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+  meta.replaceChildren(...trainingItems.map(createPeopleTrainingStatusPill));
 
   const overall = getPeopleTrainingOverallStatus(record);
   const badge = document.createElement("span");
   badge.className = `client-portal-preview-row-badge is-training ${getPeopleTrainingStatusClass(overall)}`;
   badge.textContent = getPeopleTrainingStatusLabel(overall);
 
-  row.append(main, copy, meta, badge);
+  const details = document.createElement("div");
+  details.className = "client-portal-training-details";
+  const passedItems = trainingItems.filter((item) => isPeopleTrainingItemPassed(item));
+  if (passedItems.length) {
+    passedItems.forEach((item) => {
+      const itemRow = document.createElement("span");
+      itemRow.className = `client-portal-training-detail-pill ${getPeopleTrainingStatusClass(item.status)}`;
+      itemRow.textContent = [
+        item.label || item.shortLabel || "Ispit",
+        item.certificateNumber ? `potvrda ${item.certificateNumber}` : "",
+        getPeopleTrainingItemSourceText(item),
+      ].filter(Boolean).join(" · ");
+      details.append(itemRow);
+    });
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "client-portal-training-detail-pill is-missing";
+    empty.textContent = "Nema evidentiranih položenih osposobljavanja.";
+    details.append(empty);
+  }
+  (record.attachments ?? []).slice(0, 4).forEach((attachment) => {
+    const documentPill = document.createElement("span");
+    documentPill.className = "client-portal-training-detail-pill is-document";
+    documentPill.textContent = [attachment.documentCategory || "Prilog", attachment.fileName || ""].filter(Boolean).join(": ");
+    details.append(documentPill);
+  });
+
+  row.append(main, copy, meta, badge, details);
   return row;
 }
 

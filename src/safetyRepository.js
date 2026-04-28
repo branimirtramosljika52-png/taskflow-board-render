@@ -1971,6 +1971,7 @@ function mapPersonTrainingRecordRow(row = {}) {
     jobTitle: row.job_title ?? "",
     employmentStatus: row.employment_status ?? "active",
     trainingItems: parseJsonArray(row.training_items_json),
+    attachments: parseJsonArray(row.attachments_json).map((document) => mapStoredAttachmentDocument(document)).filter(Boolean),
     note: row.note ?? "",
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -3477,7 +3478,7 @@ async function fetchSnapshotFromConnection(connection) {
            c.naziv_tvrtke AS company_name, c.oib AS company_oib,
            l.lokacija AS location_name,
            ptr.first_name, ptr.last_name, ptr.full_name, ptr.oib, ptr.email, ptr.phone,
-           ptr.job_title, ptr.employment_status, ptr.training_items_json, ptr.note,
+           ptr.job_title, ptr.employment_status, ptr.training_items_json, ptr.attachments_json, ptr.note,
            ptr.created_at, ptr.updated_at
     FROM web_people_training_records ptr
     LEFT JOIN firme c ON c.id = ptr.company_id
@@ -3898,6 +3899,7 @@ export class InMemorySafetyRepository {
       peopleTrainingRecords: this.snapshot.peopleTrainingRecords.map((item) => ({
         ...item,
         trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
+        attachments: (item.attachments ?? []).map((entry) => ({ ...entry })),
       })),
       absenceBalances: this.snapshot.absenceBalances.map((item) => ({
         ...item,
@@ -6153,6 +6155,7 @@ export class MySqlSafetyRepository {
         job_title VARCHAR(180) NOT NULL DEFAULT '',
         employment_status VARCHAR(32) NOT NULL DEFAULT 'active',
         training_items_json LONGTEXT NULL,
+        attachments_json LONGTEXT NULL,
         note TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -6351,6 +6354,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
+    await ensureColumnExists(this.pool, "web_people_training_records", "attachments_json", "LONGTEXT NULL AFTER training_items_json");
     await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_ids_json", "LONGTEXT NULL AFTER assigned_to_label");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_labels_json", "LONGTEXT NULL AFTER invited_user_ids_json");
@@ -10159,12 +10163,16 @@ export class MySqlSafetyRepository {
       await connection.beginTransaction();
       const snapshot = await fetchSnapshotFromConnection(connection);
       const draft = createPersonTrainingRecord(input, snapshot, () => "pending-person-training", () => new Date().toISOString());
+      const preparedAttachments = await prepareStoredAttachmentDocuments(draft.attachments, {
+        keyPrefix: `people-training/${draft.organizationId}/${draft.companyId}`,
+        currentDocuments: [],
+      });
       const [result] = await connection.query(
         `
           INSERT INTO web_people_training_records
             (organization_id, company_id, location_id, first_name, last_name, full_name,
-             oib, email, phone, job_title, employment_status, training_items_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             oib, email, phone, job_title, employment_status, training_items_json, attachments_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10179,6 +10187,7 @@ export class MySqlSafetyRepository {
           draft.jobTitle,
           draft.employmentStatus,
           JSON.stringify(draft.trainingItems ?? []),
+          JSON.stringify(preparedAttachments.nextDocuments ?? []),
           draft.note,
         ],
       );
@@ -10187,6 +10196,7 @@ export class MySqlSafetyRepository {
       return {
         ...draft,
         id: String(result.insertId),
+        attachments: preparedAttachments.nextDocuments ?? [],
       };
     } catch (error) {
       await connection.rollback();
@@ -10210,13 +10220,17 @@ export class MySqlSafetyRepository {
       }
 
       const next = updatePersonTrainingRecord(current, patch, snapshot, () => new Date().toISOString());
+      const preparedAttachments = await prepareStoredAttachmentDocuments(next.attachments, {
+        keyPrefix: `people-training/${next.organizationId}/${next.companyId}`,
+        currentDocuments: current.attachments ?? [],
+      });
 
       await connection.query(
         `
           UPDATE web_people_training_records
           SET company_id = ?, location_id = ?, first_name = ?, last_name = ?, full_name = ?,
               oib = ?, email = ?, phone = ?, job_title = ?, employment_status = ?,
-              training_items_json = ?, note = ?
+              training_items_json = ?, attachments_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -10231,13 +10245,18 @@ export class MySqlSafetyRepository {
           next.jobTitle,
           next.employmentStatus,
           JSON.stringify(next.trainingItems ?? []),
+          JSON.stringify(preparedAttachments.nextDocuments ?? []),
           next.note,
           Number(id),
         ],
       );
 
       await connection.commit();
-      return next;
+      await cleanupStoredObjects(preparedAttachments.staleDocuments ?? []);
+      return {
+        ...next,
+        attachments: preparedAttachments.nextDocuments ?? [],
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -10248,11 +10267,15 @@ export class MySqlSafetyRepository {
 
   async deletePersonTrainingRecord(id) {
     const connection = await this.pool.getConnection();
+    let currentAttachments = [];
 
     try {
       await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      currentAttachments = snapshot.peopleTrainingRecords.find((item) => item.id === id)?.attachments ?? [];
       const [result] = await connection.query("DELETE FROM web_people_training_records WHERE id = ?", [Number(id)]);
       await connection.commit();
+      await cleanupStoredObjects(currentAttachments);
       return result.affectedRows > 0;
     } catch (error) {
       await connection.rollback();
