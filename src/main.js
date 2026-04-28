@@ -3492,6 +3492,7 @@ const workOrderOpenReminderButton = document.querySelector("#work-order-open-rem
 const workOrderOpenTodoButton = document.querySelector("#work-order-open-todo");
 const workOrderNumberPreview = document.querySelector("#work-order-number-preview");
 const workOrderSaveState = document.querySelector("#work-order-save-state");
+const workOrderDownloadPdfButton = document.querySelector("#work-order-download-pdf");
 const workOrderActivityList = document.querySelector("#work-order-activity-list");
 const workOrderActivityEmpty = document.querySelector("#work-order-activity-empty");
 const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
@@ -12491,6 +12492,29 @@ function normalizeWorkOrderDateInputDisplay(input) {
   return normalizedValue;
 }
 
+function ensureWorkOrderDateInputDisplay(input) {
+  if (!input) {
+    return "";
+  }
+
+  const rawValue = String(input.value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    input.value = formatDateInputDisplayValue(rawValue);
+  }
+
+  return input.value;
+}
+
+function ensureWorkOrderDateInputsDisplay() {
+  [
+    workOrderOpenedDateInput,
+    workOrderDueDateInput,
+    workOrderInvoiceDateInput,
+  ].forEach((input) => {
+    ensureWorkOrderDateInputDisplay(input);
+  });
+}
+
 function getStartOfWeekDateKey(value) {
   const parsedDate = parseDateValue(value) ?? new Date();
   const start = new Date(parsedDate);
@@ -12732,6 +12756,91 @@ function createWorkOrderEditorInfoChip(label, modifier = "neutral") {
   chip.className = `work-order-editor-tag-chip is-${modifier}`;
   chip.textContent = label;
   return chip;
+}
+
+function setWorkOrderFieldRequiredAttention(target, missing = false) {
+  const field = target instanceof HTMLElement ? target.closest(".field") : null;
+  if (!field) {
+    return;
+  }
+  field.classList.toggle("has-required-attention", Boolean(missing));
+}
+
+function getWorkOrderRequiredFieldStates(payload = buildWorkOrderPayload()) {
+  const serviceItems = Array.isArray(payload?.serviceItems) ? payload.serviceItems : [];
+  const executors = Array.isArray(payload?.executors) ? payload.executors : [];
+
+  return [
+    {
+      key: "company",
+      label: "Tvrtka",
+      target: workOrderCompanyIdInput,
+      complete: Boolean(String(payload?.companyId || "").trim()),
+    },
+    {
+      key: "location",
+      label: "Lokacija",
+      target: workOrderLocationIdInput,
+      complete: Boolean(String(payload?.locationId || "").trim()),
+    },
+    {
+      key: "openedDate",
+      label: "Datum otvaranja",
+      target: workOrderOpenedDateInput,
+      complete: Boolean(toDateKey(workOrderOpenedDateInput?.value || "")),
+    },
+    {
+      key: "dueDate",
+      label: "Rok završetka",
+      target: workOrderDueDateInput,
+      complete: Boolean(toDateKey(workOrderDueDateInput?.value || "")),
+    },
+    {
+      key: "executors",
+      label: "Izvršitelji",
+      target: workOrderExecutorsPicker,
+      complete: executors.length > 0,
+    },
+    {
+      key: "services",
+      label: "Usluge",
+      target: workOrderServicePicker,
+      complete: serviceItems.length > 0,
+    },
+  ];
+}
+
+function getWorkOrderPdfReadiness(payload = buildWorkOrderPayload()) {
+  const requiredFields = getWorkOrderRequiredFieldStates(payload);
+  const missing = requiredFields.filter((entry) => !entry.complete);
+  return {
+    requiredFields,
+    missing,
+    ready: missing.length === 0,
+  };
+}
+
+function syncWorkOrderPdfAndRequiredFields(payload = buildWorkOrderPayload()) {
+  const readiness = getWorkOrderPdfReadiness(payload);
+  const shouldHighlight = state.workOrderEditorOpen && getCanEditOperationalData();
+
+  readiness.requiredFields.forEach((entry) => {
+    setWorkOrderFieldRequiredAttention(entry.target, shouldHighlight && !entry.complete);
+  });
+
+  if (workOrderDownloadPdfButton) {
+    const hasWorkOrderId = Boolean(String(workOrderIdInput?.value || "").trim());
+    workOrderDownloadPdfButton.hidden = !(readiness.ready || hasWorkOrderId);
+    workOrderDownloadPdfButton.disabled = !readiness.ready || !hasWorkOrderId;
+    workOrderDownloadPdfButton.textContent = hasWorkOrderId
+      ? "Preuzmi PDF"
+      : "PDF nakon spremanja";
+    workOrderDownloadPdfButton.title = readiness.ready
+      ? (hasWorkOrderId ? "Preuzmi PDF i spremi ga u Documents." : "RN se automatski sprema, nakon toga PDF je dostupan.")
+      : `Popuni: ${readiness.missing.map((entry) => entry.label).join(", ")}`;
+  }
+
+  return readiness;
 }
 
 function enhanceWorkOrderEditorChrome() {
@@ -13030,6 +13139,8 @@ function renderWorkOrderEditorSummary() {
     return;
   }
 
+  ensureWorkOrderDateInputsDisplay();
+
   const activeId = String(workOrderIdInput.value || "");
   const persistedItem = state.workOrders.find((item) => String(item.id) === activeId) ?? null;
   const workOrderNumber = persistedItem?.workOrderNumber || "";
@@ -13195,6 +13306,7 @@ function renderWorkOrderEditorSummary() {
   facts.append(assigneeMeta);
   workOrderEditorMeta.replaceChildren(chips, facts);
   workOrderStatusInput.dataset.status = slugifyValue(workOrderStatusInput.value || "Otvoreni RN");
+  syncWorkOrderPdfAndRequiredFields();
   renderTopbarBreadcrumbs();
 }
 
@@ -15545,40 +15657,81 @@ function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.rec
 function buildWorkOrderDocumentLibraryFolders(records = state.documentsExplorer.records) {
   const buckets = new Map();
 
-  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
-    const context = getDocumentRecordLibraryContext(record, recordIndex);
-    const folderKey = context.linkedWorkOrder?.id
-      ? `work-orders:work-order:${context.linkedWorkOrder.id}`
-      : `work-orders:record:${String(record?.id || recordIndex)}`;
+  const ensureWorkOrderFolder = (workOrder = {}, fallbackRecord = {}, recordIndex = 0) => {
+    const company = getCompany(workOrder?.companyId || fallbackRecord?.companyId || "");
+    const location = getLocation(workOrder?.locationId || fallbackRecord?.locationId || "");
+    const serviceLabel = String(
+      getWorkOrderServiceSummary(workOrder)
+      || workOrder?.serviceLine
+      || "",
+    ).trim();
+    const workOrderNumber = String(workOrder?.workOrderNumber || fallbackRecord?.workOrderNumber || "").trim();
+    const folderKey = workOrder?.id
+      ? `work-orders:work-order:${workOrder.id}`
+      : `work-orders:record:${String(fallbackRecord?.id || recordIndex)}`;
 
     if (!buckets.has(folderKey)) {
       buckets.set(folderKey, {
         id: folderKey,
         categoryId: "work-orders",
-        label: context.workOrderNumber || "Radni nalog",
+        label: workOrderNumber || "Radni nalog",
         subtitle: [
-          context.company?.name || context.linkedWorkOrder?.companyName || "",
-          createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || ""),
-          context.serviceLabel,
+          company?.name || workOrder?.companyName || "",
+          createCompactLocationLabel(location?.name || workOrder?.locationName || ""),
+          serviceLabel,
         ].filter(Boolean).join(" · "),
         metaParts: [
-          context.company?.name || "",
-          context.serviceLabel || "",
+          company?.name || "",
+          serviceLabel || "",
         ].filter(Boolean),
         searchTerms: [
-          context.workOrderNumber || "",
-          context.company?.name || "",
-          context.location?.name || context.linkedWorkOrder?.locationName || "",
-          context.serviceLabel,
+          workOrderNumber || "",
+          company?.name || "",
+          location?.name || workOrder?.locationName || "",
+          serviceLabel,
         ],
-        sourceTarget: context.sourceTarget,
+        sourceTarget: workOrder?.id ? { kind: "work-order", record: workOrder } : null,
         documents: [],
       });
     }
 
-    buckets.get(folderKey).documents.push(
+    return buckets.get(folderKey);
+  };
+
+  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
+    const context = getDocumentRecordLibraryContext(record, recordIndex);
+    const folder = ensureWorkOrderFolder(context.linkedWorkOrder, record, recordIndex);
+    if (context.sourceTarget && !folder.sourceTarget) {
+      folder.sourceTarget = context.sourceTarget;
+    }
+    folder.documents.push(
       createDocumentRecordLibraryEntryFromContext(record, context, "work-order-record"),
     );
+  });
+
+  sortWorkOrders(state.workOrders ?? []).forEach((workOrder, index) => {
+    if (!workOrder?.id) {
+      return;
+    }
+    const folder = ensureWorkOrderFolder(workOrder, {}, index);
+    const workOrderNumber = workOrder.workOrderNumber || `RN ${index + 1}`;
+    const company = getCompany(workOrder.companyId);
+    const location = getLocation(workOrder.locationId);
+    folder.documents.push(createDocumentLibraryGeneratedPdfEntry({
+      id: `work-orders:pdf:${workOrder.id}`,
+      label: `${workOrderNumber} PDF`,
+      description: "Automatski PDF radnog naloga. Kod preuzimanja se ponovno spremi u Documents.",
+      exportPath: `/work-orders/${encodeURIComponent(String(workOrder.id))}/pdf`,
+      fileName: `${slugifyValue(workOrderNumber || "radni-nalog") || "radni-nalog"}.pdf`,
+      updatedAt: workOrder.updatedAt || workOrder.createdAt || workOrder.openedDate || "",
+      sourceTarget: { kind: "work-order", record: workOrder },
+      searchTerms: [
+        workOrderNumber,
+        company?.name || "",
+        location?.name || workOrder.locationName || "",
+        getWorkOrderServiceSummary(workOrder),
+      ],
+    }));
   });
 
   return [...buckets.values()]
@@ -16469,6 +16622,9 @@ async function previewDocumentsLibraryEntry(entry = null) {
   }
 
   if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    if (entry.sourceTarget?.kind === "work-order" && entry.sourceTarget?.record?.id) {
+      await saveGeneratedWorkOrderPdf(entry.sourceTarget.record.id);
+    }
     const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
     previewBlobInNewTab(blob, fileName || entry.fileName || "dokument.pdf");
     return;
@@ -16490,6 +16646,9 @@ async function downloadDocumentsLibraryEntry(entry = null) {
   }
 
   if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    if (entry.sourceTarget?.kind === "work-order" && entry.sourceTarget?.record?.id) {
+      await saveGeneratedWorkOrderPdf(entry.sourceTarget.record.id);
+    }
     const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
     triggerBlobDownload(blob, fileName || entry.fileName || "dokument.pdf");
     return;
@@ -63360,13 +63519,16 @@ function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
   }, WORK_ORDER_PDF_AUTOSAVE_DELAY_MS));
 }
 
-async function downloadWorkOrderPdf(workOrder = {}) {
+async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
     return;
   }
 
   try {
+    if (saveFirst) {
+      await saveGeneratedWorkOrderPdf(workOrderId);
+    }
     const templateId = getSelectedWorkOrderTemplateId();
     const response = await apiBinaryRequest(`/work-orders/${workOrderId}/pdf`, {
       method: "POST",
@@ -63375,6 +63537,49 @@ async function downloadWorkOrderPdf(workOrder = {}) {
     triggerBlobDownload(response.blob, response.fileName || `${sanitizeDocumentTemplateFileName(workOrder.workOrderNumber || "radni-nalog", "radni-nalog")}.pdf`);
   } catch (error) {
     setSyncError(error?.message || "Ne mogu preuzeti RN PDF.");
+  }
+}
+
+async function downloadActiveWorkOrderPdfFromEditor() {
+  const readiness = syncWorkOrderPdfAndRequiredFields();
+  if (!readiness.ready) {
+    workOrderError.textContent = `Popuni obavezna polja za RN PDF: ${readiness.missing.map((entry) => entry.label).join(", ")}.`;
+    return;
+  }
+
+  if (workOrderDownloadPdfButton) {
+    workOrderDownloadPdfButton.disabled = true;
+    workOrderDownloadPdfButton.classList.add("is-loading");
+    workOrderDownloadPdfButton.textContent = "Pripremam PDF...";
+  }
+
+  try {
+    let workOrderId = String(workOrderIdInput?.value || "").trim();
+    if (!workOrderId) {
+      await persistWorkOrderAutoSave({ immediate: true });
+      workOrderId = String(workOrderIdInput?.value || "").trim();
+    }
+
+    if (!workOrderId) {
+      throw new Error("RN se još sprema. Pokušaj ponovno za trenutak.");
+    }
+
+    const workOrder = state.workOrders.find((item) => String(item.id) === workOrderId) ?? {
+      ...buildWorkOrderPayload(),
+      id: workOrderId,
+      workOrderNumber: workOrderNumberPreview?.textContent?.replace(/^RN\s+/i, "") || "",
+    };
+
+    await saveGeneratedWorkOrderPdf(workOrderId);
+    await downloadWorkOrderPdf(workOrder, { saveFirst: false });
+    workOrderError.textContent = "";
+  } catch (error) {
+    workOrderError.textContent = error?.message || "Ne mogu pripremiti RN PDF.";
+  } finally {
+    if (workOrderDownloadPdfButton) {
+      workOrderDownloadPdfButton.classList.remove("is-loading");
+    }
+    syncWorkOrderPdfAndRequiredFields();
   }
 }
 
@@ -68731,7 +68936,13 @@ workOrderContactSlotInput.addEventListener("change", () => {
   workOrderDueDateInput,
   workOrderInvoiceDateInput,
 ].forEach((input) => {
+  input?.addEventListener("input", () => {
+    ensureWorkOrderDateInputDisplay(input);
+  });
   input?.addEventListener("change", () => {
+    normalizeWorkOrderDateInputDisplay(input);
+  });
+  input?.addEventListener("blur", () => {
     normalizeWorkOrderDateInputDisplay(input);
   });
 });
@@ -68822,6 +69033,9 @@ workOrderSearchInput?.addEventListener("input", () => {
 });
 workOrderOpenDocumentsButton?.addEventListener("click", () => {
   openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
+});
+workOrderDownloadPdfButton?.addEventListener("click", () => {
+  void downloadActiveWorkOrderPdfFromEditor();
 });
 workOrderBatchClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
