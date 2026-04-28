@@ -13580,7 +13580,7 @@ function renderWorkOrderEditorExecutorPicker() {
       applyDraftValues(draftValues);
     });
 
-    menu.append(searchWrap, typeTabs, selection, helper, optionsList, clearButton);
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
 
     syncMenuState();
 
@@ -13951,6 +13951,7 @@ function renderWorkOrderServicePicker() {
 
     let draftItems = getCurrentItems();
     let searchQuery = "";
+    let selectedTypeFilter = getWorkOrderSelectionServiceType(draftItems) || "inspection";
 
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-service-picker-menu-portal";
@@ -13971,6 +13972,9 @@ function renderWorkOrderServicePicker() {
     searchInput.className = "work-order-service-picker-search-input";
     searchInput.placeholder = "Traži po nazivu, šifri ili templateu";
     searchWrap.append(searchInput);
+
+    const typeTabs = document.createElement("div");
+    typeTabs.className = "work-order-service-type-tabs";
 
     const selection = document.createElement("div");
     selection.className = "work-order-service-picker-selection";
@@ -14020,7 +14024,7 @@ function renderWorkOrderServicePicker() {
           const chip = document.createElement("button");
           chip.type = "button";
           chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
-          chip.textContent = item.serviceCode || item.name || "Usluga";
+          chip.textContent = item.name || item.serviceCode || "Usluga";
           chip.title = `Makni ${item.name || item.serviceCode}`;
           chip.addEventListener("click", () => {
             draftItems = draftItems.filter((entry) => String(entry.serviceId) !== String(item.serviceId));
@@ -14037,16 +14041,40 @@ function renderWorkOrderServicePicker() {
       }
 
       optionsList.replaceChildren();
+      const lockedType = getWorkOrderSelectionServiceType(draftItems);
+      if (lockedType) {
+        selectedTypeFilter = lockedType;
+      }
+      if (!SERVICE_CATALOG_TYPE_OPTIONS.some((option) => option.value === selectedTypeFilter)) {
+        selectedTypeFilter = lockedType || "inspection";
+      }
+
+      typeTabs.replaceChildren(...SERVICE_CATALOG_TYPE_OPTIONS.map((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `work-order-service-type-tab${selectedTypeFilter === option.value ? " is-active" : ""}`;
+        button.textContent = option.label;
+        button.disabled = Boolean(lockedType && lockedType !== option.value);
+        button.title = button.disabled
+          ? `RN je zaključan na vrstu: ${getServiceCatalogTypeLabel(lockedType)}`
+          : `Prikaži usluge vrste: ${option.label}`;
+        button.addEventListener("click", () => {
+          selectedTypeFilter = option.value;
+          syncMenuState();
+        });
+        return button;
+      }));
+
       const visibleOptions = getWorkOrderServiceCatalogOptions(draftItems)
+        .filter((option) => getWorkOrderServiceType(option) === selectedTypeFilter)
         .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
 
       if (visibleOptions.length === 0) {
         const empty = document.createElement("p");
         empty.className = "work-order-service-picker-empty";
-        empty.textContent = "Nema usluga za ovaj pojam.";
+        empty.textContent = `Nema usluga za vrstu ${getServiceCatalogTypeLabel(selectedTypeFilter)} i upisani pojam.`;
         optionsList.append(empty);
       } else {
-        const lockedType = getWorkOrderSelectionServiceType(draftItems);
         visibleOptions.forEach((option) => {
           const optionType = getWorkOrderServiceType(option);
           const isSelected = draftItems.some((item) => String(item.serviceId) === String(option.id));
@@ -14124,7 +14152,7 @@ function renderWorkOrderServicePicker() {
       }
     });
 
-    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    menu.append(searchWrap, typeTabs, selection, helper, optionsList, clearButton);
     syncMenuState();
     document.body.append(menu);
     wrapper._menuPortal = menu;
@@ -14350,7 +14378,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
           const chip = document.createElement("button");
           chip.type = "button";
           chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
-          chip.textContent = item.serviceCode || item.name || "Usluga";
+          chip.textContent = item.name || item.serviceCode || "Usluga";
           chip.title = `Makni ${item.name || item.serviceCode || "uslugu"}`;
           chip.addEventListener("click", () => {
             draftItems = draftItems.filter((entry) => String(entry.serviceId || "") !== String(item.serviceId || ""));
@@ -14447,6 +14475,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
       }
 
       const visibleOptions = getWorkOrderServiceCatalogOptions(draftItems)
+        .filter((option) => getWorkOrderServiceType(option) === selectedTypeFilter)
         .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
 
       if (visibleOptions.length !== 1) {
@@ -14464,7 +14493,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
     });
 
     actions.append(clearButton, doneButton);
-    menu.append(searchWrap, optionsList, selection, helper, actions);
+    menu.append(searchWrap, typeTabs, selection, helper, optionsList, actions);
     syncMenuState();
 
     document.body.append(menu);
