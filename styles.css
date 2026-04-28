@@ -34732,7 +34732,6 @@ button.work-order-editor-section-head {
   grid-template-columns:
     minmax(190px, 1fr)
     minmax(190px, 1fr)
-    minmax(190px, 1fr)
     minmax(170px, 0.9fr);
 }
 
@@ -34828,11 +34827,23 @@ button.work-order-editor-section-head {
 }
 
 .work-order-download-pdf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
   min-height: 36px;
+  padding: 0 !important;
   border-color: rgba(61, 139, 96, 0.42) !important;
   background: linear-gradient(180deg, #f4fff8, #e7f8ee) !important;
   color: #1f6f43 !important;
+  font-size: 0;
   font-weight: 900;
+}
+
+.work-order-download-pdf svg {
+  width: 17px;
+  height: 17px;
 }
 
 .work-order-download-pdf:not(:disabled) {
@@ -34847,6 +34858,32 @@ button.work-order-editor-section-head {
 .work-order-service-item-title-row .work-order-service-code-badge,
 .work-order-service-template-hint {
   display: none !important;
+}
+
+.work-order-calendar-executor-menu-portal,
+.work-order-service-picker-menu-portal {
+  position: fixed;
+  max-height: min(420px, calc(100dvh - 24px)) !important;
+  overflow: hidden !important;
+  contain: layout paint;
+  overscroll-behavior: contain;
+}
+
+.work-order-calendar-executor-options,
+.work-order-service-picker-options {
+  min-height: 0;
+  max-height: min(260px, 42dvh) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.work-order-service-picker-selection,
+.work-order-calendar-executor-selection {
+  max-height: 72px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 @keyframes workOrderRequiredBlink {

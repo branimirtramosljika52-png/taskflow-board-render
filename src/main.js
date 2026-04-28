@@ -144,6 +144,23 @@ const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
 ]);
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
+const WORK_ORDER_REGION_OPTIONS = Object.freeze([
+  "Zagreb - Centar",
+  "Zagreb - Zapad",
+  "Zagreb - Istok",
+  "Zagreb - Jug",
+  "Istra - Sjever",
+  "Istra - Jug",
+  "Dalmacija - Sjever",
+  "Dalmacija - Središnja",
+  "Dalmacija - Jug",
+  "Slavonija - Istok",
+  "Slavonija - Zapad",
+  "Sjeverozapadna Hrvatska",
+  "Sjeveroistočna Hrvatska",
+  "Središnja Hrvatska",
+  "Riječko područje",
+]);
 const WORK_ORDER_PDF_AUTOSAVE_DELAY_MS = 2600;
 const WORK_ORDER_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
   "7z",
@@ -12832,9 +12849,11 @@ function syncWorkOrderPdfAndRequiredFields(payload = buildWorkOrderPayload()) {
     const hasWorkOrderId = Boolean(String(workOrderIdInput?.value || "").trim());
     workOrderDownloadPdfButton.hidden = !(readiness.ready || hasWorkOrderId);
     workOrderDownloadPdfButton.disabled = !readiness.ready || !hasWorkOrderId;
-    workOrderDownloadPdfButton.textContent = hasWorkOrderId
-      ? "Preuzmi PDF"
-      : "PDF nakon spremanja";
+    workOrderDownloadPdfButton.innerHTML = getWorkOrderIconMarkup("download");
+    workOrderDownloadPdfButton.setAttribute(
+      "aria-label",
+      hasWorkOrderId ? "Preuzmi PDF" : "PDF nakon spremanja",
+    );
     workOrderDownloadPdfButton.title = readiness.ready
       ? (hasWorkOrderId ? "Preuzmi PDF i spremi ga u Documents." : "RN se automatski sprema, nakon toga PDF je dostupan.")
       : `Popuni: ${readiness.missing.map((entry) => entry.label).join(", ")}`;
@@ -13382,6 +13401,7 @@ function renderWorkOrderEditorExecutorPicker() {
         event.stopPropagation();
       });
     });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
     const searchWrap = document.createElement("div");
     searchWrap.className = "work-order-calendar-executor-search";
@@ -13963,6 +13983,7 @@ function renderWorkOrderServicePicker() {
         event.stopPropagation();
       });
     });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
     const searchWrap = document.createElement("div");
     searchWrap.className = "work-order-service-picker-search";
@@ -14268,6 +14289,7 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
         event.stopPropagation();
       });
     });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
     const searchWrap = document.createElement("div");
     searchWrap.className = "work-order-service-picker-search";
@@ -25759,12 +25781,16 @@ function renderWorkOrderDocuments() {
     return;
   }
 
+  const visibleItems = items.filter((item) => (
+    String(item?.documentCategory || "").trim() !== GENERATED_WORK_ORDER_PDF_CATEGORY
+  ));
+
   if (workOrderDocumentCount) {
-    workOrderDocumentCount.textContent = String(items.length);
+    workOrderDocumentCount.textContent = String(visibleItems.length);
   }
 
   if (workOrderActivityDocumentCount) {
-    workOrderActivityDocumentCount.textContent = String(items.length);
+    workOrderActivityDocumentCount.textContent = String(visibleItems.length);
   }
 
   workOrderDocumentLoading.hidden = !loading;
@@ -25789,7 +25815,7 @@ function renderWorkOrderDocuments() {
     "Povuci ili klikni za upload. Drag and drop radi i bilo gdje u desnom activity dijelu.",
   );
 
-  items.forEach((item) => {
+  visibleItems.forEach((item) => {
     workOrderDocumentList.append(createWorkOrderDocumentCard(item));
     workOrderActivityDocumentList.append(createWorkOrderDocumentCard(item, { compact: true }));
   });
@@ -25803,8 +25829,8 @@ function renderWorkOrderDocuments() {
 
   workOrderDocumentEmpty.textContent = editorEmptyMessage;
   workOrderActivityDocumentEmpty.textContent = activityEmptyMessage;
-  workOrderDocumentEmpty.hidden = loading || Boolean(error) || items.length > 0;
-  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || items.length > 0;
+  workOrderDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
+  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
 }
 
 function resetWorkOrderDocumentCategoryDialogState() {
@@ -31162,6 +31188,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
         event.stopPropagation();
       });
     });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
     const searchWrap = document.createElement("div");
     searchWrap.className = "work-order-calendar-executor-search";
@@ -46273,6 +46300,7 @@ function renderCompanyManagerPicker() {
         event.stopPropagation();
       });
     });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
     const searchWrap = document.createElement("div");
     searchWrap.className = "work-order-calendar-executor-search";
@@ -46616,12 +46644,46 @@ function applySelectedContactDefaults() {
   workOrderContactEmailInput.value = contact.email;
 }
 
+function syncWorkOrderRegionOption(selectedValue = workOrderRegionInput?.value ?? "") {
+  if (!(workOrderRegionInput instanceof HTMLSelectElement)) {
+    if (workOrderRegionInput) {
+      workOrderRegionInput.value = String(selectedValue ?? "").trim();
+    }
+    return;
+  }
+
+  const normalizedSelectedValue = String(selectedValue ?? "").trim();
+  const existingValues = new Set(
+    Array.from(workOrderRegionInput.options).map((option) => String(option.value || "").trim()),
+  );
+
+  WORK_ORDER_REGION_OPTIONS.forEach((region) => {
+    if (existingValues.has(region)) {
+      return;
+    }
+    const option = document.createElement("option");
+    option.value = region;
+    option.textContent = region;
+    workOrderRegionInput.append(option);
+    existingValues.add(region);
+  });
+
+  if (normalizedSelectedValue && !existingValues.has(normalizedSelectedValue)) {
+    const option = document.createElement("option");
+    option.value = normalizedSelectedValue;
+    option.textContent = normalizedSelectedValue;
+    workOrderRegionInput.append(option);
+  }
+
+  workOrderRegionInput.value = normalizedSelectedValue;
+}
+
 function applySelectedLocationDefaults() {
   const location = getLocation(workOrderLocationIdInput.value);
 
   if (!location) {
     workOrderCoordinatesInput.value = "";
-    workOrderRegionInput.value = "";
+    syncWorkOrderRegionOption("");
     rebuildWorkOrderContactOptions("", "");
     workOrderContactPhoneInput.value = "";
     workOrderContactEmailInput.value = "";
@@ -46629,7 +46691,7 @@ function applySelectedLocationDefaults() {
   }
 
   workOrderCoordinatesInput.value = location.coordinates;
-  workOrderRegionInput.value = location.region;
+  syncWorkOrderRegionOption(location.region);
 
   const contacts = buildLocationContacts(location);
   const defaultSlot = contacts[0]?.slot ?? "";
@@ -49121,7 +49183,7 @@ function resetWorkOrderForm() {
   rebuildWorkOrderContactOptions("", "");
   fillWorkOrderCompanySnapshot(null);
   workOrderCoordinatesInput.value = "";
-  workOrderRegionInput.value = "";
+  syncWorkOrderRegionOption("");
   workOrderContactPhoneInput.value = "";
   workOrderContactEmailInput.value = "";
   applyMeasurementSheetSnapshot(null);
@@ -49372,7 +49434,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   fillWorkOrderCompanySnapshot(workOrder);
   rebuildWorkOrderLocationOptions(workOrder.locationId);
   workOrderCoordinatesInput.value = workOrder.coordinates;
-  workOrderRegionInput.value = workOrder.region;
+  syncWorkOrderRegionOption(workOrder.region);
   rebuildWorkOrderContactOptions(workOrder.contactSlot ?? "", workOrder.contactName);
   workOrderContactPhoneInput.value = workOrder.contactPhone;
   workOrderContactEmailInput.value = workOrder.contactEmail;
@@ -63579,7 +63641,10 @@ async function downloadActiveWorkOrderPdfFromEditor() {
   if (workOrderDownloadPdfButton) {
     workOrderDownloadPdfButton.disabled = true;
     workOrderDownloadPdfButton.classList.add("is-loading");
-    workOrderDownloadPdfButton.textContent = "Pripremam PDF...";
+    workOrderDownloadPdfButton.innerHTML = getWorkOrderIconMarkup("download");
+    workOrderDownloadPdfButton.setAttribute("aria-label", "Pripremam PDF");
+    workOrderDownloadPdfButton.setAttribute("aria-busy", "true");
+    workOrderDownloadPdfButton.title = "Pripremam PDF...";
   }
 
   try {
@@ -63607,6 +63672,7 @@ async function downloadActiveWorkOrderPdfFromEditor() {
   } finally {
     if (workOrderDownloadPdfButton) {
       workOrderDownloadPdfButton.classList.remove("is-loading");
+      workOrderDownloadPdfButton.removeAttribute("aria-busy");
     }
     syncWorkOrderPdfAndRequiredFields();
   }

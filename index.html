@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428c" />
+    <link rel="stylesheet" href="/styles.css?v=20260428d" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -943,7 +943,7 @@
                     <div class="work-order-editor-heading-actions">
                       <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
                       <span id="work-order-save-state" class="work-order-save-state" data-state="idle">Automatsko spremanje je spremno.</span>
-                      <button id="work-order-download-pdf" type="button" class="ghost-button work-order-download-pdf" hidden>Preuzmi PDF</button>
+                      <button id="work-order-download-pdf" type="button" class="ghost-button work-order-download-pdf" hidden aria-label="Preuzmi PDF" title="Preuzmi PDF">PDF</button>
                       <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close" hidden>Zatvori</button>
                     </div>
                   </div>
@@ -967,6 +967,7 @@
                     <input id="work-order-description" type="hidden" />
                     <input id="work-order-invoice-note" type="hidden" />
                     <input id="work-order-team-label" type="hidden" />
+                    <input id="work-order-link-reference" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
 
                     <section class="work-order-editor-section is-work-order-status" data-work-order-section="status">
@@ -1005,9 +1006,9 @@
                             <input id="work-order-tag-text" type="text" placeholder="tag1, tag2" />
                           </label>
 
-                          <label class="field work-order-link-field">
-                            <span>Veza RN</span>
-                            <input id="work-order-link-reference" type="text" placeholder="Povezani nalog ili projekt" />
+                          <label class="field">
+                            <span>Vrsta ugovora</span>
+                            <input id="work-order-contract-type" type="text" readonly />
                           </label>
                         </div>
                       </div>
@@ -1078,7 +1079,24 @@
 
                           <label class="field">
                             <span>Regija</span>
-                            <input id="work-order-region" type="text" placeholder="npr. Zagreb" />
+                            <select id="work-order-region">
+                              <option value="">Odaberi regiju</option>
+                              <option value="Zagreb - Centar">Zagreb - Centar</option>
+                              <option value="Zagreb - Zapad">Zagreb - Zapad</option>
+                              <option value="Zagreb - Istok">Zagreb - Istok</option>
+                              <option value="Zagreb - Jug">Zagreb - Jug</option>
+                              <option value="Istra - Sjever">Istra - Sjever</option>
+                              <option value="Istra - Jug">Istra - Jug</option>
+                              <option value="Dalmacija - Sjever">Dalmacija - Sjever</option>
+                              <option value="Dalmacija - Središnja">Dalmacija - Središnja</option>
+                              <option value="Dalmacija - Jug">Dalmacija - Jug</option>
+                              <option value="Slavonija - Istok">Slavonija - Istok</option>
+                              <option value="Slavonija - Zapad">Slavonija - Zapad</option>
+                              <option value="Sjeverozapadna Hrvatska">Sjeverozapadna Hrvatska</option>
+                              <option value="Sjeveroistočna Hrvatska">Sjeveroistočna Hrvatska</option>
+                              <option value="Središnja Hrvatska">Središnja Hrvatska</option>
+                              <option value="Riječko područje">Riječko područje</option>
+                            </select>
                           </label>
                         </div>
                       </div>
@@ -1200,11 +1218,6 @@
 
                       <div class="work-order-editor-section-body">
                         <div class="form-grid form-grid-billing">
-                          <label class="field">
-                            <span>Vrsta ugovora</span>
-                            <input id="work-order-contract-type" type="text" readonly />
-                          </label>
-
                           <label class="field">
                             <span>Težinski faktor / iznos</span>
                             <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
@@ -6981,6 +6994,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260428l"></script>
+    <script type="module" src="/src/main.js?v=20260428m"></script>
   </body>
 </html>
