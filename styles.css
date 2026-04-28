@@ -10954,6 +10954,41 @@ body.is-work-order-document-category-open {
   line-height: 1.45;
 }
 
+.measurement-ai-connection-status,
+.document-template-ai-connection-status {
+  display: inline-flex !important;
+  width: fit-content;
+  margin-top: 7px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 178, 214, 0.28);
+  background: rgba(245, 248, 255, 0.96);
+  color: #405477 !important;
+  font-size: 0.72rem !important;
+  font-weight: 800;
+}
+
+.measurement-ai-connection-status.is-ready,
+.document-template-ai-connection-status.is-ready {
+  border-color: rgba(47, 104, 84, 0.24);
+  background: rgba(236, 253, 245, 0.98);
+  color: #267052 !important;
+}
+
+.measurement-ai-connection-status.is-dry-run,
+.document-template-ai-connection-status.is-dry-run {
+  border-color: rgba(217, 155, 28, 0.28);
+  background: rgba(255, 251, 235, 0.98);
+  color: #9a6512 !important;
+}
+
+.measurement-ai-connection-status.is-error,
+.document-template-ai-connection-status.is-error {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: rgba(254, 242, 242, 0.98);
+  color: #b4232c !important;
+}
+
 .measurement-ai-popover textarea {
   width: 100%;
   min-height: 92px;

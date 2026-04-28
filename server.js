@@ -67,6 +67,8 @@ const canonicalAppOrigin = (() => {
 })();
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
+const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
+const OPENAI_RESPONSES_PATH = "/responses";
 const securityContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -83,6 +85,85 @@ const securityContentSecurityPolicy = [
   "media-src 'self' blob: data: https:",
   "upgrade-insecure-requests",
 ].join("; ");
+
+function normalizeEnvBoolean(value, fallback = false) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function getOpenAiRuntimeConfig() {
+  const apiBaseUrl = String(process.env.OPENAI_API_BASE_URL || OPENAI_DEFAULT_API_BASE_URL).trim().replace(/\/+$/, "");
+  const dryRun = normalizeEnvBoolean(process.env.OPENAI_DRY_RUN, true);
+  const liveCallsEnabled = normalizeEnvBoolean(process.env.OPENAI_ENABLE_LIVE_CALLS, false) && !dryRun;
+
+  return {
+    provider: "openai",
+    keyConfigured: Boolean(String(process.env.OPENAI_API_KEY || "").trim()),
+    dryRun,
+    liveCallsEnabled,
+    apiBaseUrl,
+    endpoint: `${apiBaseUrl}${OPENAI_RESPONSES_PATH}`,
+    model: String(process.env.OPENAI_MODEL || "").trim(),
+  };
+}
+
+function buildOpenAiStatusPayload() {
+  const config = getOpenAiRuntimeConfig();
+  return {
+    ok: true,
+    provider: config.provider,
+    keyConfigured: config.keyConfigured,
+    dryRun: config.dryRun,
+    liveCallsEnabled: config.liveCallsEnabled,
+    endpointReady: config.keyConfigured && config.dryRun,
+    model: config.model,
+    endpoint: config.endpoint,
+    tokenSpend: "disabled",
+  };
+}
+
+function buildOpenAiDryRunPlan(body = {}, user = null) {
+  const config = getOpenAiRuntimeConfig();
+  const files = Array.isArray(body.files) ? body.files : [];
+  const fields = Array.isArray(body.fields) ? body.fields : [];
+  const columns = Array.isArray(body.columns) ? body.columns : [];
+
+  return {
+    ok: true,
+    dryRun: true,
+    tokenSpend: "disabled",
+    provider: config.provider,
+    endpoint: config.endpoint,
+    model: config.model,
+    keyConfigured: config.keyConfigured,
+    liveCallsEnabled: config.liveCallsEnabled,
+    preparedAt: new Date().toISOString(),
+    actorId: String(user?.id || ""),
+    organizationId: String(body.organizationId || ""),
+    summary: {
+      files: files.length,
+      fields: fields.length,
+      excelColumns: columns.length,
+      templateId: String(body.templateId || ""),
+      workOrderId: String(body.workOrderId || ""),
+      purpose: String(body.purpose || "document-field-prefill").slice(0, 120),
+    },
+    nextStep: "Dry-run je spreman. Stvarni OpenAI poziv ostaje isključen dok se eksplicitno ne uključi live mode.",
+  };
+}
+
+function canUseOpenAiIntegration(user) {
+  return canManageMasterData(user) || canManageWorkOrders(user);
+}
 
 function sleep(durationMs) {
   return new Promise((resolveSleep) => {
@@ -1951,6 +2032,27 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/ai/openai/status") {
+      if (!canUseOpenAiIntegration(user)) {
+        sendError(response, 403, "Nemate pravo koristiti AI integraciju.");
+        return true;
+      }
+
+      sendJson(response, 200, buildOpenAiStatusPayload());
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/ai/openai/prepare") {
+      if (!canUseOpenAiIntegration(user)) {
+        sendError(response, 403, "Nemate pravo koristiti AI integraciju.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      sendJson(response, 200, buildOpenAiDryRunPlan(body, user));
       return true;
     }
 

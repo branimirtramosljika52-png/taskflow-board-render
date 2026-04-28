@@ -1322,6 +1322,16 @@ const state = {
   authView: "login",
   authResetEmail: "",
   activeOrganizationId: "",
+  openAiIntegration: {
+    status: "idle",
+    loadedAt: 0,
+    error: "",
+    keyConfigured: false,
+    dryRun: true,
+    liveCallsEnabled: false,
+    endpointReady: false,
+    model: "",
+  },
   activeTodoTaskId: "",
   todoExpandedTaskIds: new Set(),
   activeDashboardWidgetId: "",
@@ -3899,6 +3909,7 @@ const measurementAiButton = document.querySelector("#measurement-ai-button");
 const measurementAiPopover = document.querySelector("#measurement-ai-popover");
 const measurementAiCloseButton = document.querySelector("#measurement-ai-close");
 const measurementAiColumnLabel = document.querySelector("#measurement-ai-column-label");
+const measurementAiConnectionStatus = document.querySelector("#measurement-ai-connection-status");
 const measurementAiEnabledInput = document.querySelector("#measurement-ai-enabled");
 const measurementAiKeyInput = document.querySelector("#measurement-ai-key");
 const measurementAiLabelInput = document.querySelector("#measurement-ai-label-input");
@@ -6372,6 +6383,89 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
   }
 
   return payload;
+}
+
+function getOpenAiIntegrationStatusLabel() {
+  const status = state.openAiIntegration;
+  if (status.status === "loading") {
+    return "OpenAI veza: provjeravam...";
+  }
+  if (status.status === "error") {
+    return status.error || "OpenAI veza: nije dostupna.";
+  }
+  if (!status.keyConfigured) {
+    return "OpenAI veza: ključ nije postavljen.";
+  }
+  if (status.dryRun) {
+    return "OpenAI veza spremna - dry-run, tokeni se ne troše.";
+  }
+  if (status.liveCallsEnabled) {
+    return "OpenAI live pozivi su uključeni.";
+  }
+  return "OpenAI veza spremna - live pozivi su zaključani.";
+}
+
+function applyOpenAiIntegrationStatusClass(element) {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  const status = state.openAiIntegration;
+  element.classList.toggle("is-loading", status.status === "loading");
+  element.classList.toggle("is-error", status.status === "error" || (!status.keyConfigured && status.status === "ready"));
+  element.classList.toggle("is-ready", status.status === "ready" && status.keyConfigured);
+  element.classList.toggle("is-dry-run", status.status === "ready" && status.dryRun);
+}
+
+function syncOpenAiIntegrationStatusTargets(...targets) {
+  targets.forEach((target) => {
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    target.textContent = getOpenAiIntegrationStatusLabel();
+    applyOpenAiIntegrationStatusClass(target);
+  });
+}
+
+async function loadOpenAiIntegrationStatus({ force = false } = {}) {
+  const isFresh = Date.now() - Number(state.openAiIntegration.loadedAt || 0) < 60000;
+  if (!force && state.openAiIntegration.status === "ready" && isFresh) {
+    syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+    return state.openAiIntegration;
+  }
+
+  state.openAiIntegration = {
+    ...state.openAiIntegration,
+    status: "loading",
+    error: "",
+  };
+  syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+
+  try {
+    const payload = await apiRequest("/ai/openai/status");
+    state.openAiIntegration = {
+      ...state.openAiIntegration,
+      status: "ready",
+      loadedAt: Date.now(),
+      error: "",
+      keyConfigured: Boolean(payload.keyConfigured),
+      dryRun: Boolean(payload.dryRun),
+      liveCallsEnabled: Boolean(payload.liveCallsEnabled),
+      endpointReady: Boolean(payload.endpointReady),
+      model: String(payload.model || ""),
+    };
+  } catch (error) {
+    state.openAiIntegration = {
+      ...state.openAiIntegration,
+      status: "error",
+      loadedAt: Date.now(),
+      error: error?.message || "OpenAI status nije dostupan.",
+      keyConfigured: false,
+      endpointReady: false,
+    };
+  }
+
+  syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+  return state.openAiIntegration;
 }
 
 function parseResponseDownloadFileName(response, fallback = "download.bin") {
@@ -21875,6 +21969,8 @@ function syncMeasurementToolbar() {
       : "Odaberi kolonu";
   }
 
+  syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+
   if (measurementAiEnabledInput) {
     measurementAiEnabledInput.checked = Boolean(activeAiMapping.enabled);
     measurementAiEnabledInput.disabled = !aiColumn;
@@ -29833,7 +29929,14 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
   title.textContent = field.label || field.wordLabel || "Postavke AI polja";
   const subtitle = document.createElement("p");
   subtitle.textContent = "Ovdje opisuješ što AI smije prepoznati iz uploadanih zapisnika, slika ili PDF-ova.";
-  copy.append(eyebrow, title, subtitle);
+  const connectionStatus = document.createElement("span");
+  connectionStatus.className = "document-template-ai-connection-status";
+  connectionStatus.textContent = "OpenAI veza: provjeravam...";
+  copy.append(eyebrow, title, subtitle, connectionStatus);
+  syncOpenAiIntegrationStatusTargets(connectionStatus);
+  void loadOpenAiIntegrationStatus().then(() => {
+    syncOpenAiIntegrationStatusTargets(connectionStatus);
+  });
   const closeButton = createActionButton("Zatvori", "ghost-button", () => closeDocumentTemplateFieldAiWizard({ render: true }));
   head.append(copy, closeButton);
 
@@ -71206,6 +71309,9 @@ measurementAiButton?.addEventListener("click", (event) => {
   state.measurementSheet.validationPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
+  if (state.measurementSheet.aiPopoverOpen) {
+    void loadOpenAiIntegrationStatus();
+  }
 });
 measurementAiPopover?.addEventListener("pointerdown", (event) => {
   event.stopPropagation();
