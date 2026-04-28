@@ -69,12 +69,21 @@ const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.t
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_RESPONSES_PATH = "/responses";
+const OPENAI_DEFAULT_MODEL_BY_TIER = Object.freeze({
+  fast: "gpt-4.1-nano",
+  standard: "gpt-4.1-mini",
+  strong: "gpt-5.1-mini",
+  max: "gpt-5.1",
+});
 const OPENAI_MODEL_TIERS = Object.freeze([
   { value: "fast", label: "Brzi", strength: "Slabiji / jeftiniji", env: "OPENAI_MODEL_FAST" },
   { value: "standard", label: "Standard", strength: "Uravnotežen", env: "OPENAI_MODEL" },
   { value: "strong", label: "Jaki", strength: "Precizniji", env: "OPENAI_MODEL_STRONG" },
   { value: "max", label: "Najjači", strength: "Najsporiji / najskuplji", env: "OPENAI_MODEL_MAX" },
 ]);
+const OPENAI_MAX_INLINE_FILE_COUNT = 5;
+const OPENAI_MAX_TEXT_FILE_CHARS = 60000;
+const OPENAI_MAX_CONTEXT_JSON_CHARS = 80000;
 const securityContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -134,7 +143,7 @@ function getOpenAiModelTierOption(value = "") {
 
 function getOpenAiModelForTier(tier = "standard", config = getOpenAiRuntimeConfig()) {
   const option = getOpenAiModelTierOption(tier);
-  return String(process.env[option.env] || config.model || "").trim();
+  return String(process.env[option.env] || config.model || OPENAI_DEFAULT_MODEL_BY_TIER[option.value] || "").trim();
 }
 
 function buildOpenAiModelTierPayload(config = getOpenAiRuntimeConfig()) {
@@ -154,11 +163,11 @@ function buildOpenAiStatusPayload() {
     keyConfigured: config.keyConfigured,
     dryRun: config.dryRun,
     liveCallsEnabled: config.liveCallsEnabled,
-    endpointReady: config.keyConfigured && config.dryRun,
-    model: config.model,
+    endpointReady: config.keyConfigured && (config.dryRun || config.liveCallsEnabled),
+    model: config.model || OPENAI_DEFAULT_MODEL_BY_TIER.standard,
     modelTiers: buildOpenAiModelTierPayload(config),
     endpoint: config.endpoint,
-    tokenSpend: "disabled",
+    tokenSpend: config.liveCallsEnabled ? "enabled" : "disabled",
   };
 }
 
@@ -195,6 +204,314 @@ function buildOpenAiDryRunPlan(body = {}, user = null) {
       purpose: String(body.purpose || "document-field-prefill").slice(0, 120),
     },
     nextStep: "Dry-run je spreman. Stvarni OpenAI poziv ostaje isključen dok se eksplicitno ne uključi live mode.",
+  };
+}
+
+function sanitizeOpenAiFileForPrompt(file = {}) {
+  return {
+    id: String(file.id || file.name || "").slice(0, 120),
+    name: String(file.name || "datoteka").slice(0, 240),
+    type: String(file.type || "application/octet-stream").slice(0, 120),
+    size: Number(file.size || 0),
+    inlineReady: Boolean(file.contentDataUrl),
+  };
+}
+
+function truncateOpenAiText(value = "", maxLength = OPENAI_MAX_CONTEXT_JSON_CHARS) {
+  const text = String(value || "");
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}\n\n[skraceno za AI kontekst]`;
+}
+
+function getOpenAiDataUrlMeta(dataUrl = "") {
+  const match = String(dataUrl || "").match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
+  if (!match) {
+    return null;
+  }
+  return {
+    mimeType: String(match[1] || "application/octet-stream").trim(),
+    isBase64: Boolean(match[2]),
+    payload: String(match[3] || ""),
+  };
+}
+
+function readOpenAiTextFileContent(file = {}) {
+  const meta = getOpenAiDataUrlMeta(file.contentDataUrl);
+  if (!meta) {
+    return "";
+  }
+  const mimeType = String(file.type || meta.mimeType || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  const isTextLike = mimeType.startsWith("text/")
+    || mimeType.includes("json")
+    || mimeType.includes("xml")
+    || mimeType.includes("csv")
+    || name.endsWith(".txt")
+    || name.endsWith(".csv")
+    || name.endsWith(".json")
+    || name.endsWith(".xml");
+  if (!isTextLike) {
+    return "";
+  }
+
+  try {
+    const decoded = meta.isBase64
+      ? Buffer.from(meta.payload, "base64").toString("utf8")
+      : decodeURIComponent(meta.payload);
+    return truncateOpenAiText(decoded, OPENAI_MAX_TEXT_FILE_CHARS);
+  } catch {
+    return "";
+  }
+}
+
+function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "") {
+  const files = Array.isArray(body.files) ? body.files : [];
+  const fields = Array.isArray(body.fields) ? body.fields : [];
+  const columns = Array.isArray(body.columns) ? body.columns : [];
+  return {
+    language: "hr-HR",
+    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru.",
+    purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
+    organizationId: String(body.organizationId || ""),
+    templateId: String(body.templateId || ""),
+    workOrderId: String(body.workOrderId || ""),
+    workOrderNumber: String(body.workOrderNumber || ""),
+    actorId: user?.id || null,
+    model: selectedModel,
+    files: files.map(sanitizeOpenAiFileForPrompt),
+    fields: fields.map((field) => ({
+      id: String(field?.id || ""),
+      key: String(field?.key || ""),
+      label: String(field?.label || ""),
+      type: String(field?.type || "text"),
+      required: Boolean(field?.required),
+      ai: field?.ai ?? {},
+    })),
+    measurementColumns: columns.map((column) => ({
+      fieldId: String(column?.fieldId || ""),
+      fieldLabel: String(column?.fieldLabel || ""),
+      columnId: String(column?.columnId || ""),
+      key: String(column?.key || ""),
+      label: String(column?.label || ""),
+      type: String(column?.type || "text"),
+      aiMapping: column?.aiMapping ?? {},
+    })),
+    expectedJsonShape: {
+      fieldSuggestions: [
+        {
+          fieldId: "id polja iz fields",
+          fieldKey: "key polja",
+          value: "predlozena vrijednost",
+          confidence: "high | medium | low",
+          reason: "kratko objasnjenje",
+          sourceFile: "ime datoteke",
+        },
+      ],
+      measurementSuggestions: [
+        {
+          fieldId: "id tablice",
+          rows: [
+            {
+              values: { columnKey: "vrijednost" },
+              confidence: "high | medium | low",
+              sourceFile: "ime datoteke",
+            },
+          ],
+        },
+      ],
+      warnings: ["sto korisnik treba provjeriti"],
+      summary: "kratak sazetak rezultata",
+    },
+  };
+}
+
+function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel = "") {
+  const contextPayload = buildOpenAiLiveContextPayload(body, user, selectedModel);
+  const content = [
+    {
+      type: "input_text",
+      text: truncateOpenAiText(JSON.stringify(contextPayload, null, 2)),
+    },
+  ];
+
+  const files = (Array.isArray(body.files) ? body.files : [])
+    .filter((file) => file?.contentDataUrl)
+    .slice(0, OPENAI_MAX_INLINE_FILE_COUNT);
+
+  files.forEach((file) => {
+    const mimeType = String(file.type || "").toLowerCase();
+    const textContent = readOpenAiTextFileContent(file);
+    if (textContent) {
+      content.push({
+        type: "input_text",
+        text: `Sadrzaj datoteke ${String(file.name || "datoteka")}:\n${textContent}`,
+      });
+      return;
+    }
+
+    if (mimeType.startsWith("image/")) {
+      content.push({
+        type: "input_image",
+        image_url: file.contentDataUrl,
+      });
+      return;
+    }
+
+    if (mimeType === "application/pdf" || String(file.name || "").toLowerCase().endsWith(".pdf")) {
+      content.push({
+        type: "input_file",
+        filename: String(file.name || "zapisnik.pdf").slice(0, 240),
+        file_data: file.contentDataUrl,
+      });
+    }
+  });
+
+  return content;
+}
+
+function extractOpenAiResponseText(payload = {}) {
+  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+
+  const parts = [];
+  (Array.isArray(payload.output) ? payload.output : []).forEach((outputItem) => {
+    (Array.isArray(outputItem?.content) ? outputItem.content : []).forEach((contentItem) => {
+      const text = typeof contentItem?.text === "string"
+        ? contentItem.text
+        : (typeof contentItem?.content === "string" ? contentItem.content : "");
+      if (text.trim()) {
+        parts.push(text.trim());
+      }
+    });
+  });
+  return parts.join("\n\n").trim();
+}
+
+function parseOpenAiJsonObject(text = "") {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return null;
+    }
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function buildOpenAiSafeErrorMessage(error) {
+  const message = String(error?.message || "OpenAI poziv nije uspio.").replace(/sk-[A-Za-z0-9_\-]+/g, "[redacted]");
+  return message.slice(0, 600);
+}
+
+async function buildOpenAiLivePlan(body = {}, user = null) {
+  const config = getOpenAiRuntimeConfig();
+  if (!config.keyConfigured) {
+    const error = new Error("OpenAI API ključ nije postavljen na serveru.");
+    error.statusCode = 503;
+    throw error;
+  }
+  if (!config.liveCallsEnabled) {
+    const error = new Error("OpenAI live pozivi nisu uključeni.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
+  const modelTierOption = getOpenAiModelTierOption(modelTier);
+  const selectedModel = String(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config)).trim();
+  if (!selectedModel) {
+    const error = new Error("OpenAI model nije konfiguriran.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const requestBody = {
+    model: selectedModel,
+    instructions: [
+      "Ti si AI asistent za SafeNexus zapisnike.",
+      "Analiziras stare zapisnike, PDF-ove, slike i tekst te predlazes vrijednosti za web polja i Excel tablice.",
+      "Odgovori samo validnim JSON objektom. Ako nisi siguran, confidence mora biti low i vrijednost ne smije biti izmisljena.",
+      "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
+    ].join(" "),
+    input: [
+      {
+        role: "user",
+        content: buildOpenAiResponseInputContent(body, user, selectedModel),
+      },
+    ],
+    max_output_tokens: 1800,
+  };
+
+  const openAiResponse = await fetch(config.endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  const responseText = await openAiResponse.text();
+  let payload = null;
+  try {
+    payload = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    payload = { output_text: responseText };
+  }
+
+  if (!openAiResponse.ok) {
+    const errorMessage = payload?.error?.message || payload?.message || responseText || "OpenAI poziv nije uspio.";
+    const error = new Error(buildOpenAiSafeErrorMessage({ message: errorMessage }));
+    error.statusCode = openAiResponse.status || 502;
+    throw error;
+  }
+
+  const outputText = extractOpenAiResponseText(payload);
+  const result = parseOpenAiJsonObject(outputText);
+  const fields = Array.isArray(body.fields) ? body.fields : [];
+  const columns = Array.isArray(body.columns) ? body.columns : [];
+  const files = Array.isArray(body.files) ? body.files : [];
+
+  return {
+    ok: true,
+    dryRun: false,
+    tokenSpend: "enabled",
+    provider: config.provider,
+    endpoint: config.endpoint,
+    model: selectedModel,
+    modelTier,
+    modelLabel: modelTierOption.label,
+    modelStrength: modelTierOption.strength,
+    preparedAt: new Date().toISOString(),
+    actorId: user?.id ?? null,
+    organizationId: String(body.organizationId || ""),
+    summary: {
+      files: files.length,
+      inlineFilesSent: files.filter((file) => file?.contentDataUrl).length,
+      fields: fields.length,
+      columns: columns.length,
+      workOrderId: String(body.workOrderId || ""),
+      purpose: String(body.purpose || "document-field-prefill").slice(0, 120),
+    },
+    result,
+    outputText,
+    usage: payload?.usage ?? null,
+    nextStep: result
+      ? "OpenAI je vratio JSON prijedloge. Provjeri ih prije finalnog exporta."
+      : "OpenAI je odgovorio, ali JSON nije automatski parsiran. Provjeri outputText.",
   };
 }
 
@@ -2089,7 +2406,18 @@ async function handleApiRequest(request, response, url) {
       }
 
       const body = await readJsonBody(request);
-      sendJson(response, 200, buildOpenAiDryRunPlan(body, user));
+      const config = getOpenAiRuntimeConfig();
+      const wantsLiveCall = body?.dryRun === false;
+      if (!wantsLiveCall || config.dryRun || !config.liveCallsEnabled) {
+        sendJson(response, 200, buildOpenAiDryRunPlan(body, user));
+        return true;
+      }
+
+      try {
+        sendJson(response, 200, await buildOpenAiLivePlan(body, user));
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 502), buildOpenAiSafeErrorMessage(error));
+      }
       return true;
     }
 

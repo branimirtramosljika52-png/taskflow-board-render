@@ -30091,6 +30091,9 @@ const DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS = Object.freeze([
     description: "Kad treba maksimalna pažnja i više provjera prije prijedloga.",
   },
 ]);
+const DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILE_BYTES = 8 * 1024 * 1024;
+const DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILES = 5;
+const DOCUMENT_TEMPLATE_RUNTIME_AI_INLINE_TEXT_EXTENSIONS = Object.freeze([".txt", ".csv", ".json", ".xml", ".md"]);
 
 function normalizeDocumentTemplateRuntimeAiModelTier(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
@@ -30141,25 +30144,66 @@ function setDocumentTemplateRuntimeAiModelTier(modelTier, template = {}, workOrd
   renderDocumentTemplateFieldRows({ renderSupport: false });
 }
 
-function createDocumentTemplateRuntimeAiFileMeta(file = {}) {
+function canInlineDocumentTemplateRuntimeAiFile(file = {}) {
+  const name = String(file?.name || "").trim();
+  const size = Number(file?.size || 0);
+  const type = String(file?.type || "").trim();
+  const lowerName = name.toLowerCase();
+  if (!name || size <= 0 || size > DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILE_BYTES) {
+    return false;
+  }
+  return type === "application/pdf"
+    || type.startsWith("image/")
+    || type.startsWith("text/")
+    || type.includes("json")
+    || type.includes("xml")
+    || DOCUMENT_TEMPLATE_RUNTIME_AI_INLINE_TEXT_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+}
+
+function readDocumentTemplateRuntimeAiFileAsDataUrl(file = {}) {
+  return new Promise((resolveRead) => {
+    if (!canInlineDocumentTemplateRuntimeAiFile(file)) {
+      resolveRead("");
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolveRead(typeof reader.result === "string" ? reader.result : "");
+    }, { once: true });
+    reader.addEventListener("error", () => {
+      resolveRead("");
+    }, { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+async function createDocumentTemplateRuntimeAiFileMeta(file = {}) {
   const name = String(file?.name || "").trim();
   const size = Number(file?.size || 0);
   const type = String(file?.type || "").trim();
   const lastModified = Number(file?.lastModified || 0);
   const safeName = name || "stari-zapisnik";
+  const contentDataUrl = await readDocumentTemplateRuntimeAiFileAsDataUrl(file);
   return {
     id: [safeName, Number.isFinite(size) ? size : 0, Number.isFinite(lastModified) ? lastModified : 0].join("::"),
     name: safeName,
     size: Number.isFinite(size) ? size : 0,
     type,
     lastModified: Number.isFinite(lastModified) ? lastModified : 0,
+    contentDataUrl,
+    inlineReady: Boolean(contentDataUrl),
   };
 }
 
-function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder = {}) {
+async function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
-  const incoming = Array.from(files ?? [])
-    .map(createDocumentTemplateRuntimeAiFileMeta)
+  const fileList = Array.from(files ?? []);
+  if (fileList.length > 0) {
+    assistant.status = "loading";
+    assistant.message = "Učitavam datoteke za AI obradu...";
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+  }
+  const incoming = (await Promise.all(fileList.map(createDocumentTemplateRuntimeAiFileMeta)))
     .filter((file) => file.name);
   if (incoming.length === 0) {
     assistant.status = "error";
@@ -30175,9 +30219,11 @@ function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder = {})
   assistant.files = Array.from(fileMap.values()).slice(0, 12);
   assistant.status = "ready";
   assistant.lastPlan = null;
-  assistant.message = assistant.files.length === 1
-    ? "1 datoteka je spremna za AI pripremu."
-    : `${assistant.files.length} datoteka je spremno za AI pripremu.`;
+  const inlineCount = assistant.files.filter((file) => file.inlineReady || file.contentDataUrl).length;
+  const fileLabel = assistant.files.length === 1 ? "1 datoteka" : `${assistant.files.length} datoteka`;
+  assistant.message = inlineCount > 0
+    ? `${fileLabel} spremno. ${inlineCount} ide direktno u OpenAI analizu.`
+    : `${fileLabel} spremno, ali bez čitljivog PDF/slika/tekst sadržaja za direktnu AI analizu.`;
   renderDocumentTemplateFieldRows({ renderSupport: false });
 }
 
@@ -30245,6 +30291,98 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
   return columns;
 }
 
+function getDocumentTemplateRuntimeAiPayloadFiles(files = []) {
+  let inlineCount = 0;
+  return (Array.isArray(files) ? files : []).map((file) => {
+    const base = {
+      id: String(file?.id || file?.name || ""),
+      name: String(file?.name || ""),
+      size: Number(file?.size || 0),
+      type: String(file?.type || ""),
+      lastModified: Number(file?.lastModified || 0),
+      inlineReady: Boolean(file?.inlineReady || file?.contentDataUrl),
+    };
+    if (file?.contentDataUrl && inlineCount < DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILES) {
+      inlineCount += 1;
+      return {
+        ...base,
+        contentDataUrl: String(file.contentDataUrl),
+      };
+    }
+    return base;
+  });
+}
+
+function getDocumentTemplateRuntimeAiResultObject(payload = {}) {
+  if (payload?.result && typeof payload.result === "object") {
+    return payload.result;
+  }
+  const text = String(payload?.outputText || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) {
+      return null;
+    }
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function applyDocumentTemplateRuntimeAiFieldSuggestions(payload = {}, template = {}, workOrder = {}) {
+  const result = getDocumentTemplateRuntimeAiResultObject(payload);
+  const suggestions = Array.isArray(result?.fieldSuggestions)
+    ? result.fieldSuggestions
+    : (Array.isArray(result?.field_suggestions) ? result.field_suggestions : []);
+  if (!workOrder?.id || suggestions.length === 0) {
+    return 0;
+  }
+
+  const fields = Array.isArray(template?.customFields) && template.customFields.length > 0
+    ? template.customFields
+    : documentTemplateFieldDrafts;
+  let appliedCount = 0;
+
+  suggestions.forEach((suggestion) => {
+    const confidence = normalizeAiConfidenceLevelLocal(suggestion?.confidence, "low");
+    if (confidence === "low") {
+      return;
+    }
+    const rawValue = suggestion?.value ?? suggestion?.suggestedValue ?? "";
+    if (rawValue == null || String(rawValue).trim() === "") {
+      return;
+    }
+    const fieldId = String(suggestion?.fieldId || suggestion?.field_id || "").trim();
+    const fieldKey = String(suggestion?.fieldKey || suggestion?.field_key || suggestion?.key || "").trim();
+    const field = fields.find((candidate) => {
+      const candidateId = String(candidate?.id || "").trim();
+      const candidateKey = String(candidate?.key || candidate?.wordLabel || candidate?.label || "").trim();
+      return (fieldId && candidateId === fieldId) || (fieldKey && candidateKey === fieldKey);
+    });
+    if (!field || String(field.type || "").trim().toLowerCase() === "measurement_table") {
+      return;
+    }
+    if (!isDocumentTemplateRuntimePersistedField(field)) {
+      return;
+    }
+    const normalizedValue = normalizeDocumentTemplateRuntimeFieldValueByType(field, rawValue);
+    setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, normalizedValue, { render: false });
+    appliedCount += 1;
+  });
+
+  if (appliedCount > 0) {
+    scheduleDocumentTemplateRuntimeAutosave();
+  }
+  return appliedCount;
+}
+
 async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
@@ -30258,7 +30396,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
   const fields = getDocumentTemplateRuntimeAiFields(template);
   const columns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
   assistant.status = "loading";
-  assistant.message = "Pripremam AI plan. Sadržaj datoteka se još ne šalje, tokeni se ne troše.";
+  assistant.message = "Šaljem zapisnik OpenAI-ju i čekam prijedloge...";
   assistant.lastPlan = null;
   renderDocumentTemplateFieldRows({ renderSupport: false });
 
@@ -30272,7 +30410,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
         templateId: template?.id || state.activeDocumentTemplateId || "",
         workOrderId: workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId || "",
         workOrderNumber: workOrder?.workOrderNumber || workOrder?.number || "",
-        files: assistant.files,
+        files: getDocumentTemplateRuntimeAiPayloadFiles(assistant.files),
         fields,
         columns,
         modelTier: modelOption.value,
@@ -30281,12 +30419,34 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
           strength: modelOption.strength,
           description: modelOption.description,
         },
-        dryRun: true,
+        dryRun: false,
       },
     });
     assistant.status = "success";
     assistant.lastPlan = payload;
-    assistant.message = `AI plan spreman za model ${payload?.modelLabel || modelOption.label}. Dry-run je prošao, tokeni se nisu trošili.`;
+    const appliedCount = payload?.dryRun ? 0 : applyDocumentTemplateRuntimeAiFieldSuggestions(payload, template, workOrder);
+    const result = getDocumentTemplateRuntimeAiResultObject(payload);
+    const fieldSuggestionCount = Array.isArray(result?.fieldSuggestions)
+      ? result.fieldSuggestions.length
+      : (Array.isArray(result?.field_suggestions) ? result.field_suggestions.length : 0);
+    const measurementSuggestionCount = Array.isArray(result?.measurementSuggestions)
+      ? result.measurementSuggestions.length
+      : (Array.isArray(result?.measurement_suggestions) ? result.measurement_suggestions.length : 0);
+    if (payload?.dryRun) {
+      assistant.message = `Dry-run je prošao za model ${payload?.modelLabel || modelOption.label}. Live poziv još nije uključen na serveru.`;
+    } else {
+      assistant.message = [
+        `OpenAI live test prošao (${payload?.model || payload?.modelLabel || modelOption.label}).`,
+        appliedCount ? `${appliedCount} polja automatski popunjeno.` : "Nema sigurnih polja za automatsku popunu.",
+        fieldSuggestionCount || measurementSuggestionCount
+          ? `Prijedlozi: ${fieldSuggestionCount} polja, ${measurementSuggestionCount} Excel tablica.`
+          : "",
+      ].filter(Boolean).join(" ");
+    }
+    if (!payload?.dryRun && appliedCount > 0) {
+      renderDocumentTemplateFieldRows();
+      renderDocumentTemplatePreviewContent();
+    }
   } catch (error) {
     assistant.status = "error";
     assistant.message = error?.message || "AI priprema trenutno nije dostupna.";
@@ -30308,7 +30468,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.multiple = true;
-  fileInput.accept = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*";
+  fileInput.accept = ".pdf,.doc,.docx,.txt,.csv,.json,.xml,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*,image/*";
   fileInput.hidden = true;
 
   const intro = document.createElement("div");
@@ -30326,7 +30486,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const title = document.createElement("strong");
   title.textContent = "Uvezi stari zapisnik i pripremi popunjavanje";
   const description = document.createElement("p");
-  description.textContent = "Dodaj PDF, Word ili sliku starog zapisnika. Prvo radimo sigurni dry-run: provjera veze, modela i mapiranja bez slanja sadržaja i bez trošenja tokena.";
+  description.textContent = "Dodaj PDF, sliku ili tekst starog zapisnika. OpenAI čita datoteku, vraća prijedloge i automatski popunjava samo sigurnija polja.";
   const connectionStatus = document.createElement("span");
   connectionStatus.className = "document-template-ai-connection-status document-template-runtime-ai-connection";
   syncOpenAiIntegrationStatusTargets(connectionStatus);
@@ -30359,7 +30519,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
     fileInput.click();
   });
   fileInput.addEventListener("change", () => {
-    addDocumentTemplateRuntimeAiFiles(fileInput.files, template, workOrder);
+    void addDocumentTemplateRuntimeAiFiles(fileInput.files, template, workOrder);
     fileInput.value = "";
   });
   dropzone.addEventListener("dragenter", (event) => {
@@ -30395,7 +30555,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
     event.preventDefault();
     dragDepth = 0;
     dropzone.classList.remove("is-drag-over");
-    addDocumentTemplateRuntimeAiFiles(event.dataTransfer?.files, template, workOrder);
+    void addDocumentTemplateRuntimeAiFiles(event.dataTransfer?.files, template, workOrder);
   });
 
   const filesWrap = document.createElement("div");
@@ -30416,6 +30576,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
       fileMeta.textContent = [
         formatFileSize(file.size),
         file.type || "datoteka",
+        file.inlineReady || file.contentDataUrl ? "AI sadržaj spreman" : "samo metapodaci",
       ].filter(Boolean).join(" · ");
       fileCopy.append(fileName, fileMeta);
       const removeButton = document.createElement("button");
@@ -30440,8 +30601,8 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   actionTitle.textContent = assistant.status === "loading" ? "AI priprema..." : "Spremno za provjeru";
   const actionMeta = document.createElement("span");
   actionMeta.textContent = assistant.status === "success"
-    ? "Plan je pripremljen. Sljedeći korak je live čitanje sadržaja kad ga uključimo."
-    : "Odaberi snagu modela i pokreni sigurnu provjeru.";
+    ? "Rezultat je vraćen iz OpenAI-ja. Provjeri prijedloge prije završnog exporta."
+    : "Odaberi snagu modela i pokreni live analizu.";
   const modelPicker = document.createElement("label");
   modelPicker.className = "document-template-runtime-ai-model";
   const modelHeader = document.createElement("span");
