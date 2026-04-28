@@ -685,6 +685,57 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(sorted[0].id, "template-1");
 });
 
+test("document template AI field settings survive custom field only updates", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "TZIN1",
+      documentType: "Zapisnik",
+      status: "active",
+      customFields: [
+        {
+          id: "field-project-docs",
+          label: "Projektna dokumentacija",
+          key: "projektna_dokumentacija",
+          type: "text",
+        },
+      ],
+    },
+    state,
+    () => "template-ai-1",
+    () => "2026-04-28T08:00:00.000Z",
+  );
+
+  const updated = updateDocumentTemplate(
+    template,
+    {
+      customFields: [
+        {
+          ...template.customFields[0],
+          ai: {
+            enabled: true,
+            aiDescription: "Prepoznaj projektnu dokumentaciju iz starog zapisnika.",
+            aiLookFor: ["projekt", "dokumentacija"],
+            confidenceRequired: "high",
+          },
+        },
+      ],
+    },
+    {
+      ...state,
+      documentTemplates: [template],
+    },
+    () => "2026-04-28T09:00:00.000Z",
+  );
+
+  assert.equal(updated.title, "TZIN1");
+  assert.equal(updated.customFields[0].id, "field-project-docs");
+  assert.equal(updated.customFields[0].ai.enabled, true);
+  assert.equal(updated.customFields[0].ai.confidenceRequired, "high");
+  assert.deepEqual(updated.customFields[0].ai.aiLookFor, ["projekt", "dokumentacija"]);
+});
+
 test("service catalog keeps linked templates and supports filtering and sorting", () => {
   const state = buildState();
   const template = createDocumentTemplate(

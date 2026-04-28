@@ -27469,6 +27469,10 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-block-head h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   margin: 0;
   color: #3d2152;
   font-size: 1.02rem;
@@ -31660,6 +31664,14 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
   font-size: 0.58rem;
   letter-spacing: 0.12em;
   vertical-align: middle;
+}
+
+.document-template-ai-pill.is-block-runtime {
+  min-height: 20px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
 }
 
 .document-template-runtime-field-title-ai {

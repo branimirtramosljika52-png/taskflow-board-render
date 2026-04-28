@@ -30048,7 +30048,7 @@ function getDocumentTemplateFieldAiConfidence(field = {}, runtimeConfidence = ""
     return normalizedRuntime;
   }
   const config = normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
-  return config.enabled ? "medium" : normalizeAiConfidenceLevelLocal(config.confidenceRequired, "medium");
+  return normalizeAiConfidenceLevelLocal(config.confidenceRequired, "medium");
 }
 
 function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
@@ -30095,6 +30095,30 @@ function appendDocumentTemplateRuntimeTitleAiPill(titleNode, field = {}, workOrd
   pill.classList.add("is-inline-runtime");
   titleNode.classList.add("document-template-runtime-field-title-ai");
   titleNode.append(pill);
+}
+
+function getDocumentTemplateRuntimeAiFieldsFromBlock(block = {}) {
+  return (Array.isArray(block?.items) ? block.items : [])
+    .map((entry) => entry?.field)
+    .filter((field) => field && hasDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field));
+}
+
+function createDocumentTemplateRuntimeBlockAiPill(block = {}) {
+  const aiFields = getDocumentTemplateRuntimeAiFieldsFromBlock(block);
+  if (aiFields.length === 0) {
+    return null;
+  }
+  const pill = createDocumentTemplateAiStatusPill(aiFields[0]);
+  if (!pill) {
+    return null;
+  }
+  pill.classList.add("is-block-runtime");
+  pill.textContent = aiFields.length > 1 ? `AI ${aiFields.length}` : "AI";
+  pill.title = aiFields.length > 1
+    ? `${aiFields.length} polja u ovom bloku imaju AI postavke.`
+    : pill.title;
+  pill.setAttribute("aria-label", pill.title);
+  return pill;
 }
 
 const DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS = Object.freeze([
@@ -31035,7 +31059,7 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
     setDocumentTemplateMessage("Spremam uklanjanje AI postavki...");
-    void persistDocumentTemplateDraft({
+    void persistDocumentTemplateAiFieldConfig(normalizedFieldId, documentTemplateFieldDrafts[fieldIndex].ai, {
       successMessage: "AI postavke su uklonjene i template je spremljen.",
       scrollToTop: false,
     });
@@ -31045,11 +31069,12 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    documentTemplateFieldDrafts[fieldIndex].ai = collectDocumentTemplateAiWizardConfig(form, field);
+    const nextAiConfig = collectDocumentTemplateAiWizardConfig(form, field);
+    documentTemplateFieldDrafts[fieldIndex].ai = nextAiConfig;
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
     setDocumentTemplateMessage("Spremam AI postavke u template...");
-    void persistDocumentTemplateDraft({
+    void persistDocumentTemplateAiFieldConfig(normalizedFieldId, nextAiConfig, {
       successMessage: "AI postavke su spremljene i odmah aktivne u izradi zapisnika.",
       scrollToTop: false,
     });
@@ -32133,6 +32158,88 @@ function resolveSavedDocumentTemplate({ currentId = "", title = "" } = {}) {
   return sortDocumentTemplates(state.documentTemplates ?? []).find((item) => (
     String(item.title || "").trim().toLowerCase() === normalizedTitle
   )) ?? null;
+}
+
+async function persistDocumentTemplateAiFieldConfig(
+  fieldId = "",
+  aiConfig = {},
+  {
+    successMessage = "AI postavke su spremljene.",
+    scrollToTop = false,
+  } = {},
+) {
+  if (!documentTemplateForm || isDocumentTemplateRuntimeFillMode()) {
+    return false;
+  }
+
+  const normalizedFieldId = String(fieldId || "").trim();
+  const fieldIndex = documentTemplateFieldDrafts.findIndex((field) => String(field?.id || "") === normalizedFieldId);
+  if (fieldIndex < 0) {
+    setDocumentTemplateMessage("Ne mogu pronaći polje za spremanje AI postavki.");
+    scrollDocumentTemplateMessageIntoView();
+    return false;
+  }
+
+  const currentField = documentTemplateFieldDrafts[fieldIndex];
+  documentTemplateFieldDrafts[fieldIndex] = {
+    ...currentField,
+    ai: normalizeDocumentTemplateFieldAiConfig(aiConfig, currentField),
+  };
+  invalidateDocumentTemplateDraftCache();
+
+  if (state.measurementSheet.ownerKind === "template_field") {
+    if (state.measurementSheet.editingCell) {
+      commitMeasurementEditMode();
+    }
+    persistMeasurementSheetToTemplateField({ rerenderFieldRows: false });
+  }
+
+  const templateId = String(documentTemplateIdInput?.value || state.activeDocumentTemplateId || "").trim();
+  if (!templateId) {
+    return persistDocumentTemplateDraft({
+      successMessage,
+      scrollToTop,
+    });
+  }
+
+  const draft = buildDocumentTemplateDraft();
+  setDocumentTemplateMessage("");
+
+  if (documentTemplateSaveButton instanceof HTMLButtonElement) {
+    documentTemplateSaveButton.disabled = true;
+  }
+
+  try {
+    const success = await runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(templateId)}`, {
+      method: "PATCH",
+      body: {
+        customFields: draft.customFields,
+      },
+    }), documentTemplateError);
+    if (!success) {
+      scrollDocumentTemplateMessageIntoView();
+      return false;
+    }
+
+    renderDocumentTemplateModule();
+    const savedTemplate = resolveSavedDocumentTemplate({ currentId: templateId, title: draft.title });
+    if (savedTemplate) {
+      hydrateDocumentTemplateForm(savedTemplate, {
+        preserveRuntimeContext: hasDocumentTemplateRuntimeContext(),
+      });
+    } else {
+      syncDocumentTemplateEditorChrome();
+    }
+    setDocumentTemplateMessage(successMessage, { type: "success" });
+    if (scrollToTop) {
+      documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    }
+    return true;
+  } finally {
+    if (documentTemplateSaveButton instanceof HTMLButtonElement) {
+      documentTemplateSaveButton.disabled = false;
+    }
+  }
 }
 
 async function persistDocumentTemplateDraft({
@@ -44840,6 +44947,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     wrapper.className = "field field-span-full";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     const area = field.signatureArea || "elektro";
     const picker = createWorkOrderDocumentSignaturePersonPicker({
       capability: "inspect",
@@ -44880,6 +44988,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     shellNode.append(title);
 
     const frameworks = getDocumentTemplateLegalFrameworksForField(templateDraft, field, { selectedOnly: false });
@@ -44931,6 +45040,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.className = "document-template-runtime-legal-field document-template-runtime-equipment-field";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     shellNode.append(title);
 
     const equipmentItems = getDocumentTemplateLinkedEquipmentItems(templateDraft);
@@ -45012,6 +45122,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const titleBar = document.createElement("div");
     titleBar.className = "document-template-runtime-system-title";
     titleBar.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(titleBar, field, workOrder?.id);
     shellNode.append(titleBar);
 
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
@@ -45256,6 +45367,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
 
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
     const currentValue = normalizeDocumentTemplateMediaFieldValue(
@@ -45449,6 +45561,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.className = "document-template-runtime-readonly-card";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, previewContext?.workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId);
     const signaturePreview = getDocumentTemplateSignaturePreviewData(field, previewContext);
     const signatureMethod = getDocumentTemplateContextSignatureMethod(previewContext);
     const meta = document.createElement("p");
@@ -45479,6 +45592,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, previewContext?.workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId);
 
     const badgeRow = document.createElement("div");
     badgeRow.className = "document-template-runtime-digital-signature-badges";
@@ -45569,6 +45683,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.className = "document-template-runtime-measurement-field";
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
+    appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
 
     const inlineExcelHost = document.createElement("div");
     inlineExcelHost.className = "document-template-inline-excel-host";
@@ -45751,7 +45866,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     });
     const copy = document.createElement("div");
     const title = document.createElement("h4");
-    title.textContent = block.chapter?.label || `Blok ${blockIndex + 1}`;
+    title.append(document.createTextNode(block.chapter?.label || `Blok ${blockIndex + 1}`));
+    const blockAiPill = createDocumentTemplateRuntimeBlockAiPill(block);
+    if (blockAiPill) {
+      title.append(blockAiPill);
+    }
     const meta = document.createElement("p");
     meta.className = "document-template-runtime-block-meta";
     meta.textContent = [
