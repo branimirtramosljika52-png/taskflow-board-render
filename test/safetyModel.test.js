@@ -502,7 +502,19 @@ test("document templates keep nested builder data and support filtering", () => 
       sampleLocationId: "location-1",
       selectedLegalFrameworkIds: ["legal-1"],
       customFields: [
-        { label: "Tvrtka u aplikaciji", wordLabel: "Tvrtka", key: "tvrtka", source: "COMPANY_NAME", fieldHeight: 5 },
+        {
+          label: "Tvrtka u aplikaciji",
+          wordLabel: "Tvrtka",
+          key: "tvrtka",
+          source: "COMPANY_NAME",
+          fieldHeight: 5,
+          ai: {
+            enabled: true,
+            aiDescription: "Prepoznaj naziv narucitelja iz starog zapisnika.",
+            aiLookFor: ["naziv tvrtke", "narucitelj"],
+            confidenceRequired: "high",
+          },
+        },
         { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
         { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
@@ -546,6 +558,13 @@ test("document templates keep nested builder data and support filtering", () => 
                   sourceMode: "custom",
                   options: ["Panik", "Tipkalo"],
                   allowCustom: false,
+                },
+                aiMapping: {
+                  enabled: true,
+                  key: "mjerno_mjesto",
+                  label: "Mjerno mjesto",
+                  aiDescription: "Prepoznaj naziv mjernog mjesta iz tablice.",
+                  confidenceRequired: "medium",
                 },
               },
               { id: "measurement-column-2", label: "Vrijednost", placeholder: "Vrijednost", width: 160 },
@@ -607,6 +626,9 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[0].source, "COMPANY_NAME");
   assert.equal(template.customFields[0].wordLabel, "Tvrtka");
   assert.equal(template.customFields[0].fieldHeight, 5);
+  assert.equal(template.customFields[0].ai.enabled, true);
+  assert.equal(template.customFields[0].ai.confidenceRequired, "high");
+  assert.deepEqual(template.customFields[0].ai.aiLookFor, ["naziv tvrtke", "narucitelj"]);
   assert.equal(template.customFields[2].type, "checkbox");
   assert.equal(template.customFields[3].type, "toggle");
   assert.equal(template.customFields[4].type, "inspector_signature");
@@ -623,6 +645,9 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[7].sheet?.merges[0]?.colSpan, 2);
   assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.type, "list");
   assert.equal(template.customFields[7].sheet?.columns[0]?.validation?.allowCustom, false);
+  assert.equal(template.customFields[7].sheet?.columns[0]?.aiMapping?.enabled, true);
+  assert.equal(template.customFields[7].sheet?.columns[0]?.aiMapping?.key, "mjerno_mjesto");
+  assert.equal(template.customFields[7].sheet?.columns[0]?.aiMapping?.confidenceRequired, "medium");
   assert.equal(template.customFields[8].type, "dropdown");
   assert.deepEqual(template.customFields[8].dropdownOptions, ["Ispravno", "Neispravno"]);
   assert.equal(template.equipmentItems.length, 1);

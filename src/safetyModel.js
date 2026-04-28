@@ -709,6 +709,52 @@ function normalizeDocumentTemplateFieldSource(value) {
   return normalizeText(value).trim().toUpperCase().slice(0, 80);
 }
 
+function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const fieldType = normalizeDocumentTemplateFieldType(field?.type);
+  const fallbackType = fieldType === "dropdown"
+    ? "enum"
+    : fieldType === "measurement_table"
+      ? "list"
+      : fieldType === "date"
+        ? "date"
+        : "text";
+  const label = normalizeText(source?.label ?? field?.label ?? field?.wordLabel).slice(0, 160);
+  const key = normalizeText(source?.key ?? field?.key).slice(0, 120);
+  const aiDescription = normalizeText(source?.aiDescription ?? source?.ai_description ?? source?.description).slice(0, 2000);
+  const aiLookFor = normalizeAiConfigList(source?.aiLookFor ?? source?.ai_look_for, 160);
+  const aiAvoid = normalizeText(source?.aiAvoid ?? source?.ai_avoid).slice(0, 1000);
+
+  return {
+    key,
+    label,
+    description: normalizeText(source?.description ?? field?.helpText).slice(0, 2000),
+    type: normalizeAiFieldType(source?.type || fallbackType, fallbackType),
+    required: normalizeBoolean(source?.required, false),
+    placeholder: normalizeText(source?.placeholder).slice(0, 400),
+    helpText: normalizeText(source?.helpText ?? source?.help_text ?? field?.helpText).slice(0, 1000),
+    enabled: normalizeBoolean(source?.enabled ?? source?.aiEnabled ?? source?.ai_enabled, false),
+    aiDescription,
+    aiLookFor,
+    aiAvoid,
+    allowedValues: normalizeAiConfigList(source?.allowedValues ?? source?.allowed_values, 160),
+    commonValues: normalizeAiConfigList(source?.commonValues ?? source?.common_values, 80),
+    examples: normalizeAiConfigList(source?.examples, 80),
+    format: normalizeText(source?.format).slice(0, 160),
+    unit: normalizeText(source?.unit).slice(0, 40),
+    defaultValue: normalizeText(source?.defaultValue ?? source?.default_value ?? field?.defaultValue).slice(0, 500),
+    fallbackValue: normalizeText(source?.fallbackValue ?? source?.fallback_value).slice(0, 500),
+    confidenceRequired: normalizeAiConfidenceLevel(
+      source?.confidenceRequired ?? source?.confidence_required,
+      "medium",
+    ),
+    sourceTracking: normalizeBoolean(source?.sourceTracking ?? source?.source_tracking, true),
+    validationRules: normalizeText(source?.validationRules ?? source?.validation_rules).slice(0, 1600),
+    displayOrder: normalizeAiDisplayOrder(source?.displayOrder ?? source?.display_order),
+    group: normalizeText(source?.group).slice(0, 120),
+  };
+}
+
 function normalizeDocumentTemplateDropdownOptions(value = []) {
   const source = Array.isArray(value)
     ? value
@@ -1313,20 +1359,70 @@ const MEASUREMENT_AI_COLUMN_FORMATS = new Set([
   "boolean",
   "enum",
   "measurement",
+  "list",
 ]);
+
+const AI_CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
+
+function normalizeAiConfigList(value, maxItems = 120) {
+  return normalizeMeasurementSheetValidationOptions(value).slice(0, maxItems);
+}
+
+function normalizeAiConfidenceLevel(value = "", fallback = "medium") {
+  const normalized = normalizeText(value).toLowerCase();
+  return AI_CONFIDENCE_LEVELS.has(normalized) ? normalized : fallback;
+}
+
+function normalizeAiDisplayOrder(value = "") {
+  const parsed = Number.parseInt(normalizeText(value), 10);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, parsed)) : 0;
+}
+
+function normalizeAiFieldType(value = "", fallback = "text") {
+  const normalized = normalizeText(value).toLowerCase();
+  return MEASUREMENT_AI_COLUMN_FORMATS.has(normalized) ? normalized : fallback;
+}
 
 function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
   const source = input && typeof input === "object" ? input : {};
-  const format = normalizeText(source?.format).toLowerCase();
+  const format = normalizeAiFieldType(source?.format || source?.type || "", "text");
+  const description = normalizeText(source?.description ?? source?.aiDescription ?? source?.ai_description).slice(0, 2000);
+  const aiDescription = normalizeText(source?.aiDescription ?? source?.ai_description ?? source?.description).slice(0, 2000);
+  const aiLookFor = normalizeAiConfigList(
+    source?.aiLookFor ?? source?.ai_look_for ?? source?.synonyms,
+    160,
+  );
+  const aiAvoid = normalizeText(source?.aiAvoid ?? source?.ai_avoid ?? source?.avoid).slice(0, 1000);
 
   return {
-    description: normalizeText(source?.description).slice(0, 2000),
-    synonyms: normalizeMeasurementSheetValidationOptions(source?.synonyms).slice(0, 80),
-    allowedValues: normalizeMeasurementSheetValidationOptions(source?.allowedValues).slice(0, 160),
-    examples: normalizeMeasurementSheetValidationOptions(source?.examples).slice(0, 80),
-    avoid: normalizeText(source?.avoid).slice(0, 1000),
-    format: MEASUREMENT_AI_COLUMN_FORMATS.has(format) ? format : "text",
+    key: normalizeText(source?.key).slice(0, 120),
+    label: normalizeText(source?.label).slice(0, 160),
+    description,
+    type: normalizeAiFieldType(source?.type || format, format),
     required: normalizeBoolean(source?.required, false),
+    placeholder: normalizeText(source?.placeholder).slice(0, 400),
+    helpText: normalizeText(source?.helpText ?? source?.help_text).slice(0, 1000),
+    enabled: normalizeBoolean(source?.enabled ?? source?.aiEnabled ?? source?.ai_enabled, false),
+    aiDescription,
+    aiLookFor,
+    aiAvoid,
+    synonyms: normalizeAiConfigList(source?.synonyms ?? aiLookFor, 80),
+    allowedValues: normalizeAiConfigList(source?.allowedValues ?? source?.allowed_values, 160),
+    commonValues: normalizeAiConfigList(source?.commonValues ?? source?.common_values, 80),
+    examples: normalizeAiConfigList(source?.examples, 80),
+    avoid: aiAvoid,
+    format,
+    unit: normalizeText(source?.unit).slice(0, 40),
+    defaultValue: normalizeText(source?.defaultValue ?? source?.default_value).slice(0, 500),
+    fallbackValue: normalizeText(source?.fallbackValue ?? source?.fallback_value).slice(0, 500),
+    confidenceRequired: normalizeAiConfidenceLevel(
+      source?.confidenceRequired ?? source?.confidence_required,
+      "medium",
+    ),
+    sourceTracking: normalizeBoolean(source?.sourceTracking ?? source?.source_tracking, true),
+    validationRules: normalizeText(source?.validationRules ?? source?.validation_rules).slice(0, 1600),
+    displayOrder: normalizeAiDisplayOrder(source?.displayOrder ?? source?.display_order),
+    group: normalizeText(source?.group).slice(0, 120),
   };
 }
 
@@ -1910,6 +2006,14 @@ function normalizeDocumentTemplateFields(fields = []) {
       defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
+      ai: normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, {
+        key,
+        label,
+        wordLabel,
+        type,
+        helpText: field?.helpText,
+        defaultValue: field?.defaultValue,
+      }),
       toggleTrueLabel: normalizeText(field?.toggleTrueLabel).slice(0, 120),
       toggleFalseLabel: normalizeText(field?.toggleFalseLabel).slice(0, 120),
       dropdownOptions: type === "dropdown"

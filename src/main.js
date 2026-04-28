@@ -30053,14 +30053,27 @@ function getDocumentTemplateFieldAiConfidence(field = {}, runtimeConfidence = ""
 
 function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
   const config = normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
-  if (!hasDocumentTemplateFieldAiConfig(config, field)) {
+  const runtimeMeta = normalizeDocumentTemplateRuntimeFieldAiMeta(options.runtimeMeta);
+  if (!hasDocumentTemplateFieldAiConfig(config, field) && !runtimeMeta) {
     return null;
   }
-  const confidence = getDocumentTemplateFieldAiConfidence(field, options.confidence);
+  const confidence = getDocumentTemplateFieldAiConfidence(field, runtimeMeta?.confidence || options.confidence);
   const pill = document.createElement("span");
   pill.className = `document-template-ai-pill is-${confidence}`;
+  if (runtimeMeta) {
+    pill.classList.add("is-filled");
+  }
   pill.textContent = "AI";
-  pill.title = `${AI_CONFIDENCE_LABELS[confidence] || "AI postavke"} - ${config.aiDescription || "Polje ima AI upute."}`;
+  const titleParts = runtimeMeta
+    ? [
+      `${AI_CONFIDENCE_LABELS[confidence] || "AI"} - AI je popunio ovo polje.`,
+      runtimeMeta.reason ? `Razlog: ${runtimeMeta.reason}` : "",
+      runtimeMeta.sourceFile ? `Izvor: ${runtimeMeta.sourceFile}` : "",
+    ]
+    : [
+      `${AI_CONFIDENCE_LABELS[confidence] || "AI postavke"} - ${config.aiDescription || "Polje ima AI upute."}`,
+    ];
+  pill.title = titleParts.filter(Boolean).join(" ");
   pill.setAttribute("aria-label", pill.title);
   return pill;
 }
@@ -30336,36 +30349,101 @@ function getDocumentTemplateRuntimeAiResultObject(payload = {}) {
   }
 }
 
-function applyDocumentTemplateRuntimeAiFieldSuggestions(payload = {}, template = {}, workOrder = {}) {
+function getDocumentTemplateRuntimeAiSuggestionArray(result = {}, camelKey = "", snakeKey = "") {
+  if (Array.isArray(result?.[camelKey])) {
+    return result[camelKey];
+  }
+  if (snakeKey && Array.isArray(result?.[snakeKey])) {
+    return result[snakeKey];
+  }
+  return [];
+}
+
+function normalizeDocumentTemplateRuntimeAiLookupKey(value = "") {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
+  const lookupValues = [
+    suggestion?.fieldId,
+    suggestion?.field_id,
+    suggestion?.fieldKey,
+    suggestion?.field_key,
+    suggestion?.key,
+    suggestion?.label,
+    suggestion?.fieldLabel,
+    suggestion?.field_label,
+  ]
+    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
+    .filter(Boolean);
+
+  if (!lookupValues.length) {
+    return null;
+  }
+
+  return fields.find((candidate) => {
+    const candidateValues = [
+      candidate?.id,
+      candidate?.key,
+      candidate?.wordLabel,
+      candidate?.label,
+      normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate).key,
+      normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate).label,
+    ]
+      .map(normalizeDocumentTemplateRuntimeAiLookupKey)
+      .filter(Boolean);
+
+    return candidateValues.some((value) => lookupValues.includes(value));
+  }) ?? null;
+}
+
+function getDocumentTemplateRuntimeAiSuggestionValue(suggestion = {}) {
+  return suggestion?.value
+    ?? suggestion?.suggestedValue
+    ?? suggestion?.suggested_value
+    ?? suggestion?.text
+    ?? "";
+}
+
+function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {}) {
+  if (!values || typeof values !== "object") {
+    return "";
+  }
+  const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+  const keys = [
+    column?.id,
+    column?.key,
+    column?.label,
+    aiMapping.key,
+    aiMapping.label,
+  ]
+    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
+    .filter(Boolean);
+  const matchedEntry = Object.entries(values).find(([key]) => keys.includes(normalizeDocumentTemplateRuntimeAiLookupKey(key)));
+  return matchedEntry ? matchedEntry[1] : "";
+}
+
+function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, workOrder = {}) {
   const result = getDocumentTemplateRuntimeAiResultObject(payload);
-  const suggestions = Array.isArray(result?.fieldSuggestions)
-    ? result.fieldSuggestions
-    : (Array.isArray(result?.field_suggestions) ? result.field_suggestions : []);
-  if (!workOrder?.id || suggestions.length === 0) {
-    return 0;
+  const fieldSuggestions = getDocumentTemplateRuntimeAiSuggestionArray(result, "fieldSuggestions", "field_suggestions");
+  const measurementSuggestions = getDocumentTemplateRuntimeAiSuggestionArray(result, "measurementSuggestions", "measurement_suggestions");
+  if (!workOrder?.id || (!fieldSuggestions.length && !measurementSuggestions.length)) {
+    return { fieldCount: 0, measurementCount: 0 };
   }
 
   const fields = Array.isArray(template?.customFields) && template.customFields.length > 0
     ? template.customFields
     : documentTemplateFieldDrafts;
-  let appliedCount = 0;
+  let fieldCount = 0;
+  let measurementCount = 0;
 
-  suggestions.forEach((suggestion) => {
+  fieldSuggestions.forEach((suggestion) => {
     const confidence = normalizeAiConfidenceLevelLocal(suggestion?.confidence, "low");
-    if (confidence === "low") {
-      return;
-    }
-    const rawValue = suggestion?.value ?? suggestion?.suggestedValue ?? "";
+    const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
     if (rawValue == null || String(rawValue).trim() === "") {
       return;
     }
-    const fieldId = String(suggestion?.fieldId || suggestion?.field_id || "").trim();
-    const fieldKey = String(suggestion?.fieldKey || suggestion?.field_key || suggestion?.key || "").trim();
-    const field = fields.find((candidate) => {
-      const candidateId = String(candidate?.id || "").trim();
-      const candidateKey = String(candidate?.key || candidate?.wordLabel || candidate?.label || "").trim();
-      return (fieldId && candidateId === fieldId) || (fieldKey && candidateKey === fieldKey);
-    });
+    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
     if (!field || String(field.type || "").trim().toLowerCase() === "measurement_table") {
       return;
     }
@@ -30373,14 +30451,82 @@ function applyDocumentTemplateRuntimeAiFieldSuggestions(payload = {}, template =
       return;
     }
     const normalizedValue = normalizeDocumentTemplateRuntimeFieldValueByType(field, rawValue);
-    setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, normalizedValue, { render: false });
-    appliedCount += 1;
+    setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, normalizedValue, {
+      render: false,
+      source: "ai",
+      aiMeta: {
+        confidence,
+        reason: suggestion?.reason ?? suggestion?.explanation ?? "",
+        sourceFile: suggestion?.sourceFile ?? suggestion?.source_file ?? "",
+        sourcePage: suggestion?.sourcePage ?? suggestion?.source_page ?? "",
+        model: payload?.model || payload?.modelLabel || "",
+      },
+    });
+    fieldCount += 1;
   });
 
-  if (appliedCount > 0) {
+  measurementSuggestions.forEach((suggestion, suggestionIndex) => {
+    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
+    if (!field || String(field.type || "").trim().toLowerCase() !== "measurement_table") {
+      return;
+    }
+    const rows = Array.isArray(suggestion?.rows)
+      ? suggestion.rows
+      : (Array.isArray(suggestion?.values) ? suggestion.values : []);
+    if (!rows.length) {
+      return;
+    }
+    const sheet = getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field)
+      ?? ensureDocumentTemplateMeasurementFieldSheet(field);
+    const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+    if (!normalizedSheet?.columns?.length) {
+      return;
+    }
+    const editableColumns = normalizedSheet.columns.filter((column) => !column.computed);
+    const incomingRows = rows.map((row, rowIndex) => {
+      const values = row?.values && typeof row.values === "object" ? row.values : row;
+      const cells = {};
+      const formats = {};
+      editableColumns.forEach((column) => {
+        const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column);
+        cells[column.id] = cellValue == null ? "" : String(cellValue);
+        formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
+      });
+      return normalizeMeasurementSheetRowSnapshotLocal({
+        id: `measurement-ai-${Date.now()}-${suggestionIndex + 1}-${rowIndex + 1}`,
+        cells,
+        formats,
+      }, normalizedSheet.columns, normalizedSheet.rows.length + rowIndex);
+    }).filter((row) => isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
+
+    if (!incomingRows.length) {
+      return;
+    }
+
+    const existingRows = [...(normalizedSheet.rows ?? [])];
+    incomingRows.forEach((incomingRow) => {
+      const blankIndex = existingRows.findIndex((row) => !isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
+      if (blankIndex >= 0) {
+        existingRows[blankIndex] = {
+          ...incomingRow,
+          id: existingRows[blankIndex].id,
+        };
+      } else {
+        existingRows.push(incomingRow);
+      }
+    });
+
+    setDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field.id, {
+      ...normalizedSheet,
+      rows: existingRows,
+    }, { render: false });
+    measurementCount += 1;
+  });
+
+  if (fieldCount > 0 || measurementCount > 0) {
     scheduleDocumentTemplateRuntimeAutosave();
   }
-  return appliedCount;
+  return { fieldCount, measurementCount };
 }
 
 async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
@@ -30424,26 +30570,28 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
     });
     assistant.status = "success";
     assistant.lastPlan = payload;
-    const appliedCount = payload?.dryRun ? 0 : applyDocumentTemplateRuntimeAiFieldSuggestions(payload, template, workOrder);
+    const applied = payload?.dryRun
+      ? { fieldCount: 0, measurementCount: 0 }
+      : applyDocumentTemplateRuntimeAiSuggestions(payload, template, workOrder);
+    const appliedCount = Number(applied?.fieldCount || 0);
+    const appliedMeasurementCount = Number(applied?.measurementCount || 0);
     const result = getDocumentTemplateRuntimeAiResultObject(payload);
-    const fieldSuggestionCount = Array.isArray(result?.fieldSuggestions)
-      ? result.fieldSuggestions.length
-      : (Array.isArray(result?.field_suggestions) ? result.field_suggestions.length : 0);
-    const measurementSuggestionCount = Array.isArray(result?.measurementSuggestions)
-      ? result.measurementSuggestions.length
-      : (Array.isArray(result?.measurement_suggestions) ? result.measurement_suggestions.length : 0);
+    const fieldSuggestionCount = getDocumentTemplateRuntimeAiSuggestionArray(result, "fieldSuggestions", "field_suggestions").length;
+    const measurementSuggestionCount = getDocumentTemplateRuntimeAiSuggestionArray(result, "measurementSuggestions", "measurement_suggestions").length;
     if (payload?.dryRun) {
       assistant.message = `Dry-run je prošao za model ${payload?.modelLabel || modelOption.label}. Live poziv još nije uključen na serveru.`;
     } else {
       assistant.message = [
         `OpenAI live test prošao (${payload?.model || payload?.modelLabel || modelOption.label}).`,
-        appliedCount ? `${appliedCount} polja automatski popunjeno.` : "Nema sigurnih polja za automatsku popunu.",
+        appliedCount || appliedMeasurementCount
+          ? `AI je popunio ${appliedCount} polja i ${appliedMeasurementCount} Excel tablica. Boja AI oznake pokazuje sigurnost.`
+          : "AI je vratio prijedloge, ali nema polja koja se mogu automatski upisati.",
         fieldSuggestionCount || measurementSuggestionCount
           ? `Prijedlozi: ${fieldSuggestionCount} polja, ${measurementSuggestionCount} Excel tablica.`
           : "",
       ].filter(Boolean).join(" ");
     }
-    if (!payload?.dryRun && appliedCount > 0) {
+    if (!payload?.dryRun && (appliedCount > 0 || appliedMeasurementCount > 0)) {
       renderDocumentTemplateFieldRows();
       renderDocumentTemplatePreviewContent();
     }
@@ -45459,7 +45607,16 @@ function renderDocumentTemplateRuntimeFieldRows() {
       grid.append(createStandardFieldControl(field, activeWorkOrder.id, activeWorkOrder));
     }
 
-    const aiPill = createDocumentTemplateAiStatusPill(field);
+    const runtimeAiMeta = activeWorkOrder?.id
+      ? getDocumentTemplateRuntimeFieldAiMeta(activeWorkOrder.id, field.id)
+      : null;
+    if (runtimeAiMeta) {
+      card.classList.add("is-ai-filled", `is-ai-${runtimeAiMeta.confidence}`);
+    }
+    const aiPill = createDocumentTemplateAiStatusPill(field, {
+      confidence: runtimeAiMeta?.confidence,
+      runtimeMeta: runtimeAiMeta,
+    });
     if (aiPill) {
       aiPill.classList.add("is-runtime");
       card.append(aiPill);
@@ -66463,6 +66620,22 @@ function isDocumentTemplateRuntimeFillMode() {
     && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
 }
 
+function normalizeDocumentTemplateRuntimeFieldAiMeta(meta = null) {
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+  const confidence = normalizeAiConfidenceLevelLocal(meta?.confidence, "medium");
+  return {
+    confidence,
+    value: meta?.value == null ? "" : String(meta.value).slice(0, 4000),
+    reason: String(meta?.reason ?? meta?.explanation ?? meta?.note ?? "").trim().slice(0, 1200),
+    sourceFile: String(meta?.sourceFile ?? meta?.source_file ?? meta?.fileName ?? "").trim().slice(0, 260),
+    sourcePage: String(meta?.sourcePage ?? meta?.source_page ?? meta?.page ?? "").trim().slice(0, 80),
+    model: String(meta?.model ?? "").trim().slice(0, 120),
+    suggestedAt: String(meta?.suggestedAt ?? meta?.suggested_at ?? new Date().toISOString()).trim(),
+  };
+}
+
 function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
   const source = record && typeof record === "object" ? record : {};
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object"
@@ -66478,6 +66651,14 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
       .map(([fieldId, snapshot]) => {
         const normalizedSnapshot = normalizeWorkOrderMeasurementSheet(snapshot);
         return normalizedSnapshot ? [String(fieldId), normalizedSnapshot] : null;
+      })
+      .filter(Boolean),
+  );
+  const fieldAiMeta = Object.fromEntries(
+    Object.entries(source.fieldAiMeta && typeof source.fieldAiMeta === "object" ? source.fieldAiMeta : {})
+      .map(([fieldId, meta]) => {
+        const normalizedMeta = normalizeDocumentTemplateRuntimeFieldAiMeta(meta);
+        return normalizedMeta ? [String(fieldId), normalizedMeta] : null;
       })
       .filter(Boolean),
   );
@@ -66512,6 +66693,7 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
     fieldValues,
     fieldSources,
     fieldSheets,
+    fieldAiMeta,
   };
 }
 
@@ -66554,6 +66736,15 @@ function getDocumentTemplateRuntimeFieldSource(workOrderId, fieldId) {
     return "";
   }
   return String(record.fieldSources?.[normalizedFieldId] || "").trim();
+}
+
+function getDocumentTemplateRuntimeFieldAiMeta(workOrderId, fieldId) {
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId);
+  const normalizedFieldId = String(fieldId || "").trim();
+  if (!record || !normalizedFieldId) {
+    return null;
+  }
+  return normalizeDocumentTemplateRuntimeFieldAiMeta(record.fieldAiMeta?.[normalizedFieldId]);
 }
 
 function getDocumentTemplateRuntimeRecordSource(workOrderId) {
@@ -66618,7 +66809,17 @@ function setDocumentTemplateRuntimeFieldSource(workOrderId, fieldId, sourceId, {
   scheduleDocumentTemplateRuntimeAutosave();
 }
 
-function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { render = true, preserveBlank = true } = {}) {
+function setDocumentTemplateRuntimeFieldValue(
+  workOrderId,
+  fieldId,
+  value,
+  {
+    render = true,
+    preserveBlank = true,
+    source = "manual",
+    aiMeta = null,
+  } = {},
+) {
   const normalizedFieldId = String(fieldId || "").trim();
   const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true });
   if (!record || !normalizedFieldId) {
@@ -66631,6 +66832,9 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
   const nextFieldSources = {
     ...(record.fieldSources ?? {}),
   };
+  const nextFieldAiMeta = {
+    ...(record.fieldAiMeta ?? {}),
+  };
 
   const shouldDelete = value == null
     || (typeof value === "string" && !String(value).trim())
@@ -66638,6 +66842,7 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
 
   if (shouldDelete) {
     delete nextFieldValues[normalizedFieldId];
+    delete nextFieldAiMeta[normalizedFieldId];
     if (preserveBlank) {
       nextFieldSources[normalizedFieldId] = "blank";
     } else if (nextFieldSources[normalizedFieldId] === "manual" || nextFieldSources[normalizedFieldId] === "blank") {
@@ -66645,7 +66850,22 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
     }
   } else {
     nextFieldValues[normalizedFieldId] = value;
-    nextFieldSources[normalizedFieldId] = "manual";
+    const normalizedSource = String(source || "manual").trim().toLowerCase();
+    if (normalizedSource === "ai") {
+      const normalizedMeta = normalizeDocumentTemplateRuntimeFieldAiMeta({
+        ...aiMeta,
+        value,
+      });
+      nextFieldSources[normalizedFieldId] = `ai:${normalizedMeta?.confidence || "medium"}`;
+      if (normalizedMeta) {
+        nextFieldAiMeta[normalizedFieldId] = normalizedMeta;
+      } else {
+        delete nextFieldAiMeta[normalizedFieldId];
+      }
+    } else {
+      nextFieldSources[normalizedFieldId] = "manual";
+      delete nextFieldAiMeta[normalizedFieldId];
+    }
   }
 
   state.documentTemplateRuntime.overrides = {
@@ -66654,6 +66874,7 @@ function setDocumentTemplateRuntimeFieldValue(workOrderId, fieldId, value, { ren
       ...record,
       fieldValues: nextFieldValues,
       fieldSources: nextFieldSources,
+      fieldAiMeta: nextFieldAiMeta,
     },
   };
 
