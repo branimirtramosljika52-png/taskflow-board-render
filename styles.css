@@ -37770,6 +37770,12 @@ button.work-order-editor-section-head {
   color: #166534 !important;
 }
 
+.people-training-progress-pill.is-missing {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c !important;
+}
+
 .people-training-exam-overview-card {
   width: 100%;
   padding: 16px 18px;
@@ -37783,6 +37789,271 @@ button.work-order-editor-section-head {
 .people-training-exam-list.is-rn-tracking {
   display: block;
   width: 100%;
+}
+
+.people-training-rn-tracking-groups,
+.people-training-bulk-preview-groups {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-groups {
+  width: 100%;
+}
+
+.people-training-rn-card,
+.people-training-bulk-group-card {
+  overflow: hidden;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.9)),
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.08), transparent 38%);
+  box-shadow: 0 10px 24px rgba(35, 54, 98, 0.06);
+}
+
+.people-training-rn-card.is-pending,
+.people-training-bulk-group-card {
+  border-color: rgba(250, 204, 21, 0.45);
+}
+
+.people-training-rn-card.is-in_progress {
+  border-color: rgba(96, 165, 250, 0.58);
+}
+
+.people-training-rn-card.is-completed {
+  border-color: rgba(74, 222, 128, 0.48);
+}
+
+.people-training-rn-card.is-missing,
+.people-training-bulk-group-card.is-blocked {
+  border-color: rgba(251, 113, 133, 0.5);
+}
+
+.people-training-rn-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.people-training-rn-card-head::-webkit-details-marker {
+  display: none;
+}
+
+.people-training-rn-card-head::marker {
+  content: "";
+}
+
+.people-training-rn-card-head::after {
+  content: ">";
+  transform: rotate(90deg);
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: start;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(178, 198, 230, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #244a8f;
+  font-size: 0.72rem;
+  transition: transform 0.16s ease;
+}
+
+.people-training-rn-card:not([open]) .people-training-rn-card-head::after,
+.people-training-bulk-group-card:not([open]) .people-training-rn-card-head::after {
+  transform: rotate(0deg);
+}
+
+.people-training-rn-card-title,
+.people-training-rn-person-identity,
+.people-training-bulk-person-plan {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-rn-card-title strong,
+.people-training-rn-person-identity strong,
+.people-training-bulk-person-plan strong {
+  color: #0f1f3a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-rn-card-title span,
+.people-training-rn-person-identity span,
+.people-training-bulk-person-plan span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 720;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-rn-card-chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 220px;
+  padding-right: 30px;
+}
+
+.people-training-rn-card-meta {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.people-training-rn-meta-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(218, 225, 239, 0.72);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.people-training-rn-meta-item span {
+  color: #718096;
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.people-training-rn-meta-item strong {
+  color: #172743;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.people-training-rn-person-list {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid rgba(210, 220, 238, 0.78);
+}
+
+.people-training-rn-person-row,
+.people-training-bulk-person-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.75fr) minmax(160px, 0.6fr) minmax(260px, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 11px 14px;
+  background: rgba(255, 255, 255, 0.58);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.people-training-rn-person-row:last-child,
+.people-training-bulk-person-row:last-child {
+  border-bottom: 0;
+}
+
+.people-training-rn-person-statuses {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.people-training-rn-person-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.people-training-rn-person-exam {
+  display: grid;
+  grid-template-columns: minmax(48px, 0.24fr) minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(218, 225, 239, 0.72);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.people-training-rn-person-exam strong,
+.people-training-rn-person-exam span:not(.people-training-progress-pill) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-rn-person-exam strong {
+  color: #172743;
+  font-size: 0.78rem;
+}
+
+.people-training-rn-person-exam span:not(.people-training-progress-pill) {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 720;
+}
+
+.people-training-bulk-preview-modal {
+  width: min(1280px, 100%);
+}
+
+.people-training-bulk-preview-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px) auto;
+  align-items: center;
+}
+
+.people-training-bulk-service-control {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.people-training-bulk-service-control span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.people-training-bulk-service-control select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid rgba(178, 198, 230, 0.9);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #172743;
+  font-weight: 820;
+}
+
+.people-training-bulk-preview-groups {
+  overflow: auto;
+  padding: 14px;
+}
+
+.people-training-bulk-person-plan {
+  padding: 8px 10px;
+  border: 1px solid rgba(218, 225, 239, 0.72);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
 }
 
 .people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table-wrap {
@@ -37846,5 +38117,26 @@ button.work-order-editor-section-head {
   .people-training-bulk-preview-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .people-training-bulk-preview-head,
+  .people-training-rn-card-head,
+  .people-training-rn-card-meta,
+  .people-training-rn-person-row,
+  .people-training-bulk-person-row,
+  .people-training-rn-person-exam {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-training-rn-card-chips {
+    justify-content: flex-start;
+    min-width: 0;
+    padding-right: 0;
+  }
+
+  .people-training-rn-card-head::after {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
   }
 }
