@@ -4580,6 +4580,7 @@ const peopleTrainingEditorCloseButton = document.querySelector("#people-training
 const peopleTrainingIdInput = document.querySelector("#people-training-id");
 const peopleTrainingFormTitle = document.querySelector("#people-training-form-title");
 const peopleTrainingFormFeedback = document.querySelector("#people-training-form-feedback");
+const peopleTrainingPersonSummary = document.querySelector("#people-training-person-summary");
 const peopleTrainingCompanyInput = document.querySelector("#people-training-company");
 const peopleTrainingLocationInput = document.querySelector("#people-training-location");
 const peopleTrainingFirstNameInput = document.querySelector("#people-training-first-name");
@@ -7528,6 +7529,35 @@ function syncPeopleTrainingSelectOptions() {
   }
 }
 
+function getSelectedOptionLabel(select, fallback = "") {
+  if (!(select instanceof HTMLSelectElement)) {
+    return fallback;
+  }
+  return select.selectedOptions?.[0]?.textContent?.trim() || fallback;
+}
+
+function syncPeopleTrainingPersonalSummary() {
+  if (!peopleTrainingPersonSummary) {
+    return;
+  }
+
+  const fullName = [
+    peopleTrainingFirstNameInput?.value || "",
+    peopleTrainingLastNameInput?.value || "",
+  ].map((value) => String(value).trim()).filter(Boolean).join(" ");
+  const companyLabel = getSelectedOptionLabel(peopleTrainingCompanyInput, "");
+  const locationLabel = getSelectedOptionLabel(peopleTrainingLocationInput, "");
+  const parts = [
+    fullName || "Nova osoba",
+    peopleTrainingOibInput?.value ? `OIB ${peopleTrainingOibInput.value.trim()}` : "",
+    peopleTrainingJobTitleInput?.value?.trim() || "",
+    companyLabel,
+    locationLabel && !/nije vezano/i.test(locationLabel) ? locationLabel : "",
+  ].filter(Boolean);
+
+  peopleTrainingPersonSummary.textContent = parts.join(" · ") || "Tvrtka, lokacija, OIB i radno mjesto.";
+}
+
 function renderPeopleTrainingStats() {
   const records = state.peopleTrainingRecords ?? [];
   const counts = records.reduce((accumulator, record) => {
@@ -8170,117 +8200,257 @@ function openSelectedPeopleTrainingExam() {
   renderTopbarBreadcrumbs();
 }
 
+const PEOPLE_TRAINING_FORM_SECTION_CONFIGS = Object.freeze([
+  Object.freeze({ key: "safe-work", number: "02", title: "Osposobljavanje za rad na siguran način" }),
+  Object.freeze({ key: "authorized", number: "03", title: "Osposobljavanje ovlaštenika/povjerenika" }),
+  Object.freeze({ key: "evacuation", number: "04", title: "Osposobljavanje za evakuacije i spašavanje" }),
+  Object.freeze({ key: "fire", number: "05", title: "Početno gašenje požara" }),
+  Object.freeze({ key: "dangerous-goods", number: "06", title: "Skladištenje zapaljivih tekućina i plinova i ADR" }),
+]);
+
+function getPeopleTrainingFormSectionKey(item = {}) {
+  const code = normalizeLooseName([item.serviceCode, item.shortLabel].filter(Boolean).join(" "));
+  const text = normalizeLooseName([
+    item.label,
+    item.serviceName,
+    item.serviceCode,
+    item.shortLabel,
+  ].filter(Boolean).join(" "));
+
+  if (/\b(adr|spztp)\b/.test(code) || /\b(adr|spztp)\b/.test(text) || /(zapalj|plin|tekucin|skladisten)/.test(text)) {
+    return "dangerous-goods";
+  }
+  if (/\b(pgp|pozar)\b/.test(code) || /(pocetno gasenje|gasenje pozara|pozar)/.test(text)) {
+    return "fire";
+  }
+  if (/(evaku|spasav)/.test(text)) {
+    return "evacuation";
+  }
+  if (/(ovlast|povjeren)/.test(text)) {
+    return "authorized";
+  }
+  if (/\b(znr|zos)\b/.test(code) || /\b(znr|zos)\b/.test(text) || /(siguran nacin|zastita na radu|rad na siguran)/.test(text)) {
+    return "safe-work";
+  }
+  return "other";
+}
+
+function getPeopleTrainingFormSectionStatusClass(items = []) {
+  const statuses = items.map((item) => item.status);
+  if (statuses.some((status) => status === "expired" || status === "missing")) {
+    return "is-missing";
+  }
+  if (statuses.some((status) => status === "expiring")) {
+    return "is-expiring";
+  }
+  if (statuses.some((status) => status === "valid")) {
+    return "is-valid";
+  }
+  return "is-neutral";
+}
+
+function getPeopleTrainingFormSectionBrief(items = []) {
+  if (!items.length) {
+    return "Nema usluga iz List of services za ovaj blok.";
+  }
+
+  const counts = items.reduce((acc, item) => {
+    const status = item.status || "missing";
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  const parts = [
+    `${items.length} ${items.length === 1 ? "usluga" : "usluga"}`,
+    counts.valid ? `${counts.valid} vrijedi` : "",
+    counts.expiring ? `${counts.expiring} istječe` : "",
+    counts.expired ? `${counts.expired} isteklo` : "",
+    counts.missing ? `${counts.missing} bez podataka` : "",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "", statusClass = "" } = {}) {
+  const summary = document.createElement("summary");
+  summary.className = "people-training-section-summary";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "people-training-section-title";
+  const numberNode = document.createElement("span");
+  numberNode.textContent = number;
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title;
+  titleWrap.append(numberNode, titleNode);
+
+  const briefNode = document.createElement("span");
+  briefNode.className = `people-training-section-brief ${statusClass}`.trim();
+  briefNode.textContent = brief || "-";
+
+  summary.append(titleWrap, briefNode);
+  return summary;
+}
+
+function createPeopleTrainingTypeCard(item = {}) {
+  const card = document.createElement("article");
+  card.className = `people-training-type-card ${getPeopleTrainingStatusClass(item.status)}`;
+  card.dataset.trainingType = item.type;
+
+  const head = document.createElement("div");
+  head.className = "people-training-type-head";
+  const title = document.createElement("strong");
+  title.textContent = item.label;
+  const chip = document.createElement("span");
+  chip.className = `people-training-status-chip ${getPeopleTrainingStatusClass(item.status)}`;
+  chip.textContent = getPeopleTrainingStatusLabel(item.status);
+  head.append(title, chip);
+
+  const serviceMeta = document.createElement("small");
+  serviceMeta.className = "people-training-type-service-meta";
+  serviceMeta.textContent = [
+    item.serviceCode ? `Usluga ${item.serviceCode}` : "",
+    (item.linkedLearningTestTitles ?? []).length ? `Ispiti: ${item.linkedLearningTestTitles.join(", ")}` : "",
+    (item.linkedTemplateTitles ?? []).length ? `Template: ${item.linkedTemplateTitles.join(", ")}` : "",
+  ].filter(Boolean).join(" · ");
+  serviceMeta.hidden = !serviceMeta.textContent;
+
+  const fields = document.createElement("div");
+  fields.className = "people-training-mini-grid";
+
+  const issuedLabel = document.createElement("label");
+  issuedLabel.innerHTML = "<span>Izdano</span>";
+  const issuedInput = document.createElement("input");
+  issuedInput.type = "text";
+  issuedInput.inputMode = "numeric";
+  issuedInput.placeholder = "dd.mm.yyyy";
+  issuedInput.value = formatDateInputDisplayValue(item.issuedOn || "");
+  issuedInput.dataset.trainingField = "issuedOn";
+  issuedInput.addEventListener("blur", () => {
+    issuedInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(issuedInput.value));
+  });
+  issuedLabel.append(issuedInput);
+
+  const validLabel = document.createElement("label");
+  validLabel.innerHTML = "<span>Vrijedi do</span>";
+  const validInput = document.createElement("input");
+  validInput.type = "text";
+  validInput.inputMode = "numeric";
+  validInput.placeholder = "dd.mm.yyyy";
+  validInput.value = formatDateInputDisplayValue(item.validUntil || "");
+  validInput.dataset.trainingField = "validUntil";
+  validInput.disabled = item.validForever;
+  validLabel.hidden = item.validForever;
+  validInput.addEventListener("blur", () => {
+    validInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(validInput.value));
+  });
+  validLabel.append(validInput);
+
+  const certificateLabel = document.createElement("label");
+  certificateLabel.innerHTML = "<span>Broj potvrde</span>";
+  const certificateInput = document.createElement("input");
+  certificateInput.type = "text";
+  certificateInput.value = item.certificateNumber || "";
+  certificateInput.placeholder = "npr. ZNR-2026-15";
+  certificateInput.dataset.trainingField = "certificateNumber";
+  certificateLabel.append(certificateInput);
+
+  const providerLabel = document.createElement("label");
+  providerLabel.innerHTML = "<span>Ustanova</span>";
+  const providerInput = document.createElement("input");
+  providerInput.type = "text";
+  providerInput.value = item.provider || "";
+  providerInput.placeholder = "npr. SafeNexus";
+  providerInput.dataset.trainingField = "provider";
+  providerLabel.append(providerInput);
+
+  const noteLabel = document.createElement("label");
+  noteLabel.className = "is-wide";
+  noteLabel.innerHTML = "<span>Napomena</span>";
+  const noteInput = document.createElement("input");
+  noteInput.type = "text";
+  noteInput.value = item.note || "";
+  noteInput.placeholder = "ograničenja, lokacija potvrde, dodatno...";
+  noteInput.dataset.trainingField = "note";
+  noteLabel.append(noteInput);
+
+  const foreverLabel = document.createElement("label");
+  foreverLabel.className = "people-training-check";
+  const foreverInput = document.createElement("input");
+  foreverInput.type = "checkbox";
+  foreverInput.checked = item.validForever;
+  foreverInput.dataset.trainingField = "validForever";
+  foreverInput.addEventListener("change", () => {
+    validInput.disabled = foreverInput.checked;
+    validLabel.hidden = foreverInput.checked;
+    if (foreverInput.checked) {
+      validInput.value = "";
+    }
+  });
+  const foreverText = document.createElement("span");
+  foreverText.textContent = "Bez isteka";
+  foreverLabel.append(foreverInput, foreverText);
+
+  fields.append(issuedLabel, validLabel, certificateLabel, providerLabel, noteLabel, foreverLabel);
+  card.append(head, serviceMeta, fields);
+  return card;
+}
+
+function createPeopleTrainingFormSection(config = {}, items = [], index = 0) {
+  const details = document.createElement("details");
+  const statusClass = getPeopleTrainingFormSectionStatusClass(items);
+  details.className = `people-training-editor-section people-training-training-section ${statusClass}`;
+  details.open = index === 0;
+  details.dataset.trainingSection = config.key || "";
+
+  details.append(createPeopleTrainingSectionSummary({
+    number: config.number,
+    title: config.title,
+    brief: getPeopleTrainingFormSectionBrief(items),
+    statusClass,
+  }));
+
+  const body = document.createElement("div");
+  body.className = "people-training-section-body";
+  if (items.length) {
+    body.replaceChildren(...items.map(createPeopleTrainingTypeCard));
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "U List of services trenutno nema usluge koja pripada ovom bloku.";
+    body.append(empty);
+  }
+  details.append(body);
+  return details;
+}
+
 function renderPeopleTrainingGrid(record = null) {
   if (!peopleTrainingFormTrainingGrid) {
     return;
   }
 
   const items = normalizePeopleTrainingItemsForUi(record?.trainingItems ?? []);
-  const cards = items.map((item) => {
-    const card = document.createElement("article");
-    card.className = `people-training-type-card ${getPeopleTrainingStatusClass(item.status)}`;
-    card.dataset.trainingType = item.type;
-
-    const head = document.createElement("div");
-    head.className = "people-training-type-head";
-    const title = document.createElement("strong");
-    title.textContent = item.label;
-    const chip = document.createElement("span");
-    chip.className = `people-training-status-chip ${getPeopleTrainingStatusClass(item.status)}`;
-    chip.textContent = getPeopleTrainingStatusLabel(item.status);
-    head.append(title, chip);
-
-    const serviceMeta = document.createElement("small");
-    serviceMeta.className = "people-training-type-service-meta";
-    serviceMeta.textContent = [
-      item.serviceCode ? `Usluga ${item.serviceCode}` : "",
-      (item.linkedLearningTestTitles ?? []).length ? `Ispiti: ${item.linkedLearningTestTitles.join(", ")}` : "",
-      (item.linkedTemplateTitles ?? []).length ? `Template: ${item.linkedTemplateTitles.join(", ")}` : "",
-    ].filter(Boolean).join(" · ");
-    serviceMeta.hidden = !serviceMeta.textContent;
-
-    const fields = document.createElement("div");
-    fields.className = "people-training-mini-grid";
-
-    const issuedLabel = document.createElement("label");
-    issuedLabel.innerHTML = "<span>Izdano</span>";
-    const issuedInput = document.createElement("input");
-    issuedInput.type = "text";
-    issuedInput.inputMode = "numeric";
-    issuedInput.placeholder = "dd.mm.yyyy";
-    issuedInput.value = formatDateInputDisplayValue(item.issuedOn || "");
-    issuedInput.dataset.trainingField = "issuedOn";
-    issuedInput.addEventListener("blur", () => {
-      issuedInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(issuedInput.value));
-    });
-    issuedLabel.append(issuedInput);
-
-    const validLabel = document.createElement("label");
-    validLabel.innerHTML = "<span>Vrijedi do</span>";
-    const validInput = document.createElement("input");
-    validInput.type = "text";
-    validInput.inputMode = "numeric";
-    validInput.placeholder = "dd.mm.yyyy";
-    validInput.value = formatDateInputDisplayValue(item.validUntil || "");
-    validInput.dataset.trainingField = "validUntil";
-    validInput.disabled = item.validForever;
-    validLabel.hidden = item.validForever;
-    validInput.addEventListener("blur", () => {
-      validInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(validInput.value));
-    });
-    validLabel.append(validInput);
-
-    const certificateLabel = document.createElement("label");
-    certificateLabel.innerHTML = "<span>Broj potvrde</span>";
-    const certificateInput = document.createElement("input");
-    certificateInput.type = "text";
-    certificateInput.value = item.certificateNumber || "";
-    certificateInput.placeholder = "npr. ZNR-2026-15";
-    certificateInput.dataset.trainingField = "certificateNumber";
-    certificateLabel.append(certificateInput);
-
-    const providerLabel = document.createElement("label");
-    providerLabel.innerHTML = "<span>Ustanova</span>";
-    const providerInput = document.createElement("input");
-    providerInput.type = "text";
-    providerInput.value = item.provider || "";
-    providerInput.placeholder = "npr. SafeNexus";
-    providerInput.dataset.trainingField = "provider";
-    providerLabel.append(providerInput);
-
-    const noteLabel = document.createElement("label");
-    noteLabel.className = "is-wide";
-    noteLabel.innerHTML = "<span>Napomena</span>";
-    const noteInput = document.createElement("input");
-    noteInput.type = "text";
-    noteInput.value = item.note || "";
-    noteInput.placeholder = "ograničenja, lokacija potvrde, dodatno...";
-    noteInput.dataset.trainingField = "note";
-    noteLabel.append(noteInput);
-
-    const foreverLabel = document.createElement("label");
-    foreverLabel.className = "people-training-check";
-    const foreverInput = document.createElement("input");
-    foreverInput.type = "checkbox";
-    foreverInput.checked = item.validForever;
-    foreverInput.dataset.trainingField = "validForever";
-    foreverInput.addEventListener("change", () => {
-      validInput.disabled = foreverInput.checked;
-      validLabel.hidden = foreverInput.checked;
-      if (foreverInput.checked) {
-        validInput.value = "";
-      }
-    });
-    const foreverText = document.createElement("span");
-    foreverText.textContent = "Bez isteka";
-    foreverLabel.append(foreverInput, foreverText);
-
-    fields.append(issuedLabel, validLabel, certificateLabel, providerLabel, noteLabel, foreverLabel);
-    card.append(head, serviceMeta, fields);
-    return card;
+  const grouped = new Map(PEOPLE_TRAINING_FORM_SECTION_CONFIGS.map((config) => [config.key, []]));
+  const otherItems = [];
+  items.forEach((item) => {
+    const key = getPeopleTrainingFormSectionKey(item);
+    if (grouped.has(key)) {
+      grouped.get(key).push(item);
+      return;
+    }
+    otherItems.push(item);
   });
 
-  peopleTrainingFormTrainingGrid.replaceChildren(...cards);
+  const sections = PEOPLE_TRAINING_FORM_SECTION_CONFIGS.map((config, index) => (
+    createPeopleTrainingFormSection(config, grouped.get(config.key) ?? [], index)
+  ));
+
+  if (otherItems.length) {
+    sections.push(createPeopleTrainingFormSection({
+      key: "other",
+      number: "06+",
+      title: "Ostala osposobljavanja",
+    }, otherItems, sections.length));
+  }
+
+  peopleTrainingFormTrainingGrid.replaceChildren(...sections);
 }
 
 function resetPeopleTrainingForm() {
@@ -8299,6 +8469,7 @@ function resetPeopleTrainingForm() {
   if (peopleTrainingDeleteButton) {
     peopleTrainingDeleteButton.hidden = true;
   }
+  syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(null);
   renderPeopleTrainingDossier(null);
   setPeopleTrainingFeedback("");
@@ -8347,6 +8518,7 @@ function populatePeopleTrainingForm(record = {}) {
   if (peopleTrainingDeleteButton) {
     peopleTrainingDeleteButton.hidden = !record.id;
   }
+  syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(record);
   renderPeopleTrainingDossier(record);
   setPeopleTrainingFeedback("");
@@ -10549,56 +10721,22 @@ function renderPeopleTrainingDossier(record = null) {
   peopleTrainingDossier.ondragover = null;
   peopleTrainingDossier.ondragleave = null;
   peopleTrainingDossier.ondrop = null;
+  if (peopleTrainingDossier instanceof HTMLDetailsElement) {
+    peopleTrainingDossier.open = Boolean(record?.id);
+  }
 
   if (!record?.id) {
-    const title = document.createElement("strong");
-    title.textContent = "Dosje zaposlenika";
-    const copy = document.createElement("span");
-    copy.textContent = "Odaberi osobu iz liste za pregled svih osposobljavanja, uvjerenja i priloga.";
-    peopleTrainingDossier.append(title, copy);
+    peopleTrainingDossier.append(createPeopleTrainingSectionSummary({
+      number: "07",
+      title: "Dokumentacija",
+      brief: "Odaberi osobu iz liste za pregled priloga.",
+      statusClass: "is-neutral",
+    }));
     return;
   }
 
-  const head = document.createElement("div");
-  head.className = "people-training-dossier-head";
-  const copy = document.createElement("div");
-  copy.className = "people-training-dossier-title";
-  const title = document.createElement("strong");
-  title.textContent = record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba";
-  const meta = document.createElement("span");
-  meta.textContent = [
-    record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "Tvrtka",
-    record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sve lokacije",
-    record.oib ? `OIB ${record.oib}` : "",
-    record.email || "",
-  ].filter(Boolean).join(" · ");
-  copy.append(title, meta);
-
-  const attachmentChip = document.createElement("span");
-  attachmentChip.className = "soft-pill";
-  attachmentChip.textContent = `${(record.attachments ?? []).length} priloga`;
-  head.append(copy, attachmentChip);
-
-  const trainingGrid = document.createElement("div");
-  trainingGrid.className = "people-training-dossier-training-grid";
-  normalizePeopleTrainingItemsForUi(record.trainingItems).forEach((item) => {
-    const itemRow = document.createElement("article");
-    itemRow.className = `people-training-dossier-training-item ${getPeopleTrainingStatusClass(item.status)}`;
-    const itemTitle = document.createElement("strong");
-    itemTitle.textContent = item.label || item.type || "Osposobljavanje";
-    const itemMeta = document.createElement("span");
-    itemMeta.textContent = [
-      item.certificateNumber ? `Potvrda ${item.certificateNumber}` : "",
-      getPeopleTrainingItemSourceText(item),
-      item.validUntil ? `vrijedi do ${formatCompactDate(item.validUntil)}` : "",
-      (item.linkedLearningTestTitles ?? []).length ? `Ispiti: ${item.linkedLearningTestTitles.join(", ")}` : "",
-    ].filter(Boolean).join(" · ") || "Nema upisanog polaganja.";
-    itemRow.append(createPeopleTrainingStatusPill(item), itemTitle, itemMeta);
-    trainingGrid.append(itemRow);
-  });
-
   const documents = document.createElement("div");
-  documents.className = "people-training-dossier-documents";
+  documents.className = "people-training-section-body people-training-dossier-documents";
   const documentsHead = document.createElement("div");
   documentsHead.className = "people-training-dossier-subhead";
   const documentsTitle = document.createElement("strong");
@@ -10644,7 +10782,15 @@ function renderPeopleTrainingDossier(record = null) {
   };
   peopleTrainingDossier.ondrop = handleFiles;
 
-  peopleTrainingDossier.append(head, trainingGrid, documents);
+  peopleTrainingDossier.append(
+    createPeopleTrainingSectionSummary({
+      number: "07",
+      title: "Dokumentacija",
+      brief: `${(record.attachments ?? []).length} priloga · povuci PDF, sliku ili dokument u ovaj blok.`,
+      statusClass: (record.attachments ?? []).length ? "is-valid" : "is-neutral",
+    }),
+    documents,
+  );
 }
 
 async function openPeopleTrainingAttachmentDialog(record = {}, files = []) {
@@ -80974,6 +81120,20 @@ peopleTrainingCompanyInput?.addEventListener("change", () => {
       "",
     );
   }
+  syncPeopleTrainingPersonalSummary();
+});
+
+[
+  peopleTrainingLocationInput,
+  peopleTrainingFirstNameInput,
+  peopleTrainingLastNameInput,
+  peopleTrainingOibInput,
+  peopleTrainingEmailInput,
+  peopleTrainingPhoneInput,
+  peopleTrainingJobTitleInput,
+  peopleTrainingNoteInput,
+].forEach((input) => {
+  input?.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", syncPeopleTrainingPersonalSummary);
 });
 
 userEditorCloseButton?.addEventListener("click", () => {

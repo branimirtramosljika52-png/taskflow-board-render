@@ -33011,7 +33011,7 @@ body.is-global-loading {
   z-index: 236;
   top: 18px;
   left: 50%;
-  width: min(1180px, calc(100vw - 28px));
+  width: min(1360px, calc(100vw - 28px));
   max-height: calc(100dvh - 36px);
   overflow: auto;
   padding: 18px;
@@ -33037,6 +33037,160 @@ body.is-global-loading {
 
 .people-training-editor-panel .people-training-form-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.people-training-editor-sections,
+.people-training-type-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.people-training-editor-section {
+  overflow: hidden;
+  border: 1px solid rgba(180, 201, 234, 0.86);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(247, 251, 255, 0.92)),
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.08), transparent 34%);
+}
+
+.people-training-editor-section.is-missing {
+  border-color: rgba(215, 80, 100, 0.52);
+}
+
+.people-training-editor-section.is-expiring {
+  border-color: rgba(210, 151, 33, 0.56);
+}
+
+.people-training-editor-section.is-valid {
+  border-color: rgba(57, 173, 114, 0.48);
+}
+
+.people-training-section-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 11px 44px 11px 14px;
+  cursor: pointer;
+  list-style: none;
+  background: rgba(232, 240, 252, 0.62);
+  border-bottom: 1px solid rgba(200, 214, 238, 0.72);
+  position: relative;
+}
+
+.people-training-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.people-training-section-summary::marker {
+  content: "";
+}
+
+.people-training-section-summary::after {
+  content: ">";
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(178, 198, 230, 0.8);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #244a8f;
+  font-size: 0.72rem;
+  transform: translateY(-50%) rotate(90deg);
+  transition: transform 0.16s ease;
+}
+
+.people-training-editor-section:not([open]) .people-training-section-summary {
+  border-bottom-color: transparent;
+}
+
+.people-training-editor-section:not([open]) .people-training-section-summary::after {
+  transform: translateY(-50%) rotate(0deg);
+}
+
+.people-training-section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.people-training-section-title > span {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(47, 111, 237, 0.16), rgba(216, 77, 193, 0.12));
+  color: #244a8f;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.people-training-section-title strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #172743;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-section-brief {
+  justify-self: end;
+  max-width: min(520px, 44vw);
+  overflow: hidden;
+  padding: 6px 10px;
+  border: 1px solid rgba(184, 199, 228, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #5f718d;
+  font-size: 0.76rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-section-brief.is-valid {
+  border-color: rgba(57, 173, 114, 0.36);
+  background: rgba(238, 250, 244, 0.86);
+  color: #17623c;
+}
+
+.people-training-section-brief.is-expiring {
+  border-color: rgba(210, 151, 33, 0.44);
+  background: rgba(255, 248, 229, 0.88);
+  color: #835a0b;
+}
+
+.people-training-section-brief.is-missing {
+  border-color: rgba(215, 80, 100, 0.36);
+  background: rgba(255, 241, 244, 0.88);
+  color: #9a2737;
+}
+
+.people-training-section-body,
+.people-training-editor-section > .people-training-form-grid {
+  padding: 12px;
+}
+
+.people-training-training-section .people-training-section-body {
+  display: grid;
+  gap: 10px;
+}
+
+.people-training-training-section .people-training-type-card {
+  border-radius: 17px;
+  box-shadow: none;
 }
 
 .people-training-editor-panel .people-training-dossier {
@@ -33791,6 +33945,12 @@ body.is-global-loading {
 .people-training-dossier.is-drag-over {
   border-color: rgba(47, 111, 237, 0.56);
   background: linear-gradient(135deg, rgba(239, 247, 255, 0.98), rgba(255, 255, 255, 0.94));
+}
+
+.people-training-dossier.people-training-editor-section {
+  display: block;
+  gap: 0;
+  padding: 0;
 }
 
 .people-training-dossier-head,
@@ -34795,6 +34955,15 @@ body.is-global-loading {
 
   .people-training-person-statuses {
     justify-content: flex-start;
+  }
+
+  .people-training-section-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-training-section-brief {
+    justify-self: start;
+    max-width: 100%;
   }
 
   .people-training-list-head-actions,

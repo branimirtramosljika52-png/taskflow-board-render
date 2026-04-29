@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429o" />
+    <link rel="stylesheet" href="/styles.css?v=20260429p" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3772,51 +3772,67 @@
                   </div>
                 </div>
 
-                <div class="people-training-form-grid is-person">
-                  <label>
-                    <span>Tvrtka</span>
-                    <select id="people-training-company" required></select>
-                  </label>
-                  <label>
-                    <span>Lokacija</span>
-                    <select id="people-training-location"></select>
-                  </label>
-                  <label>
-                    <span>Ime</span>
-                    <input id="people-training-first-name" type="text" autocomplete="given-name" required />
-                  </label>
-                  <label>
-                    <span>Prezime</span>
-                    <input id="people-training-last-name" type="text" autocomplete="family-name" required />
-                  </label>
-                  <label>
-                    <span>OIB</span>
-                    <input id="people-training-oib" type="text" inputmode="numeric" />
-                  </label>
-                  <label>
-                    <span>Email</span>
-                    <input id="people-training-email" type="email" autocomplete="email" />
-                  </label>
-                  <label>
-                    <span>Mobitel</span>
-                    <input id="people-training-phone" type="text" />
-                  </label>
-                  <label>
-                    <span>Radno mjesto</span>
-                    <input id="people-training-job-title" type="text" />
-                  </label>
-                  <label class="is-wide">
-                    <span>Napomena</span>
-                    <input id="people-training-note" type="text" placeholder="Interna napomena, ograničenja, specifičnosti..." />
-                  </label>
-                </div>
+                <div class="people-training-editor-sections">
+                  <details class="people-training-editor-section is-personal" open>
+                    <summary class="people-training-section-summary">
+                      <div class="people-training-section-title">
+                        <span>01</span>
+                        <strong>Osobni podaci</strong>
+                      </div>
+                      <span id="people-training-person-summary" class="people-training-section-brief">Tvrtka, lokacija, OIB i radno mjesto.</span>
+                    </summary>
+                    <div class="people-training-form-grid is-person">
+                      <label>
+                        <span>Tvrtka</span>
+                        <select id="people-training-company" required></select>
+                      </label>
+                      <label>
+                        <span>Lokacija</span>
+                        <select id="people-training-location"></select>
+                      </label>
+                      <label>
+                        <span>Ime</span>
+                        <input id="people-training-first-name" type="text" autocomplete="given-name" required />
+                      </label>
+                      <label>
+                        <span>Prezime</span>
+                        <input id="people-training-last-name" type="text" autocomplete="family-name" required />
+                      </label>
+                      <label>
+                        <span>OIB</span>
+                        <input id="people-training-oib" type="text" inputmode="numeric" />
+                      </label>
+                      <label>
+                        <span>Email</span>
+                        <input id="people-training-email" type="email" autocomplete="email" />
+                      </label>
+                      <label>
+                        <span>Mobitel</span>
+                        <input id="people-training-phone" type="text" />
+                      </label>
+                      <label>
+                        <span>Radno mjesto</span>
+                        <input id="people-training-job-title" type="text" />
+                      </label>
+                      <label class="is-wide">
+                        <span>Napomena</span>
+                        <input id="people-training-note" type="text" placeholder="Interna napomena, ograničenja, specifičnosti..." />
+                      </label>
+                    </div>
+                  </details>
 
-                <div id="people-training-dossier" class="people-training-dossier is-empty">
-                  <strong>Dosje zaposlenika</strong>
-                  <span>Odaberi osobu iz liste za pregled svih osposobljavanja, uvjerenja i priloga.</span>
-                </div>
+                  <div id="people-training-form-training-grid" class="people-training-type-grid"></div>
 
-                <div id="people-training-form-training-grid" class="people-training-type-grid"></div>
+                  <details id="people-training-dossier" class="people-training-dossier people-training-editor-section is-documentation is-empty">
+                    <summary class="people-training-section-summary">
+                      <div class="people-training-section-title">
+                        <span>07</span>
+                        <strong>Dokumentacija</strong>
+                      </div>
+                      <span class="people-training-section-brief">Odaberi osobu iz liste za pregled priloga.</span>
+                    </summary>
+                  </details>
+                </div>
 
                 <div class="people-training-form-actions">
                   <button id="people-training-save" type="submit" class="primary-button">Spremi evidenciju</button>
@@ -7307,6 +7323,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429o"></script>
+    <script type="module" src="/src/main.js?v=20260429p"></script>
   </body>
 </html>
