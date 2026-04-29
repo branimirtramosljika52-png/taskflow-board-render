@@ -3298,6 +3298,10 @@ const learningTestGroupStep = document.querySelector("#learning-test-group-step"
 const learningTestQuestionsStep = document.querySelector("#learning-test-questions-step");
 const learningTestNextStepButton = document.querySelector("#learning-test-next-step");
 const learningTestBackStepButton = document.querySelector("#learning-test-back-step");
+const learningTestDownloadQuestionsTemplateButton = document.querySelector("#learning-test-download-questions-template");
+const learningTestImportQuestionsButton = document.querySelector("#learning-test-import-questions");
+const learningTestImportQuestionsInput = document.querySelector("#learning-test-import-questions-input");
+const learningTestImportQuestionsFeedback = document.querySelector("#learning-test-import-questions-feedback");
 const learningTestAddQuestionButton = document.querySelector("#learning-test-add-question");
 const learningTestAddQuestionBottomButton = document.querySelector("#learning-test-add-question-bottom");
 const learningTestOpenPreviewGroupButton = document.querySelector("#learning-test-open-preview-group");
@@ -48628,6 +48632,73 @@ function openLearningTestPreview(startIndex = 0) {
   renderLearningTestPreview();
 }
 
+function setLearningQuestionImportFeedback(message = "", tone = "") {
+  if (!learningTestImportQuestionsFeedback) {
+    return;
+  }
+
+  learningTestImportQuestionsFeedback.textContent = message;
+  learningTestImportQuestionsFeedback.dataset.tone = tone || "";
+}
+
+function isLearningQuestionDraftBlank(question = {}) {
+  return !String(question.prompt || "").trim()
+    && !question.imageDocument?.fileName
+    && LEARNING_QUESTION_OPTION_KEYS.every((letter) => !String(question[`option${letter}`] || "").trim());
+}
+
+function appendLearningTestImportedQuestions(questionItems = []) {
+  const importedDrafts = (Array.isArray(questionItems) ? questionItems : [])
+    .map((item, index) => createEmptyLearningQuestionDraft(item, index))
+    .filter((question) => !isLearningQuestionDraftBlank(question));
+
+  if (importedDrafts.length === 0) {
+    return 0;
+  }
+
+  const nextGroups = [...learningTestQuestionGroupDrafts];
+  const targetGroup = nextGroups[0] || createEmptyLearningQuestionGroupDraft({}, 0);
+  const existingQuestions = Array.isArray(targetGroup.questions) ? targetGroup.questions : [];
+  const shouldReplaceOnlyPlaceholder = existingQuestions.length <= 1 && existingQuestions.every(isLearningQuestionDraftBlank);
+
+  targetGroup.questions = shouldReplaceOnlyPlaceholder
+    ? importedDrafts
+    : [...existingQuestions, ...importedDrafts];
+  nextGroups[0] = targetGroup;
+  learningTestQuestionGroupDrafts = nextGroups;
+  renderLearningQuestionGroupList();
+  setLearningQuestionImportFeedback(
+    importedDrafts.length === 1
+      ? "1 pitanje je uvezeno iz Excela. Pregledaj ga i spremi test."
+      : `${importedDrafts.length} pitanja su uvezena iz Excela. Pregledaj ih i spremi test.`,
+    "success",
+  );
+  if (learningTestError) {
+    learningTestError.textContent = "";
+  }
+  return importedDrafts.length;
+}
+
+async function importLearningTestQuestionsExcel(file) {
+  if (!file) {
+    return;
+  }
+
+  setLearningQuestionImportFeedback("Učitavam Excel i pripremam pitanja...", "loading");
+  const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel s pitanjima.");
+  const payload = await apiRequest("/learning-tests/questions/import", {
+    method: "POST",
+    body: {
+      fileName: file.name,
+      dataUrl,
+    },
+  });
+  const importedCount = appendLearningTestImportedQuestions(payload?.questionItems ?? []);
+  if (importedCount === 0) {
+    setLearningQuestionImportFeedback("U Excelu nisam pronašao pitanja s tekstom i odgovorima.", "warning");
+  }
+}
+
 function addLearningTestQuestion({ scrollIntoView = false } = {}) {
   const nextGroups = [...learningTestQuestionGroupDrafts];
   const targetGroup = nextGroups[0] || createEmptyLearningQuestionGroupDraft({}, 0);
@@ -48807,6 +48878,7 @@ function resetLearningTestForm() {
   if (learningTestError) {
     learningTestError.textContent = "";
   }
+  setLearningQuestionImportFeedback("");
   setLearningTestMaterialDrafts([]);
   learningTestQuestionGroupDrafts = [createEmptyLearningQuestionGroupDraft({}, 0)];
   renderLearningTestMaterialList();
@@ -48837,6 +48909,7 @@ function hydrateLearningTestForm(item) {
   if (learningTestError) {
     learningTestError.textContent = "";
   }
+  setLearningQuestionImportFeedback("");
   setLearningTestMaterialDrafts(item.handbookDocuments ?? []);
   learningTestQuestionGroupDrafts = buildLearningQuestionGroupDraftsFromItems(item.questionItems ?? []);
   if (learningTestQuestionGroupDrafts.length === 0) {
@@ -79139,6 +79212,32 @@ learningTestNextStepButton?.addEventListener("click", () => {
 
 learningTestBackStepButton?.addEventListener("click", () => {
   setLearningTestEditorStep("group");
+});
+
+learningTestDownloadQuestionsTemplateButton?.addEventListener("click", () => {
+  window.location.href = "/api/learning-tests/questions/import-template";
+});
+
+learningTestImportQuestionsButton?.addEventListener("click", () => {
+  learningTestImportQuestionsInput?.click();
+});
+
+learningTestImportQuestionsInput?.addEventListener("change", () => {
+  const file = learningTestImportQuestionsInput.files?.[0] ?? null;
+  if (!file) {
+    return;
+  }
+
+  void importLearningTestQuestionsExcel(file)
+    .catch((error) => {
+      setLearningQuestionImportFeedback(error?.message || "Import pitanja nije uspio.", "error");
+      if (learningTestError) {
+        learningTestError.textContent = error?.message || "Import pitanja nije uspio.";
+      }
+    })
+    .finally(() => {
+      learningTestImportQuestionsInput.value = "";
+    });
 });
 
 learningTestAddQuestionButton?.addEventListener("click", () => {

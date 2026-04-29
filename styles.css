@@ -30752,6 +30752,39 @@ body.is-measurement-equipment-export-open {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+#learning-test-import-questions-feedback:empty {
+  display: none;
+}
+
+#learning-test-import-questions-feedback {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgba(143, 170, 220, 0.45);
+  border-radius: 10px;
+  background: rgba(245, 248, 255, 0.82);
+  color: #42516f;
+}
+
+#learning-test-import-questions-feedback[data-tone="success"] {
+  border-color: rgba(68, 190, 120, 0.42);
+  background: rgba(232, 250, 241, 0.9);
+  color: #19633d;
+}
+
+#learning-test-import-questions-feedback[data-tone="warning"],
+#learning-test-import-questions-feedback[data-tone="loading"] {
+  border-color: rgba(236, 180, 64, 0.48);
+  background: rgba(255, 248, 226, 0.9);
+  color: #7a5614;
+}
+
+#learning-test-import-questions-feedback[data-tone="error"] {
+  border-color: rgba(236, 103, 128, 0.52);
+  background: rgba(255, 240, 243, 0.92);
+  color: #9a243f;
 }
 
 .learning-tests-filters {

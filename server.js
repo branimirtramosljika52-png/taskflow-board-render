@@ -880,6 +880,272 @@ function buildMeasurementEquipmentListXlsxBuffer(rows = [], sheetName = "Mjerna 
   });
 }
 
+const LEARNING_QUESTION_IMPORT_OPTION_KEYS = ["A", "B", "C", "D"];
+const LEARNING_QUESTION_IMPORT_COLUMNS = [
+  "Grupa",
+  "Šifra pitanja",
+  "Vrsta pitanja",
+  "Pitanje",
+  "Slika URL",
+  "Odgovor A",
+  "Odgovor B",
+  "Odgovor C",
+  "Odgovor D",
+  "Točan odgovor",
+  "Točni odgovori",
+  "Redoslijed A",
+  "Redoslijed B",
+  "Redoslijed C",
+  "Redoslijed D",
+];
+
+function buildLearningQuestionImportTemplateXlsxBuffer() {
+  const rows = [
+    LEARNING_QUESTION_IMPORT_COLUMNS,
+    [
+      "Osnove",
+      "P1",
+      "single_choice",
+      "Koja oznaka znači obaveznu uporabu zaštitne kacige?",
+      "https://safe-nexus.org/primjer-kaciga.png",
+      "Plavi krug s kacigom",
+      "Crveni trokut",
+      "Zelena strelica",
+      "Žuti pravokutnik",
+      "A",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ],
+    [
+      "Osnove",
+      "P2",
+      "multiple_choice",
+      "Koje radnje treba napraviti prije rada na visini?",
+      "",
+      "Provjeriti opremu",
+      "Osigurati prostor ispod rada",
+      "Raditi bez zaštite ako je posao kratak",
+      "Koristiti propisanu osobnu zaštitnu opremu",
+      "",
+      "A,B,D",
+      "",
+      "",
+      "",
+      "",
+    ],
+    [
+      "Postupak",
+      "P3",
+      "ordered_text",
+      "Poredaj postupak prijave ozljede na radu.",
+      "",
+      "Osigurati mjesto događaja",
+      "Obavijestiti odgovornu osobu",
+      "Zabilježiti podatke i svjedoke",
+      "Pokrenuti propisanu evidenciju",
+      "",
+      "",
+      "1",
+      "2",
+      "3",
+      "4",
+    ],
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = LEARNING_QUESTION_IMPORT_COLUMNS.map((column) => ({
+    wch: Math.min(Math.max(String(column).length + 6, 16), 44),
+  }));
+  worksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: rows.length - 1, c: LEARNING_QUESTION_IMPORT_COLUMNS.length - 1 },
+    }),
+  };
+
+  const instructions = [
+    ["Polje", "Kako se koristi"],
+    ["Vrsta pitanja", "Upiši single_choice, multiple_choice ili ordered_text. Prihvaća i opise poput jedan odgovor, višestruki odgovor ili redoslijed."],
+    ["Slika URL", "Opcionalno. Upisuje se javni https URL slike; slika se ne umeće u Excel."],
+    ["Točan odgovor", "Za single_choice upiši A, B, C ili D."],
+    ["Točni odgovori", "Za multiple_choice upiši više slova odvojeno zarezom, npr. A,C,D."],
+    ["Redoslijed A-D", "Za ordered_text upiši broj ispred svakog odgovora, npr. 1, 2, 3, 4."],
+  ];
+  const instructionsWorksheet = XLSX.utils.aoa_to_sheet(instructions);
+  instructionsWorksheet["!cols"] = [{ wch: 22 }, { wch: 92 }];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Pitanja");
+  XLSX.utils.book_append_sheet(workbook, instructionsWorksheet, "Upute");
+  return XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+    compression: true,
+  });
+}
+
+function normalizeLearningQuestionImportType(value = "") {
+  const raw = normalizeInputValue(value);
+  const key = normalizeLookupKey(raw);
+  if (["multiplechoice", "multiple", "visestruki", "visestrukiodgovor", "viseodgovora", "vise", "multi"].includes(key)) {
+    return "multiple_choice";
+  }
+  if (["orderedtext", "ordered", "redoslijed", "poredak", "pisanjebrojeva", "sortiranje", "redanje"].includes(key)) {
+    return "ordered_text";
+  }
+  if (key.includes("multiple") || key.includes("visestruk") || key.includes("viseodgov")) {
+    return "multiple_choice";
+  }
+  if (key.includes("ordered") || key.includes("redoslijed") || key.includes("poredak") || key.includes("redanje")) {
+    return "ordered_text";
+  }
+  return "single_choice";
+}
+
+function normalizeLearningQuestionImportCorrectKeys(value = "", fallback = "A") {
+  const source = Array.isArray(value) ? value.join(",") : String(value ?? "");
+  const upperSource = source.toUpperCase();
+  const explicitKeys = upperSource.match(/\b[A-D]\b/gu) ?? [];
+  const keys = Array.from(new Set(
+    (explicitKeys.length > 0 ? explicitKeys : (upperSource.replace(/[^A-D]/gu, "").match(/[A-D]/gu) ?? []))
+      .map((entry) => entry.trim()),
+  ));
+  return keys.length > 0 ? keys : [fallback];
+}
+
+function normalizeLearningQuestionImportOrder(value, fallback = null) {
+  const numeric = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+  return Math.max(1, Math.round(numeric));
+}
+
+function inferLearningQuestionImageTypeFromUrl(url = "") {
+  const pathname = (() => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return String(url || "");
+    }
+  })().toLowerCase();
+  if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  if (pathname.endsWith(".svg")) return "image/svg+xml";
+  if (pathname.endsWith(".bmp")) return "image/bmp";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  return "image/*";
+}
+
+function buildLearningQuestionImageDocumentFromUrl(url = "", rowIndex = 0) {
+  const safeUrl = normalizeInputValue(url);
+  if (!/^https?:\/\//i.test(safeUrl) && !/^data:image\//i.test(safeUrl)) {
+    return null;
+  }
+
+  const fallbackName = `slika-pitanja-${rowIndex + 1}.jpg`;
+  let fileName = fallbackName;
+  try {
+    const parsed = new URL(safeUrl);
+    const segment = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "");
+    if (segment) {
+      fileName = segment;
+    }
+  } catch {
+    fileName = fallbackName;
+  }
+
+  return {
+    id: randomUUID(),
+    fileName,
+    fileType: inferLearningQuestionImageTypeFromUrl(safeUrl),
+    fileSize: 0,
+    documentCategory: "Slika pitanja",
+    dataUrl: safeUrl,
+    storageUrl: safeUrl,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildLearningQuestionImportItem(row = {}, rowIndex = 0) {
+  const questionType = normalizeLearningQuestionImportType(getImportRowValue(row, ["vrsta pitanja", "tip pitanja", "question type", "type"]));
+  const prompt = normalizeInputValue(getImportRowValue(row, ["pitanje", "tekst pitanja", "question", "prompt"]));
+  const groupLabel = normalizeInputValue(getImportRowValue(row, ["grupa", "grupa pitanja", "kategorija"])) || "Pitanja";
+  const code = normalizeInputValue(getImportRowValue(row, ["šifra pitanja", "sifra pitanja", "oznaka", "kod", "code"])) || `P${rowIndex + 1}`;
+  const imageUrl = normalizeInputValue(getImportRowValue(row, ["slika url", "url slike", "image url", "slika"]));
+  const correctSingle = normalizeLearningQuestionImportCorrectKeys(
+    getImportRowValue(row, ["točan odgovor", "tocan odgovor", "correct answer", "correct"]),
+    "A",
+  )[0] || "A";
+  const correctMultiple = normalizeLearningQuestionImportCorrectKeys(
+    getImportRowValue(row, ["točni odgovori", "tocni odgovori", "correct answers", "multi correct"]),
+    correctSingle,
+  );
+
+  const options = LEARNING_QUESTION_IMPORT_OPTION_KEYS.map((letter, optionIndex) => {
+    const text = normalizeInputValue(getImportRowValue(row, [`odgovor ${letter}`, `answer ${letter}`, letter]));
+    const orderIndex = questionType === "ordered_text"
+      ? normalizeLearningQuestionImportOrder(
+        getImportRowValue(row, [`redoslijed ${letter}`, `red ${letter}`, `order ${letter}`]),
+        optionIndex + 1,
+      )
+      : null;
+    return {
+      id: randomUUID(),
+      text,
+      isCorrect: questionType === "multiple_choice"
+        ? correctMultiple.includes(letter)
+        : (questionType === "single_choice" ? correctSingle === letter : false),
+      orderIndex,
+    };
+  }).filter((option) => option.text);
+
+  if (!prompt || options.length === 0) {
+    return null;
+  }
+
+  return {
+    id: randomUUID(),
+    code,
+    groupLabel,
+    prompt,
+    explanation: normalizeInputValue(getImportRowValue(row, ["objašnjenje", "objasnjenje", "explanation"])),
+    questionType,
+    correctOptionKeys: questionType === "ordered_text" ? [] : (questionType === "multiple_choice" ? correctMultiple : [correctSingle]),
+    imageDocument: buildLearningQuestionImageDocumentFromUrl(imageUrl, rowIndex),
+    options,
+  };
+}
+
+function buildLearningQuestionImportItems(body = {}) {
+  const buffer = readDataUrlBuffer(body?.dataUrl);
+  if (!buffer.length) {
+    throw new Error("Excel datoteka s pitanjima nije učitana.");
+  }
+
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: true,
+  });
+  const sheetName = (workbook.SheetNames ?? []).find((name) => normalizeLookupKey(name).includes("pitanj"))
+    || workbook.SheetNames?.[0];
+  const sheet = sheetName ? workbook.Sheets[sheetName] : null;
+  if (!sheet) {
+    return [];
+  }
+
+  return XLSX.utils.sheet_to_json(sheet, {
+    defval: "",
+    raw: false,
+  })
+    .map((row, index) => buildLearningQuestionImportItem(row, index))
+    .filter(Boolean);
+}
+
 function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
   const typeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot).slice(0, 12);
   const baseColumns = [
@@ -4020,6 +4286,43 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       });
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/learning-tests/questions/import-template") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati eLearning testovima.");
+        return true;
+      }
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+      sendBinary(response, 200, buildLearningQuestionImportTemplateXlsxBuffer(), {
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileName: sanitizeGeneratedDocumentFileName(`pitanja-import-primjer-${todayIso}`, {
+          fallback: "pitanja-import-primjer",
+          extension: "xlsx",
+        }),
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/learning-tests/questions/import") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati eLearning testovima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const questionItems = buildLearningQuestionImportItems(body);
+      if (questionItems.length === 0) {
+        sendError(response, 400, "U Excelu nema prepoznatih pitanja za import.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        questionItems,
+        importedCount: questionItems.length,
+      });
       return true;
     }
 

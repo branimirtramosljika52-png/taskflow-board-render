@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429w" />
+    <link rel="stylesheet" href="/styles.css?v=20260429x" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -6846,11 +6846,15 @@
                           <h3>Pitanja za ovu grupu</h3>
                         </div>
                         <div class="learning-tests-toolbar-actions">
+                          <button id="learning-test-download-questions-template" type="button" class="ghost-button">Download Excel</button>
+                          <button id="learning-test-import-questions" type="button" class="ghost-button">Import pitanja</button>
                           <button id="learning-test-add-question" type="button" class="ghost-button">+ Pitanje</button>
                           <button id="learning-test-open-preview-questions" type="button" class="ghost-button">Live preview</button>
+                          <input id="learning-test-import-questions-input" type="file" accept=".xlsx,.xls,.csv" hidden />
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Dodaj pitanja i odredi točan odgovor medju A, B, C i D.</p>
+                      <p class="helper-copy module-copy">Dodaj pitanja ručno ili ih uvezi iz Excela. Slike pitanja u Excelu upiši kao javni URL.</p>
+                      <p id="learning-test-import-questions-feedback" class="helper-copy module-copy" aria-live="polite"></p>
                       <div id="learning-test-question-list" class="learning-test-question-list"></div>
                       <div class="learning-test-bottom-actions">
                         <button id="learning-test-add-question-bottom" type="button" class="primary-button">+ Dodaj novo pitanje</button>
@@ -7329,6 +7333,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429w"></script>
+    <script type="module" src="/src/main.js?v=20260429x"></script>
   </body>
 </html>

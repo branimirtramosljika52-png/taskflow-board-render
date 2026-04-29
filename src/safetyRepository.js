@@ -636,15 +636,20 @@ function normalizeLearningAnswerSnapshot(answers = []) {
   return (Array.isArray(answers) ? answers : []).map((answer) => ({
     questionId: dbString(answer?.questionId),
     optionId: dbString(answer?.optionId),
+    orderIndex: dbString(answer?.orderIndex),
   })).filter((answer) => answer.questionId);
 }
 
 function scoreLearningTestSubmission(test = {}, answers = []) {
-  const answerMap = new Map(
-    normalizeLearningAnswerSnapshot(answers)
-      .filter((answer) => answer.optionId)
-      .map((answer) => [String(answer.questionId), String(answer.optionId)]),
-  );
+  const answersByQuestion = new Map();
+  normalizeLearningAnswerSnapshot(answers)
+    .filter((answer) => answer.optionId)
+    .forEach((answer) => {
+      const questionId = String(answer.questionId);
+      const list = answersByQuestion.get(questionId) ?? [];
+      list.push(answer);
+      answersByQuestion.set(questionId, list);
+    });
   const questions = Array.isArray(test.questionItems) ? test.questionItems : [];
   const totalQuestions = questions.length;
 
@@ -657,15 +662,49 @@ function scoreLearningTestSubmission(test = {}, answers = []) {
 
   let correctCount = 0;
   const normalizedAnswers = questions.map((question) => {
-    const selectedOptionId = answerMap.get(String(question.id || "")) || "";
-    const correctOption = (question.options ?? []).find((option) => option.isCorrect);
-    const isCorrect = Boolean(correctOption?.id) && String(correctOption.id) === selectedOptionId;
+    const questionType = dbString(question.questionType).toLowerCase() || "single_choice";
+    const selectedAnswers = answersByQuestion.get(String(question.id || "")) ?? [];
+    let isCorrect = false;
+    let selectedOptionId = selectedAnswers[0]?.optionId || "";
+    const options = Array.isArray(question.options) ? question.options : [];
+
+    if (questionType === "multiple_choice") {
+      const selectedIds = new Set(selectedAnswers.map((answer) => String(answer.optionId)).filter(Boolean));
+      const correctIds = new Set(options.filter((option) => option.isCorrect).map((option) => String(option.id)).filter(Boolean));
+      isCorrect = correctIds.size > 0
+        && selectedIds.size === correctIds.size
+        && [...correctIds].every((optionId) => selectedIds.has(optionId));
+      selectedOptionId = [...selectedIds].join(",");
+    } else if (questionType === "ordered_text") {
+      const selectedOrderByOptionId = new Map(
+        selectedAnswers.map((answer) => [String(answer.optionId), Math.round(Number(answer.orderIndex))]),
+      );
+      const orderedOptions = options.filter((option) => Number.isFinite(Number(option.orderIndex)));
+      isCorrect = orderedOptions.length > 0
+        && orderedOptions.every((option) => (
+          selectedOrderByOptionId.get(String(option.id)) === Math.round(Number(option.orderIndex))
+        ));
+      selectedOptionId = selectedAnswers
+        .map((answer) => `${answer.optionId}:${answer.orderIndex}`)
+        .join(",");
+    } else {
+      const correctOption = options.find((option) => option.isCorrect);
+      isCorrect = Boolean(correctOption?.id) && String(correctOption.id) === selectedOptionId;
+    }
+
     if (isCorrect) {
       correctCount += 1;
     }
     return {
       questionId: String(question.id ?? ""),
       optionId: selectedOptionId,
+      optionIds: selectedAnswers.map((answer) => answer.optionId).filter(Boolean),
+      orderedAnswers: questionType === "ordered_text"
+        ? selectedAnswers.map((answer) => ({
+          optionId: answer.optionId,
+          orderIndex: answer.orderIndex,
+        }))
+        : [],
       isCorrect,
     };
   });

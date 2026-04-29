@@ -287,3 +287,68 @@ test("stored document template field mapping preserves AI and builder metadata",
   assert.deepEqual(mapped.defaultLegalFrameworkIds, ["legal-1"]);
   assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);
 });
+
+test("learning test scoring supports single, multiple and ordered answers", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  await repository.createLearningTestItem({
+    organizationId: "org-1",
+    title: "Sigurnost na radu",
+    status: "active",
+    questionItems: [
+      {
+        id: "q1",
+        code: "P1",
+        prompt: "Jedan odgovor",
+        questionType: "single_choice",
+        options: [
+          { id: "q1-a", text: "A" },
+          { id: "q1-b", text: "B", isCorrect: true },
+        ],
+      },
+      {
+        id: "q2",
+        code: "P2",
+        prompt: "Vise odgovora",
+        questionType: "multiple_choice",
+        options: [
+          { id: "q2-a", text: "A", isCorrect: true },
+          { id: "q2-b", text: "B" },
+          { id: "q2-c", text: "C", isCorrect: true },
+        ],
+      },
+      {
+        id: "q3",
+        code: "P3",
+        prompt: "Redoslijed",
+        questionType: "ordered_text",
+        options: [
+          { id: "q3-a", text: "Drugi", orderIndex: 2 },
+          { id: "q3-b", text: "Prvi", orderIndex: 1 },
+          { id: "q3-c", text: "Treci", orderIndex: 3 },
+        ],
+      },
+    ],
+    assignmentItems: [
+      {
+        assigneeType: "external",
+        externalFullName: "Ivan Radnik",
+        email: "ivan@example.hr",
+        accessToken: "learning-token-1",
+      },
+    ],
+  });
+
+  const result = await repository.submitLearningTestAccess("learning-token-1", [
+    { questionId: "q1", optionId: "q1-b" },
+    { questionId: "q2", optionId: "q2-a" },
+    { questionId: "q2", optionId: "q2-c" },
+    { questionId: "q3", optionId: "q3-a", orderIndex: "2" },
+    { questionId: "q3", optionId: "q3-b", orderIndex: "1" },
+    { questionId: "q3", optionId: "q3-c", orderIndex: "3" },
+  ]);
+
+  assert.equal(result.submission.scorePercent, 100);
+  assert.equal(result.assignment.scorePercent, 100);
+});
