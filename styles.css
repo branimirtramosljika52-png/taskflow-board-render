@@ -31889,6 +31889,8 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   padding: 0 0 4px 2px;
   margin-bottom: 0;
@@ -31896,17 +31898,25 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head-copy strong {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.88rem;
   line-height: 1.2;
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head-copy {
-  flex: 1 1 150px;
+  flex: initial;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
   gap: 6px;
 }
 
 .document-template-item-card.is-canvas-field .document-template-inline-token {
+  flex: 0 0 auto;
   padding: 2px 7px;
   font-size: 0.6rem;
 }
@@ -31919,7 +31929,30 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  max-width: calc(100% - 16px);
+  display: inline-flex;
+  flex-wrap: nowrap;
   gap: 5px;
+  padding: 3px;
+  border: 1px solid rgba(157, 178, 214, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 24px rgba(42, 61, 104, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.document-template-item-card.is-canvas-field:hover .document-template-item-head-actions,
+.document-template-item-card.is-canvas-field:focus-within .document-template-item-head-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-remove {
