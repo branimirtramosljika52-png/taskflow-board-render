@@ -36175,21 +36175,9 @@ function getDocumentTemplateBuilderWidthPercent(field = {}) {
   }
   const numericWidth = Number.parseInt(widthValue, 10);
   if (!Number.isFinite(numericWidth) || numericWidth <= 0) {
-    return "48%";
+    return "100%";
   }
-
-  const percentByWidth = {
-    1: "22%",
-    2: "30%",
-    3: "38%",
-    4: "48%",
-    5: "58%",
-    6: "68%",
-    7: "78%",
-    8: "88%",
-    9: "100%",
-  };
-  return percentByWidth[numericWidth] || "48%";
+  return `${Math.min(100, Math.max(1, (numericWidth / 9) * 100))}%`;
 }
 
 function getDocumentTemplateBuilderWidthMetaLabel(value = "", type = "text") {
@@ -50954,6 +50942,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     row.dataset.templateFieldId = String(field.id || "");
     row.dataset.fieldWidth = getDocumentTemplateRuntimeFieldLayoutWidth(field);
     row.style.setProperty("--document-template-builder-width", getDocumentTemplateBuilderWidthPercent(field));
+    row.style.setProperty("--document-template-builder-span", String(getDocumentTemplateRuntimeFieldLayoutSpan(field)));
     if (chapterOwnerId) {
       row.dataset.chapterOwnerId = chapterOwnerId;
     }
@@ -51075,7 +51064,13 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
       event.preventDefault();
       const bounds = row.getBoundingClientRect();
-      const placement = event.clientY >= (bounds.top + bounds.height / 2) ? "after" : "before";
+      const canvasBounds = pageBody.getBoundingClientRect();
+      const isInlinePlacement = bounds.width < canvasBounds.width * 0.82
+        && event.clientY >= bounds.top
+        && event.clientY <= bounds.bottom;
+      const placement = isInlinePlacement
+        ? (event.clientX >= (bounds.left + bounds.width / 2) ? "after" : "before")
+        : (event.clientY >= (bounds.top + bounds.height / 2) ? "after" : "before");
       row.dataset.dropPlacement = placement;
       row.classList.toggle("is-drop-before", placement === "before");
       row.classList.toggle("is-drop-after", placement === "after");
@@ -51921,6 +51916,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
           ...draft,
           layoutWidth: normalizedWidth,
         }));
+        row.style.setProperty("--document-template-builder-span", String(getDocumentTemplateRuntimeFieldLayoutSpan({
+          ...draft,
+          layoutWidth: normalizedWidth,
+        })));
       }
       const nextWidthLabel = getDocumentTemplateBuilderWidthMetaLabel(normalizedWidth, field.type || "text");
       if (widthLabel.textContent !== nextWidthLabel) {
@@ -51983,13 +51982,14 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         event.stopPropagation();
         activeDocumentTemplateInspectorFieldId = fieldId;
         const canvasBounds = pageBody.getBoundingClientRect();
+        const resizeStartBounds = row.getBoundingClientRect();
         createCanvasResizeSession({
           startEvent: event,
           handle: resizeHandle,
           activeClass: "is-resizing",
           bodyClass: "is-document-template-resizing",
           onFrame: (point) => {
-            const ratio = (point.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+            const ratio = (point.clientX - resizeStartBounds.left) / Math.max(canvasBounds.width, 1);
             applyCanvasWidth(
               getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"),
               { syncInspector: false },
@@ -52084,6 +52084,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         event.stopPropagation();
         activeDocumentTemplateInspectorFieldId = fieldId;
         const canvasBounds = pageBody.getBoundingClientRect();
+        const resizeStartBounds = row.getBoundingClientRect();
         const heightConfig = getDocumentTemplateBuilderHeightConfig(field.type || "text");
         const startY = event.clientY;
         const startHeight = getDocumentTemplateBuilderFieldHeightValue(
@@ -52097,7 +52098,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
           bodyClass: "is-document-template-resizing-diagonal",
           onFrame: (point) => {
             if (isDocumentTemplateFieldWidthEditable(field.type)) {
-              const ratio = (point.clientX - canvasBounds.left) / Math.max(canvasBounds.width, 1);
+              const ratio = (point.clientX - resizeStartBounds.left) / Math.max(canvasBounds.width, 1);
               applyCanvasWidth(
                 getDocumentTemplateBuilderWidthValueFromRatio(ratio, field.type || "text"),
                 { syncInspector: false },

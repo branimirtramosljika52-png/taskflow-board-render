@@ -31740,8 +31740,11 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-sheet-panel {
-  gap: 16px;
-  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(72px, 1fr));
+  gap: 12px;
+  align-items: start;
+  padding: 16px;
   border: 1px solid rgba(47, 104, 84, 0.12);
   border-radius: 28px;
   background:
@@ -31751,12 +31754,20 @@ body.is-measurement-equipment-export-open {
     0 22px 38px rgba(22, 45, 37, 0.08);
 }
 
+.document-template-sheet-panel > .document-template-sheet-empty,
+.document-template-sheet-panel > .document-template-drop-tail {
+  grid-column: 1 / -1;
+}
+
 .document-template-item-card.is-canvas-field {
-  width: min(100%, var(--document-template-builder-width, 100%));
-  justify-self: start;
-  gap: 12px;
-  padding: 14px 16px;
+  grid-column: span var(--document-template-builder-span, 9);
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+  gap: 8px;
+  padding: 10px 12px;
   cursor: pointer;
+  border-radius: 16px;
   border-color: rgba(47, 104, 84, 0.16);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 251, 0.98));
@@ -31765,10 +31776,17 @@ body.is-measurement-equipment-export-open {
     0 16px 28px rgba(22, 45, 37, 0.06);
 }
 
+.document-template-item-card.is-canvas-field[data-field-width="9"],
+.document-template-item-card.is-canvas-field[data-field-width="full"],
+.document-template-item-card.is-canvas-field.is-chapter,
+.document-template-item-card.is-canvas-field.is-excel-block {
+  grid-column: 1 / -1;
+}
+
 .document-template-item-card.is-canvas-field::before {
-  top: 14px;
-  bottom: 14px;
-  width: 5px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
 }
 
 .document-template-item-card.is-canvas-field:hover {
@@ -31823,13 +31841,44 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head {
-  padding: 0 0 10px 2px;
-  margin-bottom: 2px;
+  align-items: center;
+  padding: 0 0 6px 2px;
+  margin-bottom: 0;
+  gap: 6px;
 }
 
 .document-template-item-card.is-canvas-field .document-template-item-head-copy strong {
-  font-size: 1rem;
+  flex: 0 1 auto;
+  font-size: 0.88rem;
   line-height: 1.2;
+}
+
+.document-template-item-card.is-canvas-field .document-template-item-head-copy {
+  flex: 1 1 150px;
+  gap: 6px;
+}
+
+.document-template-item-card.is-canvas-field .document-template-inline-token {
+  padding: 2px 7px;
+  font-size: 0.6rem;
+}
+
+.document-template-item-card.is-canvas-field .document-template-drag-handle {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 10px;
+}
+
+.document-template-item-card.is-canvas-field .document-template-item-head-actions {
+  gap: 5px;
+}
+
+.document-template-item-card.is-canvas-field .document-template-item-remove {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: 0.68rem;
 }
 
 .document-template-ai-pill {
@@ -32087,10 +32136,10 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 
 .document-template-canvas-settings,
 .document-template-canvas-resize {
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border-radius: 10px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
@@ -32108,13 +32157,13 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-canvas-ai {
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border-radius: 10px;
   border-color: rgba(79, 70, 229, 0.2);
   background: rgba(245, 243, 255, 0.96);
   color: #4338ca;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 800;
 }
 
@@ -32139,28 +32188,33 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 
 .document-template-canvas-preview {
   border: 1px solid rgba(47, 104, 84, 0.12);
-  border-radius: 20px;
-  padding: 15px 16px;
+  border-radius: 14px;
+  padding: 9px 10px;
   background: #fff;
   overflow: hidden;
   min-height: var(--document-template-canvas-preview-min-height, auto);
 }
 
 .document-template-canvas-preview .document-template-preview-section {
-  gap: 12px;
+  gap: 7px;
 }
 
 .document-template-canvas-preview .document-template-preview-section h2 {
-  font-size: 1.02rem;
+  font-size: 0.92rem;
 }
 
 .document-template-canvas-preview .document-template-preview-field-head {
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.document-template-canvas-preview .document-template-preview-muted {
+  display: none;
 }
 
 .document-template-canvas-preview .document-template-preview-field-value {
-  min-height: 48px;
+  min-height: 36px;
   border-color: rgba(59, 118, 214, 0.28);
   background:
     linear-gradient(180deg, rgba(245, 249, 255, 0.98), rgba(252, 254, 255, 0.99)),
@@ -32173,23 +32227,29 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
     );
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    0 10px 24px rgba(34, 111, 235, 0.08);
+    0 8px 18px rgba(34, 111, 235, 0.06);
   color: #183d73;
-  padding: 18px 18px 20px;
+  padding: 10px 12px;
+  line-height: 1.4;
+  font-size: 0.82rem;
 }
 
 .document-template-canvas-preview .document-template-preview-field-value::after {
   content: "";
   position: absolute;
-  inset: 10px;
+  inset: 6px;
   border: 1px dashed rgba(59, 118, 214, 0.2);
-  border-radius: 14px;
+  border-radius: 10px;
   pointer-events: none;
 }
 
 .document-template-canvas-preview .document-template-preview-field-value.is-checkbox,
 .document-template-canvas-preview .document-template-preview-field-value.is-toggle {
-  padding: 14px 18px;
+  padding: 9px 12px;
+}
+
+.document-template-canvas-preview .document-template-preview-field-value.is-resizable-input {
+  padding-bottom: 20px;
 }
 
 .document-template-canvas-preview .document-template-preview-field-value.is-checkbox::after,
@@ -32229,19 +32289,19 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 5px;
 }
 
 .document-template-canvas-meta-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px solid rgba(47, 104, 84, 0.14);
   background: rgba(247, 250, 248, 0.98);
   color: #335447;
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.03em;
 }
@@ -32488,14 +32548,34 @@ body.is-document-template-resizing-diagonal * {
 }
 
 .document-template-chapter-group {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(9, minmax(72px, 1fr));
   gap: 14px;
   padding: 14px;
   border-radius: 28px;
 }
 
+.document-template-chapter-group > .document-template-item-card.is-chapter {
+  grid-column: 1 / -1;
+}
+
 .document-template-chapter-group-body {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(72px, 1fr));
   gap: 14px;
   padding: 4px 0 0 18px;
+  align-items: start;
+}
+
+.document-template-chapter-group-body > .document-template-item-card.is-canvas-field {
+  grid-column: span var(--document-template-builder-span, 9);
+}
+
+.document-template-chapter-group-body > .document-template-item-card.is-canvas-field[data-field-width="9"],
+.document-template-chapter-group-body > .document-template-item-card.is-canvas-field[data-field-width="full"],
+.document-template-chapter-group-body > .document-template-item-card.is-canvas-field.is-excel-block {
+  grid-column: 1 / -1;
 }
 
 .document-template-builder-inspector {
@@ -32642,7 +32722,14 @@ body.is-document-template-resizing-diagonal * {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .document-template-sheet-panel,
+  .document-template-chapter-group,
+  .document-template-chapter-group-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .document-template-item-card.is-canvas-field {
+    grid-column: 1 / -1;
     width: 100%;
   }
 
