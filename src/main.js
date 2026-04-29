@@ -7206,7 +7206,10 @@ function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
 
 function getPeopleTrainingServiceTypeOptions() {
   return sortServiceCatalogItems(state.serviceCatalog ?? [])
-    .filter((item) => Boolean(item.isTraining) || normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr")
+    .filter((item) => (
+      Boolean(item.isTraining)
+      && normalizeServiceCatalogTypeUi(item.serviceType, "inspection") === "znr"
+    ))
     .map((item) => {
       const label = String(item.name || item.serviceCode || "Usluga osposobljavanja").trim();
       const serviceCode = String(item.serviceCode || "").trim();
@@ -7234,35 +7237,7 @@ function normalizePeopleTrainingSourceItems(items = []) {
 }
 
 function getPeopleTrainingTypeOptions(items = []) {
-  const source = normalizePeopleTrainingSourceItems(items);
-  const options = [
-    ...PERSON_TRAINING_TYPE_OPTIONS.map((option) => ({ ...option })),
-    ...getPeopleTrainingServiceTypeOptions(),
-  ];
-  const seen = new Set(options.map((option) => String(option.value || "").trim().toLowerCase()).filter(Boolean));
-
-  source.forEach((item) => {
-    const value = String(item?.type || "").trim().toLowerCase();
-    if (!value || seen.has(value)) {
-      return;
-    }
-    const label = String(item?.label || item?.serviceName || item?.name || value).trim();
-    options.push({
-      value,
-      label: label || "Osposobljavanje",
-      shortLabel: String(item?.shortLabel || item?.serviceCode || "").trim() || buildPeopleTrainingShortLabel(label, "OS"),
-      serviceId: String(item?.serviceId || item?.serviceCatalogId || "").trim(),
-      serviceName: String(item?.serviceName || "").trim(),
-      serviceCode: String(item?.serviceCode || "").trim(),
-      linkedTemplateIds: Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds.map(String) : [],
-      linkedTemplateTitles: Array.isArray(item?.linkedTemplateTitles) ? item.linkedTemplateTitles.map(String).filter(Boolean) : [],
-      linkedLearningTestIds: Array.isArray(item?.linkedLearningTestIds) ? item.linkedLearningTestIds.map(String) : [],
-      linkedLearningTestTitles: Array.isArray(item?.linkedLearningTestTitles) ? item.linkedLearningTestTitles.map(String).filter(Boolean) : [],
-    });
-    seen.add(value);
-  });
-
-  return options;
+  return getPeopleTrainingServiceTypeOptions();
 }
 
 function getPeopleTrainingTypeOption(value = "", items = []) {
@@ -7275,9 +7250,28 @@ function getPeopleTrainingTypeOption(value = "", items = []) {
 function normalizePeopleTrainingItemsForUi(items = []) {
   const source = normalizePeopleTrainingSourceItems(items);
   const byType = new Map(source.map((item) => [String(item?.type ?? "").trim().toLowerCase(), item]));
+  const byServiceId = new Map(source
+    .map((item) => [String(item?.serviceId || item?.serviceCatalogId || "").trim(), item])
+    .filter(([key]) => Boolean(key)));
+  const byServiceCode = new Map();
+  source.forEach((item) => {
+    [
+      item?.serviceCode,
+      item?.shortLabel,
+    ].map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean)
+      .forEach((key) => {
+        if (!byServiceCode.has(key)) {
+          byServiceCode.set(key, item);
+        }
+      });
+  });
 
   return getPeopleTrainingTypeOptions(source).map((typeOption) => {
-    const sourceItem = byType.get(String(typeOption.value || "").trim().toLowerCase()) ?? {};
+    const sourceItem = byType.get(String(typeOption.value || "").trim().toLowerCase())
+      ?? byServiceId.get(String(typeOption.serviceId || "").trim())
+      ?? byServiceCode.get(String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase())
+      ?? {};
     const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
     const passedOn = normalizePeopleTrainingDate(sourceItem?.passedOn ?? sourceItem?.passedDate);
     const issuedOn = normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate) || passedOn;
