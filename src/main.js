@@ -2453,6 +2453,7 @@ const moduleViewKicker = document.querySelector("#module-view-kicker");
 const moduleViewTitle = document.querySelector("#module-view-title");
 const moduleViewDescription = document.querySelector("#module-view-description");
 const moduleViewChips = document.querySelector("#module-view-chips");
+const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
@@ -7056,7 +7057,99 @@ const PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS = [
   "Ostalo",
 ];
 
+function createPeopleTrainingZnrPlaceholder(key = "", label = "", example = "") {
+  return {
+    key,
+    label: label || key,
+    example,
+    token: `[${key}]`,
+  };
+}
+
 const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
+  createPeopleTrainingZnrPlaceholder("Tvrtka", "Tvrtka", "24sata d.o.o."),
+  createPeopleTrainingZnrPlaceholder("Sjediste", "Sjedište tvrtke", "Oreškovićeva ulica 3D, Zagreb"),
+  createPeopleTrainingZnrPlaceholder("OIBTvrtka", "OIB tvrtke", "78093047651"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOsobaTvrtka", "Odgovorna osoba tvrtke", "Marko Horvat"),
+  createPeopleTrainingZnrPlaceholder("OIBOdgovornaOsoba", "OIB odgovorne osobe", "12345678910"),
+  createPeopleTrainingZnrPlaceholder("OsobniBroj", "Osobni broj radnika", "00125"),
+  createPeopleTrainingZnrPlaceholder("ImePrezime", "Ime i prezime osobe", "Ana Savanović"),
+  createPeopleTrainingZnrPlaceholder("ImeOca", "Ime oca", "Ivan"),
+  createPeopleTrainingZnrPlaceholder("OIB", "OIB osobe", "12345678910"),
+  createPeopleTrainingZnrPlaceholder("Jezik", "Jezik osposobljavanja", "hrvatski"),
+  createPeopleTrainingZnrPlaceholder("DatumRodenja", "Datum rođenja", "29.04.1990"),
+  createPeopleTrainingZnrPlaceholder("DržavaRodenja", "Država rođenja", "Hrvatska"),
+  createPeopleTrainingZnrPlaceholder("MjestoRodenja", "Mjesto rođenja", "Zagreb"),
+  createPeopleTrainingZnrPlaceholder("DatumDolaska", "Datum dolaska", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("Mjestorada", "Mjesto rada", "Pogon Jankomir"),
+  createPeopleTrainingZnrPlaceholder("MjestoRadaNew", "Mjesto rada - novo polje", "Pogon Jankomir"),
+  createPeopleTrainingZnrPlaceholder("DodatnoMjesto", "Dodatno mjesto rada", "Skladište"),
+  createPeopleTrainingZnrPlaceholder("Aktivnost", "Aktivnost / usluga", "Rad na siguran način"),
+  createPeopleTrainingZnrPlaceholder("BrojZapisnikaZNR", "Broj zapisnika ZNR", "ZNR-2026-15"),
+  createPeopleTrainingZnrPlaceholder("NazivRadnogMjesta", "Naziv radnog mjesta", "Skladištar"),
+  createPeopleTrainingZnrPlaceholder("OpisPoslova", "Opis poslova", "Skladišni poslovi"),
+  createPeopleTrainingZnrPlaceholder("VrstaIspita", "Vrsta ispita", "Rad na siguran način"),
+  createPeopleTrainingZnrPlaceholder("MjestoOsposobljavanjaTeorija", "Mjesto teorijskog osposobljavanja", "Zagreb"),
+  createPeopleTrainingZnrPlaceholder("DatumTeorija", "Datum teorije", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("NacinProvodenjaTeorija", "Način provođenja teorije", "Online test"),
+  createPeopleTrainingZnrPlaceholder("ImePrezimeOvlastenik", "Ime i prezime ovlaštenika", "SafeNexus"),
+  createPeopleTrainingZnrPlaceholder("OIBOvlastenik", "OIB ovlaštenika", ""),
+  createPeopleTrainingZnrPlaceholder("OstaloImePrezime", "Ostalo ime i prezime", ""),
+  createPeopleTrainingZnrPlaceholder("OstaloOIB", "Ostali OIB", ""),
+  createPeopleTrainingZnrPlaceholder("MjestoProvodenjaPrakicno", "Mjesto praktičnog provođenja", "Pogon Jankomir"),
+  createPeopleTrainingZnrPlaceholder("RazdobljeZNROd", "Razdoblje ZNR od", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("RazdobljeZNRDo", "Razdoblje ZNR do", "29.04.2030"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaZNRImePrezime", "Odgovorna ZNR osoba", "SafeNexus"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaZNROIB", "OIB odgovorne ZNR osobe", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaZNRKlasa", "ZNR klasa", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaZNRUrbroj", "ZNR urbroj", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaZNREbroj", "ZNR e-broj", ""),
+  createPeopleTrainingZnrPlaceholder("AktivnostOvlastenik", "Aktivnost ovlaštenik", "Rad na siguran način"),
+  createPeopleTrainingZnrPlaceholder("BrojOdlukeOVL", "Broj odluke OVL", ""),
+  createPeopleTrainingZnrPlaceholder("DatumOdlukeOVL", "Datum odluke OVL", ""),
+  createPeopleTrainingZnrPlaceholder("RokOdlukeOVL", "Rok odluke OVL", ""),
+  createPeopleTrainingZnrPlaceholder("BrojZapisnikaOVL", "Broj zapisnika OVL", "OVL-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumProvodenjaOVL", "Datum provođenja OVL", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("RokOVL", "Rok OVL", "29.04.2030"),
+  createPeopleTrainingZnrPlaceholder("MjestoOVL", "Mjesto OVL", "Zagreb"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOVLImePrezime", "Odgovorna OVL osoba", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOVLOIB", "OIB odgovorne OVL osobe", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOVLKlasa", "OVL klasa", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOVLUrbroj", "OVL urbroj", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaOVLEbroj", "OVL e-broj", ""),
+  createPeopleTrainingZnrPlaceholder("AktivnostEv", "Aktivnost evidencije", "Rad na siguran način"),
+  createPeopleTrainingZnrPlaceholder("BrojOdlukeEv", "Broj odluke evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("DatumOdlukeEv", "Datum odluke evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("RokOdlukeEv", "Rok odluke evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("BrojZapisnikaEv", "Broj zapisnika evidencije", "EV-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumZapisnikaEv", "Datum zapisnika evidencije", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("RokZapisnikaEv", "Rok zapisnika evidencije", "29.04.2030"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaEvImePrezime", "Odgovorna osoba evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaEvOIB", "OIB odgovorne osobe evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaEvKlasa", "Klasa evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaEvEbroj", "E-broj evidencije", ""),
+  createPeopleTrainingZnrPlaceholder("AktivnostPP", "Aktivnost PP", "Početno gašenje požara"),
+  createPeopleTrainingZnrPlaceholder("DatumPP", "Datum PP", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("BrojZapisnikaPGP", "Broj zapisnika PGP", "PGP-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumPolaganjaPGP", "Datum polaganja PGP", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("PGPCheck", "PGP oznaka", "X"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaPGPImePrezime", "Odgovorna PGP osoba", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaPGPOIB", "OIB odgovorne PGP osobe", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaPGPKlasa", "PGP klasa", ""),
+  createPeopleTrainingZnrPlaceholder("BrojPotvrdeADR", "Broj potvrde ADR", "ADR-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumPolaganjaADR", "Datum polaganja ADR", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("VrijediDoADR", "ADR vrijedi do", "29.04.2030"),
+  createPeopleTrainingZnrPlaceholder("ADRCheck", "ADR oznaka", "X"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaADRImePrezime", "Odgovorna ADR osoba", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaADROIB", "OIB odgovorne ADR osobe", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaADRKlasa", "ADR klasa", ""),
+  createPeopleTrainingZnrPlaceholder("BrojPotvrdeSPZTP", "Broj potvrde SPZTP", "SPZTP-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumPolaganjaSPZTP", "Datum polaganja SPZTP", "29.04.2026"),
+  createPeopleTrainingZnrPlaceholder("VrijediDoSPZTP", "SPZTP vrijedi do", "29.04.2030"),
+  createPeopleTrainingZnrPlaceholder("SPZTPCheck", "SPZTP oznaka", "X"),
+  createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPImePrezime", "Odgovorna SPZTP osoba", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPOIB", "OIB odgovorne SPZTP osobe", ""),
+  createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPKlasa", "SPZTP klasa", ""),
   { key: "IME", label: "Ime osobe", example: "Ana" },
   { key: "PREZIME", label: "Prezime osobe", example: "Savanović" },
   { key: "IME_PREZIME", label: "Ime i prezime", example: "Ana Savanović" },
@@ -8335,6 +8428,26 @@ function createPeopleTrainingQuickExamForm(record = {}) {
   return form;
 }
 
+function hasPeopleTrainingDraggedFiles(dataTransfer = null) {
+  if (!dataTransfer) {
+    return false;
+  }
+
+  if ((dataTransfer.files?.length ?? 0) > 0) {
+    return true;
+  }
+
+  if (Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file")) {
+    return true;
+  }
+
+  return Array.from(dataTransfer.types ?? []).some((type) => String(type).toLowerCase() === "files");
+}
+
+function getPeopleTrainingDroppedFiles(dataTransfer = null) {
+  return Array.from(dataTransfer?.files ?? []).filter(Boolean);
+}
+
 function createPeopleTrainingRecordCard(record = {}) {
   const card = document.createElement("article");
   card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
@@ -8407,18 +8520,31 @@ function createPeopleTrainingRecordCard(record = {}) {
     event.preventDefault();
     openRecord(event);
   });
-  card.addEventListener("dragover", (event) => {
-    if ((event.dataTransfer?.files?.length ?? 0) === 0) {
+  card.addEventListener("dragenter", (event) => {
+    if (!hasPeopleTrainingDraggedFiles(event.dataTransfer)) {
       return;
     }
     event.preventDefault();
     card.classList.add("is-drag-over");
   });
-  card.addEventListener("dragleave", () => {
+  card.addEventListener("dragover", (event) => {
+    if (!hasPeopleTrainingDraggedFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+    card.classList.add("is-drag-over");
+  });
+  card.addEventListener("dragleave", (event) => {
+    if (event.relatedTarget instanceof Node && card.contains(event.relatedTarget)) {
+      return;
+    }
     card.classList.remove("is-drag-over");
   });
   card.addEventListener("drop", (event) => {
-    const files = Array.from(event.dataTransfer?.files ?? []).filter(Boolean);
+    const files = getPeopleTrainingDroppedFiles(event.dataTransfer);
     if (files.length === 0) {
       return;
     }
@@ -8628,7 +8754,7 @@ function renderPeopleTrainingDossier(record = null) {
   }
 
   const handleFiles = (event) => {
-    const files = Array.from(event.dataTransfer?.files ?? []).filter(Boolean);
+    const files = getPeopleTrainingDroppedFiles(event.dataTransfer);
     if (files.length === 0) {
       return;
     }
@@ -8637,12 +8763,18 @@ function renderPeopleTrainingDossier(record = null) {
     void openPeopleTrainingAttachmentDialog(record, files);
   };
   peopleTrainingDossier.ondragover = (event) => {
-    if ((event.dataTransfer?.files?.length ?? 0) > 0) {
+    if (hasPeopleTrainingDraggedFiles(event.dataTransfer)) {
       event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
       peopleTrainingDossier.classList.add("is-drag-over");
     }
   };
-  peopleTrainingDossier.ondragleave = () => {
+  peopleTrainingDossier.ondragleave = (event) => {
+    if (event.relatedTarget instanceof Node && peopleTrainingDossier.contains(event.relatedTarget)) {
+      return;
+    }
     peopleTrainingDossier.classList.remove("is-drag-over");
   };
   peopleTrainingDossier.ondrop = handleFiles;
@@ -11809,6 +11941,10 @@ function renderModuleView() {
     && !isDrawingStudioModule
     && !isVehiclesModule
     && !isPeopleTrainingModule;
+
+  if (modulePanel) {
+    modulePanel.hidden = isPeopleTrainingModule;
+  }
 
   if (moduleViewKicker) {
     moduleViewKicker.textContent = moduleDefinition.kicker;
@@ -41362,17 +41498,21 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
   }));
 }
 
+function getPeopleTrainingCertificatePlaceholderToken(entry = {}) {
+  return entry.token || `{{${entry.key}}}`;
+}
+
 function buildPeopleTrainingCertificatePlaceholderWordMarkup() {
   const rows = PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS.map((entry) => `
     <tr>
-      <td>{{${escapeHtml(entry.key)}}}</td>
+      <td>${escapeHtml(getPeopleTrainingCertificatePlaceholderToken(entry))}</td>
       <td>${escapeHtml(entry.label)}</td>
       <td>${escapeHtml(entry.example)}</td>
     </tr>
   `).join("");
   return `
     <h1>SafeNexus · Placeholderi za uvjerenja</h1>
-    <p>Ove tokene možeš koristiti u Word predlošku za ZNR usluge. Sustav ih zamjenjuje podacima osobe, tvrtke, usluge i RN izvora.</p>
+    <p>Ove tokene možeš koristiti u Word predlošku za ZNR usluge. Sustav zamjenjuje nove [Placeholder] tokene i postojeće {{LEGACY}} tokene podacima osobe, tvrtke, usluge i RN izvora.</p>
     <table>
       <thead>
         <tr><th>Placeholder</th><th>Značenje</th><th>Primjer</th></tr>
@@ -41431,15 +41571,16 @@ function renderServiceCatalogCertificatePlaceholderList() {
     button.type = "button";
     button.className = "offer-template-placeholder-chip";
     button.title = `${entry.label}: ${entry.example}`;
+    const token = getPeopleTrainingCertificatePlaceholderToken(entry);
     const key = document.createElement("strong");
-    key.textContent = `{{${entry.key}}}`;
+    key.textContent = token;
     const label = document.createElement("span");
     label.textContent = entry.label;
     const example = document.createElement("small");
     example.textContent = entry.example ? `Primjer: ${entry.example}` : "Klik za kopiranje placeholdera";
     button.append(key, label, example);
     button.addEventListener("click", () => {
-      void navigator.clipboard?.writeText(`{{${entry.key}}}`);
+      void navigator.clipboard?.writeText(token);
     });
     return button;
   }));

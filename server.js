@@ -2307,12 +2307,162 @@ function findPeopleTrainingServiceForItem(item = {}, scopedSnapshot = {}) {
   }) ?? null;
 }
 
-function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, service = {}) {
+function formatPeopleTrainingTemplateDate(value = "") {
+  return value ? formatOfferDocumentDate(value) : "";
+}
+
+function findPeopleTrainingTemplateCompany(record = {}, scopedSnapshot = {}) {
+  return (scopedSnapshot.companies ?? []).find((company) => String(company.id) === String(record.companyId))
+    ?? null;
+}
+
+function findPeopleTrainingTemplateLocation(record = {}, scopedSnapshot = {}) {
+  return (scopedSnapshot.locations ?? []).find((location) => String(location.id) === String(record.locationId))
+    ?? null;
+}
+
+function getPeopleTrainingTemplateItemDate(item = {}) {
+  return item.passedOn || item.issuedOn || "";
+}
+
+function hasPeopleTrainingTemplateEvidence(item = {}) {
+  return Boolean(item?.certificateNumber || item?.issuedOn || item?.passedOn || item?.validUntil);
+}
+
+function findPeopleTrainingTemplateItem(record = {}, hints = []) {
+  const normalizedHints = hints.map((hint) => normalizeLookupKey(hint)).filter(Boolean);
+  if (normalizedHints.length === 0) {
+    return null;
+  }
+
+  return (record.trainingItems ?? []).find((trainingItem) => {
+    const candidates = [
+      trainingItem.type,
+      trainingItem.label,
+      trainingItem.shortLabel,
+      trainingItem.serviceCode,
+      trainingItem.serviceName,
+    ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+    return candidates.some((candidate) => normalizedHints.some((hint) => candidate.includes(hint) || hint.includes(candidate)));
+  }) ?? null;
+}
+
+function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
+  const company = findPeopleTrainingTemplateCompany(record, scopedSnapshot) ?? {};
+  const location = findPeopleTrainingTemplateLocation(record, scopedSnapshot) ?? {};
+  const companyName = record.companyName || company.name || "";
+  const companyOib = record.companyOib || company.oib || "";
+  const locationName = record.locationName || location.name || "";
+  const companyResponsibleName = company.representative || location.representative || "";
+  const companyResponsibleOib = company.representativeOib || "";
+  const itemDate = getPeopleTrainingTemplateItemDate(item);
+  const itemValidUntil = item.validForever ? "" : (item.validUntil || "");
+  const serviceName = item.label || service.name || item.serviceName || "";
+  const serviceCode = item.serviceCode || service.serviceCode || item.shortLabel || "";
+  const provider = item.provider || "";
+  const workPlace = locationName || company.headquarters || "";
+  const adrItem = findPeopleTrainingTemplateItem(record, ["adr"]);
+  const pgpItem = findPeopleTrainingTemplateItem(record, ["fire_initial", "pozar", "pocetno gasenje", "ppz", "pgp"]);
+  const spztpItem = findPeopleTrainingTemplateItem(record, ["flammable_storage", "zapaljiv", "skladistenje", "spztp"]);
+
+  const fillTrainingSet = (prefix, trainingItem = {}) => {
+    const passedOn = getPeopleTrainingTemplateItemDate(trainingItem);
+    return {
+      [`BrojPotvrde${prefix}`]: trainingItem.certificateNumber || "",
+      [`DatumPolaganja${prefix}`]: formatPeopleTrainingTemplateDate(passedOn),
+      [`VrijediDo${prefix}`]: trainingItem.validForever ? "" : formatPeopleTrainingTemplateDate(trainingItem.validUntil),
+      [`${prefix}Check`]: hasPeopleTrainingTemplateEvidence(trainingItem) ? "X" : "",
+    };
+  };
+
+  return {
+    Tvrtka: companyName,
+    Sjediste: company.headquarters || "",
+    OIBTvrtka: companyOib,
+    OdgovornaOsobaTvrtka: companyResponsibleName,
+    OIBOdgovornaOsoba: companyResponsibleOib,
+    OsobniBroj: record.employeeNumber || record.personalNumber || "",
+    ImePrezime: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
+    ImeOca: record.fatherName || "",
+    OIB: record.oib || "",
+    Jezik: record.language || "",
+    DatumRodenja: formatPeopleTrainingTemplateDate(record.birthDate),
+    "DržavaRodenja": record.birthCountry || "",
+    MjestoRodenja: record.birthPlace || "",
+    DatumDolaska: formatPeopleTrainingTemplateDate(record.arrivalDate),
+    Mjestorada: workPlace,
+    MjestoRadaNew: workPlace,
+    DodatnoMjesto: location.note || location.region || "",
+    Aktivnost: serviceName || serviceCode,
+    BrojZapisnikaZNR: item.certificateNumber || "",
+    NazivRadnogMjesta: record.jobTitle || "",
+    OpisPoslova: record.jobDescription || record.note || "",
+    VrstaIspita: serviceName || serviceCode,
+    MjestoOsposobljavanjaTeorija: workPlace,
+    DatumTeorija: formatPeopleTrainingTemplateDate(itemDate),
+    NacinProvodenjaTeorija: item.examMode || item.learningTestTitle || item.provider || "",
+    ImePrezimeOvlastenik: provider,
+    OIBOvlastenik: "",
+    OstaloImePrezime: "",
+    OstaloOIB: "",
+    MjestoProvodenjaPrakicno: workPlace,
+    RazdobljeZNROd: formatPeopleTrainingTemplateDate(itemDate),
+    RazdobljeZNRDo: formatPeopleTrainingTemplateDate(itemValidUntil),
+    OdgovornaZNRImePrezime: provider || companyResponsibleName,
+    OdgovornaZNROIB: "",
+    OdgovornaZNRKlasa: "",
+    OdgovornaZNRUrbroj: "",
+    OdgovornaZNREbroj: "",
+    AktivnostOvlastenik: serviceName || serviceCode,
+    BrojOdlukeOVL: "",
+    DatumOdlukeOVL: "",
+    RokOdlukeOVL: "",
+    BrojZapisnikaOVL: item.certificateNumber || "",
+    DatumProvodenjaOVL: formatPeopleTrainingTemplateDate(itemDate),
+    RokOVL: formatPeopleTrainingTemplateDate(itemValidUntil),
+    MjestoOVL: workPlace,
+    OdgovornaOVLImePrezime: provider || companyResponsibleName,
+    OdgovornaOVLOIB: "",
+    OdgovornaOVLKlasa: "",
+    OdgovornaOVLUrbroj: "",
+    OdgovornaOVLEbroj: "",
+    AktivnostEv: serviceName || serviceCode,
+    BrojOdlukeEv: "",
+    DatumOdlukeEv: "",
+    RokOdlukeEv: "",
+    BrojZapisnikaEv: item.certificateNumber || "",
+    DatumZapisnikaEv: formatPeopleTrainingTemplateDate(itemDate),
+    RokZapisnikaEv: formatPeopleTrainingTemplateDate(itemValidUntil),
+    OdgovornaEvImePrezime: provider || companyResponsibleName,
+    OdgovornaEvOIB: "",
+    OdgovornaEvKlasa: "",
+    OdgovornaEvEbroj: "",
+    AktivnostPP: pgpItem?.label || "",
+    DatumPP: formatPeopleTrainingTemplateDate(getPeopleTrainingTemplateItemDate(pgpItem ?? {})),
+    BrojZapisnikaPGP: pgpItem?.certificateNumber || "",
+    DatumPolaganjaPGP: formatPeopleTrainingTemplateDate(getPeopleTrainingTemplateItemDate(pgpItem ?? {})),
+    PGPCheck: hasPeopleTrainingTemplateEvidence(pgpItem ?? {}) ? "X" : "",
+    OdgovornaPGPImePrezime: pgpItem?.provider || provider || companyResponsibleName,
+    OdgovornaPGPOIB: "",
+    OdgovornaPGPKlasa: "",
+    ...fillTrainingSet("ADR", adrItem ?? {}),
+    OdgovornaADRImePrezime: adrItem?.provider || provider || companyResponsibleName,
+    OdgovornaADROIB: "",
+    OdgovornaADRKlasa: "",
+    ...fillTrainingSet("SPZTP", spztpItem ?? {}),
+    OdgovornaSPZTPImePrezime: spztpItem?.provider || provider || companyResponsibleName,
+    OdgovornaSPZTPOIB: "",
+    OdgovornaSPZTPKlasa: "",
+  };
+}
+
+function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
   const passedOrIssued = item.passedOn || item.issuedOn || "";
   const sourceText = item.workOrderNumber
     ? `RN ${item.workOrderNumber}`
     : (item.learningTestTitle || item.provider || item.examMode || "");
   return {
+    ...buildPeopleTrainingZnrTemplatePlaceholders(record, item, service, scopedSnapshot),
     IME: record.firstName || "",
     PREZIME: record.lastName || "",
     IME_PREZIME: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
@@ -2371,8 +2521,8 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
       );
       const pdfBuffer = await buildPdfFromTemplateBuffer(
         referenceDocument.buffer,
-        getPeopleTrainingCertificatePlaceholderPayload(record, item, service),
-        { fileName: baseName },
+        getPeopleTrainingCertificatePlaceholderPayload(record, item, service, scopedSnapshot),
+        { fileName: baseName, squareBracketPlaceholders: true },
       );
       const documentId = `certificate-${item.type || service.id || randomUUID()}`;
       nextAttachments.push({

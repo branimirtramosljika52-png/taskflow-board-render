@@ -1203,17 +1203,19 @@ function createDocxZipWithEscapedStrayDelimiters(templateBuffer) {
   return zip;
 }
 
-function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlaceholders = new Map()) {
+function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlaceholders = new Map(), options = {}) {
+  const delimiters = options.delimiters ?? {
+    start: "{{",
+    end: "}}",
+  };
+  const nullGetter = typeof options.nullGetter === "function"
+    ? options.nullGetter
+    : () => "";
   const doc = new Docxtemplater(zip, {
-    delimiters: {
-      start: "{{",
-      end: "}}",
-    },
+    delimiters,
     paragraphLoop: true,
     linebreaks: true,
-    nullGetter() {
-      return "";
-    },
+    nullGetter,
   });
 
   doc.render(normalizedPlaceholders);
@@ -1224,7 +1226,7 @@ function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlacehol
   });
 }
 
-export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders = {}) {
+export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const safeBuffer = Buffer.isBuffer(templateBuffer)
     ? templateBuffer
     : Buffer.from(templateBuffer ?? []);
@@ -1257,16 +1259,43 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
       .filter(Boolean),
   );
 
+  const renderWithCurlyDelimiters = (sourceBuffer) => renderDocxTemplateZip(
+    new PizZip(sourceBuffer),
+    normalizedPlaceholders,
+    specialPlaceholders,
+  );
+  const renderWithSquareBracketDelimiters = (sourceBuffer) => renderDocxTemplateZip(
+    new PizZip(sourceBuffer),
+    normalizedPlaceholders,
+    new Map(),
+    {
+      delimiters: {
+        start: "[",
+        end: "]",
+      },
+      nullGetter(part = {}) {
+        const value = clean(part.value ?? part.raw);
+        return value ? `[${value}]` : "";
+      },
+    },
+  );
+
   try {
-    return renderDocxTemplateZip(new PizZip(safeBuffer), normalizedPlaceholders, specialPlaceholders);
+    const renderedBuffer = renderWithCurlyDelimiters(safeBuffer);
+    return options.squareBracketPlaceholders
+      ? renderWithSquareBracketDelimiters(renderedBuffer)
+      : renderedBuffer;
   } catch (error) {
     if (shouldRetryDocxRenderWithEscapedDelimiters(error)) {
       try {
-        return renderDocxTemplateZip(
+        const renderedBuffer = renderDocxTemplateZip(
           createDocxZipWithEscapedStrayDelimiters(safeBuffer),
           normalizedPlaceholders,
           specialPlaceholders,
         );
+        return options.squareBracketPlaceholders
+          ? renderWithSquareBracketDelimiters(renderedBuffer)
+          : renderedBuffer;
       } catch (retryError) {
         throw new Error(formatDocxRenderError(retryError));
       }
@@ -1349,7 +1378,7 @@ export async function convertDocxBufferToPdfBuffer(docxBuffer, {
 }
 
 export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
-  const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders);
+  const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders, options);
   return convertDocxBufferToPdfBuffer(generatedWord, options);
 }
 
