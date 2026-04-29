@@ -34376,6 +34376,85 @@ body.is-global-loading {
   display: none;
 }
 
+.people-training-row-shell {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+.people-training-row-shell > .people-training-row-select {
+  margin-top: 18px;
+}
+
+.people-training-person-top {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.people-training-attachment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.people-training-attachment-button.is-menu {
+  min-width: 40px;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.people-training-attachment-button:disabled {
+  opacity: 0.52;
+  cursor: default;
+  transform: none;
+}
+
+.people-training-certificate-pill {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+}
+
+.people-training-certificate-pill.is-expiring {
+  animation: periodicsPulseWarningDot 1.2s ease-out infinite;
+}
+
+.people-training-certificate-pill.is-expired {
+  animation: periodicsPulseDot 1.2s ease-out infinite;
+}
+
+.people-training-attachment-menu-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.people-training-attachment-menu-copy strong {
+  overflow: hidden;
+  color: #172743;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-attachment-menu-copy small {
+  overflow: hidden;
+  color: #657891;
+  font-size: 0.7rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-attachment-menu-empty {
+  margin: 2px 6px 6px;
+  color: #657891;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
 .people-training-item-menu {
   position: fixed;
   z-index: 120;
