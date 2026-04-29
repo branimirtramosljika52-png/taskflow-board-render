@@ -8334,8 +8334,13 @@ function createPeopleTrainingCertificatePill(record = {}, item = {}) {
     getPeopleTrainingStatusLabel(item.status),
     getPeopleTrainingCertificateMetaText(item, certificateDocument),
   ].filter(Boolean).join(" · ");
+  const marker = item.status === "valid" || item.status === "not_required"
+    ? "✓"
+    : item.status === "expiring"
+      ? "!"
+      : "×";
   const code = document.createElement("strong");
-  code.textContent = item.serviceCode || item.shortLabel || "?";
+  code.textContent = `${marker} ${item.serviceCode || item.shortLabel || "?"}`;
   button.append(code);
   button.addEventListener("click", (event) => {
     event.preventDefault();
@@ -9103,20 +9108,16 @@ function createPeopleTrainingRecordCard(record = {}) {
   }
   top.append(selection, identity, overview);
 
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
-  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
   statuses.replaceChildren(...trainingItems.map((item) => createPeopleTrainingCertificatePill(record, item)));
   card.classList.toggle("is-selected", isPeopleTrainingRecordSelected(record.id));
 
   const footer = document.createElement("div");
   footer.className = "people-training-person-footer";
-  const openHint = document.createElement("small");
-  openHint.textContent = "Klikni redak za dosje osobe.";
-  const dropHint = document.createElement("small");
-  dropHint.className = "people-training-drop-hint";
-  dropHint.textContent = "Povuci dokument bilo gdje na ovaj red.";
-  footer.append(openHint, dropHint);
+  footer.hidden = trainingItems.length === 0;
+  footer.append(statuses);
 
   const openRecord = (event) => {
     if (event?.target instanceof Element && event.target.closest("button,input,select,textarea,a,form")) {
@@ -9165,7 +9166,7 @@ function createPeopleTrainingRecordCard(record = {}) {
     void openPeopleTrainingAttachmentDialog(record, files);
   });
 
-  card.append(top, statuses, footer);
+  card.append(top, footer);
   return card;
 }
 

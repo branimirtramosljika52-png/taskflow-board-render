@@ -34324,6 +34324,58 @@ body.is-global-loading {
   color: #6d7d92;
 }
 
+.people-training-person-row .people-training-person-statuses {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.people-training-person-footer {
+  justify-content: flex-end;
+  min-height: 24px;
+}
+
+.people-training-certificate-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-align: center;
+  box-shadow: none;
+}
+
+.people-training-certificate-pill:hover,
+.people-training-certificate-pill:focus-visible {
+  box-shadow: 0 6px 14px rgba(39, 67, 119, 0.12);
+}
+
+.people-training-certificate-pill strong {
+  display: block;
+  max-width: 88px;
+  overflow: hidden;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-certificate-pill span,
+.people-training-certificate-pill small {
+  display: none;
+}
+
 .people-training-item-menu {
   position: fixed;
   z-index: 120;
