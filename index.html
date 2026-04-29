@@ -3708,16 +3708,16 @@
               <div>
                 <p class="section-kicker">Learning</p>
                 <h3>Osposobljavanja ljudi</h3>
-                <p class="helper-copy module-copy">Jedna osoba je jedan red: tvrtka, OIB, položeni ispiti, RN ili online izvor i status uvjerenja. Vrste osposobljavanja dolaze iz List Of Services za ZNR usluge.</p>
               </div>
               <div class="vehicles-panel-head-actions">
+                <button id="people-training-download-template-button" type="button" class="ghost-button">Download Excel</button>
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
                 <button id="people-training-new-button" type="button" class="primary-button">+ Nova osoba</button>
                 <input id="people-training-import-input" type="file" accept=".xlsx,.xls,.csv" hidden />
               </div>
             </div>
 
-            <section class="people-training-flow-panel" aria-label="Flow osposobljavanja">
+            <section class="people-training-flow-panel" aria-label="Flow osposobljavanja" hidden>
               <article class="people-training-flow-step">
                 <span>1</span>
                 <strong>RN / narudžba</strong>
@@ -3735,7 +3735,7 @@
               </article>
             </section>
 
-            <div class="people-training-stats" aria-label="Sažetak osposobljavanja">
+            <div class="people-training-stats" aria-label="Sažetak osposobljavanja" hidden>
               <article class="people-training-stat-card is-total">
                 <span>Osoba</span>
                 <strong id="people-training-total-count">0</strong>
@@ -3758,7 +3758,7 @@
               </article>
             </div>
 
-            <section class="people-training-exam-overview-card" aria-labelledby="people-training-exam-title">
+            <section class="people-training-exam-overview-card" aria-labelledby="people-training-exam-title" hidden>
               <div class="people-training-exam-head">
                 <div>
                   <p class="section-kicker">Ispiti</p>
@@ -3797,15 +3797,19 @@
               </label>
             </div>
 
+            <div id="people-training-editor-backdrop" class="offer-editor-backdrop people-training-editor-backdrop" hidden></div>
             <div class="people-training-layout">
-              <form id="people-training-form" class="people-training-form-card">
+              <form id="people-training-form" class="people-training-form-card people-training-editor-panel" hidden>
                 <input id="people-training-id" type="hidden" />
                 <div class="people-training-form-head">
                   <div>
                     <p class="section-kicker">Evidencija</p>
                     <h4 id="people-training-form-title">Nova osoba</h4>
                   </div>
-                  <p id="people-training-form-feedback" class="inline-feedback" role="status"></p>
+                  <div class="people-training-editor-head-actions">
+                    <p id="people-training-form-feedback" class="inline-feedback" role="status"></p>
+                    <button id="people-training-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
                 </div>
 
                 <div class="people-training-form-grid is-person">
@@ -6204,6 +6208,30 @@
                       </div>
                       <p class="helper-copy module-copy">Za usluge osposobljavanja označi grupe edukacije koje se trebaju nuditi kroz RN i Izradu zapisnika.</p>
                       <div id="service-catalog-learning-test-list" class="service-catalog-template-list"></div>
+                    </section>
+
+                    <section id="service-catalog-certificate-template-section" class="service-catalog-template-block" hidden>
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Uvjerenja</p>
+                          <h3>Word predložak uvjerenja</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input
+                            id="service-catalog-certificate-template-input"
+                            type="file"
+                            accept=".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+                            hidden
+                          />
+                          <button id="service-catalog-certificate-template-upload" type="button" class="ghost-button">Upload Word</button>
+                          <button id="service-catalog-certificate-template-download" type="button" class="ghost-button">Preuzmi Word</button>
+                          <button id="service-catalog-certificate-template-placeholders" type="button" class="ghost-button">Placeholderi</button>
+                          <button id="service-catalog-certificate-template-remove" type="button" class="card-button card-danger">Makni</button>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Ovaj predložak koristi se za PDF uvjerenje kada osoba položi ovu ZNR uslugu.</p>
+                      <div id="service-catalog-certificate-template-meta" class="offer-template-reference-meta"></div>
+                      <div id="service-catalog-certificate-placeholder-list" class="offer-template-placeholder-list"></div>
                     </section>
 
                     <label class="field field-span-full">

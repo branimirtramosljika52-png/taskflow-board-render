@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
@@ -867,6 +867,65 @@ function buildMeasurementEquipmentListXlsxBuffer(rows = [], sheetName = "Mjerna 
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sanitizeExcelSheetName(sheetName, "Popis"));
+  return XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+    compression: true,
+  });
+}
+
+function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
+  const typeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot).slice(0, 12);
+  const baseColumns = [
+    "Tvrtka",
+    "Lokacija",
+    "Ime",
+    "Prezime",
+    "Ime i prezime",
+    "OIB osobe",
+    "Email",
+    "Mobitel",
+    "Radno mjesto",
+  ];
+  const trainingColumns = typeOptions.flatMap((option) => {
+    const label = option.serviceCode ? `${option.serviceCode} ${option.label}` : option.label;
+    return [
+      `${label} - datum`,
+      `${label} - vrijedi do`,
+      `${label} - vrijedi trajno`,
+      `${label} - broj uvjerenja`,
+      `${label} - ustanova`,
+    ];
+  });
+  const columns = [...baseColumns, ...trainingColumns, "Napomena"];
+  const firstCompany = (scopedSnapshot.companies ?? [])[0] ?? {};
+  const firstLocation = (scopedSnapshot.locations ?? []).find((location) => String(location.companyId) === String(firstCompany.id)) ?? {};
+  const sampleRow = columns.map((column) => {
+    const key = normalizeLookupKey(column);
+    if (key === "tvrtka") return firstCompany.name || "Primjer d.o.o.";
+    if (key === "lokacija") return firstLocation.name || "Zagreb - sjedište";
+    if (key === "ime") return "Ana";
+    if (key === "prezime") return "Savanović";
+    if (key === "imeiprezime") return "";
+    if (key === "oibosobe") return "12345678910";
+    if (key === "email") return "ana@example.hr";
+    if (key === "mobitel") return "+385 91 000 0000";
+    if (key === "radnomjesto") return "Radnik";
+    if (key.includes("datum")) return "29.04.2026";
+    if (key.includes("vrijedido")) return "29.04.2030";
+    if (key.includes("vrijeditrajno")) return "NE";
+    if (key.includes("brojuvjerenja")) return "";
+    if (key.includes("ustanova")) return "SafeNexus";
+    if (key === "napomena") return "Primjer retka za import";
+    return "";
+  });
+  const worksheet = XLSX.utils.aoa_to_sheet([columns, sampleRow]);
+  worksheet["!cols"] = columns.map((column) => ({ wch: Math.min(Math.max(String(column).length + 4, 16), 34) }));
+  worksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 1, c: columns.length - 1 } }),
+  };
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Osposobljavanja");
   return XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
@@ -2049,15 +2108,44 @@ const PERSON_TRAINING_IMPORT_KEY_HINTS = Object.freeze({
   professional_training: ["strucno", "stručno", "certifikat", "osposobljavanje"],
 });
 
-function buildTrainingItemsFromImportRow(row = {}) {
+function getPersonTrainingImportTypeOptions(scopedSnapshot = {}) {
+  const serviceOptions = (scopedSnapshot.serviceCatalog ?? [])
+    .filter((service) => String(service.serviceType || "").toLowerCase() === "znr" || service.isTraining)
+    .map((service) => ({
+      value: String(service.serviceCode || service.id || service.name || "").trim().toLowerCase(),
+      label: service.name || service.serviceCode || "Osposobljavanje",
+      shortLabel: service.serviceCode || "",
+      serviceId: String(service.id || ""),
+      serviceName: service.name || "",
+      serviceCode: service.serviceCode || "",
+    }))
+    .filter((option) => option.value);
+
+  const byValue = new Map();
+  [...PERSON_TRAINING_TYPE_OPTIONS, ...serviceOptions].forEach((option) => {
+    const key = String(option.value || "").trim().toLowerCase();
+    if (key && !byValue.has(key)) {
+      byValue.set(key, option);
+    }
+  });
+  return Array.from(byValue.values());
+}
+
+function buildTrainingItemsFromImportRow(row = {}, typeOptions = PERSON_TRAINING_TYPE_OPTIONS) {
   const normalizedEntries = Object.entries(row ?? {}).map(([key, value]) => ({
     key,
     lookupKey: normalizeLookupKey(key),
     value: normalizeInputValue(value),
   }));
 
-  return PERSON_TRAINING_TYPE_OPTIONS.map((typeOption) => {
-    const typeHints = PERSON_TRAINING_IMPORT_KEY_HINTS[typeOption.value] ?? [typeOption.value];
+  return typeOptions.map((typeOption) => {
+    const typeHints = PERSON_TRAINING_IMPORT_KEY_HINTS[typeOption.value] ?? [
+      typeOption.value,
+      typeOption.label,
+      typeOption.shortLabel,
+      typeOption.serviceCode,
+      typeOption.serviceName,
+    ];
     const normalizedHints = typeHints.map((hint) => normalizeLookupKey(hint));
     const relatedEntries = normalizedEntries.filter((entry) => (
       normalizedHints.some((hint) => entry.lookupKey.includes(hint))
@@ -2066,6 +2154,9 @@ function buildTrainingItemsFromImportRow(row = {}) {
       type: typeOption.value,
       label: typeOption.label,
       shortLabel: typeOption.shortLabel,
+      serviceId: typeOption.serviceId || "",
+      serviceName: typeOption.serviceName || "",
+      serviceCode: typeOption.serviceCode || "",
       issuedOn: "",
       validUntil: "",
       validForever: false,
@@ -2079,6 +2170,13 @@ function buildTrainingItemsFromImportRow(row = {}) {
         return;
       }
       const dateValue = normalizePersonTrainingImportDate(entry.value);
+      if (/(trajno|bezisteka|forever|permanent)/.test(entry.lookupKey)) {
+        item.validForever = /^(1|true|da|yes|trajno|bez isteka)$/i.test(entry.value);
+        if (item.validForever) {
+          item.validUntil = "";
+        }
+        return;
+      }
       if (/(vrijed|vaz|valid|rok|istek|do$|until|expires)/.test(entry.lookupKey)) {
         item.validUntil = dateValue || item.validUntil;
         return;
@@ -2127,6 +2225,7 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
   });
   const selectedCompanyId = normalizeInputValue(body.companyId);
   const selectedLocationId = normalizeInputValue(body.locationId);
+  const trainingTypeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot);
   const companiesByName = new Map(
     (scopedSnapshot.companies ?? []).flatMap((company) => [
       [normalizeLookupKey(company.name), company],
@@ -2173,10 +2272,126 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
       email: normalizeInputValue(getImportRowValue(row, ["email", "e-mail", "mail"])),
       phone: normalizeInputValue(getImportRowValue(row, ["telefon", "mobitel", "phone", "mob"])),
       jobTitle: normalizeInputValue(getImportRowValue(row, ["radno mjesto", "zanimanje", "posao", "job title"])),
-      trainingItems: buildTrainingItemsFromImportRow(row),
+      trainingItems: buildTrainingItemsFromImportRow(row, trainingTypeOptions),
       note: normalizeInputValue(getImportRowValue(row, ["napomena", "note"])),
     };
   }).filter(Boolean);
+}
+
+function findPeopleTrainingServiceForItem(item = {}, scopedSnapshot = {}) {
+  const services = scopedSnapshot.serviceCatalog ?? [];
+  const serviceId = normalizeInputValue(item.serviceId || item.serviceCatalogId);
+  if (serviceId) {
+    const match = services.find((service) => String(service.id) === String(serviceId));
+    if (match) {
+      return match;
+    }
+  }
+
+  const candidates = [
+    item.serviceCode,
+    item.serviceName,
+    item.label,
+    item.type,
+  ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+  return services.find((service) => {
+    if (!(String(service.serviceType || "").toLowerCase() === "znr" || service.isTraining)) {
+      return false;
+    }
+    const serviceKeys = [
+      service.serviceCode,
+      service.name,
+      service.id,
+    ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+    return candidates.some((candidate) => serviceKeys.includes(candidate));
+  }) ?? null;
+}
+
+function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, service = {}) {
+  const passedOrIssued = item.passedOn || item.issuedOn || "";
+  return {
+    IME: record.firstName || "",
+    PREZIME: record.lastName || "",
+    IME_PREZIME: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
+    OIB: record.oib || "",
+    TVRTKA: record.companyName || "",
+    LOKACIJA: record.locationName || "Sve lokacije",
+    USLUGA: item.label || service.name || item.serviceName || "",
+    SIFRA_USLUGE: item.serviceCode || service.serviceCode || item.shortLabel || "",
+    POTVRDA_BROJ: item.certificateNumber || "",
+    DATUM_POLAGANJA: passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : "",
+    DATUM_IZDAVANJA: item.issuedOn ? formatOfferDocumentDate(item.issuedOn) : (passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : ""),
+    VRIJEDI_DO: item.validForever ? "" : (item.validUntil ? formatOfferDocumentDate(item.validUntil) : ""),
+    VRIJEDI_TRAJNO: item.validForever ? "Vrijedi trajno" : "",
+    RN_BROJ: item.workOrderNumber || "",
+    ONLINE_IZVOR: item.learningTestTitle || item.provider || "",
+    STATUS_UVJERENJA: item.certificateStatus || "",
+  };
+}
+
+async function generatePeopleTrainingCertificateAttachments(record = {}, scopedSnapshot = {}) {
+  const nextAttachments = (record.attachments ?? []).filter((attachment) => (
+    String(attachment.documentCategory || "") !== "Automatsko uvjerenje"
+  ));
+  const nextTrainingItems = (record.trainingItems ?? []).map((item) => ({ ...item }));
+  let changed = false;
+
+  for (const item of nextTrainingItems) {
+    const hasEvidence = item.certificateNumber || item.issuedOn || item.passedOn;
+    if (!hasEvidence) {
+      continue;
+    }
+
+    const service = findPeopleTrainingServiceForItem(item, scopedSnapshot);
+    const template = service?.trainingCertificateTemplate;
+    if (!template || !isWordTemplateFile(template)) {
+      continue;
+    }
+
+    try {
+      const referenceDocument = await readStoredDocumentBuffer(template);
+      const baseName = sanitizeGeneratedDocumentFileName(
+        [
+          "uvjerenje",
+          record.fullName || "osoba",
+          item.serviceCode || service.serviceCode || item.shortLabel || "osposobljavanje",
+        ].filter(Boolean).join("-"),
+        { fallback: "uvjerenje", extension: "docx" },
+      );
+      const pdfBuffer = await buildPdfFromTemplateBuffer(
+        referenceDocument.buffer,
+        getPeopleTrainingCertificatePlaceholderPayload(record, item, service),
+        { fileName: baseName },
+      );
+      const documentId = `certificate-${item.type || service.id || randomUUID()}`;
+      nextAttachments.push({
+        id: documentId,
+        fileName: sanitizeGeneratedDocumentFileName(baseName, { fallback: "uvjerenje", extension: "pdf" }),
+        fileType: "application/pdf",
+        fileSize: pdfBuffer.length,
+        documentCategory: "Automatsko uvjerenje",
+        description: `Automatski PDF za ${item.label || service.name || "osposobljavanje"}.`,
+        dataUrl: `data:application/pdf;base64,${pdfBuffer.toString("base64")}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      item.certificateDocumentId = documentId;
+      item.certificateStatus = item.certificateStatus || "ready";
+      changed = true;
+    } catch (error) {
+      console.warn(`People training certificate PDF failed for record ${record.id}: ${error?.message || error}`);
+    }
+  }
+
+  return changed ? { attachments: nextAttachments, trainingItems: nextTrainingItems } : null;
+}
+
+async function persistPeopleTrainingCertificates(record = {}, scopedSnapshot = {}) {
+  const generated = await generatePeopleTrainingCertificateAttachments(record, scopedSnapshot);
+  if (!generated || !record.id) {
+    return record;
+  }
+  return await domainRepository.updatePersonTrainingRecord(record.id, generated) ?? record;
 }
 
 function getScopedUserDisplayLabel(userLike = {}) {
@@ -3262,6 +3477,24 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/people-training-records/import-template") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot), {
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileName: sanitizeGeneratedDocumentFileName(`osposobljavanja-import-primjer-${todayIso}`, {
+          fallback: "osposobljavanja-import-primjer",
+          extension: "xlsx",
+        }),
+      });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/people-training-records/import") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
@@ -3295,6 +3528,7 @@ async function handleApiRequest(request, response, url) {
         if (existing) {
           const updated = await domainRepository.updatePersonTrainingRecord(existing.id, record);
           if (updated) {
+            await persistPeopleTrainingCertificates(updated, scopedSnapshot);
             updatedCount += 1;
             const index = currentRecords.findIndex((item) => String(item.id) === String(existing.id));
             currentRecords[index] = updated;
@@ -3303,6 +3537,7 @@ async function handleApiRequest(request, response, url) {
         }
 
         const created = await domainRepository.createPersonTrainingRecord(record);
+        await persistPeopleTrainingCertificates(created, scopedSnapshot);
         createdCount += 1;
         currentRecords.push(created);
       }
@@ -3322,10 +3557,11 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createPersonTrainingRecord({
+      const created = await domainRepository.createPersonTrainingRecord({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
+      await persistPeopleTrainingCertificates(created, scopedSnapshot);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -4282,6 +4518,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      await persistPeopleTrainingCertificates(updated, scopedSnapshot);
       await writeSnapshot(response, user, request);
       return true;
     }

@@ -32972,6 +32972,43 @@ body.is-global-loading {
   gap: 16px;
 }
 
+.people-training-editor-panel.is-modal-open {
+  position: fixed;
+  z-index: 236;
+  top: 18px;
+  left: 50%;
+  width: min(1180px, calc(100vw - 28px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  padding: 18px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(118, 151, 218, 0.42);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(246, 251, 255, 0.96)),
+    radial-gradient(circle at 8% 0%, rgba(63, 131, 248, 0.12), transparent 34%);
+  box-shadow: 0 28px 78px rgba(25, 45, 86, 0.22);
+}
+
+.people-training-editor-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.people-training-editor-head-actions .inline-feedback {
+  margin: 0;
+}
+
+.people-training-editor-panel .people-training-form-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.people-training-editor-panel .people-training-dossier {
+  background: linear-gradient(135deg, rgba(247, 252, 249, 0.96), rgba(255, 255, 255, 0.96));
+}
+
 .people-training-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

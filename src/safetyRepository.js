@@ -3095,7 +3095,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, note, created_at, updated_at
+    SELECT id, organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note, created_at, updated_at
     FROM web_service_catalog
     ORDER BY
       CASE status
@@ -3130,6 +3130,9 @@ async function fetchSnapshotFromConnection(connection) {
       linkedTemplateTitles,
       linkedLearningTestIds: learningTestIds,
       linkedLearningTestTitles,
+      trainingCertificateTemplate: parseJsonArray(row.training_certificate_template_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .find((document) => document.fileName && (document.dataUrl || document.storageUrl)) ?? null,
       note: row.note ?? "",
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
@@ -3839,6 +3842,9 @@ export class InMemorySafetyRepository {
         ...item,
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+        linkedLearningTestIds: [...(item.linkedLearningTestIds ?? [])],
+        linkedLearningTestTitles: [...(item.linkedLearningTestTitles ?? [])],
+        trainingCertificateTemplate: item.trainingCertificateTemplate ? { ...item.trainingCertificateTemplate } : null,
       })),
       measurementEquipment: this.snapshot.measurementEquipment.map((item) => ({
         ...item,
@@ -6296,6 +6302,7 @@ export class MySqlSafetyRepository {
         is_training TINYINT(1) NOT NULL DEFAULT 0,
         linked_template_ids_json LONGTEXT NULL,
         linked_learning_test_ids_json LONGTEXT NULL,
+        training_certificate_template_json LONGTEXT NULL,
         note TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -6354,6 +6361,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
+    await ensureColumnExists(this.pool, "web_service_catalog", "training_certificate_template_json", "LONGTEXT NULL AFTER linked_learning_test_ids_json");
     await ensureColumnExists(this.pool, "web_people_training_records", "attachments_json", "LONGTEXT NULL AFTER training_items_json");
     await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_ids_json", "LONGTEXT NULL AFTER assigned_to_label");
@@ -9341,8 +9349,8 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_service_catalog
-            (organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9353,6 +9361,7 @@ export class MySqlSafetyRepository {
           draft.isTraining ? 1 : 0,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(draft.linkedLearningTestIds ?? []),
+          JSON.stringify(draft.trainingCertificateTemplate ? [draft.trainingCertificateTemplate] : []),
           draft.note,
         ],
       );
@@ -9389,7 +9398,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_service_catalog
-          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, note = ?
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, training_certificate_template_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -9401,6 +9410,7 @@ export class MySqlSafetyRepository {
           next.isTraining ? 1 : 0,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(next.linkedLearningTestIds ?? []),
+          JSON.stringify(next.trainingCertificateTemplate ? [next.trainingCertificateTemplate] : []),
           next.note,
           Number(id),
         ],

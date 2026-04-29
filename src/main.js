@@ -1463,6 +1463,7 @@ const state = {
   },
   peopleTrainingExamSelection: "all",
   activePeopleTrainingRecordId: "",
+  peopleTrainingEditorOpen: false,
   absenceReportMonth: new Date().toISOString().slice(0, 7),
   absenceReportFilters: {
     userId: "all",
@@ -3076,8 +3077,16 @@ const serviceCatalogStatusInput = document.querySelector("#service-catalog-statu
 const serviceCatalogTypeInput = document.querySelector("#service-catalog-type");
 const serviceCatalogTemplateSection = document.querySelector("#service-catalog-template-section");
 const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
+const serviceCatalogCertificateTemplateSection = document.querySelector("#service-catalog-certificate-template-section");
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
 const serviceCatalogLearningTestList = document.querySelector("#service-catalog-learning-test-list");
+const serviceCatalogCertificateTemplateInput = document.querySelector("#service-catalog-certificate-template-input");
+const serviceCatalogCertificateTemplateUploadButton = document.querySelector("#service-catalog-certificate-template-upload");
+const serviceCatalogCertificateTemplateDownloadButton = document.querySelector("#service-catalog-certificate-template-download");
+const serviceCatalogCertificateTemplatePlaceholdersButton = document.querySelector("#service-catalog-certificate-template-placeholders");
+const serviceCatalogCertificateTemplateRemoveButton = document.querySelector("#service-catalog-certificate-template-remove");
+const serviceCatalogCertificateTemplateMeta = document.querySelector("#service-catalog-certificate-template-meta");
+const serviceCatalogCertificatePlaceholderList = document.querySelector("#service-catalog-certificate-placeholder-list");
 const serviceCatalogNoteInput = document.querySelector("#service-catalog-note");
 const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
@@ -3304,6 +3313,7 @@ let purchaseOrderTemplateReferenceDraft = null;
 let purchaseOrderDocumentDrafts = [];
 let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
+let serviceCatalogCertificateTemplateDraft = null;
 let lastCommercialDocumentContextKey = "offers";
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
@@ -4541,8 +4551,10 @@ const peopleUsersPanel = document.querySelector("#people-users-panel");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
 const peopleTrainingPanel = document.querySelector("#people-training-panel");
+const peopleTrainingEditorBackdrop = document.querySelector("#people-training-editor-backdrop");
 const peopleTrainingImportButton = document.querySelector("#people-training-import-button");
 const peopleTrainingImportInput = document.querySelector("#people-training-import-input");
+const peopleTrainingDownloadTemplateButton = document.querySelector("#people-training-download-template-button");
 const peopleTrainingNewButton = document.querySelector("#people-training-new-button");
 const peopleTrainingTotalCount = document.querySelector("#people-training-total-count");
 const peopleTrainingValidCount = document.querySelector("#people-training-valid-count");
@@ -4559,6 +4571,7 @@ const peopleTrainingLocationFilterInput = document.querySelector("#people-traini
 const peopleTrainingTypeFilterInput = document.querySelector("#people-training-type-filter");
 const peopleTrainingStatusFilterInput = document.querySelector("#people-training-status-filter");
 const peopleTrainingForm = document.querySelector("#people-training-form");
+const peopleTrainingEditorCloseButton = document.querySelector("#people-training-editor-close");
 const peopleTrainingIdInput = document.querySelector("#people-training-id");
 const peopleTrainingFormTitle = document.querySelector("#people-training-form-title");
 const peopleTrainingFormFeedback = document.querySelector("#people-training-form-feedback");
@@ -4620,6 +4633,23 @@ if (userEditorBackdrop) {
 if (userEditorPanel) {
   userEditorPanel.hidden = true;
   userEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (peopleTrainingEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(peopleTrainingEditorBackdrop);
+}
+
+if (peopleTrainingForm?.parentElement !== document.body) {
+  document.body.append(peopleTrainingForm);
+}
+
+if (peopleTrainingEditorBackdrop) {
+  peopleTrainingEditorBackdrop.hidden = true;
+}
+
+if (peopleTrainingForm) {
+  peopleTrainingForm.hidden = true;
+  peopleTrainingForm.setAttribute("aria-hidden", "true");
 }
 
 let userMenuOpen = false;
@@ -7025,6 +7055,25 @@ const PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS = [
   "Ostalo",
 ];
 
+const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
+  { key: "IME", label: "Ime osobe", example: "Ana" },
+  { key: "PREZIME", label: "Prezime osobe", example: "Savanović" },
+  { key: "IME_PREZIME", label: "Ime i prezime", example: "Ana Savanović" },
+  { key: "OIB", label: "OIB osobe", example: "12345678910" },
+  { key: "TVRTKA", label: "Tvrtka", example: "24sata d.o.o." },
+  { key: "LOKACIJA", label: "Lokacija", example: "Oreškovićeva ulica 3D, Zagreb" },
+  { key: "USLUGA", label: "Naziv ZNR usluge", example: "Rad na siguran način" },
+  { key: "SIFRA_USLUGE", label: "Šifra usluge", example: "ZNR" },
+  { key: "POTVRDA_BROJ", label: "Broj uvjerenja", example: "POTV-2026-ZNR-001" },
+  { key: "DATUM_POLAGANJA", label: "Datum polaganja", example: "29.04.2026" },
+  { key: "DATUM_IZDAVANJA", label: "Datum izdavanja", example: "29.04.2026" },
+  { key: "VRIJEDI_DO", label: "Vrijedi do", example: "29.04.2030" },
+  { key: "VRIJEDI_TRAJNO", label: "Trajno važenje", example: "Vrijedi trajno" },
+  { key: "RN_BROJ", label: "Broj radnog naloga", example: "26-612" },
+  { key: "ONLINE_IZVOR", label: "Online izvor ili test", example: "Online test: ZNR početni" },
+  { key: "STATUS_UVJERENJA", label: "Status uvjerenja", example: "Spremno" },
+];
+
 function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
   const words = String(label || "")
     .trim()
@@ -7217,6 +7266,35 @@ function getPeopleTrainingFilteredRecords() {
 
 function setPeopleTrainingFeedback(message = "", type = "error") {
   setInlineMessage(peopleTrainingFormFeedback, message, type);
+}
+
+function syncPeopleTrainingEditorModal() {
+  const isOpen = Boolean(state.peopleTrainingEditorOpen);
+  if (peopleTrainingEditorBackdrop) {
+    peopleTrainingEditorBackdrop.hidden = !isOpen;
+  }
+  if (peopleTrainingForm) {
+    peopleTrainingForm.hidden = !isOpen;
+    peopleTrainingForm.classList.toggle("is-modal-open", isOpen);
+    peopleTrainingForm.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  }
+  document.body.classList.toggle("modal-open", isOpen);
+}
+
+function openPeopleTrainingEditor() {
+  state.peopleTrainingEditorOpen = true;
+  syncPeopleTrainingEditorModal();
+  requestAnimationFrame(() => {
+    peopleTrainingForm?.querySelector("input:not([type='hidden']), select, textarea, button")?.focus({ preventScroll: true });
+  });
+}
+
+function closePeopleTrainingEditor({ reset = false } = {}) {
+  state.peopleTrainingEditorOpen = false;
+  syncPeopleTrainingEditorModal();
+  if (reset) {
+    resetPeopleTrainingForm();
+  }
 }
 
 function buildPeopleTrainingCompanyOptions({ includeAll = false, selectedValue = "" } = {}) {
@@ -7554,18 +7632,29 @@ function renderPeopleTrainingGrid(record = null) {
     const issuedLabel = document.createElement("label");
     issuedLabel.innerHTML = "<span>Izdano</span>";
     const issuedInput = document.createElement("input");
-    issuedInput.type = "date";
-    issuedInput.value = item.issuedOn || "";
+    issuedInput.type = "text";
+    issuedInput.inputMode = "numeric";
+    issuedInput.placeholder = "dd.mm.yyyy";
+    issuedInput.value = formatDateInputDisplayValue(item.issuedOn || "");
     issuedInput.dataset.trainingField = "issuedOn";
+    issuedInput.addEventListener("blur", () => {
+      issuedInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(issuedInput.value));
+    });
     issuedLabel.append(issuedInput);
 
     const validLabel = document.createElement("label");
     validLabel.innerHTML = "<span>Vrijedi do</span>";
     const validInput = document.createElement("input");
-    validInput.type = "date";
-    validInput.value = item.validUntil || "";
+    validInput.type = "text";
+    validInput.inputMode = "numeric";
+    validInput.placeholder = "dd.mm.yyyy";
+    validInput.value = formatDateInputDisplayValue(item.validUntil || "");
     validInput.dataset.trainingField = "validUntil";
     validInput.disabled = item.validForever;
+    validLabel.hidden = item.validForever;
+    validInput.addEventListener("blur", () => {
+      validInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(validInput.value));
+    });
     validLabel.append(validInput);
 
     const certificateLabel = document.createElement("label");
@@ -7604,6 +7693,7 @@ function renderPeopleTrainingGrid(record = null) {
     foreverInput.dataset.trainingField = "validForever";
     foreverInput.addEventListener("change", () => {
       validInput.disabled = foreverInput.checked;
+      validLabel.hidden = foreverInput.checked;
       if (foreverInput.checked) {
         validInput.value = "";
       }
@@ -7745,7 +7835,7 @@ function readPeopleTrainingGridItems() {
     };
     const type = card.dataset.trainingType || "";
     const existing = existingByType.get(type) ?? {};
-    const issuedOn = readField("issuedOn");
+    const issuedOn = normalizePeopleTrainingDate(readField("issuedOn"));
     const typeOption = getPeopleTrainingTypeOption(type, activeRecord?.trainingItems ?? []);
     const explicitCertificateNumber = readField("certificateNumber");
     const certificateNumber = explicitCertificateNumber
@@ -7768,7 +7858,7 @@ function readPeopleTrainingGridItems() {
       linkedLearningTestIds: typeOption.linkedLearningTestIds || existing.linkedLearningTestIds || [],
       linkedLearningTestTitles: typeOption.linkedLearningTestTitles || existing.linkedLearningTestTitles || [],
       issuedOn,
-      validUntil: readField("validUntil"),
+      validUntil: normalizePeopleTrainingDate(readField("validUntil")),
       validForever: readField("validForever"),
       certificateNumber,
       provider: readField("provider"),
@@ -7813,6 +7903,7 @@ async function handlePeopleTrainingSubmit(event) {
     }
     setPeopleTrainingFeedback(recordId ? "Evidencija je spremljena." : "Osoba je dodana u evidenciju.", "success");
     renderPeopleTrainingModule();
+    closePeopleTrainingEditor({ reset: true });
   }
 }
 
@@ -7832,6 +7923,7 @@ async function deletePeopleTrainingRecord() {
   if (success) {
     resetPeopleTrainingForm();
     renderPeopleTrainingModule();
+    closePeopleTrainingEditor();
     setPeopleTrainingFeedback("Evidencija je obrisana.", "success");
   }
 }
@@ -8023,9 +8115,14 @@ function createPeopleTrainingQuickExamForm(record = {}) {
 
   const passedInput = document.createElement("input");
   passedInput.name = "passedOn";
-  passedInput.type = "date";
-  passedInput.value = getTodayDateKey();
+  passedInput.type = "text";
+  passedInput.inputMode = "numeric";
+  passedInput.placeholder = "dd.mm.yyyy";
+  passedInput.value = formatDateInputDisplayValue(getTodayDateKey());
   passedInput.title = "Datum polaganja";
+  passedInput.addEventListener("blur", () => {
+    passedInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(passedInput.value));
+  });
 
   const certificateInput = document.createElement("input");
   certificateInput.name = "certificateNumber";
@@ -8125,7 +8222,7 @@ function createPeopleTrainingRecordCard(record = {}) {
   editButton.addEventListener("click", (event) => {
     event.stopPropagation();
     populatePeopleTrainingForm(record);
-    peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openPeopleTrainingEditor();
   });
   actions.append(dropHint, editButton);
 
@@ -8134,7 +8231,7 @@ function createPeopleTrainingRecordCard(record = {}) {
       return;
     }
     populatePeopleTrainingForm(record);
-    peopleTrainingForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openPeopleTrainingEditor();
   };
   card.addEventListener("click", openRecord);
   card.addEventListener("keydown", (event) => {
@@ -40986,6 +41083,9 @@ function buildServiceCatalogPayload() {
     isTraining: serviceType === "znr",
     linkedTemplateIds: serviceType === "inspection" ? getServiceCatalogTemplateSelectionIds() : [],
     linkedLearningTestIds: serviceType === "znr" ? getServiceCatalogLearningTestSelectionIds() : [],
+    trainingCertificateTemplate: serviceType === "znr" && serviceCatalogCertificateTemplateDraft
+      ? serializeModuleAttachmentDraft(serviceCatalogCertificateTemplateDraft)
+      : null,
     note: serviceCatalogNoteInput?.value || "",
   };
 }
@@ -41095,6 +41195,101 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
   }));
 }
 
+function buildPeopleTrainingCertificatePlaceholderWordMarkup() {
+  const rows = PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS.map((entry) => `
+    <tr>
+      <td>{{${escapeHtml(entry.key)}}}</td>
+      <td>${escapeHtml(entry.label)}</td>
+      <td>${escapeHtml(entry.example)}</td>
+    </tr>
+  `).join("");
+  return `
+    <h1>SafeNexus · Placeholderi za uvjerenja</h1>
+    <p>Ove tokene možeš koristiti u Word predlošku za ZNR usluge. Sustav ih zamjenjuje podacima osobe, tvrtke, usluge i RN izvora.</p>
+    <table>
+      <thead>
+        <tr><th>Placeholder</th><th>Značenje</th><th>Primjer</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderServiceCatalogCertificateTemplateMeta() {
+  if (!serviceCatalogCertificateTemplateMeta) {
+    return;
+  }
+  if (!serviceCatalogCertificateTemplateDraft) {
+    const empty = document.createElement("div");
+    empty.className = "offer-template-reference-empty";
+    empty.textContent = "Još nema Word predloška za uvjerenja ove ZNR usluge.";
+    serviceCatalogCertificateTemplateMeta.replaceChildren(empty);
+    if (serviceCatalogCertificateTemplateDownloadButton) {
+      serviceCatalogCertificateTemplateDownloadButton.disabled = true;
+    }
+    if (serviceCatalogCertificateTemplateRemoveButton) {
+      serviceCatalogCertificateTemplateRemoveButton.disabled = true;
+    }
+    return;
+  }
+
+  const card = document.createElement("article");
+  card.className = "offer-template-reference-card";
+  const badge = document.createElement("span");
+  badge.className = "soft-pill";
+  badge.textContent = "Word";
+  const title = document.createElement("strong");
+  title.textContent = serviceCatalogCertificateTemplateDraft.fileName || "Predložak uvjerenja";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    formatFileSize(serviceCatalogCertificateTemplateDraft.fileSize || 0),
+    serviceCatalogCertificateTemplateDraft.updatedAt ? `Ažurirano ${formatDateTime(serviceCatalogCertificateTemplateDraft.updatedAt)}` : "",
+  ].filter(Boolean).join(" · ") || "Predložak je spreman.";
+  card.append(badge, title, meta);
+  serviceCatalogCertificateTemplateMeta.replaceChildren(card);
+  if (serviceCatalogCertificateTemplateDownloadButton) {
+    serviceCatalogCertificateTemplateDownloadButton.disabled = false;
+  }
+  if (serviceCatalogCertificateTemplateRemoveButton) {
+    serviceCatalogCertificateTemplateRemoveButton.disabled = false;
+  }
+}
+
+function renderServiceCatalogCertificatePlaceholderList() {
+  if (!serviceCatalogCertificatePlaceholderList) {
+    return;
+  }
+  serviceCatalogCertificatePlaceholderList.replaceChildren(...PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS.map((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "offer-template-placeholder-chip";
+    button.title = `${entry.label}: ${entry.example}`;
+    button.textContent = `{{${entry.key}}}`;
+    button.addEventListener("click", () => {
+      void navigator.clipboard?.writeText(`{{${entry.key}}}`);
+    });
+    return button;
+  }));
+}
+
+async function setServiceCatalogCertificateTemplateFile(file) {
+  if (!file) {
+    return;
+  }
+  serviceCatalogCertificateTemplateDraft = {
+    id: serviceCatalogCertificateTemplateDraft?.id || crypto.randomUUID(),
+    fileName: file.name,
+    fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    fileSize: file.size || 0,
+    documentCategory: "Predložak uvjerenja",
+    description: "Word predložak za PDF uvjerenja osposobljavanja.",
+    dataUrl: await readFileAsDataUrl(file, "Ne mogu učitati Word predložak."),
+    createdAt: serviceCatalogCertificateTemplateDraft?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  renderServiceCatalogCertificateTemplateMeta();
+}
+
 function syncServiceCatalogTrainingSections() {
   const serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
   if (serviceCatalogTemplateSection) {
@@ -41103,6 +41298,11 @@ function syncServiceCatalogTrainingSections() {
   if (serviceCatalogLearningTestSection) {
     serviceCatalogLearningTestSection.hidden = serviceType !== "znr";
   }
+  if (serviceCatalogCertificateTemplateSection) {
+    serviceCatalogCertificateTemplateSection.hidden = serviceType !== "znr";
+  }
+  renderServiceCatalogCertificateTemplateMeta();
+  renderServiceCatalogCertificatePlaceholderList();
 }
 
 function resetServiceCatalogForm() {
@@ -41130,6 +41330,7 @@ function resetServiceCatalogForm() {
   if (serviceCatalogEditorTitle) {
     serviceCatalogEditorTitle.textContent = "Nova usluga";
   }
+  serviceCatalogCertificateTemplateDraft = null;
   renderServiceCatalogTemplateChecklist([]);
   renderServiceCatalogLearningTestChecklist([]);
   syncServiceCatalogTrainingSections();
@@ -41170,6 +41371,9 @@ function hydrateServiceCatalogForm(item) {
     serviceCatalogEditorTitle.textContent = `Uredi uslugu · ${item.name || item.serviceCode || "Usluga"}`;
   }
 
+  serviceCatalogCertificateTemplateDraft = item.trainingCertificateTemplate
+    ? serializeModuleAttachmentDraft(item.trainingCertificateTemplate)
+    : null;
   renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
   renderServiceCatalogLearningTestChecklist(item.linkedLearningTestIds ?? []);
   syncServiceCatalogTrainingSections();
@@ -76243,6 +76447,44 @@ serviceCatalogTypeInput?.addEventListener("change", () => {
   syncServiceCatalogTrainingSections();
 });
 
+serviceCatalogCertificateTemplateUploadButton?.addEventListener("click", () => {
+  serviceCatalogCertificateTemplateInput?.click();
+});
+
+serviceCatalogCertificateTemplateInput?.addEventListener("change", () => {
+  const [file] = Array.from(serviceCatalogCertificateTemplateInput.files ?? []);
+  if (!file) {
+    return;
+  }
+  void setServiceCatalogCertificateTemplateFile(file).finally(() => {
+    serviceCatalogCertificateTemplateInput.value = "";
+  });
+});
+
+serviceCatalogCertificateTemplateDownloadButton?.addEventListener("click", () => {
+  if (serviceCatalogCertificateTemplateDraft) {
+    triggerModuleAttachmentDownload(serviceCatalogCertificateTemplateDraft);
+  }
+});
+
+serviceCatalogCertificateTemplateRemoveButton?.addEventListener("click", () => {
+  if (!serviceCatalogCertificateTemplateDraft) {
+    return;
+  }
+  if (!window.confirm("Maknuti Word predložak uvjerenja za ovu uslugu?")) {
+    return;
+  }
+  serviceCatalogCertificateTemplateDraft = null;
+  renderServiceCatalogCertificateTemplateMeta();
+});
+
+serviceCatalogCertificateTemplatePlaceholdersButton?.addEventListener("click", () => {
+  triggerBlobDownload(
+    createWordHtmlBlob("SafeNexus · Placeholderi za uvjerenja", buildPeopleTrainingCertificatePlaceholderWordMarkup()),
+    `safe-nexus-uvjerenja-placeholderi-${new Date().toISOString().slice(0, 10)}.doc`,
+  );
+});
+
 serviceCatalogDeleteButton?.addEventListener("click", () => {
   const serviceCatalogId = serviceCatalogIdInput?.value || "";
 
@@ -78351,11 +78593,24 @@ peopleWorkspaceTabButtons.forEach((button) => {
 
 peopleTrainingNewButton?.addEventListener("click", () => {
   resetPeopleTrainingForm();
+  openPeopleTrainingEditor();
   peopleTrainingFirstNameInput?.focus({ preventScroll: true });
 });
 
 peopleTrainingImportButton?.addEventListener("click", () => {
   peopleTrainingImportInput?.click();
+});
+
+peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
+  window.location.href = "/api/people-training-records/import-template";
+});
+
+peopleTrainingEditorCloseButton?.addEventListener("click", () => {
+  closePeopleTrainingEditor({ reset: true });
+});
+
+peopleTrainingEditorBackdrop?.addEventListener("click", () => {
+  closePeopleTrainingEditor({ reset: true });
 });
 
 peopleTrainingImportInput?.addEventListener("change", () => {

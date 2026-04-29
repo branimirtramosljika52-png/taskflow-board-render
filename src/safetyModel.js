@@ -3493,6 +3493,9 @@ export function createServiceCatalogItem(
     state,
     hasOwn(input, "linkedLearningTestIds") ? input.linkedLearningTestIds : [],
   );
+  const trainingCertificateTemplate = normalizeAttachmentDocuments(
+    input.trainingCertificateTemplate ? [input.trainingCertificateTemplate] : [],
+  )[0] ?? null;
 
   if ((state.serviceCatalog ?? []).some((item) => (
     String(item.organizationId) === String(organizationId)
@@ -3513,6 +3516,7 @@ export function createServiceCatalogItem(
     linkedTemplateTitles: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateTitles : [],
     linkedLearningTestIds: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestIds : [],
     linkedLearningTestTitles: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestTitles : [],
+    trainingCertificateTemplate: serviceType === "znr" ? trainingCertificateTemplate : null,
     note: normalizeText(input.note),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -4298,6 +4302,12 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
   const learningTestSnapshot = hasOwn(patch, "linkedLearningTestIds")
     ? deriveServiceLearningTestSnapshot(state, patch.linkedLearningTestIds, current.linkedLearningTestTitles)
     : deriveServiceLearningTestSnapshot(state, current.linkedLearningTestIds, current.linkedLearningTestTitles);
+  const rawTrainingCertificateTemplate = hasOwn(patch, "trainingCertificateTemplate")
+    ? patch.trainingCertificateTemplate
+    : current.trainingCertificateTemplate;
+  const trainingCertificateTemplate = normalizeAttachmentDocuments(
+    rawTrainingCertificateTemplate ? [rawTrainingCertificateTemplate] : [],
+  )[0] ?? null;
 
   if ((state.serviceCatalog ?? []).some((item) => (
     String(item.id) !== String(current.id)
@@ -4319,6 +4329,7 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     linkedTemplateTitles: serviceType === "inspection" ? templateSnapshot.linkedTemplateTitles : [],
     linkedLearningTestIds: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestIds : [],
     linkedLearningTestTitles: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestTitles : [],
+    trainingCertificateTemplate: serviceType === "znr" ? trainingCertificateTemplate : null,
     note: hasOwn(patch, "note") ? normalizeText(patch.note) : current.note,
     updatedAt: now(),
   };
