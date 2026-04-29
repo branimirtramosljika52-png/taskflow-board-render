@@ -29750,6 +29750,11 @@ body.is-measurement-equipment-export-open {
   max-height: min(64vh, 720px);
 }
 
+.document-template-builder-inspector.is-open.is-excel-inspector .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid-wrap {
+  height: clamp(430px, 54dvh, 720px);
+  max-height: calc(100dvh - 320px);
+}
+
 .measurement-sheet-panel.is-inline-template-sheet .measurement-sheet-grid {
   min-height: 0;
 }
@@ -31731,6 +31736,19 @@ body.is-measurement-equipment-export-open {
     inset 0 1px 0 rgba(255, 255, 255, 0.98);
 }
 
+.document-template-builder-inspector.is-open.is-excel-inspector {
+  place-items: stretch;
+  align-content: stretch;
+  padding: clamp(8px, 1.4vw, 18px);
+}
+
+.document-template-builder-inspector.is-open.is-excel-inspector .document-template-inspector-block {
+  width: calc(100vw - clamp(16px, 2.8vw, 36px));
+  max-width: none;
+  max-height: calc(100dvh - clamp(16px, 2.8vw, 36px));
+  margin: auto;
+}
+
 .document-template-custom-fields {
   gap: 16px;
 }
@@ -31764,10 +31782,10 @@ body.is-measurement-equipment-export-open {
   width: 100%;
   max-width: none;
   justify-self: stretch;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   cursor: pointer;
-  border-radius: 16px;
+  border-radius: 14px;
   border-color: rgba(47, 104, 84, 0.16);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 251, 0.98));
@@ -31842,7 +31860,7 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 
 .document-template-item-card.is-canvas-field .document-template-item-head {
   align-items: center;
-  padding: 0 0 6px 2px;
+  padding: 0 0 4px 2px;
   margin-bottom: 0;
   gap: 6px;
 }
@@ -32188,8 +32206,8 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 
 .document-template-canvas-preview {
   border: 1px solid rgba(47, 104, 84, 0.12);
-  border-radius: 14px;
-  padding: 9px 10px;
+  border-radius: 12px;
+  padding: 7px 8px;
   background: #fff;
   overflow: hidden;
   min-height: var(--document-template-canvas-preview-min-height, auto);
@@ -32214,7 +32232,7 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-canvas-preview .document-template-preview-field-value {
-  min-height: 36px;
+  min-height: 32px;
   border-color: rgba(59, 118, 214, 0.28);
   background:
     linear-gradient(180deg, rgba(245, 249, 255, 0.98), rgba(252, 254, 255, 0.99)),
@@ -32229,7 +32247,7 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
     0 8px 18px rgba(34, 111, 235, 0.06);
   color: #183d73;
-  padding: 10px 12px;
+  padding: 8px 10px;
   line-height: 1.4;
   font-size: 0.82rem;
 }
@@ -32286,7 +32304,7 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-canvas-meta {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 5px;
@@ -32550,21 +32568,36 @@ body.is-document-template-resizing-diagonal * {
 .document-template-chapter-group {
   grid-column: 1 / -1;
   grid-template-columns: repeat(9, minmax(72px, 1fr));
-  gap: 14px;
-  padding: 14px;
-  border-radius: 28px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 22px;
 }
 
 .document-template-chapter-group > .document-template-item-card.is-chapter {
   grid-column: 1 / -1;
 }
 
+.document-template-chapter-group > .document-template-item-card.is-canvas-field.is-chapter {
+  min-height: 0;
+  padding-block: 8px;
+}
+
+.document-template-chapter-group > .document-template-item-card.is-canvas-field.is-chapter .document-template-item-head {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.document-template-chapter-group > .document-template-item-card.is-canvas-field.is-chapter .document-template-canvas-preview,
+.document-template-chapter-group > .document-template-item-card.is-canvas-field.is-chapter .document-template-canvas-meta {
+  display: none;
+}
+
 .document-template-chapter-group-body {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(9, minmax(72px, 1fr));
-  gap: 14px;
-  padding: 4px 0 0 18px;
+  gap: 12px;
+  padding: 2px 0 0 14px;
   align-items: start;
 }
 

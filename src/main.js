@@ -36127,10 +36127,17 @@ function syncDocumentTemplateInspectorModal() {
     && activeDocumentTemplateInspectorFieldId
     && !isDocumentTemplateRuntimeFillMode(),
   );
+  const activeInspectorField = shouldShow
+    ? documentTemplateFieldDrafts.find((field) => (
+      String(field?.id || "") === String(activeDocumentTemplateInspectorFieldId || "")
+    ))
+    : null;
+  const isExcelInspector = String(activeInspectorField?.type || "").trim().toLowerCase() === "measurement_table";
 
   if (documentTemplateBuilderInspector) {
     documentTemplateBuilderInspector.hidden = !shouldShow;
     documentTemplateBuilderInspector.classList.toggle("is-open", shouldShow);
+    documentTemplateBuilderInspector.classList.toggle("is-excel-inspector", shouldShow && isExcelInspector);
     documentTemplateBuilderInspector.setAttribute("aria-hidden", String(!shouldShow));
   }
 }
