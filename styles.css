@@ -38015,6 +38015,153 @@ button.work-order-editor-section-head {
   font-weight: 720;
 }
 
+.people-training-rn-card.is-compact .people-training-rn-card-head {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(215, 228, 246, 0.98), rgba(239, 245, 253, 0.9));
+}
+
+.people-training-rn-card.is-compact .people-training-rn-card-chips {
+  min-width: min(680px, 56vw);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 1px;
+  scrollbar-width: thin;
+}
+
+.people-training-rn-card.is-compact .people-training-rn-card-chips .soft-pill,
+.people-training-rn-card.is-compact .people-training-rn-service-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  max-width: 220px;
+  padding: 4px 9px;
+  border: 1px solid rgba(177, 194, 224, 0.8);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #263955;
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-rn-card.is-compact .people-training-rn-service-summary {
+  max-width: 260px;
+}
+
+.people-training-rn-pdf-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.42);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(219, 234, 254, 0.9));
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.people-training-rn-pdf-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.68);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+.people-training-rn-pdf-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.people-training-rn-pdf-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.people-training-rn-card.is-compact .people-training-rn-person-row {
+  grid-template-columns: minmax(220px, 0.38fr) minmax(320px, 1fr);
+  min-height: 52px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.people-training-rn-card.is-compact .people-training-rn-person-identity {
+  gap: 2px;
+}
+
+.people-training-rn-assignments {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.people-training-rn-assignment {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 136px;
+  max-width: 220px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.88);
+  color: #334155;
+  line-height: 1;
+}
+
+.people-training-rn-assignment strong,
+.people-training-rn-assignment span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-rn-assignment strong {
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.people-training-rn-assignment span {
+  color: #52637a;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.people-training-rn-assignment.is-completed {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(240, 253, 244, 0.86);
+}
+
+.people-training-rn-assignment.is-in_progress {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(239, 246, 255, 0.88);
+}
+
+.people-training-rn-assignment.is-pending {
+  border-color: rgba(250, 204, 21, 0.62);
+  background: rgba(254, 249, 195, 0.84);
+}
+
+.people-training-rn-assignment.is-missing {
+  border-color: rgba(251, 113, 133, 0.56);
+  background: rgba(255, 241, 242, 0.86);
+}
+
 .people-training-bulk-preview-modal {
   width: min(1280px, 100%);
 }
@@ -38265,6 +38412,25 @@ button.work-order-editor-section-head {
     justify-content: flex-start;
     min-width: 0;
     padding-right: 0;
+  }
+
+  .people-training-rn-card.is-compact .people-training-rn-card-chips {
+    min-width: 0;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-right: 30px;
+  }
+
+  .people-training-rn-card.is-compact .people-training-rn-person-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-training-rn-assignments {
+    justify-content: flex-start;
+  }
+
+  .people-training-rn-assignment {
+    min-width: min(150px, 100%);
   }
 
   .people-training-rn-card-head::after {

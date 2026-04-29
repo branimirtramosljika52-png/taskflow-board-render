@@ -7907,6 +7907,84 @@ function createPeopleTrainingRnMetaItem(label = "", value = "") {
   return item;
 }
 
+function getPeopleTrainingRnServiceCode(item = {}) {
+  return item.serviceCode || item.shortLabel || item.label || "Usluga";
+}
+
+function getPeopleTrainingRnGroupServiceSummary(group = {}) {
+  const services = new Map();
+  (group.rows ?? []).forEach((row) => {
+    const code = getPeopleTrainingRnServiceCode(row.item);
+    if (code) {
+      services.set(code, row.item?.label || row.item?.serviceName || code);
+    }
+  });
+  return [...services.keys()].join(", ");
+}
+
+function createPeopleTrainingRnAssignmentChip(personRow = {}) {
+  const chip = document.createElement("span");
+  chip.className = `people-training-rn-assignment is-${personRow.progress || "missing"}`;
+
+  const code = document.createElement("strong");
+  code.textContent = getPeopleTrainingRnServiceCode(personRow.item);
+
+  const status = document.createElement("span");
+  status.textContent = getPeopleTrainingExamTrackingProgressLabel(personRow);
+
+  const testLabel = (personRow.testTitles ?? []).join(", ");
+  chip.title = [
+    personRow.item?.label || personRow.item?.serviceName || code.textContent,
+    testLabel,
+    status.textContent,
+  ].filter(Boolean).join(" · ");
+
+  chip.append(code, status);
+  return chip;
+}
+
+function createPeopleTrainingRnPdfButton(workOrder = {}, workOrderNumber = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "people-training-rn-pdf-button";
+  button.innerHTML = `${getWorkOrderIconMarkup("download")}<span>PDF RN</span>`;
+
+  const workOrderId = String(workOrder?.id || "").trim();
+  button.disabled = !workOrderId;
+  button.title = workOrderId
+    ? `Preuzmi PDF za RN ${workOrderNumber || workOrder.workOrderNumber || ""}`.trim()
+    : "PDF RN-a je dostupan nakon otvaranja radnog naloga.";
+  button.setAttribute("aria-label", button.title || "Preuzmi PDF RN-a");
+
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!workOrderId) {
+      setPeopleTrainingFeedback("RN još nije spreman za PDF.", "error");
+      return;
+    }
+
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+    setPeopleTrainingFeedback(`Pripremam PDF za RN ${workOrderNumber || workOrder.workOrderNumber || ""}.`.trim(), "success");
+
+    try {
+      const downloaded = await downloadWorkOrderPdf(workOrder);
+      if (downloaded) {
+        setPeopleTrainingFeedback(`PDF za RN ${workOrderNumber || workOrder.workOrderNumber || ""} je preuzet.`.trim(), "success");
+      }
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+    }
+  });
+
+  return button;
+}
+
 function createPeopleTrainingRnPersonRow(personRows = []) {
   const record = personRows[0]?.record ?? {};
   const row = document.createElement("article");
@@ -7923,35 +8001,17 @@ function createPeopleTrainingRnPersonRow(personRows = []) {
   ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
   identity.append(name, meta);
 
-  const statuses = document.createElement("div");
-  statuses.className = "people-training-rn-person-statuses";
-  statuses.replaceChildren(...personRows.map((personRow) => createPeopleTrainingCertificatePill(record, personRow.item)));
+  const assignments = document.createElement("div");
+  assignments.className = "people-training-rn-assignments";
+  assignments.replaceChildren(...personRows.map(createPeopleTrainingRnAssignmentChip));
 
-  const details = document.createElement("div");
-  details.className = "people-training-rn-person-details";
-  personRows.forEach((personRow) => {
-    const line = document.createElement("div");
-    line.className = `people-training-rn-person-exam is-${personRow.progress}`;
-    const service = document.createElement("strong");
-    service.textContent = personRow.item.serviceCode || personRow.item.shortLabel || personRow.item.label || "Usluga";
-    const exam = document.createElement("span");
-    exam.textContent = personRow.testTitles.length
-      ? personRow.testTitles.join(", ")
-      : getPeopleTrainingItemSourceText(personRow.item) || "Ručno / RN";
-    const status = document.createElement("span");
-    status.className = `people-training-progress-pill is-${personRow.progress}`;
-    status.textContent = getPeopleTrainingExamTrackingProgressLabel(personRow);
-    line.append(service, exam, status);
-    details.append(line);
-  });
-
-  row.append(identity, statuses, details);
+  row.append(identity, assignments);
   return row;
 }
 
 function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   const details = document.createElement("details");
-  details.className = `people-training-rn-card is-${getPeopleTrainingTrackingGroupProgress(group)}`;
+  details.className = `people-training-rn-card is-compact is-${getPeopleTrainingTrackingGroupProgress(group)}`;
   details.open = index === 0;
 
   const summary = document.createElement("summary");
@@ -7963,6 +8023,7 @@ function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   });
   const completedCount = (group.rows ?? []).filter((row) => row.progress === "completed").length;
   const activeCount = (group.rows ?? []).filter((row) => row.progress === "pending" || row.progress === "in_progress").length;
+  const serviceSummary = getPeopleTrainingRnGroupServiceSummary(group);
 
   const title = document.createElement("div");
   title.className = "people-training-rn-card-title";
@@ -7970,9 +8031,8 @@ function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   rn.textContent = group.workOrderNumber ? `RN ${group.workOrderNumber}` : "Bez RN broja";
   const subtitle = document.createElement("span");
   subtitle.textContent = [
-    group.companyName,
-    group.locationName,
-    workOrder.status || "",
+    group.companyName || workOrder.companyName || "Tvrtka",
+    group.locationName || workOrder.locationName || "Sve lokacije",
   ].filter(Boolean).join(" · ");
   title.append(rn, subtitle);
 
@@ -7986,21 +8046,13 @@ function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   count.textContent = `${uniquePeople.size} osoba`;
   const exams = document.createElement("span");
   exams.className = "soft-pill";
-  exams.textContent = `${activeCount} aktivno · ${completedCount} položeno`;
-  chips.append(progress, count, exams);
+  exams.textContent = `${group.rows?.length || 0} polaganja · ${activeCount} aktivno · ${completedCount} položeno`;
+  const services = document.createElement("span");
+  services.className = "soft-pill people-training-rn-service-summary";
+  services.textContent = serviceSummary ? `Usluge: ${serviceSummary}` : "Usluge: -";
+  chips.append(progress, count, exams, services, createPeopleTrainingRnPdfButton(workOrder, group.workOrderNumber));
 
   summary.append(title, chips);
-
-  const meta = document.createElement("div");
-  meta.className = "people-training-rn-card-meta";
-  meta.append(
-    createPeopleTrainingRnMetaItem("Tvrtka", group.companyName || workOrder.companyName || "Tvrtka"),
-    createPeopleTrainingRnMetaItem("Lokacija", group.locationName || workOrder.locationName || "Sve lokacije"),
-    createPeopleTrainingRnMetaItem("Otvoren", workOrder.openedDate ? formatCompactDate(workOrder.openedDate) : "-"),
-    createPeopleTrainingRnMetaItem("Rok", workOrder.dueDate ? formatCompactDate(workOrder.dueDate) : "-"),
-    createPeopleTrainingRnMetaItem("Usluga", workOrder.serviceLine || group.rows?.[0]?.item?.serviceName || group.rows?.[0]?.item?.label || "Osposobljavanje"),
-    createPeopleTrainingRnMetaItem("Tim", workOrder.teamLabel || "Osposobljavanje ljudi"),
-  );
 
   const personGroups = new Map();
   (group.rows ?? []).forEach((row) => {
@@ -8014,7 +8066,7 @@ function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   peopleList.className = "people-training-rn-person-list";
   peopleList.replaceChildren(...[...personGroups.values()].map(createPeopleTrainingRnPersonRow));
 
-  details.append(summary, meta, peopleList);
+  details.append(summary, peopleList);
   return details;
 }
 
@@ -70053,7 +70105,7 @@ function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
 async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
-    return;
+    return false;
   }
 
   try {
@@ -70066,8 +70118,10 @@ async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
       body: templateId ? { templateId } : undefined,
     });
     triggerBlobDownload(response.blob, response.fileName || `${sanitizeDocumentTemplateFileName(workOrder.workOrderNumber || "radni-nalog", "radni-nalog")}.pdf`);
+    return true;
   } catch (error) {
     setSyncError(error?.message || "Ne mogu preuzeti RN PDF.");
+    return false;
   }
 }
 
