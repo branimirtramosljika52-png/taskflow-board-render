@@ -4555,6 +4555,7 @@ const peopleTrainingEditorBackdrop = document.querySelector("#people-training-ed
 const peopleTrainingImportButton = document.querySelector("#people-training-import-button");
 const peopleTrainingImportInput = document.querySelector("#people-training-import-input");
 const peopleTrainingDownloadTemplateButton = document.querySelector("#people-training-download-template-button");
+const peopleTrainingOpenTemplateButton = document.querySelector("#people-training-open-template-button");
 const peopleTrainingNewButton = document.querySelector("#people-training-new-button");
 const peopleTrainingTotalCount = document.querySelector("#people-training-total-count");
 const peopleTrainingValidCount = document.querySelector("#people-training-valid-count");
@@ -7281,12 +7282,26 @@ function syncPeopleTrainingEditorModal() {
   document.body.classList.toggle("modal-open", isOpen);
 }
 
-function openPeopleTrainingEditor() {
+function openPeopleTrainingEditor({ focusTarget = "first" } = {}) {
   state.peopleTrainingEditorOpen = true;
   syncPeopleTrainingEditorModal();
   requestAnimationFrame(() => {
-    peopleTrainingForm?.querySelector("input:not([type='hidden']), select, textarea, button")?.focus({ preventScroll: true });
+    const target = focusTarget === "dossier"
+      ? peopleTrainingDossier
+      : peopleTrainingForm?.querySelector("input:not([type='hidden']), select, textarea, button");
+    target?.focus?.({ preventScroll: true });
+    if (focusTarget === "dossier") {
+      peopleTrainingDossier?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
+}
+
+function openPeopleTrainingRecordEditor(record = {}, { focusTarget = "first" } = {}) {
+  if (!record?.id) {
+    return;
+  }
+  populatePeopleTrainingForm(record);
+  openPeopleTrainingEditor({ focusTarget });
 }
 
 function closePeopleTrainingEditor({ reset = false } = {}) {
@@ -7467,7 +7482,7 @@ function isPeopleTrainingItemPassed(item = {}) {
   );
 }
 
-function getPeopleTrainingExamOverviewRows(selection = "all") {
+function getPeopleTrainingExamOverviewRows(selection = "all", mode = "passed") {
   const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
     ...state.peopleTrainingFilters,
     trainingType: "all",
@@ -7478,16 +7493,25 @@ function getPeopleTrainingExamOverviewRows(selection = "all") {
 
   return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
     .filter((item) => {
-      if (!isPeopleTrainingItemPassed(item)) {
-        return false;
-      }
       if (selectionKind === "type") {
-        return item.type === selectionId;
+        if (item.type !== selectionId) {
+          return false;
+        }
       }
       if (selectionKind === "test") {
-        return String(item.learningTestId || "") === selectionId;
+        const linkedIds = Array.isArray(item.linkedLearningTestIds)
+          ? item.linkedLearningTestIds.map((value) => String(value))
+          : [];
+        const matchesSelectedTest = String(item.learningTestId || "") === selectionId || linkedIds.includes(selectionId);
+        if (!matchesSelectedTest) {
+          return false;
+        }
       }
-      return true;
+      const isPassed = isPeopleTrainingItemPassed(item);
+      if (mode === "pending") {
+        return !isPassed && item.status !== "not_required";
+      }
+      return isPassed;
     })
     .map((item) => ({ record, item })));
 }
@@ -7539,6 +7563,33 @@ function createPeopleTrainingExamPassedRow({ record = {}, item = {} } = {}) {
   return row;
 }
 
+function createPeopleTrainingExamStatusSection(title = "", rows = [], emptyText = "") {
+  const section = document.createElement("section");
+  section.className = "people-training-exam-status-section";
+  const head = document.createElement("div");
+  head.className = "people-training-exam-status-head";
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title;
+  const count = document.createElement("span");
+  count.className = "soft-pill";
+  count.textContent = String(rows.length);
+  head.append(titleNode, count);
+
+  const list = document.createElement("div");
+  list.className = "people-training-exam-status-list";
+  if (rows.length) {
+    list.replaceChildren(...rows.slice(0, 80).map(createPeopleTrainingExamPassedRow));
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = emptyText;
+    list.append(empty);
+  }
+
+  section.append(head, list);
+  return section;
+}
+
 function syncPeopleTrainingExamOverviewOptions() {
   if (!(peopleTrainingExamSelect instanceof HTMLSelectElement)) {
     return;
@@ -7558,7 +7609,8 @@ function renderPeopleTrainingExamOverview() {
 
   syncPeopleTrainingExamOverviewOptions();
   const selection = state.peopleTrainingExamSelection || "all";
-  const rows = getPeopleTrainingExamOverviewRows(selection);
+  const passedRows = getPeopleTrainingExamOverviewRows(selection, "passed");
+  const pendingRows = getPeopleTrainingExamOverviewRows(selection, "pending");
   const selectedOption = peopleTrainingExamSelect instanceof HTMLSelectElement
     ? peopleTrainingExamSelect.selectedOptions?.[0]?.textContent || ""
     : "";
@@ -7569,14 +7621,15 @@ function renderPeopleTrainingExamOverview() {
     peopleTrainingOpenExamButton.disabled = !isOnlineTestSelection;
   }
   if (peopleTrainingExamSummary) {
-    peopleTrainingExamSummary.textContent = rows.length === 1
-      ? `${selectedOption || "Odabrani ispit"} ima 1 osobu s evidentiranim polaganjem.`
-      : `${selectedOption || "Odabrani ispit"} ima ${rows.length} osoba s evidentiranim polaganjem.`;
+    peopleTrainingExamSummary.textContent = `${selectedOption || "Odabrani ispit"}: ${passedRows.length} položeno · ${pendingRows.length} još polaže ili nedostaje evidencija.`;
   }
   if (peopleTrainingExamEmpty) {
-    peopleTrainingExamEmpty.hidden = rows.length > 0;
+    peopleTrainingExamEmpty.hidden = (passedRows.length + pendingRows.length) > 0;
   }
-  peopleTrainingExamList.replaceChildren(...rows.map(createPeopleTrainingExamPassedRow));
+  peopleTrainingExamList.replaceChildren(
+    createPeopleTrainingExamStatusSection("Položili", passedRows, "Nitko još nema upisano polaganje za ovaj odabir."),
+    createPeopleTrainingExamStatusSection("Još polažu / nedostaje", pendingRows, "Nema osoba kojima nedostaje ovaj odabir."),
+  );
 }
 
 function openSelectedPeopleTrainingExam() {
@@ -8215,23 +8268,34 @@ function createPeopleTrainingRecordCard(record = {}) {
   dropHint.className = "people-training-drop-hint";
   dropHint.textContent = "Povuci prilog bilo gdje na ovaj red za dosje.";
 
+  const dossierButton = document.createElement("button");
+  dossierButton.type = "button";
+  dossierButton.className = "ghost-button people-training-edit-button";
+  dossierButton.dataset.peopleTrainingOpen = "dossier";
+  dossierButton.dataset.peopleTrainingRecordId = String(record.id || "");
+  dossierButton.innerHTML = `${getWorkOrderIconMarkup("folder")} <span>Dosje</span>`;
+  dossierButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openPeopleTrainingRecordEditor(record, { focusTarget: "dossier" });
+  });
+
   const editButton = document.createElement("button");
   editButton.type = "button";
   editButton.className = "ghost-button people-training-edit-button";
-  editButton.textContent = "Dosje / detalji";
+  editButton.dataset.peopleTrainingOpen = "details";
+  editButton.dataset.peopleTrainingRecordId = String(record.id || "");
+  editButton.innerHTML = `${getWorkOrderIconMarkup("edit")} <span>Detalji</span>`;
   editButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    populatePeopleTrainingForm(record);
-    openPeopleTrainingEditor();
+    openPeopleTrainingRecordEditor(record);
   });
-  actions.append(dropHint, editButton);
+  actions.append(dropHint, dossierButton, editButton);
 
   const openRecord = (event) => {
     if (event?.target instanceof Element && event.target.closest("button,input,select,textarea,a,form")) {
       return;
     }
-    populatePeopleTrainingForm(record);
-    openPeopleTrainingEditor();
+    openPeopleTrainingRecordEditor(record);
   };
   card.addEventListener("click", openRecord);
   card.addEventListener("keydown", (event) => {
@@ -8386,6 +8450,7 @@ function renderPeopleTrainingDossier(record = null) {
   }
 
   peopleTrainingDossier.replaceChildren();
+  peopleTrainingDossier.tabIndex = -1;
   peopleTrainingDossier.classList.toggle("is-empty", !record?.id);
   peopleTrainingDossier.classList.remove("is-drag-over");
   peopleTrainingDossier.ondragover = null;
@@ -78605,6 +78670,35 @@ peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
   window.location.href = "/api/people-training-records/import-template";
 });
 
+peopleTrainingOpenTemplateButton?.addEventListener("click", () => {
+  activateSidebarItem("list-of-services", { expandSidebar: true });
+  state.serviceCatalogFilters.query = "";
+  if (serviceCatalogSearchInput) {
+    serviceCatalogSearchInput.value = "";
+  }
+  renderServiceCatalogModule();
+  const selectedType = String(state.peopleTrainingFilters.trainingType || "all").trim();
+  const selectedOption = selectedType !== "all" ? getPeopleTrainingTypeOption(selectedType) : null;
+  const targetService = (selectedOption?.serviceId
+    ? state.serviceCatalog.find((item) => String(item.id) === String(selectedOption.serviceId))
+    : null)
+    ?? sortServiceCatalogItems(state.serviceCatalog ?? [])
+      .find((item) => normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr");
+
+  if (targetService) {
+    hydrateServiceCatalogForm(targetService);
+    return;
+  }
+
+  resetServiceCatalogForm();
+  if (serviceCatalogTypeInput) {
+    serviceCatalogTypeInput.value = "znr";
+  }
+  syncServiceCatalogTrainingSections();
+  openServiceCatalogEditor();
+  serviceCatalogNameInput?.focus({ preventScroll: true });
+});
+
 peopleTrainingEditorCloseButton?.addEventListener("click", () => {
   closePeopleTrainingEditor({ reset: true });
 });
@@ -78633,6 +78727,26 @@ peopleTrainingResetButton?.addEventListener("click", () => {
 
 peopleTrainingDeleteButton?.addEventListener("click", () => {
   void deletePeopleTrainingRecord();
+});
+
+peopleTrainingList?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-people-training-open]")
+    : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const recordId = String(button.dataset.peopleTrainingRecordId || "").trim();
+  const record = state.peopleTrainingRecords.find((item) => String(item.id) === recordId);
+  if (!record) {
+    setPeopleTrainingFeedback("Ne mogu pronaći odabrani dosje. Osvježi podatke pa pokušaj ponovno.", "error");
+    return;
+  }
+  openPeopleTrainingRecordEditor(record, {
+    focusTarget: button.dataset.peopleTrainingOpen === "dossier" ? "dossier" : "first",
+  });
 });
 
 peopleTrainingSearchInput?.addEventListener("input", () => {

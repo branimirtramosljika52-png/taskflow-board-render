@@ -33140,10 +33140,10 @@ body.is-global-loading {
 
 .people-training-exam-overview-card {
   display: grid;
-  gap: 12px;
-  padding: 15px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid rgba(190, 204, 232, 0.86);
-  border-radius: 24px;
+  border-radius: 22px;
   background:
     radial-gradient(circle at top right, rgba(57, 173, 114, 0.1), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(248, 252, 255, 0.92));
@@ -33185,7 +33185,38 @@ body.is-global-loading {
 
 .people-training-exam-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.people-training-exam-status-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(205, 216, 238, 0.82);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.people-training-exam-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.people-training-exam-status-head strong {
+  color: #172743;
+}
+
+.people-training-exam-status-list {
+  display: grid;
+  gap: 7px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .people-training-exam-row {
@@ -33197,6 +33228,26 @@ body.is-global-loading {
   border: 1px solid rgba(203, 214, 234, 0.82);
   border-radius: 17px;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.people-training-exam-status-section .people-training-exam-row {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.9fr);
+  gap: 7px 10px;
+  padding: 8px 9px;
+  border-radius: 14px;
+}
+
+.people-training-exam-status-section .people-training-exam-meta,
+.people-training-exam-status-section .people-training-exam-status {
+  grid-column: 1 / -1;
+}
+
+.people-training-exam-status-section .people-training-exam-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .people-training-exam-row.is-valid {
@@ -33505,8 +33556,16 @@ body.is-global-loading {
 }
 
 .people-training-edit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 38px;
   white-space: nowrap;
+}
+
+.people-training-edit-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .people-training-drop-hint {
@@ -34220,6 +34279,7 @@ body.is-global-loading {
   .people-training-layout,
   .people-training-flow-panel,
   .people-training-exam-head,
+  .people-training-exam-list,
   .people-training-exam-row,
   .people-training-form-grid,
   .people-training-person-row,

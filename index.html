@@ -3712,66 +3712,26 @@
               <div class="vehicles-panel-head-actions">
                 <button id="people-training-download-template-button" type="button" class="ghost-button">Download Excel</button>
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
+                <button id="people-training-open-template-button" type="button" class="ghost-button">Word template uvjerenja</button>
                 <button id="people-training-new-button" type="button" class="primary-button">+ Nova osoba</button>
                 <input id="people-training-import-input" type="file" accept=".xlsx,.xls,.csv" hidden />
               </div>
             </div>
 
-            <section class="people-training-flow-panel" aria-label="Flow osposobljavanja" hidden>
-              <article class="people-training-flow-step">
-                <span>1</span>
-                <strong>RN / narudžba</strong>
-                <small>Odaberi radni nalog ili ručno evidentiraj osobu.</small>
-              </article>
-              <article class="people-training-flow-step">
-                <span>2</span>
-                <strong>Ispit</strong>
-                <small>Uživo ili online test iz Learning modula.</small>
-              </article>
-              <article class="people-training-flow-step">
-                <span>3</span>
-                <strong>Uvjerenje</strong>
-                <small>Spremno za izradu i prikaz klijentu na portalu.</small>
-              </article>
-            </section>
-
-            <div class="people-training-stats" aria-label="Sažetak osposobljavanja" hidden>
-              <article class="people-training-stat-card is-total">
-                <span>Osoba</span>
-                <strong id="people-training-total-count">0</strong>
-                <small>u evidenciji</small>
-              </article>
-              <article class="people-training-stat-card is-valid">
-                <span>Važeće</span>
-                <strong id="people-training-valid-count">0</strong>
-                <small>sve uredno</small>
-              </article>
-              <article class="people-training-stat-card is-warning">
-                <span>Uskoro ističe</span>
-                <strong id="people-training-expiring-count">0</strong>
-                <small>do 60 dana</small>
-              </article>
-              <article class="people-training-stat-card is-expired">
-                <span>Isteklo / nema</span>
-                <strong id="people-training-expired-count">0</strong>
-                <small>treba provjeru</small>
-              </article>
-            </div>
-
-            <section class="people-training-exam-overview-card" aria-labelledby="people-training-exam-title" hidden>
+            <section class="people-training-exam-overview-card" aria-labelledby="people-training-exam-title">
               <div class="people-training-exam-head">
                 <div>
                   <p class="section-kicker">Ispiti</p>
-                  <h4 id="people-training-exam-title">Tko je položio ispit</h4>
+                  <h4 id="people-training-exam-title">Položili i još polažu</h4>
                 </div>
                 <div class="people-training-exam-controls">
                   <select id="people-training-exam-select" aria-label="Odaberi ispit za pregled"></select>
                   <button id="people-training-open-exam" type="button" class="ghost-button">Otvori ispit</button>
                 </div>
               </div>
-              <p id="people-training-exam-summary" class="helper-copy module-copy">Odaberi ispit i vidi osobe koje imaju položen rezultat ili spremno uvjerenje.</p>
+              <p id="people-training-exam-summary" class="helper-copy module-copy">Odaberi ispit i vidi tko ima položen rezultat, a kome još nedostaje polaganje ili uvjerenje.</p>
               <div id="people-training-exam-list" class="people-training-exam-list"></div>
-              <p id="people-training-exam-empty" class="empty-state" hidden>Nema položenih osoba za odabrani ispit.</p>
+              <p id="people-training-exam-empty" class="empty-state" hidden>Nema osoba za odabrani ispit.</p>
             </section>
 
             <div class="people-training-toolbar">
