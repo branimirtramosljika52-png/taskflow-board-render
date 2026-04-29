@@ -6954,12 +6954,6 @@ function replaceSelectOptions(select, options, selectedValue = "") {
   }
 }
 
-function getPeopleTrainingTypeOption(type = "") {
-  const normalized = String(type ?? "").trim().toLowerCase();
-  return PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized)
-    ?? PERSON_TRAINING_TYPE_OPTIONS[0];
-}
-
 function getPeopleTrainingStatusOption(status = "") {
   const normalized = String(status ?? "").trim().toLowerCase();
   return PERSON_TRAINING_STATUS_OPTIONS.find((option) => option.value === normalized)

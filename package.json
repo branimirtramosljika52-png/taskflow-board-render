@@ -21,7 +21,7 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "build": "npm test && node scripts/build.mjs",
+    "build": "npm test && node --check src/main.js && node scripts/build.mjs",
     "dev": "node server.js",
     "start": "node server.js",
     "test": "node --test"
