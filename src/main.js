@@ -8026,6 +8026,115 @@ function createPeopleTrainingStatusPill(item = {}) {
   return pill;
 }
 
+function getPeopleTrainingCertificateDocument(record = {}, item = {}) {
+  const attachments = Array.isArray(record.attachments) ? record.attachments : [];
+  const directIds = [
+    item.certificateDocumentId,
+    item.type ? `certificate-${item.type}` : "",
+    item.serviceId ? `certificate-${item.serviceId}` : "",
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+
+  const byId = attachments.find((attachment) => directIds.includes(String(attachment.id || "")));
+  if (byId) {
+    return byId;
+  }
+
+  const lookupParts = [
+    item.label,
+    item.serviceName,
+    item.serviceCode,
+    item.shortLabel,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+
+  return attachments.find((attachment) => {
+    const category = String(attachment.documentCategory || "").trim().toLowerCase();
+    if (category !== "automatsko uvjerenje") {
+      return false;
+    }
+    const haystack = [
+      attachment.fileName,
+      attachment.description,
+    ].map((value) => String(value || "").trim().toLowerCase()).join(" ");
+    return lookupParts.some((part) => haystack.includes(part));
+  }) ?? null;
+}
+
+function getPeopleTrainingCertificateMetaText(item = {}, certificateDocument = null) {
+  const details = [
+    item.certificateNumber ? `Potvrda ${item.certificateNumber}` : "",
+    item.passedOn || item.issuedOn ? formatCompactDate(item.passedOn || item.issuedOn) : "",
+    item.validForever ? "trajno" : (item.validUntil ? `vrijedi do ${formatCompactDate(item.validUntil)}` : ""),
+    certificateDocument ? "PDF" : "",
+  ].filter(Boolean);
+  return details.join(" · ") || "Nema uvjerenja";
+}
+
+async function openPeopleTrainingCertificate(record = {}, item = {}) {
+  if (!record?.id) {
+    return;
+  }
+
+  const existingDocument = getPeopleTrainingCertificateDocument(record, item);
+  if (existingDocument) {
+    triggerModuleAttachmentDownload(existingDocument);
+    return;
+  }
+
+  if (isPeopleTrainingItemPassed(item)) {
+    setPeopleTrainingFeedback("Tražim ili generiram PDF uvjerenja iz predloška...", "success");
+    const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(record.id)}`, {
+      method: "PATCH",
+      body: {
+        trainingItems: record.trainingItems ?? [],
+      },
+    }), peopleTrainingFormFeedback);
+
+    if (success) {
+      const updatedRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === String(record.id)) ?? record;
+      const updatedItem = normalizePeopleTrainingItemsForUi(updatedRecord.trainingItems)
+        .find((entry) => String(entry.type) === String(item.type)) ?? item;
+      const generatedDocument = getPeopleTrainingCertificateDocument(updatedRecord, updatedItem);
+      renderPeopleTrainingModule();
+      if (generatedDocument) {
+        triggerModuleAttachmentDownload(generatedDocument);
+        setPeopleTrainingFeedback("PDF uvjerenje je otvoreno.", "success");
+        return;
+      }
+    }
+  }
+
+  setPeopleTrainingFeedback(`Za ${item.label || item.shortLabel || "ovo osposobljavanje"} još nema PDF uvjerenja. Otvaram dosje osobe.`, "error");
+  openPeopleTrainingRecordEditor(record, { focusTarget: "dossier" });
+}
+
+function createPeopleTrainingCertificatePill(record = {}, item = {}) {
+  const certificateDocument = getPeopleTrainingCertificateDocument(record, item);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `people-training-certificate-pill ${getPeopleTrainingStatusClass(item.status)}${certificateDocument ? " has-pdf" : ""}`;
+  button.title = certificateDocument
+    ? `Otvori PDF uvjerenje: ${item.label || item.shortLabel || "osposobljavanje"}`
+    : `Otvori dosje ili generiraj PDF za: ${item.label || item.shortLabel || "osposobljavanje"}`;
+  const marker = item.status === "valid" || item.status === "not_required"
+    ? "✓"
+    : item.status === "expiring"
+      ? "!"
+      : "×";
+  const code = document.createElement("strong");
+  code.textContent = `${marker} ${item.shortLabel || item.serviceCode || item.label || item.type || "?"}`;
+  const label = document.createElement("span");
+  label.textContent = item.label || item.serviceName || "Osposobljavanje";
+  const meta = document.createElement("small");
+  meta.textContent = getPeopleTrainingCertificateMetaText(item, certificateDocument);
+  button.append(code, label, meta);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void openPeopleTrainingCertificate(record, item);
+  });
+  return button;
+}
+
 function getPeopleTrainingItemSourceText(item = {}) {
   const parts = [];
   if (item.examMode === "online") {
@@ -8273,49 +8382,16 @@ function createPeopleTrainingRecordCard(record = {}) {
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
   const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
-  statuses.replaceChildren(...trainingItems.map(createPeopleTrainingStatusPill));
-  const sourceTrail = document.createElement("small");
-  sourceTrail.className = "people-training-source-trail";
-  const visibleSources = trainingItems
-    .filter((item) => item.status === "valid" || item.status === "expiring")
-    .map((item) => [item.shortLabel, getPeopleTrainingItemSourceText(item)].filter(Boolean).join(": "))
-    .filter(Boolean)
-    .slice(0, 2);
-  sourceTrail.textContent = visibleSources.length
-    ? visibleSources.join(" | ")
-    : "Upiši ispit iz RN-a, online testa ili ručno.";
-  statuses.append(sourceTrail);
+  statuses.replaceChildren(...trainingItems.map((item) => createPeopleTrainingCertificatePill(record, item)));
 
-  const actions = document.createElement("div");
-  actions.className = "people-training-person-actions";
-  actions.append(createPeopleTrainingQuickExamForm(record));
-
+  const footer = document.createElement("div");
+  footer.className = "people-training-person-footer";
+  const openHint = document.createElement("small");
+  openHint.textContent = "Klikni redak za dosje osobe.";
   const dropHint = document.createElement("small");
   dropHint.className = "people-training-drop-hint";
-  dropHint.textContent = "Povuci prilog bilo gdje na ovaj red za dosje.";
-
-  const dossierButton = document.createElement("button");
-  dossierButton.type = "button";
-  dossierButton.className = "ghost-button people-training-edit-button";
-  dossierButton.dataset.peopleTrainingOpen = "dossier";
-  dossierButton.dataset.peopleTrainingRecordId = String(record.id || "");
-  dossierButton.innerHTML = `${getWorkOrderIconMarkup("folder")} <span>Dosje</span>`;
-  dossierButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openPeopleTrainingRecordEditor(record, { focusTarget: "dossier" });
-  });
-
-  const editButton = document.createElement("button");
-  editButton.type = "button";
-  editButton.className = "ghost-button people-training-edit-button";
-  editButton.dataset.peopleTrainingOpen = "details";
-  editButton.dataset.peopleTrainingRecordId = String(record.id || "");
-  editButton.innerHTML = `${getWorkOrderIconMarkup("edit")} <span>Detalji</span>`;
-  editButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openPeopleTrainingRecordEditor(record);
-  });
-  actions.append(dropHint, dossierButton, editButton);
+  dropHint.textContent = "Povuci dokument bilo gdje na ovaj red.";
+  footer.append(openHint, dropHint);
 
   const openRecord = (event) => {
     if (event?.target instanceof Element && event.target.closest("button,input,select,textarea,a,form")) {
@@ -8351,7 +8427,7 @@ function createPeopleTrainingRecordCard(record = {}) {
     void openPeopleTrainingAttachmentDialog(record, files);
   });
 
-  card.append(top, statuses, actions);
+  card.append(top, statuses, footer);
   return card;
 }
 

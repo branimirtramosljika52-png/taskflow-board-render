@@ -33501,11 +33501,25 @@ body.is-global-loading {
 }
 
 .people-training-person-row .people-training-person-statuses {
-  justify-content: flex-start;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  justify-content: stretch;
+  align-items: stretch;
+  padding: 8px;
   border: 1px solid rgba(218, 225, 239, 0.74);
   border-radius: 17px;
   background: rgba(250, 252, 255, 0.8);
+}
+
+.people-training-person-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #63738e;
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.25;
 }
 
 .people-training-person-actions {
@@ -33570,7 +33584,6 @@ body.is-global-loading {
 
 .people-training-drop-hint {
   align-self: center;
-  max-width: 150px;
   color: #6b7892;
   font-size: 0.74rem;
   font-weight: 760;
@@ -33997,6 +34010,63 @@ body.is-global-loading {
   white-space: nowrap;
 }
 
+.people-training-certificate-pill {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 8px 11px;
+  border: 1px solid rgba(154, 178, 220, 0.62);
+  border-radius: 15px;
+  background: rgba(235, 242, 255, 0.9);
+  color: #244a8f;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 7px 18px rgba(39, 67, 119, 0.06);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.people-training-certificate-pill:hover,
+.people-training-certificate-pill:focus-visible {
+  border-color: rgba(47, 111, 237, 0.52);
+  box-shadow: 0 12px 24px rgba(39, 67, 119, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.people-training-certificate-pill strong {
+  overflow: hidden;
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-certificate-pill span {
+  overflow: hidden;
+  color: #18253f;
+  font-size: 0.76rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-certificate-pill small {
+  overflow: hidden;
+  color: #61718b;
+  font-size: 0.68rem;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-certificate-pill.has-pdf small::after {
+  content: " · otvori";
+  color: #1e5f40;
+  font-weight: 900;
+}
+
 .people-training-status-chip {
   min-height: 30px;
   padding-inline: 11px;
@@ -34004,6 +34074,7 @@ body.is-global-loading {
 
 .people-training-status-pill.is-valid,
 .people-training-status-chip.is-valid,
+.people-training-certificate-pill.is-valid,
 .client-portal-preview-row-badge.is-training.is-valid {
   border-color: rgba(57, 173, 114, 0.44);
   background: rgba(233, 250, 240, 0.94);
@@ -34012,6 +34083,7 @@ body.is-global-loading {
 
 .people-training-status-pill.is-expiring,
 .people-training-status-chip.is-expiring,
+.people-training-certificate-pill.is-expiring,
 .client-portal-preview-row-badge.is-training.is-expiring {
   border-color: rgba(210, 151, 33, 0.42);
   background: rgba(255, 247, 225, 0.96);
@@ -34022,6 +34094,8 @@ body.is-global-loading {
 .people-training-status-pill.is-missing,
 .people-training-status-chip.is-expired,
 .people-training-status-chip.is-missing,
+.people-training-certificate-pill.is-expired,
+.people-training-certificate-pill.is-missing,
 .client-portal-preview-row-badge.is-training.is-expired,
 .client-portal-preview-row-badge.is-training.is-missing {
   border-color: rgba(215, 80, 100, 0.42);
