@@ -33011,7 +33011,7 @@ body.is-global-loading {
   z-index: 236;
   top: 18px;
   left: 50%;
-  width: min(1360px, calc(100vw - 28px));
+  width: min(1560px, calc(100vw - 16px));
   max-height: calc(100dvh - 36px);
   overflow: auto;
   padding: 18px;
