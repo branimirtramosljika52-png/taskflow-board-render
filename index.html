@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260428t" />
+    <link rel="stylesheet" href="/styles.css?v=20260429b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3713,7 +3713,7 @@
                 <button id="people-training-download-template-button" type="button" class="ghost-button">Download Excel</button>
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
                 <button id="people-training-open-template-button" type="button" class="ghost-button">Word template uvjerenja</button>
-                <button id="people-training-new-button" type="button" class="primary-button">+ Nova osoba</button>
+                <button id="people-training-new-button" type="button" class="primary-button" data-people-training-command="new">+ Nova osoba</button>
                 <input id="people-training-import-input" type="file" accept=".xlsx,.xls,.csv" hidden />
               </div>
             </div>
@@ -6189,7 +6189,7 @@
                           <button id="service-catalog-certificate-template-remove" type="button" class="card-button card-danger">Makni</button>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Ovaj predložak koristi se za PDF uvjerenje kada osoba položi ovu ZNR uslugu.</p>
+                      <p class="helper-copy module-copy">Za ZNR usluge ovdje uploadaš Word predložak uvjerenja. Placeholderi ispod se kopiraju klikom i koriste se u Wordu u obliku {{IME_PREZIME}}.</p>
                       <div id="service-catalog-certificate-template-meta" class="offer-template-reference-meta"></div>
                       <div id="service-catalog-certificate-placeholder-list" class="offer-template-placeholder-list"></div>
                     </section>
@@ -7295,6 +7295,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429a"></script>
+    <script type="module" src="/src/main.js?v=20260429b"></script>
   </body>
 </html>

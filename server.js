@@ -2309,15 +2309,24 @@ function findPeopleTrainingServiceForItem(item = {}, scopedSnapshot = {}) {
 
 function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, service = {}) {
   const passedOrIssued = item.passedOn || item.issuedOn || "";
+  const sourceText = item.workOrderNumber
+    ? `RN ${item.workOrderNumber}`
+    : (item.learningTestTitle || item.provider || item.examMode || "");
   return {
     IME: record.firstName || "",
     PREZIME: record.lastName || "",
     IME_PREZIME: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
     OIB: record.oib || "",
+    RADNO_MJESTO: record.jobTitle || "",
+    EMAIL: record.email || "",
+    MOBITEL: record.phone || "",
     TVRTKA: record.companyName || "",
+    TVRTKA_OIB: record.companyOib || "",
+    KLIJENT: record.companyName || "",
     LOKACIJA: record.locationName || "Sve lokacije",
     USLUGA: item.label || service.name || item.serviceName || "",
     SIFRA_USLUGE: item.serviceCode || service.serviceCode || item.shortLabel || "",
+    IZVOR_POLAGANJA: sourceText,
     POTVRDA_BROJ: item.certificateNumber || "",
     DATUM_POLAGANJA: passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : "",
     DATUM_IZDAVANJA: item.issuedOn ? formatOfferDocumentDate(item.issuedOn) : (passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : ""),
@@ -2325,7 +2334,9 @@ function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, 
     VRIJEDI_TRAJNO: item.validForever ? "Vrijedi trajno" : "",
     RN_BROJ: item.workOrderNumber || "",
     ONLINE_IZVOR: item.learningTestTitle || item.provider || "",
+    USTANOVA: item.provider || "",
     STATUS_UVJERENJA: item.certificateStatus || "",
+    NAPOMENA: item.note || record.note || "",
   };
 }
 

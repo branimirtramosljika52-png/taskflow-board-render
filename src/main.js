@@ -7061,10 +7061,16 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   { key: "PREZIME", label: "Prezime osobe", example: "Savanović" },
   { key: "IME_PREZIME", label: "Ime i prezime", example: "Ana Savanović" },
   { key: "OIB", label: "OIB osobe", example: "12345678910" },
+  { key: "RADNO_MJESTO", label: "Radno mjesto osobe", example: "Električar" },
+  { key: "EMAIL", label: "Email osobe", example: "ana.savanovic@tvrtka.hr" },
+  { key: "MOBITEL", label: "Mobitel osobe", example: "+385 91 123 4567" },
   { key: "TVRTKA", label: "Tvrtka", example: "24sata d.o.o." },
+  { key: "TVRTKA_OIB", label: "OIB tvrtke", example: "78093047651" },
+  { key: "KLIJENT", label: "Naziv klijenta", example: "24sata d.o.o." },
   { key: "LOKACIJA", label: "Lokacija", example: "Oreškovićeva ulica 3D, Zagreb" },
   { key: "USLUGA", label: "Naziv ZNR usluge", example: "Rad na siguran način" },
   { key: "SIFRA_USLUGE", label: "Šifra usluge", example: "ZNR" },
+  { key: "IZVOR_POLAGANJA", label: "RN ili online izvor", example: "RN 26-612" },
   { key: "POTVRDA_BROJ", label: "Broj uvjerenja", example: "POTV-2026-ZNR-001" },
   { key: "DATUM_POLAGANJA", label: "Datum polaganja", example: "29.04.2026" },
   { key: "DATUM_IZDAVANJA", label: "Datum izdavanja", example: "29.04.2026" },
@@ -7072,7 +7078,9 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   { key: "VRIJEDI_TRAJNO", label: "Trajno važenje", example: "Vrijedi trajno" },
   { key: "RN_BROJ", label: "Broj radnog naloga", example: "26-612" },
   { key: "ONLINE_IZVOR", label: "Online izvor ili test", example: "Online test: ZNR početni" },
+  { key: "USTANOVA", label: "Ustanova / provoditelj", example: "SafeNexus" },
   { key: "STATUS_UVJERENJA", label: "Status uvjerenja", example: "Spremno" },
+  { key: "NAPOMENA", label: "Napomena iz evidencije", example: "Vrijedi za sve lokacije." },
 ];
 
 function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
@@ -7296,11 +7304,29 @@ function openPeopleTrainingEditor({ focusTarget = "first" } = {}) {
   });
 }
 
+function openNewPeopleTrainingEditor() {
+  try {
+    resetPeopleTrainingForm();
+  } catch (error) {
+    console.error("People training new form failed to reset", error);
+    setPeopleTrainingFeedback("Forma je otvorena, ali dio početnih podataka nije osvježen. Probaj osvježiti stranicu ako vidiš stare podatke.", "error");
+  }
+  openPeopleTrainingEditor();
+  requestAnimationFrame(() => {
+    peopleTrainingFirstNameInput?.focus({ preventScroll: true });
+  });
+}
+
 function openPeopleTrainingRecordEditor(record = {}, { focusTarget = "first" } = {}) {
   if (!record?.id) {
     return;
   }
-  populatePeopleTrainingForm(record);
+  try {
+    populatePeopleTrainingForm(record);
+  } catch (error) {
+    console.error("People training record failed to open", error);
+    setPeopleTrainingFeedback("Ne mogu otvoriti sve podatke dosjea. Osvježi stranicu pa pokušaj ponovno.", "error");
+  }
   openPeopleTrainingEditor({ focusTarget });
 }
 
@@ -41329,7 +41355,13 @@ function renderServiceCatalogCertificatePlaceholderList() {
     button.type = "button";
     button.className = "offer-template-placeholder-chip";
     button.title = `${entry.label}: ${entry.example}`;
-    button.textContent = `{{${entry.key}}}`;
+    const key = document.createElement("strong");
+    key.textContent = `{{${entry.key}}}`;
+    const label = document.createElement("span");
+    label.textContent = entry.label;
+    const example = document.createElement("small");
+    example.textContent = entry.example ? `Primjer: ${entry.example}` : "Klik za kopiranje placeholdera";
+    button.append(key, label, example);
     button.addEventListener("click", () => {
       void navigator.clipboard?.writeText(`{{${entry.key}}}`);
     });
@@ -78656,10 +78688,10 @@ peopleWorkspaceTabButtons.forEach((button) => {
   });
 });
 
-peopleTrainingNewButton?.addEventListener("click", () => {
-  resetPeopleTrainingForm();
-  openPeopleTrainingEditor();
-  peopleTrainingFirstNameInput?.focus({ preventScroll: true });
+peopleTrainingNewButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openNewPeopleTrainingEditor();
 });
 
 peopleTrainingImportButton?.addEventListener("click", () => {
@@ -78727,6 +78759,21 @@ peopleTrainingResetButton?.addEventListener("click", () => {
 
 peopleTrainingDeleteButton?.addEventListener("click", () => {
   void deletePeopleTrainingRecord();
+});
+
+document.addEventListener("click", (event) => {
+  const commandButton = event.target instanceof Element
+    ? event.target.closest("[data-people-training-command]")
+    : null;
+  if (!(commandButton instanceof HTMLElement)) {
+    return;
+  }
+  const command = String(commandButton.dataset.peopleTrainingCommand || "").trim();
+  if (command !== "new") {
+    return;
+  }
+  event.preventDefault();
+  openNewPeopleTrainingEditor();
 });
 
 peopleTrainingList?.addEventListener("click", (event) => {
