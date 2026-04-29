@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429v" />
+    <link rel="stylesheet" href="/styles.css?v=20260429w" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2978,6 +2978,19 @@
                           </div>
                         </section>
                       </div>
+                    </section>
+
+                    <section class="masterdata-group-card company-template-map-card" aria-labelledby="company-template-map-title">
+                      <div class="masterdata-group-head">
+                        <div>
+                          <p class="section-kicker">Templatei</p>
+                          <h4 id="company-template-map-title" class="subsection-title">Templatei osposobljavanja</h4>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">
+                        Odaberi Word dokument koji ce se koristiti za zapisnik po svakoj usluzi iz List of Services.
+                      </p>
+                      <div id="company-template-map-list" class="company-template-map-list"></div>
                     </section>
 
                     <div class="masterdata-company-sections">
@@ -6739,37 +6752,22 @@
             </section>
 
             <section id="learning-tests-module" class="learning-tests-module" hidden>
-              <div class="learning-tests-summary-grid">
-                <article class="learning-tests-stat-card is-total">
-                  <span class="learning-tests-stat-label">Ukupno testova</span>
-                  <strong id="learning-tests-total-count" class="learning-tests-stat-value">0</strong>
-                </article>
-                <article class="learning-tests-stat-card is-active">
-                  <span class="learning-tests-stat-label">Aktivni</span>
-                  <strong id="learning-tests-active-count" class="learning-tests-stat-value">0</strong>
-                </article>
-                <article class="learning-tests-stat-card is-assigned">
-                  <span class="learning-tests-stat-label">Skice</span>
-                  <strong id="learning-tests-assignment-count" class="learning-tests-stat-value">0</strong>
-                </article>
-                <article class="learning-tests-stat-card is-completed">
-                  <span class="learning-tests-stat-label">Ukupno pitanja</span>
-                  <strong id="learning-tests-completed-count" class="learning-tests-stat-value">0</strong>
-                </article>
-              </div>
+              <span id="learning-tests-total-count" hidden>0</span>
+              <span id="learning-tests-active-count" hidden>0</span>
+              <span id="learning-tests-assignment-count" hidden>0</span>
+              <span id="learning-tests-completed-count" hidden>0</span>
 
-              <section class="panel learning-tests-toolbar-panel">
+              <section class="panel learning-tests-list-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
-                    <p class="section-kicker">Elearning</p>
-                    <h3>Grupe edukacija i testova</h3>
+                    <p class="section-kicker">Tests</p>
+                    <h3>Popis testova</h3>
                   </div>
                   <div class="learning-tests-toolbar-actions">
                     <button id="learning-test-open-form" type="button" class="primary-button">+ Nova grupa</button>
                   </div>
                 </div>
-
-                <div class="learning-tests-filters">
+                <div class="learning-tests-list-toolbar">
                   <label class="field">
                     <span>Pretraga</span>
                     <input id="learning-tests-search" type="search" placeholder="Naziv testa, opis ili grupa pitanja..." />
@@ -6779,18 +6777,7 @@
                     <select id="learning-tests-filter-status"></select>
                   </label>
                 </div>
-              </section>
-
-              <section class="panel learning-tests-list-panel">
-                <div class="section-heading offers-section-heading">
-                  <div>
-                    <p class="section-kicker">Tests</p>
-                    <h3>Popis testova</h3>
-                  </div>
-                </div>
-                <p id="learning-tests-helper" class="helper-copy module-copy">
-                  Prvo otvori grupu edukacije ili testa, a zatim u drugom koraku dodaj pitanja s odgovorima A, B, C i D.
-                </p>
+                <p id="learning-tests-helper" class="helper-copy module-copy"></p>
                 <div id="learning-tests-list" class="learning-tests-list"></div>
                 <p id="learning-tests-empty" class="helper-copy" hidden>Nema testova za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -7342,6 +7329,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429v"></script>
+    <script type="module" src="/src/main.js?v=20260429w"></script>
   </body>
 </html>

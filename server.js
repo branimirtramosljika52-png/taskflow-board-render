@@ -521,6 +521,10 @@ function canUseOpenAiIntegration(user) {
   return canManageMasterData(user) || canManageWorkOrders(user);
 }
 
+function canManagePeopleTrainingRecords(user) {
+  return canManageMasterData(user) || isClientPortalUser(user);
+}
+
 function sleep(durationMs) {
   return new Promise((resolveSleep) => {
     setTimeout(resolveSleep, durationMs);
@@ -940,8 +944,66 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
   worksheet["!autofilter"] = {
     ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 1, c: columns.length - 1 } }),
   };
+  const detailsColumns = [
+    "OIB osobe",
+    "Ime i prezime",
+    "Broj RN",
+    "Šifra usluge",
+    "Broj zapisnika",
+    "Naziv radnog mjesta",
+    "Opis poslova i aktivnosti",
+    "Mjesto provođenja teorijsko",
+    "Datum teorijski dio",
+    "Način provođenja teorijskog dijela",
+    "Ime i prezime Poslodavca/Ovlaštenika",
+    "OIB Poslodavca/Ovlaštenika",
+    "Ostale osobe - ime i prezime",
+    "Ostale osobe - OIB",
+    "Mjesto provođenja praktično",
+    "Razdoblje praćenja od",
+    "Razdoblje praćenja do",
+    "PGP datum polaganja",
+    "SPZTP datum polaganja",
+    "SPZTP vrijedi do",
+    "ADR datum polaganja",
+    "ADR vrijedi do",
+    "Napomena",
+  ];
+  const detailsSampleRow = detailsColumns.map((column) => {
+    const key = normalizeLookupKey(column);
+    if (key === "oibosobe") return "12345678910";
+    if (key === "imeiprezime") return "Ana Savanović";
+    if (key === "brojrn") return "RN-26-001";
+    if (key.includes("sifrausluge")) return typeOptions[0]?.serviceCode || typeOptions[0]?.shortLabel || "ZNR";
+    if (key.includes("brojzapisnika")) return "RN-26-001-ZNR-12345678910";
+    if (key.includes("nazivradnogmjesta")) return "Voditelj prodaje";
+    if (key.includes("opisposlova")) return "Opis poslova i aktivnosti radnika.";
+    if (key.includes("teorijsko")) return firstLocation.name || "Zagreb - sjedište";
+    if (key.includes("datumteorijski")) return "29.04.2026";
+    if (key.includes("nacinprovodenja")) return "Uživo";
+    if (key.includes("poslodavcaovlastenika") && key.includes("imeiprezime")) return firstCompany.representative || "Ovlaštenik poslodavca";
+    if (key.includes("poslodavcaovlastenika") && key.includes("oib")) return firstCompany.representativeOib || "";
+    if (key.includes("ostaleosobe") && key.includes("imeiprezime")) return "";
+    if (key.includes("ostaleosobe") && key.includes("oib")) return "";
+    if (key.includes("prakticno")) return firstLocation.name || "Zagreb - sjedište";
+    if (key.includes("razdobljepracenjaod")) return "29.04.2026";
+    if (key.includes("razdobljepracenjado")) return "29.05.2026";
+    if (key.includes("pgpdatum")) return "29.04.2026";
+    if (key.includes("spztpdatum")) return "29.04.2026";
+    if (key.includes("spztpvrijedido")) return "29.04.2030";
+    if (key.includes("adrdatum")) return "29.04.2026";
+    if (key.includes("adrvrijedido")) return "29.04.2030";
+    if (key === "napomena") return "Detalji osposobljavanja po osobi.";
+    return "";
+  });
+  const detailsWorksheet = XLSX.utils.aoa_to_sheet([detailsColumns, detailsSampleRow]);
+  detailsWorksheet["!cols"] = detailsColumns.map((column) => ({ wch: Math.min(Math.max(String(column).length + 4, 18), 46) }));
+  detailsWorksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 1, c: detailsColumns.length - 1 } }),
+  };
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Osposobljavanja");
+  XLSX.utils.book_append_sheet(workbook, detailsWorksheet, "Detalji osposobljavanja");
   return XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
@@ -2222,6 +2284,142 @@ function buildTrainingItemsFromImportRow(row = {}, typeOptions = PERSON_TRAINING
   });
 }
 
+function readPeopleTrainingImportDetailRows(workbook = {}) {
+  const detailSheetName = (workbook.SheetNames ?? []).find((name) => normalizeLookupKey(name).includes("detalj"));
+  if (!detailSheetName) {
+    return [];
+  }
+  return XLSX.utils.sheet_to_json(workbook.Sheets[detailSheetName], {
+    defval: "",
+    raw: false,
+  });
+}
+
+function buildPeopleTrainingImportDetailIndex(rows = []) {
+  const index = new Map();
+  const add = (key, detail) => {
+    const normalizedKey = normalizeLookupKey(key);
+    if (!normalizedKey) {
+      return;
+    }
+    if (!index.has(normalizedKey)) {
+      index.set(normalizedKey, []);
+    }
+    index.get(normalizedKey).push(detail);
+  };
+
+  rows.forEach((row) => {
+    const detail = {
+      oib: normalizeInputValue(getImportRowValue(row, ["oib osobe", "oib"])),
+      fullName: normalizeInputValue(getImportRowValue(row, ["ime i prezime", "osoba"])),
+      workOrderNumber: normalizeInputValue(getImportRowValue(row, ["broj rn", "rn", "radni nalog"])),
+      serviceCode: normalizeInputValue(getImportRowValue(row, ["šifra usluge", "sifra usluge", "usluga"])),
+      recordNumber: normalizeInputValue(getImportRowValue(row, ["broj zapisnika", "broj potvrde", "broj uvjerenja"])),
+      jobTitle: normalizeInputValue(getImportRowValue(row, ["naziv radnog mjesta", "radno mjesto"])),
+      jobDescription: normalizeInputValue(getImportRowValue(row, ["opis poslova i aktivnosti", "opis poslova", "aktivnosti"])),
+      theoryPlace: normalizeInputValue(getImportRowValue(row, ["mjesto provođenja teorijsko", "mjesto provodenja teorijsko", "teorijsko"])),
+      theoryDate: normalizePersonTrainingImportDate(getImportRowValue(row, ["datum teorijski dio", "datum teorije", "teorijski datum"])),
+      theoryMethod: normalizeInputValue(getImportRowValue(row, ["način provođenja teorijskog dijela", "nacin provodenja teorijskog dijela", "nacin teorije"])),
+      employerRepresentativeName: normalizeInputValue(getImportRowValue(row, ["ime i prezime poslodavca", "ovlaštenika", "ovlastenika"])),
+      employerRepresentativeOib: normalizeInputValue(getImportRowValue(row, ["oib poslodavca", "oib ovlaštenika", "oib ovlastenika"])),
+      additionalPersonName: normalizeInputValue(getImportRowValue(row, ["ostale osobe - ime i prezime", "ostale osobe ime"])),
+      additionalPersonOib: normalizeInputValue(getImportRowValue(row, ["ostale osobe - oib", "ostale osobe oib"])),
+      practicalPlace: normalizeInputValue(getImportRowValue(row, ["mjesto provođenja praktično", "mjesto provodenja prakticno", "prakticno"])),
+      safeWorkPeriodFrom: normalizePersonTrainingImportDate(getImportRowValue(row, ["razdoblje praćenja od", "razdoblje pracenja od"])),
+      safeWorkPeriodTo: normalizePersonTrainingImportDate(getImportRowValue(row, ["razdoblje praćenja do", "razdoblje pracenja do"])),
+      firePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["pgp datum polaganja", "požar datum polaganja", "pozar datum polaganja"])),
+      flammablePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp datum polaganja", "zapaljive datum polaganja"])),
+      flammableValidUntil: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp vrijedi do", "zapaljive vrijedi do"])),
+      adrPassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["adr datum polaganja"])),
+      adrValidUntil: normalizePersonTrainingImportDate(getImportRowValue(row, ["adr vrijedi do"])),
+      note: normalizeInputValue(getImportRowValue(row, ["napomena", "note"])),
+    };
+    add(detail.oib, detail);
+    add(detail.fullName, detail);
+  });
+
+  return index;
+}
+
+function findPeopleTrainingImportItem(trainingItems = [], detail = {}, fallbackHints = []) {
+  const detailHints = [
+    detail.serviceCode,
+    ...fallbackHints,
+  ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+  return trainingItems.find((item) => {
+    const itemCandidates = [
+      item.serviceCode,
+      item.shortLabel,
+      item.serviceName,
+      item.label,
+      item.type,
+    ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+    return detailHints.some((hint) => itemCandidates.some((candidate) => candidate === hint || candidate.includes(hint) || hint.includes(candidate)));
+  }) ?? null;
+}
+
+function applyPeopleTrainingImportDetails(record = {}, details = []) {
+  if (!details.length) {
+    return record;
+  }
+  const trainingItems = Array.isArray(record.trainingItems) ? record.trainingItems.map((item) => ({ ...item })) : [];
+  let jobTitle = record.jobTitle;
+  let note = record.note;
+
+  details.forEach((detail) => {
+    const safeWorkItem = findPeopleTrainingImportItem(trainingItems, detail, ["znr", "zos", "safe work", "rad na siguran"]);
+    if (safeWorkItem) {
+      safeWorkItem.workOrderNumber = detail.workOrderNumber || safeWorkItem.workOrderNumber || "";
+      safeWorkItem.recordNumber = detail.recordNumber || safeWorkItem.recordNumber || "";
+      safeWorkItem.certificateNumber = detail.recordNumber || safeWorkItem.certificateNumber || "";
+      safeWorkItem.issuedOn = detail.theoryDate || safeWorkItem.issuedOn || safeWorkItem.passedOn || "";
+      safeWorkItem.passedOn = safeWorkItem.passedOn || detail.theoryDate || "";
+      safeWorkItem.note = detail.note || safeWorkItem.note || "";
+      safeWorkItem.details = {
+        ...(safeWorkItem.details ?? {}),
+        jobTitle: detail.jobTitle || safeWorkItem.details?.jobTitle || "",
+        jobDescription: detail.jobDescription || safeWorkItem.details?.jobDescription || "",
+        theoryPlace: detail.theoryPlace || safeWorkItem.details?.theoryPlace || "",
+        theoryDate: detail.theoryDate || safeWorkItem.details?.theoryDate || "",
+        theoryMethod: detail.theoryMethod || safeWorkItem.details?.theoryMethod || "",
+        employerRepresentativeName: detail.employerRepresentativeName || safeWorkItem.details?.employerRepresentativeName || "",
+        employerRepresentativeOib: detail.employerRepresentativeOib || safeWorkItem.details?.employerRepresentativeOib || "",
+        additionalPersonName: detail.additionalPersonName || safeWorkItem.details?.additionalPersonName || "",
+        additionalPersonOib: detail.additionalPersonOib || safeWorkItem.details?.additionalPersonOib || "",
+        practicalPlace: detail.practicalPlace || safeWorkItem.details?.practicalPlace || "",
+        safeWorkPeriodFrom: detail.safeWorkPeriodFrom || safeWorkItem.details?.safeWorkPeriodFrom || "",
+        safeWorkPeriodTo: detail.safeWorkPeriodTo || safeWorkItem.details?.safeWorkPeriodTo || "",
+      };
+    }
+
+    const categoryDetail = { ...detail, serviceCode: "" };
+    [
+      { item: findPeopleTrainingImportItem(trainingItems, categoryDetail, ["pgp", "pozar", "fire"]), passedOn: detail.firePassedOn },
+      { item: findPeopleTrainingImportItem(trainingItems, categoryDetail, ["spztp", "zapaljiv", "flammable"]), passedOn: detail.flammablePassedOn, validUntil: detail.flammableValidUntil },
+      { item: findPeopleTrainingImportItem(trainingItems, categoryDetail, ["adr"]), passedOn: detail.adrPassedOn, validUntil: detail.adrValidUntil },
+    ].forEach(({ item, passedOn, validUntil }) => {
+      if (!item || !passedOn) {
+        return;
+      }
+      item.passedOn = passedOn;
+      item.issuedOn = item.issuedOn || passedOn;
+      item.validUntil = validUntil || item.validUntil || "";
+      item.workOrderNumber = detail.workOrderNumber || item.workOrderNumber || "";
+      item.note = detail.note || item.note || "";
+    });
+
+    jobTitle = jobTitle || detail.jobTitle;
+    note = note || detail.note;
+  });
+
+  return {
+    ...record,
+    jobTitle,
+    note,
+    trainingItems,
+  };
+}
+
 function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
   const fileDataUrl = normalizeInputValue(body.dataUrl || body.fileDataUrl || body.contentDataUrl);
   const buffer = readDataUrlBuffer(fileDataUrl);
@@ -2239,6 +2437,7 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
     defval: "",
     raw: false,
   });
+  const detailIndex = buildPeopleTrainingImportDetailIndex(readPeopleTrainingImportDetailRows(workbook));
   const selectedCompanyId = normalizeInputValue(body.companyId);
   const selectedLocationId = normalizeInputValue(body.locationId);
   const trainingTypeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot);
@@ -2277,7 +2476,7 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
       return null;
     }
 
-    return {
+    const record = {
       organizationId: scopedSnapshot.activeOrganizationId,
       companyId: String(company.id),
       locationId: location ? String(location.id) : "",
@@ -2299,6 +2498,11 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
       trainingItems: buildTrainingItemsFromImportRow(row, trainingTypeOptions),
       note: normalizeInputValue(getImportRowValue(row, ["napomena", "note"])),
     };
+    const detailRows = Array.from(new Set([
+      ...(detailIndex.get(normalizeLookupKey(record.oib)) ?? []),
+      ...(detailIndex.get(normalizeLookupKey(record.fullName)) ?? []),
+    ]));
+    return applyPeopleTrainingImportDetails(record, detailRows);
   }).filter(Boolean);
 }
 
@@ -2329,6 +2533,51 @@ function findPeopleTrainingServiceForItem(item = {}, scopedSnapshot = {}) {
     ].map((value) => normalizeLookupKey(value)).filter(Boolean);
     return candidates.some((candidate) => serviceKeys.includes(candidate));
   }) ?? null;
+}
+
+function findPeopleTrainingCompanyTemplateAssignment(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
+  const company = findPeopleTrainingTemplateCompany(record, scopedSnapshot) ?? {};
+  const assignments = Array.isArray(company.templateAssignments) ? company.templateAssignments : [];
+  if (!assignments.length) {
+    return null;
+  }
+
+  const serviceCandidates = [
+    item.serviceId,
+    item.serviceCatalogId,
+    service.id,
+    item.serviceCode,
+    service.serviceCode,
+    item.shortLabel,
+    item.serviceName,
+    service.name,
+    item.label,
+  ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+
+  return assignments.find((assignment) => {
+    if (String(assignment?.kind || "") === "is_znr") {
+      return serviceCandidates.includes("isznr");
+    }
+    const assignmentCandidates = [
+      assignment?.serviceId,
+      assignment?.serviceCode,
+      assignment?.serviceName,
+    ].map((value) => normalizeLookupKey(value)).filter(Boolean);
+    return assignmentCandidates.some((candidate) => serviceCandidates.includes(candidate));
+  }) ?? null;
+}
+
+function resolvePeopleTrainingCertificateTemplate(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
+  const assignment = findPeopleTrainingCompanyTemplateAssignment(record, item, service, scopedSnapshot);
+  const assignedTemplate = assignment?.templateId
+    ? (scopedSnapshot.documentTemplates ?? []).find((template) => String(template.id) === String(assignment.templateId))
+    : null;
+  const assignedDocument = assignedTemplate?.referenceDocument;
+  if (assignedDocument && isWordTemplateFile(assignedDocument)) {
+    return assignedDocument;
+  }
+
+  return service?.trainingCertificateTemplate;
 }
 
 function formatPeopleTrainingTemplateDate(value = "") {
@@ -2643,8 +2892,8 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
       continue;
     }
 
-    const service = findPeopleTrainingServiceForItem(item, scopedSnapshot);
-    const template = service?.trainingCertificateTemplate;
+    const service = findPeopleTrainingServiceForItem(item, scopedSnapshot) ?? {};
+    const template = resolvePeopleTrainingCertificateTemplate(record, item, service, scopedSnapshot);
     if (!template || !isWordTemplateFile(template)) {
       continue;
     }
@@ -3826,7 +4075,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/people-training-records/import-template") {
-      if (!canManageMasterData(user)) {
+      if (!canManagePeopleTrainingRecords(user)) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -3844,7 +4093,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/people-training-records/import") {
-      if (!canManageMasterData(user)) {
+      if (!canManagePeopleTrainingRecords(user)) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -3896,7 +4145,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/people-training-records") {
-      if (!canManageMasterData(user)) {
+      if (!canManagePeopleTrainingRecords(user)) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -4880,7 +5129,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (peopleTrainingRecordMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!canManagePeopleTrainingRecords(user)) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }

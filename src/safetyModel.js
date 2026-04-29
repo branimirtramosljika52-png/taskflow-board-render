@@ -638,6 +638,44 @@ function normalizeCompanyManagerLabels(values = []) {
   )).slice(0, 24);
 }
 
+function normalizeCompanyTemplateAssignments(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+
+  return source
+    .map((entry) => (entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {}))
+    .map((entry) => {
+      const kind = normalizeText(entry.kind || entry.assignmentKind || "");
+      const serviceId = normalizeText(entry.serviceId || entry.serviceCatalogId || "");
+      const serviceCode = normalizeText(entry.serviceCode || entry.shortLabel || "");
+      const serviceName = normalizeText(entry.serviceName || entry.name || "");
+      const templateId = normalizeText(entry.templateId || entry.documentTemplateId || "");
+      const templateTitle = normalizeText(entry.templateTitle || entry.documentTemplateTitle || "");
+      const key = kind === "is_znr"
+        ? "kind:is_znr"
+        : `service:${serviceId || serviceCode || serviceName}`.toLowerCase();
+
+      if (!templateId || !key || key === "service:") {
+        return null;
+      }
+      if (seen.has(key)) {
+        return null;
+      }
+      seen.add(key);
+
+      return {
+        kind: kind === "is_znr" ? "is_znr" : "service",
+        serviceId,
+        serviceCode,
+        serviceName,
+        templateId,
+        templateTitle,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 240);
+}
+
 function normalizePriority(value) {
   const priority = normalizeText(value);
   return PRIORITY_SET.has(priority) ? priority : "Normal";
@@ -3309,6 +3347,7 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     employeeSize: normalizeCompanyEmployeeSize(input.employeeSize),
     managerUserIds: normalizeIdList(input.managerUserIds).slice(0, 24),
     managerUserLabels: normalizeCompanyManagerLabels(input.managerUserLabels),
+    templateAssignments: normalizeCompanyTemplateAssignments(input.templateAssignments ?? input.serviceTemplateAssignments),
     period: normalizeText(input.period),
     isActive: normalizeBoolean(input.isActive, true),
     representative: normalizeText(input.representative),
@@ -3352,6 +3391,9 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     managerUserLabels: hasOwn(patch, "managerUserLabels")
       ? normalizeCompanyManagerLabels(patch.managerUserLabels)
       : normalizeCompanyManagerLabels(current.managerUserLabels),
+    templateAssignments: hasOwn(patch, "templateAssignments")
+      ? normalizeCompanyTemplateAssignments(patch.templateAssignments)
+      : normalizeCompanyTemplateAssignments(current.templateAssignments),
     period: hasOwn(patch, "period") ? normalizeText(patch.period) : current.period,
     isActive: hasOwn(patch, "isActive") ? normalizeBoolean(patch.isActive, current.isActive) : current.isActive,
     representative: hasOwn(patch, "representative") ? normalizeText(patch.representative) : current.representative,
