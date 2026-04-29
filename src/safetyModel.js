@@ -5363,6 +5363,20 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
   const issuedOn = normalizeOptionalDate(source.issuedOn ?? source.issuedDate) || passedOn;
   const serviceCode = normalizeText(source.serviceCode).slice(0, 80);
   const shortLabel = normalizeText(source.shortLabel).slice(0, 40) || normalizedType.shortLabel;
+  const history = Array.isArray(source.history)
+    ? source.history
+      .map((entry) => {
+        const normalized = normalizePersonTrainingItem({ ...(entry ?? {}), history: [] }, normalizedType);
+        return {
+          ...normalized,
+          isActive: false,
+          archivedAt: normalizeOptionalDateTime(entry?.archivedAt ?? entry?.updatedAt ?? entry?.createdAt),
+          activeUntil: normalizeOptionalDate(entry?.activeUntil),
+          history: [],
+        };
+      })
+      .filter((entry) => entry.type)
+    : [];
 
   return {
     type: normalizedType.value,
@@ -5390,9 +5404,116 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
     certificateStatus: normalizeText(source.certificateStatus).slice(0, 40),
     certificateDocumentId: normalizeText(source.certificateDocumentId).slice(0, 120),
     details: normalizePersonTrainingItemDetails(source.details ?? source.safeWorkDetails ?? source.trainingDetails),
+    isActive: hasOwn(source, "isActive") ? normalizeBoolean(source.isActive, true) : true,
+    activeFrom: normalizeOptionalDate(source.activeFrom ?? issuedOn ?? passedOn),
+    activeUntil: normalizeOptionalDate(source.activeUntil),
+    archivedAt: normalizeOptionalDateTime(source.archivedAt),
+    history,
     note: normalizeText(source.note).slice(0, 1000),
     status: normalizeText(source.status).toLowerCase(),
   };
+}
+
+function hasPersonTrainingItemEvidence(item = {}) {
+  return Boolean(
+    normalizeText(item.recordNumber)
+    || normalizeText(item.certificateNumber)
+    || normalizeText(item.workOrderNumber)
+    || normalizeOptionalDate(item.issuedOn)
+    || normalizeOptionalDate(item.passedOn)
+    || normalizeOptionalDate(item.validUntil)
+    || Object.values(item.details ?? {}).some((value) => normalizeText(value)),
+  );
+}
+
+function getPersonTrainingItemVersionFingerprint(item = {}) {
+  return [
+    normalizeText(item.type),
+    normalizeText(item.serviceId),
+    normalizeText(item.serviceCode),
+    normalizeText(item.recordNumber),
+    normalizeText(item.certificateNumber),
+    normalizeText(item.workOrderNumber),
+    normalizeOptionalDate(item.issuedOn) || "",
+    normalizeOptionalDate(item.passedOn) || "",
+    normalizeOptionalDate(item.validUntil) || "",
+    normalizeBoolean(item.validForever, false) ? "forever" : "",
+  ].join("|");
+}
+
+function shouldArchivePersonTrainingItemVersion(previous = {}, next = {}) {
+  if (!previous?.type || !next?.type || previous.type !== next.type) {
+    return false;
+  }
+  if (!hasPersonTrainingItemEvidence(previous) || !hasPersonTrainingItemEvidence(next)) {
+    return false;
+  }
+  if (getPersonTrainingItemVersionFingerprint(previous) === getPersonTrainingItemVersionFingerprint(next)) {
+    return false;
+  }
+
+  return [
+    "recordNumber",
+    "certificateNumber",
+    "workOrderNumber",
+    "issuedOn",
+    "passedOn",
+  ].some((key) => normalizeText(previous[key]) && normalizeText(next[key]) && normalizeText(previous[key]) !== normalizeText(next[key]));
+}
+
+function archivePersonTrainingItemVersion(item = {}, timestamp = isoNow()) {
+  return {
+    ...item,
+    isActive: false,
+    activeUntil: timestamp.slice(0, 10),
+    archivedAt: timestamp,
+    status: "archived",
+    history: [],
+  };
+}
+
+function mergePersonTrainingPeriodicHistory(currentItems = [], nextItems = [], timestamp = isoNow()) {
+  const currentByType = new Map(
+    normalizePersonTrainingItems(currentItems)
+      .filter((item) => item.type)
+      .map((item) => [item.type, item]),
+  );
+  const source = Array.isArray(nextItems)
+    ? nextItems
+    : Object.entries(nextItems && typeof nextItems === "object" ? nextItems : {})
+      .map(([type, value]) => ({ ...(value && typeof value === "object" ? value : {}), type }));
+
+  return source.map((entry) => {
+    const normalizedNext = normalizePersonTrainingItem(entry, getPersonTrainingTypeOption(entry?.type, entry));
+    const previous = currentByType.get(normalizedNext.type);
+    if (!previous || !shouldArchivePersonTrainingItemVersion(previous, normalizedNext)) {
+      return entry;
+    }
+
+    const previousArchive = archivePersonTrainingItemVersion(previous, timestamp);
+    const mergedHistory = [
+      previousArchive,
+      ...(Array.isArray(entry?.history) ? entry.history : []),
+      ...(Array.isArray(previous.history) ? previous.history : []),
+    ];
+    const seen = new Set();
+    const history = mergedHistory.filter((historyItem) => {
+      const normalizedHistoryItem = normalizePersonTrainingItem(historyItem, getPersonTrainingTypeOption(historyItem?.type, historyItem));
+      const key = getPersonTrainingItemVersionFingerprint(normalizedHistoryItem);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    }).slice(0, 24);
+
+    return {
+      ...entry,
+      isActive: true,
+      activeFrom: normalizedNext.issuedOn || normalizedNext.passedOn || timestamp.slice(0, 10),
+      history,
+    };
+  });
 }
 
 function normalizePersonTrainingItems(input = []) {
@@ -5554,6 +5675,10 @@ export function createPersonTrainingRecord(
 }
 
 export function updatePersonTrainingRecord(current, patch, state, now = isoNow) {
+  const timestamp = now();
+  const nextTrainingItems = hasOwn(patch, "trainingItems")
+    ? mergePersonTrainingPeriodicHistory(current.trainingItems, patch.trainingItems, timestamp)
+    : current.trainingItems;
   const merged = {
     ...current,
     ...patch,
@@ -5576,15 +5701,15 @@ export function updatePersonTrainingRecord(current, patch, state, now = isoNow) 
     phone: hasOwn(patch, "phone") ? patch.phone : current.phone,
     jobTitle: hasOwn(patch, "jobTitle") ? patch.jobTitle : current.jobTitle,
     isActive: hasOwn(patch, "isActive") ? patch.isActive : current.activityStatus !== "NE" && current.employmentStatus !== "inactive",
-    trainingItems: hasOwn(patch, "trainingItems") ? patch.trainingItems : current.trainingItems,
+    trainingItems: nextTrainingItems,
     attachments: hasOwn(patch, "attachments") ? patch.attachments : current.attachments,
     note: hasOwn(patch, "note") ? patch.note : current.note,
   };
 
   return {
-    ...createPersonTrainingRecord(merged, state, () => current.id, () => current.createdAt || now()),
+    ...createPersonTrainingRecord(merged, state, () => current.id, () => current.createdAt || timestamp),
     createdAt: current.createdAt,
-    updatedAt: now(),
+    updatedAt: timestamp,
   };
 }
 

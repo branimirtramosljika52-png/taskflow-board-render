@@ -400,6 +400,32 @@ test("people training records normalize certificates, statuses and filters", () 
   );
   assert.equal(updated.trainingItems.find((item) => item.type === "adr").status, "valid");
 
+  const renewed = updatePersonTrainingRecord(
+    record,
+    {
+      trainingItems: record.trainingItems.map((item) => (
+        item.type === "safe_work"
+          ? {
+            ...item,
+            issuedOn: "2027-01-20",
+            passedOn: "2027-01-20",
+            validUntil: "2028-01-20",
+            recordNumber: "RN 27-100-ZNR-123456",
+          }
+          : item
+      )),
+    },
+    state,
+    () => "2027-01-20T09:00:00.000Z",
+  );
+  const renewedSafeWork = renewed.trainingItems.find((item) => item.type === "safe_work");
+  assert.equal(renewedSafeWork.recordNumber, "RN 27-100-ZNR-123456");
+  assert.equal(renewedSafeWork.isActive, true);
+  assert.equal(renewedSafeWork.history.length, 1);
+  assert.equal(renewedSafeWork.history[0].recordNumber, "RN 26-615-ZNR-123456");
+  assert.equal(renewedSafeWork.history[0].isActive, false);
+  assert.equal(renewedSafeWork.history[0].archivedAt, "2027-01-20T09:00:00.000Z");
+
   const filtered = filterPersonTrainingRecords([record, updated], {
     query: "adr-9",
     companyId: "company-1",

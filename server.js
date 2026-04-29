@@ -67,6 +67,8 @@ const canonicalAppOrigin = (() => {
 })();
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
+const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
+const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
 const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_RESPONSES_PATH = "/responses";
 const OPENAI_DEFAULT_MODEL_BY_TIER = Object.freeze({
@@ -2515,16 +2517,129 @@ function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, 
   };
 }
 
-async function generatePeopleTrainingCertificateAttachments(record = {}, scopedSnapshot = {}) {
-  const nextAttachments = (record.attachments ?? []).filter((attachment) => (
-    String(attachment.documentCategory || "") !== "Automatsko uvjerenje"
-  ));
+function getPeopleTrainingGeneratedDocumentKey(item = {}, service = {}) {
+  return normalizeInputValue(
+    item.serviceId
+    || service.id
+    || item.type
+    || item.serviceCode
+    || service.serviceCode
+    || item.shortLabel
+    || service.name,
+  ).toLowerCase();
+}
+
+function getPeopleTrainingGeneratedDocumentFingerprint(record = {}, item = {}, service = {}) {
+  return [
+    getPeopleTrainingGeneratedDocumentKey(item, service),
+    item.recordNumber || "",
+    item.certificateNumber || "",
+    item.workOrderNumber || "",
+    item.issuedOn || "",
+    item.passedOn || "",
+    item.validUntil || "",
+    item.validForever ? "forever" : "",
+    record.oib || "",
+  ].map((value) => normalizeInputValue(value)).join("|");
+}
+
+function isPeopleTrainingGeneratedDocument(attachment = {}) {
+  return String(attachment.sourceType || "") === GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE
+    || String(attachment.documentCategory || "").trim() === GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY;
+}
+
+function isPeopleTrainingGeneratedDocumentActive(attachment = {}) {
+  return isPeopleTrainingGeneratedDocument(attachment)
+    && attachment.activeDocument !== false
+    && attachment.isActive !== false
+    && String(attachment.documentStatus || "").toLowerCase() !== "archived";
+}
+
+function peopleTrainingGeneratedDocumentMatchesItem(attachment = {}, item = {}, service = {}) {
+  if (!isPeopleTrainingGeneratedDocument(attachment)) {
+    return false;
+  }
+
+  const key = getPeopleTrainingGeneratedDocumentKey(item, service);
+  if (key && String(attachment.generatedDocumentKey || "").toLowerCase() === key) {
+    return true;
+  }
+
+  const lookupParts = [
+    item.type,
+    item.serviceId,
+    service.id,
+    item.serviceCode,
+    service.serviceCode,
+    item.shortLabel,
+  ].map((value) => normalizeInputValue(value).toLowerCase()).filter(Boolean);
+  if (lookupParts.length === 0) {
+    return false;
+  }
+
+  const haystack = [
+    attachment.id,
+    attachment.trainingItemType,
+    attachment.trainingServiceId,
+    attachment.trainingServiceCode,
+    attachment.fileName,
+    attachment.description,
+  ].map((value) => normalizeInputValue(value).toLowerCase()).join(" ");
+  return lookupParts.some((part) => haystack.includes(part));
+}
+
+function getActivePeopleTrainingGeneratedDocument(record = {}, item = {}, service = {}) {
+  return (record.attachments ?? []).find((attachment) => (
+    isPeopleTrainingGeneratedDocumentActive(attachment)
+    && peopleTrainingGeneratedDocumentMatchesItem(attachment, item, service)
+  )) ?? null;
+}
+
+function shouldGeneratePeopleTrainingCertificate(record = {}, item = {}, service = {}, { force = false } = {}) {
+  if (force) {
+    return true;
+  }
+
+  const activeDocument = getActivePeopleTrainingGeneratedDocument(record, item, service);
+  if (!activeDocument) {
+    return true;
+  }
+
+  return String(activeDocument.documentFingerprint || "") !== getPeopleTrainingGeneratedDocumentFingerprint(record, item, service);
+}
+
+async function generatePeopleTrainingCertificateAttachments(record = {}, scopedSnapshot = {}, options = {}) {
+  const requestedTrainingType = normalizeInputValue(options.trainingType).toLowerCase();
+  const requestedServiceId = normalizeInputValue(options.serviceId);
+  const force = options.force === true;
+  let nextAttachments = Array.isArray(record.attachments) ? [...record.attachments] : [];
   const nextTrainingItems = (record.trainingItems ?? []).map((item) => ({ ...item }));
   let changed = false;
+  const generatedDocuments = [];
 
   for (const item of nextTrainingItems) {
-    const hasEvidence = item.certificateNumber || item.issuedOn || item.passedOn;
-    if (!hasEvidence) {
+    if (
+      requestedTrainingType
+      && String(item.type || "").toLowerCase() !== requestedTrainingType
+      && String(item.shortLabel || "").toLowerCase() !== requestedTrainingType
+      && String(item.serviceCode || "").toLowerCase() !== requestedTrainingType
+    ) {
+      continue;
+    }
+    if (requestedServiceId && String(item.serviceId || "") !== requestedServiceId) {
+      continue;
+    }
+
+    const hasEvidence = Boolean(
+      item.certificateNumber
+      || item.recordNumber
+      || item.workOrderNumber
+      || item.issuedOn
+      || item.passedOn
+      || item.validUntil
+      || Object.values(item.details ?? {}).some((value) => normalizeInputValue(value)),
+    );
+    if (!hasEvidence && !force) {
       continue;
     }
 
@@ -2534,8 +2649,14 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
       continue;
     }
 
+    if (!shouldGeneratePeopleTrainingCertificate(record, item, service, { force })) {
+      continue;
+    }
+
     try {
       const referenceDocument = await readStoredDocumentBuffer(template);
+      const generatedDocumentKey = getPeopleTrainingGeneratedDocumentKey(item, service);
+      const documentFingerprint = getPeopleTrainingGeneratedDocumentFingerprint(record, item, service);
       const baseName = sanitizeGeneratedDocumentFileName(
         [
           "uvjerenje",
@@ -2549,35 +2670,74 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
         getPeopleTrainingCertificatePlaceholderPayload(record, item, service, scopedSnapshot),
         { fileName: baseName },
       );
-      const documentId = `certificate-${item.type || service.id || randomUUID()}`;
+      const nowIso = new Date().toISOString();
+      nextAttachments = nextAttachments.map((attachment) => {
+        if (!peopleTrainingGeneratedDocumentMatchesItem(attachment, item, service) || !isPeopleTrainingGeneratedDocumentActive(attachment)) {
+          return attachment;
+        }
+
+        return {
+          ...attachment,
+          activeDocument: false,
+          isActive: false,
+          documentStatus: "archived",
+          supersededAt: nowIso,
+          updatedAt: nowIso,
+        };
+      });
+
+      const documentId = `certificate-${generatedDocumentKey || item.type || service.id || randomUUID()}-${randomUUID()}`;
       nextAttachments.push({
         id: documentId,
         fileName: sanitizeGeneratedDocumentFileName(baseName, { fallback: "uvjerenje", extension: "pdf" }),
         fileType: "application/pdf",
         fileSize: pdfBuffer.length,
-        documentCategory: "Automatsko uvjerenje",
+        documentCategory: GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY,
+        sourceType: GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE,
+        activeDocument: true,
+        isActive: true,
+        documentStatus: "active",
+        generatedDocumentKey,
+        documentFingerprint,
+        trainingItemType: item.type || "",
+        trainingServiceId: item.serviceId || service.id || "",
+        trainingServiceCode: item.serviceCode || service.serviceCode || item.shortLabel || "",
+        trainingRecordNumber: item.recordNumber || "",
+        trainingCertificateNumber: item.certificateNumber || "",
+        trainingWorkOrderNumber: item.workOrderNumber || "",
+        trainingIssuedOn: item.issuedOn || "",
+        trainingPassedOn: item.passedOn || "",
+        trainingValidUntil: item.validForever ? "" : (item.validUntil || ""),
         description: `Automatski PDF za ${item.label || service.name || "osposobljavanje"}.`,
         dataUrl: `data:application/pdf;base64,${pdfBuffer.toString("base64")}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       });
       item.certificateDocumentId = documentId;
-      item.certificateStatus = item.certificateStatus || "ready";
+      item.certificateStatus = "ready";
+      generatedDocuments.push({ id: documentId, type: item.type || "", serviceId: item.serviceId || "", fileName: baseName });
       changed = true;
     } catch (error) {
       console.warn(`People training certificate PDF failed for record ${record.id}: ${error?.message || error}`);
     }
   }
 
-  return changed ? { attachments: nextAttachments, trainingItems: nextTrainingItems } : null;
+  return changed ? { attachments: nextAttachments, trainingItems: nextTrainingItems, generatedDocuments } : null;
 }
 
-async function persistPeopleTrainingCertificates(record = {}, scopedSnapshot = {}) {
-  const generated = await generatePeopleTrainingCertificateAttachments(record, scopedSnapshot);
+async function persistPeopleTrainingCertificates(record = {}, scopedSnapshot = {}, options = {}) {
+  const generated = await generatePeopleTrainingCertificateAttachments(record, scopedSnapshot, options);
   if (!generated || !record.id) {
     return record;
   }
-  return await domainRepository.updatePersonTrainingRecord(record.id, generated) ?? record;
+  if (options.summary && typeof options.summary === "object") {
+    options.summary.generatedDocuments = generated.generatedDocuments ?? [];
+    options.summary.generatedCount = generated.generatedDocuments?.length ?? 0;
+  }
+  return await domainRepository.updatePersonTrainingRecord(record.id, {
+    attachments: generated.attachments,
+    trainingItems: generated.trainingItems,
+  }) ?? record;
 }
 
 function getScopedUserDisplayLabel(userLike = {}) {
@@ -3062,6 +3222,7 @@ async function handleApiRequest(request, response, url) {
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
     const absenceEntryMatch = url.pathname.match(/^\/api\/absence-entries\/([^/]+)$/);
     const peopleTrainingRecordMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)$/);
+    const peopleTrainingGenerateDocumentsMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)\/generate-documents$/);
     const measurementEquipmentExcelExportMatch = url.pathname === "/api/measurement-equipment/export-list-excel";
     const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
     const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
@@ -3750,6 +3911,37 @@ async function handleApiRequest(request, response, url) {
       });
       await persistPeopleTrainingCertificates(created, scopedSnapshot);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (peopleTrainingGenerateDocumentsMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo generirati dokumente osposobljavanja.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const record = assertInScope(
+        scopedSnapshot.peopleTrainingRecords ?? [],
+        peopleTrainingGenerateDocumentsMatch[1],
+        "Evidencija osposobljavanja nije pronađena.",
+      );
+      const summary = { generatedCount: 0, generatedDocuments: [] };
+      await persistPeopleTrainingCertificates(record, scopedSnapshot, {
+        trainingType: body.trainingType ?? body.type,
+        serviceId: body.serviceId ?? body.serviceCatalogId,
+        force: body.force !== false,
+        summary,
+      });
+
+      if (!summary.generatedCount) {
+        sendError(response, 400, "Nema povezanog Word predloška ili podataka za generiranje PDF-a.");
+        return true;
+      }
+
+      response.setHeader("X-People-Training-Generated", JSON.stringify(summary));
+      await writeSnapshot(response, user, request);
       return true;
     }
 
@@ -4705,7 +4897,9 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await persistPeopleTrainingCertificates(updated, scopedSnapshot);
+      if (body.skipCertificateGeneration !== true) {
+        await persistPeopleTrainingCertificates(updated, scopedSnapshot);
+      }
       await writeSnapshot(response, user, request);
       return true;
     }

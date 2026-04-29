@@ -7238,6 +7238,40 @@ function getPeopleTrainingTypeOption(value = "", items = []) {
     ?? PERSON_TRAINING_TYPE_OPTIONS[0];
 }
 
+function getPeopleTrainingServiceForItemUi(item = {}) {
+  const serviceId = String(item.serviceId || item.serviceCatalogId || "").trim();
+  if (serviceId) {
+    const match = (state.serviceCatalog ?? []).find((service) => String(service.id) === serviceId);
+    if (match) {
+      return match;
+    }
+  }
+
+  const lookupValues = [
+    item.serviceCode,
+    item.shortLabel,
+    item.serviceName,
+    item.label,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+
+  return (state.serviceCatalog ?? []).find((service) => {
+    if (!service?.isTraining || normalizeServiceCatalogTypeUi(service.serviceType, "inspection") !== "znr") {
+      return false;
+    }
+    return [
+      service.serviceCode,
+      service.name,
+    ].map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean)
+      .some((value) => lookupValues.includes(value));
+  }) ?? null;
+}
+
+function hasPeopleTrainingCertificateTemplateForItem(item = {}) {
+  const template = getPeopleTrainingServiceForItemUi(item)?.trainingCertificateTemplate;
+  return Boolean(template?.fileName || template?.storageKey || template?.storageUrl || template?.dataUrl);
+}
+
 function normalizePeopleTrainingItemsForUi(items = []) {
   const source = normalizePeopleTrainingSourceItems(items);
   const byType = new Map(source.map((item) => [String(item?.type ?? "").trim().toLowerCase(), item]));
@@ -7294,6 +7328,11 @@ function normalizePeopleTrainingItemsForUi(items = []) {
       details: sourceItem?.details && typeof sourceItem.details === "object" && !Array.isArray(sourceItem.details)
         ? { ...sourceItem.details }
         : {},
+      isActive: sourceItem?.isActive !== false,
+      activeFrom: normalizePeopleTrainingDate(sourceItem?.activeFrom),
+      activeUntil: normalizePeopleTrainingDate(sourceItem?.activeUntil),
+      archivedAt: String(sourceItem?.archivedAt ?? "").trim(),
+      history: Array.isArray(sourceItem?.history) ? sourceItem.history : [],
       note: String(sourceItem?.note ?? "").trim(),
       status: String(sourceItem?.status ?? "").trim().toLowerCase(),
     };
@@ -8383,6 +8422,48 @@ function createPeopleTrainingDetailField({
   return fieldLabel;
 }
 
+function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
+  const actions = document.createElement("div");
+  actions.className = "people-training-type-actions";
+
+  const certificateDocument = getPeopleTrainingCertificateDocument(record, item);
+  const hasTemplate = hasPeopleTrainingCertificateTemplateForItem(item);
+  const historyCount = Array.isArray(item.history) ? item.history.length : 0;
+
+  const status = document.createElement("span");
+  status.className = "people-training-type-document-status";
+  status.textContent = certificateDocument
+    ? "Aktivni PDF spreman"
+    : hasTemplate
+      ? "PDF predložak spreman"
+      : "Nema PDF predloška";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button people-training-type-pdf-button";
+  button.innerHTML = `${getWorkOrderIconMarkup("document")}<span>${certificateDocument ? "Novi PDF" : "Napravi PDF"}</span>`;
+  button.disabled = !record?.id || !hasTemplate;
+  button.title = hasTemplate
+    ? "Izradi novi aktivni PDF iz Word predloška. Stari PDF ostaje u arhivi."
+    : "U List of services dodaj Word predložak uvjerenja za ovu uslugu.";
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void generatePeopleTrainingPdfDocuments(record, item, { openLatest: true, force: true, button });
+  });
+
+  actions.append(status, button);
+
+  if (historyCount > 0) {
+    const history = document.createElement("span");
+    history.className = "people-training-type-history";
+    history.textContent = `Arhiva periodike: ${historyCount}`;
+    actions.append(history);
+  }
+
+  return actions;
+}
+
 function createPeopleTrainingTypeCard(item = {}, record = {}) {
   const personRecord = record && typeof record === "object" ? record : {};
   const card = document.createElement("article");
@@ -8466,7 +8547,7 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
     );
   }
 
-  card.append(head, serviceMeta, fields);
+  card.append(head, serviceMeta, fields, createPeopleTrainingTypeCardActions(personRecord, item));
   return card;
 }
 
@@ -8867,29 +8948,53 @@ function getPeopleTrainingCertificateDocument(record = {}, item = {}) {
     item.serviceId ? `certificate-${item.serviceId}` : "",
   ].map((value) => String(value || "").trim()).filter(Boolean);
 
-  const byId = attachments.find((attachment) => directIds.includes(String(attachment.id || "")));
-  if (byId) {
-    return byId;
+  const isGeneratedCertificate = (attachment = {}) => (
+    String(attachment.sourceType || "") === "people-training-certificate"
+    || String(attachment.documentCategory || "").trim().toLowerCase() === "automatsko uvjerenje"
+  );
+  const isActiveDocument = (attachment = {}) => (
+    attachment.activeDocument !== false
+    && attachment.isActive !== false
+    && String(attachment.documentStatus || "").trim().toLowerCase() !== "archived"
+  );
+
+  const byId = attachments.filter((attachment) => directIds.includes(String(attachment.id || "")));
+  const activeById = byId.find(isActiveDocument);
+  if (activeById) {
+    return activeById;
+  }
+  if (byId.length && !byId.some(isGeneratedCertificate)) {
+    return byId[0];
   }
 
   const lookupParts = [
+    item.type,
+    item.serviceId,
     item.label,
     item.serviceName,
     item.serviceCode,
     item.shortLabel,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
 
-  return attachments.find((attachment) => {
-    const category = String(attachment.documentCategory || "").trim().toLowerCase();
-    if (category !== "automatsko uvjerenje") {
+  const matches = attachments.filter((attachment) => {
+    if (!isGeneratedCertificate(attachment)) {
       return false;
     }
+    const key = String(attachment.generatedDocumentKey || "").trim().toLowerCase();
+    if (key && lookupParts.includes(key)) {
+      return true;
+    }
     const haystack = [
+      attachment.trainingItemType,
+      attachment.trainingServiceId,
+      attachment.trainingServiceCode,
       attachment.fileName,
       attachment.description,
     ].map((value) => String(value || "").trim().toLowerCase()).join(" ");
     return lookupParts.some((part) => haystack.includes(part));
-  }) ?? null;
+  });
+
+  return matches.find(isActiveDocument) ?? matches[0] ?? null;
 }
 
 function getPeopleTrainingCertificateMetaText(item = {}, certificateDocument = null) {
@@ -8900,6 +9005,99 @@ function getPeopleTrainingCertificateMetaText(item = {}, certificateDocument = n
     certificateDocument ? "PDF" : "",
   ].filter(Boolean);
   return details.join(" · ") || "Nema uvjerenja";
+}
+
+async function saveActivePeopleTrainingFormBeforePdf(recordId = "") {
+  const activeRecordId = String(peopleTrainingIdInput?.value || "").trim();
+  const targetRecordId = String(recordId || "").trim();
+  if (!targetRecordId || activeRecordId !== targetRecordId) {
+    return true;
+  }
+
+  setPeopleTrainingFeedback("Spremam podatke prije izrade PDF-a...", "success");
+  const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(targetRecordId)}`, {
+    method: "PATCH",
+    body: {
+      ...buildPeopleTrainingPayload(),
+      skipCertificateGeneration: true,
+    },
+  }), peopleTrainingFormFeedback);
+
+  if (success) {
+    const updatedRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === targetRecordId);
+    if (updatedRecord) {
+      populatePeopleTrainingForm(updatedRecord);
+    }
+  }
+
+  return success;
+}
+
+async function generatePeopleTrainingPdfDocuments(record = {}, item = null, { openLatest = false, force = true, button = null } = {}) {
+  const recordId = String(record?.id || "").trim();
+  if (!recordId) {
+    return false;
+  }
+
+  const control = button instanceof HTMLButtonElement ? button : null;
+  if (control) {
+    control.disabled = true;
+    control.classList.add("is-loading");
+    control.setAttribute("aria-busy", "true");
+  }
+
+  try {
+    const saved = await saveActivePeopleTrainingFormBeforePdf(recordId);
+    if (!saved) {
+      return false;
+    }
+
+    const activeRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === recordId) ?? record;
+    const activeItem = item
+      ? (normalizePeopleTrainingItemsForUi(activeRecord.trainingItems)
+        .find((entry) => String(entry.type) === String(item.type) || String(entry.serviceId) === String(item.serviceId)) ?? item)
+      : null;
+
+    setPeopleTrainingFeedback(activeItem ? `Izrađujem PDF za ${activeItem.shortLabel || activeItem.label || "uslugu"}...` : "Izrađujem PDF dokumente za osobu...", "success");
+    const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(recordId)}/generate-documents`, {
+      method: "POST",
+      body: activeItem
+        ? {
+          trainingType: activeItem.type,
+          serviceId: activeItem.serviceId,
+          force,
+        }
+        : { force },
+    }), peopleTrainingFormFeedback);
+
+    if (!success) {
+      return false;
+    }
+
+    const updatedRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === recordId) ?? activeRecord;
+    if (String(state.activePeopleTrainingRecordId || "") === recordId) {
+      populatePeopleTrainingForm(updatedRecord);
+    }
+    renderPeopleTrainingModule();
+
+    if (openLatest && activeItem) {
+      const updatedItem = normalizePeopleTrainingItemsForUi(updatedRecord.trainingItems)
+        .find((entry) => String(entry.type) === String(activeItem.type) || String(entry.serviceId) === String(activeItem.serviceId)) ?? activeItem;
+      const generatedDocument = getPeopleTrainingCertificateDocument(updatedRecord, updatedItem);
+      if (generatedDocument) {
+        triggerModuleAttachmentDownload(generatedDocument);
+      }
+    }
+
+    setPeopleTrainingFeedback(activeItem ? "PDF dokument je izrađen i označen kao aktivan." : "PDF dokumenti su izrađeni, a stari automatski PDF-ovi su ostali u arhivi.", "success");
+    return true;
+  } finally {
+    if (control) {
+      control.disabled = false;
+      control.classList.remove("is-loading");
+      control.removeAttribute("aria-busy");
+    }
+  }
 }
 
 async function openPeopleTrainingCertificate(record = {}, item = {}) {
@@ -8914,25 +9112,9 @@ async function openPeopleTrainingCertificate(record = {}, item = {}) {
   }
 
   if (isPeopleTrainingItemPassed(item)) {
-    setPeopleTrainingFeedback("Tražim ili generiram PDF uvjerenja iz predloška...", "success");
-    const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(record.id)}`, {
-      method: "PATCH",
-      body: {
-        trainingItems: record.trainingItems ?? [],
-      },
-    }), peopleTrainingFormFeedback);
-
-    if (success) {
-      const updatedRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === String(record.id)) ?? record;
-      const updatedItem = normalizePeopleTrainingItemsForUi(updatedRecord.trainingItems)
-        .find((entry) => String(entry.type) === String(item.type)) ?? item;
-      const generatedDocument = getPeopleTrainingCertificateDocument(updatedRecord, updatedItem);
-      renderPeopleTrainingModule();
-      if (generatedDocument) {
-        triggerModuleAttachmentDownload(generatedDocument);
-        setPeopleTrainingFeedback("PDF uvjerenje je otvoreno.", "success");
-        return;
-      }
+    const generated = await generatePeopleTrainingPdfDocuments(record, item, { openLatest: true, force: false });
+    if (generated) {
+      return;
     }
   }
 
@@ -9016,10 +9198,15 @@ function openPeopleTrainingItemMenu(record = {}, item = {}, anchor = null) {
 
   menu.append(
     header,
-    createPeopleTrainingMenuButton("Otvori PDF potvrdu", "download", () => {
+    createPeopleTrainingMenuButton(certificateDocument ? "Otvori aktivni PDF" : "Otvori PDF potvrdu", "download", () => {
       void openPeopleTrainingCertificate(record, item);
     }, {
       disabled: !certificateDocument && !isPeopleTrainingItemPassed(item),
+    }),
+    createPeopleTrainingMenuButton("Napravi novi PDF", "document", () => {
+      void generatePeopleTrainingPdfDocuments(record, item, { openLatest: true, force: true });
+    }, {
+      disabled: !hasPeopleTrainingCertificateTemplateForItem(item),
     }),
     createPeopleTrainingMenuButton("Otvori osposobljavanje za tu uslugu", "service", () => {
       void openPeopleTrainingForService(record, item);
@@ -10853,6 +11040,18 @@ function createPeopleTrainingDocumentRow(documentItem = {}) {
   copy.className = "people-training-document-copy";
   const title = document.createElement("strong");
   title.textContent = documentItem.fileName || "Prilog";
+  const titleLine = document.createElement("span");
+  titleLine.className = "people-training-document-title-line";
+  titleLine.append(title);
+  if (String(documentItem.sourceType || "") === "people-training-certificate" || String(documentItem.documentCategory || "").trim().toLowerCase() === "automatsko uvjerenje") {
+    const badge = document.createElement("span");
+    const isArchived = documentItem.activeDocument === false
+      || documentItem.isActive === false
+      || String(documentItem.documentStatus || "").trim().toLowerCase() === "archived";
+    badge.className = `people-training-document-version ${isArchived ? "is-archived" : "is-active"}`;
+    badge.textContent = isArchived ? "Arhiva" : "Aktivno";
+    titleLine.append(badge);
+  }
   const meta = document.createElement("span");
   meta.textContent = [
     documentItem.documentCategory || "Bez vrste",
@@ -10860,7 +11059,7 @@ function createPeopleTrainingDocumentRow(documentItem = {}) {
     documentItem.createdAt ? formatCompactDate(documentItem.createdAt) : "",
     documentItem.description || "",
   ].filter(Boolean).join(" · ");
-  copy.append(title, meta);
+  copy.append(titleLine, meta);
 
   const actions = document.createElement("div");
   actions.className = "people-training-document-actions";
@@ -10931,7 +11130,22 @@ function renderPeopleTrainingDossier(record = null) {
   documentsTitle.textContent = "Prilozi i dokumenti";
   const documentsHint = document.createElement("span");
   documentsHint.textContent = "Povuci PDF, sliku ili dokument ovdje ili na red osobe.";
-  documentsHead.append(documentsTitle, documentsHint);
+  const documentsCopy = document.createElement("div");
+  documentsCopy.append(documentsTitle, documentsHint);
+  const generateAllButton = document.createElement("button");
+  generateAllButton.type = "button";
+  generateAllButton.className = "ghost-button people-training-generate-documents-button";
+  generateAllButton.innerHTML = `${getWorkOrderIconMarkup("document")}<span>Napravi sve PDF-ove</span>`;
+  generateAllButton.disabled = !normalizePeopleTrainingItemsForUi(record.trainingItems).some(hasPeopleTrainingCertificateTemplateForItem);
+  generateAllButton.title = generateAllButton.disabled
+    ? "Nema povezanih Word predložaka za usluge ove osobe."
+    : "Izradi aktivne PDF dokumente za sve usluge koje imaju Word predložak.";
+  generateAllButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void generatePeopleTrainingPdfDocuments(record, null, { openLatest: false, force: true, button: generateAllButton });
+  });
+  documentsHead.append(documentsCopy, generateAllButton);
   documents.append(documentsHead);
 
   const rows = (record.attachments ?? []).map(createPeopleTrainingDocumentRow);

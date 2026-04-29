@@ -33576,6 +33576,43 @@ body.is-global-loading {
   font-weight: 760;
 }
 
+.people-training-type-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.people-training-type-document-status,
+.people-training-type-history {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 999px;
+  background: rgba(244, 248, 255, 0.78);
+  color: #526886;
+  font-size: 0.75rem;
+  font-weight: 840;
+}
+
+.people-training-type-pdf-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 12px;
+}
+
+.people-training-type-pdf-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .people-training-mini-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -33999,6 +34036,24 @@ body.is-global-loading {
   font-weight: 720;
 }
 
+.people-training-dossier-subhead > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-generate-documents-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+}
+
+.people-training-generate-documents-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .people-training-dossier-training-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -34089,6 +34144,13 @@ body.is-global-loading {
   min-width: 0;
 }
 
+.people-training-document-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .people-training-document-copy strong,
 .people-training-document-copy span {
   overflow: hidden;
@@ -34105,6 +34167,27 @@ body.is-global-loading {
   color: #657891;
   font-size: 0.76rem;
   font-weight: 720;
+}
+
+.people-training-document-version {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  font-size: 0.68rem;
+  font-weight: 920;
+}
+
+.people-training-document-version.is-active {
+  color: #14724a;
+  background: rgba(229, 250, 238, 0.92);
+  border-color: rgba(71, 190, 127, 0.45);
+}
+
+.people-training-document-version.is-archived {
+  color: #64748b;
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(148, 163, 184, 0.5);
 }
 
 .people-training-document-actions {
