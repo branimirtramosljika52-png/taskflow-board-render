@@ -354,6 +354,7 @@ test("people training records normalize certificates, statuses and filters", () 
           workOrderNumber: "RN 26-615",
           details: {
             theoryDate: "2026-01-15",
+            jobDescription: "Utovar robe i rad s paletnim viličarom",
             jobTitle: "SkladiÄąË‡tar",
           },
         },
@@ -381,6 +382,7 @@ test("people training records normalize certificates, statuses and filters", () 
   assert.equal(record.trainingItems.length, 6);
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").recordNumber, "RN 26-615-ZNR-123456");
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").details.theoryDate, "2026-01-15");
+  assert.equal(record.trainingItems.find((item) => item.type === "safe_work").details.jobDescription, "Utovar robe i rad s paletnim viličarom");
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").status, "valid");
   assert.equal(record.trainingItems.find((item) => item.type === "adr").status, "expired");
 

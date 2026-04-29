@@ -5308,6 +5308,7 @@ function normalizePersonTrainingItemDetails(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   return {
     jobTitle: normalizeText(source.jobTitle ?? source.workplaceTitle ?? source.positionTitle).slice(0, 180),
+    jobDescription: normalizeText(source.jobDescription ?? source.workDescription ?? source.taskDescription ?? source.activityDescription).slice(0, 4000),
     theoryPlace: normalizeText(source.theoryPlace ?? source.theoryTrainingPlace).slice(0, 180),
     theoryDate: normalizeOptionalDate(source.theoryDate ?? source.theoryTrainingDate),
     theoryMethod: normalizeText(source.theoryMethod ?? source.theoryTrainingMethod).slice(0, 180),

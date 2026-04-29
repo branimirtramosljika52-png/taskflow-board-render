@@ -2122,11 +2122,11 @@ async function syncPeopleTrainingDetailTables(connection, record = {}) {
           INSERT INTO web_people_training_safe_work_details
             (people_training_record_id, organization_id, company_id, location_id,
              work_order_number, service_id, service_code, service_name, person_oib, record_number,
-             job_title, theory_place, theory_date, theory_method,
+             job_title, job_description, theory_place, theory_date, theory_method,
              employer_representative_name, employer_representative_oib,
              additional_person_name, additional_person_oib,
              practical_place, safe_work_period_from, safe_work_period_to)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           common.recordId,
@@ -2140,6 +2140,7 @@ async function syncPeopleTrainingDetailTables(connection, record = {}) {
           common.personOib,
           common.recordNumber,
           dbString(details.jobTitle || record.jobTitle).slice(0, 180),
+          dbString(details.jobDescription).slice(0, 4000),
           dbString(details.theoryPlace).slice(0, 180),
           normalizeDateOnly(details.theoryDate || item.issuedOn || item.passedOn),
           dbString(details.theoryMethod || item.examMode).slice(0, 180),
@@ -6463,6 +6464,7 @@ export class MySqlSafetyRepository {
         person_oib VARCHAR(32) NOT NULL DEFAULT '',
         record_number VARCHAR(160) NOT NULL DEFAULT '',
         job_title VARCHAR(180) NOT NULL DEFAULT '',
+        job_description TEXT NULL,
         theory_place VARCHAR(180) NOT NULL DEFAULT '',
         theory_date DATE NULL,
         theory_method VARCHAR(180) NOT NULL DEFAULT '',
@@ -6746,6 +6748,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_people_training_records", "work_place", "VARCHAR(180) NOT NULL DEFAULT '' AFTER arrival_date");
     await ensureColumnExists(this.pool, "web_people_training_records", "activity_status", "VARCHAR(8) NOT NULL DEFAULT 'DA' AFTER work_place");
     await ensureColumnExists(this.pool, "web_people_training_records", "attachments_json", "LONGTEXT NULL AFTER training_items_json");
+    await ensureColumnExists(this.pool, "web_people_training_safe_work_details", "job_description", "TEXT NULL AFTER job_title");
     await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_ids_json", "LONGTEXT NULL AFTER assigned_to_label");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_labels_json", "LONGTEXT NULL AFTER invited_user_ids_json");

@@ -33590,7 +33590,14 @@ body.is-global-loading {
   grid-column: 1 / -1;
 }
 
-.people-training-mini-grid input.is-readonly {
+.people-training-mini-grid textarea {
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.people-training-mini-grid input.is-readonly,
+.people-training-mini-grid textarea.is-readonly {
   color: #31456a;
   background: rgba(239, 246, 255, 0.82);
   border-color: rgba(166, 188, 225, 0.9);

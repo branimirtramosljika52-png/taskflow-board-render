@@ -2421,7 +2421,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     Aktivnost: record.activityStatus || serviceName || serviceCode,
     BrojZapisnikaZNR: itemRecordNumber,
     NazivRadnogMjesta: itemDetails.jobTitle || record.jobTitle || "",
-    OpisPoslova: record.jobDescription || record.note || "",
+    OpisPoslova: itemDetails.jobDescription || record.jobDescription || record.note || "",
     VrstaIspita: serviceName || serviceCode,
     MjestoOsposobljavanjaTeorija: itemDetails.theoryPlace || workPlace,
     DatumTeorija: formatPeopleTrainingTemplateDate(itemDate),

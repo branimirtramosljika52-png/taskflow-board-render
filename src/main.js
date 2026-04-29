@@ -8273,6 +8273,7 @@ function getPeopleTrainingFormItemBrief(item = {}) {
   if (sectionKey === "safe-work") {
     dataParts = [
       details.jobTitle ? `Radno mjesto ${details.jobTitle}` : "",
+      details.jobDescription ? `Opis ${String(details.jobDescription).slice(0, 80)}${String(details.jobDescription).length > 80 ? "..." : ""}` : "",
       details.theoryPlace ? `Teorija ${details.theoryPlace}` : "",
       details.theoryDate ? `Datum teorije ${formatCompactDate(details.theoryDate)}` : "",
       details.theoryMethod ? `Način ${details.theoryMethod}` : "",
@@ -8347,6 +8348,8 @@ function createPeopleTrainingDetailField({
   wide = false,
   readOnly = false,
   isDate = false,
+  multiline = false,
+  rows = 4,
 } = {}) {
   const fieldLabel = document.createElement("label");
   if (wide) {
@@ -8354,8 +8357,13 @@ function createPeopleTrainingDetailField({
   }
   const labelText = document.createElement("span");
   labelText.textContent = label;
-  const input = document.createElement("input");
-  input.type = "text";
+  const input = multiline ? document.createElement("textarea") : document.createElement("input");
+  if (input instanceof HTMLInputElement) {
+    input.type = "text";
+  }
+  if (input instanceof HTMLTextAreaElement) {
+    input.rows = rows;
+  }
   input.value = isDate ? formatDateInputDisplayValue(value || "") : String(value ?? "");
   input.placeholder = placeholder;
   input.dataset.trainingField = field;
@@ -8364,7 +8372,7 @@ function createPeopleTrainingDetailField({
     input.classList.add("is-readonly");
     input.tabIndex = -1;
   }
-  if (isDate) {
+  if (isDate && input instanceof HTMLInputElement) {
     input.inputMode = "numeric";
     input.placeholder = placeholder || "dd.mm.yyyy";
     input.addEventListener("blur", () => {
@@ -8419,6 +8427,15 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
     fields.append(
       createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
       createPeopleTrainingDetailField({ label: "Naziv radnog mjesta", field: "details.jobTitle", value: details.jobTitle || personRecord.jobTitle || "" }),
+      createPeopleTrainingDetailField({
+        label: "Opis poslova i aktivnosti koje će radnik obavljati",
+        field: "details.jobDescription",
+        value: details.jobDescription || "",
+        placeholder: "Opis poslova, aktivnosti, radnih zadataka...",
+        wide: true,
+        multiline: true,
+        rows: 4,
+      }),
       createPeopleTrainingDetailField({ label: "Mjesto teorijskog osposobljavanja", field: "details.theoryPlace", value: details.theoryPlace || personRecord.workPlace || personRecord.locationName || "" }),
       createPeopleTrainingDetailField({ label: "Datum teorijski dio", field: "details.theoryDate", value: details.theoryDate || item.issuedOn || item.passedOn || "", isDate: true }),
       createPeopleTrainingDetailField({ label: "Način provođenja teorijskog dijela", field: "details.theoryMethod", value: details.theoryMethod || item.examMode || "" }),
@@ -8679,6 +8696,7 @@ function readPeopleTrainingGridItems() {
     const details = { ...(existing.details ?? {}) };
     [
       "jobTitle",
+      "jobDescription",
       "theoryPlace",
       "theoryDate",
       "theoryMethod",
