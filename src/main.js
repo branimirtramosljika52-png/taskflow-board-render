@@ -1461,7 +1461,7 @@ const state = {
     trainingType: "all",
     status: "all",
   },
-  peopleTrainingExamSelection: "all",
+  peopleTrainingExamSelection: "rn",
   peopleTrainingSelectedRecordIds: new Set(),
   activePeopleTrainingRecordId: "",
   peopleTrainingEditorOpen: false,
@@ -4564,6 +4564,7 @@ const peopleTrainingTotalCount = document.querySelector("#people-training-total-
 const peopleTrainingValidCount = document.querySelector("#people-training-valid-count");
 const peopleTrainingExpiringCount = document.querySelector("#people-training-expiring-count");
 const peopleTrainingExpiredCount = document.querySelector("#people-training-expired-count");
+const peopleTrainingExamOverviewCard = document.querySelector(".people-training-exam-overview-card");
 const peopleTrainingExamSelect = document.querySelector("#people-training-exam-select");
 const peopleTrainingOpenExamButton = document.querySelector("#people-training-open-exam");
 const peopleTrainingExamSummary = document.querySelector("#people-training-exam-summary");
@@ -4600,6 +4601,12 @@ const peopleTrainingListCount = document.querySelector("#people-training-list-co
 const peopleTrainingList = document.querySelector("#people-training-list");
 const peopleTrainingEmpty = document.querySelector("#people-training-empty");
 let closePeopleTrainingItemMenuHandler = null;
+let peopleTrainingLastBulkOpenSummary = {
+  assignedTests: 0,
+  sentEmails: 0,
+  skippedEmails: 0,
+  failedEmails: 0,
+};
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -7076,7 +7083,7 @@ function createPeopleTrainingZnrPlaceholder(key = "", label = "", example = "") 
     key,
     label: label || key,
     example,
-    token: `[${key}]`,
+    token: `{{${key}}}`,
   };
 }
 
@@ -7096,7 +7103,6 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("MjestoRodenja", "Mjesto rođenja", "Zagreb"),
   createPeopleTrainingZnrPlaceholder("DatumDolaska", "Datum dolaska", "29.04.2026"),
   createPeopleTrainingZnrPlaceholder("Mjestorada", "Mjesto rada", "Pogon Jankomir"),
-  createPeopleTrainingZnrPlaceholder("MjestoRadaNew", "Mjesto rada - novo polje", "Pogon Jankomir"),
   createPeopleTrainingZnrPlaceholder("DodatnoMjesto", "Dodatno mjesto rada", "Skladište"),
   createPeopleTrainingZnrPlaceholder("Aktivnost", "Aktivnost / usluga", "Rad na siguran način"),
   createPeopleTrainingZnrPlaceholder("BrojZapisnikaZNR", "Broj zapisnika ZNR", "ZNR-2026-15"),
@@ -7145,8 +7151,6 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("AktivnostPP", "Aktivnost PP", "Početno gašenje požara"),
   createPeopleTrainingZnrPlaceholder("DatumPP", "Datum PP", "29.04.2026"),
   createPeopleTrainingZnrPlaceholder("BrojZapisnikaPGP", "Broj zapisnika PGP", "PGP-2026-15"),
-  createPeopleTrainingZnrPlaceholder("DatumPolaganjaPGP", "Datum polaganja PGP", "29.04.2026"),
-  createPeopleTrainingZnrPlaceholder("PGPCheck", "PGP oznaka", "X"),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPImePrezime", "Odgovorna PGP osoba", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPOIB", "OIB odgovorne PGP osobe", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPKlasa", "PGP klasa", ""),
@@ -7164,30 +7168,6 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPImePrezime", "Odgovorna SPZTP osoba", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPOIB", "OIB odgovorne SPZTP osobe", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaSPZTPKlasa", "SPZTP klasa", ""),
-  { key: "IME", label: "Ime osobe", example: "Ana" },
-  { key: "PREZIME", label: "Prezime osobe", example: "Savanović" },
-  { key: "IME_PREZIME", label: "Ime i prezime", example: "Ana Savanović" },
-  { key: "OIB", label: "OIB osobe", example: "12345678910" },
-  { key: "RADNO_MJESTO", label: "Radno mjesto osobe", example: "Električar" },
-  { key: "EMAIL", label: "Email osobe", example: "ana.savanovic@tvrtka.hr" },
-  { key: "MOBITEL", label: "Mobitel osobe", example: "+385 91 123 4567" },
-  { key: "TVRTKA", label: "Tvrtka", example: "24sata d.o.o." },
-  { key: "TVRTKA_OIB", label: "OIB tvrtke", example: "78093047651" },
-  { key: "KLIJENT", label: "Naziv klijenta", example: "24sata d.o.o." },
-  { key: "LOKACIJA", label: "Lokacija", example: "Oreškovićeva ulica 3D, Zagreb" },
-  { key: "USLUGA", label: "Naziv ZNR usluge", example: "Rad na siguran način" },
-  { key: "SIFRA_USLUGE", label: "Šifra usluge", example: "ZNR" },
-  { key: "IZVOR_POLAGANJA", label: "RN ili online izvor", example: "RN 26-612" },
-  { key: "POTVRDA_BROJ", label: "Broj uvjerenja", example: "POTV-2026-ZNR-001" },
-  { key: "DATUM_POLAGANJA", label: "Datum polaganja", example: "29.04.2026" },
-  { key: "DATUM_IZDAVANJA", label: "Datum izdavanja", example: "29.04.2026" },
-  { key: "VRIJEDI_DO", label: "Vrijedi do", example: "29.04.2030" },
-  { key: "VRIJEDI_TRAJNO", label: "Trajno važenje", example: "Vrijedi trajno" },
-  { key: "RN_BROJ", label: "Broj radnog naloga", example: "26-612" },
-  { key: "ONLINE_IZVOR", label: "Online izvor ili test", example: "Online test: ZNR početni" },
-  { key: "USTANOVA", label: "Ustanova / provoditelj", example: "SafeNexus" },
-  { key: "STATUS_UVJERENJA", label: "Status uvjerenja", example: "Spremno" },
-  { key: "NAPOMENA", label: "Napomena iz evidencije", example: "Vrijedi za sve lokacije." },
 ];
 
 function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
@@ -7587,6 +7567,7 @@ function buildPeopleTrainingExamOverviewOptions() {
     label: `Online test: ${test.title || "Bez naziva"}`,
   }));
   return [
+    { value: "rn", label: "Praćenje po RN-u" },
     { value: "all", label: "Svi položeni ispiti" },
     ...trainingTypeOptions,
     ...onlineTestOptions,
@@ -7602,11 +7583,58 @@ function isPeopleTrainingItemPassed(item = {}) {
     item.passedOn
       || item.issuedOn
       || item.certificateNumber
-      || item.workOrderNumber
-      || item.learningTestTitle
       || item.certificateStatus === "ready"
       || item.certificateStatus === "issued",
   );
+}
+
+function getPeopleTrainingItemLearningAssignments(record = {}, item = {}) {
+  const linkedIds = new Set(
+    [
+      item.learningTestId,
+      ...(Array.isArray(item.linkedLearningTestIds) ? item.linkedLearningTestIds : []),
+    ].map((value) => String(value || "").trim()).filter(Boolean),
+  );
+  if (linkedIds.size === 0) {
+    return [];
+  }
+  const recordEmail = String(record.email || "").trim().toLowerCase();
+  const recordOib = String(record.oib || "").trim();
+  const recordName = getPeopleTrainingRecordDisplayName(record).toLowerCase();
+  return (state.learningTests ?? []).flatMap((test) => {
+    if (!linkedIds.has(String(test.id || ""))) {
+      return [];
+    }
+    return (test.assignmentItems ?? [])
+      .filter((assignment) => {
+        if (item.workOrderId && String(assignment.workOrderId || "") !== String(item.workOrderId)) {
+          return false;
+        }
+        const assignmentOib = String(assignment.externalOib || "").trim();
+        const assignmentEmail = String(assignment.externalEmail || assignment.email || "").trim().toLowerCase();
+        const assignmentName = String(assignment.externalFullName || assignment.userLabel || "").trim().toLowerCase();
+        return Boolean(
+          (recordOib && assignmentOib && recordOib === assignmentOib)
+          || (recordEmail && assignmentEmail && recordEmail === assignmentEmail)
+          || (recordName && assignmentName && recordName === assignmentName),
+        );
+      })
+      .map((assignment) => ({ test, assignment }));
+  });
+}
+
+function getPeopleTrainingItemExamProgress(record = {}, item = {}) {
+  const assignments = getPeopleTrainingItemLearningAssignments(record, item);
+  if (assignments.some(({ assignment }) => String(assignment.status || "").toLowerCase() === "in_progress")) {
+    return "in_progress";
+  }
+  if (assignments.some(({ assignment }) => String(assignment.status || "").toLowerCase() === "pending")) {
+    return "pending";
+  }
+  if (String(item.certificateStatus || "").toLowerCase() === "assigned") {
+    return "pending";
+  }
+  return "";
 }
 
 function getPeopleTrainingExamOverviewRows(selection = "all", mode = "passed") {
@@ -7655,7 +7683,6 @@ function createPeopleTrainingExamPassedRow({ record = {}, item = {} } = {}) {
   personMeta.textContent = [
     record.oib ? `OIB ${record.oib}` : "",
     record.jobTitle,
-    record.email,
   ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
   person.append(name, personMeta);
 
@@ -7717,6 +7744,125 @@ function createPeopleTrainingExamStatusSection(title = "", rows = [], emptyText 
   return section;
 }
 
+function getPeopleTrainingExamTrackingRowsByWorkOrder() {
+  const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
+    ...state.peopleTrainingFilters,
+    trainingType: "all",
+    status: "all",
+  }));
+
+  return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
+    .map((item) => {
+      const assignments = getPeopleTrainingItemLearningAssignments(record, item);
+      const hasWorkOrder = Boolean(item.workOrderId || item.workOrderNumber);
+      if (!hasWorkOrder && assignments.length === 0 && String(item.certificateStatus || "").toLowerCase() !== "assigned") {
+        return null;
+      }
+      const assignmentStatuses = assignments.map(({ assignment }) => String(assignment.status || "pending").toLowerCase());
+      const completedAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "completed");
+      const inProgressAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "in_progress");
+      const pendingAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "pending");
+      const progress = isPeopleTrainingItemPassed(item) || completedAssignment
+        ? "completed"
+        : inProgressAssignment
+          ? "in_progress"
+          : (pendingAssignment || String(item.certificateStatus || "").toLowerCase() === "assigned")
+            ? "pending"
+            : "missing";
+      return {
+        record,
+        item,
+        assignments,
+        progress,
+        workOrderKey: item.workOrderId || item.workOrderNumber || assignments[0]?.assignment?.workOrderId || "bez-rn",
+        workOrderNumber: item.workOrderNumber || assignments[0]?.assignment?.workOrderNumber || "",
+        testTitles: assignments.map(({ test }) => test.title || "Online test").filter(Boolean),
+        scorePercent: completedAssignment?.assignment?.scorePercent ?? "",
+        assignmentStatuses,
+      };
+    })
+    .filter(Boolean));
+}
+
+function getPeopleTrainingExamTrackingProgressLabel(row = {}) {
+  if (row.progress === "completed") {
+    return row.scorePercent !== "" ? `Položeno · ${row.scorePercent}%` : "Položeno";
+  }
+  if (row.progress === "in_progress") {
+    return "Ispit u tijeku";
+  }
+  if (row.progress === "pending") {
+    return "Dodijeljeno";
+  }
+  return "Nedostaje evidencija";
+}
+
+function createPeopleTrainingExamTrackingTable(rows = []) {
+  const wrap = document.createElement("div");
+  wrap.className = "people-training-rn-tracking-table-wrap";
+
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Još nema otvorenih RN-ova ili dodijeljenih ispita za prikaz.";
+    wrap.append(empty);
+    return wrap;
+  }
+
+  const table = document.createElement("table");
+  table.className = "people-training-rn-tracking-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>RN</th>
+        <th>Osoba</th>
+        <th>Tvrtka / lokacija</th>
+        <th>Usluga</th>
+        <th>Ispit</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  rows
+    .slice()
+    .sort((left, right) => (
+      String(left.workOrderNumber || left.workOrderKey).localeCompare(String(right.workOrderNumber || right.workOrderKey), "hr", { numeric: true })
+      || getPeopleTrainingRecordDisplayName(left.record).localeCompare(getPeopleTrainingRecordDisplayName(right.record), "hr", { numeric: true })
+    ))
+    .forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.className = `is-${row.progress}`;
+
+      const rn = document.createElement("td");
+      rn.innerHTML = `<strong>${escapeHtml(row.workOrderNumber ? `RN ${row.workOrderNumber}` : "Bez RN broja")}</strong><span>${escapeHtml(row.item.workOrderId ? "Otvoren radni nalog" : "Povezan ispit")}</span>`;
+
+      const person = document.createElement("td");
+      person.innerHTML = `<strong>${escapeHtml(getPeopleTrainingRecordDisplayName(row.record))}</strong><span>${escapeHtml(row.record.oib ? `OIB ${row.record.oib}` : row.record.jobTitle || "")}</span>`;
+
+      const company = document.createElement("td");
+      company.innerHTML = `<strong>${escapeHtml(row.record.companyName || getPeopleTrainingCompany(row.record.companyId)?.name || "Tvrtka")}</strong><span>${escapeHtml(row.record.locationName || getPeopleTrainingLocation(row.record.locationId)?.name || "Sve lokacije")}</span>`;
+
+      const service = document.createElement("td");
+      service.innerHTML = `<strong>${escapeHtml(row.item.serviceCode || row.item.shortLabel || row.item.label || "Usluga")}</strong><span>${escapeHtml(row.item.label || row.item.serviceName || "")}</span>`;
+
+      const exam = document.createElement("td");
+      exam.textContent = row.testTitles.length ? row.testTitles.join(", ") : getPeopleTrainingItemSourceText(row.item) || "Ručno / RN";
+
+      const status = document.createElement("td");
+      const statusPill = document.createElement("span");
+      statusPill.className = `people-training-progress-pill is-${row.progress}`;
+      statusPill.textContent = getPeopleTrainingExamTrackingProgressLabel(row);
+      status.append(statusPill);
+
+      tr.append(rn, person, company, service, exam, status);
+      body.append(tr);
+    });
+  table.append(body);
+  wrap.append(table);
+  return wrap;
+}
+
 function syncPeopleTrainingExamOverviewOptions() {
   if (!(peopleTrainingExamSelect instanceof HTMLSelectElement)) {
     return;
@@ -7724,7 +7870,7 @@ function syncPeopleTrainingExamOverviewOptions() {
   const options = buildPeopleTrainingExamOverviewOptions();
   const selectedValue = options.some((option) => option.value === state.peopleTrainingExamSelection)
     ? state.peopleTrainingExamSelection
-    : "all";
+    : "rn";
   replaceSelectOptions(peopleTrainingExamSelect, options, selectedValue);
   state.peopleTrainingExamSelection = peopleTrainingExamSelect.value || "all";
 }
@@ -7734,8 +7880,28 @@ function renderPeopleTrainingExamOverview() {
     return;
   }
 
+  if (peopleTrainingExamOverviewCard) {
+    peopleTrainingExamOverviewCard.hidden = false;
+  }
   syncPeopleTrainingExamOverviewOptions();
   const selection = state.peopleTrainingExamSelection || "all";
+  if (selection === "rn") {
+    const trackingRows = getPeopleTrainingExamTrackingRowsByWorkOrder();
+    const activeRows = trackingRows.filter((row) => row.progress === "pending" || row.progress === "in_progress");
+    const completedRows = trackingRows.filter((row) => row.progress === "completed");
+    if (peopleTrainingOpenExamButton) {
+      peopleTrainingOpenExamButton.hidden = true;
+      peopleTrainingOpenExamButton.disabled = true;
+    }
+    if (peopleTrainingExamSummary) {
+      peopleTrainingExamSummary.textContent = `Praćenje po radnom nalogu: ${activeRows.length} osoba polaže ili čeka, ${completedRows.length} položeno.`;
+    }
+    if (peopleTrainingExamEmpty) {
+      peopleTrainingExamEmpty.hidden = trackingRows.length > 0;
+    }
+    peopleTrainingExamList.replaceChildren(createPeopleTrainingExamTrackingTable(trackingRows));
+    return;
+  }
   const passedRows = getPeopleTrainingExamOverviewRows(selection, "passed");
   const pendingRows = getPeopleTrainingExamOverviewRows(selection, "pending");
   const selectedOption = peopleTrainingExamSelect instanceof HTMLSelectElement
@@ -8435,6 +8601,15 @@ function createPeopleTrainingCertificatePill(record = {}, item = {}) {
   const code = document.createElement("strong");
   code.textContent = `${marker} ${item.serviceCode || item.shortLabel || "?"}`;
   button.append(code);
+  const examProgress = getPeopleTrainingItemExamProgress(record, item);
+  if (examProgress) {
+    const progressIcon = document.createElement("span");
+    progressIcon.className = `people-training-certificate-progress-icon is-${examProgress}`;
+    progressIcon.title = examProgress === "in_progress" ? "Ispit u tijeku" : "Ispit dodijeljen";
+    progressIcon.setAttribute("aria-label", progressIcon.title);
+    progressIcon.innerHTML = getWorkOrderIconMarkup(examProgress === "in_progress" ? "status" : "reminder");
+    button.append(progressIcon);
+  }
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -8498,6 +8673,183 @@ function buildPeopleTrainingWorkOrderServiceItem(typeOption = {}, sourceItem = {
     linkedLearningTestTitles: typeOption.linkedLearningTestTitles || sourceItem.linkedLearningTestTitles || [],
     isTraining: true,
   });
+}
+
+function getPeopleTrainingRecordDisplayName(record = {}) {
+  return String(
+    record.fullName
+    || [record.firstName, record.lastName].filter(Boolean).join(" ")
+    || "Osoba bez imena",
+  ).trim() || "Osoba bez imena";
+}
+
+function getPeopleTrainingLinkedLearningTests(typeOption = {}) {
+  const linkedIds = new Set(
+    (Array.isArray(typeOption.linkedLearningTestIds) ? typeOption.linkedLearningTestIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+  if (typeOption.serviceId) {
+    const service = (state.serviceCatalog ?? []).find((item) => String(item.id) === String(typeOption.serviceId));
+    (service?.linkedLearningTestIds ?? [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .forEach((value) => linkedIds.add(value));
+  }
+  return sortLearningTests(state.learningTests ?? [])
+    .filter((test) => linkedIds.has(String(test.id || "")));
+}
+
+function buildPeopleTrainingBulkPreviewRows(records = [], typeOption = {}) {
+  const tests = getPeopleTrainingLinkedLearningTests(typeOption);
+  const groups = groupPeopleTrainingRecordsForWorkOrders(records);
+  const groupIndex = new Map(
+    groups.map((group, index) => [`${group.companyId}::${group.locationId}`, index + 1]),
+  );
+  return records.map((record) => {
+    const locationId = getPeopleTrainingRecordWorkOrderLocationId(record);
+    const groupKey = `${String(record.companyId || "").trim()}::${locationId}`;
+    const company = getPeopleTrainingCompany(record.companyId);
+    const location = locationId ? getPeopleTrainingLocation(locationId) : null;
+    return {
+      record,
+      groupNumber: groupIndex.get(groupKey) || 0,
+      companyName: record.companyName || company?.name || "Tvrtka nije zadana",
+      locationName: record.locationName || location?.name || "Sve lokacije",
+      serviceLabel: typeOption.serviceCode
+        ? `${typeOption.serviceCode} · ${typeOption.label || typeOption.serviceName || ""}`.trim()
+        : (typeOption.label || typeOption.serviceName || "Osposobljavanje"),
+      tests,
+      emailState: record.email
+        ? `${record.email} · ${tests.length || 0} pristupa`
+        : "Bez emaila",
+    };
+  });
+}
+
+function closePeopleTrainingBulkPreviewDialog(dialog = null) {
+  const target = dialog || document.querySelector(".people-training-bulk-preview-backdrop");
+  if (target instanceof HTMLElement) {
+    target.remove();
+  }
+  document.body.classList.remove("modal-open");
+}
+
+function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
+  const rows = buildPeopleTrainingBulkPreviewRows(records, typeOption);
+  const groups = groupPeopleTrainingRecordsForWorkOrders(records);
+  const tests = getPeopleTrainingLinkedLearningTests(typeOption);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "people-training-bulk-preview-backdrop";
+  backdrop.setAttribute("role", "presentation");
+
+  const modal = document.createElement("section");
+  modal.className = "people-training-bulk-preview-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Pregled masovnog osposobljavanja");
+
+  const head = document.createElement("div");
+  head.className = "people-training-bulk-preview-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = "Pregled prije otvaranja";
+  const title = document.createElement("h3");
+  title.textContent = "Masovno osposobljavanje";
+  const summary = document.createElement("p");
+  summary.className = "helper-copy module-copy";
+  summary.textContent = `${records.length} osoba · ${groups.length} RN po tvrtki i lokaciji · ${tests.length} povezanih online ispita.`;
+  copy.append(kicker, title, summary);
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.textContent = "Zatvori";
+  closeButton.addEventListener("click", () => closePeopleTrainingBulkPreviewDialog(backdrop));
+  head.append(copy, closeButton);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "people-training-bulk-preview-table-wrap";
+  const table = document.createElement("table");
+  table.className = "people-training-bulk-preview-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Osoba</th>
+        <th>Tvrtka / lokacija</th>
+        <th>Usluga</th>
+        <th>RN</th>
+        <th>Ispiti i email</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    const person = document.createElement("td");
+    person.innerHTML = `<strong>${escapeHtml(getPeopleTrainingRecordDisplayName(row.record))}</strong><span>${escapeHtml([
+      row.record.oib ? `OIB ${row.record.oib}` : "",
+      row.record.jobTitle || "",
+    ].filter(Boolean).join(" · ") || "Bez dodatnih podataka")}</span>`;
+
+    const company = document.createElement("td");
+    company.innerHTML = `<strong>${escapeHtml(row.companyName)}</strong><span>${escapeHtml(row.locationName)}</span>`;
+
+    const service = document.createElement("td");
+    service.textContent = row.serviceLabel;
+
+    const workOrder = document.createElement("td");
+    workOrder.innerHTML = `<strong>Novi RN ${row.groupNumber || ""}</strong><span>po ovoj tvrtki i lokaciji</span>`;
+
+    const exams = document.createElement("td");
+    const testText = row.tests.length
+      ? row.tests.map((test) => test.title || "Online test").join(", ")
+      : "Nema povezanog online ispita";
+    exams.innerHTML = `<strong>${escapeHtml(testText)}</strong><span>${escapeHtml(row.emailState)}</span>`;
+
+    tr.append(person, company, service, workOrder, exams);
+    body.append(tr);
+  });
+  table.append(body);
+  tableWrap.append(table);
+
+  const actions = document.createElement("div");
+  actions.className = "people-training-bulk-preview-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.textContent = "Odustani";
+  cancelButton.addEventListener("click", () => closePeopleTrainingBulkPreviewDialog(backdrop));
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "primary-button";
+  openButton.textContent = "Otvori RN";
+  openButton.addEventListener("click", () => {
+    closePeopleTrainingBulkPreviewDialog(backdrop);
+    void executeBulkPeopleTrainingWorkOrders(records, typeOption);
+  });
+  actions.append(cancelButton, openButton);
+
+  modal.append(head, tableWrap, actions);
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closePeopleTrainingBulkPreviewDialog(backdrop);
+    }
+  });
+  const handleKeydown = (event) => {
+    if (event.key === "Escape" && document.body.contains(backdrop)) {
+      closePeopleTrainingBulkPreviewDialog(backdrop);
+      document.removeEventListener("keydown", handleKeydown, true);
+    }
+  };
+  document.addEventListener("keydown", handleKeydown, true);
+  document.body.append(backdrop);
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => openButton.focus({ preventScroll: true }));
 }
 
 function getPeopleTrainingRecordWorkOrderLocationId(record = {}) {
@@ -8585,17 +8937,133 @@ function buildPeopleTrainingWorkOrderPayload(group = {}, typeOption = {}) {
   };
 }
 
+function isPeopleTrainingAssignmentForRecord(assignment = {}, record = {}, workOrder = {}) {
+  if (String(assignment.workOrderId || "") !== String(workOrder.id || "")) {
+    return false;
+  }
+  const recordOib = String(record.oib || "").trim();
+  const assignmentOib = String(assignment.externalOib || "").trim();
+  if (recordOib && assignmentOib && recordOib === assignmentOib) {
+    return true;
+  }
+  const recordEmail = String(record.email || "").trim().toLowerCase();
+  const assignmentEmail = String(assignment.externalEmail || assignment.email || "").trim().toLowerCase();
+  if (recordEmail && assignmentEmail && recordEmail === assignmentEmail) {
+    return true;
+  }
+  return String(assignment.externalFullName || assignment.userLabel || "").trim().toLowerCase()
+    === getPeopleTrainingRecordDisplayName(record).toLowerCase();
+}
+
+function buildPeopleTrainingLearningAssignment(record = {}, workOrder = {}, typeOption = {}, test = {}, existingAssignment = null) {
+  const company = getPeopleTrainingCompany(record.companyId);
+  const timestamp = new Date().toISOString();
+  const fullName = getPeopleTrainingRecordDisplayName(record);
+  return {
+    ...(existingAssignment ?? {}),
+    id: String(existingAssignment?.id || crypto.randomUUID()),
+    assigneeType: "external",
+    userId: "",
+    userLabel: fullName,
+    email: String(record.email || "").trim(),
+    externalFullName: fullName,
+    externalEmail: String(record.email || "").trim(),
+    externalPhone: String(record.phone || "").trim(),
+    externalCompany: record.companyName || company?.name || "",
+    externalOib: String(record.oib || "").trim(),
+    accessToken: String(existingAssignment?.accessToken || crypto.randomUUID()),
+    status: String(existingAssignment?.status || "pending"),
+    assignedAt: String(existingAssignment?.assignedAt || timestamp),
+    workOrderId: String(workOrder.id || "").trim(),
+    workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
+    serviceId: String(typeOption.serviceId || "").trim(),
+    serviceName: String(typeOption.label || typeOption.serviceName || typeOption.serviceCode || "").trim(),
+    assignedByUserId: String(state.user?.id || "").trim(),
+    assignedByLabel: String(state.user?.fullName || state.user?.email || "").trim(),
+  };
+}
+
+async function emailPeopleTrainingLearningAssignment(test = {}, assignment = {}, workOrder = {}, typeOption = {}) {
+  const to = String(assignment.externalEmail || assignment.email || "").trim();
+  if (!to) {
+    peopleTrainingLastBulkOpenSummary.skippedEmails += 1;
+    return false;
+  }
+  try {
+    await apiRequest(`/learning-tests/${encodeURIComponent(test.id)}/assignments/${encodeURIComponent(assignment.id)}/email`, {
+      method: "POST",
+      body: {
+        to,
+        serviceName: typeOption.label || typeOption.serviceName || "",
+        serviceCode: typeOption.serviceCode || typeOption.shortLabel || "",
+        workOrderNumber: workOrder.workOrderNumber || "",
+      },
+    });
+    peopleTrainingLastBulkOpenSummary.sentEmails += 1;
+    return true;
+  } catch (error) {
+    console.warn("Slanje pristupa online ispitu nije uspjelo.", error);
+    peopleTrainingLastBulkOpenSummary.failedEmails += 1;
+    return false;
+  }
+}
+
+async function assignPeopleTrainingLearningTestsForWorkOrder(records = [], typeOption = {}, workOrder = {}) {
+  const tests = getPeopleTrainingLinkedLearningTests(typeOption);
+  if (!tests.length || !workOrder?.id) {
+    return true;
+  }
+
+  for (const test of tests) {
+    const assignmentItems = Array.isArray(test.assignmentItems) ? [...test.assignmentItems] : [];
+    const nextAssignments = [];
+    const assignmentEmails = [];
+
+    records.forEach((record) => {
+      const existing = assignmentItems.find((assignment) => isPeopleTrainingAssignmentForRecord(assignment, record, workOrder)) ?? null;
+      const nextAssignment = buildPeopleTrainingLearningAssignment(record, workOrder, typeOption, test, existing);
+      nextAssignments.push(nextAssignment);
+      assignmentEmails.push(nextAssignment);
+    });
+
+    const remaining = assignmentItems.filter((assignment) => (
+      !records.some((record) => isPeopleTrainingAssignmentForRecord(assignment, record, workOrder))
+    ));
+
+    const success = await runMutation(() => apiRequest(`/learning-tests/${encodeURIComponent(test.id)}`, {
+      method: "PATCH",
+      body: {
+        assignmentItems: [...remaining, ...nextAssignments],
+      },
+    }), peopleTrainingFormFeedback);
+
+    if (!success) {
+      return false;
+    }
+
+    peopleTrainingLastBulkOpenSummary.assignedTests += nextAssignments.length;
+    for (const assignment of assignmentEmails) {
+      await emailPeopleTrainingLearningAssignment(test, assignment, workOrder, typeOption);
+    }
+  }
+
+  return true;
+}
+
 async function linkPeopleTrainingRecordsToWorkOrder(records = [], typeOption = {}, workOrder = {}) {
   if (!workOrder?.id || !typeOption?.value) {
     return false;
   }
 
+  const linkedLearningTests = getPeopleTrainingLinkedLearningTests(typeOption);
+  const primaryLearningTest = linkedLearningTests[0] ?? null;
   for (const record of records) {
     const currentRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === String(record.id)) ?? record;
     const nextItems = normalizePeopleTrainingItemsForUi(currentRecord.trainingItems).map((item) => {
       if (item.type !== typeOption.value) {
         return item;
       }
+      const alreadyPassed = isPeopleTrainingItemPassed(item);
       return {
         ...item,
         label: typeOption.label || item.label || "",
@@ -8607,9 +9075,12 @@ async function linkPeopleTrainingRecordsToWorkOrder(records = [], typeOption = {
         linkedTemplateTitles: typeOption.linkedTemplateTitles || item.linkedTemplateTitles || [],
         linkedLearningTestIds: typeOption.linkedLearningTestIds || item.linkedLearningTestIds || [],
         linkedLearningTestTitles: typeOption.linkedLearningTestTitles || item.linkedLearningTestTitles || [],
-        examMode: "live",
+        examMode: linkedLearningTests.length > 0 && !alreadyPassed ? "online" : "live",
         workOrderId: String(workOrder.id || ""),
         workOrderNumber: String(workOrder.workOrderNumber || ""),
+        learningTestId: primaryLearningTest && !alreadyPassed ? String(primaryLearningTest.id || "") : item.learningTestId,
+        learningTestTitle: primaryLearningTest && !alreadyPassed ? String(primaryLearningTest.title || "") : item.learningTestTitle,
+        certificateStatus: linkedLearningTests.length > 0 && !alreadyPassed ? "assigned" : item.certificateStatus,
         status: "",
       };
     });
@@ -8657,6 +9128,10 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], typeOption
       createdWorkOrders.push(created);
       const linked = await linkPeopleTrainingRecordsToWorkOrder(group.records, typeOption, created);
       if (!linked) {
+        return createdWorkOrders;
+      }
+      const assigned = await assignPeopleTrainingLearningTestsForWorkOrder(group.records, typeOption, created);
+      if (!assigned) {
         return createdWorkOrders;
       }
       queueGeneratedWorkOrderPdfSave(created.id);
@@ -9038,6 +9513,48 @@ function syncPeopleTrainingBulkActions(records = getPeopleTrainingFilteredRecord
   }
 }
 
+async function executeBulkPeopleTrainingWorkOrders(records = [], typeOption = {}) {
+  peopleTrainingLastBulkOpenSummary = {
+    assignedTests: 0,
+    sentEmails: 0,
+    skippedEmails: 0,
+    failedEmails: 0,
+  };
+
+  if (peopleTrainingBulkOpenButton) {
+    peopleTrainingBulkOpenButton.disabled = true;
+  }
+
+  const created = await createPeopleTrainingWorkOrdersForRecords(records, typeOption);
+  if (created.length > 0) {
+    clearPeopleTrainingSelection();
+    renderPeopleTrainingModule();
+    const emailParts = [];
+    if (peopleTrainingLastBulkOpenSummary.assignedTests > 0) {
+      emailParts.push(`${peopleTrainingLastBulkOpenSummary.assignedTests} dodijeljenih ispita`);
+    }
+    if (peopleTrainingLastBulkOpenSummary.sentEmails > 0) {
+      emailParts.push(`${peopleTrainingLastBulkOpenSummary.sentEmails} poslanih emailova`);
+    }
+    if (peopleTrainingLastBulkOpenSummary.skippedEmails > 0) {
+      emailParts.push(`${peopleTrainingLastBulkOpenSummary.skippedEmails} bez emaila`);
+    }
+    if (peopleTrainingLastBulkOpenSummary.failedEmails > 0) {
+      emailParts.push(`${peopleTrainingLastBulkOpenSummary.failedEmails} emailova nije poslano`);
+    }
+    setPeopleTrainingFeedback(
+      [
+        `Otvoreno je ${created.length} RN za ${records.length} osoba, po tvrtki i lokaciji.`,
+        emailParts.join(" · "),
+      ].filter(Boolean).join(" "),
+      peopleTrainingLastBulkOpenSummary.failedEmails > 0 ? "error" : "success",
+    );
+    hydrateWorkOrderForm(created[0]);
+  } else {
+    syncPeopleTrainingBulkActions(getPeopleTrainingFilteredRecords());
+  }
+}
+
 async function openBulkPeopleTrainingWorkOrders() {
   const records = getSelectedPeopleTrainingRecords();
   const typeOption = getPeopleTrainingSelectedTypeOption();
@@ -9051,22 +9568,7 @@ async function openBulkPeopleTrainingWorkOrders() {
     return;
   }
 
-  if (peopleTrainingBulkOpenButton) {
-    peopleTrainingBulkOpenButton.disabled = true;
-  }
-
-  const created = await createPeopleTrainingWorkOrdersForRecords(records, typeOption);
-  if (created.length > 0) {
-    clearPeopleTrainingSelection();
-    renderPeopleTrainingModule();
-    setPeopleTrainingFeedback(
-      `Otvoreno je ${created.length} RN za ${records.length} osoba, po tvrtki i lokaciji.`,
-      "success",
-    );
-    hydrateWorkOrderForm(created[0]);
-  } else {
-    syncPeopleTrainingBulkActions(getPeopleTrainingFilteredRecords());
-  }
+  openPeopleTrainingBulkPreviewDialog(records, typeOption);
 }
 
 function getPeopleTrainingAttachmentShortLabel(attachment = {}) {
@@ -42208,7 +42710,7 @@ function buildPeopleTrainingCertificatePlaceholderWordMarkup() {
   `).join("");
   return `
     <h1>SafeNexus · Placeholderi za uvjerenja</h1>
-    <p>Ove tokene možeš koristiti u Word predlošku za ZNR usluge. Sustav zamjenjuje nove [Placeholder] tokene i postojeće {{LEGACY}} tokene podacima osobe, tvrtke, usluge i RN izvora.</p>
+    <p>Ove tokene možeš koristiti u Word predlošku za ZNR usluge. Kopiraj točan token s vitičastim zagradama u .docx/.dotx predložak.</p>
     <table>
       <thead>
         <tr><th>Placeholder</th><th>Značenje</th><th>Primjer</th></tr>

@@ -1745,6 +1745,41 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
       )
   );
+  const visibleWorkOrders = (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible);
+  const visibleWorkOrderIds = new Set(visibleWorkOrders.map((item) => String(item.id)));
+  const visiblePeopleTrainingRecords = (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible);
+  const visibleTrainingEmails = new Set(
+    visiblePeopleTrainingRecords
+      .map((item) => dbString(item.email).toLowerCase())
+      .filter(Boolean),
+  );
+  const visibleTrainingOibs = new Set(
+    visiblePeopleTrainingRecords
+      .map((item) => dbString(item.oib))
+      .filter(Boolean),
+  );
+  const visibleTrainingNames = new Set(
+    visiblePeopleTrainingRecords
+      .map((item) => dbString(item.fullName || [item.firstName, item.lastName].filter(Boolean).join(" ")).toLowerCase())
+      .filter(Boolean),
+  );
+  const isLearningAssignmentVisible = (assignment = {}) => {
+    if (!clientPortalScope.isClientPortal) {
+      return true;
+    }
+    const workOrderId = dbString(assignment.workOrderId);
+    if (workOrderId && visibleWorkOrderIds.has(workOrderId)) {
+      return true;
+    }
+    const email = dbString(assignment.externalEmail || assignment.email).toLowerCase();
+    const oib = dbString(assignment.externalOib);
+    const name = dbString(assignment.externalFullName || assignment.userLabel).toLowerCase();
+    return Boolean(
+      (email && visibleTrainingEmails.has(email))
+      || (oib && visibleTrainingOibs.has(oib))
+      || (name && visibleTrainingNames.has(name))
+    );
+  };
 
   return {
     companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
@@ -1776,8 +1811,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       visibleCompanyIds.has(String(item.companyId))
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.id)))
     )),
-    workOrders: (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible),
-    peopleTrainingRecords: (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible).map((item) => ({
+    workOrders: visibleWorkOrders,
+    peopleTrainingRecords: visiblePeopleTrainingRecords.map((item) => ({
       ...item,
       trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
     })),
@@ -1856,18 +1891,26 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     })),
     learningTests: (rawSnapshot.learningTests ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
-    )).map((item) => ({
-      ...item,
-      handbookDocuments: (item.handbookDocuments ?? []).map((document) => ({ ...document })),
-      videoItems: (item.videoItems ?? []).map((video) => ({ ...video })),
-      questionItems: (item.questionItems ?? []).map((question) => ({
-        ...question,
-        imageDocument: question.imageDocument ? { ...question.imageDocument } : null,
-        options: (question.options ?? []).map((option) => ({ ...option })),
-      })),
-      assignmentItems: (item.assignmentItems ?? []).map((assignment) => ({ ...assignment })),
-      attemptItems: (item.attemptItems ?? []).map((attempt) => ({ ...attempt })),
-    })),
+    )).map((item) => {
+      const assignmentItems = (item.assignmentItems ?? [])
+        .filter(isLearningAssignmentVisible)
+        .map((assignment) => ({ ...assignment }));
+      const visibleAssignmentIds = new Set(assignmentItems.map((assignment) => String(assignment.id)));
+      return {
+        ...item,
+        handbookDocuments: (item.handbookDocuments ?? []).map((document) => ({ ...document })),
+        videoItems: (item.videoItems ?? []).map((video) => ({ ...video })),
+        questionItems: (item.questionItems ?? []).map((question) => ({
+          ...question,
+          imageDocument: question.imageDocument ? { ...question.imageDocument } : null,
+          options: (question.options ?? []).map((option) => ({ ...option })),
+        })),
+        assignmentItems,
+        attemptItems: (item.attemptItems ?? [])
+          .filter((attempt) => !clientPortalScope.isClientPortal || visibleAssignmentIds.has(String(attempt.assignmentId)))
+          .map((attempt) => ({ ...attempt })),
+      };
+    }),
     serviceCatalog: (rawSnapshot.serviceCatalog ?? []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({

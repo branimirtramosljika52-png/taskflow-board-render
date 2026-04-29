@@ -2522,7 +2522,7 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
       const pdfBuffer = await buildPdfFromTemplateBuffer(
         referenceDocument.buffer,
         getPeopleTrainingCertificatePlaceholderPayload(record, item, service, scopedSnapshot),
-        { fileName: baseName, squareBracketPlaceholders: true },
+        { fileName: baseName },
       );
       const documentId = `certificate-${item.type || service.id || randomUUID()}`;
       nextAttachments.push({
@@ -3031,6 +3031,7 @@ async function handleApiRequest(request, response, url) {
     const contractPdfExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-pdf$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
     const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
+    const learningTestAssignmentEmailMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)\/assignments\/([^/]+)\/email$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
     const measurementEquipmentMatch = url.pathname.match(/^\/api\/measurement-equipment\/([^/]+)$/);
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
@@ -5393,6 +5394,72 @@ async function handleApiRequest(request, response, url) {
       }
 
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (learningTestAssignmentEmailMatch && request.method === "POST") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo slati pristupe za eLearning testove.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const test = assertInScope(scopedSnapshot.learningTests ?? [], learningTestAssignmentEmailMatch[1], "Test nije pronađen.");
+      const assignment = (test.assignmentItems ?? []).find((item) => String(item.id) === String(learningTestAssignmentEmailMatch[2])) ?? null;
+      if (!assignment) {
+        sendError(response, 404, "Pristup ispitu nije pronađen.");
+        return true;
+      }
+
+      const to = String(body?.to || assignment.externalEmail || assignment.email || "").trim();
+      if (!to) {
+        sendError(response, 400, "Osoba nema email za slanje pristupa.");
+        return true;
+      }
+
+      const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+      const requestHost = String(request.headers.host || "").trim();
+      const requestBaseUrl = requestHost ? `${forwardedProto || "https"}://${requestHost}` : "";
+      const accessBaseUrl = publicAppUrl || requestBaseUrl;
+      const accessUrl = `${accessBaseUrl.replace(/\/$/, "")}/learning-test.html?token=${encodeURIComponent(String(assignment.accessToken || ""))}`;
+      const serviceName = String(body?.serviceName || assignment.serviceName || "").trim();
+      const serviceCode = String(body?.serviceCode || "").trim();
+      const workOrderNumber = String(body?.workOrderNumber || assignment.workOrderNumber || "").trim();
+      const subject = String(body?.subject || "").trim()
+        || `Online ispit: ${test.title || serviceName || "osposobljavanje"}`;
+      const assigneeName = assignment.externalFullName || assignment.userLabel || "Poštovani";
+      const intro = [
+        serviceCode || serviceName ? `Dodijeljen vam je online ispit za ${[serviceCode, serviceName].filter(Boolean).join(" - ")}.` : "Dodijeljen vam je online ispit.",
+        workOrderNumber ? `Radni nalog: ${workOrderNumber}.` : "",
+      ].filter(Boolean).join(" ");
+
+      const result = await sendMail({
+        to,
+        subject,
+        text: `${assigneeName},\n\n${intro}\n\nPristup ispitu: ${accessUrl}\n\nSafeNexus`,
+        html: `
+          <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;">
+            <div>${escapeEmailHtml(assigneeName)},</div>
+            <div style="margin-top:12px;">${escapeEmailHtml(intro)}</div>
+            <div style="margin-top:18px;">
+              <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori online ispit</a>
+            </div>
+            <div style="margin-top:14px;color:#64748b;word-break:break-all;">${escapeEmailHtml(accessUrl)}</div>
+            <div style="margin-top:18px;color:#64748b;">SafeNexus</div>
+          </div>
+        `,
+      });
+
+      if (!result.ok) {
+        sendError(response, 400, result.error || "Slanje emaila nije uspjelo.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        message: `Pristup ispitu je poslan na ${to}.`,
+      });
       return true;
     }
 
