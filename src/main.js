@@ -8448,6 +8448,86 @@ function getPeopleTrainingDroppedFiles(dataTransfer = null) {
   return Array.from(dataTransfer?.files ?? []).filter(Boolean);
 }
 
+function getPeopleTrainingDropRowFromEvent(event) {
+  if (!(event?.target instanceof Element)) {
+    return null;
+  }
+
+  const row = event.target.closest("[data-people-training-record-id]");
+  if (!row || !peopleTrainingList?.contains(row)) {
+    return null;
+  }
+
+  return row;
+}
+
+function getPeopleTrainingDropRecordFromRow(row = null) {
+  const recordId = String(row?.dataset?.peopleTrainingRecordId || "").trim();
+  if (!recordId) {
+    return null;
+  }
+
+  return state.peopleTrainingRecords.find((item) => String(item.id) === recordId) ?? null;
+}
+
+function clearPeopleTrainingDropTargets() {
+  peopleTrainingList
+    ?.querySelectorAll(".people-training-person-row.is-drag-over")
+    .forEach((row) => row.classList.remove("is-drag-over"));
+}
+
+function bindPeopleTrainingListDocumentDrop() {
+  if (!peopleTrainingList) {
+    return;
+  }
+
+  const activateDropTarget = (event) => {
+    if (!hasPeopleTrainingDraggedFiles(event.dataTransfer)) {
+      return null;
+    }
+
+    const row = getPeopleTrainingDropRowFromEvent(event);
+    if (!row) {
+      return null;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+    clearPeopleTrainingDropTargets();
+    row.classList.add("is-drag-over");
+    return row;
+  };
+
+  peopleTrainingList.addEventListener("dragenter", activateDropTarget, true);
+  peopleTrainingList.addEventListener("dragover", activateDropTarget, true);
+  peopleTrainingList.addEventListener("dragleave", (event) => {
+    const row = getPeopleTrainingDropRowFromEvent(event);
+    if (!row) {
+      return;
+    }
+    if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) {
+      return;
+    }
+    row.classList.remove("is-drag-over");
+  }, true);
+  peopleTrainingList.addEventListener("drop", (event) => {
+    const row = activateDropTarget(event);
+    const record = getPeopleTrainingDropRecordFromRow(row);
+    const files = getPeopleTrainingDroppedFiles(event.dataTransfer);
+    clearPeopleTrainingDropTargets();
+    if (!record?.id || files.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void openPeopleTrainingAttachmentDialog(record, files);
+  }, true);
+}
+
 function createPeopleTrainingRecordCard(record = {}) {
   const card = document.createElement("article");
   card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
@@ -79051,6 +79131,8 @@ peopleTrainingExamSelect?.addEventListener("change", () => {
 peopleTrainingOpenExamButton?.addEventListener("click", () => {
   openSelectedPeopleTrainingExam();
 });
+
+bindPeopleTrainingListDocumentDrop();
 
 peopleTrainingCompanyInput?.addEventListener("change", () => {
   if (peopleTrainingLocationInput instanceof HTMLSelectElement) {
