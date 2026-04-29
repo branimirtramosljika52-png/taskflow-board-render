@@ -37806,30 +37806,32 @@ button.work-order-editor-section-head {
 .people-training-rn-card,
 .people-training-bulk-group-card {
   overflow: hidden;
-  border: 1px solid rgba(190, 204, 232, 0.82);
+  border: 1px solid rgba(121, 145, 185, 0.76);
   border-radius: 16px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.9)),
-    radial-gradient(circle at top right, rgba(47, 111, 237, 0.08), transparent 38%);
-  box-shadow: 0 10px 24px rgba(35, 54, 98, 0.06);
+    linear-gradient(135deg, rgba(238, 244, 252, 0.98), rgba(249, 251, 255, 0.94)),
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.12), transparent 38%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 16px 34px rgba(35, 54, 98, 0.11);
 }
 
 .people-training-rn-card.is-pending,
 .people-training-bulk-group-card {
-  border-color: rgba(250, 204, 21, 0.45);
+  border-color: rgba(202, 138, 4, 0.5);
 }
 
 .people-training-rn-card.is-in_progress {
-  border-color: rgba(96, 165, 250, 0.58);
+  border-color: rgba(37, 99, 235, 0.54);
 }
 
 .people-training-rn-card.is-completed {
-  border-color: rgba(74, 222, 128, 0.48);
+  border-color: rgba(22, 163, 74, 0.5);
 }
 
 .people-training-rn-card.is-missing,
 .people-training-bulk-group-card.is-blocked {
-  border-color: rgba(251, 113, 133, 0.5);
+  border-color: rgba(225, 29, 72, 0.48);
 }
 
 .people-training-rn-card-head {
@@ -37838,6 +37840,8 @@ button.work-order-editor-section-head {
   gap: 12px;
   align-items: center;
   padding: 13px 14px;
+  background: linear-gradient(135deg, rgba(226, 235, 248, 0.96), rgba(243, 247, 252, 0.82));
+  border-bottom: 1px solid rgba(190, 204, 232, 0.78);
   cursor: pointer;
   list-style: none;
 }
@@ -37885,7 +37889,7 @@ button.work-order-editor-section-head {
 .people-training-rn-card-title strong,
 .people-training-rn-person-identity strong,
 .people-training-bulk-person-plan strong {
-  color: #0f1f3a;
+  color: #0b1730;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -37916,7 +37920,8 @@ button.work-order-editor-section-head {
   display: grid;
   grid-template-columns: repeat(6, minmax(120px, 1fr));
   gap: 8px;
-  padding: 0 14px 12px;
+  padding: 12px 14px;
+  background: rgba(232, 239, 249, 0.38);
 }
 
 .people-training-rn-meta-item {
@@ -37924,9 +37929,9 @@ button.work-order-editor-section-head {
   gap: 2px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid rgba(218, 225, 239, 0.72);
+  border: 1px solid rgba(190, 204, 232, 0.78);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .people-training-rn-meta-item span {
@@ -38016,32 +38021,33 @@ button.work-order-editor-section-head {
 
 .people-training-bulk-preview-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 1.2fr) auto;
   align-items: center;
 }
 
-.people-training-bulk-service-control {
-  display: grid;
-  gap: 5px;
+.people-training-bulk-quick-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
-.people-training-bulk-service-control span {
+.people-training-bulk-quick-actions > span {
+  flex: 0 0 100%;
   color: #64748b;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 850;
   text-transform: uppercase;
 }
 
-.people-training-bulk-service-control select {
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 11px;
-  border: 1px solid rgba(178, 198, 230, 0.9);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.96);
-  color: #172743;
-  font-weight: 820;
+.people-training-bulk-quick-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 850;
 }
 
 .people-training-bulk-preview-groups {
@@ -38054,6 +38060,127 @@ button.work-order-editor-section-head {
   border: 1px solid rgba(218, 225, 239, 0.72);
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.82);
+}
+
+.people-training-bulk-matrix-head,
+.people-training-bulk-person-row {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.62fr) minmax(360px, 1fr);
+  align-items: stretch;
+}
+
+.people-training-bulk-matrix-head {
+  gap: 10px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(210, 220, 238, 0.78);
+  background: rgba(219, 229, 244, 0.56);
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.people-training-bulk-person-row {
+  grid-template-columns: minmax(250px, 0.62fr) minmax(360px, 1fr);
+}
+
+.people-training-bulk-service-header,
+.people-training-bulk-service-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--bulk-service-count), minmax(76px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.people-training-bulk-service-header span {
+  display: grid;
+  place-items: center;
+  min-height: 24px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
+  color: #1d3157;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-bulk-service-cell {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  min-height: 48px;
+  min-width: 0;
+  padding: 6px 6px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.people-training-bulk-service-cell:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(35, 54, 98, 0.12);
+}
+
+.people-training-bulk-service-cell input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.people-training-bulk-service-cell strong {
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.people-training-bulk-service-cell span {
+  max-width: 100%;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 780;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-bulk-service-cell.is-valid {
+  border-color: rgba(34, 197, 94, 0.48);
+  background: rgba(240, 253, 244, 0.72);
+}
+
+.people-training-bulk-service-cell.is-expiring {
+  border-color: rgba(250, 204, 21, 0.58);
+  background: rgba(254, 249, 195, 0.72);
+}
+
+.people-training-bulk-service-cell.is-expired,
+.people-training-bulk-service-cell.is-missing {
+  border-color: rgba(251, 113, 133, 0.5);
+  background: rgba(255, 241, 242, 0.72);
+}
+
+.people-training-bulk-service-cell.is-selected {
+  border-color: rgba(37, 99, 235, 0.78);
+  background: rgba(219, 234, 254, 0.94);
+  box-shadow:
+    inset 0 0 0 2px rgba(37, 99, 235, 0.16),
+    0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+.people-training-bulk-service-cell.is-selected::after {
+  content: "✓";
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  color: #1d4ed8;
+  font-size: 0.55rem;
+  font-weight: 950;
 }
 
 .people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table-wrap {
@@ -38124,8 +38251,14 @@ button.work-order-editor-section-head {
   .people-training-rn-card-meta,
   .people-training-rn-person-row,
   .people-training-bulk-person-row,
+  .people-training-bulk-matrix-head,
   .people-training-rn-person-exam {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-training-bulk-service-header,
+  .people-training-bulk-service-cells {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .people-training-rn-card-chips {
