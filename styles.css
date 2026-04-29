@@ -33683,10 +33683,10 @@ body.is-global-loading {
 
 .people-training-person-row .people-training-person-statuses {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(72px, 104px));
-  justify-content: stretch;
-  align-items: stretch;
-  gap: 7px;
+  grid-template-columns: repeat(auto-fit, minmax(42px, 58px));
+  justify-content: start;
+  align-items: center;
+  gap: 6px;
   padding: 8px;
   border: 1px solid rgba(218, 225, 239, 0.74);
   border-radius: 17px;
@@ -34179,6 +34179,29 @@ body.is-global-loading {
 .people-training-status-pill,
 .people-training-certificate-pill.has-pdf small::after {
   content: " · PDF";
+}
+
+.people-training-certificate-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border-radius: 9px;
+  text-align: center;
+  box-shadow: 0 5px 12px rgba(39, 67, 119, 0.05);
+}
+
+.people-training-certificate-pill strong {
+  display: block;
+  max-width: 100%;
+  font-size: 0.72rem;
+}
+
+.people-training-certificate-pill span,
+.people-training-certificate-pill small {
+  display: none;
 }
 
 .people-training-status-chip {

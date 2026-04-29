@@ -8329,16 +8329,14 @@ function createPeopleTrainingCertificatePill(record = {}, item = {}) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `people-training-certificate-pill ${getPeopleTrainingStatusClass(item.status)}${certificateDocument ? " has-pdf" : ""}`;
-  button.title = certificateDocument
-    ? `Opcije za ${item.label || item.shortLabel || "osposobljavanje"} - PDF je spreman`
-    : `Opcije za ${item.label || item.shortLabel || "osposobljavanje"}`;
+  button.title = [
+    item.label || item.serviceName || "Osposobljavanje",
+    getPeopleTrainingStatusLabel(item.status),
+    getPeopleTrainingCertificateMetaText(item, certificateDocument),
+  ].filter(Boolean).join(" · ");
   const code = document.createElement("strong");
-  code.textContent = item.shortLabel || item.serviceCode || item.label || item.type || "?";
-  const label = document.createElement("span");
-  label.textContent = item.label || item.serviceName || "Osposobljavanje";
-  const meta = document.createElement("small");
-  meta.textContent = getPeopleTrainingCertificateMetaText(item, certificateDocument);
-  button.append(code, label, meta);
+  code.textContent = item.serviceCode || item.shortLabel || "?";
+  button.append(code);
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
