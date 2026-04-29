@@ -7548,14 +7548,14 @@ function syncPeopleTrainingPersonalSummary() {
   const companyLabel = getSelectedOptionLabel(peopleTrainingCompanyInput, "");
   const locationLabel = getSelectedOptionLabel(peopleTrainingLocationInput, "");
   const parts = [
-    fullName || "Nova osoba",
+    fullName,
     peopleTrainingOibInput?.value ? `OIB ${peopleTrainingOibInput.value.trim()}` : "",
     peopleTrainingJobTitleInput?.value?.trim() || "",
     companyLabel,
     locationLabel && !/nije vezano/i.test(locationLabel) ? locationLabel : "",
   ].filter(Boolean);
 
-  peopleTrainingPersonSummary.textContent = parts.join(" · ") || "Tvrtka, lokacija, OIB i radno mjesto.";
+  peopleTrainingPersonSummary.textContent = parts.join(" · ");
 }
 
 function renderPeopleTrainingStats() {
@@ -8249,24 +8249,35 @@ function getPeopleTrainingFormSectionStatusClass(items = []) {
   return "is-neutral";
 }
 
-function getPeopleTrainingFormSectionBrief(items = []) {
-  if (!items.length) {
-    return "Nema usluga iz List of services za ovaj blok.";
+function getPeopleTrainingFormItemBrief(item = {}) {
+  const dataParts = [
+    item.examMode === "online" ? "Online" : "",
+    item.examMode === "live" ? "Uživo" : "",
+    item.workOrderNumber ? `RN ${item.workOrderNumber}` : "",
+    item.learningTestTitle || "",
+    item.certificateNumber ? `Potvrda ${item.certificateNumber}` : "",
+    item.issuedOn || item.passedOn ? `Izdano ${formatCompactDate(item.issuedOn || item.passedOn)}` : "",
+    item.validForever ? "Bez isteka" : "",
+    item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+    item.provider || "",
+    item.certificateStatus === "ready" ? "uvjerenje spremno" : "",
+    item.certificateStatus === "issued" ? "uvjerenje izdano" : "",
+    item.note || "",
+  ].filter(Boolean);
+
+  if (!dataParts.length) {
+    return "";
   }
 
-  const counts = items.reduce((acc, item) => {
-    const status = item.status || "missing";
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
-  const parts = [
-    `${items.length} ${items.length === 1 ? "usluga" : "usluga"}`,
-    counts.valid ? `${counts.valid} vrijedi` : "",
-    counts.expiring ? `${counts.expiring} istječe` : "",
-    counts.expired ? `${counts.expired} isteklo` : "",
-    counts.missing ? `${counts.missing} bez podataka` : "",
-  ].filter(Boolean);
-  return parts.join(" · ");
+  const label = item.serviceCode || item.shortLabel || item.label || item.serviceName || "";
+  return [label ? `${label}:` : "", dataParts.join(" · ")].filter(Boolean).join(" ");
+}
+
+function getPeopleTrainingFormSectionBrief(items = []) {
+  return items
+    .map(getPeopleTrainingFormItemBrief)
+    .filter(Boolean)
+    .join("  |  ");
 }
 
 function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "", statusClass = "" } = {}) {
@@ -8277,15 +8288,18 @@ function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "
   titleWrap.className = "people-training-section-title";
   const numberNode = document.createElement("span");
   numberNode.textContent = number;
+  const copy = document.createElement("div");
+  copy.className = "people-training-section-copy";
   const titleNode = document.createElement("strong");
   titleNode.textContent = title;
-  titleWrap.append(numberNode, titleNode);
-
   const briefNode = document.createElement("span");
   briefNode.className = `people-training-section-brief ${statusClass}`.trim();
-  briefNode.textContent = brief || "-";
+  briefNode.textContent = brief || "";
+  briefNode.hidden = !brief;
 
-  summary.append(titleWrap, briefNode);
+  copy.append(titleNode, briefNode);
+  titleWrap.append(numberNode, copy);
+  summary.append(titleWrap);
   return summary;
 }
 
@@ -10709,6 +10723,27 @@ function createPeopleTrainingDocumentRow(documentItem = {}) {
   return row;
 }
 
+function getPeopleTrainingDocumentationBrief(record = {}) {
+  const attachments = Array.isArray(record.attachments) ? record.attachments : [];
+  if (!attachments.length) {
+    return "";
+  }
+
+  const names = attachments
+    .slice(0, 3)
+    .map((attachment) => [
+      attachment.documentCategory || "",
+      attachment.fileName || "",
+    ].filter(Boolean).join(": "))
+    .filter(Boolean);
+  const more = attachments.length > names.length ? `+${attachments.length - names.length}` : "";
+  return [
+    `${attachments.length} ${attachments.length === 1 ? "prilog" : "priloga"}`,
+    ...names,
+    more,
+  ].filter(Boolean).join(" · ");
+}
+
 function renderPeopleTrainingDossier(record = null) {
   if (!peopleTrainingDossier) {
     return;
@@ -10729,7 +10764,7 @@ function renderPeopleTrainingDossier(record = null) {
     peopleTrainingDossier.append(createPeopleTrainingSectionSummary({
       number: "07",
       title: "Dokumentacija",
-      brief: "Odaberi osobu iz liste za pregled priloga.",
+      brief: "",
       statusClass: "is-neutral",
     }));
     return;
@@ -10786,7 +10821,7 @@ function renderPeopleTrainingDossier(record = null) {
     createPeopleTrainingSectionSummary({
       number: "07",
       title: "Dokumentacija",
-      brief: `${(record.attachments ?? []).length} priloga · povuci PDF, sliku ili dokument u ovaj blok.`,
+      brief: getPeopleTrainingDocumentationBrief(record),
       statusClass: (record.attachments ?? []).length ? "is-valid" : "is-neutral",
     }),
     documents,
