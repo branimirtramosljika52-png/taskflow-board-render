@@ -7885,6 +7885,7 @@ function renderPeopleTrainingExamOverview() {
   }
   syncPeopleTrainingExamOverviewOptions();
   const selection = state.peopleTrainingExamSelection || "all";
+  peopleTrainingExamList.classList.toggle("is-rn-tracking", selection === "rn");
   if (selection === "rn") {
     const trackingRows = getPeopleTrainingExamTrackingRowsByWorkOrder();
     const activeRows = trackingRows.filter((row) => row.progress === "pending" || row.progress === "in_progress");

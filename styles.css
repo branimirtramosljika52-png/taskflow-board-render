@@ -37770,6 +37770,67 @@ button.work-order-editor-section-head {
   color: #166534 !important;
 }
 
+.people-training-exam-overview-card {
+  width: 100%;
+  padding: 16px 18px;
+}
+
+.people-training-exam-overview-card #people-training-exam-summary {
+  width: 100%;
+  max-width: none;
+}
+
+.people-training-exam-list.is-rn-tracking {
+  display: block;
+  width: 100%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table-wrap {
+  width: 100%;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table {
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(1),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(1) {
+  width: 12%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(2),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(2) {
+  width: 15%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(3),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(3) {
+  width: 17%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(4),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(4) {
+  width: 18%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(5),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(5) {
+  width: 25%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table th:nth-child(6),
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td:nth-child(6) {
+  width: 13%;
+}
+
+.people-training-exam-list.is-rn-tracking .people-training-rn-tracking-table td {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 780px) {
   .people-training-bulk-preview-backdrop {
     padding: 12px;
