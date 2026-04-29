@@ -8251,26 +8251,19 @@ function getPeopleTrainingFormSectionStatusClass(items = []) {
 
 function getPeopleTrainingFormItemBrief(item = {}) {
   const dataParts = [
-    item.examMode === "online" ? "Online" : "",
-    item.examMode === "live" ? "Uživo" : "",
-    item.workOrderNumber ? `RN ${item.workOrderNumber}` : "",
-    item.learningTestTitle || "",
-    item.certificateNumber ? `Potvrda ${item.certificateNumber}` : "",
-    item.issuedOn || item.passedOn ? `Izdano ${formatCompactDate(item.issuedOn || item.passedOn)}` : "",
-    item.validForever ? "Bez isteka" : "",
+    item.issuedOn ? `Izdano ${formatCompactDate(item.issuedOn)}` : "",
     item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
-    item.provider || "",
-    item.certificateStatus === "ready" ? "uvjerenje spremno" : "",
-    item.certificateStatus === "issued" ? "uvjerenje izdano" : "",
-    item.note || "",
+    item.certificateNumber ? `Broj potvrde ${item.certificateNumber}` : "",
+    item.provider ? `Ustanova ${item.provider}` : "",
+    item.note ? `Napomena ${item.note}` : "",
+    item.validForever ? "Bez isteka" : "",
   ].filter(Boolean);
 
   if (!dataParts.length) {
     return "";
   }
 
-  const label = item.serviceCode || item.shortLabel || item.label || item.serviceName || "";
-  return [label ? `${label}:` : "", dataParts.join(" · ")].filter(Boolean).join(" ");
+  return dataParts.join(" · ");
 }
 
 function getPeopleTrainingFormSectionBrief(items = []) {
