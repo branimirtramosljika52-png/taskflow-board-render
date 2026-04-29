@@ -1462,6 +1462,7 @@ const state = {
     status: "all",
   },
   peopleTrainingExamSelection: "all",
+  peopleTrainingSelectedRecordIds: new Set(),
   activePeopleTrainingRecordId: "",
   peopleTrainingEditorOpen: false,
   absenceReportMonth: new Date().toISOString().slice(0, 7),
@@ -3076,6 +3077,7 @@ const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
 const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
 const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
 const serviceCatalogTypeInput = document.querySelector("#service-catalog-type");
+const serviceCatalogAppliesToPeopleInput = document.querySelector("#service-catalog-applies-to-people");
 const serviceCatalogTemplateSection = document.querySelector("#service-catalog-template-section");
 const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
 const serviceCatalogCertificateTemplateSection = document.querySelector("#service-catalog-certificate-template-section");
@@ -4591,9 +4593,13 @@ const peopleTrainingDossier = document.querySelector("#people-training-dossier")
 const peopleTrainingSaveButton = document.querySelector("#people-training-save");
 const peopleTrainingResetButton = document.querySelector("#people-training-reset");
 const peopleTrainingDeleteButton = document.querySelector("#people-training-delete");
+const peopleTrainingSelectVisibleButton = document.querySelector("#people-training-select-visible-button");
+const peopleTrainingClearSelectionButton = document.querySelector("#people-training-clear-selection-button");
+const peopleTrainingBulkOpenButton = document.querySelector("#people-training-bulk-open-button");
 const peopleTrainingListCount = document.querySelector("#people-training-list-count");
 const peopleTrainingList = document.querySelector("#people-training-list");
 const peopleTrainingEmpty = document.querySelector("#people-training-empty");
+let closePeopleTrainingItemMenuHandler = null;
 
 const loginContentPanel = document.querySelector("#login-content-panel");
 const loginContentForm = document.querySelector("#login-content-form");
@@ -6738,6 +6744,14 @@ function applySnapshot(payload) {
   if (!state.peopleTrainingRecords.some((item) => String(item.id) === String(state.activePeopleTrainingRecordId))) {
     state.activePeopleTrainingRecordId = "";
   }
+  if (!(state.peopleTrainingSelectedRecordIds instanceof Set)) {
+    state.peopleTrainingSelectedRecordIds = new Set();
+  }
+  state.peopleTrainingSelectedRecordIds = new Set(
+    [...state.peopleTrainingSelectedRecordIds].filter((id) => (
+      state.peopleTrainingRecords.some((item) => String(item.id) === String(id))
+    )),
+  );
   if (!state.vehicles.some((item) => String(item.id) === String(state.activeVehicleId))) {
     state.activeVehicleId = "";
     state.activeVehicleReservationId = "";
@@ -7192,7 +7206,7 @@ function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
 
 function getPeopleTrainingServiceTypeOptions() {
   return sortServiceCatalogItems(state.serviceCatalog ?? [])
-    .filter((item) => normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr")
+    .filter((item) => Boolean(item.isTraining) || normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr")
     .map((item) => {
       const label = String(item.name || item.serviceCode || "Usluga osposobljavanja").trim();
       const serviceCode = String(item.serviceCode || "").trim();
@@ -8200,21 +8214,132 @@ async function openPeopleTrainingCertificate(record = {}, item = {}) {
   openPeopleTrainingRecordEditor(record, { focusTarget: "dossier" });
 }
 
+function closePeopleTrainingItemMenu() {
+  if (typeof closePeopleTrainingItemMenuHandler === "function") {
+    closePeopleTrainingItemMenuHandler();
+    closePeopleTrainingItemMenuHandler = null;
+  }
+}
+
+function positionPeopleTrainingItemMenu(menu, anchor) {
+  if (!(menu instanceof HTMLElement) || !(anchor instanceof HTMLElement)) {
+    return;
+  }
+
+  const margin = 10;
+  const anchorRect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(
+    Math.max(anchorRect.left, margin),
+    Math.max(margin, window.innerWidth - menuRect.width - margin),
+  );
+  let top = anchorRect.bottom + 8;
+  if (top + menuRect.height > window.innerHeight - margin) {
+    top = Math.max(margin, anchorRect.top - menuRect.height - 8);
+  }
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function createPeopleTrainingMenuButton(label, iconName, onClick, { disabled = false } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("role", "menuitem");
+  button.disabled = disabled;
+  const icon = document.createElement("span");
+  icon.className = "people-training-item-menu-icon";
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+  const text = document.createElement("span");
+  text.textContent = label;
+  button.append(icon, text);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closePeopleTrainingItemMenu();
+    if (!disabled) {
+      onClick?.();
+    }
+  });
+  return button;
+}
+
+function openPeopleTrainingItemMenu(record = {}, item = {}, anchor = null) {
+  if (!(anchor instanceof HTMLElement)) {
+    return;
+  }
+
+  closePeopleTrainingItemMenu();
+
+  const certificateDocument = getPeopleTrainingCertificateDocument(record, item);
+  const menu = document.createElement("div");
+  menu.className = "people-training-item-menu";
+  menu.setAttribute("role", "menu");
+  menu.dataset.preventRowOpen = "true";
+
+  const header = document.createElement("div");
+  header.className = "people-training-item-menu-head";
+  const code = document.createElement("strong");
+  code.textContent = item.shortLabel || item.serviceCode || item.label || "Usluga";
+  const label = document.createElement("span");
+  label.textContent = [
+    item.label || item.serviceName || "Osposobljavanje",
+    getPeopleTrainingStatusLabel(item.status),
+  ].filter(Boolean).join(" · ");
+  header.append(code, label);
+
+  menu.append(
+    header,
+    createPeopleTrainingMenuButton("Otvori PDF potvrdu", "download", () => {
+      void openPeopleTrainingCertificate(record, item);
+    }, {
+      disabled: !certificateDocument && !isPeopleTrainingItemPassed(item),
+    }),
+    createPeopleTrainingMenuButton("Otvori osposobljavanje za tu uslugu", "service", () => {
+      void openPeopleTrainingForService(record, item);
+    }),
+  );
+
+  document.body.append(menu);
+  positionPeopleTrainingItemMenu(menu, anchor);
+
+  const handleOutsidePointer = (event) => {
+    if (menu.contains(event.target) || anchor.contains(event.target)) {
+      return;
+    }
+    closePeopleTrainingItemMenu();
+  };
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") {
+      closePeopleTrainingItemMenu();
+    }
+  };
+  const handleReposition = () => positionPeopleTrainingItemMenu(menu, anchor);
+
+  document.addEventListener("pointerdown", handleOutsidePointer, true);
+  document.addEventListener("keydown", handleKeydown, true);
+  window.addEventListener("resize", handleReposition);
+  window.addEventListener("scroll", handleReposition, true);
+
+  closePeopleTrainingItemMenuHandler = () => {
+    document.removeEventListener("pointerdown", handleOutsidePointer, true);
+    document.removeEventListener("keydown", handleKeydown, true);
+    window.removeEventListener("resize", handleReposition);
+    window.removeEventListener("scroll", handleReposition, true);
+    menu.remove();
+  };
+}
+
 function createPeopleTrainingCertificatePill(record = {}, item = {}) {
   const certificateDocument = getPeopleTrainingCertificateDocument(record, item);
   const button = document.createElement("button");
   button.type = "button";
   button.className = `people-training-certificate-pill ${getPeopleTrainingStatusClass(item.status)}${certificateDocument ? " has-pdf" : ""}`;
   button.title = certificateDocument
-    ? `Otvori PDF uvjerenje: ${item.label || item.shortLabel || "osposobljavanje"}`
-    : `Otvori dosje ili generiraj PDF za: ${item.label || item.shortLabel || "osposobljavanje"}`;
-  const marker = item.status === "valid" || item.status === "not_required"
-    ? "✓"
-    : item.status === "expiring"
-      ? "!"
-      : "×";
+    ? `Opcije za ${item.label || item.shortLabel || "osposobljavanje"} - PDF je spreman`
+    : `Opcije za ${item.label || item.shortLabel || "osposobljavanje"}`;
   const code = document.createElement("strong");
-  code.textContent = `${marker} ${item.shortLabel || item.serviceCode || item.label || item.type || "?"}`;
+  code.textContent = item.shortLabel || item.serviceCode || item.label || item.type || "?";
   const label = document.createElement("span");
   label.textContent = item.label || item.serviceName || "Osposobljavanje";
   const meta = document.createElement("small");
@@ -8223,7 +8348,7 @@ function createPeopleTrainingCertificatePill(record = {}, item = {}) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void openPeopleTrainingCertificate(record, item);
+    openPeopleTrainingItemMenu(record, item, button);
   });
   return button;
 }
@@ -8253,6 +8378,227 @@ function getPeopleTrainingItemSourceText(item = {}) {
     parts.push("uvjerenje izdano");
   }
   return parts.join(" · ");
+}
+
+function getPeopleTrainingSelectedTypeOption() {
+  const selectedType = String(state.peopleTrainingFilters.trainingType || peopleTrainingTypeFilterInput?.value || "all")
+    .trim()
+    .toLowerCase();
+  if (!selectedType || selectedType === "all") {
+    return null;
+  }
+
+  return getPeopleTrainingTypeOptions()
+    .find((option) => String(option.value || "").trim().toLowerCase() === selectedType) ?? null;
+}
+
+function buildPeopleTrainingWorkOrderServiceItem(typeOption = {}, sourceItem = {}) {
+  const serviceCatalogItem = typeOption.serviceId
+    ? state.serviceCatalog.find((entry) => String(entry.id) === String(typeOption.serviceId))
+    : null;
+
+  return buildWorkOrderServiceItemSnapshot(serviceCatalogItem ?? {
+    id: typeOption.serviceId || sourceItem.serviceId || "",
+    name: typeOption.serviceName || typeOption.label || sourceItem.serviceName || sourceItem.label || "Osposobljavanje",
+    serviceCode: typeOption.serviceCode || sourceItem.serviceCode || typeOption.shortLabel || sourceItem.shortLabel || "",
+    serviceType: "znr",
+    linkedTemplateIds: typeOption.linkedTemplateIds || sourceItem.linkedTemplateIds || [],
+    linkedTemplateTitles: typeOption.linkedTemplateTitles || sourceItem.linkedTemplateTitles || [],
+    linkedLearningTestIds: typeOption.linkedLearningTestIds || sourceItem.linkedLearningTestIds || [],
+    linkedLearningTestTitles: typeOption.linkedLearningTestTitles || sourceItem.linkedLearningTestTitles || [],
+    isTraining: true,
+  });
+}
+
+function getPeopleTrainingRecordWorkOrderLocationId(record = {}) {
+  const locationId = String(record.locationId || "").trim();
+  if (!locationId) {
+    return "";
+  }
+  const location = getPeopleTrainingLocation(locationId);
+  return location && String(location.companyId) === String(record.companyId) ? String(location.id) : "";
+}
+
+function groupPeopleTrainingRecordsForWorkOrders(records = []) {
+  const groups = new Map();
+
+  records.forEach((record) => {
+    const companyId = String(record.companyId || "").trim();
+    if (!companyId) {
+      return;
+    }
+    const locationId = getPeopleTrainingRecordWorkOrderLocationId(record);
+    const key = `${companyId}::${locationId}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        companyId,
+        locationId,
+        records: [],
+      });
+    }
+    groups.get(key).records.push(record);
+  });
+
+  return [...groups.values()];
+}
+
+function buildPeopleTrainingWorkOrderPayload(group = {}, typeOption = {}) {
+  const records = Array.isArray(group.records) ? group.records : [];
+  const firstItem = records
+    .map((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
+      .find((item) => item.type === typeOption.value))
+    .find(Boolean) ?? {};
+  const serviceItem = buildPeopleTrainingWorkOrderServiceItem(typeOption, firstItem);
+  const location = group.locationId ? getPeopleTrainingLocation(group.locationId) : null;
+  const peopleLines = records
+    .map((record) => `- ${record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ") || "Osoba"}${record.oib ? `, OIB ${record.oib}` : ""}`)
+    .join("\n");
+
+  return {
+    organizationId: state.activeOrganizationId,
+    status: WORK_ORDER_STATUS_OPTIONS[0]?.value || "Otvoreni RN",
+    priority: PRIORITY_OPTIONS[0]?.value || "Normal",
+    openedDate: getTodayDateKey(),
+    dueDate: getTodayDateKey(),
+    teamLabel: "Osposobljavanje ljudi",
+    companyId: group.companyId || "",
+    locationId: group.locationId || "",
+    coordinates: location?.coordinates || "",
+    region: location?.region || "",
+    contactSlot: "",
+    contactName: "",
+    contactPhone: "",
+    contactEmail: "",
+    executors: [],
+    executor1: "",
+    executor2: "",
+    measurementSheet: null,
+    serviceItems: serviceItem ? [serviceItem] : [],
+    trainingContext: {
+      name: "",
+      role: "",
+      phone: "",
+      email: "",
+    },
+    serviceLine: serviceItem?.name || typeOption.label || "Osposobljavanje ljudi",
+    department: "",
+    linkReference: "",
+    weight: "",
+    completedBy: "",
+    invoiceDate: "",
+    tagText: "Osposobljavanje",
+    description: [
+      `Masovno osposobljavanje: ${typeOption.label || typeOption.shortLabel || "usluga"}`,
+      peopleLines,
+    ].filter(Boolean).join("\n"),
+    invoiceNote: "",
+  };
+}
+
+async function linkPeopleTrainingRecordsToWorkOrder(records = [], typeOption = {}, workOrder = {}) {
+  if (!workOrder?.id || !typeOption?.value) {
+    return false;
+  }
+
+  for (const record of records) {
+    const currentRecord = state.peopleTrainingRecords.find((entry) => String(entry.id) === String(record.id)) ?? record;
+    const nextItems = normalizePeopleTrainingItemsForUi(currentRecord.trainingItems).map((item) => {
+      if (item.type !== typeOption.value) {
+        return item;
+      }
+      return {
+        ...item,
+        label: typeOption.label || item.label || "",
+        shortLabel: typeOption.shortLabel || item.shortLabel || "",
+        serviceId: typeOption.serviceId || item.serviceId || "",
+        serviceName: typeOption.serviceName || item.serviceName || "",
+        serviceCode: typeOption.serviceCode || item.serviceCode || "",
+        linkedTemplateIds: typeOption.linkedTemplateIds || item.linkedTemplateIds || [],
+        linkedTemplateTitles: typeOption.linkedTemplateTitles || item.linkedTemplateTitles || [],
+        linkedLearningTestIds: typeOption.linkedLearningTestIds || item.linkedLearningTestIds || [],
+        linkedLearningTestTitles: typeOption.linkedLearningTestTitles || item.linkedLearningTestTitles || [],
+        examMode: "live",
+        workOrderId: String(workOrder.id || ""),
+        workOrderNumber: String(workOrder.workOrderNumber || ""),
+        status: "",
+      };
+    });
+
+    const success = await runMutation(() => apiRequest(`/people-training-records/${encodeURIComponent(currentRecord.id)}`, {
+      method: "PATCH",
+      body: { trainingItems: nextItems },
+    }), peopleTrainingFormFeedback);
+
+    if (!success) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function createPeopleTrainingWorkOrdersForRecords(records = [], typeOption = {}) {
+  if (!getCanEditOperationalData()) {
+    setPeopleTrainingFeedback("Nemaš pravo otvarati radne naloge.", "error");
+    return [];
+  }
+
+  const groups = groupPeopleTrainingRecordsForWorkOrders(records);
+  if (groups.length === 0) {
+    setPeopleTrainingFeedback("Za odabrane osobe nedostaje tvrtka pa ne mogu otvoriti RN.", "error");
+    return [];
+  }
+
+  const createdWorkOrders = [];
+  for (const group of groups) {
+    const payload = buildPeopleTrainingWorkOrderPayload(group, typeOption);
+    const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+    const success = await runMutation(() => apiRequest("/work-orders", {
+      method: "POST",
+      body: payload,
+    }), peopleTrainingFormFeedback);
+
+    if (!success) {
+      return createdWorkOrders;
+    }
+
+    const created = findCreatedWorkOrderMatch(previousIds, payload);
+    if (created) {
+      createdWorkOrders.push(created);
+      const linked = await linkPeopleTrainingRecordsToWorkOrder(group.records, typeOption, created);
+      if (!linked) {
+        return createdWorkOrders;
+      }
+      queueGeneratedWorkOrderPdfSave(created.id);
+    }
+  }
+
+  return createdWorkOrders;
+}
+
+async function openPeopleTrainingForService(record = {}, item = {}) {
+  if (!record?.id) {
+    return;
+  }
+
+  const existingWorkOrder = item.workOrderId
+    ? state.workOrders.find((workOrder) => String(workOrder.id) === String(item.workOrderId))
+    : null;
+
+  if (existingWorkOrder) {
+    hydrateWorkOrderForm(existingWorkOrder);
+    setPeopleTrainingFeedback(`Otvoren je RN ${existingWorkOrder.workOrderNumber || ""} za ovu uslugu.`.trim(), "success");
+    return;
+  }
+
+  const typeOption = getPeopleTrainingTypeOption(item.type, record.trainingItems);
+  const created = await createPeopleTrainingWorkOrdersForRecords([record], typeOption);
+  renderPeopleTrainingModule();
+
+  if (created[0]) {
+    hydrateWorkOrderForm(created[0]);
+    setPeopleTrainingFeedback(`Otvoren je RN ${created[0].workOrderNumber || ""} za ${typeOption.label || "osposobljavanje"}.`.trim(), "success");
+  }
 }
 
 function buildPeopleTrainingWorkOrderOptions(record = {}) {
@@ -8528,6 +8874,177 @@ function bindPeopleTrainingListDocumentDrop() {
   }, true);
 }
 
+function getPeopleTrainingSelectedRecordIds() {
+  if (!(state.peopleTrainingSelectedRecordIds instanceof Set)) {
+    state.peopleTrainingSelectedRecordIds = new Set();
+  }
+  return state.peopleTrainingSelectedRecordIds;
+}
+
+function isPeopleTrainingRecordSelected(recordId = "") {
+  return getPeopleTrainingSelectedRecordIds().has(String(recordId || ""));
+}
+
+function getSelectedPeopleTrainingRecords() {
+  const selectedIds = getPeopleTrainingSelectedRecordIds();
+  return sortPersonTrainingRecords(
+    (state.peopleTrainingRecords ?? []).filter((record) => selectedIds.has(String(record.id))),
+  );
+}
+
+function setPeopleTrainingRecordSelection(recordId = "", selected = false) {
+  const normalizedId = String(recordId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+  const selectedIds = getPeopleTrainingSelectedRecordIds();
+  if (selected) {
+    selectedIds.add(normalizedId);
+  } else {
+    selectedIds.delete(normalizedId);
+  }
+  syncPeopleTrainingBulkActions(getPeopleTrainingFilteredRecords());
+}
+
+function clearPeopleTrainingSelection() {
+  getPeopleTrainingSelectedRecordIds().clear();
+  renderPeopleTrainingList();
+}
+
+function selectVisiblePeopleTrainingRecords(records = getPeopleTrainingFilteredRecords()) {
+  const selectedIds = getPeopleTrainingSelectedRecordIds();
+  records.forEach((record) => {
+    if (record?.id) {
+      selectedIds.add(String(record.id));
+    }
+  });
+  renderPeopleTrainingList();
+}
+
+function syncPeopleTrainingBulkActions(records = getPeopleTrainingFilteredRecords()) {
+  const selectedCount = getSelectedPeopleTrainingRecords().length;
+  const selectedTypeOption = getPeopleTrainingSelectedTypeOption();
+  const canOpen = getCanEditOperationalData() && selectedCount > 0 && Boolean(selectedTypeOption);
+
+  if (peopleTrainingBulkOpenButton) {
+    peopleTrainingBulkOpenButton.disabled = !canOpen;
+    peopleTrainingBulkOpenButton.textContent = selectedCount > 0
+      ? `Masovno osposobljavanje (${selectedCount})`
+      : "Masovno osposobljavanje";
+    peopleTrainingBulkOpenButton.title = selectedCount > 0 && !selectedTypeOption
+      ? "Prvo odaberi vrstu usluge u filteru Vrsta."
+      : "Otvori RN po svakoj tvrtki i lokaciji za odabrane osobe.";
+  }
+
+  if (peopleTrainingClearSelectionButton) {
+    peopleTrainingClearSelectionButton.hidden = selectedCount === 0;
+  }
+
+  if (peopleTrainingSelectVisibleButton) {
+    peopleTrainingSelectVisibleButton.disabled = !getCanEditOperationalData() || records.length === 0;
+    peopleTrainingSelectVisibleButton.textContent = records.length > 0
+      ? `Odaberi prikazane (${records.length})`
+      : "Odaberi prikazane";
+  }
+}
+
+async function openBulkPeopleTrainingWorkOrders() {
+  const records = getSelectedPeopleTrainingRecords();
+  const typeOption = getPeopleTrainingSelectedTypeOption();
+
+  if (records.length === 0) {
+    setPeopleTrainingFeedback("Odaberi barem jednu osobu za masovno osposobljavanje.", "error");
+    return;
+  }
+  if (!typeOption) {
+    setPeopleTrainingFeedback("Odaberi vrstu usluge u filteru Vrsta prije masovnog otvaranja.", "error");
+    return;
+  }
+
+  if (peopleTrainingBulkOpenButton) {
+    peopleTrainingBulkOpenButton.disabled = true;
+  }
+
+  const created = await createPeopleTrainingWorkOrdersForRecords(records, typeOption);
+  if (created.length > 0) {
+    clearPeopleTrainingSelection();
+    renderPeopleTrainingModule();
+    setPeopleTrainingFeedback(
+      `Otvoreno je ${created.length} RN za ${records.length} osoba, po tvrtki i lokaciji.`,
+      "success",
+    );
+    hydrateWorkOrderForm(created[0]);
+  } else {
+    syncPeopleTrainingBulkActions(getPeopleTrainingFilteredRecords());
+  }
+}
+
+function getPeopleTrainingAttachmentShortLabel(attachment = {}) {
+  const fileName = String(attachment.fileName || "").trim().toLowerCase();
+  const fileType = String(attachment.fileType || "").trim().toLowerCase();
+  if (fileType.includes("pdf") || fileName.endsWith(".pdf")) {
+    return "PDF";
+  }
+  if (fileType.includes("word") || fileName.endsWith(".doc") || fileName.endsWith(".docx")) {
+    return "DOC";
+  }
+  if (fileType.includes("sheet") || fileName.endsWith(".xls") || fileName.endsWith(".xlsx") || fileName.endsWith(".csv")) {
+    return "XLS";
+  }
+  if (fileType.includes("image") || /\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
+    return "IMG";
+  }
+  return "DOK";
+}
+
+function createPeopleTrainingAttachmentQuickActions(record = {}) {
+  const attachments = Array.isArray(record.attachments)
+    ? record.attachments.filter((attachment) => String(attachment.storageUrl || attachment.dataUrl || "").trim())
+    : [];
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "people-training-attachment-actions";
+  actions.dataset.preventRowOpen = "true";
+
+  attachments.slice(0, 3).forEach((attachment) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "people-training-attachment-button";
+    button.title = `Preuzmi ${attachment.fileName || "prilog"}`;
+    button.setAttribute("aria-label", button.title);
+    const icon = document.createElement("span");
+    icon.innerHTML = getWorkOrderIconMarkup("download");
+    const label = document.createElement("strong");
+    label.textContent = getPeopleTrainingAttachmentShortLabel(attachment);
+    button.append(icon, label);
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerModuleAttachmentDownload(attachment);
+    });
+    actions.append(button);
+  });
+
+  if (attachments.length > 3) {
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "people-training-attachment-button is-more";
+    moreButton.textContent = `+${attachments.length - 3}`;
+    moreButton.title = "Otvori sve priloge u dosjeu osobe";
+    moreButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPeopleTrainingRecordEditor(record, { focusTarget: "dossier" });
+    });
+    actions.append(moreButton);
+  }
+
+  return actions;
+}
+
 function createPeopleTrainingRecordCard(record = {}) {
   const card = document.createElement("article");
   card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
@@ -8536,6 +9053,24 @@ function createPeopleTrainingRecordCard(record = {}) {
 
   const top = document.createElement("div");
   top.className = "people-training-person-top";
+
+  const selection = document.createElement("label");
+  selection.className = "people-training-row-select";
+  selection.dataset.preventRowOpen = "true";
+  selection.title = "Odaberi za masovno osposobljavanje";
+  const selectionInput = document.createElement("input");
+  selectionInput.type = "checkbox";
+  selectionInput.checked = isPeopleTrainingRecordSelected(record.id);
+  selectionInput.setAttribute("aria-label", `Odaberi ${record.fullName || "osobu"}`);
+  const selectionVisual = document.createElement("span");
+  selectionVisual.setAttribute("aria-hidden", "true");
+  selection.append(selectionInput, selectionVisual);
+  selection.addEventListener("click", (event) => event.stopPropagation());
+  selectionInput.addEventListener("change", (event) => {
+    event.stopPropagation();
+    setPeopleTrainingRecordSelection(record.id, selectionInput.checked);
+    card.classList.toggle("is-selected", selectionInput.checked);
+  });
 
   const main = document.createElement("div");
   main.className = "people-training-person-main";
@@ -8570,12 +9105,17 @@ function createPeopleTrainingRecordCard(record = {}) {
   attachmentPill.className = "soft-pill";
   attachmentPill.textContent = `${(record.attachments ?? []).length} priloga`;
   overview.append(overallPill, attachmentPill);
-  top.append(identity, overview);
+  const attachmentActions = createPeopleTrainingAttachmentQuickActions(record);
+  if (attachmentActions) {
+    overview.append(attachmentActions);
+  }
+  top.append(selection, identity, overview);
 
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
   const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
   statuses.replaceChildren(...trainingItems.map((item) => createPeopleTrainingCertificatePill(record, item)));
+  card.classList.toggle("is-selected", isPeopleTrainingRecordSelected(record.id));
 
   const footer = document.createElement("div");
   footer.className = "people-training-person-footer";
@@ -8651,6 +9191,7 @@ function renderPeopleTrainingList() {
   }
 
   peopleTrainingList.replaceChildren(...records.map(createPeopleTrainingRecordCard));
+  syncPeopleTrainingBulkActions(records);
 }
 
 function renderPeopleTrainingModule() {
@@ -8658,6 +9199,7 @@ function renderPeopleTrainingModule() {
     return;
   }
 
+  closePeopleTrainingItemMenu();
   if (peopleTrainingSearchInput && peopleTrainingSearchInput.value !== state.peopleTrainingFilters.query) {
     peopleTrainingSearchInput.value = state.peopleTrainingFilters.query || "";
   }
@@ -41456,17 +41998,19 @@ function renderLegalFrameworkModule() {
 }
 
 function buildServiceCatalogPayload() {
-  const serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
+  const selectedType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
+  const appliesToPeople = Boolean(serviceCatalogAppliesToPeopleInput?.checked || selectedType === "znr");
+  const serviceType = appliesToPeople ? "znr" : selectedType;
   return {
     organizationId: state.activeOrganizationId,
     name: serviceCatalogNameInput?.value || "",
     serviceCode: serviceCatalogCodeInput?.value || "",
     status: serviceCatalogStatusInput?.value || "active",
     serviceType,
-    isTraining: serviceType === "znr",
+    isTraining: appliesToPeople,
     linkedTemplateIds: serviceType === "inspection" ? getServiceCatalogTemplateSelectionIds() : [],
-    linkedLearningTestIds: serviceType === "znr" ? getServiceCatalogLearningTestSelectionIds() : [],
-    trainingCertificateTemplate: serviceType === "znr" && serviceCatalogCertificateTemplateDraft
+    linkedLearningTestIds: appliesToPeople ? getServiceCatalogLearningTestSelectionIds() : [],
+    trainingCertificateTemplate: appliesToPeople && serviceCatalogCertificateTemplateDraft
       ? serializeModuleAttachmentDraft(serviceCatalogCertificateTemplateDraft)
       : null,
     note: serviceCatalogNoteInput?.value || "",
@@ -41684,16 +42228,33 @@ async function setServiceCatalogCertificateTemplateFile(file) {
   renderServiceCatalogCertificateTemplateMeta();
 }
 
-function syncServiceCatalogTrainingSections() {
-  const serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
+function syncServiceCatalogTrainingSections({ source = "" } = {}) {
+  let serviceType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
+
+  if (serviceCatalogAppliesToPeopleInput instanceof HTMLInputElement) {
+    if (source === "checkbox") {
+      if (serviceCatalogAppliesToPeopleInput.checked) {
+        serviceType = "znr";
+      } else if (serviceType === "znr") {
+        serviceType = "inspection";
+      }
+      if (serviceCatalogTypeInput instanceof HTMLSelectElement) {
+        serviceCatalogTypeInput.value = serviceType;
+      }
+    } else {
+      serviceCatalogAppliesToPeopleInput.checked = serviceType === "znr";
+    }
+  }
+
+  const isPeopleService = serviceType === "znr";
   if (serviceCatalogTemplateSection) {
-    serviceCatalogTemplateSection.hidden = serviceType !== "inspection";
+    serviceCatalogTemplateSection.hidden = isPeopleService || serviceType !== "inspection";
   }
   if (serviceCatalogLearningTestSection) {
-    serviceCatalogLearningTestSection.hidden = serviceType !== "znr";
+    serviceCatalogLearningTestSection.hidden = !isPeopleService;
   }
   if (serviceCatalogCertificateTemplateSection) {
-    serviceCatalogCertificateTemplateSection.hidden = serviceType !== "znr";
+    serviceCatalogCertificateTemplateSection.hidden = !isPeopleService;
   }
   renderServiceCatalogCertificateTemplateMeta();
   renderServiceCatalogCertificatePlaceholderList();
@@ -41714,6 +42275,9 @@ function resetServiceCatalogForm() {
   }
   if (serviceCatalogTypeInput) {
     serviceCatalogTypeInput.value = "inspection";
+  }
+  if (serviceCatalogAppliesToPeopleInput) {
+    serviceCatalogAppliesToPeopleInput.checked = false;
   }
   if (serviceCatalogError) {
     serviceCatalogError.textContent = "";
@@ -41749,8 +42313,14 @@ function hydrateServiceCatalogForm(item) {
   if (serviceCatalogStatusInput) {
     serviceCatalogStatusInput.value = item.status || "active";
   }
+  const hydratedServiceType = item.isTraining
+    ? "znr"
+    : normalizeServiceCatalogTypeUi(item.serviceType, "inspection");
   if (serviceCatalogTypeInput) {
-    serviceCatalogTypeInput.value = normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection");
+    serviceCatalogTypeInput.value = hydratedServiceType;
+  }
+  if (serviceCatalogAppliesToPeopleInput) {
+    serviceCatalogAppliesToPeopleInput.checked = hydratedServiceType === "znr";
   }
   if (serviceCatalogNoteInput) {
     serviceCatalogNoteInput.value = item.note || "";
@@ -76841,6 +77411,10 @@ serviceCatalogTypeInput?.addEventListener("change", () => {
   syncServiceCatalogTrainingSections();
 });
 
+serviceCatalogAppliesToPeopleInput?.addEventListener("change", () => {
+  syncServiceCatalogTrainingSections({ source: "checkbox" });
+});
+
 serviceCatalogCertificateTemplateUploadButton?.addEventListener("click", () => {
   serviceCatalogCertificateTemplateInput?.click();
 });
@@ -78848,6 +79422,7 @@ function resetAuthenticatedWorkspaceState() {
   state.documentTemplates = [];
   state.dashboardWidgets = [];
   state.peopleTrainingRecords = [];
+  state.peopleTrainingSelectedRecordIds = new Set();
   state.activePeopleTrainingRecordId = "";
   state.companies = [];
   state.locations = [];
@@ -79026,6 +79601,18 @@ peopleTrainingOpenTemplateButton?.addEventListener("click", () => {
   syncServiceCatalogTrainingSections();
   openServiceCatalogEditor();
   serviceCatalogNameInput?.focus({ preventScroll: true });
+});
+
+peopleTrainingSelectVisibleButton?.addEventListener("click", () => {
+  selectVisiblePeopleTrainingRecords();
+});
+
+peopleTrainingClearSelectionButton?.addEventListener("click", () => {
+  clearPeopleTrainingSelection();
+});
+
+peopleTrainingBulkOpenButton?.addEventListener("click", () => {
+  void openBulkPeopleTrainingWorkOrders();
 });
 
 peopleTrainingEditorCloseButton?.addEventListener("click", () => {

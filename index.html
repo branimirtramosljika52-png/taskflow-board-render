@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429e" />
+    <link rel="stylesheet" href="/styles.css?v=20260429f" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3831,7 +3831,12 @@
                     <p class="section-kicker">Pregled</p>
                     <h4 id="people-training-list-title">Evidencija po osobama</h4>
                   </div>
-                  <span id="people-training-list-count" class="soft-pill">0 zapisa</span>
+                  <div class="people-training-list-head-actions">
+                    <button id="people-training-select-visible-button" type="button" class="ghost-button">Odaberi prikazane</button>
+                    <button id="people-training-clear-selection-button" type="button" class="ghost-button" hidden>Očisti odabir</button>
+                    <button id="people-training-bulk-open-button" type="button" class="primary-button" disabled>Masovno osposobljavanje</button>
+                    <span id="people-training-list-count" class="soft-pill">0 zapisa</span>
+                  </div>
                 </div>
                 <div id="people-training-list" class="people-training-list"></div>
                 <p id="people-training-empty" class="empty-state" hidden>Nema evidentiranih osposobljavanja za odabrane filtere.</p>
@@ -6146,6 +6151,13 @@
                         <span>Vrsta usluge</span>
                         <select id="service-catalog-type"></select>
                       </label>
+                      <label class="field field-span-full service-catalog-people-check">
+                        <input id="service-catalog-applies-to-people" type="checkbox" />
+                        <span>
+                          <strong>Usluga se odnosi na ljude</strong>
+                          <small>Prikazuje šifru usluge u Evidenciji po osobama i uključuje ZNR predloške.</small>
+                        </span>
+                      </label>
                     </div>
 
                     <section id="service-catalog-template-section" class="service-catalog-template-block">
@@ -7295,6 +7307,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429d"></script>
+    <script type="module" src="/src/main.js?v=20260429f"></script>
   </body>
 </html>
