@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429z" />
+    <link rel="stylesheet" href="/styles.css?v=20260429aa" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -2337,6 +2337,46 @@
                   </div>
 
                   <button id="measurement-format-border-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Obrub ćelije" aria-label="Obrub ćelije">[]</button>
+                  <div class="measurement-toolbar-conditional">
+                    <button id="measurement-conditional-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Uvjetno oblikovanje" aria-label="Uvjetno oblikovanje">CF</button>
+                    <div id="measurement-conditional-popover" class="measurement-conditional-popover" hidden>
+                      <label class="measurement-validation-checkbox measurement-conditional-full">
+                        <input id="measurement-conditional-filled" type="checkbox" />
+                        <span>Primijeni kada je ćelija popunjena</span>
+                      </label>
+
+                      <label class="measurement-toolbar-format is-compact">
+                        <span class="measurement-toolbar-label">Boja</span>
+                        <input id="measurement-conditional-fill-color" type="color" value="#d9ead3" aria-label="Boja popunjene ćelije" />
+                      </label>
+
+                      <label class="measurement-toolbar-format is-compact">
+                        <span class="measurement-toolbar-label">Obrub</span>
+                        <select id="measurement-conditional-border" aria-label="Obrub popunjene ćelije">
+                          <option value="none">Bez obruba</option>
+                          <option value="all">Svi obrubi</option>
+                          <option value="outline">Vanjski obrub</option>
+                          <option value="top">Gornji</option>
+                          <option value="bottom">Donji</option>
+                          <option value="left">Lijevi</option>
+                          <option value="right">Desni</option>
+                          <option value="custom" disabled>Custom</option>
+                        </select>
+                      </label>
+
+                      <label class="measurement-validation-checkbox">
+                        <input id="measurement-conditional-bold" type="checkbox" />
+                        <span>Bold</span>
+                      </label>
+
+                      <label class="measurement-validation-checkbox">
+                        <input id="measurement-conditional-italic" type="checkbox" />
+                        <span>Italic</span>
+                      </label>
+
+                      <button id="measurement-conditional-clear" type="button" class="ghost-button measurement-conditional-clear">Očisti uvjet</button>
+                    </div>
+                  </div>
                   <button id="measurement-merge" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji cijeli odabir" aria-label="Spoji cijeli odabir">[+]</button>
                   <button id="measurement-merge-rows" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji vodoravno po svakom retku" aria-label="Spoji vodoravno po svakom retku">↔</button>
                   <button id="measurement-merge-columns" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji okomito po svakoj koloni" aria-label="Spoji okomito po svakoj koloni">↕</button>
@@ -7333,6 +7373,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429z"></script>
+    <script type="module" src="/src/main.js?v=20260429aa"></script>
   </body>
 </html>

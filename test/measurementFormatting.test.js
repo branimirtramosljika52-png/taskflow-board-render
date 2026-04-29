@@ -27,6 +27,19 @@ test("measurement formatting normalizes cell format settings", () => {
       bottom: false,
       left: false,
     },
+    conditional: {
+      filled: false,
+      fillColor: "",
+      border: {
+        top: false,
+        right: false,
+        bottom: false,
+        left: false,
+      },
+      bold: false,
+      italic: false,
+      underline: false,
+    },
   });
 
   assert.deepEqual(normalizeMeasurementCellFormat({
@@ -57,6 +70,19 @@ test("measurement formatting normalizes cell format settings", () => {
       bottom: true,
       left: true,
     },
+    conditional: {
+      filled: false,
+      fillColor: "",
+      border: {
+        top: false,
+        right: false,
+        bottom: false,
+        left: false,
+      },
+      bold: false,
+      italic: false,
+      underline: false,
+    },
   });
 
   assert.deepEqual(normalizeMeasurementCellFormat({
@@ -65,6 +91,13 @@ test("measurement formatting normalizes cell format settings", () => {
     fontFamily: "unknown",
     fontSize: 99,
     fillColor: "red",
+    conditional: {
+      filled: true,
+      fillColor: "#D9EAD3",
+      border: "all",
+      bold: true,
+      italic: true,
+    },
   }), {
     type: "general",
     decimals: 0,
@@ -81,6 +114,19 @@ test("measurement formatting normalizes cell format settings", () => {
       right: false,
       bottom: false,
       left: false,
+    },
+    conditional: {
+      filled: true,
+      fillColor: "#d9ead3",
+      border: {
+        top: true,
+        right: true,
+        bottom: true,
+        left: true,
+      },
+      bold: true,
+      italic: true,
+      underline: false,
     },
   });
 });

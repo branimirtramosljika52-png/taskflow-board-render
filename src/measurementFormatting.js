@@ -15,6 +15,19 @@ const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
     bottom: false,
     left: false,
   }),
+  conditional: Object.freeze({
+    filled: false,
+    fillColor: "",
+    border: Object.freeze({
+      top: false,
+      right: false,
+      bottom: false,
+      left: false,
+    }),
+    bold: false,
+    italic: false,
+    underline: false,
+  }),
 });
 
 const BORDER_PRESETS = new Set(["none", "all", "top", "right", "bottom", "left"]);
@@ -160,6 +173,10 @@ export function normalizeMeasurementCellFormat(format = {}) {
     ? format.verticalAlign
     : DEFAULT_MEASUREMENT_FORMAT.verticalAlign;
 
+  const conditionalSource = format?.conditional && typeof format.conditional === "object"
+    ? format.conditional
+    : {};
+
   return {
     type,
     decimals: clampMeasurementDecimals(format?.decimals),
@@ -172,6 +189,14 @@ export function normalizeMeasurementCellFormat(format = {}) {
     underline: Boolean(format?.underline),
     fillColor: normalizeMeasurementFillColor(format?.fillColor),
     border: normalizeMeasurementBorder(format?.border),
+    conditional: {
+      filled: Boolean(conditionalSource.filled),
+      fillColor: normalizeMeasurementFillColor(conditionalSource.fillColor),
+      border: normalizeMeasurementBorder(conditionalSource.border),
+      bold: Boolean(conditionalSource.bold),
+      italic: Boolean(conditionalSource.italic),
+      underline: Boolean(conditionalSource.underline),
+    },
   };
 }
 

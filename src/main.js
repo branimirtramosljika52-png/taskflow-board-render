@@ -1724,6 +1724,7 @@ const state = {
     ownerFieldId: "",
     ownerRuntimeWorkOrderId: "",
     validationPopoverOpen: false,
+    conditionalPopoverOpen: false,
     aiPopoverOpen: false,
     quickFillPopoverOpen: false,
     presetLibrary: {
@@ -3953,6 +3954,14 @@ const measurementFormatDecimalsIncreaseButton = document.querySelector("#measure
 const measurementFormatDecimalsInput = document.querySelector("#measurement-format-decimals");
 const measurementFormatBorderButton = document.querySelector("#measurement-format-border-button");
 const measurementFormatBorderInput = document.querySelector("#measurement-format-border");
+const measurementConditionalButton = document.querySelector("#measurement-conditional-button");
+const measurementConditionalPopover = document.querySelector("#measurement-conditional-popover");
+const measurementConditionalFilledInput = document.querySelector("#measurement-conditional-filled");
+const measurementConditionalFillColorInput = document.querySelector("#measurement-conditional-fill-color");
+const measurementConditionalBorderInput = document.querySelector("#measurement-conditional-border");
+const measurementConditionalBoldInput = document.querySelector("#measurement-conditional-bold");
+const measurementConditionalItalicInput = document.querySelector("#measurement-conditional-italic");
+const measurementConditionalClearButton = document.querySelector("#measurement-conditional-clear");
 const measurementValidationButton = document.querySelector("#measurement-validation-button");
 const measurementValidationPopover = document.querySelector("#measurement-validation-popover");
 const measurementValidationTypeInput = document.querySelector("#measurement-validation-type");
@@ -24949,10 +24958,19 @@ function isMeasurementFormatCustomized(format = {}) {
   const normalized = normalizeMeasurementCellFormat(format);
   return normalized.type !== "general"
     || normalized.decimals !== 2
+    || normalized.align !== "auto"
+    || normalized.verticalAlign !== "middle"
+    || normalized.fontFamily !== "default"
+    || normalized.fontSize !== 14
+    || normalized.bold
+    || normalized.italic
+    || normalized.underline
+    || normalized.fillColor
     || normalized.border.top
     || normalized.border.right
     || normalized.border.bottom
-    || normalized.border.left;
+    || normalized.border.left
+    || hasMeasurementConditionalFormat(normalized);
 }
 
 function isMeasurementSheetRowMeaningful(row = {}, columns = []) {
@@ -25629,6 +25647,61 @@ function getMeasurementCellFormat(rowIndex, columnIndex) {
   }
 
   return normalizeMeasurementCellFormat(row.formats?.[column.id]);
+}
+
+function hasMeasurementFormatBorder(border = {}) {
+  const normalized = normalizeMeasurementBorder(border);
+  return normalized.top || normalized.right || normalized.bottom || normalized.left;
+}
+
+function hasMeasurementConditionalFormat(format = {}) {
+  const conditional = normalizeMeasurementCellFormat(format).conditional;
+  return Boolean(
+    conditional.filled
+    || conditional.fillColor
+    || conditional.bold
+    || conditional.italic
+    || conditional.underline
+    || hasMeasurementFormatBorder(conditional.border),
+  );
+}
+
+function isMeasurementCellFilled(rowIndex, columnIndex) {
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!row || !column || column.computed) {
+    return false;
+  }
+
+  return String(row.cells?.[column.id] ?? "").trim().length > 0;
+}
+
+function resolveMeasurementConditionalFormat(format = {}, isFilled = false) {
+  const normalized = normalizeMeasurementCellFormat(format);
+  const conditional = normalized.conditional;
+
+  if (!isFilled || !conditional.filled) {
+    return normalized;
+  }
+
+  return normalizeMeasurementCellFormat({
+    ...normalized,
+    fillColor: conditional.fillColor || normalized.fillColor,
+    border: hasMeasurementFormatBorder(conditional.border)
+      ? conditional.border
+      : normalized.border,
+    bold: conditional.bold || normalized.bold,
+    italic: conditional.italic || normalized.italic,
+    underline: conditional.underline || normalized.underline,
+  });
+}
+
+function getMeasurementCellVisualFormat(rowIndex, columnIndex) {
+  return resolveMeasurementConditionalFormat(
+    getMeasurementCellFormat(rowIndex, columnIndex),
+    isMeasurementCellFilled(rowIndex, columnIndex),
+  );
 }
 
 function buildMeasurementBorderFromPreset(preset, range, rowIndex, columnIndex) {
@@ -26607,12 +26680,95 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
   }
 }
 
+function applyMeasurementConditionalFormatToRange(formatOverrides = {}) {
+  const range = getMeasurementSelectedRange();
+
+  if (!range) {
+    return;
+  }
+
+  for (let rowIndex = range.startRowIndex; rowIndex <= range.endRowIndex; rowIndex += 1) {
+    const row = state.measurementSheet.rows[rowIndex];
+
+    if (!row) {
+      continue;
+    }
+
+    row.formats = row.formats ?? {};
+
+    for (let columnIndex = range.startColumnIndex; columnIndex <= range.endColumnIndex; columnIndex += 1) {
+      const column = state.measurementSheet.columns[columnIndex];
+
+      if (!column || column.computed) {
+        continue;
+      }
+
+      const nextFormat = normalizeMeasurementCellFormat(row.formats[column.id]);
+      const nextConditional = {
+        ...nextFormat.conditional,
+      };
+
+      if ("filled" in formatOverrides) {
+        nextConditional.filled = Boolean(formatOverrides.filled);
+      }
+
+      if ("fillColor" in formatOverrides) {
+        nextConditional.fillColor = formatOverrides.fillColor;
+      }
+
+      if ("borderPreset" in formatOverrides) {
+        nextConditional.border = buildMeasurementBorderFromPreset(
+          formatOverrides.borderPreset,
+          range,
+          rowIndex,
+          columnIndex,
+        );
+      }
+
+      if ("bold" in formatOverrides) {
+        nextConditional.bold = Boolean(formatOverrides.bold);
+      }
+
+      if ("italic" in formatOverrides) {
+        nextConditional.italic = Boolean(formatOverrides.italic);
+      }
+
+      if ("clear" in formatOverrides) {
+        nextConditional.filled = false;
+        nextConditional.fillColor = "";
+        nextConditional.border = normalizeMeasurementBorder("none");
+        nextConditional.bold = false;
+        nextConditional.italic = false;
+        nextConditional.underline = false;
+      }
+
+      row.formats[column.id] = normalizeMeasurementCellFormat({
+        ...nextFormat,
+        conditional: nextConditional,
+      });
+    }
+  }
+}
+
 function applyMeasurementToolbarFormat(overrides = {}) {
   if (!state.measurementSheet.activeCell) {
     return;
   }
 
   applyMeasurementFormatToRange(overrides);
+  refreshMeasurementSheetComputedValues();
+  renderMeasurementSelection();
+  renderMeasurementActiveCell();
+  syncMeasurementToolbar();
+  handleMeasurementSheetMutation();
+}
+
+function applyMeasurementConditionalToolbarFormat(overrides = {}) {
+  if (!state.measurementSheet.activeCell) {
+    return;
+  }
+
+  applyMeasurementConditionalFormatToRange(overrides);
   refreshMeasurementSheetComputedValues();
   renderMeasurementSelection();
   renderMeasurementActiveCell();
@@ -26794,6 +26950,52 @@ function syncMeasurementToolbar() {
   );
   if (measurementFormatBorderButton instanceof HTMLButtonElement) {
     measurementFormatBorderButton.disabled = !state.measurementSheet.activeCell;
+  }
+
+  const activeConditional = normalizeMeasurementCellFormat(activeFormat).conditional;
+  const activeConditionalBorderPreset = getMeasurementBorderPreset(activeConditional.border);
+  const hasActiveConditionalStyle = hasMeasurementConditionalFormat(activeFormat);
+
+  if (measurementConditionalButton instanceof HTMLButtonElement) {
+    measurementConditionalButton.disabled = !state.measurementSheet.activeCell;
+    measurementConditionalButton.classList.toggle("is-active", activeConditional.filled && hasActiveConditionalStyle);
+    measurementConditionalButton.textContent = activeConditional.filled && hasActiveConditionalStyle ? "CF*" : "CF";
+    measurementConditionalButton.title = activeConditional.filled && hasActiveConditionalStyle
+      ? "Uvjetno oblikovanje je aktivno"
+      : "Uvjetno oblikovanje";
+  }
+
+  if (measurementConditionalPopover instanceof HTMLElement) {
+    measurementConditionalPopover.hidden = !(state.measurementSheet.conditionalPopoverOpen && state.measurementSheet.activeCell);
+  }
+
+  if (measurementConditionalFilledInput instanceof HTMLInputElement) {
+    measurementConditionalFilledInput.checked = Boolean(activeConditional.filled);
+    measurementConditionalFilledInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  if (measurementConditionalFillColorInput instanceof HTMLInputElement) {
+    measurementConditionalFillColorInput.value = activeConditional.fillColor || "#d9ead3";
+    measurementConditionalFillColorInput.disabled = !state.measurementSheet.activeCell || !activeConditional.filled;
+  }
+
+  if (measurementConditionalBorderInput instanceof HTMLSelectElement) {
+    measurementConditionalBorderInput.value = activeConditionalBorderPreset;
+    measurementConditionalBorderInput.disabled = !state.measurementSheet.activeCell || !activeConditional.filled;
+  }
+
+  if (measurementConditionalBoldInput instanceof HTMLInputElement) {
+    measurementConditionalBoldInput.checked = Boolean(activeConditional.bold);
+    measurementConditionalBoldInput.disabled = !state.measurementSheet.activeCell || !activeConditional.filled;
+  }
+
+  if (measurementConditionalItalicInput instanceof HTMLInputElement) {
+    measurementConditionalItalicInput.checked = Boolean(activeConditional.italic);
+    measurementConditionalItalicInput.disabled = !state.measurementSheet.activeCell || !activeConditional.filled;
+  }
+
+  if (measurementConditionalClearButton instanceof HTMLButtonElement) {
+    measurementConditionalClearButton.disabled = !state.measurementSheet.activeCell || !hasActiveConditionalStyle;
   }
 
   const validationColumn = getMeasurementPrimaryValidationColumn();
@@ -27552,11 +27754,15 @@ function updateMeasurementEditingCellPreview(rowId, columnId) {
   const rawValue = row.cells?.[column.id] ?? "";
   const hasFormula = isMeasurementFormula(rawValue);
   const input = cell.querySelector(".measurement-cell-input");
+  const format = getMeasurementCellVisualFormat(rowIndex, columnIndex);
 
   cell.classList.toggle("has-formula-cell", hasFormula);
   if (!hasFormula) {
     cell.classList.remove("has-formula-error");
   }
+  cell.classList.toggle("has-conditional-format", hasMeasurementConditionalFormat(format));
+  applyMeasurementCellBorderStyle(cell, format.border);
+  applyMeasurementCellStyleToElements(cell, input, format);
 
   if (input instanceof HTMLInputElement) {
     input.title = hasFormula ? rawValue : "";
@@ -27617,7 +27823,7 @@ function refreshMeasurementSheetComputedValues() {
       const rawValue = row.cells?.[column.id] ?? "";
       const hasFormula = isMeasurementFormula(rawValue);
       let hasError = false;
-      const format = getMeasurementCellFormat(rowIndex, columnIndex);
+      const format = getMeasurementCellVisualFormat(rowIndex, columnIndex);
 
       if (hasFormula) {
         hasError = getMeasurementCellDisplayText(rowIndex, columnIndex) === "#ERROR";
@@ -27625,6 +27831,7 @@ function refreshMeasurementSheetComputedValues() {
 
       cell.classList.toggle("has-formula-cell", hasFormula);
       cell.classList.toggle("has-formula-error", hasError);
+      cell.classList.toggle("has-conditional-format", hasMeasurementConditionalFormat(format));
       applyMeasurementCellBorderStyle(cell, format.border);
       applyMeasurementCellStyleToElements(cell, input, format);
 
@@ -28677,6 +28884,7 @@ function openTemplateMeasurementSheet(fieldId) {
   state.measurementSheet.ownerKind = "template_field";
   state.measurementSheet.ownerFieldId = String(fieldId);
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   documentTemplateFieldDrafts[fieldIndex].sheet = ensureDocumentTemplateMeasurementFieldSheet(documentTemplateFieldDrafts[fieldIndex]);
@@ -29659,6 +29867,7 @@ function setMeasurementSheetOpen(isOpen) {
     renderMeasurementFillMenu();
     renderMeasurementContextMenu();
     state.measurementSheet.validationPopoverOpen = false;
+    state.measurementSheet.conditionalPopoverOpen = false;
     state.measurementSheet.aiPopoverOpen = false;
     state.measurementSheet.quickFillPopoverOpen = false;
   }
@@ -29704,6 +29913,7 @@ function closeMeasurementSheet() {
   state.measurementSheet.editorSource = null;
   state.measurementSheet.formulaReferences = [];
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   document.body.classList.remove("is-selecting-measurement-cells");
@@ -29743,6 +29953,7 @@ function resetMeasurementSheet() {
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.contextMenu = null;
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementSheetHeaderFromWorkOrder();
@@ -38969,6 +39180,17 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
   }
 }
 
+function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = null) {
+  if (!column || column.computed === "average") {
+    return normalizeMeasurementCellFormat();
+  }
+
+  const row = sheet?.rows?.[rowIndex];
+  const format = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
+  const isFilled = String(row?.cells?.[column.id] ?? "").trim().length > 0;
+  return resolveMeasurementConditionalFormat(format, isFilled);
+}
+
 function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
   const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
   const directRuntimeSnapshot = runtimeWorkOrderId
@@ -39025,7 +39247,7 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
     return "text-align:right";
   }
 
-  const format = normalizeMeasurementCellFormat(sheet?.rows?.[rowIndex]?.formats?.[column.id]);
+  const format = getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column);
   const styleConfig = getMeasurementCellStyleConfig(format);
   const styles = [];
 
@@ -77629,6 +77851,7 @@ measurementValidationButton?.addEventListener("click", (event) => {
     return;
   }
   state.measurementSheet.validationPopoverOpen = !state.measurementSheet.validationPopoverOpen;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
@@ -77664,6 +77887,63 @@ measurementValidationAllowCustomInput?.addEventListener("change", () => {
     allowCustom: Boolean(measurementValidationAllowCustomInput.checked),
   });
 });
+measurementConditionalButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (measurementConditionalButton.disabled) {
+    return;
+  }
+  state.measurementSheet.conditionalPopoverOpen = !state.measurementSheet.conditionalPopoverOpen;
+  state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.aiPopoverOpen = false;
+  state.measurementSheet.quickFillPopoverOpen = false;
+  syncMeasurementToolbar();
+});
+measurementConditionalPopover?.addEventListener("pointerdown", (event) => {
+  event.stopPropagation();
+});
+measurementConditionalPopover?.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+measurementConditionalFilledInput?.addEventListener("change", () => {
+  const activeConditional = getMeasurementActiveCellFormat().conditional;
+  const shouldEnable = Boolean(measurementConditionalFilledInput.checked);
+  applyMeasurementConditionalToolbarFormat({
+    filled: shouldEnable,
+    ...(shouldEnable && !hasMeasurementConditionalFormat({ conditional: activeConditional })
+      ? { fillColor: measurementConditionalFillColorInput?.value || "#d9ead3" }
+      : {}),
+  });
+});
+measurementConditionalFillColorInput?.addEventListener("input", () => {
+  applyMeasurementConditionalToolbarFormat({
+    filled: true,
+    fillColor: measurementConditionalFillColorInput.value || "#d9ead3",
+  });
+});
+measurementConditionalBorderInput?.addEventListener("change", () => {
+  applyMeasurementConditionalToolbarFormat({
+    filled: true,
+    borderPreset: measurementConditionalBorderInput.value || "none",
+  });
+});
+measurementConditionalBoldInput?.addEventListener("change", () => {
+  applyMeasurementConditionalToolbarFormat({
+    filled: true,
+    bold: Boolean(measurementConditionalBoldInput.checked),
+  });
+});
+measurementConditionalItalicInput?.addEventListener("change", () => {
+  applyMeasurementConditionalToolbarFormat({
+    filled: true,
+    italic: Boolean(measurementConditionalItalicInput.checked),
+  });
+});
+measurementConditionalClearButton?.addEventListener("click", () => {
+  applyMeasurementConditionalToolbarFormat({
+    clear: true,
+  });
+});
 measurementAiButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -77672,6 +77952,7 @@ measurementAiButton?.addEventListener("click", (event) => {
   }
   state.measurementSheet.aiPopoverOpen = !state.measurementSheet.aiPopoverOpen;
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
   if (state.measurementSheet.aiPopoverOpen) {
@@ -77810,6 +78091,7 @@ measurementQuickFillButton?.addEventListener("click", (event) => {
   state.measurementSheet.quickFillPopoverOpen = !state.measurementSheet.quickFillPopoverOpen;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   if (state.measurementSheet.quickFillPopoverOpen) {
     syncMeasurementQuickStartRowInput({ force: true });
   }
@@ -77897,7 +78179,12 @@ measurementSheetGridWrap?.addEventListener("scroll", () => {
   extendMeasurementSheetRowsIfNeeded();
 });
 document.addEventListener("pointerdown", (event) => {
-  if (!state.measurementSheet.validationPopoverOpen && !state.measurementSheet.aiPopoverOpen) {
+  if (
+    !state.measurementSheet.validationPopoverOpen
+    && !state.measurementSheet.conditionalPopoverOpen
+    && !state.measurementSheet.aiPopoverOpen
+    && !state.measurementSheet.quickFillPopoverOpen
+  ) {
     return;
   }
 
@@ -77909,6 +78196,8 @@ document.addEventListener("pointerdown", (event) => {
   if (
     measurementValidationPopover?.contains(target)
     || measurementValidationButton?.contains(target)
+    || measurementConditionalPopover?.contains(target)
+    || measurementConditionalButton?.contains(target)
     || measurementAiPopover?.contains(target)
     || measurementAiButton?.contains(target)
     || measurementQuickFillPopover?.contains(target)
@@ -77918,6 +78207,7 @@ document.addEventListener("pointerdown", (event) => {
   }
 
   state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
@@ -77943,11 +78233,17 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (state.measurementSheet.aiPopoverOpen || state.measurementSheet.quickFillPopoverOpen || state.measurementSheet.validationPopoverOpen) {
+  if (
+    state.measurementSheet.aiPopoverOpen
+    || state.measurementSheet.quickFillPopoverOpen
+    || state.measurementSheet.validationPopoverOpen
+    || state.measurementSheet.conditionalPopoverOpen
+  ) {
     event.preventDefault();
     state.measurementSheet.aiPopoverOpen = false;
     state.measurementSheet.quickFillPopoverOpen = false;
     state.measurementSheet.validationPopoverOpen = false;
+    state.measurementSheet.conditionalPopoverOpen = false;
     syncMeasurementToolbar();
     return;
   }
@@ -81733,6 +82029,10 @@ function resetAuthenticatedWorkspaceState() {
   state.measurementSheet.fillDrag = null;
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.contextMenu = null;
+  state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
+  state.measurementSheet.aiPopoverOpen = false;
+  state.measurementSheet.quickFillPopoverOpen = false;
   loginForm?.reset();
   forgotPasswordForm?.reset();
   changePasswordForm?.reset();
