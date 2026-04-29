@@ -33582,8 +33582,19 @@ body.is-global-loading {
   gap: 10px;
 }
 
+.people-training-mini-grid.is-structured {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .people-training-mini-grid .is-wide {
   grid-column: 1 / -1;
+}
+
+.people-training-mini-grid input.is-readonly {
+  color: #31456a;
+  background: rgba(239, 246, 255, 0.82);
+  border-color: rgba(166, 188, 225, 0.9);
+  cursor: default;
 }
 
 .people-training-check {
@@ -34956,6 +34967,10 @@ body.is-global-loading {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .people-training-mini-grid.is-structured {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .people-training-section-brief {
     justify-self: start;
     max-width: 100%;
@@ -34983,6 +34998,7 @@ body.is-global-loading {
 @media (max-width: 720px) {
   .people-training-stats,
   .people-training-mini-grid,
+  .people-training-mini-grid.is-structured,
   .absence-summary-grid,
   .absence-report-card-stats {
     grid-template-columns: minmax(0, 1fr);

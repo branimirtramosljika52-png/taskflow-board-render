@@ -4585,7 +4585,15 @@ const peopleTrainingCompanyInput = document.querySelector("#people-training-comp
 const peopleTrainingLocationInput = document.querySelector("#people-training-location");
 const peopleTrainingFirstNameInput = document.querySelector("#people-training-first-name");
 const peopleTrainingLastNameInput = document.querySelector("#people-training-last-name");
+const peopleTrainingFatherNameInput = document.querySelector("#people-training-father-name");
 const peopleTrainingOibInput = document.querySelector("#people-training-oib");
+const peopleTrainingLanguageInput = document.querySelector("#people-training-language");
+const peopleTrainingBirthDateInput = document.querySelector("#people-training-birth-date");
+const peopleTrainingBirthCountryInput = document.querySelector("#people-training-birth-country");
+const peopleTrainingBirthPlaceInput = document.querySelector("#people-training-birth-place");
+const peopleTrainingArrivalDateInput = document.querySelector("#people-training-arrival-date");
+const peopleTrainingWorkPlaceInput = document.querySelector("#people-training-work-place");
+const peopleTrainingActivityStatusInput = document.querySelector("#people-training-activity-status");
 const peopleTrainingEmailInput = document.querySelector("#people-training-email");
 const peopleTrainingPhoneInput = document.querySelector("#people-training-phone");
 const peopleTrainingJobTitleInput = document.querySelector("#people-training-job-title");
@@ -7104,6 +7112,7 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("MjestoRodenja", "Mjesto rođenja", "Zagreb"),
   createPeopleTrainingZnrPlaceholder("DatumDolaska", "Datum dolaska", "29.04.2026"),
   createPeopleTrainingZnrPlaceholder("Mjestorada", "Mjesto rada", "Pogon Jankomir"),
+  createPeopleTrainingZnrPlaceholder("MjestoRadaNew", "Mjesto rada", "Pogon Jankomir"),
   createPeopleTrainingZnrPlaceholder("DodatnoMjesto", "Dodatno mjesto rada", "Skladište"),
   createPeopleTrainingZnrPlaceholder("Aktivnost", "Aktivnost / usluga", "Rad na siguran način"),
   createPeopleTrainingZnrPlaceholder("BrojZapisnikaZNR", "Broj zapisnika ZNR", "ZNR-2026-15"),
@@ -7152,6 +7161,7 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("AktivnostPP", "Aktivnost PP", "Početno gašenje požara"),
   createPeopleTrainingZnrPlaceholder("DatumPP", "Datum PP", "29.04.2026"),
   createPeopleTrainingZnrPlaceholder("BrojZapisnikaPGP", "Broj zapisnika PGP", "PGP-2026-15"),
+  createPeopleTrainingZnrPlaceholder("DatumPolaganjaPGP", "Datum polaganja PGP", "29.04.2026"),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPImePrezime", "Odgovorna PGP osoba", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPOIB", "OIB odgovorne PGP osobe", ""),
   createPeopleTrainingZnrPlaceholder("OdgovornaPGPKlasa", "PGP klasa", ""),
@@ -7272,6 +7282,7 @@ function normalizePeopleTrainingItemsForUi(items = []) {
       validUntil: validForever ? "" : normalizePeopleTrainingDate(sourceItem?.validUntil ?? sourceItem?.validTo ?? sourceItem?.expiresOn),
       validForever,
       certificateNumber: String(sourceItem?.certificateNumber ?? sourceItem?.documentNumber ?? sourceItem?.number ?? "").trim(),
+      recordNumber: String(sourceItem?.recordNumber ?? sourceItem?.zapisnikNumber ?? "").trim(),
       provider: String(sourceItem?.provider ?? sourceItem?.institution ?? sourceItem?.organizer ?? "").trim(),
       examMode: String(sourceItem?.examMode ?? sourceItem?.sourceMode ?? "").trim(),
       workOrderId: String(sourceItem?.workOrderId ?? "").trim(),
@@ -7280,6 +7291,9 @@ function normalizePeopleTrainingItemsForUi(items = []) {
       learningTestTitle: String(sourceItem?.learningTestTitle ?? "").trim(),
       certificateStatus: String(sourceItem?.certificateStatus ?? "").trim(),
       certificateDocumentId: String(sourceItem?.certificateDocumentId ?? "").trim(),
+      details: sourceItem?.details && typeof sourceItem.details === "object" && !Array.isArray(sourceItem.details)
+        ? { ...sourceItem.details }
+        : {},
       note: String(sourceItem?.note ?? "").trim(),
       status: String(sourceItem?.status ?? "").trim().toLowerCase(),
     };
@@ -7550,7 +7564,9 @@ function syncPeopleTrainingPersonalSummary() {
   const parts = [
     fullName,
     peopleTrainingOibInput?.value ? `OIB ${peopleTrainingOibInput.value.trim()}` : "",
-    peopleTrainingJobTitleInput?.value?.trim() || "",
+    peopleTrainingFatherNameInput?.value ? `ime oca ${peopleTrainingFatherNameInput.value.trim()}` : "",
+    peopleTrainingLanguageInput?.value?.trim() || "",
+    peopleTrainingActivityStatusInput?.value ? `aktivnost ${peopleTrainingActivityStatusInput.value}` : "",
     companyLabel,
     locationLabel && !/nije vezano/i.test(locationLabel) ? locationLabel : "",
   ].filter(Boolean);
@@ -8250,14 +8266,41 @@ function getPeopleTrainingFormSectionStatusClass(items = []) {
 }
 
 function getPeopleTrainingFormItemBrief(item = {}) {
-  const dataParts = [
-    item.issuedOn ? `Izdano ${formatCompactDate(item.issuedOn)}` : "",
-    item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
-    item.certificateNumber ? `Broj potvrde ${item.certificateNumber}` : "",
-    item.provider ? `Ustanova ${item.provider}` : "",
-    item.note ? `Napomena ${item.note}` : "",
-    item.validForever ? "Bez isteka" : "",
-  ].filter(Boolean);
+  const details = item.details && typeof item.details === "object" ? item.details : {};
+  const sectionKey = getPeopleTrainingFormSectionKey(item);
+  let dataParts = [];
+
+  if (sectionKey === "safe-work") {
+    dataParts = [
+      details.jobTitle ? `Radno mjesto ${details.jobTitle}` : "",
+      details.theoryPlace ? `Teorija ${details.theoryPlace}` : "",
+      details.theoryDate ? `Datum teorije ${formatCompactDate(details.theoryDate)}` : "",
+      details.theoryMethod ? `Način ${details.theoryMethod}` : "",
+      details.employerRepresentativeName ? `Ovlaštenik ${details.employerRepresentativeName}` : "",
+      details.practicalPlace ? `Praktično ${details.practicalPlace}` : "",
+      details.safeWorkPeriodFrom || details.safeWorkPeriodTo
+        ? `Praćenje ${[details.safeWorkPeriodFrom ? formatCompactDate(details.safeWorkPeriodFrom) : "", details.safeWorkPeriodTo ? formatCompactDate(details.safeWorkPeriodTo) : ""].filter(Boolean).join(" - ")}`
+        : "",
+      item.recordNumber ? `Broj zapisnika ${item.recordNumber}` : "",
+    ].filter(Boolean);
+  } else if (sectionKey === "fire") {
+    dataParts = [
+      item.passedOn || item.issuedOn ? `Datum polaganja ${formatCompactDate(item.passedOn || item.issuedOn)}` : "",
+      item.recordNumber ? `Broj zapisnika ${item.recordNumber}` : "",
+    ].filter(Boolean);
+  } else if (sectionKey === "dangerous-goods") {
+    dataParts = [
+      item.passedOn || item.issuedOn ? `Datum polaganja ${formatCompactDate(item.passedOn || item.issuedOn)}` : "",
+      item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+      item.recordNumber ? `Broj zapisnika ${item.recordNumber}` : "",
+    ].filter(Boolean);
+  } else {
+    dataParts = [
+      item.issuedOn ? `Datum ${formatCompactDate(item.issuedOn)}` : "",
+      item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+      item.recordNumber ? `Broj zapisnika ${item.recordNumber}` : "",
+    ].filter(Boolean);
+  }
 
   if (!dataParts.length) {
     return "";
@@ -8296,10 +8339,60 @@ function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "
   return summary;
 }
 
-function createPeopleTrainingTypeCard(item = {}) {
+function createPeopleTrainingDetailField({
+  label = "",
+  field = "",
+  value = "",
+  placeholder = "",
+  wide = false,
+  readOnly = false,
+  isDate = false,
+} = {}) {
+  const fieldLabel = document.createElement("label");
+  if (wide) {
+    fieldLabel.classList.add("is-wide");
+  }
+  const labelText = document.createElement("span");
+  labelText.textContent = label;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = isDate ? formatDateInputDisplayValue(value || "") : String(value ?? "");
+  input.placeholder = placeholder;
+  input.dataset.trainingField = field;
+  input.readOnly = readOnly;
+  if (readOnly) {
+    input.classList.add("is-readonly");
+    input.tabIndex = -1;
+  }
+  if (isDate) {
+    input.inputMode = "numeric";
+    input.placeholder = placeholder || "dd.mm.yyyy";
+    input.addEventListener("blur", () => {
+      input.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(input.value));
+    });
+  }
+  fieldLabel.append(labelText, input);
+  return fieldLabel;
+}
+
+function createPeopleTrainingTypeCard(item = {}, record = {}) {
+  const personRecord = record && typeof record === "object" ? record : {};
   const card = document.createElement("article");
   card.className = `people-training-type-card ${getPeopleTrainingStatusClass(item.status)}`;
   card.dataset.trainingType = item.type;
+  const sectionKey = getPeopleTrainingFormSectionKey(item);
+  const typeOption = getPeopleTrainingTypeOption(item.type, personRecord.trainingItems ?? []);
+  const details = item.details && typeof item.details === "object" ? item.details : {};
+  const hasItemData = Boolean(
+    item.recordNumber
+    || item.certificateNumber
+    || item.workOrderNumber
+    || item.issuedOn
+    || item.passedOn
+    || item.validUntil
+    || Object.values(details).some((value) => String(value ?? "").trim()),
+  );
+  const recordNumber = item.recordNumber || (hasItemData ? buildPeopleTrainingRecordNumberForUi(personRecord, typeOption, item) : "");
 
   const head = document.createElement("div");
   head.className = "people-training-type-head";
@@ -8320,87 +8413,47 @@ function createPeopleTrainingTypeCard(item = {}) {
   serviceMeta.hidden = !serviceMeta.textContent;
 
   const fields = document.createElement("div");
-  fields.className = "people-training-mini-grid";
+  fields.className = "people-training-mini-grid is-structured";
 
-  const issuedLabel = document.createElement("label");
-  issuedLabel.innerHTML = "<span>Izdano</span>";
-  const issuedInput = document.createElement("input");
-  issuedInput.type = "text";
-  issuedInput.inputMode = "numeric";
-  issuedInput.placeholder = "dd.mm.yyyy";
-  issuedInput.value = formatDateInputDisplayValue(item.issuedOn || "");
-  issuedInput.dataset.trainingField = "issuedOn";
-  issuedInput.addEventListener("blur", () => {
-    issuedInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(issuedInput.value));
-  });
-  issuedLabel.append(issuedInput);
+  if (sectionKey === "safe-work") {
+    fields.append(
+      createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
+      createPeopleTrainingDetailField({ label: "Naziv radnog mjesta", field: "details.jobTitle", value: details.jobTitle || personRecord.jobTitle || "" }),
+      createPeopleTrainingDetailField({ label: "Mjesto teorijskog osposobljavanja", field: "details.theoryPlace", value: details.theoryPlace || personRecord.workPlace || personRecord.locationName || "" }),
+      createPeopleTrainingDetailField({ label: "Datum teorijski dio", field: "details.theoryDate", value: details.theoryDate || item.issuedOn || item.passedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Način provođenja teorijskog dijela", field: "details.theoryMethod", value: details.theoryMethod || item.examMode || "" }),
+      createPeopleTrainingDetailField({ label: "Ime i prezime Poslodavca/Ovlaštenika", field: "details.employerRepresentativeName", value: details.employerRepresentativeName || item.provider || "" }),
+      createPeopleTrainingDetailField({ label: "OIB Poslodavca/Ovlaštenika", field: "details.employerRepresentativeOib", value: details.employerRepresentativeOib || "" }),
+      createPeopleTrainingDetailField({ label: "Ostale osobe - ime i prezime", field: "details.additionalPersonName", value: details.additionalPersonName || "" }),
+      createPeopleTrainingDetailField({ label: "Ostale osobe - OIB", field: "details.additionalPersonOib", value: details.additionalPersonOib || "" }),
+      createPeopleTrainingDetailField({ label: "Mjesto praktičnog osposobljavanja", field: "details.practicalPlace", value: details.practicalPlace || personRecord.workPlace || personRecord.locationName || "" }),
+      createPeopleTrainingDetailField({ label: "Razdoblje praćenja od", field: "details.safeWorkPeriodFrom", value: details.safeWorkPeriodFrom || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Razdoblje praćenja do", field: "details.safeWorkPeriodTo", value: details.safeWorkPeriodTo || "", isDate: true }),
+    );
+  } else if (sectionKey === "fire") {
+    fields.append(
+      createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
+      createPeopleTrainingDetailField({ label: "Datum polaganja", field: "passedOn", value: item.passedOn || item.issuedOn || "", isDate: true }),
+    );
+  } else if (sectionKey === "dangerous-goods") {
+    fields.append(
+      createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
+      createPeopleTrainingDetailField({ label: "Datum polaganja", field: "passedOn", value: item.passedOn || item.issuedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
+    );
+  } else {
+    fields.append(
+      createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
+      createPeopleTrainingDetailField({ label: "Datum", field: "issuedOn", value: item.issuedOn || item.passedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
+    );
+  }
 
-  const validLabel = document.createElement("label");
-  validLabel.innerHTML = "<span>Vrijedi do</span>";
-  const validInput = document.createElement("input");
-  validInput.type = "text";
-  validInput.inputMode = "numeric";
-  validInput.placeholder = "dd.mm.yyyy";
-  validInput.value = formatDateInputDisplayValue(item.validUntil || "");
-  validInput.dataset.trainingField = "validUntil";
-  validInput.disabled = item.validForever;
-  validLabel.hidden = item.validForever;
-  validInput.addEventListener("blur", () => {
-    validInput.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(validInput.value));
-  });
-  validLabel.append(validInput);
-
-  const certificateLabel = document.createElement("label");
-  certificateLabel.innerHTML = "<span>Broj potvrde</span>";
-  const certificateInput = document.createElement("input");
-  certificateInput.type = "text";
-  certificateInput.value = item.certificateNumber || "";
-  certificateInput.placeholder = "npr. ZNR-2026-15";
-  certificateInput.dataset.trainingField = "certificateNumber";
-  certificateLabel.append(certificateInput);
-
-  const providerLabel = document.createElement("label");
-  providerLabel.innerHTML = "<span>Ustanova</span>";
-  const providerInput = document.createElement("input");
-  providerInput.type = "text";
-  providerInput.value = item.provider || "";
-  providerInput.placeholder = "npr. SafeNexus";
-  providerInput.dataset.trainingField = "provider";
-  providerLabel.append(providerInput);
-
-  const noteLabel = document.createElement("label");
-  noteLabel.className = "is-wide";
-  noteLabel.innerHTML = "<span>Napomena</span>";
-  const noteInput = document.createElement("input");
-  noteInput.type = "text";
-  noteInput.value = item.note || "";
-  noteInput.placeholder = "ograničenja, lokacija potvrde, dodatno...";
-  noteInput.dataset.trainingField = "note";
-  noteLabel.append(noteInput);
-
-  const foreverLabel = document.createElement("label");
-  foreverLabel.className = "people-training-check";
-  const foreverInput = document.createElement("input");
-  foreverInput.type = "checkbox";
-  foreverInput.checked = item.validForever;
-  foreverInput.dataset.trainingField = "validForever";
-  foreverInput.addEventListener("change", () => {
-    validInput.disabled = foreverInput.checked;
-    validLabel.hidden = foreverInput.checked;
-    if (foreverInput.checked) {
-      validInput.value = "";
-    }
-  });
-  const foreverText = document.createElement("span");
-  foreverText.textContent = "Bez isteka";
-  foreverLabel.append(foreverInput, foreverText);
-
-  fields.append(issuedLabel, validLabel, certificateLabel, providerLabel, noteLabel, foreverLabel);
   card.append(head, serviceMeta, fields);
   return card;
 }
 
-function createPeopleTrainingFormSection(config = {}, items = [], index = 0) {
+function createPeopleTrainingFormSection(config = {}, items = [], index = 0, record = {}) {
   const details = document.createElement("details");
   const statusClass = getPeopleTrainingFormSectionStatusClass(items);
   details.className = `people-training-editor-section people-training-training-section ${statusClass}`;
@@ -8417,7 +8470,7 @@ function createPeopleTrainingFormSection(config = {}, items = [], index = 0) {
   const body = document.createElement("div");
   body.className = "people-training-section-body";
   if (items.length) {
-    body.replaceChildren(...items.map(createPeopleTrainingTypeCard));
+    body.replaceChildren(...items.map((item) => createPeopleTrainingTypeCard(item, record)));
   } else {
     const empty = document.createElement("p");
     empty.className = "empty-state";
@@ -8446,7 +8499,7 @@ function renderPeopleTrainingGrid(record = null) {
   });
 
   const sections = PEOPLE_TRAINING_FORM_SECTION_CONFIGS.map((config, index) => (
-    createPeopleTrainingFormSection(config, grouped.get(config.key) ?? [], index)
+    createPeopleTrainingFormSection(config, grouped.get(config.key) ?? [], index, record)
   ));
 
   if (otherItems.length) {
@@ -8454,7 +8507,7 @@ function renderPeopleTrainingGrid(record = null) {
       key: "other",
       number: "06+",
       title: "Ostala osposobljavanja",
-    }, otherItems, sections.length));
+    }, otherItems, sections.length, record));
   }
 
   peopleTrainingFormTrainingGrid.replaceChildren(...sections);
@@ -8507,8 +8560,32 @@ function populatePeopleTrainingForm(record = {}) {
   if (peopleTrainingLastNameInput) {
     peopleTrainingLastNameInput.value = record.lastName || "";
   }
+  if (peopleTrainingFatherNameInput) {
+    peopleTrainingFatherNameInput.value = record.fatherName || "";
+  }
   if (peopleTrainingOibInput) {
     peopleTrainingOibInput.value = record.oib || "";
+  }
+  if (peopleTrainingLanguageInput) {
+    peopleTrainingLanguageInput.value = record.language || "";
+  }
+  if (peopleTrainingBirthDateInput) {
+    peopleTrainingBirthDateInput.value = record.birthDate || "";
+  }
+  if (peopleTrainingBirthCountryInput) {
+    peopleTrainingBirthCountryInput.value = record.birthCountry || "";
+  }
+  if (peopleTrainingBirthPlaceInput) {
+    peopleTrainingBirthPlaceInput.value = record.birthPlace || "";
+  }
+  if (peopleTrainingArrivalDateInput) {
+    peopleTrainingArrivalDateInput.value = record.arrivalDate || "";
+  }
+  if (peopleTrainingWorkPlaceInput) {
+    peopleTrainingWorkPlaceInput.value = record.workPlace || "";
+  }
+  if (peopleTrainingActivityStatusInput) {
+    peopleTrainingActivityStatusInput.value = record.activityStatus || (record.employmentStatus === "inactive" ? "NE" : "DA");
   }
   if (peopleTrainingEmailInput) {
     peopleTrainingEmailInput.value = record.email || "";
@@ -8539,6 +8616,14 @@ function getPeopleTrainingCertificatePrefix(typeOption = {}) {
     .toUpperCase()
     .slice(0, 12)
     || "OS";
+}
+
+function buildPeopleTrainingRecordNumberForUi(record = {}, typeOption = {}, item = {}) {
+  return [
+    String(item.workOrderNumber || "").trim(),
+    String(typeOption.serviceCode || item.serviceCode || typeOption.shortLabel || item.shortLabel || item.type || "").trim(),
+    String(record.oib || peopleTrainingOibInput?.value || "").trim().replace(/\s+/g, ""),
+  ].filter(Boolean).join("-");
 }
 
 function generatePeopleTrainingCertificateNumber(record = {}, typeOption = {}, dateValue = "", reservedNumbers = new Set()) {
@@ -8572,7 +8657,10 @@ function readPeopleTrainingGridItems() {
   }
   const activeRecordId = String(peopleTrainingIdInput?.value || "").trim();
   const activeRecord = state.peopleTrainingRecords.find((item) => String(item.id) === activeRecordId) ?? null;
-  const reservedCertificateNumbers = new Set();
+  const recordContext = {
+    ...(activeRecord || {}),
+    oib: peopleTrainingOibInput?.value || activeRecord?.oib || "",
+  };
   const existingByType = new Map(
     normalizePeopleTrainingItemsForUi(activeRecord?.trainingItems ?? [])
       .map((item) => [item.type, item]),
@@ -8587,16 +8675,50 @@ function readPeopleTrainingGridItems() {
     };
     const type = card.dataset.trainingType || "";
     const existing = existingByType.get(type) ?? {};
-    const issuedOn = normalizePeopleTrainingDate(readField("issuedOn"));
     const typeOption = getPeopleTrainingTypeOption(type, activeRecord?.trainingItems ?? []);
-    const explicitCertificateNumber = readField("certificateNumber");
-    const certificateNumber = explicitCertificateNumber
-      || ((issuedOn || existing.passedOn)
-        ? generatePeopleTrainingCertificateNumber(activeRecord || {}, typeOption, issuedOn || existing.passedOn, reservedCertificateNumbers)
-        : "");
-    if (!explicitCertificateNumber && certificateNumber) {
-      reservedCertificateNumbers.add(certificateNumber);
-    }
+    const details = { ...(existing.details ?? {}) };
+    [
+      "jobTitle",
+      "theoryPlace",
+      "theoryDate",
+      "theoryMethod",
+      "employerRepresentativeName",
+      "employerRepresentativeOib",
+      "additionalPersonName",
+      "additionalPersonOib",
+      "practicalPlace",
+      "safeWorkPeriodFrom",
+      "safeWorkPeriodTo",
+    ].forEach((key) => {
+      const value = readField(`details.${key}`);
+      if (value !== "") {
+        details[key] = /Date|From|To/.test(key) ? normalizePeopleTrainingDate(value) : String(value || "").trim();
+      } else if (card.querySelector(`[data-training-field="details.${key}"]`)) {
+        details[key] = "";
+      }
+    });
+    const sectionKey = getPeopleTrainingFormSectionKey({ ...existing, ...typeOption, type });
+    const passedOn = normalizePeopleTrainingDate(readField("passedOn"));
+    const issuedOn = normalizePeopleTrainingDate(readField("issuedOn"))
+      || (sectionKey === "safe-work" ? normalizePeopleTrainingDate(details.theoryDate) : passedOn);
+    const hasValidUntilField = Boolean(card.querySelector('[data-training-field="validUntil"]'));
+    const hasValidForeverField = Boolean(card.querySelector('[data-training-field="validForever"]'));
+    const validUntil = hasValidUntilField ? normalizePeopleTrainingDate(readField("validUntil")) : (existing.validUntil || "");
+    const shouldHaveRecordNumber = Boolean(
+      readField("recordNumber")
+      || existing.recordNumber
+      || existing.certificateNumber
+      || existing.workOrderNumber
+      || issuedOn
+      || passedOn
+      || validUntil
+      || Object.values(details).some((value) => String(value ?? "").trim()),
+    );
+    const recordNumber = shouldHaveRecordNumber ? String(readField("recordNumber") || existing.recordNumber || buildPeopleTrainingRecordNumberForUi(
+      recordContext || buildPeopleTrainingPayloadPreview(),
+      typeOption,
+      existing,
+    )).trim() : "";
     return {
       ...existing,
       type,
@@ -8610,26 +8732,46 @@ function readPeopleTrainingGridItems() {
       linkedLearningTestIds: typeOption.linkedLearningTestIds || existing.linkedLearningTestIds || [],
       linkedLearningTestTitles: typeOption.linkedLearningTestTitles || existing.linkedLearningTestTitles || [],
       issuedOn,
-      validUntil: normalizePeopleTrainingDate(readField("validUntil")),
-      validForever: readField("validForever"),
-      certificateNumber,
-      provider: readField("provider"),
-      note: readField("note"),
+      passedOn: passedOn || existing.passedOn || issuedOn,
+      validUntil,
+      validForever: hasValidForeverField ? Boolean(readField("validForever")) : Boolean(existing.validForever),
+      certificateNumber: existing.certificateNumber || "",
+      recordNumber,
+      provider: details.employerRepresentativeName || existing.provider || "",
+      examMode: details.theoryMethod || existing.examMode || "",
+      details,
+      note: existing.note || "",
     };
   });
 }
 
+function buildPeopleTrainingPayloadPreview() {
+  return {
+    oib: peopleTrainingOibInput?.value || "",
+  };
+}
+
 function buildPeopleTrainingPayload() {
+  const activeRecordId = String(peopleTrainingIdInput?.value || "").trim();
+  const activeRecord = state.peopleTrainingRecords.find((item) => String(item.id) === activeRecordId) ?? {};
   return {
     companyId: peopleTrainingCompanyInput?.value || "",
     locationId: peopleTrainingLocationInput?.value || "",
     firstName: peopleTrainingFirstNameInput?.value || "",
     lastName: peopleTrainingLastNameInput?.value || "",
+    fatherName: peopleTrainingFatherNameInput?.value || "",
     oib: peopleTrainingOibInput?.value || "",
-    email: peopleTrainingEmailInput?.value || "",
-    phone: peopleTrainingPhoneInput?.value || "",
-    jobTitle: peopleTrainingJobTitleInput?.value || "",
-    note: peopleTrainingNoteInput?.value || "",
+    language: peopleTrainingLanguageInput?.value || "",
+    birthDate: peopleTrainingBirthDateInput?.value || "",
+    birthCountry: peopleTrainingBirthCountryInput?.value || "",
+    birthPlace: peopleTrainingBirthPlaceInput?.value || "",
+    arrivalDate: peopleTrainingArrivalDateInput?.value || "",
+    workPlace: peopleTrainingWorkPlaceInput?.value || "",
+    activityStatus: peopleTrainingActivityStatusInput?.value || "DA",
+    email: peopleTrainingEmailInput ? (peopleTrainingEmailInput.value || "") : (activeRecord.email || ""),
+    phone: peopleTrainingPhoneInput ? (peopleTrainingPhoneInput.value || "") : (activeRecord.phone || ""),
+    jobTitle: peopleTrainingJobTitleInput ? (peopleTrainingJobTitleInput.value || "") : (activeRecord.jobTitle || ""),
+    note: peopleTrainingNoteInput ? (peopleTrainingNoteInput.value || "") : (activeRecord.note || ""),
     trainingItems: readPeopleTrainingGridItems(),
   };
 }
@@ -81155,7 +81297,15 @@ peopleTrainingCompanyInput?.addEventListener("change", () => {
   peopleTrainingLocationInput,
   peopleTrainingFirstNameInput,
   peopleTrainingLastNameInput,
+  peopleTrainingFatherNameInput,
   peopleTrainingOibInput,
+  peopleTrainingLanguageInput,
+  peopleTrainingBirthDateInput,
+  peopleTrainingBirthCountryInput,
+  peopleTrainingBirthPlaceInput,
+  peopleTrainingArrivalDateInput,
+  peopleTrainingWorkPlaceInput,
+  peopleTrainingActivityStatusInput,
   peopleTrainingEmailInput,
   peopleTrainingPhoneInput,
   peopleTrainingJobTitleInput,

@@ -5299,6 +5299,40 @@ function normalizePersonTrainingTextList(value = [], limit = 180) {
   ));
 }
 
+function normalizePersonTrainingActivityStatus(value, fallback = "DA") {
+  const isActive = normalizeBoolean(value, fallback !== "NE");
+  return isActive ? "DA" : "NE";
+}
+
+function normalizePersonTrainingItemDetails(input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  return {
+    jobTitle: normalizeText(source.jobTitle ?? source.workplaceTitle ?? source.positionTitle).slice(0, 180),
+    theoryPlace: normalizeText(source.theoryPlace ?? source.theoryTrainingPlace).slice(0, 180),
+    theoryDate: normalizeOptionalDate(source.theoryDate ?? source.theoryTrainingDate),
+    theoryMethod: normalizeText(source.theoryMethod ?? source.theoryTrainingMethod).slice(0, 180),
+    employerRepresentativeName: normalizeText(source.employerRepresentativeName ?? source.employerName ?? source.authorizedPersonName).slice(0, 180),
+    employerRepresentativeOib: normalizeText(source.employerRepresentativeOib ?? source.employerOib ?? source.authorizedPersonOib).slice(0, 32),
+    additionalPersonName: normalizeText(source.additionalPersonName ?? source.otherPersonName).slice(0, 180),
+    additionalPersonOib: normalizeText(source.additionalPersonOib ?? source.otherPersonOib).slice(0, 32),
+    practicalPlace: normalizeText(source.practicalPlace ?? source.practicalTrainingPlace).slice(0, 180),
+    safeWorkPeriodFrom: normalizeOptionalDate(source.safeWorkPeriodFrom ?? source.monitoringPeriodFrom),
+    safeWorkPeriodTo: normalizeOptionalDate(source.safeWorkPeriodTo ?? source.monitoringPeriodTo),
+  };
+}
+
+export function buildPeopleTrainingRecordNumber({
+  workOrderNumber = "",
+  serviceCode = "",
+  personOib = "",
+} = {}) {
+  return [
+    normalizeText(workOrderNumber),
+    normalizeText(serviceCode),
+    normalizeText(personOib).replace(/\s+/g, ""),
+  ].filter(Boolean).join("-");
+}
+
 function getPersonTrainingTypeOption(type = "", source = {}, fallback = PERSON_TRAINING_TYPE_OPTIONS[0]) {
   const normalized = normalizeText(type).toLowerCase();
   const staticOption = PERSON_TRAINING_TYPE_OPTIONS.find((option) => option.value === normalized);
@@ -5326,14 +5360,16 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
   const validForever = normalizeBoolean(source.validForever, false);
   const passedOn = normalizeOptionalDate(source.passedOn ?? source.passedDate);
   const issuedOn = normalizeOptionalDate(source.issuedOn ?? source.issuedDate) || passedOn;
+  const serviceCode = normalizeText(source.serviceCode).slice(0, 80);
+  const shortLabel = normalizeText(source.shortLabel).slice(0, 40) || normalizedType.shortLabel;
 
   return {
     type: normalizedType.value,
     label: normalizeText(source.label).slice(0, 180) || normalizedType.label,
-    shortLabel: normalizeText(source.shortLabel).slice(0, 40) || normalizedType.shortLabel,
+    shortLabel,
     serviceId: normalizeText(source.serviceId ?? source.serviceCatalogId).slice(0, 120),
     serviceName: normalizeText(source.serviceName).slice(0, 180),
-    serviceCode: normalizeText(source.serviceCode).slice(0, 80),
+    serviceCode,
     linkedTemplateIds: normalizeIdList(source.linkedTemplateIds),
     linkedTemplateTitles: normalizePersonTrainingTextList(source.linkedTemplateTitles, 180),
     linkedLearningTestIds: normalizeIdList(source.linkedLearningTestIds),
@@ -5343,6 +5379,7 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
     validUntil: validForever ? null : normalizeOptionalDate(source.validUntil ?? source.validTo ?? source.expiresOn),
     validForever,
     certificateNumber: normalizeText(source.certificateNumber ?? source.documentNumber ?? source.number).slice(0, 120),
+    recordNumber: normalizeText(source.recordNumber ?? source.zapisnikNumber).slice(0, 120),
     provider: normalizeText(source.provider ?? source.institution ?? source.organizer).slice(0, 180),
     examMode: normalizeText(source.examMode ?? source.sourceMode).slice(0, 40),
     workOrderId: normalizeText(source.workOrderId).slice(0, 120),
@@ -5351,6 +5388,7 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
     learningTestTitle: normalizeText(source.learningTestTitle).slice(0, 180),
     certificateStatus: normalizeText(source.certificateStatus).slice(0, 40),
     certificateDocumentId: normalizeText(source.certificateDocumentId).slice(0, 120),
+    details: normalizePersonTrainingItemDetails(source.details ?? source.safeWorkDetails ?? source.trainingDetails),
     note: normalizeText(source.note).slice(0, 1000),
     status: normalizeText(source.status).toLowerCase(),
   };
@@ -5421,6 +5459,31 @@ function enrichPersonTrainingItems(items = []) {
   }));
 }
 
+function applyPeopleTrainingRecordNumbers(items = [], record = {}) {
+  return items.map((item) => {
+    const serviceCode = item.serviceCode || item.shortLabel || item.type || "";
+    const generatedRecordNumber = buildPeopleTrainingRecordNumber({
+      workOrderNumber: item.workOrderNumber,
+      serviceCode,
+      personOib: record.oib,
+    });
+    const hasDetailData = Object.values(item.details ?? {}).some((value) => normalizeText(value));
+    const shouldHaveRecordNumber = Boolean(
+      item.recordNumber
+      || item.certificateNumber
+      || item.workOrderNumber
+      || item.issuedOn
+      || item.passedOn
+      || item.validUntil
+      || hasDetailData,
+    );
+    return {
+      ...item,
+      recordNumber: shouldHaveRecordNumber ? (item.recordNumber || generatedRecordNumber) : "",
+    };
+  });
+}
+
 export function createPersonTrainingRecord(
   input,
   state,
@@ -5448,6 +5511,14 @@ export function createPersonTrainingRecord(
   const firstName = normalizeText(input.firstName).slice(0, 120);
   const lastName = normalizeText(input.lastName).slice(0, 160);
   const fullName = normalizeText(input.fullName || [firstName, lastName].filter(Boolean).join(" ")).slice(0, 240);
+  const oib = normalizeText(input.oib).replace(/\s+/g, "").slice(0, 32);
+  const activityStatus = normalizePersonTrainingActivityStatus(
+    input.activityStatus ?? input.activity ?? input.aktivnost ?? input.isActive ?? input.active,
+    "DA",
+  );
+  const normalizedTrainingItems = applyPeopleTrainingRecordNumbers(enrichPersonTrainingItems(input.trainingItems), { oib });
+  const firstSafeWorkDetails = normalizedTrainingItems.find((item) => item.type === "safe_work" || /znr|zos/i.test(`${item.shortLabel} ${item.serviceCode}`))?.details ?? {};
+  const jobTitle = normalizeText(input.jobTitle || firstSafeWorkDetails.jobTitle).slice(0, 180);
 
   return {
     id: createId(),
@@ -5460,12 +5531,20 @@ export function createPersonTrainingRecord(
     firstName,
     lastName,
     fullName: requireText(fullName, "Ime i prezime"),
-    oib: normalizeText(input.oib).replace(/\s+/g, "").slice(0, 32),
+    oib,
+    fatherName: normalizeText(input.fatherName).slice(0, 120),
+    language: normalizeText(input.language).slice(0, 80),
+    birthDate: normalizeOptionalDate(input.birthDate),
+    birthCountry: normalizeText(input.birthCountry).slice(0, 120),
+    birthPlace: normalizeText(input.birthPlace).slice(0, 120),
+    arrivalDate: normalizeOptionalDate(input.arrivalDate),
+    workPlace: normalizeText(input.workPlace).slice(0, 180),
+    activityStatus,
     email: normalizeText(input.email).toLowerCase().slice(0, 180),
     phone: normalizeText(input.phone).slice(0, 80),
-    jobTitle: normalizeText(input.jobTitle).slice(0, 180),
-    employmentStatus: normalizeBoolean(input.isActive ?? input.active, true) ? "active" : "inactive",
-    trainingItems: enrichPersonTrainingItems(input.trainingItems),
+    jobTitle,
+    employmentStatus: activityStatus === "NE" ? "inactive" : "active",
+    trainingItems: normalizedTrainingItems,
     attachments: normalizeAttachmentDocuments(input.attachments),
     note: normalizeText(input.note).slice(0, 1000),
     createdAt: timestamp,
@@ -5484,10 +5563,18 @@ export function updatePersonTrainingRecord(current, patch, state, now = isoNow) 
     lastName: hasOwn(patch, "lastName") ? patch.lastName : current.lastName,
     fullName: hasOwn(patch, "fullName") ? patch.fullName : current.fullName,
     oib: hasOwn(patch, "oib") ? patch.oib : current.oib,
+    fatherName: hasOwn(patch, "fatherName") ? patch.fatherName : current.fatherName,
+    language: hasOwn(patch, "language") ? patch.language : current.language,
+    birthDate: hasOwn(patch, "birthDate") ? patch.birthDate : current.birthDate,
+    birthCountry: hasOwn(patch, "birthCountry") ? patch.birthCountry : current.birthCountry,
+    birthPlace: hasOwn(patch, "birthPlace") ? patch.birthPlace : current.birthPlace,
+    arrivalDate: hasOwn(patch, "arrivalDate") ? patch.arrivalDate : current.arrivalDate,
+    workPlace: hasOwn(patch, "workPlace") ? patch.workPlace : current.workPlace,
+    activityStatus: hasOwn(patch, "activityStatus") ? patch.activityStatus : current.activityStatus,
     email: hasOwn(patch, "email") ? patch.email : current.email,
     phone: hasOwn(patch, "phone") ? patch.phone : current.phone,
     jobTitle: hasOwn(patch, "jobTitle") ? patch.jobTitle : current.jobTitle,
-    isActive: hasOwn(patch, "isActive") ? patch.isActive : current.employmentStatus !== "inactive",
+    isActive: hasOwn(patch, "isActive") ? patch.isActive : current.activityStatus !== "NE" && current.employmentStatus !== "inactive",
     trainingItems: hasOwn(patch, "trainingItems") ? patch.trainingItems : current.trainingItems,
     attachments: hasOwn(patch, "attachments") ? patch.attachments : current.attachments,
     note: hasOwn(patch, "note") ? patch.note : current.note,
@@ -5544,6 +5631,12 @@ export function filterPersonTrainingRecords(
       item.firstName,
       item.lastName,
       item.oib,
+      item.fatherName,
+      item.language,
+      item.birthCountry,
+      item.birthPlace,
+      item.workPlace,
+      item.activityStatus,
       item.email,
       item.phone,
       item.jobTitle,
@@ -5558,10 +5651,12 @@ export function filterPersonTrainingRecords(
         entry.label,
         entry.shortLabel,
         entry.certificateNumber,
+        entry.recordNumber,
         entry.provider,
         entry.note,
         entry.issuedOn,
         entry.validUntil,
+        ...Object.values(entry.details ?? {}),
       ]),
     ].join(" ").toLowerCase();
 

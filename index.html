@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260429s" />
+    <link rel="stylesheet" href="/styles.css?v=20260429t" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3799,24 +3799,43 @@
                         <input id="people-training-last-name" type="text" autocomplete="family-name" required />
                       </label>
                       <label>
+                        <span>Ime oca</span>
+                        <input id="people-training-father-name" type="text" />
+                      </label>
+                      <label>
                         <span>OIB</span>
                         <input id="people-training-oib" type="text" inputmode="numeric" />
                       </label>
                       <label>
-                        <span>Email</span>
-                        <input id="people-training-email" type="email" autocomplete="email" />
+                        <span>Jezik</span>
+                        <input id="people-training-language" type="text" />
                       </label>
                       <label>
-                        <span>Mobitel</span>
-                        <input id="people-training-phone" type="text" />
+                        <span>Datum rođenja</span>
+                        <input id="people-training-birth-date" type="date" />
                       </label>
                       <label>
-                        <span>Radno mjesto</span>
-                        <input id="people-training-job-title" type="text" />
+                        <span>Država rođenja</span>
+                        <input id="people-training-birth-country" type="text" />
                       </label>
-                      <label class="is-wide">
-                        <span>Napomena</span>
-                        <input id="people-training-note" type="text" placeholder="Interna napomena, ograničenja, specifičnosti..." />
+                      <label>
+                        <span>Mjesto rođenja</span>
+                        <input id="people-training-birth-place" type="text" />
+                      </label>
+                      <label>
+                        <span>Datum dolaska</span>
+                        <input id="people-training-arrival-date" type="date" />
+                      </label>
+                      <label>
+                        <span>Mjesto rada</span>
+                        <input id="people-training-work-place" type="text" />
+                      </label>
+                      <label>
+                        <span>Aktivnost</span>
+                        <select id="people-training-activity-status">
+                          <option value="DA">DA</option>
+                          <option value="NE">NE</option>
+                        </select>
                       </label>
                     </div>
                   </details>
@@ -7323,6 +7342,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260429s"></script>
+    <script type="module" src="/src/main.js?v=20260429t"></script>
   </body>
 </html>

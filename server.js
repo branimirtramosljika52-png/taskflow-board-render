@@ -881,11 +881,18 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
     "Lokacija",
     "Ime",
     "Prezime",
+    "Ime oca",
     "Ime i prezime",
     "OIB osobe",
+    "Jezik",
+    "Datum rođenja",
+    "Država rođenja",
+    "Mjesto rođenja",
+    "Datum dolaska",
+    "Mjesto rada",
+    "Aktivnost",
     "Email",
     "Mobitel",
-    "Radno mjesto",
   ];
   const trainingColumns = typeOptions.flatMap((option) => {
     const label = option.serviceCode ? `${option.serviceCode} ${option.label}` : option.label;
@@ -906,11 +913,18 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
     if (key === "lokacija") return firstLocation.name || "Zagreb - sjedište";
     if (key === "ime") return "Ana";
     if (key === "prezime") return "Savanović";
+    if (key === "imeoca") return "Ivan";
     if (key === "imeiprezime") return "";
     if (key === "oibosobe") return "12345678910";
+    if (key === "jezik") return "hrvatski";
+    if (key === "datumrodenja") return "29.04.1990";
+    if (key === "drzavarodenja") return "Hrvatska";
+    if (key === "mjestorodenja") return "Zagreb";
+    if (key === "datumdolaska") return "29.04.2026";
+    if (key === "mjestorada") return firstLocation.name || "Zagreb - sjedište";
+    if (key === "aktivnost") return "DA";
     if (key === "email") return "ana@example.hr";
     if (key === "mobitel") return "+385 91 000 0000";
-    if (key === "radnomjesto") return "Radnik";
     if (key.includes("datum")) return "29.04.2026";
     if (key.includes("vrijedido")) return "29.04.2030";
     if (key.includes("vrijeditrajno")) return "NE";
@@ -2269,6 +2283,14 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
       lastName: lastName || resolvedFullName.split(/\s+/).slice(-1).join(" "),
       fullName: resolvedFullName,
       oib: normalizeInputValue(getImportRowValue(row, ["oib", "oib osobe", "osobni identifikacijski broj"])),
+      fatherName: normalizeInputValue(getImportRowValue(row, ["ime oca", "imeoca", "otac"])),
+      language: normalizeInputValue(getImportRowValue(row, ["jezik", "language"])),
+      birthDate: normalizePersonTrainingImportDate(getImportRowValue(row, ["datum rođenja", "datum rodenja", "datumrodjenja", "birth date"])),
+      birthCountry: normalizeInputValue(getImportRowValue(row, ["država rođenja", "drzava rodenja", "country of birth"])),
+      birthPlace: normalizeInputValue(getImportRowValue(row, ["mjesto rođenja", "mjesto rodenja", "place of birth"])),
+      arrivalDate: normalizePersonTrainingImportDate(getImportRowValue(row, ["datum dolaska", "arrival date"])),
+      workPlace: normalizeInputValue(getImportRowValue(row, ["mjesto rada", "mjestorada", "work place"])),
+      activityStatus: normalizeInputValue(getImportRowValue(row, ["aktivnost", "aktivan", "activity"])) || "DA",
       email: normalizeInputValue(getImportRowValue(row, ["email", "e-mail", "mail"])),
       phone: normalizeInputValue(getImportRowValue(row, ["telefon", "mobitel", "phone", "mob"])),
       jobTitle: normalizeInputValue(getImportRowValue(row, ["radno mjesto", "zanimanje", "posao", "job title"])),
@@ -2326,7 +2348,7 @@ function getPeopleTrainingTemplateItemDate(item = {}) {
 }
 
 function hasPeopleTrainingTemplateEvidence(item = {}) {
-  return Boolean(item?.certificateNumber || item?.issuedOn || item?.passedOn || item?.validUntil);
+  return Boolean(item?.recordNumber || item?.certificateNumber || item?.issuedOn || item?.passedOn || item?.validUntil);
 }
 
 function findPeopleTrainingTemplateItem(record = {}, hints = []) {
@@ -2355,12 +2377,14 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const locationName = record.locationName || location.name || "";
   const companyResponsibleName = company.representative || location.representative || "";
   const companyResponsibleOib = company.representativeOib || "";
-  const itemDate = getPeopleTrainingTemplateItemDate(item);
-  const itemValidUntil = item.validForever ? "" : (item.validUntil || "");
+  const itemDetails = item.details && typeof item.details === "object" ? item.details : {};
+  const itemDate = itemDetails.theoryDate || getPeopleTrainingTemplateItemDate(item);
+  const itemValidUntil = itemDetails.safeWorkPeriodTo || (item.validForever ? "" : (item.validUntil || ""));
+  const itemRecordNumber = item.recordNumber || item.certificateNumber || "";
   const serviceName = item.label || service.name || item.serviceName || "";
   const serviceCode = item.serviceCode || service.serviceCode || item.shortLabel || "";
   const provider = item.provider || "";
-  const workPlace = locationName || company.headquarters || "";
+  const workPlace = record.workPlace || locationName || company.headquarters || "";
   const adrItem = findPeopleTrainingTemplateItem(record, ["adr"]);
   const pgpItem = findPeopleTrainingTemplateItem(record, ["fire_initial", "pozar", "pocetno gasenje", "ppz", "pgp"]);
   const spztpItem = findPeopleTrainingTemplateItem(record, ["flammable_storage", "zapaljiv", "skladistenje", "spztp"]);
@@ -2368,7 +2392,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const fillTrainingSet = (prefix, trainingItem = {}) => {
     const passedOn = getPeopleTrainingTemplateItemDate(trainingItem);
     return {
-      [`BrojPotvrde${prefix}`]: trainingItem.certificateNumber || "",
+      [`BrojPotvrde${prefix}`]: trainingItem.recordNumber || trainingItem.certificateNumber || "",
       [`DatumPolaganja${prefix}`]: formatPeopleTrainingTemplateDate(passedOn),
       [`VrijediDo${prefix}`]: trainingItem.validForever ? "" : formatPeopleTrainingTemplateDate(trainingItem.validUntil),
       [`${prefix}Check`]: hasPeopleTrainingTemplateEvidence(trainingItem) ? "X" : "",
@@ -2388,28 +2412,29 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     Jezik: record.language || "",
     DatumRodenja: formatPeopleTrainingTemplateDate(record.birthDate),
     "DržavaRodenja": record.birthCountry || "",
+    DrzavaRodenja: record.birthCountry || "",
     MjestoRodenja: record.birthPlace || "",
     DatumDolaska: formatPeopleTrainingTemplateDate(record.arrivalDate),
     Mjestorada: workPlace,
     MjestoRadaNew: workPlace,
     DodatnoMjesto: location.note || location.region || "",
-    Aktivnost: serviceName || serviceCode,
-    BrojZapisnikaZNR: item.certificateNumber || "",
-    NazivRadnogMjesta: record.jobTitle || "",
+    Aktivnost: record.activityStatus || serviceName || serviceCode,
+    BrojZapisnikaZNR: itemRecordNumber,
+    NazivRadnogMjesta: itemDetails.jobTitle || record.jobTitle || "",
     OpisPoslova: record.jobDescription || record.note || "",
     VrstaIspita: serviceName || serviceCode,
-    MjestoOsposobljavanjaTeorija: workPlace,
+    MjestoOsposobljavanjaTeorija: itemDetails.theoryPlace || workPlace,
     DatumTeorija: formatPeopleTrainingTemplateDate(itemDate),
-    NacinProvodenjaTeorija: item.examMode || item.learningTestTitle || item.provider || "",
-    ImePrezimeOvlastenik: provider,
-    OIBOvlastenik: "",
-    OstaloImePrezime: "",
-    OstaloOIB: "",
-    MjestoProvodenjaPrakicno: workPlace,
-    RazdobljeZNROd: formatPeopleTrainingTemplateDate(itemDate),
+    NacinProvodenjaTeorija: itemDetails.theoryMethod || item.examMode || item.learningTestTitle || item.provider || "",
+    ImePrezimeOvlastenik: itemDetails.employerRepresentativeName || provider,
+    OIBOvlastenik: itemDetails.employerRepresentativeOib || "",
+    OstaloImePrezime: itemDetails.additionalPersonName || "",
+    OstaloOIB: itemDetails.additionalPersonOib || "",
+    MjestoProvodenjaPrakicno: itemDetails.practicalPlace || workPlace,
+    RazdobljeZNROd: formatPeopleTrainingTemplateDate(itemDetails.safeWorkPeriodFrom || itemDate),
     RazdobljeZNRDo: formatPeopleTrainingTemplateDate(itemValidUntil),
-    OdgovornaZNRImePrezime: provider || companyResponsibleName,
-    OdgovornaZNROIB: "",
+    OdgovornaZNRImePrezime: itemDetails.employerRepresentativeName || provider || companyResponsibleName,
+    OdgovornaZNROIB: itemDetails.employerRepresentativeOib || "",
     OdgovornaZNRKlasa: "",
     OdgovornaZNRUrbroj: "",
     OdgovornaZNREbroj: "",
@@ -2417,7 +2442,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     BrojOdlukeOVL: "",
     DatumOdlukeOVL: "",
     RokOdlukeOVL: "",
-    BrojZapisnikaOVL: item.certificateNumber || "",
+    BrojZapisnikaOVL: itemRecordNumber,
     DatumProvodenjaOVL: formatPeopleTrainingTemplateDate(itemDate),
     RokOVL: formatPeopleTrainingTemplateDate(itemValidUntil),
     MjestoOVL: workPlace,
@@ -2430,7 +2455,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     BrojOdlukeEv: "",
     DatumOdlukeEv: "",
     RokOdlukeEv: "",
-    BrojZapisnikaEv: item.certificateNumber || "",
+    BrojZapisnikaEv: itemRecordNumber,
     DatumZapisnikaEv: formatPeopleTrainingTemplateDate(itemDate),
     RokZapisnikaEv: formatPeopleTrainingTemplateDate(itemValidUntil),
     OdgovornaEvImePrezime: provider || companyResponsibleName,
@@ -2439,7 +2464,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     OdgovornaEvEbroj: "",
     AktivnostPP: pgpItem?.label || "",
     DatumPP: formatPeopleTrainingTemplateDate(getPeopleTrainingTemplateItemDate(pgpItem ?? {})),
-    BrojZapisnikaPGP: pgpItem?.certificateNumber || "",
+    BrojZapisnikaPGP: pgpItem?.recordNumber || pgpItem?.certificateNumber || "",
     DatumPolaganjaPGP: formatPeopleTrainingTemplateDate(getPeopleTrainingTemplateItemDate(pgpItem ?? {})),
     PGPCheck: hasPeopleTrainingTemplateEvidence(pgpItem ?? {}) ? "X" : "",
     OdgovornaPGPImePrezime: pgpItem?.provider || provider || companyResponsibleName,
@@ -2477,7 +2502,7 @@ function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, 
     USLUGA: item.label || service.name || item.serviceName || "",
     SIFRA_USLUGE: item.serviceCode || service.serviceCode || item.shortLabel || "",
     IZVOR_POLAGANJA: sourceText,
-    POTVRDA_BROJ: item.certificateNumber || "",
+    POTVRDA_BROJ: item.recordNumber || item.certificateNumber || "",
     DATUM_POLAGANJA: passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : "",
     DATUM_IZDAVANJA: item.issuedOn ? formatOfferDocumentDate(item.issuedOn) : (passedOrIssued ? formatOfferDocumentDate(passedOrIssued) : ""),
     VRIJEDI_DO: item.validForever ? "" : (item.validUntil ? formatOfferDocumentDate(item.validUntil) : ""),

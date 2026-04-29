@@ -7,6 +7,7 @@ import {
 
 import {
   applyDashboardWidgetGridLayout,
+  buildPeopleTrainingRecordNumber,
   createAbsenceEntry,
   normalizeAbsenceBalanceEntry,
   buildLocationContacts,
@@ -1966,6 +1967,14 @@ function mapPersonTrainingRecordRow(row = {}) {
     lastName: row.last_name ?? "",
     fullName,
     oib: row.oib ?? "",
+    fatherName: row.father_name ?? "",
+    language: row.language_name ?? "",
+    birthDate: normalizeDateOnly(row.birth_date),
+    birthCountry: row.birth_country ?? "",
+    birthPlace: row.birth_place ?? "",
+    arrivalDate: normalizeDateOnly(row.arrival_date),
+    workPlace: row.work_place ?? "",
+    activityStatus: row.activity_status ?? (row.employment_status === "inactive" ? "NE" : "DA"),
     email: row.email ?? "",
     phone: row.phone ?? "",
     jobTitle: row.job_title ?? "",
@@ -1976,6 +1985,240 @@ function mapPersonTrainingRecordRow(row = {}) {
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
+}
+
+function normalizePeopleTrainingDetailLookup(value = "") {
+  return dbString(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getPeopleTrainingSqlDetailCategory(item = {}) {
+  const code = normalizePeopleTrainingDetailLookup([item.serviceCode, item.shortLabel, item.type].filter(Boolean).join(" "));
+  const text = normalizePeopleTrainingDetailLookup([item.label, item.serviceName, item.serviceCode, item.shortLabel].filter(Boolean).join(" "));
+
+  if (/\badr\b/.test(code) || /\badr\b/.test(text)) {
+    return "adr";
+  }
+  if (/\bspztp\b/.test(code) || /\bspztp\b/.test(text) || /(zapalj|plin|tekucin|skladisten)/.test(text)) {
+    return "flammable_storage";
+  }
+  if (/\b(pgp|ppz|pozar)\b/.test(code) || /(pocetno gasenje|gasenje pozara|pozar)/.test(text)) {
+    return "fire";
+  }
+  if (/\b(znr|zos)\b/.test(code) || /\b(znr|zos)\b/.test(text) || /(siguran nacin|zastita na radu|rad na siguran)/.test(text)) {
+    return "safe_work";
+  }
+  return "";
+}
+
+function getPeopleTrainingSqlRecordNumber(record = {}, item = {}) {
+  return dbString(item.recordNumber || item.certificateNumber) || buildPeopleTrainingRecordNumber({
+    workOrderNumber: item.workOrderNumber,
+    serviceCode: item.serviceCode || item.shortLabel || item.type,
+    personOib: record.oib,
+  });
+}
+
+function getPeopleTrainingSqlCommonValues(record = {}, item = {}) {
+  return {
+    recordId: Number(record.id),
+    organizationId: Number(record.organizationId),
+    companyId: Number(record.companyId),
+    locationId: record.locationId ? Number(record.locationId) : null,
+    workOrderNumber: dbString(item.workOrderNumber).slice(0, 80),
+    serviceId: dbString(item.serviceId).slice(0, 120),
+    serviceCode: dbString(item.serviceCode || item.shortLabel || item.type).slice(0, 80),
+    serviceName: dbString(item.serviceName || item.label).slice(0, 180),
+    personOib: dbString(record.oib).slice(0, 32),
+    recordNumber: getPeopleTrainingSqlRecordNumber(record, item).slice(0, 160),
+  };
+}
+
+async function syncPeopleTrainingDetailTables(connection, record = {}) {
+  const recordId = Number(record.id);
+  const organizationId = Number(record.organizationId);
+  const companyId = Number(record.companyId);
+
+  if (!Number.isFinite(recordId) || !Number.isFinite(organizationId) || !Number.isFinite(companyId)) {
+    return;
+  }
+
+  const locationId = record.locationId ? Number(record.locationId) : null;
+  await connection.query(
+    `
+      INSERT INTO web_people_training_person_details
+        (people_training_record_id, organization_id, company_id, location_id,
+         first_name, last_name, father_name, oib, language_name, birth_date, birth_country,
+         birth_place, arrival_date, work_place, activity_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        organization_id = VALUES(organization_id),
+        company_id = VALUES(company_id),
+        location_id = VALUES(location_id),
+        first_name = VALUES(first_name),
+        last_name = VALUES(last_name),
+        father_name = VALUES(father_name),
+        oib = VALUES(oib),
+        language_name = VALUES(language_name),
+        birth_date = VALUES(birth_date),
+        birth_country = VALUES(birth_country),
+        birth_place = VALUES(birth_place),
+        arrival_date = VALUES(arrival_date),
+        work_place = VALUES(work_place),
+        activity_status = VALUES(activity_status)
+    `,
+    [
+      recordId,
+      organizationId,
+      companyId,
+      locationId,
+      dbString(record.firstName).slice(0, 120),
+      dbString(record.lastName).slice(0, 160),
+      dbString(record.fatherName).slice(0, 120),
+      dbString(record.oib).slice(0, 32),
+      dbString(record.language).slice(0, 80),
+      normalizeDateOnly(record.birthDate),
+      dbString(record.birthCountry).slice(0, 120),
+      dbString(record.birthPlace).slice(0, 120),
+      normalizeDateOnly(record.arrivalDate),
+      dbString(record.workPlace).slice(0, 180),
+      dbString(record.activityStatus || "DA").slice(0, 8),
+    ],
+  );
+
+  await connection.query("DELETE FROM web_people_training_safe_work_details WHERE people_training_record_id = ?", [recordId]);
+  await connection.query("DELETE FROM web_people_training_fire_protection_details WHERE people_training_record_id = ?", [recordId]);
+  await connection.query("DELETE FROM web_people_training_flammable_storage_details WHERE people_training_record_id = ?", [recordId]);
+  await connection.query("DELETE FROM web_people_training_adr_details WHERE people_training_record_id = ?", [recordId]);
+
+  for (const item of record.trainingItems ?? []) {
+    const category = getPeopleTrainingSqlDetailCategory(item);
+    if (!category) {
+      continue;
+    }
+    const details = item.details && typeof item.details === "object" ? item.details : {};
+    const hasDetailData = Object.values(details).some((value) => dbString(value));
+    const hasRowData = Boolean(
+      dbString(item.recordNumber || item.certificateNumber)
+      || item.certificateNumber
+      || item.workOrderNumber
+      || item.issuedOn
+      || item.passedOn
+      || item.validUntil
+      || hasDetailData
+    );
+    if (!hasRowData) {
+      continue;
+    }
+    const common = getPeopleTrainingSqlCommonValues(record, item);
+    if (category === "safe_work") {
+      await connection.query(
+        `
+          INSERT INTO web_people_training_safe_work_details
+            (people_training_record_id, organization_id, company_id, location_id,
+             work_order_number, service_id, service_code, service_name, person_oib, record_number,
+             job_title, theory_place, theory_date, theory_method,
+             employer_representative_name, employer_representative_oib,
+             additional_person_name, additional_person_oib,
+             practical_place, safe_work_period_from, safe_work_period_to)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          common.recordId,
+          common.organizationId,
+          common.companyId,
+          common.locationId,
+          common.workOrderNumber,
+          common.serviceId,
+          common.serviceCode,
+          common.serviceName,
+          common.personOib,
+          common.recordNumber,
+          dbString(details.jobTitle || record.jobTitle).slice(0, 180),
+          dbString(details.theoryPlace).slice(0, 180),
+          normalizeDateOnly(details.theoryDate || item.issuedOn || item.passedOn),
+          dbString(details.theoryMethod || item.examMode).slice(0, 180),
+          dbString(details.employerRepresentativeName || item.provider).slice(0, 180),
+          dbString(details.employerRepresentativeOib).slice(0, 32),
+          dbString(details.additionalPersonName).slice(0, 180),
+          dbString(details.additionalPersonOib).slice(0, 32),
+          dbString(details.practicalPlace).slice(0, 180),
+          normalizeDateOnly(details.safeWorkPeriodFrom),
+          normalizeDateOnly(details.safeWorkPeriodTo),
+        ],
+      );
+      continue;
+    }
+
+    if (category === "fire") {
+      await connection.query(
+        `
+          INSERT INTO web_people_training_fire_protection_details
+            (people_training_record_id, organization_id, company_id, location_id,
+             work_order_number, service_id, service_code, service_name, person_oib, record_number, passed_on)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          common.recordId,
+          common.organizationId,
+          common.companyId,
+          common.locationId,
+          common.workOrderNumber,
+          common.serviceId,
+          common.serviceCode,
+          common.serviceName,
+          common.personOib,
+          common.recordNumber,
+          normalizeDateOnly(item.passedOn || item.issuedOn),
+        ],
+      );
+      continue;
+    }
+
+    const tableName = category === "adr"
+      ? "web_people_training_adr_details"
+      : "web_people_training_flammable_storage_details";
+    await connection.query(
+      `
+        INSERT INTO ${tableName}
+          (people_training_record_id, organization_id, company_id, location_id,
+           work_order_number, service_id, service_code, service_name, person_oib, record_number,
+           passed_on, valid_until)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        common.recordId,
+        common.organizationId,
+        common.companyId,
+        common.locationId,
+        common.workOrderNumber,
+        common.serviceId,
+        common.serviceCode,
+        common.serviceName,
+        common.personOib,
+        common.recordNumber,
+        normalizeDateOnly(item.passedOn || item.issuedOn),
+        item.validForever ? null : normalizeDateOnly(item.validUntil),
+      ],
+    );
+  }
+}
+
+async function deletePeopleTrainingDetailRows(connection, recordId) {
+  const numericId = Number(recordId);
+  if (!Number.isFinite(numericId)) {
+    return;
+  }
+  await connection.query("DELETE FROM web_people_training_person_details WHERE people_training_record_id = ?", [numericId]);
+  await connection.query("DELETE FROM web_people_training_safe_work_details WHERE people_training_record_id = ?", [numericId]);
+  await connection.query("DELETE FROM web_people_training_fire_protection_details WHERE people_training_record_id = ?", [numericId]);
+  await connection.query("DELETE FROM web_people_training_flammable_storage_details WHERE people_training_record_id = ?", [numericId]);
+  await connection.query("DELETE FROM web_people_training_adr_details WHERE people_training_record_id = ?", [numericId]);
 }
 
 async function prepareStoredAttachmentDocuments(documents = [], {
@@ -3480,7 +3723,10 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT ptr.id, ptr.organization_id, ptr.company_id, ptr.location_id,
            c.naziv_tvrtke AS company_name, c.oib AS company_oib,
            l.lokacija AS location_name,
-           ptr.first_name, ptr.last_name, ptr.full_name, ptr.oib, ptr.email, ptr.phone,
+           ptr.first_name, ptr.last_name, ptr.full_name, ptr.oib,
+           ptr.father_name, ptr.language_name, ptr.birth_date, ptr.birth_country, ptr.birth_place,
+           ptr.arrival_date, ptr.work_place, ptr.activity_status,
+           ptr.email, ptr.phone,
            ptr.job_title, ptr.employment_status, ptr.training_items_json, ptr.attachments_json, ptr.note,
            ptr.created_at, ptr.updated_at
     FROM web_people_training_records ptr
@@ -6156,6 +6402,14 @@ export class MySqlSafetyRepository {
         last_name VARCHAR(160) NOT NULL DEFAULT '',
         full_name VARCHAR(240) NOT NULL DEFAULT '',
         oib VARCHAR(32) NOT NULL DEFAULT '',
+        father_name VARCHAR(120) NOT NULL DEFAULT '',
+        language_name VARCHAR(80) NOT NULL DEFAULT '',
+        birth_date DATE NULL,
+        birth_country VARCHAR(120) NOT NULL DEFAULT '',
+        birth_place VARCHAR(120) NOT NULL DEFAULT '',
+        arrival_date DATE NULL,
+        work_place VARCHAR(180) NOT NULL DEFAULT '',
+        activity_status VARCHAR(8) NOT NULL DEFAULT 'DA',
         email VARCHAR(180) NOT NULL DEFAULT '',
         phone VARCHAR(80) NOT NULL DEFAULT '',
         job_title VARCHAR(180) NOT NULL DEFAULT '',
@@ -6168,6 +6422,127 @@ export class MySqlSafetyRepository {
         INDEX idx_web_people_training_org_company (organization_id, company_id),
         INDEX idx_web_people_training_company_location (company_id, location_id),
         INDEX idx_web_people_training_oib (organization_id, oib)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_person_details (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        people_training_record_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        first_name VARCHAR(120) NOT NULL DEFAULT '',
+        last_name VARCHAR(160) NOT NULL DEFAULT '',
+        father_name VARCHAR(120) NOT NULL DEFAULT '',
+        oib VARCHAR(32) NOT NULL DEFAULT '',
+        language_name VARCHAR(80) NOT NULL DEFAULT '',
+        birth_date DATE NULL,
+        birth_country VARCHAR(120) NOT NULL DEFAULT '',
+        birth_place VARCHAR(120) NOT NULL DEFAULT '',
+        arrival_date DATE NULL,
+        work_place VARCHAR(180) NOT NULL DEFAULT '',
+        activity_status VARCHAR(8) NOT NULL DEFAULT 'DA',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_people_training_person_details_record (people_training_record_id),
+        INDEX idx_web_people_training_person_details_scope (organization_id, company_id, location_id),
+        INDEX idx_web_people_training_person_details_oib (organization_id, oib)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_safe_work_details (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        people_training_record_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        work_order_number VARCHAR(80) NOT NULL DEFAULT '',
+        service_id VARCHAR(120) NOT NULL DEFAULT '',
+        service_code VARCHAR(80) NOT NULL DEFAULT '',
+        service_name VARCHAR(180) NOT NULL DEFAULT '',
+        person_oib VARCHAR(32) NOT NULL DEFAULT '',
+        record_number VARCHAR(160) NOT NULL DEFAULT '',
+        job_title VARCHAR(180) NOT NULL DEFAULT '',
+        theory_place VARCHAR(180) NOT NULL DEFAULT '',
+        theory_date DATE NULL,
+        theory_method VARCHAR(180) NOT NULL DEFAULT '',
+        employer_representative_name VARCHAR(180) NOT NULL DEFAULT '',
+        employer_representative_oib VARCHAR(32) NOT NULL DEFAULT '',
+        additional_person_name VARCHAR(180) NOT NULL DEFAULT '',
+        additional_person_oib VARCHAR(32) NOT NULL DEFAULT '',
+        practical_place VARCHAR(180) NOT NULL DEFAULT '',
+        safe_work_period_from DATE NULL,
+        safe_work_period_to DATE NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_people_training_safe_work_record (people_training_record_id),
+        INDEX idx_web_people_training_safe_work_scope (organization_id, company_id, location_id),
+        INDEX idx_web_people_training_safe_work_number (organization_id, record_number)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_fire_protection_details (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        people_training_record_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        work_order_number VARCHAR(80) NOT NULL DEFAULT '',
+        service_id VARCHAR(120) NOT NULL DEFAULT '',
+        service_code VARCHAR(80) NOT NULL DEFAULT '',
+        service_name VARCHAR(180) NOT NULL DEFAULT '',
+        person_oib VARCHAR(32) NOT NULL DEFAULT '',
+        record_number VARCHAR(160) NOT NULL DEFAULT '',
+        passed_on DATE NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_people_training_fire_record (people_training_record_id),
+        INDEX idx_web_people_training_fire_scope (organization_id, company_id, location_id),
+        INDEX idx_web_people_training_fire_number (organization_id, record_number)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_flammable_storage_details (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        people_training_record_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        work_order_number VARCHAR(80) NOT NULL DEFAULT '',
+        service_id VARCHAR(120) NOT NULL DEFAULT '',
+        service_code VARCHAR(80) NOT NULL DEFAULT '',
+        service_name VARCHAR(180) NOT NULL DEFAULT '',
+        person_oib VARCHAR(32) NOT NULL DEFAULT '',
+        record_number VARCHAR(160) NOT NULL DEFAULT '',
+        passed_on DATE NULL,
+        valid_until DATE NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_people_training_flammable_record (people_training_record_id),
+        INDEX idx_web_people_training_flammable_scope (organization_id, company_id, location_id),
+        INDEX idx_web_people_training_flammable_number (organization_id, record_number)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_people_training_adr_details (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        people_training_record_id BIGINT NOT NULL,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        work_order_number VARCHAR(80) NOT NULL DEFAULT '',
+        service_id VARCHAR(120) NOT NULL DEFAULT '',
+        service_code VARCHAR(80) NOT NULL DEFAULT '',
+        service_name VARCHAR(180) NOT NULL DEFAULT '',
+        person_oib VARCHAR(32) NOT NULL DEFAULT '',
+        record_number VARCHAR(160) NOT NULL DEFAULT '',
+        passed_on DATE NULL,
+        valid_until DATE NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_people_training_adr_record (people_training_record_id),
+        INDEX idx_web_people_training_adr_scope (organization_id, company_id, location_id),
+        INDEX idx_web_people_training_adr_number (organization_id, record_number)
       )
     `);
     await this.pool.query(`
@@ -6362,6 +6737,14 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_service_catalog", "training_certificate_template_json", "LONGTEXT NULL AFTER linked_learning_test_ids_json");
+    await ensureColumnExists(this.pool, "web_people_training_records", "father_name", "VARCHAR(120) NOT NULL DEFAULT '' AFTER oib");
+    await ensureColumnExists(this.pool, "web_people_training_records", "language_name", "VARCHAR(80) NOT NULL DEFAULT '' AFTER father_name");
+    await ensureColumnExists(this.pool, "web_people_training_records", "birth_date", "DATE NULL AFTER language_name");
+    await ensureColumnExists(this.pool, "web_people_training_records", "birth_country", "VARCHAR(120) NOT NULL DEFAULT '' AFTER birth_date");
+    await ensureColumnExists(this.pool, "web_people_training_records", "birth_place", "VARCHAR(120) NOT NULL DEFAULT '' AFTER birth_country");
+    await ensureColumnExists(this.pool, "web_people_training_records", "arrival_date", "DATE NULL AFTER birth_place");
+    await ensureColumnExists(this.pool, "web_people_training_records", "work_place", "VARCHAR(180) NOT NULL DEFAULT '' AFTER arrival_date");
+    await ensureColumnExists(this.pool, "web_people_training_records", "activity_status", "VARCHAR(8) NOT NULL DEFAULT 'DA' AFTER work_place");
     await ensureColumnExists(this.pool, "web_people_training_records", "attachments_json", "LONGTEXT NULL AFTER training_items_json");
     await ensureColumnExists(this.pool, "web_reminders", "repeat_every_days", "INT NULL AFTER due_date");
     await ensureColumnExists(this.pool, "web_team_tasks", "invited_user_ids_json", "LONGTEXT NULL AFTER assigned_to_label");
@@ -10181,8 +10564,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_people_training_records
             (organization_id, company_id, location_id, first_name, last_name, full_name,
-             oib, email, phone, job_title, employment_status, training_items_json, attachments_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             oib, father_name, language_name, birth_date, birth_country, birth_place,
+             arrival_date, work_place, activity_status,
+             email, phone, job_title, employment_status, training_items_json, attachments_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10192,6 +10577,14 @@ export class MySqlSafetyRepository {
           draft.lastName,
           draft.fullName,
           draft.oib,
+          draft.fatherName,
+          draft.language,
+          draft.birthDate,
+          draft.birthCountry,
+          draft.birthPlace,
+          draft.arrivalDate,
+          draft.workPlace,
+          draft.activityStatus,
           draft.email,
           draft.phone,
           draft.jobTitle,
@@ -10202,12 +10595,14 @@ export class MySqlSafetyRepository {
         ],
       );
 
-      await connection.commit();
-      return {
+      const savedDraft = {
         ...draft,
         id: String(result.insertId),
         attachments: preparedAttachments.nextDocuments ?? [],
       };
+      await syncPeopleTrainingDetailTables(connection, savedDraft);
+      await connection.commit();
+      return savedDraft;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -10239,7 +10634,9 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_people_training_records
           SET company_id = ?, location_id = ?, first_name = ?, last_name = ?, full_name = ?,
-              oib = ?, email = ?, phone = ?, job_title = ?, employment_status = ?,
+              oib = ?, father_name = ?, language_name = ?, birth_date = ?, birth_country = ?, birth_place = ?,
+              arrival_date = ?, work_place = ?, activity_status = ?,
+              email = ?, phone = ?, job_title = ?, employment_status = ?,
               training_items_json = ?, attachments_json = ?, note = ?
           WHERE id = ?
         `,
@@ -10250,6 +10647,14 @@ export class MySqlSafetyRepository {
           next.lastName,
           next.fullName,
           next.oib,
+          next.fatherName,
+          next.language,
+          next.birthDate,
+          next.birthCountry,
+          next.birthPlace,
+          next.arrivalDate,
+          next.workPlace,
+          next.activityStatus,
           next.email,
           next.phone,
           next.jobTitle,
@@ -10261,6 +10666,11 @@ export class MySqlSafetyRepository {
         ],
       );
 
+      await syncPeopleTrainingDetailTables(connection, {
+        ...next,
+        id,
+        attachments: preparedAttachments.nextDocuments ?? [],
+      });
       await connection.commit();
       await cleanupStoredObjects(preparedAttachments.staleDocuments ?? []);
       return {
@@ -10283,6 +10693,7 @@ export class MySqlSafetyRepository {
       await connection.beginTransaction();
       const snapshot = await fetchSnapshotFromConnection(connection);
       currentAttachments = snapshot.peopleTrainingRecords.find((item) => item.id === id)?.attachments ?? [];
+      await deletePeopleTrainingDetailRows(connection, id);
       const [result] = await connection.query("DELETE FROM web_people_training_records WHERE id = ?", [Number(id)]);
       await connection.commit();
       await cleanupStoredObjects(currentAttachments);

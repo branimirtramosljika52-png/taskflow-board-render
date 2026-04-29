@@ -334,7 +334,15 @@ test("people training records normalize certificates, statuses and filters", () 
       locationId: "location-1",
       firstName: "Ivan",
       lastName: "Horvat",
+      fatherName: "Marko",
       oib: " 123 456 ",
+      language: "hrvatski",
+      birthDate: "1990-04-29",
+      birthCountry: "Hrvatska",
+      birthPlace: "Zagreb",
+      arrivalDate: "2026-04-28",
+      workPlace: "Pogon Jankomir",
+      activityStatus: "DA",
       email: "IVAN@ACME.HR",
       jobTitle: "SkladiĹˇtar",
       trainingItems: [
@@ -343,6 +351,11 @@ test("people training records normalize certificates, statuses and filters", () 
           issuedOn: "2026-01-15",
           validUntil: "2027-01-15",
           certificateNumber: "ZNR-1",
+          workOrderNumber: "RN 26-615",
+          details: {
+            theoryDate: "2026-01-15",
+            jobTitle: "SkladiÄąË‡tar",
+          },
         },
         {
           type: "adr",
@@ -360,8 +373,14 @@ test("people training records normalize certificates, statuses and filters", () 
   assert.equal(record.locationName, "Pogon Jankomir");
   assert.equal(record.fullName, "Ivan Horvat");
   assert.equal(record.oib, "123456");
+  assert.equal(record.fatherName, "Marko");
+  assert.equal(record.language, "hrvatski");
+  assert.equal(record.workPlace, "Pogon Jankomir");
+  assert.equal(record.activityStatus, "DA");
   assert.equal(record.email, "ivan@acme.hr");
   assert.equal(record.trainingItems.length, 6);
+  assert.equal(record.trainingItems.find((item) => item.type === "safe_work").recordNumber, "RN 26-615-ZNR-123456");
+  assert.equal(record.trainingItems.find((item) => item.type === "safe_work").details.theoryDate, "2026-01-15");
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").status, "valid");
   assert.equal(record.trainingItems.find((item) => item.type === "adr").status, "expired");
 
