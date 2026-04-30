@@ -33818,6 +33818,12 @@ const DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES = new Set([
   "OBJECT_DESCRIPTION",
 ]);
 
+function isDocumentTemplateObjectSourceField(field = {}) {
+  return DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES.has(
+    String(field?.source || "").trim().toUpperCase(),
+  );
+}
+
 const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
   radni_nalozi: {
     label: "radni_nalozi",
@@ -39090,6 +39096,10 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return boundValue;
   }
 
+  if (isDocumentTemplateObjectSourceField(field)) {
+    return "";
+  }
+
   const explicit = String(field.defaultValue ?? "").trim();
   if (explicit) {
     return explicit;
@@ -40352,6 +40362,33 @@ function setDocumentTemplateRuntimeObjectSelection(workOrderId = "", objectId = 
         }
         : entry
     ));
+  }
+
+  const objectSourceFieldIds = (Array.isArray(documentTemplateFieldDrafts) ? documentTemplateFieldDrafts : [])
+    .filter(isDocumentTemplateObjectSourceField)
+    .map((field) => String(field?.id || "").trim())
+    .filter(Boolean);
+  if (objectSourceFieldIds.length > 0) {
+    const record = getDocumentTemplateRuntimeOverrideRecord(normalizedWorkOrderId);
+    if (record) {
+      const nextFieldValues = { ...(record.fieldValues ?? {}) };
+      const nextFieldSources = { ...(record.fieldSources ?? {}) };
+      const nextFieldAiMeta = { ...(record.fieldAiMeta ?? {}) };
+      objectSourceFieldIds.forEach((fieldId) => {
+        delete nextFieldValues[fieldId];
+        delete nextFieldSources[fieldId];
+        delete nextFieldAiMeta[fieldId];
+      });
+      state.documentTemplateRuntime.overrides = {
+        ...(state.documentTemplateRuntime.overrides ?? {}),
+        [normalizedWorkOrderId]: {
+          ...record,
+          fieldValues: nextFieldValues,
+          fieldSources: nextFieldSources,
+          fieldAiMeta: nextFieldAiMeta,
+        },
+      };
+    }
   }
 
   saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
@@ -50349,7 +50386,48 @@ function renderDocumentTemplateRuntimeFieldRows() {
     }
 
     let control;
-    if (field.type === "longtext") {
+    if (isDocumentTemplateObjectSourceField(field) && workOrder) {
+      const currentObjectId = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+      const locationObjects = getLocationObjectsForWorkOrder(workOrder);
+      const options = [
+        { value: "", label: "Bez dodatnog objekta" },
+        ...locationObjects.map((item) => ({
+          value: String(item.id),
+          label: [item.name, item.code ? `(${item.code})` : ""].filter(Boolean).join(" "),
+        })),
+        { value: "__add_new__", label: "+ Dodaj novi objekt" },
+      ];
+      control = document.createElement("select");
+      control.className = "document-template-source-select document-template-runtime-dropdown document-template-runtime-object-dropdown";
+      replaceSelectOptions(control, options, currentObjectId);
+      control.addEventListener("change", async (event) => {
+        const nextValue = String(event.currentTarget.value || "").trim();
+        if (nextValue === "__add_new__") {
+          control.value = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+          control.disabled = true;
+          try {
+            const createdObject = await createLocationObjectFromTemplateRuntime(workOrder);
+            if (createdObject) {
+              setDocumentTemplateRuntimeObjectSelection(workOrder.id, createdObject.id, { render: true });
+              setDocumentTemplateMessage(`Objekt "${createdObject.name}" je dodan i odabran za ovaj zapisnik.`, { type: "success" });
+            }
+          } catch (error) {
+            console.error("Ne mogu dodati objekt lokacije.", error);
+            setDocumentTemplateMessage(error?.message || "Ne mogu dodati objekt lokacije.");
+            control.disabled = false;
+          }
+          return;
+        }
+
+        setDocumentTemplateRuntimeObjectSelection(workOrder.id, nextValue, { render: true });
+        setDocumentTemplateMessage(
+          nextValue
+            ? "Objekt je odabran za ovaj zapisnik."
+            : "Ovaj zapisnik je postavljen bez dodatnog objekta.",
+          { type: "success" },
+        );
+      });
+    } else if (field.type === "longtext") {
       const fieldHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
       control = document.createElement("textarea");
       control.rows = fieldHeight;
