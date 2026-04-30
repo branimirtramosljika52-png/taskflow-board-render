@@ -416,7 +416,7 @@ function evaluateRowsFunction(node, context) {
   const argument = node.args[0];
 
   if (argument.type === "cell") {
-    return 1;
+    return parseMeasurementCellReference(argument.reference).rowIndex + 1;
   }
 
   if (argument.type === "range") {

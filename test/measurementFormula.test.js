@@ -150,7 +150,8 @@ test("measurement formulas support ROWS over ranges and cells", () => {
     resolveCellReference() {
       throw new Error("ROWS over a cell reference must not read the cell value.");
     },
-  }), 1);
+  }), 3);
+  assert.equal(evaluateMeasurementFormula("=ROWS(A6)", context), 6);
 
   const absoluteRangeContext = {
     resolveCellReference() {

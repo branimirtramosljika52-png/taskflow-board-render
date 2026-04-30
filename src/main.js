@@ -920,16 +920,16 @@ const WORK_ORDER_FILTER_OPERATOR_LABELS = {
   last_month: "Prošli mjesec",
 };
 const DEFAULT_MEASUREMENT_COLUMNS = [
-  { id: "point", label: "Mjerno mjesto", placeholder: "Mjerno mjesto", width: 220 },
-  { id: "label", label: "Oznaka", placeholder: "Oznaka", width: 120 },
-  { id: "unit", label: "Jedinica", placeholder: "Jedinica", width: 120 },
-  { id: "min", label: "Min", placeholder: "Min", width: 110 },
-  { id: "max", label: "Max", placeholder: "Max", width: 110 },
-  { id: "reading1", label: "Mjerenje 1", placeholder: "0,00", width: 120 },
-  { id: "reading2", label: "Mjerenje 2", placeholder: "0,00", width: 120 },
-  { id: "reading3", label: "Mjerenje 3", placeholder: "0,00", width: 120 },
+  { id: "point", label: "Mjerno mjesto", placeholder: "", width: 220 },
+  { id: "label", label: "Oznaka", placeholder: "", width: 120 },
+  { id: "unit", label: "Jedinica", placeholder: "", width: 120 },
+  { id: "min", label: "Min", placeholder: "", width: 110 },
+  { id: "max", label: "Max", placeholder: "", width: 110 },
+  { id: "reading1", label: "Mjerenje 1", placeholder: "", width: 120 },
+  { id: "reading2", label: "Mjerenje 2", placeholder: "", width: 120 },
+  { id: "reading3", label: "Mjerenje 3", placeholder: "", width: 120 },
   { id: "average", label: "Prosjek", placeholder: "", width: 120, computed: "average", readonly: true },
-  { id: "note", label: "Napomena", placeholder: "Napomena", width: 240 },
+  { id: "note", label: "Napomena", placeholder: "", width: 240 },
 ];
 const MEASUREMENT_FONT_FAMILY_STYLES = Object.freeze({
   default: "inherit",
@@ -1586,6 +1586,7 @@ const state = {
       groundResistance: "",
       randomizeEnvironment: false,
       signatureMode: "scan",
+      validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -1634,6 +1635,7 @@ const state = {
       groundResistance: "",
       randomizeEnvironment: false,
       signatureMode: "scan",
+      validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -3091,6 +3093,7 @@ const serviceCatalogNameInput = document.querySelector("#service-catalog-name");
 const serviceCatalogCodeInput = document.querySelector("#service-catalog-code");
 const serviceCatalogStatusInput = document.querySelector("#service-catalog-status");
 const serviceCatalogTypeInput = document.querySelector("#service-catalog-type");
+const serviceCatalogValidityMonthsInput = document.querySelector("#service-catalog-validity-months");
 const serviceCatalogAppliesToPeopleInput = document.querySelector("#service-catalog-applies-to-people");
 const serviceCatalogTemplateSection = document.querySelector("#service-catalog-template-section");
 const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
@@ -3698,6 +3701,7 @@ const workOrderDocumentCommonWeatherInput = document.querySelector("#work-order-
 const workOrderDocumentCommonGroundConditionInput = document.querySelector("#work-order-document-common-ground-condition");
 const workOrderDocumentCommonGroundResistanceInput = document.querySelector("#work-order-document-common-ground-resistance");
 const workOrderDocumentCommonRandomizeEnvironmentInput = document.querySelector("#work-order-document-common-randomize-environment");
+const workOrderDocumentCommonValidityMonthsInput = document.querySelector("#work-order-document-common-validity-months");
 const workOrderDocumentCommonElectricalValidityMonthsInput = document.querySelector("#work-order-document-common-electrical-validity-months");
 const workOrderDocumentCommonTipkaloValidityMonthsInput = document.querySelector("#work-order-document-common-tipkalo-validity-months");
 
@@ -11884,6 +11888,7 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
     name: String(service?.name ?? current?.name ?? "").trim(),
     serviceCode: String(service?.serviceCode ?? current?.serviceCode ?? "").trim(),
     serviceType: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() || "inspection",
+    validityMonths: normalizeValidityMonthsValue(service?.validityMonths ?? current?.validityMonths ?? ""),
     linkedTemplateIds: Array.isArray(service?.linkedTemplateIds)
       ? service.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
       : Array.isArray(current?.linkedTemplateIds)
@@ -11917,6 +11922,20 @@ function getWorkOrderServiceType(item = null) {
   return normalizeServiceCatalogTypeUi(item?.serviceType, item?.isTraining ? "znr" : "inspection");
 }
 
+function normalizeValidityMonthsValue(value = "") {
+  const raw = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
+  if (!raw) {
+    return "";
+  }
+
+  const numeric = Math.round(Number(raw));
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return "";
+  }
+
+  return String(Math.min(600, numeric));
+}
+
 function getWorkOrderSelectionServiceType(items = []) {
   const normalizedTypes = Array.from(new Set(
     (Array.isArray(items) ? items : [])
@@ -11939,6 +11958,15 @@ function getWorkOrderDocumentSelectionState(workOrders = []) {
     hasMixedTypes: serviceTypes.length > 1,
     hasServices: serviceTypes.length > 0,
   };
+}
+
+function resolveWorkOrderDocumentDefaultValidityMonths(workOrders = []) {
+  const serviceValidityValues = (Array.isArray(workOrders) ? workOrders : [])
+    .flatMap((workOrder) => getWorkOrderServiceItems(workOrder))
+    .map((item) => normalizeValidityMonthsValue(item.validityMonths))
+    .filter(Boolean);
+
+  return serviceValidityValues[0] || "12";
 }
 
 function readWorkOrderTrainingAdminDraft() {
@@ -18006,6 +18034,23 @@ function normalizeDateInputValue(value) {
 
   const parsedDate = parseDateValue(normalizedRawValue);
   return parsedDate ? toDateKey(parsedDate) : rawValue;
+}
+
+function addMonthsToDateKey(value, monthsValue) {
+  const normalizedDate = toDateKey(value);
+  const months = Number.parseInt(String(monthsValue ?? "").trim(), 10);
+  if (!normalizedDate || !Number.isFinite(months) || months <= 0) {
+    return "";
+  }
+
+  const [year, month, day] = normalizedDate.split("-").map((part) => Number.parseInt(part, 10));
+  const date = new Date(year, month - 1, day);
+  const originalDay = date.getDate();
+  date.setMonth(date.getMonth() + months);
+  if (date.getDate() !== originalDay) {
+    date.setDate(0);
+  }
+  return toDateKey(date);
 }
 
 function getNormalizedWorkOrderDateInputValue(input) {
@@ -25404,14 +25449,42 @@ function hasMeasurementColumnAiMapping(aiMapping = {}) {
   );
 }
 
+function normalizeMeasurementColumnCellPlaceholder(value = "", label = "") {
+  const placeholder = String(value ?? "").trim();
+  const normalizedLabel = String(label ?? "").trim();
+  const defaultCellHints = new Set([
+    "pozicija",
+    "opis",
+    "vrijednost",
+    "granica",
+    "napomena",
+    "unos",
+    "mjerno mjesto",
+    "oznaka",
+    "jedinica",
+    "min",
+    "max",
+    "0,00",
+  ]);
+
+  if (!placeholder) {
+    return "";
+  }
+  if (placeholder.toLowerCase() === normalizedLabel.toLowerCase() || defaultCellHints.has(placeholder.toLowerCase())) {
+    return "";
+  }
+  return placeholder;
+}
+
 function createMeasurementColumn(partial = {}) {
   measurementColumnCounter += 1;
   const fallbackId = partial.id || `measurement-custom-${measurementColumnCounter}`;
+  const label = partial.label || `Kolona ${measurementColumnCounter}`;
 
   return {
     id: fallbackId,
-    label: partial.label || `Kolona ${measurementColumnCounter}`,
-    placeholder: partial.placeholder || "Unos",
+    label,
+    placeholder: normalizeMeasurementColumnCellPlaceholder(partial.placeholder, label),
     width: partial.width || 160,
     computed: partial.computed || null,
     readonly: Boolean(partial.readonly),
@@ -25451,10 +25524,11 @@ function buildDefaultMeasurementRows(count = DEFAULT_MEASUREMENT_ROW_COUNT) {
 function normalizeMeasurementSheetColumnSnapshotLocal(column = {}, index = 0) {
   const width = Number(column?.width);
   const columnId = String(column?.id || `measurement-column-${index + 1}`).trim() || `measurement-column-${index + 1}`;
+  const label = String(column?.label || `Kolona ${index + 1}`).trim() || `Kolona ${index + 1}`;
   return {
     id: columnId,
-    label: String(column?.label || `Kolona ${index + 1}`).trim() || `Kolona ${index + 1}`,
-    placeholder: String(column?.placeholder || "").trim(),
+    label,
+    placeholder: normalizeMeasurementColumnCellPlaceholder(column?.placeholder, label),
     width: Number.isFinite(width) ? Math.min(640, Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Math.round(width))) : 160,
     computed: typeof column?.computed === "string" && column.computed ? column.computed : null,
     readonly: Boolean(column?.readonly),
@@ -25530,7 +25604,7 @@ function buildTemplateMeasurementSheetFromLegacyConfig(field = {}) {
     .map((label, index) => normalizeMeasurementSheetColumnSnapshotLocal({
       id: `measurement-column-${index + 1}`,
       label,
-      placeholder: label,
+      placeholder: "",
       width: index === 0 ? 220 : 160,
     }, index));
   const rowCount = Math.max(4, Math.min(120, Math.round(Number(field?.rowCount) || 12)));
@@ -30723,7 +30797,7 @@ function renderMeasurementSheet() {
         input.classList.add("is-merged-input");
       }
       input.value = getMeasurementCellInputDisplayValue(index, getMeasurementColumnIndex(column.id));
-      input.placeholder = column.placeholder || column.label;
+      input.placeholder = column.placeholder || "";
       input.dataset.rowId = row.id;
       input.dataset.columnId = column.id;
       const validationOptions = getMeasurementColumnValidationOptions(column);
@@ -34795,6 +34869,8 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
   { value: "WORK_ORDER_INSPECTION_DATE", label: "Dokument - datum ispitivanja" },
   { value: "WORK_ORDER_ISSUED_DATE", label: "Dokument - datum izdavanja" },
+  { value: "WORK_ORDER_VALID_UNTIL", label: "Dokument - vrijedi do" },
+  { value: "WORK_ORDER_VALIDITY_MONTHS", label: "Dokument - rok važenja (mjeseci)" },
   { value: "WORK_ORDER_ISSUED_PLACE", label: "Dokument - mjesto izdavanja" },
   { value: "WORK_ORDER_DOCUMENT_NOTE", label: "Dokument - napomena" },
   { value: "WORK_ORDER_OUTSIDE_TEMPERATURE", label: "Dokument - vanjska temperatura" },
@@ -39108,6 +39184,7 @@ const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT = {
 };
 
 const WORK_ORDER_DOCUMENT_COMMON_VALIDITY_FIELDS = [
+  ["validityMonths", "Rok važenja zapisnika"],
   ["electricalValidityMonths", "Panik rasvjeta"],
   ["tipkaloValidityMonths", "Tipkalo za isklop napona"],
 ];
@@ -39691,6 +39768,36 @@ function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
 
+function resolveDocumentTemplateRuntimeValidityMonths(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const explicitValue = workOrderId ? normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(workOrderId, "validityMonths")) : "";
+  if (explicitValue) {
+    return explicitValue;
+  }
+
+  const serviceValue = getDocumentTemplateRuntimeResolvedServiceItems(workOrder)
+    .map((item) => normalizeValidityMonthsValue(item.validityMonths))
+    .find(Boolean);
+  if (serviceValue) {
+    return serviceValue;
+  }
+
+  const electricalValue = workOrderId
+    ? normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(workOrderId, "electricalValidityMonths"))
+    : "";
+  const tipkaloValue = workOrderId
+    ? normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(workOrderId, "tipkaloValidityMonths"))
+    : "";
+
+  return electricalValue || tipkaloValue || "12";
+}
+
+function resolveDocumentTemplateRuntimeValidUntil(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const inspectionDate = workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate") : "";
+  return addMonthsToDateKey(inspectionDate, resolveDocumentTemplateRuntimeValidityMonths(workOrder));
+}
+
 function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const safeSource = String(source || "").trim().toUpperCase();
   const workOrder = context.sampleWorkOrder;
@@ -39708,6 +39815,8 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const runtimeWeather = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "weather") : "";
   const runtimeGroundCondition = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundCondition") : "";
   const runtimeGroundResistance = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundResistance") : "";
+  const runtimeValidityMonths = resolveDocumentTemplateRuntimeValidityMonths(workOrder);
+  const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
@@ -39746,6 +39855,8 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
     WORK_ORDER_DUE_DATE: workOrder?.dueDate ? formatCompactDate(workOrder.dueDate) : "",
     WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate ? formatCompactDate(runtimeInspectionDate) : "",
     WORK_ORDER_ISSUED_DATE: runtimeIssuedDate ? formatCompactDate(runtimeIssuedDate) : "",
+    WORK_ORDER_VALID_UNTIL: runtimeValidUntil ? formatCompactDate(runtimeValidUntil) : "",
+    WORK_ORDER_VALIDITY_MONTHS: runtimeValidityMonths,
     WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace,
     WORK_ORDER_DOCUMENT_NOTE: runtimeNote,
     WORK_ORDER_OUTSIDE_TEMPERATURE: runtimeOutsideTemperature,
@@ -39860,6 +39971,8 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const runtimeWeather = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "weather") : "";
   const runtimeGroundCondition = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundCondition") : "";
   const runtimeGroundResistance = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundResistance") : "";
+  const runtimeValidityMonths = resolveDocumentTemplateRuntimeValidityMonths(workOrder);
+  const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
@@ -39898,6 +40011,8 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
     WORK_ORDER_DUE_DATE: workOrder?.dueDate || "",
     WORK_ORDER_INSPECTION_DATE: runtimeInspectionDate || "",
     WORK_ORDER_ISSUED_DATE: runtimeIssuedDate || "",
+    WORK_ORDER_VALID_UNTIL: runtimeValidUntil || "",
+    WORK_ORDER_VALIDITY_MONTHS: runtimeValidityMonths || "",
     WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace || "",
     WORK_ORDER_DOCUMENT_NOTE: runtimeNote || "",
     WORK_ORDER_OUTSIDE_TEMPERATURE: runtimeOutsideTemperature || "",
@@ -46111,6 +46226,7 @@ function buildServiceCatalogPayload() {
     status: serviceCatalogStatusInput?.value || "active",
     serviceType,
     isTraining: appliesToPeople,
+    validityMonths: normalizeValidityMonthsValue(serviceCatalogValidityMonthsInput?.value || ""),
     linkedTemplateIds: serviceType === "inspection" ? getServiceCatalogTemplateSelectionIds() : [],
     linkedLearningTestIds: appliesToPeople ? getServiceCatalogLearningTestSelectionIds() : [],
     trainingCertificateTemplate: appliesToPeople && serviceCatalogCertificateTemplateDraft
@@ -46379,6 +46495,9 @@ function resetServiceCatalogForm() {
   if (serviceCatalogTypeInput) {
     serviceCatalogTypeInput.value = "inspection";
   }
+  if (serviceCatalogValidityMonthsInput) {
+    serviceCatalogValidityMonthsInput.value = "";
+  }
   if (serviceCatalogAppliesToPeopleInput) {
     serviceCatalogAppliesToPeopleInput.checked = false;
   }
@@ -46424,6 +46543,9 @@ function hydrateServiceCatalogForm(item) {
   }
   if (serviceCatalogAppliesToPeopleInput) {
     serviceCatalogAppliesToPeopleInput.checked = hydratedServiceType === "znr";
+  }
+  if (serviceCatalogValidityMonthsInput) {
+    serviceCatalogValidityMonthsInput.value = normalizeValidityMonthsValue(item.validityMonths);
   }
   if (serviceCatalogNoteInput) {
     serviceCatalogNoteInput.value = item.note || "";
@@ -46530,6 +46652,7 @@ function renderServiceCatalogModule() {
     meta.textContent = [
       item.serviceCode || "Bez sifre",
       getServiceCatalogTypeLabel(item.serviceType || (item.isTraining ? "znr" : "inspection")),
+      normalizeValidityMonthsValue(item.validityMonths) ? `${normalizeValidityMonthsValue(item.validityMonths)} mj. vrijedi` : "Bez roka",
       normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "inspection"
         ? (templateTitles.length > 0 ? `${templateTitles.length} zapisnika` : "Bez zapisnika")
         : normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr"
@@ -74353,6 +74476,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     groundResistance: "",
     randomizeEnvironment: false,
     signatureMode: "scan",
+    validityMonths: "12",
     electricalValidityMonths: "12",
     tipkaloValidityMonths: "12",
     inspectorUserIds: [],
@@ -74509,6 +74633,9 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   }
   if (workOrderDocumentCommonRandomizeEnvironmentInput) {
     workOrderDocumentCommonRandomizeEnvironmentInput.checked = Boolean(state.workOrderDocumentWizard.common.randomizeEnvironment);
+  }
+  if (workOrderDocumentCommonValidityMonthsInput) {
+    workOrderDocumentCommonValidityMonthsInput.value = state.workOrderDocumentWizard.common.validityMonths || resolveWorkOrderDocumentDefaultValidityMonths(selectedWorkOrders) || "12";
   }
   if (workOrderDocumentCommonElectricalValidityMonthsInput) {
     workOrderDocumentCommonElectricalValidityMonthsInput.value = state.workOrderDocumentWizard.common.electricalValidityMonths || "12";
@@ -74855,6 +74982,11 @@ function openWorkOrderDocumentWizard(requestedMode = "") {
   state.workOrderDocumentWizard.open = true;
   state.workOrderDocumentWizard.mode = mode;
   state.workOrderDocumentWizard.step = "details";
+  const defaultValidityMonths = resolveWorkOrderDocumentDefaultValidityMonths(selectedWorkOrders);
+  if (!normalizeValidityMonthsValue(state.workOrderDocumentWizard.common.validityMonths)
+    || normalizeValidityMonthsValue(state.workOrderDocumentWizard.common.validityMonths) === "12") {
+    state.workOrderDocumentWizard.common.validityMonths = defaultValidityMonths;
+  }
   failOpen("");
   renderWorkOrderDocumentWizard();
   syncWorkOrderDocumentWizardModal();
@@ -74946,6 +75078,7 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
     weather: String(patch.weather ?? current.weather ?? "").trim(),
     groundCondition: String(patch.groundCondition ?? current.groundCondition ?? "").trim(),
     groundResistance: String(patch.groundResistance ?? current.groundResistance ?? "").trim(),
+    validityMonths: normalizeValidityMonthsValue(patch.validityMonths ?? current.validityMonths ?? ""),
     electricalValidityMonths: String(patch.electricalValidityMonths ?? current.electricalValidityMonths ?? "").trim(),
     tipkaloValidityMonths: String(patch.tipkaloValidityMonths ?? current.tipkaloValidityMonths ?? "").trim(),
     inspectorUserIds,
@@ -74989,6 +75122,7 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
     && !next.weather
     && !next.groundCondition
     && !next.groundResistance
+    && !next.validityMonths
     && !next.electricalValidityMonths
     && !next.tipkaloValidityMonths
     && !hasExplicitSignatureUserOverride
@@ -75092,6 +75226,7 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
     weather: String(source.weather ?? "").trim(),
     groundCondition: String(source.groundCondition ?? "").trim(),
     groundResistance: String(source.groundResistance ?? "").trim(),
+    validityMonths: normalizeValidityMonthsValue(source.validityMonths),
     electricalValidityMonths: String(source.electricalValidityMonths ?? "").trim(),
     tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "").trim(),
     inspectorUserIds: normalizeQualifiedUserIdList(source.inspectorUserIds ?? []),
@@ -75522,6 +75657,9 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     signatureMode: Object.prototype.hasOwnProperty.call(patch, "signatureMode")
       ? normalizeDocumentTemplateSignatureMethod(patch.signatureMode)
       : normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode),
+    validityMonths: Object.prototype.hasOwnProperty.call(patch, "validityMonths")
+      ? normalizeValidityMonthsValue(patch.validityMonths)
+      : normalizeValidityMonthsValue(state.documentTemplateRuntime.common?.validityMonths),
     electricalValidityMonths: Object.prototype.hasOwnProperty.call(patch, "electricalValidityMonths")
       ? String(patch.electricalValidityMonths ?? "").trim()
       : String(state.documentTemplateRuntime.common?.electricalValidityMonths ?? "").trim(),
@@ -75621,6 +75759,9 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     groundResistance: Object.prototype.hasOwnProperty.call(patch, "groundResistance")
       ? String(patch.groundResistance ?? "").trim()
       : String(record.groundResistance ?? "").trim(),
+    validityMonths: Object.prototype.hasOwnProperty.call(patch, "validityMonths")
+      ? normalizeValidityMonthsValue(patch.validityMonths)
+      : normalizeValidityMonthsValue(record.validityMonths),
     electricalValidityMonths: Object.prototype.hasOwnProperty.call(patch, "electricalValidityMonths")
       ? String(patch.electricalValidityMonths ?? "").trim()
       : String(record.electricalValidityMonths ?? "").trim(),
@@ -75693,6 +75834,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       groundResistance: "",
       randomizeEnvironment: false,
       signatureMode: "scan",
+      validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       inspectorUserIds: [],
@@ -75830,6 +75972,7 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
     groundResistance: String(source.groundResistance ?? "").trim(),
     randomizeEnvironment: Boolean(source.randomizeEnvironment),
     signatureMode: normalizeDocumentTemplateSignatureMethod(source.signatureMode),
+    validityMonths: normalizeValidityMonthsValue(source.validityMonths ?? "12") || "12",
     electricalValidityMonths: String(source.electricalValidityMonths ?? "12").trim(),
     tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "12").trim(),
     inspectorUserIds,
@@ -76198,6 +76341,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       groundResistance: String(state.workOrderDocumentWizard.common?.groundResistance ?? "").trim(),
       randomizeEnvironment: Boolean(state.workOrderDocumentWizard.common?.randomizeEnvironment),
       signatureMode: normalizeDocumentTemplateSignatureMethod(state.workOrderDocumentWizard.common?.signatureMode),
+      validityMonths: normalizeValidityMonthsValue(state.workOrderDocumentWizard.common?.validityMonths ?? "") || "12",
       electricalValidityMonths: String(state.workOrderDocumentWizard.common?.electricalValidityMonths ?? "").trim(),
       tipkaloValidityMonths: String(state.workOrderDocumentWizard.common?.tipkaloValidityMonths ?? "").trim(),
       inspectorUserIds: normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []),
@@ -80316,6 +80460,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   [workOrderDocumentCommonWeatherInput, "weather"],
   [workOrderDocumentCommonGroundConditionInput, "groundCondition"],
   [workOrderDocumentCommonGroundResistanceInput, "groundResistance"],
+  [workOrderDocumentCommonValidityMonthsInput, "validityMonths"],
   [workOrderDocumentCommonElectricalValidityMonthsInput, "electricalValidityMonths"],
   [workOrderDocumentCommonTipkaloValidityMonthsInput, "tipkaloValidityMonths"],
 ].forEach(([input, fieldName, isDateField = false]) => {

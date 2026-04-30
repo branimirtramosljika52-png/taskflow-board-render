@@ -2009,6 +2009,10 @@
                     </div>
                     <div class="work-order-document-wizard-common-periods-grid">
                       <label class="field">
+                        <span>Rok važenja zapisnika</span>
+                        <input id="work-order-document-common-validity-months" type="number" min="0" step="1" inputmode="numeric" />
+                      </label>
+                      <label class="field">
                         <span>Panik rasvjeta</span>
                         <input id="work-order-document-common-electrical-validity-months" type="number" min="0" step="1" inputmode="numeric" />
                       </label>
@@ -6227,6 +6231,10 @@
                       <label class="field">
                         <span>Vrsta usluge</span>
                         <select id="service-catalog-type"></select>
+                      </label>
+                      <label class="field">
+                        <span>Rok važenja (mjeseci)</span>
+                        <input id="service-catalog-validity-months" type="number" min="0" step="1" inputmode="numeric" placeholder="12, 24, 36..." />
                       </label>
                       <label class="field field-span-full service-catalog-people-check">
                         <input id="service-catalog-applies-to-people" type="checkbox" />

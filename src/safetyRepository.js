@@ -3403,7 +3403,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note, created_at, updated_at
+    SELECT id, organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note, created_at, updated_at
     FROM web_service_catalog
     ORDER BY
       CASE status
@@ -3434,6 +3434,7 @@ async function fetchSnapshotFromConnection(connection) {
       status: row.status ?? "active",
       serviceType: dbString(row.service_type) || (row.is_training ? "znr" : "inspection"),
       isTraining: Boolean(row.is_training),
+      validityMonths: dbString(row.validity_months),
       linkedTemplateIds: templateIds,
       linkedTemplateTitles,
       linkedLearningTestIds: learningTestIds,
@@ -6773,6 +6774,7 @@ export class MySqlSafetyRepository {
         status VARCHAR(16) NOT NULL DEFAULT 'active',
         service_type VARCHAR(24) NOT NULL DEFAULT 'inspection',
         is_training TINYINT(1) NOT NULL DEFAULT 0,
+        validity_months VARCHAR(16) NOT NULL DEFAULT '',
         linked_template_ids_json LONGTEXT NULL,
         linked_learning_test_ids_json LONGTEXT NULL,
         training_certificate_template_json LONGTEXT NULL,
@@ -6833,6 +6835,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER training_admin_phone");
     await ensureColumnExists(this.pool, "web_service_catalog", "is_training", "TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
+    await ensureColumnExists(this.pool, "web_service_catalog", "validity_months", "VARCHAR(16) NOT NULL DEFAULT '' AFTER is_training");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_service_catalog", "training_certificate_template_json", "LONGTEXT NULL AFTER linked_learning_test_ids_json");
     await ensureColumnExists(this.pool, "web_people_training_records", "father_name", "VARCHAR(120) NOT NULL DEFAULT '' AFTER oib");
@@ -9872,8 +9875,8 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_service_catalog
-            (organization_id, name, service_code, status, service_type, is_training, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9882,6 +9885,7 @@ export class MySqlSafetyRepository {
           draft.status,
           draft.serviceType || (draft.isTraining ? "znr" : "inspection"),
           draft.isTraining ? 1 : 0,
+          draft.validityMonths,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(draft.linkedLearningTestIds ?? []),
           JSON.stringify(draft.trainingCertificateTemplate ? [draft.trainingCertificateTemplate] : []),
@@ -9921,7 +9925,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_service_catalog
-          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, training_certificate_template_json = ?, note = ?
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, validity_months = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, training_certificate_template_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -9931,6 +9935,7 @@ export class MySqlSafetyRepository {
           next.status,
           next.serviceType || (next.isTraining ? "znr" : "inspection"),
           next.isTraining ? 1 : 0,
+          next.validityMonths,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(next.linkedLearningTestIds ?? []),
           JSON.stringify(next.trainingCertificateTemplate ? [next.trainingCertificateTemplate] : []),

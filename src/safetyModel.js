@@ -1507,14 +1507,42 @@ function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
   };
 }
 
+function normalizeMeasurementColumnCellPlaceholder(value = "", label = "") {
+  const placeholder = normalizeText(value);
+  const normalizedLabel = normalizeText(label);
+  const defaultCellHints = new Set([
+    "pozicija",
+    "opis",
+    "vrijednost",
+    "granica",
+    "napomena",
+    "unos",
+    "mjerno mjesto",
+    "oznaka",
+    "jedinica",
+    "min",
+    "max",
+    "0,00",
+  ]);
+
+  if (!placeholder) {
+    return "";
+  }
+  if (placeholder.toLowerCase() === normalizedLabel.toLowerCase() || defaultCellHints.has(placeholder.toLowerCase())) {
+    return "";
+  }
+  return placeholder;
+}
+
 function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
   const width = Number(input?.width);
   const computed = normalizeText(input?.computed);
+  const label = normalizeText(input?.label) || `Kolona ${index + 1}`;
 
   return {
     id: normalizeText(input?.id) || `measurement-column-${index + 1}`,
-    label: normalizeText(input?.label) || `Kolona ${index + 1}`,
-    placeholder: normalizeText(input?.placeholder),
+    label,
+    placeholder: normalizeMeasurementColumnCellPlaceholder(input?.placeholder, label),
     width: Number.isFinite(width) ? Math.min(640, Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Math.round(width))) : 160,
     computed: computed || null,
     readonly: normalizeBoolean(input?.readonly, false),
@@ -1581,7 +1609,7 @@ function buildLegacyTemplateMeasurementSheet(columnsInput = [], rowCountInput = 
   const columns = columnLabels.map((label, index) => normalizeMeasurementSheetColumnSnapshot({
     id: `measurement-column-${index + 1}`,
     label,
-    placeholder: label,
+    placeholder: "",
     width: index === 0 ? 220 : 160,
   }, index));
   const rowCount = Math.max(4, Math.min(120, Math.round(normalizeFiniteNumber(rowCountInput, 12))));
@@ -1671,6 +1699,20 @@ function normalizeServiceCatalogType(value, fallback = "inspection") {
 
   const fallbackType = normalizeText(fallback).toLowerCase();
   return SERVICE_CATALOG_TYPE_SET.has(fallbackType) ? fallbackType : "inspection";
+}
+
+function normalizeServiceValidityMonths(value) {
+  const raw = normalizeText(value);
+  if (!raw) {
+    return "";
+  }
+
+  const numeric = Math.round(normalizeFiniteNumber(raw, Number.NaN));
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return "";
+  }
+
+  return String(Math.min(600, numeric));
 }
 
 function findServiceCatalogItem(state, serviceId = "", organizationId = "") {
@@ -1826,6 +1868,7 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
       item.serviceType,
       normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
     ),
+    validityMonths: normalizeServiceValidityMonths(item.validityMonths),
     linkedTemplateIds,
     linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
     linkedLearningTestIds,
@@ -1896,6 +1939,9 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       name: name || current?.name || "",
       serviceCode: serviceCode || current?.serviceCode || "",
       serviceType,
+      validityMonths: normalizeServiceValidityMonths(
+        service?.validityMonths ?? entry?.validityMonths ?? current?.validityMonths,
+      ),
       ...templateSnapshot,
       ...learningTestSnapshot,
       isTraining: serviceType === "znr",
@@ -3635,6 +3681,7 @@ export function createServiceCatalogItem(
     status: normalizeServiceCatalogStatus(input.status),
     serviceType,
     isTraining: serviceType === "znr",
+    validityMonths: normalizeServiceValidityMonths(input.validityMonths),
     linkedTemplateIds: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateIds : [],
     linkedTemplateTitles: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateTitles : [],
     linkedLearningTestIds: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestIds : [],
@@ -4448,6 +4495,9 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
     status: hasOwn(patch, "status") ? normalizeServiceCatalogStatus(patch.status) : current.status,
     serviceType,
     isTraining: serviceType === "znr",
+    validityMonths: hasOwn(patch, "validityMonths")
+      ? normalizeServiceValidityMonths(patch.validityMonths)
+      : normalizeServiceValidityMonths(current.validityMonths),
     linkedTemplateIds: serviceType === "inspection" ? templateSnapshot.linkedTemplateIds : [],
     linkedTemplateTitles: serviceType === "inspection" ? templateSnapshot.linkedTemplateTitles : [],
     linkedLearningTestIds: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestIds : [],
@@ -4476,6 +4526,7 @@ export function filterServiceCatalogItems(
     const haystack = [
       item.name,
       item.serviceCode,
+      item.validityMonths ? `${item.validityMonths} mjeseci` : "",
       item.note,
       ...(item.linkedTemplateTitles ?? []),
     ].join(" ").toLowerCase();

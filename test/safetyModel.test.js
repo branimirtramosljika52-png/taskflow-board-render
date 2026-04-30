@@ -878,6 +878,7 @@ test("service catalog keeps linked templates and supports filtering and sorting"
       serviceCode: "IRO-001",
       status: "active",
       linkedTemplateIds: ["template-1"],
+      validityMonths: "24",
       note: "Redovni pregled",
     },
     state,
@@ -887,6 +888,7 @@ test("service catalog keeps linked templates and supports filtering and sorting"
 
   assert.equal(service.linkedTemplateIds.length, 1);
   assert.equal(service.linkedTemplateTitles[0], "Zapisnik radne opreme");
+  assert.equal(service.validityMonths, "24");
 
   const updated = updateServiceCatalogItem(
     service,
@@ -903,6 +905,7 @@ test("service catalog keeps linked templates and supports filtering and sorting"
 
   assert.equal(updated.status, "inactive");
   assert.equal(updated.note, "Privremeno ugašena usluga");
+  assert.equal(updated.validityMonths, "24");
 
   const filtered = filterServiceCatalogItems([service, updated], {
     query: "privremeno",
@@ -1284,6 +1287,7 @@ test("work orders can store service catalog items with completion state", () => 
       serviceCode: "PR-100",
       status: "active",
       linkedTemplateIds: ["template-1"],
+      validityMonths: "36",
     },
     state,
     () => "service-1",
@@ -1311,6 +1315,7 @@ test("work orders can store service catalog items with completion state", () => 
 
   assert.equal(getWorkOrderServiceItems(workOrder).length, 1);
   assert.equal(getWorkOrderServiceItems(workOrder)[0].name, "Panik rasvjeta");
+  assert.equal(getWorkOrderServiceItems(workOrder)[0].validityMonths, "36");
   assert.equal(getWorkOrderServiceSummary(workOrder), "Panik rasvjeta");
   assert.equal(getWorkOrderCompletedServiceCount(workOrder), 0);
 
