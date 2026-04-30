@@ -204,6 +204,23 @@ export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
   { value: "9", label: "9 polja" },
 ];
 
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES = ["title", "oib", "classCode", "urbroj", "eBroj"];
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET = new Set(DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES);
+
+function normalizeDocumentTemplateSignatureMetaFields(values = undefined) {
+  if (!Array.isArray(values)) {
+    return [...DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeText(value))
+        .filter((value) => DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET.has(value)),
+    ),
+  );
+}
+
 export const LEARNING_TEST_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "active", label: "Aktivan" },
@@ -2040,6 +2057,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       label,
       wordLabel,
       type,
+      required: normalizeBoolean(field?.required, false),
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type),
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
@@ -2050,9 +2068,12 @@ function normalizeDocumentTemplateFields(fields = []) {
       valueColumn: normalizeText(field?.valueColumn).toLowerCase().slice(0, 80),
       previousDocumentMode: normalizeText(field?.previousDocumentMode).toUpperCase().slice(0, 80) || "NONE",
       signatureArea: normalizeText(field?.signatureArea).toLowerCase() || "elektro",
-      signatureRole: normalizeText(field?.signatureRole).toLowerCase() || "inspect",
-      signatureMultiple: normalizeBoolean(field?.signatureMultiple, true),
+      signatureRole: normalizeText(field?.signatureRole).toLowerCase() || (type === "authorization_holder_signature" ? "authorize" : "inspect"),
+      signatureMultiple: type === "authorization_holder_signature" || type === "inspector_signature"
+        ? false
+        : normalizeBoolean(field?.signatureMultiple, true),
       signatureIncludeScan: normalizeBoolean(field?.signatureIncludeScan, false),
+      signatureMetaFields: normalizeDocumentTemplateSignatureMetaFields(field?.signatureMetaFields),
       sectionSubtitle: type === "system_description"
         ? normalizeText(field?.sectionSubtitle).slice(0, 280)
         : "",

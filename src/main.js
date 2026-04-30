@@ -33759,6 +33759,17 @@ const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
   { value: "all", label: "Ispitivaci + odgovorna osoba" },
 ];
 
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS = [
+  { value: "title", label: "Titula" },
+  { value: "oib", label: "OIB" },
+  { value: "classCode", label: "Klasa" },
+  { value: "urbroj", label: "UrBROJ" },
+  { value: "eBroj", label: "E broj" },
+];
+
+const DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS = DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS
+  .map((option) => option.value);
+
 const DOCUMENT_TEMPLATE_SIGNATURE_METHOD_OPTIONS = [
   { value: "scan", label: "Scan potpisa" },
   { value: "digital", label: "Digitalni potpis" },
@@ -33996,6 +34007,23 @@ const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "digital_signature",
 ]);
 
+const DOCUMENT_TEMPLATE_PERSON_SIGNATURE_FIELD_TYPES = new Set([
+  "qualified_inspectors",
+  "inspector_signature",
+  "authorization_holder_signature",
+]);
+
+const DOCUMENT_TEMPLATE_REQUIRED_TOGGLE_FIELD_TYPES = new Set([
+  "system_description",
+  "text",
+  "longtext",
+  "dropdown",
+  "date",
+  "number",
+  "legal_list",
+  "equipment_list",
+]);
+
 const DOCUMENT_TEMPLATE_MEDIA_FIELD_TYPES = new Set([
   "sketch_upload",
   "image_upload",
@@ -34039,6 +34067,36 @@ function getDocumentTemplateFieldTypeLabel(value) {
 
 function isDocumentTemplateSpecialFieldType(value) {
   return DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES.has(String(value || "").trim().toLowerCase());
+}
+
+function isDocumentTemplatePersonSignatureFieldType(value) {
+  return DOCUMENT_TEMPLATE_PERSON_SIGNATURE_FIELD_TYPES.has(String(value || "").trim().toLowerCase());
+}
+
+function isDocumentTemplateRequiredToggleFieldType(value) {
+  return DOCUMENT_TEMPLATE_REQUIRED_TOGGLE_FIELD_TYPES.has(String(value || "").trim().toLowerCase());
+}
+
+function getDocumentTemplateRequiredToggleLabel(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  if (normalizedType === "legal_list" || normalizedType === "equipment_list") {
+    return "Potrebno odabrati barem jedan";
+  }
+  return "Obavezno polje";
+}
+
+function normalizeDocumentTemplateSignatureMetaFieldsLocal(values = undefined) {
+  if (!Array.isArray(values)) {
+    return [...DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS];
+  }
+  const allowedValues = new Set(DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS);
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter((value) => allowedValues.has(value)),
+    ),
+  );
 }
 
 function isDocumentTemplateFieldWidthEditable(type = "text") {
@@ -36085,6 +36143,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     wordLabel,
     key: normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey),
     type,
+    required: Boolean(initial.required),
     layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(initial.layoutWidth, type),
     fieldHeight: normalizeDocumentTemplateFieldHeight(initial.fieldHeight, type),
     source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
@@ -36119,9 +36178,12 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
       )
       : [],
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
-    signatureRole: String(initial.signatureRole ?? "inspect").trim().toLowerCase() || "inspect",
-    signatureMultiple: initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true,
+    signatureRole: String(initial.signatureRole ?? (type === "authorization_holder_signature" ? "authorize" : "inspect")).trim().toLowerCase() || "inspect",
+    signatureMultiple: type === "authorization_holder_signature" || type === "inspector_signature"
+      ? false
+      : (initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true),
     signatureIncludeScan: Boolean(initial.signatureIncludeScan),
+    signatureMetaFields: normalizeDocumentTemplateSignatureMetaFieldsLocal(initial.signatureMetaFields),
     legalFrameworkIds: Array.isArray(initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds)
       ? [...new Set((initial.legalFrameworkIds ?? initial.availableLegalFrameworkIds).map((entry) => String(entry || "").trim()).filter(Boolean))]
       : [],
@@ -36903,6 +36965,7 @@ function buildDocumentTemplateDraft() {
       label: String(field.label || "").trim() || `Polje ${index + 1}`,
       wordLabel: String(field.wordLabel || field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
+      required: Boolean(field.required),
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
       source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
@@ -36926,9 +36989,12 @@ function buildDocumentTemplateDraft() {
           : [],
       }),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
-      signatureRole: String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect",
-      signatureMultiple: Boolean(field.signatureMultiple ?? true),
+      signatureRole: String(field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect")).trim().toLowerCase() || "inspect",
+      signatureMultiple: field.type === "authorization_holder_signature" || field.type === "inspector_signature"
+        ? false
+        : Boolean(field.signatureMultiple ?? true),
       signatureIncludeScan: Boolean(field.signatureIncludeScan),
+      signatureMetaFields: normalizeDocumentTemplateSignatureMetaFieldsLocal(field.signatureMetaFields),
       legalFrameworkIds: (Array.isArray(field.legalFrameworkIds) ? field.legalFrameworkIds : [])
         .map((value) => String(value || "").trim())
         .filter(Boolean),
@@ -36982,8 +37048,10 @@ function buildDocumentTemplateDraft() {
           valueColumn: "",
           previousDocumentMode: "NONE",
           signatureArea: field.signatureArea || "elektro",
-          signatureRole: field.signatureRole || "inspect",
-          signatureMultiple: Boolean(field.signatureMultiple ?? true),
+          signatureRole: field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect"),
+          signatureMultiple: field.type === "authorization_holder_signature" || field.type === "inspector_signature"
+            ? false
+            : Boolean(field.signatureMultiple ?? true),
           signatureIncludeScan: Boolean(field.signatureIncludeScan),
           sectionSubtitle: field.type === "system_description"
             ? String(field.sectionSubtitle || "").trim()
@@ -37033,6 +37101,7 @@ function buildDocumentTemplateDraft() {
       || String(field.wordLabel || "").trim()
       || String(field.defaultValue || "").trim()
       || String(field.helpText || "").trim()
+      || Boolean(field.required)
       || (Array.isArray(field.dropdownOptions) && field.dropdownOptions.length > 0)
       || String(field.previousDocumentMode || "NONE").trim().toUpperCase() !== "NONE"
       || (String(field.source || "").trim().toUpperCase() && String(field.source || "").trim().toUpperCase() !== "CUSTOM_VALUE")
@@ -37406,6 +37475,20 @@ function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplat
   ));
 
   return linkedItems.length > 0 ? linkedItems : (template.equipmentItems ?? []);
+}
+
+function getDocumentTemplateEquipmentDeviceCode(item = {}) {
+  return String(
+    item?.deviceCode
+      ?? item?.device_code
+      ?? item?.oznaka
+      ?? item?.code
+      ?? "",
+  ).trim();
+}
+
+function getDocumentTemplateRuntimeEquipmentCodeFieldId(field = {}) {
+  return `${String(field?.id || field?.key || "equipment").trim() || "equipment"}::equipmentDeviceCode`;
 }
 
 function getDocumentTemplateRuntimeSelectedEquipmentIds(
@@ -38876,7 +38959,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     signatureMethod,
     user: matchedUser,
     qualification,
-    metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea),
+    metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea, field.signatureMetaFields),
     signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(matchedUser) : "",
     displayName: matchedUser?.fullName
       ? matchedUser.fullName
@@ -38933,9 +39016,10 @@ function getDocumentTemplateSignatureFieldConfig(field = {}) {
       allowMultiple: false,
     };
   }
+  const normalizedRole = String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect";
   return {
-    role: String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect",
-    allowMultiple: field.signatureMultiple !== false,
+    role: normalizedRole,
+    allowMultiple: normalizedRole === "authorize" ? false : field.signatureMultiple !== false,
   };
 }
 
@@ -38953,7 +39037,7 @@ function getDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
         capability,
         user,
         signatureArea,
-        metaLines: getQualifiedUserDocumentMetaLines(user, capability, signatureArea),
+        metaLines: getQualifiedUserDocumentMetaLines(user, capability, signatureArea, field.signatureMetaFields),
         signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(user) : "",
         signatureMode: signatureMethod,
       });
@@ -39009,7 +39093,11 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return token;
   }
 
-  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
+  if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
+    const entries = buildDocumentTemplateQualifiedInspectorEntries(field, context);
+    if (entries.length > 0) {
+      return entries.map((entry) => entry.name).filter(Boolean).join(", ");
+    }
     return getDocumentTemplateSignaturePreviewData(field, context).displayName;
   }
 
@@ -39583,30 +39671,31 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     `;
   }
 
-  if (field.type === "qualified_inspectors") {
+  if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
     const areaLabel = getOptionLabel(
       DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
       field.signatureArea || "elektro",
     );
     const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
-    const inspectors = placeholderMode
+    const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
+    const roleLabel = role === "authorize" ? "Nositelj ovlaštenja" : "Ispitivač";
+    const people = placeholderMode
       ? []
-      : getWorkOrderDocumentQualifiedUsers(context.sampleWorkOrder, "inspect", field.signatureArea || "elektro");
-    const inspectorMarkup = inspectors.length > 0
-      ? inspectors.map((user, inspectorIndex) => {
-        const metaLines = getQualifiedUserDocumentMetaLines(user, "inspect", field.signatureArea || "elektro");
-        const isRightAligned = inspectors.length % 2 === 1 && inspectorIndex === inspectors.length - 1;
-        const signatureScanUrl = signatureMethod === "scan" ? getUserSignatureScanDataUrl(user) : "";
+      : buildDocumentTemplateQualifiedInspectorEntries(field, context);
+    const inspectorMarkup = people.length > 0
+      ? people.map((entry, inspectorIndex) => {
+        const isRightAligned = people.length % 2 === 1 && inspectorIndex === people.length - 1;
+        const signatureScanUrl = entry.signatureImageUrl || "";
         const signatureImage = signatureScanUrl
-          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(signatureScanUrl)}" alt="${escapeHtml(user.fullName || user.email || "Potpis")}" />`
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(signatureScanUrl)}" alt="${escapeHtml(entry.name || "Potpis")}" />`
           : `<div class="document-template-preview-signature-placeholder${signatureMethod === "digital" ? " is-digital" : ""}">${signatureMethod === "digital" ? "Digitalni potpis" : "Potpis"}</div>`;
-        const metaMarkup = metaLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+        const metaMarkup = (entry.metaLines ?? []).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
 
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
-              <span class="document-template-preview-person-role">Ispitivač</span>
-              <strong>${escapeHtml(user.fullName || user.email || "Ispitivač")}</strong>
+              <span class="document-template-preview-person-role">${escapeHtml(entry.role || roleLabel)}</span>
+              <strong>${escapeHtml(entry.name || roleLabel)}</strong>
               <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
             <div class="document-template-preview-signature">
@@ -39618,7 +39707,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : `
         <article class="document-template-preview-person-signature is-right-aligned">
           <div class="document-template-preview-person-copy">
-            <span class="document-template-preview-person-role">Ispitivači</span>
+            <span class="document-template-preview-person-role">${escapeHtml(allowMultiple ? `${roleLabel}i` : roleLabel)}</span>
             <strong>${escapeHtml(token)}</strong>
           </div>
         </article>
@@ -39630,7 +39719,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
         </div>
-        <p class="document-template-preview-muted">${escapeHtml(getDocumentTemplateSignatureMethodLabel(signatureMethod))}</p>
+        <p class="document-template-preview-muted">${escapeHtml(`${getDocumentTemplateSignatureMethodLabel(signatureMethod)} · ${allowMultiple ? "više osoba" : "jedna osoba"}`)}</p>
         <div class="document-template-preview-person-signature-grid">
           ${inspectorMarkup}
         </div>
@@ -40149,15 +40238,24 @@ function buildDocumentTemplateEquipmentExportItems(field = {}, context = {}) {
 
 function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}) {
   const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
-  return getWorkOrderDocumentQualifiedUsers(
+  const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
+  const capability = role === "authorize" ? "authorize" : "inspect";
+  const roleLabel = capability === "authorize" ? "Nositelj ovlaštenja" : "Ispitivač";
+  const users = getWorkOrderDocumentQualifiedUsers(
     context.sampleWorkOrder,
-    "inspect",
+    capability,
     field.signatureArea || "elektro",
-  ).map((user) => {
+  );
+  return (allowMultiple ? users : users.slice(0, 1)).map((user) => {
     return {
-      role: "Ispitivač",
-      name: user.fullName || user.email || "Ispitivač",
-      metaLines: getQualifiedUserDocumentMetaLines(user, "inspect", field.signatureArea || "elektro"),
+      role: roleLabel,
+      name: user.fullName || user.email || roleLabel,
+      metaLines: getQualifiedUserDocumentMetaLines(
+        user,
+        capability,
+        field.signatureArea || "elektro",
+        field.signatureMetaFields,
+      ),
       signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(user) : "",
       signatureMode: signatureMethod,
     };
@@ -40245,15 +40343,10 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
     return buildDocumentTemplateEquipmentExportItems(field, context).join("\n");
   }
 
-  if (field.type === "qualified_inspectors") {
+  if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
     return buildDocumentTemplateQualifiedInspectorEntries(field, context)
       .map((entry) => [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n"))
       .join("\n\n");
-  }
-
-  if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-    const entry = buildDocumentTemplateSignatureEntry(field, context);
-    return [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n");
   }
 
   if (field.type === "digital_signature") {
@@ -40568,19 +40661,11 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
         };
       }
 
-      if (field.type === "qualified_inspectors") {
+      if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
         return {
           type: "signature_group",
           title,
           items: buildDocumentTemplateQualifiedInspectorEntries(field, context),
-        };
-      }
-
-      if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-        return {
-          type: "signature_group",
-          title,
-          items: [buildDocumentTemplateSignatureEntry(field, context)],
         };
       }
 
@@ -41638,18 +41723,24 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
   ].filter(Boolean).join(" | ");
 }
 
-function getQualifiedUserDocumentMetaLines(user = null, capability = "inspect", signatureArea = "elektro") {
+function getQualifiedUserDocumentMetaLines(
+  user = null,
+  capability = "inspect",
+  signatureArea = "elektro",
+  metaFields = undefined,
+) {
   if (!user) {
     return [];
   }
 
   const qualification = getUserElectricalQualification(user, signatureArea);
+  const visibleFields = new Set(normalizeDocumentTemplateSignatureMetaFieldsLocal(metaFields));
   return [
-    user.title ? String(user.title).trim() : "",
-    user.oib ? `OIB ${String(user.oib).trim()}` : "",
-    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-    qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+    visibleFields.has("title") && user.title ? String(user.title).trim() : "",
+    visibleFields.has("oib") && user.oib ? `OIB ${String(user.oib).trim()}` : "",
+    visibleFields.has("classCode") && qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+    visibleFields.has("urbroj") && qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+    visibleFields.has("eBroj") && qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
   ].filter(Boolean);
 }
 
@@ -43517,15 +43608,15 @@ function getDocumentTemplateRuntimeSignatureEntriesFor(template = buildDocumentT
 
   (Array.isArray(template.customFields) ? template.customFields : []).forEach((field) => {
     const type = String(field?.type || "").trim().toLowerCase();
-    if (!["qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature"].includes(type)) {
+    if (!isDocumentTemplatePersonSignatureFieldType(type) && type !== "digital_signature") {
       return;
     }
 
-    const entries = type === "qualified_inspectors"
+    const entries = isDocumentTemplatePersonSignatureFieldType(type)
       ? buildDocumentTemplateQualifiedInspectorEntries(field, context)
       : type === "digital_signature"
         ? buildDocumentTemplateDigitalSignatureEntries(field, context)
-        : [buildDocumentTemplateSignatureEntry(field, context)];
+        : [];
 
     entries.forEach((entry) => {
       const key = [
@@ -48612,8 +48703,7 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
     };
   }
 
-  const details = [];
-  const complete = items.reduce((count, field) => {
+  const entries = items.map((field) => {
     const fieldType = String(field?.type || "").trim().toLowerCase();
     const label = String(field?.label || field?.wordLabel || getDocumentTemplateFieldTypeLabel(fieldType) || "Polje").trim();
     let value = getDocumentTemplateRuntimeInitialValue(field, workOrder.id);
@@ -48639,20 +48729,33 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
       displayValue = selectedIds.length > 0 ? `${selectedIds.length} propisa` : "prazno";
     }
 
-    if (details.length < 3) {
-      const normalizedDisplay = String(displayValue || "").trim();
-      details.push(`${label}: ${normalizedDisplay || "prazno"}`);
-    }
-
-    return count + (isComplete ? 1 : 0);
-  }, 0);
-  const ok = total === 0 || complete >= total;
+    return {
+      field,
+      label,
+      displayValue: String(displayValue || "").trim() || "prazno",
+      isComplete,
+      required: Boolean(field?.required),
+    };
+  });
+  const complete = entries.filter((entry) => entry.isComplete).length;
+  const requiredEntries = entries.filter((entry) => entry.required);
+  const requiredComplete = requiredEntries.filter((entry) => entry.isComplete).length;
+  const requiredTotal = requiredEntries.length;
+  const detailsSource = requiredTotal > 0
+    ? requiredEntries.filter((entry) => !entry.isComplete)
+    : entries;
+  const details = detailsSource
+    .slice(0, 3)
+    .map((entry) => `${entry.label}: ${entry.displayValue || "prazno"}`);
+  const ok = requiredTotal === 0 || requiredComplete >= requiredTotal;
 
   return {
     ok,
-    complete,
-    total,
-    label: total > 0 ? `${complete}/${total} popunjeno` : "Automatski blok",
+    complete: requiredTotal > 0 ? requiredComplete : complete,
+    total: requiredTotal > 0 ? requiredTotal : total,
+    label: requiredTotal > 0
+      ? `${requiredComplete}/${requiredTotal} obavezno`
+      : (total > 0 ? `${complete}/${total} popunjeno` : "Automatski blok"),
     details,
   };
 }
@@ -50529,25 +50632,37 @@ function renderDocumentTemplateRuntimeFieldRows() {
     title.textContent = createFieldTitle(field, 0);
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     const area = field.signatureArea || "elektro";
+    const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
+    const capability = role === "authorize" ? "authorize" : "inspect";
+    const multiple = Boolean(allowMultiple && capability !== "authorize");
+    const listFieldName = getWorkOrderDocumentSignaturePersonListFieldName(capability, area)
+      || (capability === "inspect" ? "inspectorUserIds" : "");
+    const fieldName = getWorkOrderDocumentSignaturePersonFieldName(capability, area)
+      || (capability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId");
+    const currentValue = multiple && listFieldName
+      ? getDocumentTemplateRuntimeArrayValue(workOrder.id, listFieldName)
+      : getDocumentTemplateRuntimeValue(workOrder.id, fieldName);
     const picker = createWorkOrderDocumentSignaturePersonPicker({
-      capability: "inspect",
+      capability,
       signatureArea: area,
-      multiple: true,
-      value: getDocumentTemplateRuntimeArrayValue(
-        workOrder.id,
-        getWorkOrderDocumentSignaturePersonListFieldName("inspect", area) || "inspectorUserIds",
-      ),
-      emptyLabel: "Odaberi ispitivače",
+      multiple,
+      value: currentValue,
+      emptyLabel: capability === "authorize" ? "Odaberi nositelja ovlaštenja" : "Odaberi ispitivače",
       onChange: (nextValues) => {
         const normalizedValues = normalizeQualifiedUserIdList(nextValues);
-        const listFieldName = getWorkOrderDocumentSignaturePersonListFieldName("inspect", area) || "inspectorUserIds";
-        const fieldName = getWorkOrderDocumentSignaturePersonFieldName("inspect", area) || "inspectorUserId";
-        updateDocumentTemplateRuntimeOverride(workOrder.id, {
-          [listFieldName]: normalizedValues,
+        const patch = {
           [fieldName]: normalizedValues[0] || "",
-          inspectorUserIds: normalizedValues,
-          inspectorUserId: normalizedValues[0] || "",
-        }, { render: false });
+        };
+        if (multiple && listFieldName) {
+          patch[listFieldName] = normalizedValues;
+        }
+        if (capability === "inspect") {
+          patch.inspectorUserIds = multiple ? normalizedValues : normalizedValues.slice(0, 1);
+          patch.inspectorUserId = normalizedValues[0] || "";
+        } else {
+          patch.authorizationHolderUserId = normalizedValues[0] || "";
+        }
+        updateDocumentTemplateRuntimeOverride(workOrder.id, patch, { render: false });
         syncDocumentTemplateEditorChrome();
         renderDocumentTemplatePreviewContent();
       },
@@ -50627,6 +50742,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const selectedIds = new Set(
       getDocumentTemplateRuntimeSelectedEquipmentIds(workOrder.id, field, templateDraft),
     );
+    const equipmentCodeFieldId = getDocumentTemplateRuntimeEquipmentCodeFieldId(field);
+    const selectedEquipmentCode = String(
+      getDocumentTemplateRuntimeFieldValue(workOrder.id, equipmentCodeFieldId) ?? "",
+    ).trim();
 
     if (equipmentItems.length === 0) {
       const empty = document.createElement("p");
@@ -50634,6 +50753,59 @@ function renderDocumentTemplateRuntimeFieldRows() {
       empty.textContent = "Nema ponuđene opreme povezane s ovim templateom.";
       shellNode.append(empty);
       return shellNode;
+    }
+
+    const equipmentCodes = Array.from(
+      new Set(equipmentItems.map(getDocumentTemplateEquipmentDeviceCode).filter(Boolean)),
+    ).sort((first, second) => first.localeCompare(second, "hr", { sensitivity: "base" }));
+
+    if (equipmentCodes.length > 0) {
+      const codePicker = document.createElement("label");
+      codePicker.className = "document-template-runtime-equipment-code-picker";
+      const codeLabel = document.createElement("span");
+      codeLabel.textContent = "Oznaka mjerne opreme";
+      const codeSelect = document.createElement("select");
+      codeSelect.className = "document-template-source-select";
+      replaceSelectOptions(
+        codeSelect,
+        [
+          { value: "", label: "Bez filtera / sva oprema" },
+          ...equipmentCodes.map((code) => ({
+            value: code,
+            label: code,
+          })),
+        ],
+        selectedEquipmentCode,
+      );
+      codeSelect.addEventListener("change", () => {
+        const nextCode = String(codeSelect.value || "").trim();
+        setDocumentTemplateRuntimeFieldValue(
+          workOrder.id,
+          equipmentCodeFieldId,
+          nextCode || null,
+          { render: false, preserveBlank: false },
+        );
+
+        if (nextCode) {
+          const matchingIds = equipmentItems
+            .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === nextCode)
+            .map((item) => String(item?.id || "").trim())
+            .filter(Boolean);
+          setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, matchingIds, { render: false });
+        } else {
+          setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, null, { render: false, preserveBlank: false });
+        }
+
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+
+      const codeHint = document.createElement("small");
+      codeHint.textContent = selectedEquipmentCode
+        ? "Uređaji s tom oznakom su već označeni; ostale i dalje možeš ručno dodati."
+        : "Odabirom oznake sustav automatski označi povezane uređaje.";
+      codePicker.append(codeLabel, codeSelect, codeHint);
+      shellNode.append(codePicker);
     }
 
     const list = document.createElement("div");
@@ -50651,6 +50823,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
     equipmentItems.forEach((item) => {
       const option = document.createElement("label");
       option.className = "document-template-runtime-checklist-item";
+      if (selectedEquipmentCode && getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode) {
+        option.classList.add("is-suggested-by-code");
+      }
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -50665,6 +50840,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       primary.textContent = item.name || item.inventoryNumber || item.code || "Uređaj";
 
       const metaParts = [
+        getDocumentTemplateEquipmentDeviceCode(item) ? `Oznaka ${getDocumentTemplateEquipmentDeviceCode(item)}` : "",
         item.deviceType || item.code || "",
         item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
         item.manufacturer || "",
@@ -51317,7 +51493,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.className = "field field-span-full";
       fieldShell.append(createMediaFieldControl(field, activeWorkOrder));
       grid.append(fieldShell);
-    } else if (field.type === "qualified_inspectors") {
+    } else if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
       grid.append(createInspectorsFieldControl(field, activeWorkOrder));
     } else if (field.type === "legal_list") {
       const fieldShell = document.createElement("div");
@@ -51328,11 +51504,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const fieldShell = document.createElement("div");
       fieldShell.className = "field field-span-full";
       fieldShell.append(createEquipmentFieldControl(field, activeWorkOrder, template));
-      grid.append(fieldShell);
-    } else if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-      const fieldShell = document.createElement("div");
-      fieldShell.className = "field field-span-full";
-      fieldShell.append(createSignatureFieldControl(field, context));
       grid.append(fieldShell);
     } else if (field.type === "digital_signature") {
       const fieldShell = document.createElement("div");
@@ -51898,6 +52069,72 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     });
     heightField.append(heightSpan, heightSelect);
 
+    const createInlineCheckboxField = (labelText, checked, onChange, { full = false } = {}) => {
+      const checkboxField = document.createElement("label");
+      checkboxField.className = `field document-template-inline-checkbox-field${full ? " field-span-full" : ""}`;
+      const checkboxTitle = document.createElement("span");
+      checkboxTitle.textContent = labelText;
+      const checkboxBody = document.createElement("div");
+      checkboxBody.className = "document-template-inline-checkbox-body";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(checked);
+      checkbox.addEventListener("change", () => {
+        onChange?.(Boolean(checkbox.checked));
+      });
+      const checkboxCopy = document.createElement("strong");
+      checkboxCopy.textContent = Boolean(checked) ? "Da" : "Ne";
+      checkbox.addEventListener("change", () => {
+        checkboxCopy.textContent = checkbox.checked ? "Da" : "Ne";
+      });
+      checkboxBody.append(checkbox, checkboxCopy);
+      checkboxField.append(checkboxTitle, checkboxBody);
+      return checkboxField;
+    };
+
+    const requiredField = createInlineCheckboxField(
+      getDocumentTemplateRequiredToggleLabel(field.type),
+      Boolean(field.required),
+      (isChecked) => {
+        documentTemplateFieldDrafts[draftIndex].required = isChecked;
+        refreshEditorSupport();
+      },
+    );
+
+    const createSignatureMetaField = () => {
+      const metaField = document.createElement("div");
+      metaField.className = "field field-span-full document-template-signature-meta-field";
+      const metaTitle = document.createElement("span");
+      metaTitle.textContent = "Podaci ispod imena";
+      const optionsWrap = document.createElement("div");
+      optionsWrap.className = "document-template-signature-meta-options";
+      const selectedValues = new Set(normalizeDocumentTemplateSignatureMetaFieldsLocal(field.signatureMetaFields));
+
+      DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS.forEach((option) => {
+        const optionLabel = document.createElement("label");
+        optionLabel.className = "document-template-inline-mini-check";
+        const optionInput = document.createElement("input");
+        optionInput.type = "checkbox";
+        optionInput.value = option.value;
+        optionInput.checked = selectedValues.has(option.value);
+        optionInput.addEventListener("change", () => {
+          const nextValues = Array.from(optionsWrap.querySelectorAll('input[type="checkbox"]'))
+            .filter((input) => input instanceof HTMLInputElement && input.checked)
+            .map((input) => String(input.value || "").trim())
+            .filter(Boolean);
+          documentTemplateFieldDrafts[draftIndex].signatureMetaFields = normalizeDocumentTemplateSignatureMetaFieldsLocal(nextValues);
+          refreshEditorSupport();
+        });
+        const optionCopy = document.createElement("span");
+        optionCopy.textContent = option.label;
+        optionLabel.append(optionInput, optionCopy);
+        optionsWrap.append(optionLabel);
+      });
+
+      metaField.append(metaTitle, optionsWrap);
+      return metaField;
+    };
+
     const sourceField = document.createElement("label");
     sourceField.className = "field";
     sourceField.hidden = isSpecialType;
@@ -52111,6 +52348,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       if (!heightField.hidden) {
         grid.append(heightField);
       }
+      if (isDocumentTemplateRequiredToggleFieldType(field.type)) {
+        grid.append(requiredField);
+      }
     }
 
     if (field.type === "chapter") {
@@ -52266,19 +52506,48 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         : "Korisnik ovdje kasnije dodaje sliku. Podržani su klik na polje i drag and drop.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "qualified_inspectors") {
-      specialInfoSpan.textContent = "Usluga / dio potpisa";
-      const signatureAreaSelect = document.createElement("select");
-      signatureAreaSelect.className = "document-template-source-select";
-      replaceSelectOptions(
-        signatureAreaSelect,
+      specialInfoField.hidden = true;
+
+      const createSignatureSelectField = (labelText, options, value, onChange) => {
+        const shellNode = document.createElement("label");
+        shellNode.className = "field";
+        const shellLabel = document.createElement("span");
+        shellLabel.textContent = labelText;
+        const select = document.createElement("select");
+        select.className = "document-template-source-select";
+        replaceSelectOptions(select, options, value);
+        select.addEventListener("change", () => {
+          onChange(select.value || "");
+          refreshEditorSupport();
+        });
+        shellNode.append(shellLabel, select);
+        return shellNode;
+      };
+
+      const areaField = createSignatureSelectField(
+        "Usluga / dio potpisa",
         DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
         field.signatureArea || "elektro",
+        (nextValue) => {
+          documentTemplateFieldDrafts[draftIndex].signatureArea = nextValue || "elektro";
+        },
       );
-      signatureAreaSelect.addEventListener("change", () => {
-        documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
-        refreshEditorSupport();
-      });
-      specialInfoField.append(signatureAreaSelect);
+
+      const roleField = createSignatureSelectField(
+        "Razina osoba",
+        [
+          { value: "inspect", label: "Ispitivači" },
+          { value: "authorize", label: "Nositelj ovlaštenja" },
+        ],
+        field.signatureRole || "inspect",
+        (nextValue) => {
+          const nextRole = nextValue === "authorize" ? "authorize" : "inspect";
+          documentTemplateFieldDrafts[draftIndex].signatureRole = nextRole;
+          documentTemplateFieldDrafts[draftIndex].signatureMultiple = nextRole === "authorize" ? false : true;
+        },
+      );
+
+      grid.append(areaField, roleField, createSignatureMetaField());
     } else if (field.type === "legal_list") {
       specialInfoField.hidden = true;
 
@@ -52348,7 +52617,12 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       specialInfoValue.textContent = "Povlači povezanu mjernu i ispitnu opremu.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
-      specialInfoSpan.textContent = "Dio";
+      specialInfoField.hidden = true;
+
+      const areaField = document.createElement("label");
+      areaField.className = "field";
+      const areaLabel = document.createElement("span");
+      areaLabel.textContent = "Usluga / dio potpisa";
       const signatureAreaSelect = document.createElement("select");
       signatureAreaSelect.className = "document-template-source-select";
       replaceSelectOptions(
@@ -52360,7 +52634,15 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         documentTemplateFieldDrafts[draftIndex].signatureArea = signatureAreaSelect.value || "elektro";
         refreshEditorSupport();
       });
-      specialInfoField.append(signatureAreaSelect);
+      areaField.append(areaLabel, signatureAreaSelect);
+
+      const singleHint = document.createElement("div");
+      singleHint.className = "document-template-inline-special-value";
+      singleHint.textContent = field.type === "authorization_holder_signature"
+        ? "Nositelj ovlaštenja se bira iz People modula i uvijek je jedna osoba."
+        : "Ispitivač se bira iz People modula i ovaj legacy slot prikazuje jednu osobu.";
+
+      grid.append(areaField, singleHint, createSignatureMetaField());
     } else if (field.type === "digital_signature") {
       specialInfoField.hidden = true;
 
