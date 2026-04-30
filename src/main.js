@@ -1622,6 +1622,7 @@ const state = {
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    aiAssistantHidden: false,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -34869,8 +34870,10 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
   { value: "WORK_ORDER_INSPECTION_DATE", label: "Dokument - datum ispitivanja" },
   { value: "WORK_ORDER_ISSUED_DATE", label: "Dokument - datum izdavanja" },
-  { value: "WORK_ORDER_VALID_UNTIL", label: "Dokument - zapisnik vrijedi do" },
+  { value: "WORK_ORDER_VALID_UNTIL", label: "Dokument - vrijedi do" },
   { value: "WORK_ORDER_VALIDITY_MONTHS", label: "Dokument - rok važenja (mjeseci)" },
+  { value: "WORK_ORDER_SERVICE_VALID_UNTIL", label: "Dokument - vrijedi do za uslugu" },
+  { value: "WORK_ORDER_SERVICE_VALIDITY_MONTHS", label: "Dokument - rok važenja usluge (mjeseci)" },
   { value: "WORK_ORDER_ISSUED_PLACE", label: "Dokument - mjesto izdavanja" },
   { value: "WORK_ORDER_DOCUMENT_NOTE", label: "Dokument - napomena" },
   { value: "WORK_ORDER_OUTSIDE_TEMPERATURE", label: "Dokument - vanjska temperatura" },
@@ -36783,7 +36786,30 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
   renderDocumentTemplateFieldRows({ renderSupport: false });
 }
 
+function setDocumentTemplateRuntimeAiAssistantHidden(hidden = false, { render = true } = {}) {
+  state.documentTemplateRuntime.aiAssistantHidden = Boolean(hidden);
+  if (render) {
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+  }
+}
+
 function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder = {}) {
+  if (state.documentTemplateRuntime.aiAssistantHidden) {
+    const collapsedPanel = document.createElement("section");
+    collapsedPanel.className = "document-template-runtime-ai-assistant-togglebar";
+    const copy = document.createElement("span");
+    copy.textContent = "AI asistent je sakriven za ovaj unos.";
+    const showButton = document.createElement("button");
+    showButton.type = "button";
+    showButton.className = "ghost-button compact-button";
+    showButton.textContent = "Prikaži AI";
+    showButton.addEventListener("click", () => {
+      setDocumentTemplateRuntimeAiAssistantHidden(false);
+    });
+    collapsedPanel.append(copy, showButton);
+    return collapsedPanel;
+  }
+
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
 
@@ -36823,6 +36849,14 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   });
   copy.append(eyebrow, title, description, connectionStatus);
   introHead.append(mark, copy);
+  const hideButton = document.createElement("button");
+  hideButton.type = "button";
+  hideButton.className = "ghost-button compact-button document-template-runtime-ai-hide";
+  hideButton.textContent = "Sakrij AI";
+  hideButton.addEventListener("click", () => {
+    setDocumentTemplateRuntimeAiAssistantHidden(true);
+  });
+  introHead.append(hideButton);
   intro.append(introHead);
 
   const uploadWrap = document.createElement("div");
@@ -39800,6 +39834,20 @@ function resolveDocumentTemplateRuntimeValidUntil(workOrder = {}) {
   return addMonthsToDateKey(inspectionDate, resolveDocumentTemplateRuntimeValidityMonths(workOrder));
 }
 
+function resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
+    || getDocumentTemplateRuntimeResolvedServiceItems(workOrder)[0]
+    || null;
+  return normalizeValidityMonthsValue(primaryService?.validityMonths)
+    || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
+}
+
+function resolveDocumentTemplateRuntimeServiceValidUntil(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const inspectionDate = workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate") : "";
+  return addMonthsToDateKey(inspectionDate, resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, template));
+}
+
 function resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder = {}, fieldName = "") {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
@@ -39831,6 +39879,8 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const runtimeGroundResistance = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundResistance") : "";
   const runtimeValidityMonths = resolveDocumentTemplateRuntimeValidityMonths(workOrder);
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
+  const runtimeServiceValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, context.template);
+  const runtimeServiceValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, context.template);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
   const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
@@ -39873,6 +39923,8 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
     WORK_ORDER_ISSUED_DATE: runtimeIssuedDate ? formatCompactDate(runtimeIssuedDate) : "",
     WORK_ORDER_VALID_UNTIL: runtimeValidUntil ? formatCompactDate(runtimeValidUntil) : "",
     WORK_ORDER_VALIDITY_MONTHS: runtimeValidityMonths,
+    WORK_ORDER_SERVICE_VALID_UNTIL: runtimeServiceValidUntil ? formatCompactDate(runtimeServiceValidUntil) : "",
+    WORK_ORDER_SERVICE_VALIDITY_MONTHS: runtimeServiceValidityMonths,
     WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace,
     WORK_ORDER_DOCUMENT_NOTE: runtimeNote,
     WORK_ORDER_OUTSIDE_TEMPERATURE: runtimeOutsideTemperature,
@@ -39991,6 +40043,8 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const runtimeGroundResistance = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "groundResistance") : "";
   const runtimeValidityMonths = resolveDocumentTemplateRuntimeValidityMonths(workOrder);
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
+  const runtimeServiceValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, context.template);
+  const runtimeServiceValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, context.template);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
   const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
@@ -40033,6 +40087,8 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
     WORK_ORDER_ISSUED_DATE: runtimeIssuedDate || "",
     WORK_ORDER_VALID_UNTIL: runtimeValidUntil || "",
     WORK_ORDER_VALIDITY_MONTHS: runtimeValidityMonths || "",
+    WORK_ORDER_SERVICE_VALID_UNTIL: runtimeServiceValidUntil || "",
+    WORK_ORDER_SERVICE_VALIDITY_MONTHS: runtimeServiceValidityMonths || "",
     WORK_ORDER_ISSUED_PLACE: runtimeIssuedPlace || "",
     WORK_ORDER_DOCUMENT_NOTE: runtimeNote || "",
     WORK_ORDER_OUTSIDE_TEMPERATURE: runtimeOutsideTemperature || "",
@@ -41996,10 +42052,13 @@ function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDr
   }
 
   clampDocumentTemplateSheetIndex();
+  const runtimeWorkOrder = isDocumentTemplateRuntimeFillMode()
+    ? getDocumentTemplateRuntimeActiveWorkOrder()
+    : null;
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(template, {
     placeholderMode: false,
     sheetTabs: true,
-    context: context || buildDocumentTemplatePreviewContext(template),
+    context: context || buildDocumentTemplatePreviewContext(template, runtimeWorkOrder ? { workOrder: runtimeWorkOrder } : {}),
   });
 }
 
@@ -50258,11 +50317,7 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
   const requiredEntries = entries.filter((entry) => entry.required);
   const requiredComplete = requiredEntries.filter((entry) => entry.isComplete).length;
   const requiredTotal = requiredEntries.length;
-  const detailsSource = requiredTotal > 0
-    ? requiredEntries.filter((entry) => !entry.isComplete)
-    : entries;
-  const details = detailsSource
-    .slice(0, 3)
+  const details = entries
     .map((entry) => `${entry.label}: ${entry.displayValue || "prazno"}`);
   const ok = requiredTotal === 0 || requiredComplete >= requiredTotal;
 
@@ -53185,7 +53240,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     meta.className = "document-template-runtime-block-meta";
     meta.textContent = [
       completion.label,
-      ...(collapsed ? completion.details : []),
+      ...completion.details,
       !collapsed && block.chapter?.helpText ? block.chapter.helpText : "",
     ].filter(Boolean).join(" · ") || (block.items.length > 0
       ? `${block.items.length} polja za unos u ovom bloku.`
@@ -53603,6 +53658,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         documentTemplateFieldDrafts[draftIndex].type || "text",
       );
       renderDocumentTemplateFieldRows({ supportImmediate: true });
+      renderDocumentTemplatePreviewContent();
     });
     widthField.append(widthSpan, widthSelect);
 
@@ -53625,6 +53681,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         documentTemplateFieldDrafts[draftIndex].type || "longtext",
       );
       renderDocumentTemplateFieldRows({ supportImmediate: true });
+      renderDocumentTemplatePreviewContent();
     });
     heightField.append(heightSpan, heightSelect);
 
@@ -53675,6 +53732,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     textListStyleSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[draftIndex].textListStyle = normalizeDocumentTemplateTextListStyleLocal(textListStyleSelect.value);
       renderDocumentTemplateFieldRows({ supportImmediate: true });
+      renderDocumentTemplatePreviewContent();
     });
     textListStyleField.append(textListStyleSpan, textListStyleSelect);
 
@@ -53724,6 +53782,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       documentTemplateFieldDrafts[draftIndex].source = sourceSelect.value || "CUSTOM_VALUE";
       ensureDocumentTemplateDatabaseLookupDraft(documentTemplateFieldDrafts[draftIndex]);
       renderDocumentTemplateFieldRows({ supportImmediate: true });
+      renderDocumentTemplatePreviewContent();
     });
     sourceField.append(sourceSpan, sourceSelect);
 
@@ -75843,6 +75902,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    aiAssistantHidden: false,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -76350,6 +76410,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    aiAssistantHidden: false,
     common: {
       inspectionDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? ""),
       issuedDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.issuedDate ?? ""),
