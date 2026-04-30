@@ -1293,6 +1293,7 @@ const state = {
   organizations: [],
   companies: [],
   locations: [],
+  locationObjects: [],
   users: [],
   signupRequests: [],
   loginContentItems: [],
@@ -1611,6 +1612,7 @@ const state = {
     returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
+    objectSelections: {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
@@ -3021,6 +3023,7 @@ const documentTemplateRuntimeDockSignScanButton = document.querySelector("#docum
 const documentTemplateRuntimeDockSignDigitalButton = document.querySelector("#document-template-runtime-dock-sign-digital");
 const documentTemplateRuntimeDockSendSignatureButton = document.querySelector("#document-template-runtime-dock-send-signature");
 const documentTemplateRuntimeDockPrintAllButton = document.querySelector("#document-template-runtime-dock-print-all");
+const documentTemplateRuntimeDockDuplicateObjectButton = document.querySelector("#document-template-runtime-dock-duplicate-object");
 const documentTemplateRuntimeDockPdfButton = document.querySelector("#document-template-runtime-dock-pdf");
 const documentTemplateRuntimeDockWordButton = document.querySelector("#document-template-runtime-dock-word");
 const documentTemplateRuntimeSidePrevButton = document.querySelector("#document-template-runtime-side-prev");
@@ -6689,6 +6692,7 @@ function applySnapshot(payload) {
   state.organizations = payload.organizations ?? [];
   state.companies = payload.companies ?? [];
   state.locations = payload.locations ?? [];
+  state.locationObjects = payload.locationObjects ?? [];
   state.users = payload.users ?? [];
   state.signupRequests = payload.signupRequests ?? [];
   state.loginContentItems = payload.loginContentItems ?? [];
@@ -19524,6 +19528,34 @@ function getLocation(locationId) {
   return state.locations.find((item) => item.id === locationId) ?? null;
 }
 
+function getLocationObject(objectId) {
+  const normalizedId = String(objectId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+
+  return (state.locationObjects ?? []).find((item) => String(item.id) === normalizedId) ?? null;
+}
+
+function getLocationObjectsForWorkOrder(workOrder = {}) {
+  const companyId = String(workOrder?.companyId || "").trim();
+  const locationId = String(workOrder?.locationId || "").trim();
+  if (!companyId || !locationId) {
+    return [];
+  }
+
+  return (state.locationObjects ?? [])
+    .filter((item) => (
+      String(item.companyId || "") === companyId
+      && String(item.locationId || "") === locationId
+      && item.isActive !== false
+    ))
+    .sort((left, right) => (
+      String(left.name || "").localeCompare(String(right.name || ""), "hr", { numeric: true, sensitivity: "base" })
+      || String(left.id || "").localeCompare(String(right.id || ""), "hr", { numeric: true, sensitivity: "base" })
+    ));
+}
+
 function getDocumentTemplateById(templateId) {
   return state.documentTemplates.find((item) => String(item.id) === String(templateId)) ?? null;
 }
@@ -20582,6 +20614,7 @@ function getDocumentRecordLibraryContext(record = {}, recordIndex = 0) {
   const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
   const company = getCompany(linkedWorkOrder?.companyId || record?.companyId || "");
   const location = getLocation(linkedWorkOrder?.locationId || record?.locationId || "");
+  const object = getLocationObject(record?.objectId || "");
   const serviceLabel = String(
     getWorkOrderServiceSummary(linkedWorkOrder)
     || linkedWorkOrder?.serviceLine
@@ -20600,6 +20633,7 @@ function getDocumentRecordLibraryContext(record = {}, recordIndex = 0) {
     linkedWorkOrder,
     company,
     location,
+    object,
     serviceLabel,
     workOrderNumber,
     sourceTarget: linkedWorkOrder
@@ -20615,6 +20649,7 @@ function createDocumentRecordLibraryEntryFromContext(record = {}, context = {}, 
     description: [
       record?.inspectionDate ? `Ispitivanje ${formatCompactDate(record.inspectionDate)}` : "",
       record?.issuedDate ? `Izdano ${formatCompactDate(record.issuedDate)}` : "",
+      context.object?.name || record?.objectName || "",
       record?.createdByLabel || "",
     ].filter(Boolean).join(" · "),
     updatedAt: record?.updatedAt || record?.issuedDate || record?.inspectionDate || record?.createdAt || "",
@@ -20625,6 +20660,7 @@ function createDocumentRecordLibraryEntryFromContext(record = {}, context = {}, 
       context.workOrderNumber || "",
       context.serviceLabel || "",
       context.company?.name || "",
+      context.object?.name || record?.objectName || "",
     ],
   });
 }
@@ -20646,15 +20682,18 @@ function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.rec
         subtitle: [
           context.company?.name || context.linkedWorkOrder?.companyName || "",
           createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || ""),
+          context.object?.name || record?.objectName || "",
           context.serviceLabel,
         ].filter(Boolean).join(" · "),
         metaParts: [
           context.company?.name || "",
+          context.object?.name || record?.objectName || "",
           context.serviceLabel || "",
         ].filter(Boolean),
         searchTerms: [
           context.company?.name || "",
           context.location?.name || context.linkedWorkOrder?.locationName || "",
+          context.object?.name || record?.objectName || "",
           context.serviceLabel,
         ],
         sourceTarget: context.sourceTarget,
@@ -22708,6 +22747,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
     const locationId = String(linkedWorkOrder?.locationId || record?.locationId || "").trim();
     const company = getCompany(companyId);
     const location = getLocation(locationId);
+    const locationObject = getLocationObject(record?.objectId || "");
     const serviceFromRecord = extractDocumentsExplorerFieldValueByHints(
       record,
       DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS,
@@ -22719,6 +22759,10 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
     const locationFromRecord = extractDocumentsExplorerFieldValueByHints(
       record,
       PERIODICS_LOCATION_KEY_HINTS,
+    );
+    const objectFromRecord = extractDocumentsExplorerFieldValueByHints(
+      record,
+      ["OBJECT_NAME", "OBJEKT", "NAZIV_OBJEKTA", "OBJECT"],
     );
     const headquartersFromRecord = extractDocumentsExplorerFieldValueByHints(
       record,
@@ -22763,6 +22807,8 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
       || "",
     ).trim();
     const compactLocationName = createCompactLocationLabel(locationName);
+    const objectName = String(locationObject?.name || record?.objectName || objectFromRecord || "").trim();
+    const objectId = String(locationObject?.id || record?.objectId || "").trim();
     const templateLabel = String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik";
     const workOrderNumber = String(linkedWorkOrder?.workOrderNumber || extractedWorkOrderNumber || "").trim();
 
@@ -22771,6 +22817,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         String(record?.id || ""),
         companyId,
         locationId,
+        objectId || objectName,
         serviceLabel,
         dueDate,
         index,
@@ -22786,6 +22833,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         headquarters,
         companyOib,
         compactLocationName,
+        objectName,
         serviceLabel,
         templateLabel,
         workOrderNumber,
@@ -22799,6 +22847,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         headquarters,
         companyOib,
         locationName: compactLocationName,
+        objectName,
         serviceLabel,
         templateLabel,
         workOrderNumber,
@@ -24416,7 +24465,10 @@ function renderPeriodicsModule() {
     createPeriodicsCell(entry.companyName, entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : ""),
     createPeriodicsCell(entry.headquarters || "—", "", { dimmed: !entry.headquarters }),
     createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
-    createPeriodicsCell(entry.locationName || "Bez lokacije"),
+    createPeriodicsCell(
+      entry.locationName || "Bez lokacije",
+      entry.objectName ? `Objekt ${entry.objectName}` : "",
+    ),
     createPeriodicsCell(entry.serviceLabel, entry.templateLabel),
     createPeriodicsDueCell(entry.dueDate, entry.dueState),
   ], entry.dueState?.toneClass));
@@ -33726,6 +33778,9 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "LOCATION_NAME", label: "Lokacija - naziv" },
   { value: "LOCATION_REGION", label: "Lokacija - regija" },
   { value: "LOCATION_COORDINATES", label: "Lokacija - koordinate" },
+  { value: "OBJECT_NAME", label: "Objekt - naziv" },
+  { value: "OBJECT_CODE", label: "Objekt - sifra" },
+  { value: "OBJECT_DESCRIPTION", label: "Objekt - opis" },
   { value: "WORK_ORDER_NUMBER", label: "Radni nalog - broj" },
   { value: "WORK_ORDER_STATUS", label: "Radni nalog - status" },
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
@@ -33818,6 +33873,19 @@ const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
       { value: "kontakt_osoba", label: "Kontakt osoba", getter: (row) => row?.contactName1 ?? "" },
       { value: "kontakt_broj", label: "Kontakt broj", getter: (row) => row?.contactPhone1 ?? "" },
       { value: "kontakt_email", label: "Kontakt email", getter: (row) => row?.contactEmail1 ?? "" },
+    ],
+  },
+  web_location_objects: {
+    label: "web_location_objects",
+    copy: "Objekti na lokaciji",
+    rows: () => state.locationObjects ?? [],
+    columns: [
+      { value: "id", label: "ID", getter: (row) => row?.id ?? "" },
+      { value: "company_id", label: "Tvrtka ID", getter: (row) => row?.companyId ?? "" },
+      { value: "location_id", label: "Lokacija ID", getter: (row) => row?.locationId ?? "" },
+      { value: "name", label: "Naziv objekta", getter: (row) => row?.name ?? "" },
+      { value: "code", label: "Sifra objekta", getter: (row) => row?.code ?? "" },
+      { value: "description", label: "Opis", getter: (row) => row?.description ?? "" },
     ],
   },
   web_service_catalog: {
@@ -34189,12 +34257,13 @@ function getDocumentTemplatePreviousRecordOptionsCacheKey(templateId = "", workO
   const normalizedTemplateId = String(templateId || "").trim();
   const companyId = String(workOrder?.companyId || "").trim();
   const locationId = String(workOrder?.locationId || "").trim();
+  const objectId = String(workOrder?.objectId || getDocumentTemplateRuntimeSelectedObjectId(workOrder) || "").trim();
 
   if (!normalizedTemplateId || !companyId || !locationId) {
     return "";
   }
 
-  return `${normalizedTemplateId}::${companyId}::${locationId}`;
+  return `${normalizedTemplateId}::${companyId}::${locationId}::${objectId || "bez-objekta"}`;
 }
 
 function getDocumentTemplatePreviousRecordOptionsCacheEntry(templateId = "", workOrder = {}) {
@@ -34284,8 +34353,10 @@ async function ensureDocumentTemplatePreviousRecordOptions(template = buildDocum
   renderDocumentTemplateFieldRows();
 
   try {
+    const objectId = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+    const objectQuery = objectId ? `&objectId=${encodeURIComponent(objectId)}` : "";
     const payload = await apiRequest(
-      `/document-records?templateId=${encodeURIComponent(templateId)}&companyId=${encodeURIComponent(String(workOrder.companyId || "").trim())}&locationId=${encodeURIComponent(String(workOrder.locationId || "").trim())}&limit=12`,
+      `/document-records?templateId=${encodeURIComponent(templateId)}&companyId=${encodeURIComponent(String(workOrder.companyId || "").trim())}&locationId=${encodeURIComponent(String(workOrder.locationId || "").trim())}${objectQuery}&limit=12`,
     );
     state.documentTemplateRuntime.previousRecordOptions = {
       ...(state.documentTemplateRuntime.previousRecordOptions ?? {}),
@@ -38505,6 +38576,7 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
+  const object = context.object;
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, context.template);
   const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
   const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
@@ -38542,6 +38614,12 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
     LOCATION_NAME: location?.name || "",
     LOCATION_REGION: location?.region || "",
     LOCATION_COORDINATES: location?.coordinates || "",
+    OBJECT_NAME: object?.name || "",
+    OBJEKT: object?.name || "",
+    OBJECT_CODE: object?.code || "",
+    SIFRA_OBJEKTA: object?.code || "",
+    OBJECT_DESCRIPTION: object?.description || "",
+    OPIS_OBJEKTA: object?.description || "",
     WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
     WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
     WORK_ORDER_STATUS: workOrder?.status || "",
@@ -38650,6 +38728,7 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
+  const object = context.object;
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, context.template);
   const runtimeInspectionDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate") : "";
   const runtimeIssuedDate = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "";
@@ -38687,6 +38766,12 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
     LOCATION_NAME: location?.name || "",
     LOCATION_REGION: location?.region || "",
     LOCATION_COORDINATES: location?.coordinates || "",
+    OBJECT_NAME: object?.name || "",
+    OBJEKT: object?.name || "",
+    OBJECT_CODE: object?.code || "",
+    SIFRA_OBJEKTA: object?.code || "",
+    OBJECT_DESCRIPTION: object?.description || "",
+    OPIS_OBJEKTA: object?.description || "",
     WORK_ORDER_NUMBER: workOrder?.workOrderNumber || "",
     WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
     WORK_ORDER_STATUS: workOrder?.status || "",
@@ -39070,6 +39155,7 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   const sampleWorkOrder = workOrder || getDocumentTemplatePreviewSampleWorkOrder(template);
   const company = getDocumentTemplatePreviewCompany(template, sampleWorkOrder);
   const location = getDocumentTemplatePreviewLocation(template, sampleWorkOrder);
+  const object = getDocumentTemplateRuntimeObjectForWorkOrder(sampleWorkOrder);
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
   const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
   const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
@@ -39081,6 +39167,7 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
     signatureMethod: getDocumentTemplateContextSignatureMethod(),
     company,
     location,
+    object,
     legalFrameworks,
     equipmentItems,
   };
@@ -40185,9 +40272,108 @@ function getDocumentTemplateRuntimeWorkOrderById(workOrderId = "") {
   return (state.workOrders ?? []).find((item) => String(item.id) === normalizedId) ?? null;
 }
 
+function getDocumentTemplateRuntimeActiveSequenceEntry() {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.isSummary) {
+    return null;
+  }
+
+  return sequenceState.entries[sequenceState.index] ?? null;
+}
+
+function getDocumentTemplateRuntimeSequenceObjectNumber(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const activeEntry = getDocumentTemplateRuntimeActiveSequenceEntry();
+  if (
+    activeEntry
+    && String(activeEntry.workOrderId || "") === String(workOrder?.id || "")
+    && String(activeEntry.templateId || "") === String(getDocumentTemplateRuntimeTemplateId(template))
+  ) {
+    const sequenceNumber = Number.parseInt(activeEntry.objectSequence, 10);
+    return Number.isFinite(sequenceNumber) && sequenceNumber > 0 ? sequenceNumber : 0;
+  }
+
+  return 0;
+}
+
+function getDocumentTemplateRuntimeSelectedObjectId(workOrder = getDocumentTemplateRuntimeActiveWorkOrder()) {
+  const normalizedWorkOrderId = String(workOrder?.id || "").trim();
+  if (!normalizedWorkOrderId) {
+    return "";
+  }
+
+  const activeEntry = getDocumentTemplateRuntimeActiveSequenceEntry();
+  if (activeEntry && String(activeEntry.workOrderId || "") === normalizedWorkOrderId) {
+    return String(activeEntry.objectId || "").trim();
+  }
+
+  return String(state.documentTemplateRuntime.objectSelections?.[normalizedWorkOrderId] || "").trim();
+}
+
+function getDocumentTemplateRuntimeObjectForWorkOrder(workOrder = getDocumentTemplateRuntimeActiveWorkOrder()) {
+  const objectId = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+  const locationObject = getLocationObject(objectId);
+  if (
+    !locationObject
+    || String(locationObject.companyId || "") !== String(workOrder?.companyId || "")
+    || String(locationObject.locationId || "") !== String(workOrder?.locationId || "")
+  ) {
+    return null;
+  }
+
+  return locationObject;
+}
+
+function setDocumentTemplateRuntimeObjectSelection(workOrderId = "", objectId = "", { render = false } = {}) {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  const normalizedObjectId = String(objectId || "").trim();
+  if (!normalizedWorkOrderId) {
+    return;
+  }
+
+  const locationObject = getLocationObject(normalizedObjectId);
+  state.documentTemplateRuntime.objectSelections = {
+    ...(state.documentTemplateRuntime.objectSelections ?? {}),
+    [normalizedWorkOrderId]: normalizedObjectId,
+  };
+
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (sequenceState && !sequenceState.isSummary) {
+    const activeIndex = sequenceState.index;
+    state.documentTemplateRuntime.sequenceEntries = sequenceState.entries.map((entry, index) => (
+      index === activeIndex && String(entry.workOrderId || "") === normalizedWorkOrderId
+        ? {
+          ...entry,
+          objectId: normalizedObjectId,
+          objectName: locationObject?.name || "",
+        }
+        : entry
+    ));
+  }
+
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+  if (render) {
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+}
+
+function syncDocumentTemplateRuntimeObjectSelectionFromEntry(entry = null) {
+  const workOrderId = String(entry?.workOrderId || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+
+  state.documentTemplateRuntime.objectSelections = {
+    ...(state.documentTemplateRuntime.objectSelections ?? {}),
+    [workOrderId]: String(entry?.objectId || "").trim(),
+  };
+}
+
 function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
   const workOrderNumber = String(context.sampleWorkOrder?.workOrderNumber || "").trim();
+  const object = context.object;
   const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
   const placeholders = {
     DOCUMENT_TITLE: String(template.title || "").trim(),
@@ -40197,6 +40383,12 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
     BROJ_ZAPISNIKA: documentNumber,
     WORK_ORDER_NUMBER: workOrderNumber,
     BROJ_RADNOG_NALOGA: workOrderNumber,
+    OBJECT_NAME: String(object?.name || "").trim(),
+    OBJEKT: String(object?.name || "").trim(),
+    OBJECT_CODE: String(object?.code || "").trim(),
+    SIFRA_OBJEKTA: String(object?.code || "").trim(),
+    OBJECT_DESCRIPTION: String(object?.description || "").trim(),
+    OPIS_OBJEKTA: String(object?.description || "").trim(),
     QUALIFIED_INSPECTORS_LIST: inspectorListWithTitles,
     ISPITIVACI_POPIS: inspectorListWithTitles,
   };
@@ -40251,6 +40443,11 @@ function buildDocumentTemplateRuntimeExportEntry(
         name: String(context.location?.name || "").trim(),
         region: String(context.location?.region || "").trim(),
         coordinates: String(context.location?.coordinates || "").trim(),
+      },
+      object: {
+        name: String(context.object?.name || "").trim(),
+        code: String(context.object?.code || "").trim(),
+        description: String(context.object?.description || "").trim(),
       },
       blocks: buildDocumentTemplateRuntimePdfBlocks(template, context),
     },
@@ -40709,6 +40906,8 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         return;
       }
 
+      syncDocumentTemplateRuntimeObjectSelectionFromEntry(sequenceEntry);
+      state.documentTemplateRuntime.sequenceIndex = sequenceEntries.findIndex((entry) => entry === sequenceEntry);
       await persistDocumentTemplateRuntimeRecordFor(template, workOrder);
       const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
       if (exportEntry) {
@@ -41722,7 +41921,9 @@ function getDocumentTemplateRuntimeDocumentNumber(workOrder = {}, template = bui
     || ""
   ).trim();
 
-  return [workOrderNumber, serviceCode].filter(Boolean).join("-");
+  const baseNumber = [workOrderNumber, serviceCode].filter(Boolean).join("-");
+  const objectSequence = getDocumentTemplateRuntimeSequenceObjectNumber(workOrder, template);
+  return objectSequence > 0 && baseNumber ? `${baseNumber}-${objectSequence}` : baseNumber;
 }
 
 function formatQualifiedInspectorNameWithTitle(user = {}) {
@@ -43311,8 +43512,10 @@ function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
   const upperTitle = rawTitle.toUpperCase();
   const knownLabels = ["TZIN", "SPR", "ZNR", "TIPKALO", "PANIK"];
   const matchedLabel = knownLabels.find((label) => upperTitle.includes(label));
+  const objectSequence = Number.parseInt(entry?.objectSequence, 10);
+  const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";
   if (matchedLabel) {
-    return matchedLabel;
+    return `${matchedLabel}${suffix}`;
   }
 
   const sanitized = upperTitle
@@ -43320,7 +43523,8 @@ function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
     .split(/[\s_-]+/)
     .map((part) => part.replace(/\d+/g, "").trim())
     .find(Boolean);
-  return sanitized || rawTitle;
+  const baseLabel = sanitized || rawTitle;
+  return `${baseLabel}${suffix}`;
 }
 
 function groupDocumentTemplateRuntimeDockEntries(entries = []) {
@@ -43389,6 +43593,159 @@ function syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode = isDocumentT
   syncDocumentTemplateRuntimeResumeButton();
 }
 
+async function createLocationObjectFromTemplateRuntime(workOrder = getDocumentTemplateRuntimeActiveWorkOrder(), { suggestedName = "" } = {}) {
+  if (!workOrder?.companyId || !workOrder?.locationId) {
+    setDocumentTemplateMessage("Prvo odaberi RN s tvrtkom i lokacijom.");
+    return null;
+  }
+
+  const existingCount = getLocationObjectsForWorkOrder(workOrder).length;
+  const defaultName = suggestedName || `Objekt ${existingCount + 1}`;
+  const name = String(window.prompt("Naziv novog objekta na lokaciji", defaultName) || "").trim();
+  if (!name) {
+    return null;
+  }
+
+  const payload = await apiRequest("/location-objects", {
+    method: "POST",
+    body: {
+      companyId: workOrder.companyId,
+      locationId: workOrder.locationId,
+      name,
+    },
+  });
+
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+    applySnapshot(payload);
+  }
+
+  return getLocationObjectsForWorkOrder(workOrder).find((item) => (
+    normalizeLooseName(item.name) === normalizeLooseName(name)
+  )) ?? null;
+}
+
+function buildDocumentTemplateRuntimeObjectSelectBadge(workOrder, template) {
+  const badge = document.createElement("label");
+  badge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap is-object";
+
+  const label = document.createElement("span");
+  label.textContent = "Objekt";
+
+  const select = document.createElement("select");
+  select.className = "document-template-runtime-badge-select";
+  const selectedObjectId = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+  const locationObjects = getLocationObjectsForWorkOrder(workOrder);
+  replaceSelectOptions(
+    select,
+    [
+      { value: "", label: "Bez objekta" },
+      ...locationObjects.map((item) => ({
+        value: String(item.id),
+        label: [item.name, item.code ? `(${item.code})` : ""].filter(Boolean).join(" "),
+      })),
+      { value: "__add_new__", label: "+ Add New objekt" },
+    ],
+    selectedObjectId,
+  );
+  select.title = "Odaberi objekt za ovaj zapisnik ili dodaj novi objekt na lokaciji.";
+  select.addEventListener("change", async () => {
+    const nextValue = select.value || "";
+    if (nextValue === "__add_new__") {
+      select.value = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+      try {
+        const createdObject = await createLocationObjectFromTemplateRuntime(workOrder);
+        if (createdObject) {
+          setDocumentTemplateRuntimeObjectSelection(workOrder.id, createdObject.id, { render: true });
+          setDocumentTemplateMessage(`Objekt "${createdObject.name}" je dodan i odabran za zapisnik.`, { type: "success" });
+        }
+      } catch (error) {
+        console.error("Ne mogu dodati objekt lokacije.", error);
+        setDocumentTemplateMessage(error?.message || "Ne mogu dodati objekt lokacije.");
+      }
+      return;
+    }
+
+    setDocumentTemplateRuntimeObjectSelection(workOrder.id, nextValue, { render: true });
+    void ensureDocumentTemplatePreviousRecordOptions(template, workOrder);
+  });
+
+  badge.append(label, select);
+  return badge;
+}
+
+async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
+  const template = buildDocumentTemplateDraft();
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  if (!isDocumentTemplateRuntimeFillMode() || !activeWorkOrder) {
+    setDocumentTemplateMessage("Prvo otvori zapisnik iz RN-a.");
+    return;
+  }
+
+  try {
+    const createdObject = await createLocationObjectFromTemplateRuntime(activeWorkOrder);
+    if (!createdObject) {
+      return;
+    }
+
+    const sequenceState = getDocumentTemplateRuntimeSequenceState();
+    const activeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+    if (sequenceState && !sequenceState.isSummary) {
+      const activeIndex = sequenceState.index;
+      const activeEntry = sequenceState.entries[activeIndex];
+      const sameEntryIndexes = sequenceState.entries
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => (
+          String(entry.workOrderId || "") === String(activeWorkOrder.id || "")
+          && String(entry.templateId || "") === String(activeTemplateId)
+        ));
+      const maxSequence = sameEntryIndexes.reduce((max, { entry }) => (
+        Math.max(max, Number.parseInt(entry.objectSequence, 10) || 0)
+      ), 0);
+      const nextSequence = Math.max(2, maxSequence + 1);
+      const currentObject = getDocumentTemplateRuntimeObjectForWorkOrder(activeWorkOrder);
+      const normalizedEntries = sequenceState.entries.map((entry, index) => {
+        if (!sameEntryIndexes.some((candidate) => candidate.index === index)) {
+          return entry;
+        }
+        if (index === activeIndex) {
+          return {
+            ...entry,
+            objectSequence: Number.parseInt(entry.objectSequence, 10) > 0 ? entry.objectSequence : 1,
+            objectId: entry.objectId || currentObject?.id || "",
+            objectName: entry.objectName || currentObject?.name || "",
+          };
+        }
+        return {
+          ...entry,
+          objectSequence: Number.parseInt(entry.objectSequence, 10) > 0 ? entry.objectSequence : 1,
+        };
+      });
+      const duplicateEntry = {
+        ...activeEntry,
+        objectId: String(createdObject.id),
+        objectName: String(createdObject.name || ""),
+        objectSequence: nextSequence,
+      };
+      normalizedEntries.splice(activeIndex + 1, 0, duplicateEntry);
+      state.documentTemplateRuntime.sequenceEntries = normalizedEntries;
+      state.documentTemplateRuntime.sequenceIndex = activeIndex + 1;
+      state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrder.id || "").trim();
+      syncDocumentTemplateRuntimeObjectSelectionFromEntry(duplicateEntry);
+    } else {
+      setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, createdObject.id);
+    }
+
+    saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+    setDocumentTemplateMessage(`Zapisnik je podupljan za objekt "${createdObject.name}".`, { type: "success" });
+  } catch (error) {
+    console.error("Ne mogu poduplati zapisnik za novi objekt.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu poduplati zapisnik za novi objekt.");
+  }
+}
+
 function renderDocumentTemplateRuntimeContext() {
   if (!documentTemplateRuntimeContext || !documentTemplateRuntimeWorkOrders || !documentTemplateRuntimeCommon) {
     return;
@@ -43404,7 +43761,7 @@ function renderDocumentTemplateRuntimeContext() {
   const workOrders = hasContext ? getDocumentTemplateRuntimeWorkOrders() : [];
   const activeWorkOrder = hasContext ? getDocumentTemplateRuntimeActiveWorkOrder() : null;
   const activeSequenceEntry = hasSequence && !isSummaryStep
-    ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.activeIndex] || sequenceState.entries[0] || null) : null)
+    ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.index] || sequenceState.entries[0] || null) : null)
     : null;
   documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep || fillMode;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
@@ -43458,6 +43815,10 @@ function renderDocumentTemplateRuntimeContext() {
   }
   if (documentTemplateRuntimeDockWordButton) {
     documentTemplateRuntimeDockWordButton.hidden = true;
+  }
+  if (documentTemplateRuntimeDockDuplicateObjectButton) {
+    documentTemplateRuntimeDockDuplicateObjectButton.hidden = true;
+    documentTemplateRuntimeDockDuplicateObjectButton.disabled = !fillMode || !activeWorkOrder;
   }
   if (documentTemplateRuntimeSidePrevButton) {
     documentTemplateRuntimeSidePrevButton.hidden = !hasSequence;
@@ -43775,6 +44136,8 @@ function renderDocumentTemplateRuntimeContext() {
       headerCards.push(locationBadge);
     }
 
+    headerCards.push(buildDocumentTemplateRuntimeObjectSelectBadge(activeWorkOrder, template));
+
     const recordBadge = document.createElement("label");
     recordBadge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap";
     const recordBadgeLabel = document.createElement("span");
@@ -43861,6 +44224,11 @@ function renderDocumentTemplateRuntimeContext() {
   }
 
   if (fillMode && activeWorkOrder) {
+    if (documentTemplateRuntimeDockDuplicateObjectButton) {
+      documentTemplateRuntimeDockDuplicateObjectButton.hidden = false;
+      documentTemplateRuntimeDockDuplicateObjectButton.disabled = false;
+      documentTemplateRuntimeDockDuplicateObjectButton.title = "Poduplaj zapisnik za novi objekt na istoj lokaciji";
+    }
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
     const signatureEntries = getDocumentTemplateRuntimeSignatureEntriesFor(template, activeWorkOrder);
     if (documentTemplateRuntimeDockSignScanButton) {
@@ -43890,7 +44258,7 @@ function syncDocumentTemplateEditorChrome() {
       const sequenceEntries = Array.isArray(sequenceState?.entries) ? sequenceState.entries : [];
       const activeEntry = sequenceState?.isSummary
         ? null
-        : (sequenceEntries[sequenceState?.activeIndex ?? 0] || sequenceEntries[0] || null);
+        : (sequenceEntries[sequenceState?.index ?? 0] || sequenceEntries[0] || null);
 
       documentTemplateEditorTitle.textContent = sequenceState?.isSummary
         ? `Summary · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
@@ -55177,9 +55545,11 @@ function createClientPortalDocumentPreviewRow({ record = {}, context = {} } = {}
   const service = document.createElement("strong");
   service.textContent = context.serviceLabel || "Bez usluge";
   const location = document.createElement("span");
-  location.textContent = context.location?.name
+  const locationLabel = context.location?.name
     || createCompactLocationLabel(context.linkedWorkOrder?.locationName || "")
     || "Bez lokacije";
+  const objectLabel = context.object?.name || record?.objectName || "";
+  location.textContent = [locationLabel, objectLabel ? `Objekt ${objectLabel}` : ""].filter(Boolean).join(" · ");
   copy.append(service, location);
 
   const meta = document.createElement("div");
@@ -72775,6 +73145,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
+    objectSelections: {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
@@ -72849,6 +73220,14 @@ function pruneDocumentTemplateRuntimeContext() {
     }
   });
   state.documentTemplateRuntime.overrides = nextOverrides;
+  state.documentTemplateRuntime.objectSelections = Object.fromEntries(
+    Object.entries(state.documentTemplateRuntime.objectSelections ?? {})
+      .map(([workOrderId, objectId]) => [String(workOrderId || "").trim(), String(objectId || "").trim()])
+      .filter(([workOrderId, objectId]) => (
+        validIds.includes(workOrderId)
+        && (!objectId || (state.locationObjects ?? []).some((item) => String(item.id) === objectId))
+      )),
+  );
   state.documentTemplateRuntime.sequenceEntries = normalizeDocumentTemplateRuntimeSequenceEntries(
     state.documentTemplateRuntime.sequenceEntries ?? [],
   );
@@ -72981,6 +73360,11 @@ function buildDocumentTemplateRuntimeLocalDraftSnapshot() {
       returnState: state.documentTemplateRuntime.returnState ?? null,
       sequenceEntries,
       sequenceIndex,
+      objectSelections: Object.fromEntries(
+        Object.entries(state.documentTemplateRuntime.objectSelections ?? {})
+          .map(([workOrderId, objectId]) => [String(workOrderId || "").trim(), String(objectId || "").trim()])
+          .filter(([workOrderId]) => workOrderIds.includes(workOrderId)),
+      ),
       collapsedBlocks: {
         ...(state.documentTemplateRuntime.collapsedBlocks ?? {}),
       },
@@ -73033,6 +73417,14 @@ function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
   const activeWorkOrderId = workOrderIds.includes(String(runtime.activeWorkOrderId || "").trim())
     ? String(runtime.activeWorkOrderId || "").trim()
     : workOrderIds[0];
+  const objectSelections = Object.fromEntries(
+    Object.entries(runtime.objectSelections ?? {})
+      .map(([workOrderId, objectId]) => [String(workOrderId || "").trim(), String(objectId || "").trim()])
+      .filter(([workOrderId, objectId]) => (
+        workOrderIds.includes(workOrderId)
+        && (!objectId || (state.locationObjects ?? []).some((item) => String(item.id) === objectId))
+      )),
+  );
 
   return {
     ...draft,
@@ -73048,6 +73440,7 @@ function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
       sequenceIndex: sequenceEntries.length > 0
         ? clampDocumentTemplateRuntimeSequenceIndex(runtime.sequenceIndex, sequenceEntries)
         : -1,
+      objectSelections,
       previousRecordOptions: {},
       savedRecordFingerprints: {},
       collapsedBlocks: runtime.collapsedBlocks && typeof runtime.collapsedBlocks === "object"
@@ -73174,6 +73567,7 @@ function restoreDocumentTemplateRuntimeLocalDraft() {
     },
     sequenceEntries: runtime.sequenceEntries,
     sequenceIndex: runtime.sequenceIndex,
+    objectSelections: runtime.objectSelections ?? {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: runtime.collapsedBlocks ?? {},
@@ -73256,6 +73650,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     source: ids.length > 0 ? "wizard" : "",
     workOrderIds: ids,
     activeWorkOrderId: ids[0] || "",
+    objectSelections: {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
     collapsedBlocks: {},
@@ -73389,6 +73784,19 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
   if (workOrderNumber && !hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_NUMBER)) {
     fieldValues.WORK_ORDER_NUMBER = workOrderNumber;
   }
+  const locationObject = getDocumentTemplateRuntimeObjectForWorkOrder(workOrder);
+  if (locationObject?.name) {
+    fieldValues.OBJECT_NAME = locationObject.name;
+    fieldValues.OBJEKT = locationObject.name;
+  }
+  if (locationObject?.code) {
+    fieldValues.OBJECT_CODE = locationObject.code;
+    fieldValues.SIFRA_OBJEKTA = locationObject.code;
+  }
+  if (locationObject?.description) {
+    fieldValues.OBJECT_DESCRIPTION = locationObject.description;
+    fieldValues.OPIS_OBJEKTA = locationObject.description;
+  }
 
   return {
     templateId,
@@ -73396,6 +73804,8 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     documentType: String(template?.documentType || "Zapisnik").trim(),
     companyId: String(workOrder.companyId || "").trim(),
     locationId: String(workOrder.locationId || "").trim(),
+    objectId: String(locationObject?.id || "").trim(),
+    objectName: String(locationObject?.name || "").trim(),
     inspectionDate: getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate"),
     issuedDate: getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate"),
     fieldValues,
@@ -73412,6 +73822,7 @@ function buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload = null) {
     templateId: payload.templateId,
     companyId: payload.companyId,
     locationId: payload.locationId,
+    objectId: payload.objectId,
     inspectionDate: payload.inspectionDate,
     issuedDate: payload.issuedDate,
     fieldValues: payload.fieldValues ?? {},
@@ -73430,6 +73841,7 @@ function upsertDocumentTemplatePreviousRecordCache(record = null) {
     {
       companyId: normalizedRecord.companyId,
       locationId: normalizedRecord.locationId,
+      objectId: normalizedRecord.objectId,
     },
   );
 
@@ -73514,7 +73926,7 @@ async function persistDocumentTemplateRuntimeRecordFor(
   }
 
   const fingerprint = buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload);
-  const runtimeKey = `${String(payload.templateId || "").trim()}::${String(workOrder?.id || "").trim()}`;
+  const runtimeKey = `${String(payload.templateId || "").trim()}::${String(workOrder?.id || "").trim()}::${String(payload.objectId || "bez-objekta").trim()}`;
   if (
     fingerprint
     && state.documentTemplateRuntime.savedRecordFingerprints?.[runtimeKey]
@@ -73751,6 +74163,11 @@ function normalizeDocumentTemplateRuntimeSequenceEntries(entries = []) {
       workOrderId: String(entry?.workOrderId ?? "").trim(),
       templateTitle: String(entry?.templateTitle ?? "").trim(),
       workOrderNumber: String(entry?.workOrderNumber ?? "").trim(),
+      companyName: String(entry?.companyName ?? "").trim(),
+      locationName: String(entry?.locationName ?? "").trim(),
+      objectId: String(entry?.objectId ?? "").trim(),
+      objectName: String(entry?.objectName ?? "").trim(),
+      objectSequence: Math.max(0, Number.parseInt(entry?.objectSequence, 10) || 0),
     }))
     .filter((entry) => (
       entry.templateId
@@ -74882,7 +75299,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
   const sourceWorkOrders = selectedWorkOrders.length > 0 ? selectedWorkOrders : runtimeWorkOrders;
-  return openDocumentTemplateFromWizard(entry.templateId, sourceWorkOrders, {
+  const opened = openDocumentTemplateFromWizard(entry.templateId, sourceWorkOrders, {
     sequenceEntries: sequenceState.entries,
     sequenceIndex: safeIndex,
     activeWorkOrderId: entry.workOrderId,
@@ -74890,6 +75307,10 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
     preserveRuntimeContext: true,
     keepCurrentRuntimeView: true,
   });
+  if (opened) {
+    syncDocumentTemplateRuntimeObjectSelectionFromEntry(entry);
+  }
+  return opened;
 }
 
 function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
@@ -80434,6 +80855,9 @@ documentTemplateRuntimeDockPdfButton?.addEventListener("click", () => {
 });
 documentTemplateRuntimeDockWordButton?.addEventListener("click", () => {
   void exportDocumentTemplateWord({ placeholderMode: false });
+});
+documentTemplateRuntimeDockDuplicateObjectButton?.addEventListener("click", () => {
+  void duplicateActiveDocumentTemplateRuntimeForNewObject();
 });
 documentTemplateRuntimeDockScrollPrevButton?.addEventListener("click", () => {
   scrollDocumentTemplateRuntimeDockTrack(-1);

@@ -20,6 +20,7 @@ import {
   createLearningTest,
   createLegalFramework,
   createLocation,
+  createLocationObject,
   createMeasurementEquipmentItem,
   createOffer,
   createPersonTrainingRecord,
@@ -846,6 +847,8 @@ function createDocumentRecordEntry(input = {}, actor = null, createId = () => cr
     documentType: dbString(input.documentType) || "Zapisnik",
     companyId: dbString(input.companyId),
     locationId: dbString(input.locationId),
+    objectId: dbString(input.objectId),
+    objectName: dbString(input.objectName),
     inspectionDate: normalizeDateOnly(input.inspectionDate),
     issuedDate: normalizeDateOnly(input.issuedDate),
     fieldValues: normalizeDocumentRecordFieldValues(input.fieldValues),
@@ -866,6 +869,8 @@ function mapDocumentRecordRow(row = {}) {
     documentType: row.document_type ?? row.documentType,
     companyId: row.company_id ?? row.companyId,
     locationId: row.location_id ?? row.locationId,
+    objectId: row.object_id ?? row.objectId,
+    objectName: row.object_name ?? row.objectName,
     inspectionDate: row.inspection_date ?? row.inspectionDate,
     issuedDate: row.issued_date ?? row.issuedDate,
     fieldValues: row.values_json ?? row.fieldValues,
@@ -2690,6 +2695,24 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [locationObjectRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, name, code, description, is_active, created_at, updated_at
+    FROM web_location_objects
+    ORDER BY company_id ASC, location_id ASC, name ASC, id ASC
+  `);
+  const locationObjects = locationObjectRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    companyId: dbString(row.company_id),
+    locationId: dbString(row.location_id),
+    name: row.name ?? "",
+    code: row.code ?? "",
+    description: row.description ?? "",
+    isActive: row.is_active === undefined ? true : Boolean(Number(row.is_active)),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
   const locationsByKey = new Map(
     locations.map((location) => [
       locationCompositeKey(location.companyOib, location.name),
@@ -3822,6 +3845,7 @@ async function fetchSnapshotFromConnection(connection) {
   return {
     companies,
     locations,
+    locationObjects,
     workOrders,
     reminders,
     todoTasks,
@@ -3924,6 +3948,7 @@ export class InMemorySafetyRepository {
     this.snapshot = {
       companies: [],
       locations: [],
+      locationObjects: [],
       workOrders: [],
       reminders: [],
       todoTasks: [],
@@ -4047,6 +4072,7 @@ export class InMemorySafetyRepository {
         managerUserLabels: [...(item.managerUserLabels ?? [])],
       })),
       locations: [...this.snapshot.locations],
+      locationObjects: [...this.snapshot.locationObjects],
       workOrders: [...this.snapshot.workOrders],
       reminders: [...this.snapshot.reminders],
       todoTasks: this.snapshot.todoTasks.map((item) => ({
@@ -4250,6 +4276,12 @@ export class InMemorySafetyRepository {
     const location = createLocation(input, this.snapshot);
     this.snapshot.locations = [...this.snapshot.locations, location];
     return location;
+  }
+
+  async createLocationObject(input) {
+    const locationObject = createLocationObject(input, this.snapshot);
+    this.snapshot.locationObjects = [...(this.snapshot.locationObjects ?? []), locationObject];
+    return locationObject;
   }
 
   async updateLocation(id, patch) {
@@ -5786,6 +5818,7 @@ export class InMemorySafetyRepository {
     const templateId = dbString(filters.templateId);
     const companyId = dbString(filters.companyId);
     const locationId = dbString(filters.locationId);
+    const objectId = dbString(filters.objectId);
     const limit = Math.max(1, Math.min(1000, Number.parseInt(filters.limit, 10) || 200));
 
     return (this.snapshot.documentRecords ?? [])
@@ -5794,6 +5827,7 @@ export class InMemorySafetyRepository {
         && (!templateId || String(item.templateId) === templateId)
         && (!companyId || String(item.companyId) === companyId)
         && (!locationId || String(item.locationId) === locationId)
+        && (!objectId || String(item.objectId) === objectId)
       ))
       .sort((left, right) => {
         const leftSortValue = left.inspectionDate || left.issuedDate || left.createdAt || "";
@@ -5982,6 +6016,23 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_location_contacts_location_id (location_id),
         INDEX idx_web_location_contacts_location_sort (location_id, sort_order)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_location_objects (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NOT NULL,
+        name VARCHAR(180) NOT NULL,
+        code VARCHAR(80) NOT NULL DEFAULT '',
+        description TEXT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_location_objects_location_name (location_id, name),
+        INDEX idx_web_location_objects_scope (organization_id, company_id, location_id),
+        INDEX idx_web_location_objects_active (organization_id, is_active)
       )
     `);
     await this.pool.query(`
@@ -6677,6 +6728,8 @@ export class MySqlSafetyRepository {
         document_type VARCHAR(120) NOT NULL DEFAULT 'Zapisnik',
         company_id INT NULL,
         location_id INT NULL,
+        object_id BIGINT NULL,
+        object_name VARCHAR(180) NOT NULL DEFAULT '',
         inspection_date DATE NULL,
         issued_date DATE NULL,
         values_json LONGTEXT NULL,
@@ -6689,6 +6742,8 @@ export class MySqlSafetyRepository {
         INDEX idx_web_document_records_dates (organization_id, inspection_date, issued_date, created_at)
       )
     `);
+    await ensureColumnExists(this.pool, "web_document_records", "object_id", "BIGINT NULL AFTER location_id");
+    await ensureColumnExists(this.pool, "web_document_records", "object_name", "VARCHAR(180) NOT NULL DEFAULT '' AFTER object_id");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_measurement_sheet_presets (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -7317,6 +7372,44 @@ export class MySqlSafetyRepository {
         companyOib: company.oib,
         companyName: company.name,
         headquarters: company.headquarters,
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createLocationObject(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const locationObject = createLocationObject(input, snapshot);
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_location_objects
+            (organization_id, company_id, location_id, name, code, description, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(locationObject.organizationId),
+          Number(locationObject.companyId),
+          Number(locationObject.locationId),
+          locationObject.name,
+          locationObject.code,
+          locationObject.description || null,
+          locationObject.isActive ? 1 : 0,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...locationObject,
+        id: String(result.insertId),
       };
     } catch (error) {
       await connection.rollback();
@@ -11451,6 +11544,7 @@ export class MySqlSafetyRepository {
       const templateId = Number(filters.templateId);
       const companyId = Number(filters.companyId);
       const locationId = Number(filters.locationId);
+      const objectId = Number(filters.objectId);
       const limit = Math.max(1, Math.min(1000, Number.parseInt(filters.limit, 10) || 200));
 
       const conditions = [];
@@ -11472,6 +11566,10 @@ export class MySqlSafetyRepository {
         conditions.push("location_id = ?");
         params.push(locationId);
       }
+      if (Number.isFinite(objectId)) {
+        conditions.push("object_id = ?");
+        params.push(objectId);
+      }
 
       const whereClause = conditions.length > 0
         ? `WHERE ${conditions.join(" AND ")}`
@@ -11480,7 +11578,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, organization_id, template_id, template_title, document_type,
-                 company_id, location_id, inspection_date, issued_date,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
                  values_json, measurement_sheets_json,
                  created_by_user_id, created_by_label, created_at, updated_at
           FROM web_document_records
@@ -11506,10 +11604,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_document_records
             (organization_id, template_id, template_title, document_type,
-             company_id, location_id, inspection_date, issued_date,
+             company_id, location_id, object_id, object_name, inspection_date, issued_date,
              values_json, measurement_sheets_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(entry.organizationId),
@@ -11518,6 +11616,8 @@ export class MySqlSafetyRepository {
           entry.documentType,
           entry.companyId ? Number(entry.companyId) : null,
           entry.locationId ? Number(entry.locationId) : null,
+          entry.objectId ? Number(entry.objectId) : null,
+          entry.objectName,
           entry.inspectionDate || null,
           entry.issuedDate || null,
           JSON.stringify(entry.fieldValues ?? {}),
@@ -11530,7 +11630,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, organization_id, template_id, template_title, document_type,
-                 company_id, location_id, inspection_date, issued_date,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
                  values_json, measurement_sheets_json,
                  created_by_user_id, created_by_label, created_at, updated_at
           FROM web_document_records

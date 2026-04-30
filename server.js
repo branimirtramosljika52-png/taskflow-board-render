@@ -2330,6 +2330,30 @@ function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
   });
 }
 
+function assertLocationObjectPayloadInScope(scopedSnapshot, body = {}) {
+  if (!body.objectId) {
+    return null;
+  }
+
+  const locationObject = assertInScope(
+    scopedSnapshot.locationObjects ?? [],
+    body.objectId,
+    "Objekt nije dostupan za odabranu lokaciju.",
+  );
+  if (body.companyId && String(locationObject.companyId) !== String(body.companyId)) {
+    const error = new Error("Objekt ne pripada odabranoj tvrtki.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (body.locationId && String(locationObject.locationId) !== String(body.locationId)) {
+    const error = new Error("Objekt ne pripada odabranoj lokaciji.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return locationObject;
+}
+
 function assertSampleCompanyPayloadInScope(scopedSnapshot, body = {}) {
   if (!body.sampleCompanyId) {
     return;
@@ -4021,6 +4045,35 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/location-objects") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dodavati objekte lokacije.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const location = assertInScope(
+        scopedSnapshot.locations ?? [],
+        body.locationId,
+        "Lokacija nije dostupna za odabranu organizaciju.",
+      );
+      if (body.companyId && String(location.companyId) !== String(body.companyId)) {
+        sendError(response, 400, "Lokacija ne pripada odabranoj tvrtki.");
+        return true;
+      }
+
+      await domainRepository.createLocationObject({
+        ...body,
+        companyId: body.companyId || location.companyId,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/work-orders") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
@@ -4788,6 +4841,7 @@ async function handleApiRequest(request, response, url) {
       const templateId = String(url.searchParams.get("templateId") ?? "").trim();
       const companyId = String(url.searchParams.get("companyId") ?? "").trim();
       const locationId = String(url.searchParams.get("locationId") ?? "").trim();
+      const objectId = String(url.searchParams.get("objectId") ?? "").trim();
       const limit = String(url.searchParams.get("limit") ?? "200").trim();
 
       if (templateId) {
@@ -4799,20 +4853,27 @@ async function handleApiRequest(request, response, url) {
       if (locationId) {
         assertInScope(scopedSnapshot.locations ?? [], locationId, "Lokacija nije dostupna za odabranu organizaciju.");
       }
+      if (objectId) {
+        assertLocationObjectPayloadInScope(scopedSnapshot, { companyId, locationId, objectId });
+      }
 
       const visibleCompanyIds = new Set((scopedSnapshot.companies ?? []).map((item) => String(item.id)));
       const visibleLocationIds = new Set((scopedSnapshot.locations ?? []).map((item) => String(item.id)));
+      const visibleObjectIds = new Set((scopedSnapshot.locationObjects ?? []).map((item) => String(item.id)));
       const items = (await domainRepository.listDocumentRecords({
         organizationId: scopedSnapshot.activeOrganizationId,
         templateId,
         companyId,
         locationId,
+        objectId,
         limit,
       })).filter((item) => {
         const itemCompanyId = String(item.companyId || "");
         const itemLocationId = String(item.locationId || "");
+        const itemObjectId = String(item.objectId || "");
         return (!itemCompanyId || visibleCompanyIds.has(itemCompanyId))
-          && (!itemLocationId || visibleLocationIds.has(itemLocationId));
+          && (!itemLocationId || visibleLocationIds.has(itemLocationId))
+          && (!itemObjectId || visibleObjectIds.has(itemObjectId));
       });
 
       sendJson(response, 200, { items });
@@ -4830,10 +4891,12 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.documentTemplates ?? [], body.templateId, "Template nije dostupan za odabranu organizaciju.");
       assertInScope(scopedSnapshot.companies ?? [], body.companyId, "Tvrtka nije dostupna za odabranu organizaciju.");
       assertInScope(scopedSnapshot.locations ?? [], body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
+      const locationObject = assertLocationObjectPayloadInScope(scopedSnapshot, body);
 
       const item = await domainRepository.createDocumentRecord({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
+        objectName: body.objectName || locationObject?.name || "",
       }, user);
 
       sendJson(response, 201, { item });

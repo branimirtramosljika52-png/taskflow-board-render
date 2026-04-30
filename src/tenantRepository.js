@@ -1811,6 +1811,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       visibleCompanyIds.has(String(item.companyId))
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.id)))
     )),
+    locationObjects: (rawSnapshot.locationObjects ?? []).filter((item) => (
+      visibleCompanyIds.has(String(item.companyId))
+      && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.locationId)))
+    )),
     workOrders: visibleWorkOrders,
     peopleTrainingRecords: visiblePeopleTrainingRecords.map((item) => ({
       ...item,
@@ -2614,6 +2618,7 @@ export class MemoryTenantRepository {
   async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
     companies: [],
     locations: [],
+    locationObjects: [],
     workOrders: [],
     reminders: [],
     todoTasks: [],
@@ -3507,6 +3512,7 @@ export class MySqlTenantRepository {
           },
           companies: [],
           locations: [],
+          locationObjects: [],
         workOrders: [],
         reminders: [],
         todoTasks: [],

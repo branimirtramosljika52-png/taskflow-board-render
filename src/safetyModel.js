@@ -3514,6 +3514,54 @@ export function updateLocation(current, patch, state, now = isoNow) {
   return next;
 }
 
+export function createLocationObject(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const organizationId = requireText(input.organizationId, "Organizacija");
+  const companyId = requireText(input.companyId, "Tvrtka");
+  const locationId = requireText(input.locationId, "Lokacija");
+  const company = (state.companies ?? []).find((item) => String(item.id) === String(companyId));
+  const location = (state.locations ?? []).find((item) => (
+    String(item.id) === String(locationId)
+    && String(item.companyId) === String(companyId)
+  ));
+
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  if (!location) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  const name = requireText(input.name, "Naziv objekta");
+  const duplicate = (state.locationObjects ?? []).some((item) => (
+    String(item.locationId) === String(locationId)
+    && normalizeText(item.name).toLowerCase() === normalizeText(name).toLowerCase()
+  ));
+
+  if (duplicate) {
+    throw new Error("Taj objekt vec postoji na odabranoj lokaciji.");
+  }
+
+  const timestamp = now();
+  return {
+    id: createId(),
+    organizationId,
+    companyId,
+    locationId,
+    name,
+    code: normalizeText(input.code),
+    description: normalizeText(input.description),
+    isActive: normalizeBoolean(input.isActive, true),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function createServiceCatalogItem(
   input,
   state,

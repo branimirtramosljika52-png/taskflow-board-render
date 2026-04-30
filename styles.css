@@ -24839,7 +24839,7 @@ body.is-vehicle-reservation-open {
 
 .document-template-runtime-header-badges {
   display: grid;
-  grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.35fr) minmax(240px, 1.2fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 6px;
   align-items: stretch;
 }
@@ -27148,7 +27148,7 @@ body.is-measurement-equipment-export-open {
 .document-template-editor-panel.is-fill-mode .document-template-runtime-header-badges {
   width: 100%;
   gap: 4px;
-  grid-template-columns: minmax(132px, 0.72fr) minmax(240px, 1.18fr) minmax(250px, 1.08fr) minmax(148px, 0.72fr) minmax(148px, 0.72fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-custom-fields {
