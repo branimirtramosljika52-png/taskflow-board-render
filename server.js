@@ -1168,6 +1168,28 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
     "Email",
     "Mobitel",
   ];
+  const detailColumns = [
+    "Broj RN",
+    "Sifra usluge",
+    "Broj zapisnika",
+    "Naziv radnog mjesta",
+    "Opis poslova i aktivnosti",
+    "Mjesto provodenja osposobljavanja radnika - teorijsko",
+    "Datum teorijski dio",
+    "Nacin provodenja teorijskog dijela",
+    "Ime i prezime Poslodavca/Ovlastenika poslodavca",
+    "OIB Poslodavca/Ovlastenika poslodavca",
+    "Ostale osobe ukljucene u osposobljavanje - ime i prezime",
+    "Ostale osobe ukljucene u osposobljavanje - OIB",
+    "Mjesto provodenja osposobljavanja radnika - prakticno",
+    "Razdoblje pracenja sigurnog nacina rada - od",
+    "Razdoblje pracenja sigurnog nacina rada - do",
+    "PGP datum polaganja",
+    "SPZTP datum polaganja",
+    "SPZTP vrijedi do",
+    "ADR datum polaganja",
+    "ADR vrijedi do",
+  ];
   const trainingColumns = typeOptions.flatMap((option) => {
     const label = option.serviceCode ? `${option.serviceCode} ${option.label}` : option.label;
     return [
@@ -1178,7 +1200,7 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
       `${label} - ustanova`,
     ];
   });
-  const columns = [...baseColumns, ...trainingColumns, "Napomena"];
+  const columns = [...baseColumns, ...detailColumns, ...trainingColumns, "Napomena"];
   const firstCompany = (scopedSnapshot.companies ?? [])[0] ?? {};
   const firstLocation = (scopedSnapshot.locations ?? []).find((location) => String(location.companyId) === String(firstCompany.id)) ?? {};
   const sampleRow = columns.map((column) => {
@@ -1199,6 +1221,26 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
     if (key === "aktivnost") return "DA";
     if (key === "email") return "ana@example.hr";
     if (key === "mobitel") return "+385 91 000 0000";
+    if (key === "brojrn") return "RN-26-001";
+    if (key.includes("sifrausluge")) return typeOptions[0]?.serviceCode || typeOptions[0]?.shortLabel || "ZNR";
+    if (key.includes("brojzapisnika")) return "RN-26-001-ZNR-12345678910";
+    if (key.includes("nazivradnogmjesta")) return "Voditelj prodaje";
+    if (key.includes("opisposlova")) return "Opis poslova i aktivnosti radnika.";
+    if (key.includes("teorijsko")) return firstLocation.name || "Zagreb - sjediste";
+    if (key.includes("datumteorijski")) return "29.04.2026";
+    if (key.includes("nacinprovodenja")) return "Uzivo";
+    if (key.includes("poslodavcaovlastenika") && key.includes("imeiprezime")) return firstCompany.representative || "Ovlastenik poslodavca";
+    if (key.includes("poslodavcaovlastenika") && key.includes("oib")) return firstCompany.representativeOib || "";
+    if (key.includes("ostaleosobe") && key.includes("imeiprezime")) return "";
+    if (key.includes("ostaleosobe") && key.includes("oib")) return "";
+    if (key.includes("prakticno")) return firstLocation.name || "Zagreb - sjediste";
+    if (key.includes("razdobljepracenja") && key.includes("od")) return "29.04.2026";
+    if (key.includes("razdobljepracenja") && key.includes("do")) return "29.05.2026";
+    if (key.includes("pgpdatum")) return "29.04.2026";
+    if (key.includes("spztpdatum")) return "29.04.2026";
+    if (key.includes("spztpvrijedido")) return "29.04.2030";
+    if (key.includes("adrdatum")) return "29.04.2026";
+    if (key.includes("adrvrijedido")) return "29.04.2030";
     if (key.includes("datum")) return "29.04.2026";
     if (key.includes("vrijedido")) return "29.04.2030";
     if (key.includes("vrijeditrajno")) return "NE";
@@ -1271,7 +1313,6 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
   };
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Osposobljavanja");
-  XLSX.utils.book_append_sheet(workbook, detailsWorksheet, "Detalji osposobljavanja");
   return XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
@@ -2623,6 +2664,83 @@ function readPeopleTrainingImportDetailRows(workbook = {}) {
   });
 }
 
+function buildPeopleTrainingImportDetailFromRow(row = {}) {
+  return {
+    oib: normalizeInputValue(getImportRowValue(row, ["oib osobe", "oib"])),
+    fullName: normalizeInputValue(getImportRowValue(row, ["ime i prezime", "osoba"])),
+    workOrderNumber: normalizeInputValue(getImportRowValue(row, ["broj rn", "rn", "radni nalog"])),
+    serviceCode: normalizeInputValue(getImportRowValue(row, ["sifra usluge", "šifra usluge", "Ĺˇifra usluge", "usluga"])),
+    recordNumber: normalizeInputValue(getImportRowValue(row, ["broj zapisnika", "broj potvrde", "broj uvjerenja"])),
+    jobTitle: normalizeInputValue(getImportRowValue(row, ["naziv radnog mjesta", "radno mjesto"])),
+    jobDescription: normalizeInputValue(getImportRowValue(row, ["opis poslova i aktivnosti", "opis poslova", "aktivnosti"])),
+    theoryPlace: normalizeInputValue(getImportRowValue(row, [
+      "mjesto provodenja osposobljavanja radnika teorijsko",
+      "mjesto provođenja osposobljavanja radnika teorijsko",
+      "mjesto provoÄ‘enja teorijsko",
+      "mjesto provodenja teorijsko",
+      "teorijsko",
+    ])),
+    theoryDate: normalizePersonTrainingImportDate(getImportRowValue(row, ["datum teorijski dio", "datum teorije", "teorijski datum"])),
+    theoryMethod: normalizeInputValue(getImportRowValue(row, [
+      "nacin provodenja teorijskog dijela",
+      "način provođenja teorijskog dijela",
+      "naÄŤin provoÄ‘enja teorijskog dijela",
+      "nacin teorije",
+    ])),
+    employerRepresentativeName: normalizeInputValue(getImportRowValue(row, [
+      "ime i prezime poslodavca ovlastenika poslodavca",
+      "ime i prezime poslodavca ovlaštenika poslodavca",
+      "ime i prezime poslodavca",
+      "ovlaĹˇtenika",
+      "ovlastenika",
+    ])),
+    employerRepresentativeOib: normalizeInputValue(getImportRowValue(row, [
+      "oib poslodavca ovlastenika poslodavca",
+      "oib poslodavca ovlaštenika poslodavca",
+      "oib poslodavca",
+      "oib ovlaĹˇtenika",
+      "oib ovlastenika",
+    ])),
+    additionalPersonName: normalizeInputValue(getImportRowValue(row, [
+      "ostale osobe ukljucene u osposobljavanje ime i prezime",
+      "ostale osobe uključene u osposobljavanje ime i prezime",
+      "ostale osobe - ime i prezime",
+      "ostale osobe ime",
+    ])),
+    additionalPersonOib: normalizeInputValue(getImportRowValue(row, [
+      "ostale osobe ukljucene u osposobljavanje oib",
+      "ostale osobe uključene u osposobljavanje oib",
+      "ostale osobe - oib",
+      "ostale osobe oib",
+    ])),
+    practicalPlace: normalizeInputValue(getImportRowValue(row, [
+      "mjesto provodenja osposobljavanja radnika prakticno",
+      "mjesto provođenja osposobljavanja radnika praktično",
+      "mjesto provoÄ‘enja praktiÄŤno",
+      "mjesto provodenja prakticno",
+      "prakticno",
+    ])),
+    safeWorkPeriodFrom: normalizePersonTrainingImportDate(getImportRowValue(row, [
+      "razdoblje pracenja sigurnog nacina rada od",
+      "razdoblje praćenja sigurnog načina rada od",
+      "razdoblje praÄ‡enja od",
+      "razdoblje pracenja od",
+    ])),
+    safeWorkPeriodTo: normalizePersonTrainingImportDate(getImportRowValue(row, [
+      "razdoblje pracenja sigurnog nacina rada do",
+      "razdoblje praćenja sigurnog načina rada do",
+      "razdoblje praÄ‡enja do",
+      "razdoblje pracenja do",
+    ])),
+    firePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["pgp datum polaganja", "poĹľar datum polaganja", "pozar datum polaganja"])),
+    flammablePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp datum polaganja", "zapaljive datum polaganja"])),
+    flammableValidUntil: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp vrijedi do", "zapaljive vrijedi do"])),
+    adrPassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["adr datum polaganja"])),
+    adrValidUntil: normalizePersonTrainingImportDate(getImportRowValue(row, ["adr vrijedi do"])),
+    note: normalizeInputValue(getImportRowValue(row, ["napomena osposobljavanja", "napomena", "note"])),
+  };
+}
+
 function buildPeopleTrainingImportDetailIndex(rows = []) {
   const index = new Map();
   const add = (key, detail) => {
@@ -2635,6 +2753,14 @@ function buildPeopleTrainingImportDetailIndex(rows = []) {
     }
     index.get(normalizedKey).push(detail);
   };
+
+  rows.forEach((row) => {
+    const detail = buildPeopleTrainingImportDetailFromRow(row);
+    add(detail.oib, detail);
+    add(detail.fullName, detail);
+  });
+
+  return index;
 
   rows.forEach((row) => {
     const detail = {
@@ -2695,7 +2821,11 @@ function applyPeopleTrainingImportDetails(record = {}, details = []) {
   let note = record.note;
 
   details.forEach((detail) => {
-    const safeWorkItem = findPeopleTrainingImportItem(trainingItems, detail, ["znr", "zos", "safe work", "rad na siguran"]);
+    const safeWorkItem = findPeopleTrainingImportItem(
+      trainingItems,
+      detail,
+      detail.serviceCode ? [] : ["znr", "zos", "safe work", "rad na siguran"],
+    );
     if (safeWorkItem) {
       safeWorkItem.workOrderNumber = detail.workOrderNumber || safeWorkItem.workOrderNumber || "";
       safeWorkItem.recordNumber = detail.recordNumber || safeWorkItem.recordNumber || "";
@@ -2826,10 +2956,35 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
       trainingItems: buildTrainingItemsFromImportRow(row, trainingTypeOptions),
       note: normalizeInputValue(getImportRowValue(row, ["napomena", "note"])),
     };
-    const detailRows = Array.from(new Set([
-      ...(detailIndex.get(normalizeLookupKey(record.oib)) ?? []),
-      ...(detailIndex.get(normalizeLookupKey(record.fullName)) ?? []),
-    ]));
+    const inlineDetail = buildPeopleTrainingImportDetailFromRow(row);
+    const detailRows = [
+      inlineDetail,
+      ...Array.from(new Set([
+        ...(detailIndex.get(normalizeLookupKey(record.oib)) ?? []),
+        ...(detailIndex.get(normalizeLookupKey(record.fullName)) ?? []),
+      ])),
+    ].filter((detail) => detail && [
+      "workOrderNumber",
+      "serviceCode",
+      "recordNumber",
+      "jobTitle",
+      "jobDescription",
+      "theoryPlace",
+      "theoryDate",
+      "theoryMethod",
+      "employerRepresentativeName",
+      "employerRepresentativeOib",
+      "additionalPersonName",
+      "additionalPersonOib",
+      "practicalPlace",
+      "safeWorkPeriodFrom",
+      "safeWorkPeriodTo",
+      "firePassedOn",
+      "flammablePassedOn",
+      "flammableValidUntil",
+      "adrPassedOn",
+      "adrValidUntil",
+    ].some((field) => normalizeInputValue(detail[field])));
     return applyPeopleTrainingImportDetails(record, detailRows);
   }).filter(Boolean);
 }
