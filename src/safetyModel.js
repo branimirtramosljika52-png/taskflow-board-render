@@ -209,6 +209,7 @@ export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES = ["title", "oib", "classCode", "urbroj", "eBroj"];
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET = new Set(DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES);
+const DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_VALUES = new Set(["none", "bullet", "dash"]);
 
 function normalizeDocumentTemplateSignatureMetaFields(values = undefined) {
   if (!Array.isArray(values)) {
@@ -222,6 +223,11 @@ function normalizeDocumentTemplateSignatureMetaFields(values = undefined) {
         .filter((value) => DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET.has(value)),
     ),
   );
+}
+
+function normalizeDocumentTemplateTextListStyle(value = "") {
+  const normalizedValue = normalizeText(value).toLowerCase();
+  return DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_VALUES.has(normalizedValue) ? normalizedValue : "none";
 }
 
 export const LEARNING_TEST_STATUS_OPTIONS = [
@@ -2085,6 +2091,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       defaultLegalFrameworkIds: normalizeIdList(field?.defaultLegalFrameworkIds ?? field?.preselectedLegalFrameworkIds ?? []),
       defaultValue: normalizeText(field?.defaultValue),
       helpText: normalizeText(field?.helpText),
+      textListStyle: type === "text" || type === "longtext"
+        ? normalizeDocumentTemplateTextListStyle(field?.textListStyle ?? field?.listStyle)
+        : "none",
       ai: normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, {
         key,
         label,

@@ -28806,16 +28806,21 @@ function updateMeasurementEditingCellPreview(rowId, columnId) {
   const hasFormula = isMeasurementFormula(rawValue);
   const input = cell.querySelector(".measurement-cell-input");
   const format = getMeasurementCellVisualFormat(rowIndex, columnIndex);
+  const isFormulaBarEditingCell = isMeasurementEditingCell(row.id, column.id)
+    && state.measurementSheet.editorSource === "formula-bar";
+  const formulaDisplayText = hasFormula ? getMeasurementCellDisplayText(rowIndex, columnIndex) : "";
+  const hasError = hasFormula && formulaDisplayText === "#ERROR";
 
   cell.classList.toggle("has-formula-cell", hasFormula);
-  if (!hasFormula) {
-    cell.classList.remove("has-formula-error");
-  }
+  cell.classList.toggle("has-formula-error", hasError);
   cell.classList.toggle("has-conditional-format", hasMeasurementConditionalFormat(format));
   applyMeasurementCellBorderStyle(cell, format.border);
   applyMeasurementCellStyleToElements(cell, input, format);
 
   if (input instanceof HTMLInputElement) {
+    if (isFormulaBarEditingCell) {
+      input.value = hasFormula ? formulaDisplayText : formatMeasurementLiteralDisplayValue(rawValue, format);
+    }
     input.title = hasFormula ? rawValue : "";
   }
 
@@ -28886,8 +28891,13 @@ function refreshMeasurementSheetComputedValues() {
       applyMeasurementCellBorderStyle(cell, format.border);
       applyMeasurementCellStyleToElements(cell, input, format);
 
-      if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
-        input.value = getMeasurementCellInputDisplayValue(rowIndex, columnIndex);
+      const isFormulaBarEditingCell = isMeasurementEditingCell(row.id, column.id)
+        && state.measurementSheet.editorSource === "formula-bar";
+
+      if (input instanceof HTMLInputElement && (!isMeasurementEditingCell(row.id, column.id) || isFormulaBarEditingCell)) {
+        input.value = isFormulaBarEditingCell && hasFormula
+          ? getMeasurementCellDisplayText(rowIndex, columnIndex)
+          : getMeasurementCellInputDisplayValue(rowIndex, columnIndex);
         input.title = hasFormula ? rawValue : "";
       }
     });
@@ -35056,6 +35066,12 @@ const DOCUMENT_TEMPLATE_LONGTEXT_HEIGHT_OPTIONS = Array.from({ length: 10 }, (_,
   };
 });
 
+const DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_OPTIONS = [
+  { value: "none", label: "Bez bulleta" },
+  { value: "bullet", label: "Točke" },
+  { value: "dash", label: "Crtice" },
+];
+
 const DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS = Array.from({ length: 8 }, (_, index) => {
   const rows = index + 1;
   return {
@@ -35086,6 +35102,18 @@ function getDocumentTemplateRequiredToggleLabel(type = "text") {
     return "Potrebno odabrati barem jedan";
   }
   return "Obavezno polje";
+}
+
+function normalizeDocumentTemplateTextListStyleLocal(value = "") {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  return DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_OPTIONS.some((option) => option.value === normalizedValue)
+    ? normalizedValue
+    : "none";
+}
+
+function isDocumentTemplateTextListStyleField(type = "text") {
+  const normalizedType = String(type || "text").trim().toLowerCase();
+  return normalizedType === "text" || normalizedType === "longtext";
 }
 
 function normalizeDocumentTemplateSignatureMetaFieldsLocal(values = undefined) {
@@ -37158,6 +37186,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     previousDocumentMode: String(initial.previousDocumentMode ?? "").trim().toUpperCase() || "NONE",
     defaultValue: String(initial.defaultValue ?? "").trim(),
     helpText: String(initial.helpText ?? "").trim(),
+    textListStyle: isDocumentTemplateTextListStyleField(type)
+      ? normalizeDocumentTemplateTextListStyleLocal(initial.textListStyle ?? initial.listStyle)
+      : "none",
     ai: normalizeDocumentTemplateFieldAiConfig(initial.ai ?? initial.aiConfig, {
       key: initial.key || wordLabel || label || fallbackKey,
       label,
@@ -37980,6 +38011,9 @@ function buildDocumentTemplateDraft() {
       previousDocumentMode: String(field.previousDocumentMode || "NONE").trim().toUpperCase() || "NONE",
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
+      textListStyle: isDocumentTemplateTextListStyleField(field.type)
+        ? normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle)
+        : "none",
       ai: normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field),
       dropdownOptions: field.type === "dropdown"
         ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions ?? field.options ?? field.choices)
@@ -38088,6 +38122,9 @@ function buildDocumentTemplateDraft() {
           previousDocumentMode: field.previousDocumentMode || "NONE",
           sectionSubtitle: "",
           systemRows: [],
+          textListStyle: isDocumentTemplateTextListStyleField(field.type)
+            ? normalizeDocumentTemplateTextListStyleLocal(field.textListStyle)
+            : "none",
           dropdownOptions: field.type === "dropdown"
             ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions)
             : [],
@@ -40089,6 +40126,40 @@ function getDocumentTemplateBooleanDisplayValue(field = {}, value = false) {
   return truthy ? (trueLabel || "Da") : (falseLabel || "Ne");
 }
 
+function getDocumentTemplateTextListLines(field = {}, value = "") {
+  if (!isDocumentTemplateTextListStyleField(field?.type)) {
+    return [];
+  }
+  const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
+  if (style === "none") {
+    return [];
+  }
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function formatDocumentTemplateTextListValue(field = {}, value = "") {
+  const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
+  const lines = getDocumentTemplateTextListLines(field, value);
+  if (style === "none" || lines.length === 0) {
+    return String(value ?? "");
+  }
+  const marker = style === "dash" ? "-" : "•";
+  return lines.map((line) => `${marker} ${line}`).join("\n");
+}
+
+function renderDocumentTemplateTextValueHtml(field = {}, value = "") {
+  const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
+  const lines = getDocumentTemplateTextListLines(field, value);
+  if (style !== "none" && lines.length > 0) {
+    const className = `document-template-preview-text-list is-${style}`;
+    return `<ul class="${className}">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  }
+  return escapeHtml(value).replace(/\n/g, "<br />");
+}
+
 function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 0, { placeholderMode = false } = {}) {
   const token = getDocumentTemplateFieldToken(field, index);
 
@@ -40249,7 +40320,10 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
     ...(template.customFields ?? []).map((field, index) => ({
     token: getDocumentTemplateFieldToken(field, index),
     label: field.wordLabel || field.label || `Polje ${index + 1}`,
-    value: getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+    value: formatDocumentTemplateTextListValue(
+      field,
+      getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+    ),
     })),
   ];
 }
@@ -40949,9 +41023,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   }
 
   const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode });
-  const valueHtml = field.type === "longtext"
-    ? escapeHtml(value).replace(/\n/g, "<br />")
-    : escapeHtml(value);
+  const valueHtml = renderDocumentTemplateTextValueHtml(field, value);
 
   return `
     <section class="document-template-preview-section"${sectionStyle}>
@@ -41357,7 +41429,10 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
     return buildDocumentTemplateDigitalSignatureText(field, context);
   }
 
-  return getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false });
+  return formatDocumentTemplateTextListValue(
+    field,
+    getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+  );
 }
 
 function buildDocumentTemplateRuntimeExportFileBaseName(template = buildDocumentTemplateDraft(), workOrder = null) {
@@ -41892,6 +41967,11 @@ function openDocumentTemplatePreviewWindow({ placeholderMode = false } = {}) {
         .document-template-preview-cover { border: 1px solid rgba(47,104,84,0.12); border-radius: 24px; padding: 24px; background: linear-gradient(180deg, rgba(247,250,248,0.98), rgba(255,255,255,0.98)); }
         .document-template-preview-copy { color: #42584f; }
         .document-template-preview-list { padding-left: 20px; }
+        .document-template-preview-text-list { margin: 0; padding-left: 1.2rem; color: inherit; line-height: 1.55; }
+        .document-template-preview-text-list li + li { margin-top: 0.25rem; }
+        .document-template-preview-text-list.is-dash { list-style: none; padding-left: 0; }
+        .document-template-preview-text-list.is-dash li { position: relative; padding-left: 1rem; }
+        .document-template-preview-text-list.is-dash li::before { content: "-"; position: absolute; left: 0; color: currentColor; }
         .document-template-preview-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
         .document-template-preview-table th, .document-template-preview-table td { border: 1px solid rgba(47,104,84,0.14); padding: 9px 10px; text-align: left; vertical-align: top; }
         .document-template-preview-table th { background: #f1f7f4; }
@@ -51767,12 +51847,13 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   const createStandardFieldControl = (field, workOrderId, workOrder = null) => {
-    const wrapper = document.createElement("label");
+    const wrapper = document.createElement(field.type === "toggle" ? "div" : "label");
     wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrderId);
     wrapper.append(title);
+    const textListStyle = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
 
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
     if (sourcePicker) {
@@ -51821,11 +51902,17 @@ function renderDocumentTemplateRuntimeFieldRows() {
           { type: "success" },
         );
       });
-    } else if (field.type === "longtext") {
-      const fieldHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
+    } else if (field.type === "longtext" || (field.type === "text" && textListStyle !== "none")) {
+      const fieldHeight = field.type === "longtext"
+        ? normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")
+        : 3;
       control = document.createElement("textarea");
       control.rows = fieldHeight;
-      control.style.minHeight = `${Math.max(120, fieldHeight * 28)}px`;
+      control.classList.toggle("is-list-input", textListStyle !== "none");
+      control.placeholder = textListStyle !== "none"
+        ? "Svaka stavka ide u novi red"
+        : "";
+      control.style.minHeight = `${Math.max(field.type === "longtext" ? 120 : 88, fieldHeight * 28)}px`;
       control.value = String(getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "");
       control.addEventListener("input", (event) => {
         setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, String(event.currentTarget.value ?? ""), { render: false });
@@ -51864,9 +51951,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
         setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, normalizedValue, { render: false });
         renderDocumentTemplatePreviewContent();
       });
-    } else if (field.type === "checkbox" || field.type === "toggle") {
-      const toggleWrap = document.createElement("label");
-      toggleWrap.className = "document-template-runtime-checkbox";
+    } else if (field.type === "checkbox") {
+      const checkboxWrap = document.createElement("label");
+      checkboxWrap.className = "document-template-runtime-checkbox";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrderId));
@@ -51879,7 +51966,40 @@ function renderDocumentTemplateRuntimeFieldRows() {
       checkbox.addEventListener("change", () => {
         copy.textContent = getDocumentTemplateBooleanDisplayValue(field, checkbox.checked);
       });
-      toggleWrap.append(checkbox, copy);
+      checkboxWrap.append(checkbox, copy);
+      control = checkboxWrap;
+    } else if (field.type === "toggle") {
+      const toggleWrap = document.createElement("div");
+      toggleWrap.className = "document-template-runtime-toggle-group";
+      toggleWrap.setAttribute("role", "radiogroup");
+      toggleWrap.setAttribute("aria-label", createFieldTitle(field, 0));
+      const currentValue = Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrderId));
+      const renderToggleState = () => {
+        toggleWrap.querySelectorAll("button").forEach((button) => {
+          const isActive = button.dataset.value === String(Boolean(getDocumentTemplateRuntimeInitialValue(field, workOrderId)));
+          button.classList.toggle("is-active", isActive);
+          button.setAttribute("aria-checked", String(isActive));
+        });
+      };
+      [
+        { value: true, label: getDocumentTemplateBooleanDisplayValue(field, true) },
+        { value: false, label: getDocumentTemplateBooleanDisplayValue(field, false) },
+      ].forEach((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `document-template-runtime-toggle-option ${option.value ? "is-yes" : "is-no"}`;
+        button.classList.toggle("is-active", option.value === currentValue);
+        button.dataset.value = String(option.value);
+        button.setAttribute("role", "radio");
+        button.setAttribute("aria-checked", String(option.value === currentValue));
+        button.textContent = option.label;
+        button.addEventListener("click", () => {
+          setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, option.value, { render: false });
+          renderToggleState();
+          renderDocumentTemplatePreviewContent();
+        });
+        toggleWrap.append(button);
+      });
       control = toggleWrap;
     } else {
       control = document.createElement("input");
@@ -53394,6 +53514,24 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       },
     );
 
+    const textListStyleField = document.createElement("label");
+    textListStyleField.className = "field";
+    textListStyleField.hidden = !isDocumentTemplateTextListStyleField(field.type);
+    const textListStyleSpan = document.createElement("span");
+    textListStyleSpan.textContent = "Bulleti";
+    const textListStyleSelect = document.createElement("select");
+    textListStyleSelect.className = "document-template-source-select";
+    replaceSelectOptions(
+      textListStyleSelect,
+      DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_OPTIONS,
+      normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle),
+    );
+    textListStyleSelect.addEventListener("change", () => {
+      documentTemplateFieldDrafts[draftIndex].textListStyle = normalizeDocumentTemplateTextListStyleLocal(textListStyleSelect.value);
+      renderDocumentTemplateFieldRows({ supportImmediate: true });
+    });
+    textListStyleField.append(textListStyleSpan, textListStyleSelect);
+
     const createSignatureMetaField = () => {
       const metaField = document.createElement("div");
       metaField.className = "field field-span-full document-template-signature-meta-field";
@@ -53643,6 +53781,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       }
       if (isDocumentTemplateRequiredToggleFieldType(field.type)) {
         grid.append(requiredField);
+      }
+      if (!textListStyleField.hidden) {
+        grid.append(textListStyleField);
       }
     }
 

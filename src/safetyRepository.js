@@ -582,6 +582,7 @@ export function mapStoredDocumentTemplateCustomField(field = {}) {
     signatureIncludeScan: source.signatureIncludeScan === undefined ? undefined : Boolean(source.signatureIncludeScan),
     defaultValue: dbString(source.defaultValue),
     helpText: dbString(source.helpText),
+    textListStyle: dbString(source.textListStyle ?? source.listStyle),
     ai: parseJsonObject(source.ai ?? source.aiConfig, {}),
     toggleTrueLabel: dbString(source.toggleTrueLabel),
     toggleFalseLabel: dbString(source.toggleFalseLabel),

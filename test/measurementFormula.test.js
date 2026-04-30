@@ -58,6 +58,20 @@ test("measurement formulas support IF and IFERROR", () => {
   assert.equal(ifErrorResult, 99);
 });
 
+test("measurement formulas support empty string comparisons", () => {
+  const formula = '=IF(B3="";"";"<2")';
+  assert.equal(evaluateMeasurementFormula(formula, {
+    resolveCellReference(reference) {
+      return reference === "B3" ? "Mjesto ispitivanja" : "";
+    },
+  }), "<2");
+  assert.equal(evaluateMeasurementFormula(formula, {
+    resolveCellReference() {
+      return "";
+    },
+  }), "");
+});
+
 test("measurement formulas support RANDBETWEEN and localized formatting", () => {
   const randomValue = evaluateMeasurementFormula("=RANDBETWEEN(3;7)", {
     resolveCellReference() {
