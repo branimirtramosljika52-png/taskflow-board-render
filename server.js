@@ -23,6 +23,7 @@ import {
   buildWorkOrderPdfBuffer,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
+  convertDocxBuffersToPdfBuffers,
   isWordTemplateFile,
   mergePdfBuffers,
   readStoredDocumentBuffer,
@@ -1391,6 +1392,42 @@ async function generatePdfBufferForTemplate(template = {}, {
   return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
     fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
   });
+}
+
+async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}) {
+  const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const referenceDocumentCache = new Map();
+  const docxItems = [];
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const template = assertInScope(
+      documentTemplates,
+      entry?.templateId,
+      "Template nije pronađen.",
+    );
+
+    if (!template.referenceDocument) {
+      throw new Error("Template još nema učitan Word predložak. PDF i Word moraju koristiti isti .docx predložak.");
+    }
+
+    if (!isWordTemplateFile(template.referenceDocument)) {
+      throw new Error("Za PDF export učitaj .docx ili .dotx Word predložak. PDF i Word moraju koristiti isti predložak.");
+    }
+
+    const cacheKey = String(template.id || entry?.templateId || docxItems.length);
+    let referenceDocument = referenceDocumentCache.get(cacheKey);
+    if (!referenceDocument) {
+      referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+      referenceDocumentCache.set(cacheKey, referenceDocument);
+    }
+
+    docxItems.push({
+      buffer: await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}),
+      fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
+    });
+  }
+
+  return await convertDocxBuffersToPdfBuffers(docxItems);
 }
 
 function formatOfferDocumentDate(value = "") {
@@ -5270,20 +5307,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const pdfBuffers = [];
-
-      for (const entry of entries) {
-        const template = assertInScope(
-          scopedSnapshot.documentTemplates ?? [],
-          entry?.templateId,
-          "Template nije pronaÄ‘en.",
-        );
-
-        pdfBuffers.push(await generatePdfBufferForTemplate(template, {
-          placeholders: entry?.placeholders ?? {},
-          fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
-        }));
-      }
+      const pdfBuffers = await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
 
       const mergedPdf = await mergePdfBuffers(pdfBuffers);
       const fileName = sanitizeGeneratedDocumentFileName(

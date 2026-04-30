@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Docxtemplater from "docxtemplater";
@@ -42,6 +42,14 @@ const SOFFICE_DISCOVERY_ROOTS = [
   "C:\\Program Files (x86)\\LibreOffice",
 ];
 const SOFFICE_BINARY_NAMES = new Set(["soffice", "libreoffice", "soffice.exe", "libreoffice.exe"]);
+const SOFFICE_PROFILE_DIR = join(tmpdir(), `taskflow-soffice-profile-${process.pid}`);
+const SOFFICE_CONVERSION_TIMEOUT_MS = Math.max(
+  30000,
+  Number(process.env.SOFFICE_CONVERSION_TIMEOUT_MS || 180000) || 180000,
+);
+let sofficeCommandPromise = null;
+let sofficeProfileReadyPromise = null;
+let sofficeConversionQueue = Promise.resolve();
 
 function clean(value = "") {
   return String(value ?? "").trim();
@@ -120,13 +128,21 @@ async function fileExists(path) {
 
 function runCommand(command, args = [], options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
+    const { timeoutMs = 0, ...spawnOptions } = options;
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
-      ...options,
+      ...spawnOptions,
     });
     let stdout = "";
     let stderr = "";
+    let didTimeout = false;
+    const timeout = Number(timeoutMs) > 0
+      ? setTimeout(() => {
+        didTimeout = true;
+        child.kill("SIGKILL");
+      }, Number(timeoutMs))
+      : null;
 
     child.stdout?.on("data", (chunk) => {
       stdout += String(chunk ?? "");
@@ -134,8 +150,22 @@ function runCommand(command, args = [], options = {}) {
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk ?? "");
     });
-    child.on("error", rejectPromise);
+    child.on("error", (error) => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      rejectPromise(error);
+    });
     child.on("close", (code) => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      if (didTimeout) {
+        const error = new Error(`Command timed out: ${command}`);
+        error.code = "ETIMEDOUT";
+        rejectPromise(error);
+        return;
+      }
       if (code === 0) {
         resolvePromise({ stdout, stderr });
         return;
@@ -265,6 +295,31 @@ async function resolveSofficeCommand() {
   }
 
   return "";
+}
+
+async function resolveSofficeCommandCached() {
+  if (!sofficeCommandPromise) {
+    sofficeCommandPromise = resolveSofficeCommand();
+  }
+
+  return await sofficeCommandPromise;
+}
+
+async function getSharedSofficeProfileDir() {
+  if (!sofficeProfileReadyPromise) {
+    sofficeProfileReadyPromise = mkdir(SOFFICE_PROFILE_DIR, { recursive: true })
+      .then(() => SOFFICE_PROFILE_DIR);
+  }
+
+  return await sofficeProfileReadyPromise;
+}
+
+function enqueueSofficeConversion(task) {
+  const queued = sofficeConversionQueue
+    .catch(() => {})
+    .then(task);
+  sofficeConversionQueue = queued.catch(() => {});
+  return queued;
 }
 
 async function findSofficeCommandInDirectory(rootDirectory = "", depth = 0, maxDepth = 5) {
@@ -1308,73 +1363,130 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 export async function convertDocxBufferToPdfBuffer(docxBuffer, {
   fileName = "zapisnik.docx",
 } = {}) {
-  const sofficeCommand = await resolveSofficeCommand();
-  if (!sofficeCommand) {
-    throw new Error("LibreOffice nije dostupan na serveru za Word -> PDF konverziju.");
-  }
+  const [pdfBuffer] = await convertDocxBuffersToPdfBuffers([{ buffer: docxBuffer, fileName }]);
+  return pdfBuffer;
+}
 
-  const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-docx-"));
-  const officeProfileDir = join(tempRoot, "lo-profile");
-  const inputBaseName = sanitizeGeneratedDocumentFileName(fileName, {
-    fallback: "zapisnik",
+function makeUniqueSofficeInputFileName(fileName = "", index = 0, usedNames = new Set()) {
+  const fallback = `zapisnik-${index + 1}`;
+  const sanitized = sanitizeGeneratedDocumentFileName(fileName || fallback, {
+    fallback,
     extension: "docx",
   });
-  const inputPath = join(tempRoot, inputBaseName);
-  const outputPath = join(
+  const baseName = sanitizeFileBaseName(sanitized.replace(/\.(docx|dotx)$/i, ""), fallback);
+  let candidate = `${baseName}.docx`;
+  let suffix = 2;
+
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${baseName}-${suffix}.docx`;
+    suffix += 1;
+  }
+
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+}
+
+async function resolveConvertedPdfPath(tempRoot = "", inputBaseName = "", generatedPdfEntries = []) {
+  const expectedPdfPath = join(
     tempRoot,
-    sanitizeGeneratedDocumentFileName(inputBaseName.replace(/\.docx$/i, ""), {
+    sanitizeGeneratedDocumentFileName(inputBaseName.replace(/\.(docx|dotx)$/i, ""), {
       fallback: "zapisnik",
       extension: "pdf",
     }),
   );
 
-  try {
-    await mkdir(officeProfileDir, { recursive: true });
-    await writeFile(inputPath, Buffer.isBuffer(docxBuffer) ? docxBuffer : Buffer.from(docxBuffer ?? []));
-    const commandResult = await runCommand(sofficeCommand, [
-      "--headless",
-      "--nologo",
-      "--nodefault",
-      "--nofirststartwizard",
-      `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
-      "--convert-to",
-      "pdf:writer_pdf_Export",
-      "--outdir",
-      tempRoot,
-      inputPath,
-    ], {
-      cwd: tempRoot,
-      env: buildSofficeRuntimeEnv(tempRoot),
+  if (await fileExists(expectedPdfPath)) {
+    return expectedPdfPath;
+  }
+
+  const expectedBaseName = sanitizeFileBaseName(inputBaseName.replace(/\.(docx|dotx)$/i, ""), "")
+    .toLowerCase();
+  return generatedPdfEntries.find((candidatePath) => (
+    sanitizeFileBaseName(basename(candidatePath, extname(candidatePath)), "").toLowerCase() === expectedBaseName
+  )) || generatedPdfEntries.find((candidatePath) => (
+    sanitizeFileBaseName(basename(candidatePath, extname(candidatePath)), "").toLowerCase().includes(expectedBaseName)
+  )) || "";
+}
+
+export async function convertDocxBuffersToPdfBuffers(items = []) {
+  const sourceItems = (Array.isArray(items) ? items : [])
+    .map((item, index) => ({
+      buffer: Buffer.isBuffer(item?.buffer) ? item.buffer : Buffer.from(item?.buffer ?? []),
+      fileName: item?.fileName || `zapisnik-${index + 1}.docx`,
+    }))
+    .filter((item) => item.buffer.length > 0);
+
+  if (sourceItems.length === 0) {
+    throw new Error("Nema Word dokumenata za PDF konverziju.");
+  }
+
+  const sofficeCommand = await resolveSofficeCommandCached();
+  if (!sofficeCommand) {
+    throw new Error("LibreOffice nije dostupan na serveru za Word -> PDF konverziju.");
+  }
+
+  return await enqueueSofficeConversion(async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-docx-"));
+    const officeProfileDir = await getSharedSofficeProfileDir();
+    const usedNames = new Set();
+    const preparedItems = sourceItems.map((item, index) => {
+      const inputBaseName = makeUniqueSofficeInputFileName(item.fileName, index, usedNames);
+      return {
+        ...item,
+        inputBaseName,
+        inputPath: join(tempRoot, inputBaseName),
+      };
     });
 
-    let resolvedOutputPath = outputPath;
-    if (!await fileExists(resolvedOutputPath)) {
+    try {
+      await Promise.all(preparedItems.map((item) => writeFile(item.inputPath, item.buffer)));
+      const commandResult = await runCommand(sofficeCommand, [
+        "--headless",
+        "--nologo",
+        "--nodefault",
+        "--nofirststartwizard",
+        `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
+        "--convert-to",
+        "pdf:writer_pdf_Export",
+        "--outdir",
+        tempRoot,
+        ...preparedItems.map((item) => item.inputPath),
+      ], {
+        cwd: tempRoot,
+        env: buildSofficeRuntimeEnv(tempRoot),
+        timeoutMs: SOFFICE_CONVERSION_TIMEOUT_MS,
+      });
       const generatedPdfEntries = (await readdir(tempRoot, { withFileTypes: true }))
         .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".pdf")
         .map((entry) => join(tempRoot, entry.name));
-      const baseName = sanitizeFileBaseName(inputBaseName.replace(/\.docx$/i, ""), "")
-        .toLowerCase();
-      const matchedOutputPath = generatedPdfEntries.find((candidatePath) => (
-        sanitizeFileBaseName(candidatePath, "").toLowerCase().includes(baseName)
-      ));
-      resolvedOutputPath = matchedOutputPath || generatedPdfEntries[0] || "";
-    }
+      const pdfBuffers = [];
 
-    if (!resolvedOutputPath || !await fileExists(resolvedOutputPath)) {
-      const directoryEntries = await readdir(tempRoot).catch(() => []);
-      const details = [
-        "LibreOffice nije vratio PDF datoteku.",
-        clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
-        clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
-        directoryEntries.length > 0 ? `Sadržaj temp direktorija: ${directoryEntries.join(", ")}` : "",
-      ].filter(Boolean).join(" ");
-      throw new Error(details || "LibreOffice nije vratio PDF datoteku.");
-    }
+      for (const item of preparedItems) {
+        const resolvedOutputPath = await resolveConvertedPdfPath(
+          tempRoot,
+          item.inputBaseName,
+          generatedPdfEntries,
+        );
 
-    return await readFile(resolvedOutputPath);
-  } finally {
-    await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
-  }
+        if (!resolvedOutputPath || !await fileExists(resolvedOutputPath)) {
+          const directoryEntries = await readdir(tempRoot).catch(() => []);
+          const details = [
+            "LibreOffice nije vratio PDF datoteku.",
+            clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
+            clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
+            directoryEntries.length > 0 ? `Sadrzaj temp direktorija: ${directoryEntries.join(", ")}` : "",
+          ].filter(Boolean).join(" ");
+          throw new Error(details || "LibreOffice nije vratio PDF datoteku.");
+        }
+
+        pdfBuffers.push(await readFile(resolvedOutputPath));
+      }
+
+      return pdfBuffers;
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+    }
+  });
 }
 
 export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
