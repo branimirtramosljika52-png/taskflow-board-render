@@ -29391,34 +29391,6 @@ body.is-measurement-equipment-export-open {
   line-height: 1.5;
 }
 
-.document-template-object-source-presets {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid rgba(47, 104, 84, 0.2);
-  border-radius: 16px;
-  background: rgba(246, 251, 248, 0.96);
-}
-
-.document-template-object-source-presets > span {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #2f6854;
-}
-
-.document-template-object-source-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.document-template-object-source-button.is-active {
-  border-color: rgba(47, 104, 84, 0.45);
-  background: rgba(47, 104, 84, 0.12);
-  color: #214c3c;
-}
-
 .document-template-item-head {
   display: flex;
   flex-wrap: wrap;
