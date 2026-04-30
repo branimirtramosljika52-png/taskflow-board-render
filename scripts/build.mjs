@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
-const vendorVersion = "20260420j";
+const vendorVersion = "20260430g";
 const browserSrcDir = resolve(rootDir, "src");
 const browserEntryModules = [
   resolve(browserSrcDir, "main.js"),

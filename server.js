@@ -93,7 +93,7 @@ const securityContentSecurityPolicy = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "script-src 'self' https://unpkg.com",
+  "script-src 'self' 'wasm-unsafe-eval' https://unpkg.com",
   "style-src 'self' 'unsafe-inline' https://unpkg.com",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://unpkg.com",
@@ -573,6 +573,7 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".wasm": "application/wasm",
   ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 const NO_STORE_HEADERS = Object.freeze({

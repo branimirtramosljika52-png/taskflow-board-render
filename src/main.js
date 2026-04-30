@@ -418,7 +418,7 @@ const PERIODICS_MAX_RECORDS = 1000;
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
 const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
-const DRAWING_VENDOR_VERSION = "20260420j";
+const DRAWING_VENDOR_VERSION = "20260430g";
 const DRAWING_STAGE_DEFAULT_WIDTH = 2400;
 const DRAWING_STAGE_DEFAULT_HEIGHT = 1500;
 const DRAWING_STAGE_MIN_WIDTH = 1200;
@@ -3414,8 +3414,11 @@ let drawingSidebarTab = "symbols";
 const drawingCadViewerState = {
   runtimePromise: null,
   viewer: null,
+  dwgModule: null,
   activeKey: "",
   rasterDataUrl: "",
+  loadGeneration: 0,
+  meta: null,
 };
 const DRAWING_DIMENSION_UNIT = "mm";
 const DRAWING_LINEAR_TYPES = new Set(["line", "curve", "wall", "dimension"]);
@@ -14952,6 +14955,76 @@ function showDrawingCadStatus(message = "", tone = "info") {
   drawingStageCadStatus.dataset.tone = text ? tone : "";
 }
 
+function getDrawingCadWasmUrl() {
+  return `/assets/vendor/libredwg.wasm?v=${DRAWING_VENDOR_VERSION}`;
+}
+
+function getDrawingCadKindLabel(reference = null) {
+  return isDrawingDxfReference(reference) ? "DXF" : "DWG";
+}
+
+function getDrawingCadVersionLabel(buffer = null, dwgModule = null) {
+  if (!buffer || !dwgModule?.getDwgVersion) {
+    return "";
+  }
+
+  const version = dwgModule.getDwgVersion(buffer);
+  if (!version) {
+    return "";
+  }
+
+  const releaseName = dwgModule.getDwgReleaseName?.(version) || "";
+  return releaseName ? `${version} / ${releaseName}` : version;
+}
+
+function getDrawingCadErrorMessage(error = null) {
+  const rawMessage = String(error?.message || error || "CAD datoteku nije moguće učitati.").trim();
+  if (rawMessage.includes("too old")) {
+    return "DWG je prestar za pregled u browseru. Spremi ga kao noviji DWG ili ASCII DXF i pokušaj ponovno.";
+  }
+  if (rawMessage.includes("Unrecognized DWG version")) {
+    return "DWG verzija nije podržana u pregledniku. Iz AutoCAD-a spremi kao noviji DWG ili DXF.";
+  }
+  if (rawMessage.includes("Binary DXF")) {
+    return "Binary DXF nije podržan. Spremi DXF kao ASCII DXF i pokušaj ponovno.";
+  }
+  if (rawMessage.includes("Cannot convert empty buffer") || rawMessage.includes("Input is empty")) {
+    return "CAD datoteka je prazna ili nije ispravno učitana.";
+  }
+  if (rawMessage.includes("WASM")) {
+    return "DWG konverter se nije učitao. Osvježi stranicu i pokušaj ponovno.";
+  }
+
+  return rawMessage.replace(/^@cadview\/dwg:\s*/i, "");
+}
+
+function getDrawingCadLoadedSummary(viewer = null, reference = null, elapsedMs = 0) {
+  const entities = typeof viewer?.getEntities === "function" ? viewer.getEntities() : [];
+  const layers = typeof viewer?.getLayers === "function" ? viewer.getLayers() : [];
+  const entityCount = Array.isArray(entities) ? entities.length : 0;
+  const layerCount = Array.isArray(layers) ? layers.length : 0;
+  return {
+    fileName: String(reference?.fileName || "").trim(),
+    kind: getDrawingCadKindLabel(reference),
+    entityCount,
+    layerCount,
+    elapsedMs: Math.max(0, Math.round(Number(elapsedMs) || 0)),
+  };
+}
+
+function getDrawingCadLoadedSummaryText(meta = null) {
+  if (!meta) {
+    return "";
+  }
+
+  return [
+    `${meta.kind || "CAD"} pregled spreman`,
+    `${meta.entityCount || 0} entiteta`,
+    `${meta.layerCount || 0} slojeva`,
+    meta.elapsedMs ? `${(meta.elapsedMs / 1000).toFixed(meta.elapsedMs >= 10000 ? 0 : 1)} s` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 async function readDrawingReferenceArrayBuffer(reference = null) {
   if (!reference) {
     throw new Error("Nema aktivne CAD podloge.");
@@ -15018,24 +15091,27 @@ async function ensureDrawingCadViewer() {
           ? {
             detect: (buffer) => dwgModule.isDwg(buffer),
             convert: (buffer) => dwgModule.convertDwgToDxf(buffer, {
-              wasmUrl: `/assets/vendor/libredwg.wasm?v=${DRAWING_VENDOR_VERSION}`,
+              wasmUrl: getDrawingCadWasmUrl(),
+              timeout: 60000,
             }),
           }
           : null;
-        void dwgModule.initWasm?.({ wasmUrl: `/assets/vendor/libredwg.wasm?v=${DRAWING_VENDOR_VERSION}` }).catch(() => {});
         const viewer = new coreModule.CadViewer(drawingStageCadCanvas, {
           theme: "light",
           initialTool: "pan",
+          worker: true,
           formatConverters: dwgFormatConverter ? [dwgFormatConverter] : [],
         });
         viewer.setBackgroundColor?.("#f8fbff");
         viewer.setTheme?.("light");
         viewer.setTool?.("pan");
         drawingCadViewerState.viewer = viewer;
+        drawingCadViewerState.dwgModule = dwgModule;
         return viewer;
       })
       .catch((error) => {
         drawingCadViewerState.runtimePromise = null;
+        drawingCadViewerState.dwgModule = null;
         throw error;
       });
   }
@@ -15044,8 +15120,10 @@ async function ensureDrawingCadViewer() {
 }
 
 function resetDrawingCadViewer() {
+  drawingCadViewerState.loadGeneration += 1;
   drawingCadViewerState.activeKey = "";
   drawingCadViewerState.rasterDataUrl = "";
+  drawingCadViewerState.meta = null;
   drawingCadViewerState.viewer?.clearDocument?.();
   if (drawingStageCadCanvas) {
     drawingStageCadCanvas.hidden = true;
@@ -15065,24 +15143,70 @@ async function renderDrawingCadReference(reference = null) {
     reference.fileSize,
   ].filter(Boolean).join(":");
 
+  const generation = drawingCadViewerState.loadGeneration + 1;
+  drawingCadViewerState.loadGeneration = generation;
   const viewer = await ensureDrawingCadViewer();
+  if (generation !== drawingCadViewerState.loadGeneration) {
+    return;
+  }
   drawingStageCadCanvas.hidden = false;
+  viewer.resize?.();
 
   if (drawingCadViewerState.activeKey !== previewKey) {
+    const startedAt = performance.now();
+    showDrawingCadStatus(`Pripremam ${getDrawingCadKindLabel(reference)} podlogu ${String(reference.fileName || "").trim() || "datoteka"}...`, "info");
     const buffer = await readDrawingReferenceArrayBuffer(reference);
-    if (isDrawingDxfReference(reference)) {
-      viewer.loadArrayBuffer(buffer.slice(0));
-    } else {
-      showDrawingCadStatus(`Učitavam ${String(reference.fileName || "DWG podloga").trim()}...`, "info");
-      await viewer.loadBuffer(buffer.slice(0));
+    if (generation !== drawingCadViewerState.loadGeneration) {
+      return;
     }
+
+    if (isDrawingDxfReference(reference)) {
+      showDrawingCadStatus("Učitavam DXF geometriju...", "info");
+      await viewer.loadBuffer(buffer.slice(0));
+    } else {
+      const dwgModule = drawingCadViewerState.dwgModule;
+      if (!dwgModule?.isDwg?.(buffer)) {
+        throw new Error("Datoteka ima DWG ekstenziju, ali sadržaj nije prepoznat kao DWG.");
+      }
+
+      const versionLabel = getDrawingCadVersionLabel(buffer, dwgModule);
+      showDrawingCadStatus(
+        `Konvertiram DWG${versionLabel ? ` (${versionLabel})` : ""} u browseru...`,
+        "info",
+      );
+      const dxfText = await dwgModule.convertDwgToDxf(buffer.slice(0), {
+        wasmUrl: getDrawingCadWasmUrl(),
+        timeout: 60000,
+      });
+      if (generation !== drawingCadViewerState.loadGeneration) {
+        return;
+      }
+
+      showDrawingCadStatus("Crtam CAD pregled...", "info");
+      const dxfBuffer = new TextEncoder().encode(dxfText).buffer;
+      await viewer.loadBuffer(dxfBuffer);
+    }
+    if (generation !== drawingCadViewerState.loadGeneration) {
+      return;
+    }
+    viewer.resize?.();
     viewer.fitToView();
     drawingCadViewerState.activeKey = previewKey;
+    drawingCadViewerState.meta = getDrawingCadLoadedSummary(viewer, reference, performance.now() - startedAt);
+    reference.previewStatus = "ready";
+    reference.previewError = "";
   } else {
     viewer.resize?.();
   }
 
-  showDrawingCadStatus("");
+  renderDrawingReferenceList();
+  const successText = getDrawingCadLoadedSummaryText(drawingCadViewerState.meta);
+  showDrawingCadStatus(successText, "success");
+  window.setTimeout(() => {
+    if (drawingCadViewerState.activeKey === previewKey) {
+      showDrawingCadStatus("");
+    }
+  }, 2400);
 
   requestAnimationFrame(() => {
     try {
@@ -15510,14 +15634,15 @@ function renderDrawingReferenceList() {
     const previewStatusLabel = entry.previewStatus === "error"
       ? "DXF preview greška"
       : entry.previewStatus === "ready"
-        ? "DXF preview spreman"
+        ? `${extension === "DWG" || extension === "DXF" ? "CAD" : "DXF"} pregled spreman`
         : entry.previewStatus === "pending"
-          ? "Čeka DXF preview"
+          ? `${extension === "DWG" ? "DWG preview se priprema" : "Čeka CAD preview"}`
           : "";
     meta.textContent = [
       formatFileSize(entry.fileSize),
       entry.fileType || "",
       previewReady ? "DXF preview spreman" : previewStatusLabel,
+      entry.previewError || "",
       entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
     ].filter(Boolean).join(" · ");
 
@@ -16248,8 +16373,11 @@ function renderDrawingStage() {
   if (renderableReference && isDrawingCadReference(renderableReference)) {
     void renderDrawingCadReference(renderableReference).catch((error) => {
       console.error("Drawing CAD preview failed", error);
+      renderableReference.previewStatus = "error";
+      renderableReference.previewError = getDrawingCadErrorMessage(error);
+      renderDrawingReferenceList();
       resetDrawingCadViewer();
-      showDrawingCadStatus(`CAD pregled nije moguće učitati. ${error?.message || "Provjeri datoteku i pokušaj ponovno."}`, "error");
+      showDrawingCadStatus(`CAD pregled nije moguće učitati. ${getDrawingCadErrorMessage(error)}`, "error");
     });
   } else {
     resetDrawingCadViewer();
@@ -16901,7 +17029,7 @@ async function queueDrawingReferenceFiles(files = []) {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
-      previewStatus: "",
+      previewStatus: ["dwg", "dxf"].includes(extension) ? "pending" : "",
       dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
       updatedAt: new Date().toISOString(),
     }));
@@ -71859,10 +71987,488 @@ function getWorkOrderSharedValue(items = [], resolver = (item) => item) {
   };
 }
 
-function getWorkOrderFinishedPatch(workOrder = {}, finished = false) {
+function splitWorkOrderCompletedByValue(value = "") {
+  return String(value || "")
+    .split(/[,;\n]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function getWorkOrderFinishedInspectorAreas(targets = []) {
+  const areas = new Set();
+  (Array.isArray(targets) ? targets : []).forEach((workOrder) => {
+    getWorkOrderRelevantSignatureAreas(workOrder).forEach((area) => {
+      areas.add(normalizeQualificationAreaKey(area));
+    });
+  });
+  return areas.size > 0 ? [...areas] : ["elektro"];
+}
+
+function getWorkOrderFinishedInspectorState(targets = []) {
+  const shared = getWorkOrderSharedValue(targets, (item) => item.completedBy);
+  return {
+    mixed: shared.mixed,
+    labels: shared.mixed ? [] : splitWorkOrderCompletedByValue(shared.value),
+  };
+}
+
+function getWorkOrderFinishedInspectorOptions(targets = [], currentLabels = []) {
+  const activeUserIds = new Set(getActiveOrganizationUsers().map((user) => String(user.id)));
+  const areas = getWorkOrderFinishedInspectorAreas(targets);
+  const byUserId = new Map();
+
+  areas.forEach((area) => {
+    getQualifiedUsersForSignatureArea("inspect", area).forEach((user) => {
+      const userId = String(user?.id || "").trim();
+      if (!userId || (activeUserIds.size > 0 && !activeUserIds.has(userId))) {
+        return;
+      }
+
+      const existing = byUserId.get(userId) ?? {
+        value: `user:${userId}`,
+        label: getUserDocumentDisplayName(user),
+        user,
+        areas: new Set(),
+      };
+      existing.areas.add(area);
+      byUserId.set(userId, existing);
+    });
+  });
+
+  if (byUserId.size === 0) {
+    getActiveOrganizationUsers().forEach((user) => {
+      const userId = String(user?.id || "").trim();
+      if (!userId) {
+        return;
+      }
+      byUserId.set(userId, {
+        value: `user:${userId}`,
+        label: getUserDocumentDisplayName(user),
+        user,
+        areas: new Set(),
+        fallback: true,
+      });
+    });
+  }
+
+  const options = [...byUserId.values()]
+    .map((entry) => {
+      const areaLabels = [...entry.areas].map((area) => getSignatureAreaLabel(area));
+      const qualificationParts = [...entry.areas].flatMap((area) => {
+        const qualification = getUserElectricalQualification(entry.user, area);
+        return [
+          qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+          qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
+          qualification.eBroj ? `E ${qualification.eBroj}` : "",
+        ].filter(Boolean);
+      });
+      return {
+        value: entry.value,
+        label: entry.label,
+        user: entry.user,
+        summary: entry.fallback
+          ? [entry.user?.title || "", entry.user?.email || ""].filter(Boolean).join(" · ") || "Osoba iz People"
+          : [`Ispitivač`, areaLabels.join(", "), ...qualificationParts].filter(Boolean).join(" · "),
+      };
+    })
+    .sort((left, right) => left.label.localeCompare(right.label, "hr"));
+
+  currentLabels.forEach((label) => {
+    const normalizedLabel = normalizePersonLookupValue(label);
+    const hasMatch = options.some((option) => (
+      normalizePersonLookupValue(option.label) === normalizedLabel
+      || normalizePersonLookupValue(option.user?.email || "") === normalizedLabel
+    ));
+    if (hasMatch) {
+      return;
+    }
+    options.push({
+      value: `label:${label}`,
+      label,
+      user: null,
+      summary: "Već upisano u RN",
+      isSnapshot: true,
+    });
+  });
+
+  return options;
+}
+
+function getWorkOrderFinishedInspectorValuesFromLabels(labels = [], options = []) {
+  const values = [];
+  splitWorkOrderCompletedByValue(labels.join(",")).forEach((label) => {
+    const normalizedLabel = normalizePersonLookupValue(label);
+    const match = options.find((option) => (
+      normalizePersonLookupValue(option.label) === normalizedLabel
+      || normalizePersonLookupValue(option.user?.email || "") === normalizedLabel
+    ));
+    if (match?.value) {
+      values.push(match.value);
+    }
+  });
+  return Array.from(new Set(values));
+}
+
+function getWorkOrderFinishedInspectorNames(values = [], options = []) {
+  const byValue = new Map(options.map((option) => [String(option.value), option]));
+  return Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => byValue.get(String(value))?.label || "")
+      .map((label) => String(label || "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function getDefaultWorkOrderFinishedInspectorValues(options = []) {
+  const currentUserId = String(state.user?.id || "").trim();
+  if (currentUserId) {
+    const currentUserOption = options.find((option) => option.value === `user:${currentUserId}`);
+    if (currentUserOption) {
+      return [currentUserOption.value];
+    }
+  }
+
+  return options[0]?.value ? [options[0].value] : [];
+}
+
+function matchesWorkOrderFinishedInspectorOption(option = {}, query = "") {
+  const normalizedQuery = normalizeLooseName(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return normalizeLooseName([
+    option.label,
+    option.summary,
+    option.user?.email,
+    option.user?.legacyUsername,
+  ].filter(Boolean).join(" ")).includes(normalizedQuery);
+}
+
+function createWorkOrderFinishedInspectorPicker({
+  options = [],
+  selectedValues = [],
+  mixed = false,
+  onChange = null,
+} = {}) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-calendar-executor-picker work-order-row-inspector-picker";
+  wrapper.dataset.preventRowOpen = "true";
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-calendar-executor-trigger work-order-row-inspector-trigger";
+  trigger.dataset.preventRowOpen = "true";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  let draftValues = Array.from(new Set((Array.isArray(selectedValues) ? selectedValues : []).map((value) => String(value || "").trim()).filter(Boolean)));
+  let mixedSelection = Boolean(mixed);
+
+  const renderTrigger = () => {
+    const names = getWorkOrderFinishedInspectorNames(draftValues, options);
+    trigger.replaceChildren();
+    trigger.title = mixedSelection && names.length === 0
+      ? "Različiti ispitivači"
+      : names.length > 0
+        ? names.join(", ")
+        : "Odaberi ispitivače";
+    trigger.setAttribute("aria-label", trigger.title);
+
+    const icon = createWorkOrderActionIcon("assignees");
+    icon.classList.add("work-order-bulk-action-icon");
+    trigger.append(icon);
+
+    if (names.length > 0) {
+      const stack = document.createElement("span");
+      stack.className = "work-order-bulk-executor-stack work-order-row-inspector-stack";
+      draftValues.slice(0, 3).forEach((value) => {
+        const option = options.find((entry) => entry.value === value);
+        const avatar = createWorkOrderMiniExecutor({
+          label: option?.label || value,
+          user: option?.user || null,
+        }, {
+          className: "work-order-mini-executor work-order-bulk-executor-avatar work-order-row-inspector-avatar",
+        });
+        avatar.removeAttribute("title");
+        stack.append(avatar);
+      });
+      if (draftValues.length > 3) {
+        stack.append(createExecutorOverflowBadge(
+          draftValues.length - 3,
+          "work-order-mini-executor work-order-bulk-executor-avatar work-order-row-inspector-avatar",
+        ));
+      }
+      trigger.append(stack);
+    }
+
+    const label = document.createElement("span");
+    label.className = "work-order-bulk-action-label work-order-row-inspector-trigger-label";
+    label.textContent = mixedSelection && names.length === 0
+      ? "Različiti ispitivači"
+      : names.length === 0
+        ? "Odaberi ispitivače"
+        : names.length === 1
+          ? names[0]
+          : `${names.length} ispitivača`;
+    trigger.append(label);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 10;
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 10);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(340, Math.round(triggerRect.width + 80))}px`;
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  wrapper._closeMenu = closeMenu;
+  wrapper._setSelectedValues = (nextValues = [], { mixed: nextMixed = false } = {}) => {
+    draftValues = Array.from(new Set((Array.isArray(nextValues) ? nextValues : []).map((value) => String(value || "").trim()).filter(Boolean)));
+    mixedSelection = Boolean(nextMixed);
+    renderTrigger();
+  };
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    let searchQuery = "";
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal work-order-row-inspector-menu-portal";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", "Odabir ispitivača za RN završio");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "work-order-calendar-executor-search";
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-calendar-executor-search-input";
+    searchInput.placeholder = "Traži ispitivača";
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchWrap.append(searchInput);
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-calendar-executor-selection work-order-row-inspector-selection";
+    const helper = document.createElement("p");
+    helper.className = "work-order-calendar-executor-helper";
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-calendar-executor-options";
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-calendar-executor-clear";
+    clearButton.textContent = "Očisti";
+
+    const emitChange = () => {
+      mixedSelection = false;
+      renderTrigger();
+      onChange?.([...draftValues]);
+    };
+
+    const toggleValue = (value) => {
+      const normalizedValue = String(value || "").trim();
+      if (!normalizedValue) {
+        return;
+      }
+      draftValues = draftValues.includes(normalizedValue)
+        ? draftValues.filter((entry) => entry !== normalizedValue)
+        : [...draftValues, normalizedValue];
+      emitChange();
+      syncMenuState();
+    };
+
+    const renderSelection = () => {
+      selection.replaceChildren();
+      const names = getWorkOrderFinishedInspectorNames(draftValues, options);
+      if (mixedSelection && names.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-calendar-executor-selection-empty";
+        empty.textContent = "Odaberi novi set ispitivača za sve odabrane RN-ove.";
+        selection.append(empty);
+        return;
+      }
+      if (names.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-calendar-executor-selection-empty";
+        empty.textContent = "Nema odabranih ispitivača.";
+        selection.append(empty);
+        return;
+      }
+      draftValues.forEach((value) => {
+        const option = options.find((entry) => entry.value === value);
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "work-order-calendar-executor-chip";
+        chip.title = `Makni ${option?.label || value}`;
+        const avatar = createWorkOrderMiniExecutor({ label: option?.label || value, user: option?.user || null });
+        avatar.removeAttribute("title");
+        const text = document.createElement("span");
+        text.className = "work-order-calendar-executor-chip-label";
+        text.textContent = option?.label || value;
+        const remove = document.createElement("span");
+        remove.className = "work-order-calendar-executor-chip-remove";
+        remove.setAttribute("aria-hidden", "true");
+        remove.textContent = "x";
+        chip.append(avatar, text, remove);
+        chip.addEventListener("click", (event) => {
+          event.stopPropagation();
+          toggleValue(value);
+        });
+        selection.append(chip);
+      });
+    };
+
+    const renderOptions = () => {
+      optionsList.replaceChildren();
+      const visibleOptions = options.filter((option) => matchesWorkOrderFinishedInspectorOption(option, searchQuery));
+      if (!visibleOptions.length) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-calendar-executor-empty";
+        empty.textContent = "Nema ispitivača za ovaj pojam.";
+        optionsList.append(empty);
+        return;
+      }
+      visibleOptions.forEach((option) => {
+        const isSelected = draftValues.includes(option.value);
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "work-item-status-option work-order-calendar-executor-option work-order-row-inspector-option";
+        optionButton.classList.toggle("is-selected", isSelected);
+        optionButton.setAttribute("role", "menuitemcheckbox");
+        optionButton.setAttribute("aria-checked", String(isSelected));
+        const avatar = createWorkOrderMiniExecutor({ label: option.label, user: option.user }, {
+          className: "work-order-calendar-executor-option-avatar work-order-row-inspector-option-avatar",
+        });
+        const copy = document.createElement("div");
+        copy.className = "work-order-document-person-option-copy";
+        const label = document.createElement("span");
+        label.className = "work-order-calendar-executor-option-label";
+        label.textContent = option.label;
+        const meta = document.createElement("small");
+        meta.className = "work-order-document-person-option-meta";
+        meta.textContent = option.summary;
+        copy.append(label, meta);
+        const marker = document.createElement("span");
+        marker.className = "work-order-calendar-executor-option-marker";
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = isSelected ? "✓" : "+";
+        optionButton.append(avatar, copy, marker);
+        optionButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          toggleValue(option.value);
+        });
+        optionsList.append(optionButton);
+      });
+    };
+
+    const syncMenuState = () => {
+      renderSelection();
+      renderOptions();
+      helper.textContent = draftValues.length > 0
+        ? `${draftValues.length} odabranih ispitivača.`
+        : "Odaberi jednog ili više ispitivača za završetak RN-a.";
+      clearButton.hidden = draftValues.length === 0 && !mixedSelection;
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    };
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value.trim();
+      renderOptions();
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    });
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+      if (event.key !== "Enter") {
+        return;
+      }
+      const visibleOptions = options.filter((option) => matchesWorkOrderFinishedInspectorOption(option, searchQuery));
+      if (visibleOptions.length === 1) {
+        event.preventDefault();
+        toggleValue(visibleOptions[0].value);
+      }
+    });
+    clearButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      draftValues = [];
+      emitChange();
+      syncMenuState();
+    });
+
+    menu.append(searchWrap, selection, helper, optionsList, clearButton);
+    syncMenuState();
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => {
+      positionMenuPortal(menu);
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    });
+  };
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
+  });
+
+  renderTrigger();
+  wrapper.append(trigger);
+  return wrapper;
+}
+
+function getWorkOrderFinishedPatch(workOrder = {}, finished = false, completedByNames = []) {
   if (finished) {
+    const names = Array.isArray(completedByNames)
+      ? completedByNames.map((name) => String(name || "").trim()).filter(Boolean)
+      : splitWorkOrderCompletedByValue(completedByNames);
     return {
-      completedBy: getUserDocumentDisplayName(state.user),
+      completedBy: names.length > 0 ? names.join(", ") : getUserDocumentDisplayName(state.user),
       status: isClosedWorkOrder(workOrder.status) ? workOrder.status : "Gotov RN",
     };
   }
@@ -71940,6 +72546,10 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
   const amount = getWorkOrderSharedValue(targets, (item) => item.weight);
   const finishedValues = targets.map((item) => Boolean(item.completedBy || String(item.status || "") === "Gotov RN"));
   const finishedMixed = finishedValues.some((value) => value !== finishedValues[0]);
+  const inspectorState = getWorkOrderFinishedInspectorState(targets);
+  const inspectorOptions = getWorkOrderFinishedInspectorOptions(targets, inspectorState.labels);
+  let inspectorValues = getWorkOrderFinishedInspectorValuesFromLabels(inspectorState.labels, inspectorOptions);
+  let inspectorsDirty = false;
 
   const menu = document.createElement("form");
   menu.className = "work-order-row-context-menu";
@@ -71999,14 +72609,37 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
   finishedInput.addEventListener("change", () => {
     finishedInput.dataset.dirty = "true";
     finishedInput.indeterminate = false;
+    if (finishedInput.checked && inspectorValues.length === 0) {
+      inspectorValues = getDefaultWorkOrderFinishedInspectorValues(inspectorOptions);
+      inspectorPicker?._setSelectedValues?.(inspectorValues, { mixed: false });
+      inspectorsDirty = true;
+    }
   });
   const finishedText = document.createElement("span");
   finishedText.textContent = "RN završio";
   finishedLabel.append(finishedInput, finishedText);
 
+  const inspectorField = document.createElement("div");
+  inspectorField.className = "work-order-row-context-field work-order-row-context-inspectors";
+  const inspectorFieldLabel = document.createElement("span");
+  inspectorFieldLabel.textContent = "Ispitivači";
+  const inspectorPicker = createWorkOrderFinishedInspectorPicker({
+    options: inspectorOptions,
+    selectedValues: inspectorValues,
+    mixed: inspectorState.mixed,
+    onChange: (nextValues) => {
+      inspectorValues = Array.from(new Set((Array.isArray(nextValues) ? nextValues : []).map((value) => String(value || "").trim()).filter(Boolean)));
+      inspectorsDirty = true;
+      finishedInput.checked = inspectorValues.length > 0;
+      finishedInput.indeterminate = false;
+      finishedInput.dataset.dirty = "true";
+    },
+  });
+  inspectorField.append(inspectorFieldLabel, inspectorPicker);
+
   const fields = document.createElement("div");
   fields.className = "work-order-row-context-grid";
-  fields.append(dateField.label, noteField.label, amountField.label, finishedLabel);
+  fields.append(dateField.label, noteField.label, amountField.label, finishedLabel, inspectorField);
 
   const actions = document.createElement("div");
   actions.className = "work-order-row-context-actions";
@@ -72037,6 +72670,7 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
     const noteDirty = noteField.input.dataset.dirty === "true";
     const amountDirty = amountField.input.dataset.dirty === "true";
     const finishedDirty = finishedInput.dataset.dirty === "true";
+    const completedByNames = getWorkOrderFinishedInspectorNames(inspectorValues, inspectorOptions);
 
     void applyWorkOrderRowMenuUpdate(targets, (targetWorkOrder) => {
       const body = {};
@@ -72049,8 +72683,8 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
       if (amountDirty) {
         body.weight = amountField.input.value;
       }
-      if (finishedDirty) {
-        Object.assign(body, getWorkOrderFinishedPatch(targetWorkOrder, finishedInput.checked));
+      if (finishedDirty || inspectorsDirty) {
+        Object.assign(body, getWorkOrderFinishedPatch(targetWorkOrder, finishedInput.checked, completedByNames));
       }
       return body;
     });
