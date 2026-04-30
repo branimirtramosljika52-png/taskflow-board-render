@@ -72,6 +72,20 @@ test("measurement formulas support empty string comparisons", () => {
   }), "");
 });
 
+test("measurement formulas support non-empty comparisons with text results", () => {
+  const formula = '=IF(B3>"";"";">2")';
+  assert.equal(evaluateMeasurementFormula(formula, {
+    resolveCellReference() {
+      return "";
+    },
+  }), ">2");
+  assert.equal(evaluateMeasurementFormula(formula, {
+    resolveCellReference() {
+      return "Mjesto ispitivanja";
+    },
+  }), "");
+});
+
 test("measurement formulas support RANDBETWEEN and localized formatting", () => {
   const randomValue = evaluateMeasurementFormula("=RANDBETWEEN(3;7)", {
     resolveCellReference() {

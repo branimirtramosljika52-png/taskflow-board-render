@@ -28454,6 +28454,12 @@ function isMeasurementEditingCell(rowId, columnId) {
     && state.measurementSheet.editingCell?.columnId === columnId;
 }
 
+function isMeasurementFormulaBarEditingCell(rowId, columnId) {
+  return state.measurementSheet.editorSource === "formula-bar"
+    && state.measurementSheet.editingCell?.rowId === rowId
+    && state.measurementSheet.editingCell?.columnId === columnId;
+}
+
 function getMeasurementCellComputedValue(rowIndex, columnIndex, stack = new Set()) {
   const row = state.measurementSheet.rows[rowIndex];
   const column = state.measurementSheet.columns[columnIndex];
@@ -28806,8 +28812,7 @@ function updateMeasurementEditingCellPreview(rowId, columnId) {
   const hasFormula = isMeasurementFormula(rawValue);
   const input = cell.querySelector(".measurement-cell-input");
   const format = getMeasurementCellVisualFormat(rowIndex, columnIndex);
-  const isFormulaBarEditingCell = isMeasurementEditingCell(row.id, column.id)
-    && state.measurementSheet.editorSource === "formula-bar";
+  const isFormulaBarEditingCell = isMeasurementFormulaBarEditingCell(row.id, column.id);
   const formulaDisplayText = hasFormula ? getMeasurementCellDisplayText(rowIndex, columnIndex) : "";
   const hasError = hasFormula && formulaDisplayText === "#ERROR";
 
@@ -28891,8 +28896,7 @@ function refreshMeasurementSheetComputedValues() {
       applyMeasurementCellBorderStyle(cell, format.border);
       applyMeasurementCellStyleToElements(cell, input, format);
 
-      const isFormulaBarEditingCell = isMeasurementEditingCell(row.id, column.id)
-        && state.measurementSheet.editorSource === "formula-bar";
+      const isFormulaBarEditingCell = isMeasurementFormulaBarEditingCell(row.id, column.id);
 
       if (input instanceof HTMLInputElement && (!isMeasurementEditingCell(row.id, column.id) || isFormulaBarEditingCell)) {
         input.value = isFormulaBarEditingCell && hasFormula
