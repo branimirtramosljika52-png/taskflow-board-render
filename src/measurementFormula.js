@@ -1,4 +1,5 @@
-const CELL_REFERENCE_PATTERN = /^([A-Z]+)(\d+)$/;
+const CELL_REFERENCE_PATTERN = /^(\$?)([A-Z]+)(\$?)(\d+)$/;
+const CELL_REFERENCE_TOKEN_PATTERN = /^\$?[A-Za-z]+\$?[0-9]+/;
 
 class MeasurementFormulaError extends Error {
   constructor(message) {
@@ -82,7 +83,7 @@ function tokenizeFormulaExpression(expression) {
       continue;
     }
 
-    const referenceMatch = expression.slice(index).match(/^[A-Za-z]+[0-9]+/);
+    const referenceMatch = expression.slice(index).match(CELL_REFERENCE_TOKEN_PATTERN);
 
     if (referenceMatch) {
       tokens.push({ type: "cell", value: referenceMatch[0].toUpperCase() });
@@ -577,7 +578,7 @@ export function parseMeasurementCellReference(reference) {
     throw new MeasurementFormulaError(`Neispravna referenca: ${reference}`);
   }
 
-  const [, letters, rowText] = match;
+  const [, , letters, , rowText] = match;
   let columnIndex = 0;
 
   for (const letter of letters) {
@@ -588,6 +589,28 @@ export function parseMeasurementCellReference(reference) {
     rowIndex: Number(rowText) - 1,
     columnIndex: columnIndex - 1,
   };
+}
+
+function parseMeasurementFormulaCellReferenceToken(reference) {
+  const normalizedReference = String(reference ?? "").trim().toUpperCase();
+  const match = normalizedReference.match(CELL_REFERENCE_PATTERN);
+
+  if (!match) {
+    throw new MeasurementFormulaError(`Neispravna referenca: ${reference}`);
+  }
+
+  const [, absoluteColumn, , absoluteRow] = match;
+  return {
+    ...parseMeasurementCellReference(normalizedReference),
+    absoluteColumn: Boolean(absoluteColumn),
+    absoluteRow: Boolean(absoluteRow),
+  };
+}
+
+function formatMeasurementFormulaCellReferenceToken(referenceMeta) {
+  const columnText = formatMeasurementCellReference(0, referenceMeta.columnIndex).replace(/\d+$/, "");
+  const rowText = String(referenceMeta.rowIndex + 1);
+  return `${referenceMeta.absoluteColumn ? "$" : ""}${columnText}${referenceMeta.absoluteRow ? "$" : ""}${rowText}`;
 }
 
 export function formatMeasurementCellReference(rowIndex, columnIndex) {
@@ -635,7 +658,7 @@ export function listMeasurementFormulaReferences(formulaText) {
       continue;
     }
 
-    const referenceMatch = text.slice(index).match(/^[A-Za-z]+[0-9]+/);
+    const referenceMatch = text.slice(index).match(CELL_REFERENCE_TOKEN_PATTERN);
 
     if (referenceMatch) {
       references.push(referenceMatch[0].toUpperCase());
@@ -681,14 +704,22 @@ export function shiftMeasurementFormulaReferences(formulaText, rowOffset = 0, co
       continue;
     }
 
-    const referenceMatch = text.slice(index).match(/^[A-Za-z]+[0-9]+/);
+    const referenceMatch = text.slice(index).match(CELL_REFERENCE_TOKEN_PATTERN);
 
     if (referenceMatch) {
       const reference = referenceMatch[0].toUpperCase();
-      const { rowIndex, columnIndex } = parseMeasurementCellReference(reference);
-      const nextRowIndex = Math.max(0, rowIndex + rowOffset);
-      const nextColumnIndex = Math.max(0, columnIndex + columnOffset);
-      result += formatMeasurementCellReference(nextRowIndex, nextColumnIndex);
+      const referenceMeta = parseMeasurementFormulaCellReferenceToken(reference);
+      const nextRowIndex = referenceMeta.absoluteRow
+        ? referenceMeta.rowIndex
+        : Math.max(0, referenceMeta.rowIndex + rowOffset);
+      const nextColumnIndex = referenceMeta.absoluteColumn
+        ? referenceMeta.columnIndex
+        : Math.max(0, referenceMeta.columnIndex + columnOffset);
+      result += formatMeasurementFormulaCellReferenceToken({
+        ...referenceMeta,
+        rowIndex: nextRowIndex,
+        columnIndex: nextColumnIndex,
+      });
       index += referenceMatch[0].length;
       continue;
     }

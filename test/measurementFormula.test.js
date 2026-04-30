@@ -17,6 +17,7 @@ test("formula helpers detect formulas and parse cell references", () => {
   assert.equal(isMeasurementFormula("123"), false);
   assert.deepEqual(parseMeasurementCellReference("A1"), { rowIndex: 0, columnIndex: 0 });
   assert.deepEqual(parseMeasurementCellReference("AA12"), { rowIndex: 11, columnIndex: 26 });
+  assert.deepEqual(parseMeasurementCellReference("$AA$12"), { rowIndex: 11, columnIndex: 26 });
   assert.equal(formatMeasurementCellReference(0, 0), "A1");
   assert.equal(formatMeasurementCellReference(11, 26), "AA12");
 });
@@ -145,6 +146,23 @@ test("measurement formulas support ROWS over ranges and cells", () => {
 
   assert.equal(evaluateMeasurementFormula("=ROWS(A1:B3)", context), 3);
   assert.equal(evaluateMeasurementFormula("=ROWS(A1)", context), 1);
+
+  const absoluteRangeContext = {
+    resolveCellReference() {
+      return "value";
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference, "$A$1");
+      assert.equal(endReference, "A3");
+      return [
+        ["A1"],
+        ["A2"],
+        ["A3"],
+      ];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("=ROWS($A$1:A3)", absoluteRangeContext), 3);
 });
 
 test("formula helpers list and shift references for fill-down behavior", () => {
@@ -160,6 +178,18 @@ test("formula helpers list and shift references for fill-down behavior", () => {
   assert.equal(
     shiftMeasurementFormulaReferences("=IF(C3>0;D4;E5)", 2, 1),
     "=IF(D5>0;E6;F7)",
+  );
+  assert.deepEqual(
+    listMeasurementFormulaReferences("=ROWS($A$1:A3)"),
+    ["$A$1", "A3"],
+  );
+  assert.equal(
+    shiftMeasurementFormulaReferences("=ROWS($A$1:A1)", 4, 2),
+    "=ROWS($A$1:C5)",
+  );
+  assert.equal(
+    shiftMeasurementFormulaReferences("=$A1+A$1+$A$1", 1, 1),
+    "=$A2+B$1+$A$1",
   );
 });
 

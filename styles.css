@@ -33231,7 +33231,42 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
 }
 
 .document-template-canvas-preview .document-template-preview-person-signature {
-  min-height: 148px;
+  min-height: 58px;
+  gap: 4px;
+  align-content: center;
+}
+
+.document-template-canvas-preview .document-template-preview-person-signature-grid {
+  gap: 8px 14px;
+}
+
+.document-template-canvas-preview .document-template-preview-person-copy {
+  gap: 2px;
+}
+
+.document-template-canvas-preview .document-template-preview-person-role,
+.document-template-canvas-preview .document-template-preview-person-meta {
+  font-size: 0.72rem;
+}
+
+.document-template-canvas-preview .document-template-preview-signature {
+  gap: 4px;
+}
+
+.document-template-canvas-preview .document-template-preview-signature-placeholder {
+  min-height: 34px;
+  padding-bottom: 4px;
+  font-size: 0.72rem;
+}
+
+.document-template-canvas-preview .document-template-preview-signature-placeholder.is-digital {
+  min-height: 40px;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.document-template-canvas-preview .document-template-preview-signature-image {
+  max-height: 42px;
 }
 
 .document-template-canvas-meta {

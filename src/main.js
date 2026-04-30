@@ -84226,6 +84226,9 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
     if (state.measurementSheet.contextMenu) {
       closeMeasurementContextMenu();
       return;
